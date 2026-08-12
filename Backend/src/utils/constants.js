@@ -1,0 +1,42 @@
+export const ROLES = {
+  SUPER_ADMIN: 'SUPER_ADMIN',
+  COMPANY_ADMIN: 'COMPANY_ADMIN',
+  HR_MANAGER: 'HR_MANAGER',
+  MANAGER: 'MANAGER',
+  TEAM_LEAD: 'TEAM_LEAD',
+  EMPLOYEE: 'EMPLOYEE',
+};
+
+export const ROLE_LIST = Object.values(ROLES);
+
+export const PLANS = { TRIAL: 'TRIAL', BASIC: 'BASIC', PRO: 'PRO', ENTERPRISE: 'ENTERPRISE' };
+
+export const TRIAL_DAYS = 14;
+
+export const SUPER_ADMIN_COMPANY_CODE = 'CREWLY';
+
+export const CREATION_RIGHTS = {
+  [ROLES.SUPER_ADMIN]: [],
+  [ROLES.COMPANY_ADMIN]: [ROLES.HR_MANAGER, ROLES.MANAGER, ROLES.TEAM_LEAD, ROLES.EMPLOYEE],
+  [ROLES.HR_MANAGER]: [ROLES.EMPLOYEE],
+  [ROLES.MANAGER]: [ROLES.TEAM_LEAD, ROLES.EMPLOYEE],
+  [ROLES.TEAM_LEAD]: [ROLES.EMPLOYEE],
+  [ROLES.EMPLOYEE]: [],
+};
+
+export const WORK_START_TIME = '09:30';
+export const LATE_GRACE_MINUTES = 15;
+export const HALF_DAY_MINUTES = 4 * 60;
+
+export const LEAVE_TYPES = {
+  CASUAL: { label: 'Casual Leave', yearly: 12 },
+  SICK:   { label: 'Sick Leave',   yearly: 6 },
+  EARNED: { label: 'Earned Leave', yearly: 12 },
+};
+
+export const LEAVE_STATUS = ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'];
+
+// ---- Phase 5: Projects & Tasks ----
+export const PROJECT_STATUS = ['PLANNING', 'ACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED'];
+export const TASK_STATUS = ['TODO', 'IN_PROGRESS', 'REVIEW', 'DONE'];
+export const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH'];
