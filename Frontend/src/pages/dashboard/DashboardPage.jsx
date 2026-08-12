@@ -5,9 +5,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { dashboardService } from '../../services/selfService';
-import * as authHook from '../../hooks/useAuth.jsx';
+import useAuth from '../../hooks/useAuth';
 
-const useAuth = authHook.useAuth || authHook.default;
+
 
 const SENIORS = ['COMPANY_ADMIN', 'HR_MANAGER', 'MANAGER', 'TEAM_LEAD'];
 

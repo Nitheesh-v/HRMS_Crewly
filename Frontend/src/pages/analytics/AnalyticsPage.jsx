@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import systemService from '../../services/systemService';
-import * as authHook from '../../hooks/useAuth';
+import useAuth from '../../hooks/useAuth';
 import { roleLabel } from '../../utils/roles';
 
-const useAuth = authHook.useAuth || authHook.default;
 
 const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const mLabel = (m) => MONTH_SHORT[Number(m.slice(5)) - 1];

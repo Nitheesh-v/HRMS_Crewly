@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import exitService from '../../services/exitService';
 import Modal from '../../components/Modal';
-import * as authHook from '../../hooks/useAuth';
+import useAuth from '../../hooks/useAuth';
 import { ROLES, roleLabel } from '../../utils/roles';
 
-const useAuth = authHook.useAuth || authHook.default;
+
 
 const STATUS_STYLE = {
   PENDING: 'bg-crewly-orange/15 text-crewly-orange',

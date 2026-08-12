@@ -1,10 +1,7 @@
 // ============================================================
 // 👤 PROFILE SERVICE — /api/profile/*
 // ============================================================
-import * as apiNS from './api';
-
-const api = apiNS.default || apiNS.api || apiNS;
-
+import api from './api';
 const profileService = {
   getMe: () => api.get('/profile/me'),
   updateMe: (payload) => api.put('/profile/me', payload),

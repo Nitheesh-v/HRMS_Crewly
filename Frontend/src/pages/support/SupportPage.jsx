@@ -1,10 +1,10 @@
 // 🎫 SUPPORT — raise tickets, track thread; HR manages all tickets
 import { useCallback, useEffect, useState } from 'react';
 import { supportService } from '../../services/selfService';
-import * as authHook from '../../hooks/useAuth.jsx';
+import useAuth from '../../hooks/useAuth';
 import Modal from '../../components/Modal';
 
-const useAuth = authHook.useAuth || authHook.default;
+
 const errMsg = (err, fb) => err?.response?.data?.message || err?.data?.message || err?.message || fb;
 const HR_SIDE = ['COMPANY_ADMIN', 'HR_MANAGER'];
 const CATEGORIES = ['PAYROLL', 'ATTENDANCE', 'LEAVE', 'IT', 'FACILITIES', 'HR', 'OTHER'];

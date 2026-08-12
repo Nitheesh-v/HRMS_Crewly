@@ -2,9 +2,7 @@
 // 🧩 SELF-SERVICE API — documents · meetings · announcements
 // support tickets · dashboards (Phase 9 + 10)
 // ============================================================
-import * as apiNS from './api';
-
-const api = apiNS.default || apiNS.api || apiNS;
+import api from './api';
 
 export const documentService = {
   my: () => api.get('/documents/my'),

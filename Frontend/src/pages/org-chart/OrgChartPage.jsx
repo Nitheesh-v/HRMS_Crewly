@@ -6,11 +6,11 @@
 // Backend already scopes: admin/HR → whole company · others → own dept
 // ============================================================
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import * as apiNS from '../../services/api';
-import * as authHook from '../../hooks/useAuth.jsx';
+import api from '../../services/api';
+import useAuth from '../../hooks/useAuth';
 
-const api = apiNS.default || apiNS.api || apiNS;
-const useAuth = authHook.useAuth || authHook.default;
+
+
 
 const FULL_ORG_ROLES = ['COMPANY_ADMIN', 'HR_MANAGER'];
 

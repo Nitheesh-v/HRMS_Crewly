@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import companyService from '../../services/companyService';
-import * as authHook from '../../hooks/useAuth';
+import useAuth from '../../hooks/useAuth';
 import { ROLES } from '../../utils/roles';
 
-const useAuth = authHook.useAuth || authHook.default;
+
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const emptyForm = { name: '', line: '', city: '', state: '', pincode: '' };

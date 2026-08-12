@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import billingService from '../../services/billingService';
 import Modal from '../../components/Modal';
-import * as authHook from '../../hooks/useAuth';
+import useAuth from '../../hooks/useAuth';
 import { ROLES } from '../../utils/roles';
 
-const useAuth = authHook.useAuth || authHook.default;
+
 const money = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
 

@@ -1,10 +1,10 @@
 // 📢 ANNOUNCEMENTS — HR/admin post, everyone reads (incl. dashboard feed)
 import { useCallback, useEffect, useState } from 'react';
 import { announcementService } from '../../services/selfService.js';
-import * as authHook from '../../hooks/useAuth.jsx';
+import useAuth from '../../hooks/useAuth';
 import Modal from '../../components/Modal.jsx';
 
-const useAuth = authHook.useAuth || authHook.default;
+
 const errMsg = (err, fb) => err?.response?.data?.message || err?.data?.message || err?.message || fb;
 const POSTERS = ['COMPANY_ADMIN', 'HR_MANAGER'];
 

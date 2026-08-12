@@ -1,9 +1,7 @@
 // ============================================================
 // 👑 ADMIN SERVICE — super admin platform APIs (/api/admin-api/*)
 // ============================================================
-import * as apiNS from './api';
-
-const api = apiNS.default || apiNS.api || apiNS;
+import api from './api';
 
 const adminService = {
   overview: () => api.get('/admin-api/overview'),

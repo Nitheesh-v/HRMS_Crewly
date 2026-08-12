@@ -2,10 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import api from '../../services/api';
 import recruitmentService from '../../services/recruitmentService';
 import Modal from '../../components/Modal';
-import * as authHook from '../../hooks/useAuth';
+import useAuth from '../../hooks/useAuth';
 import { ROLES } from '../../utils/roles';
 
-const useAuth = authHook.useAuth || authHook.default;
+
 
 const STAGES = [
   { key: 'APPLIED', label: 'Applied', dot: 'bg-slate-400' },

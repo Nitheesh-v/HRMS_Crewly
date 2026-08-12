@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import api from '../../services/api';
 import Modal from '../../components/Modal';
-import * as authHook from '../../hooks/useAuth';
+import useAuth from '../../hooks/useAuth';
 import { ROLES, CREATION_RIGHTS, ROLE_STYLES, roleLabel } from '../../utils/roles';
 
-const useAuth = authHook.useAuth || authHook.default;
+
 
 const EMPTY_FORM = {
   name: '', email: '', password: '', role: 'EMPLOYEE', department: '', reportingTo: '', status: 'ACTIVE',
