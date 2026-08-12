@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+/* ---- Crewly brand theme (use as: bg-crewly-bg, text-crewly-green, border-crewly-border, ...) ---- */
+@theme {
+  --color-crewly-bg: #0d1117;
+  --color-crewly-card: #161b22;
+  --color-crewly-border: #30363d;
+  --color-crewly-text: #e6edf3;
+  --color-crewly-dim: #8b949e;
+  --color-crewly-green: #3fb950;
+  --color-crewly-orange: #f0a35e;
+  --color-crewly-red: #f85149;
+}
+
+body {
+  background-color: var(--color-crewly-bg);
+  color: var(--color-crewly-text);
+}
+
+/* ---- Reusable building blocks ---- */
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-lg bg-crewly-green px-5 py-2.5 font-semibold text-crewly-bg transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center rounded-lg border border-crewly-border px-5 py-2.5 text-crewly-text transition hover:border-crewly-green;
+  }
+  .input {
+    @apply w-full rounded-lg border border-crewly-border bg-crewly-bg px-4 py-2.5 text-crewly-text placeholder-crewly-dim outline-none transition focus:border-crewly-green;
+  }
+  .label {
+    @apply mb-1.5 block text-sm text-crewly-dim;
+  }
+  .card {
+    @apply rounded-xl border border-crewly-border bg-crewly-card p-6;
+  }
+  .badge {
+    @apply inline-block rounded-full px-3 py-1 text-xs font-semibold;
+  }
+}
