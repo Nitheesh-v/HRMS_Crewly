@@ -76,7 +76,6 @@ function Donut({ parts, size = 130 }) {
   const total = Math.max(1, parts.reduce((sum, p) => sum + p.value, 0));
   const radius = 15.9;
   const circumference = 2 * Math.PI * radius;
-  let drawnSoFar = 0; // fraction of the circle already painted (0..1)
   return (
     <div className="flex items-center gap-4">
       <svg width={size} height={size} viewBox="0 0 42 42">
@@ -84,8 +83,8 @@ function Donut({ parts, size = 130 }) {
         {parts.map((p, i) => {
           const fraction = p.value / total;
           const dasharray = `${fraction * circumference} ${circumference}`;
-          const dashoffset = -drawnSoFar * circumference;
-          drawnSoFar += fraction;
+          const previousTotal = parts.slice(0, i).reduce((sum, part) => sum + part.value, 0);
+          const dashoffset = -(previousTotal / total) * circumference;
           return <circle key={i} cx="21" cy="21" r={radius} fill="none" stroke={colors[i % colors.length]} strokeWidth="6" strokeDasharray={dasharray} strokeDashoffset={dashoffset} />;
         })}
         <text x="21" y="23" textAnchor="middle" fill="#e2e8f0" fontSize="7" fontWeight="bold">{total}</text>
@@ -120,12 +119,14 @@ export default function AnalyticsHubPage() {
   const [preset, setPreset] = useState('this_month');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   // fetch the right endpoint whenever tab or date preset changes
   useEffect(() => {
     let cancelled = false;
     async function load() {
       setLoading(true);
+      setError('');
       try {
         let result;
         if (tab === 'overview') result = await analyticsService.overview({ preset });
@@ -136,9 +137,19 @@ export default function AnalyticsHubPage() {
         else if (tab === 'recruitment') result = await analyticsService.recruitment({ preset });
         else if (tab === 'platform') result = await analyticsService.saas();
         else result = await analyticsService.my();
+
+        // The overview UI requires the Phase 18 { kpis, ... } response.
+        // Fail visibly instead of crashing if an old/incorrect route answers.
+        if (tab === 'overview' && !result?.kpis) {
+          throw new Error('Analytics overview returned an unexpected response.');
+        }
+
         if (!cancelled) setData(result);
       } catch (error) {
-        if (!cancelled) setData(null);
+        if (!cancelled) {
+          setData(null);
+          setError(error?.response?.data?.message || error?.message || 'Could not load analytics.');
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -178,9 +189,14 @@ export default function AnalyticsHubPage() {
       </div>
 
       {loading && <p className="text-sm text-slate-400">Crunching numbers… ⚙️</p>}
+      {!loading && error && (
+        <div className={`${panel} border-rose-800 text-sm text-rose-300`}>
+          ⚠️ {error}
+        </div>
+      )}
 
       {/* OVERVIEW */}
-      {!loading && tab === 'overview' && data && (
+      {!loading && tab === 'overview' && data && k && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
             <KPI icon="👥" label="Headcount" value={k.headcount} sub={`${k.growth >= 0 ? '📈' : '📉'} ${k.growth}% vs prev month`} />

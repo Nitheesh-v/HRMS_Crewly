@@ -1,14 +1,8 @@
 // One function per backend endpoint. Nothing fancy.
 // unwrap() handles all 3 response shapes your api.js could produce.
-import * as apiNS from './api.js';
+import api from './api.js';
 
-const api = apiNS.default || apiNS.api || apiNS;
-
-function unwrap(response) {
-  if (response?.data?.data) return response.data.data;
-  if (response?.data) return response.data;
-  return response || {};
-}
+const unwrap = (r) => r?.data?.data ?? r?.data ?? r ?? {};
 
 export const analyticsService = {
   overview: (params) => api.get('/analytics/overview', { params }).then(unwrap),

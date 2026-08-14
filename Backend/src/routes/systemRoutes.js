@@ -36,12 +36,9 @@ router.patch('/notifications/read-all', systemController.markAllRead);
 router.post('/notifications/:id/read', systemController.markRead);
 router.patch('/notifications/:id/read', systemController.markRead);
 
-// 📈 Analytics overview — leadership
-router.get(
-  '/analytics/overview',
-  authorize(ROLES.COMPANY_ADMIN, ROLES.HR_MANAGER),
-  systemController.analyticsOverview
-);
+// 📈 Phase 18 owns every /analytics/* endpoint in analyticsRoutes.js.
+// Do not add /analytics/overview here: Express uses the first matching route,
+// so the legacy handler would hide the newer RBAC-scoped analytics response.
 
 // 🛡️ Audit log — company admin
 router.get(
