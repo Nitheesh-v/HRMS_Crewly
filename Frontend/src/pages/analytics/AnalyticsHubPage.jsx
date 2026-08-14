@@ -1,9 +1,8 @@
-// Analytics Hub — one page, many tabs, chosen by YOUR role:
-//   SUPER_ADMIN → Platform (MRR/ARR)
-//   Admin/HR    → Overview / Attendance / Leaves / Payroll / Work / Hiring
-//   Manager/TL  → Team-scoped tabs (backend locks the data)
-//   Employee    → My Stats only
-// All charts are tiny hand-made SVG components — no chart library needed.
+// Analytics Hub — role-aware analytics:
+// SUPER_ADMIN → Platform
+// Admin/HR → Company analytics
+// Manager/TL → Team-scoped analytics
+// Employee → My Stats
 
 import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
@@ -14,8 +13,8 @@ const panel = "rounded-xl border border-slate-700 bg-slate-900 p-4";
 const sel =
   "rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-100";
 
-const money = (n) =>
-  `₹${Number(n || 0).toLocaleString("en-IN", {
+const money = (value) =>
+  `₹${Number(value || 0).toLocaleString("en-IN", {
     maximumFractionDigits: 0,
   })}`;
 
@@ -31,38 +30,35 @@ const PRESETS = [
   ["prev_year", "Prev year"],
 ];
 
-// ---------- tiny reusable chart components (pure SVG) ----------
-
-// One big number card
-function KPI({ icon, label, value, sub, tone = "text-slate-100" }) {
-  return (
-    <div className={panel}>
-      <div className="text-xs text-slate-400">
-        {icon} {label}
-      </div>
-
-      <div className={`mt-1 text-2xl font-bold ${tone}`}>{value ?? "—"}</div>
-
-      {sub && <div className="text-[11px] text-slate-500">{sub}</div>}
+const KPI = ({ icon, label, value, sub, tone = "text-slate-100" }) => (
+  <div className={panel}>
+    <div className="text-xs text-slate-400">
+      {icon} {label}
     </div>
-  );
-}
+    <div className={`mt-1 text-2xl font-bold ${tone}`}>{value ?? "—"}</div>
+    {sub && <div className="text-[11px] text-slate-500">{sub}</div>}
+  </div>
+);
 
-// Vertical bars: data = [{ label, value }]
-function Bars({ data, labelKey, valueKey, color = "#6366f1", height = 140 }) {
-  const safeData = Array.isArray(data) ? data : [];
-  const values = safeData.map((item) => item?.[valueKey] || 0);
-  const max = Math.max(1, ...values);
-
-  if (!safeData.length) {
+const Bars = ({
+  data = [],
+  labelKey,
+  valueKey,
+  color = "#6366f1",
+  height = 140,
+}) => {
+  if (!data.length) {
     return <p className="text-xs text-slate-500">No data in this range.</p>;
   }
 
+  const values = data.map((item) => Number(item?.[valueKey] || 0));
+  const max = Math.max(1, ...values);
+
   return (
     <div className="flex items-end gap-1" style={{ height }}>
-      {safeData.map((item, index) => {
-        const value = Number(item?.[valueKey] || 0);
+      {data.map((item, index) => {
         const label = item?.[labelKey] ?? "";
+        const value = Number(item?.[valueKey] || 0);
 
         return (
           <div
@@ -71,7 +67,6 @@ function Bars({ data, labelKey, valueKey, color = "#6366f1", height = 140 }) {
             title={`${label}: ${value}`}
           >
             <span className="text-[9px] text-slate-400">{value}</span>
-
             <div
               className="w-full rounded-t"
               style={{
@@ -79,30 +74,32 @@ function Bars({ data, labelKey, valueKey, color = "#6366f1", height = 140 }) {
                 background: color,
               }}
             />
-
             <span className="w-full truncate text-center text-[9px] text-slate-500">
-              {String(label).slice(0, 6)}
+              {String(label).slice(0, 8)}
             </span>
           </div>
         );
       })}
     </div>
   );
-}
+};
 
-// Line trend: a polyline through points scaled to 0–100
-function Trend({ data, labelKey, valueKey, color = "#34d399", height = 140 }) {
-  const safeData = Array.isArray(data) ? data : [];
-
-  if (!safeData.length) {
+const Trend = ({
+  data = [],
+  labelKey,
+  valueKey,
+  color = "#34d399",
+  height = 140,
+}) => {
+  if (!data.length) {
     return <p className="text-xs text-slate-500">No data in this range.</p>;
   }
 
-  const values = safeData.map((item) => item?.[valueKey] || 0);
+  const values = data.map((item) => Number(item?.[valueKey] || 0));
   const max = Math.max(1, ...values);
-  const stepX = 100 / Math.max(1, safeData.length - 1);
+  const stepX = 100 / Math.max(1, data.length - 1);
 
-  const points = safeData
+  const points = data
     .map((item, index) => {
       const value = Number(item?.[valueKey] || 0);
       return `${index * stepX},${100 - (value / max) * 90}`;
@@ -126,17 +123,14 @@ function Trend({ data, labelKey, valueKey, color = "#34d399", height = 140 }) {
       </svg>
 
       <div className="flex justify-between text-[9px] text-slate-500">
-        <span>{safeData[0]?.[labelKey] ?? ""}</span>
-        <span>{safeData[safeData.length - 1]?.[labelKey] ?? ""}</span>
+        <span>{data[0]?.[labelKey] ?? ""}</span>
+        <span>{data[data.length - 1]?.[labelKey] ?? ""}</span>
       </div>
     </div>
   );
-}
+};
 
-// Donut: parts = [{ label, value }]
-function Donut({ parts, size = 130 }) {
-  const safeParts = Array.isArray(parts) ? parts : [];
-
+const Donut = ({ parts = [], size = 130 }) => {
   const colors = [
     "#6366f1",
     "#34d399",
@@ -147,7 +141,7 @@ function Donut({ parts, size = 130 }) {
     "#fb7185",
   ];
 
-  const rawTotal = safeParts.reduce(
+  const rawTotal = parts.reduce(
     (sum, part) => sum + Number(part?.value || 0),
     0,
   );
@@ -168,12 +162,12 @@ function Donut({ parts, size = 130 }) {
           strokeWidth="6"
         />
 
-        {safeParts.map((part, index) => {
+        {parts.map((part, index) => {
           const value = Number(part?.value || 0);
           const fraction = value / total;
           const dasharray = `${fraction * circumference} ${circumference}`;
 
-          const previousTotal = safeParts
+          const previousTotal = parts
             .slice(0, index)
             .reduce(
               (sum, previousPart) => sum + Number(previousPart?.value || 0),
@@ -210,43 +204,36 @@ function Donut({ parts, size = 130 }) {
       </svg>
 
       <div className="space-y-1 text-xs">
-        {safeParts.map((part, index) => (
+        {parts.map((part, index) => (
           <div
             key={`${part?.label || "legend"}-${index}`}
             className="flex items-center gap-2 text-slate-300"
           >
             <span
               className="inline-block h-2.5 w-2.5 rounded-full"
-              style={{
-                background: colors[index % colors.length],
-              }}
+              style={{ background: colors[index % colors.length] }}
             />
             {part?.label || "Unknown"} <b>{Number(part?.value || 0)}</b>
           </div>
         ))}
 
-        {!safeParts.length && (
+        {!parts.length && (
           <span className="text-slate-500">No data in this range.</span>
         )}
       </div>
     </div>
   );
-}
+};
 
-// ---------- the page itself ----------
-
-export default function AnalyticsHubPage() {
+const AnalyticsHubPage = () => {
   const user = useSelector((state) => state.auth.user);
   const role = user?.role;
 
   const isSuperAdmin = role === "SUPER_ADMIN";
-
   const isHR = role === "COMPANY_ADMIN" || role === "HR_MANAGER";
+  const isTeamRole = role === "MANAGER" || role === "TEAM_LEAD";
+  const isSenior = isHR || isTeamRole;
 
-  const isSenior = isHR || role === "MANAGER" || role === "TEAM_LEAD";
-
-  // Which tabs this role is allowed to see.
-  // The backend still enforces the real security.
   let tabs = [["my", "📊 My Stats"]];
 
   if (isSuperAdmin) {
@@ -260,7 +247,7 @@ export default function AnalyticsHubPage() {
       ["work", "✅ Work"],
       ["recruitment", "🧲 Hiring"],
     ];
-  } else if (isSenior) {
+  } else if (isTeamRole) {
     tabs = [
       ["overview", "📊 Team"],
       ["attendance", "🕒 Attendance"],
@@ -271,21 +258,15 @@ export default function AnalyticsHubPage() {
 
   const [tab, setTab] = useState(tabs[0][0]);
   const [preset, setPreset] = useState("this_month");
-
   const [data, setData] = useState(null);
-
-  // Stores the tab that produced the current data.
-  // This prevents Attendance from rendering Overview data, etc.
   const [loadedTab, setLoadedTab] = useState(null);
-
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Fetch the correct endpoint whenever the tab or preset changes.
   useEffect(() => {
     let cancelled = false;
 
-    async function load() {
+    const load = async () => {
       setLoading(true);
       setError("");
 
@@ -310,9 +291,6 @@ export default function AnalyticsHubPage() {
           result = await analyticsService.my();
         }
 
-        // Every analytics tab has a different response shape.
-        // Validate before rendering so partial responses display an error
-        // instead of crashing React.
         const requiredKeys = {
           overview: ["kpis"],
           attendance: ["counts"],
@@ -329,12 +307,12 @@ export default function AnalyticsHubPage() {
         );
 
         if (!result || typeof result !== "object" || missingKeys.length) {
-          const missingMessage = missingKeys.length
+          const details = missingKeys.length
             ? ` (missing: ${missingKeys.join(", ")})`
             : "";
 
           throw new Error(
-            `Analytics ${tab} returned an unexpected response${missingMessage}.`,
+            `Analytics ${tab} returned an unexpected response${details}.`,
           );
         }
 
@@ -357,7 +335,6 @@ export default function AnalyticsHubPage() {
         if (!cancelled) {
           setData(null);
           setLoadedTab(null);
-
           setError(
             loadError?.response?.data?.message ||
               loadError?.message ||
@@ -365,58 +342,43 @@ export default function AnalyticsHubPage() {
           );
         }
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
-    }
+    };
 
     load();
 
     return () => {
-      // Ignore an older response if the user changed tabs quickly.
       cancelled = true;
     };
   }, [tab, preset]);
 
-  // Only render data when it belongs to the currently selected tab.
   const hasCurrentData = loadedTab === tab && data !== null;
-
   const k = hasCurrentData ? data?.kpis : null;
 
-  function changeTab(nextTab) {
-    if (nextTab === tab) {
-      return;
-    }
+  const changeTab = (nextTab) => {
+    if (nextTab === tab) return;
 
-    // Clear the previous tab synchronously.
-    // useEffect runs only after React completes the next render.
     setData(null);
     setLoadedTab(null);
     setError("");
     setLoading(true);
     setTab(nextTab);
-  }
+  };
 
-  function changePreset(event) {
-    const nextPreset = event.target.value;
-
-    // The shape is the same, but clearing stale data gives a clean
-    // loading transition and prevents old date-range values flashing.
+  const changePreset = (event) => {
     setData(null);
     setLoadedTab(null);
     setError("");
     setLoading(true);
-    setPreset(nextPreset);
-  }
+    setPreset(event.target.value);
+  };
 
   return (
     <div className="space-y-5 p-6 text-slate-100">
-      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">📊 Analytics</h1>
-
           <p className="text-sm text-slate-400">
             Server-side aggregated · RBAC-scoped · export-ready
           </p>
@@ -438,13 +400,12 @@ export default function AnalyticsHubPage() {
               to="/app/reports"
               className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
             >
-              📑 Report Builder
+              📑 {isTeamRole ? "Team Reports" : "Report Builder"}
             </Link>
           )}
         </div>
       </div>
 
-      {/* Tab switcher */}
       <div className="flex flex-wrap gap-2">
         {tabs.map(([value, label]) => (
           <button
@@ -472,15 +433,15 @@ export default function AnalyticsHubPage() {
         </div>
       )}
 
-      {/* OVERVIEW */}
+      {/* COMPANY OVERVIEW OR TEAM OVERVIEW */}
       {!loading && tab === "overview" && hasCurrentData && k && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
             <KPI
               icon="👥"
-              label="Headcount"
+              label={isTeamRole ? "Team members" : "Headcount"}
               value={k.headcount}
-              sub={`${k.growth >= 0 ? "📈" : "📉"} ${
+              sub={`${(k.growth ?? 0) >= 0 ? "📈" : "📉"} ${
                 k.growth ?? 0
               }% vs prev month`}
             />
@@ -501,28 +462,48 @@ export default function AnalyticsHubPage() {
 
             <KPI
               icon="✨"
-              label="New hires"
+              label={isTeamRole ? "New team members" : "New hires"}
               value={k.newHires}
               tone="text-indigo-300"
             />
 
-            <KPI icon="🚪" label="Exits" value={k.exits} tone="text-rose-300" />
+            {isTeamRole ? (
+              <>
+                <KPI
+                  icon="🌴"
+                  label="Team pending leaves"
+                  value={k.pendingLeaves}
+                  tone="text-amber-300"
+                />
 
-            <KPI
-              icon="📉"
-              label="Attrition"
-              value={`${k.attritionRate ?? 0}%`}
-              sub="exits ÷ avg headcount"
-              tone="text-amber-300"
-            />
+                <KPI icon="📁" label="Team projects" value={k.activeProjects} />
+              </>
+            ) : (
+              <>
+                <KPI
+                  icon="🚪"
+                  label="Exits"
+                  value={k.exits}
+                  tone="text-rose-300"
+                />
+
+                <KPI
+                  icon="📉"
+                  label="Attrition"
+                  value={`${k.attritionRate ?? 0}%`}
+                  sub="exits ÷ avg headcount"
+                  tone="text-amber-300"
+                />
+              </>
+            )}
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
             <div className={panel}>
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
-                📈 Headcount trend (12 months)
+                📈 {isTeamRole ? "Team headcount trend" : "Headcount trend"} (12
+                months)
               </h3>
-
               <Trend
                 data={data.headcountTrend || []}
                 labelKey="label"
@@ -532,9 +513,11 @@ export default function AnalyticsHubPage() {
 
             <div className={panel}>
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
-                🏬 Department strength
+                🏬{" "}
+                {isTeamRole
+                  ? "Team department distribution"
+                  : "Department strength"}
               </h3>
-
               <Bars
                 data={data.byDepartment || []}
                 labelKey="name"
@@ -545,9 +528,8 @@ export default function AnalyticsHubPage() {
 
             <div className={panel}>
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
-                🎖 By designation
+                🎖 {isTeamRole ? "Team by designation" : "By designation"}
               </h3>
-
               <Bars
                 data={data.byDesignation || []}
                 labelKey="name"
@@ -556,20 +538,23 @@ export default function AnalyticsHubPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <KPI icon="🏬" label="Departments" value={k.departments} />
-
-              <KPI
-                icon="🌴"
-                label="Pending leaves"
-                value={k.pendingLeaves}
-                tone="text-amber-300"
-              />
-
-              <KPI icon="🧲" label="Open jobs" value={k.openJobs} />
-
-              <KPI icon="📁" label="Active projects" value={k.activeProjects} />
-            </div>
+            {isHR && (
+              <div className="grid grid-cols-2 gap-3">
+                <KPI icon="🏬" label="Departments" value={k.departments} />
+                <KPI
+                  icon="🌴"
+                  label="Pending leaves"
+                  value={k.pendingLeaves}
+                  tone="text-amber-300"
+                />
+                <KPI icon="🧲" label="Open jobs" value={k.openJobs} />
+                <KPI
+                  icon="📁"
+                  label="Active projects"
+                  value={k.activeProjects}
+                />
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -584,25 +569,20 @@ export default function AnalyticsHubPage() {
               value={data.counts?.present ?? 0}
               tone="text-emerald-300"
             />
-
             <KPI
               icon="❌"
               label="Absent"
               value={data.counts?.absent ?? 0}
               tone="text-rose-300"
             />
-
             <KPI
               icon="⏰"
               label="Late"
               value={data.counts?.late ?? 0}
               tone="text-amber-300"
             />
-
             <KPI icon="🌗" label="Half-day" value={data.counts?.halfDay ?? 0} />
-
             <KPI icon="🌴" label="On leave" value={data.counts?.leave ?? 0} />
-
             <KPI
               icon="📊"
               label="Attendance"
@@ -617,7 +597,6 @@ export default function AnalyticsHubPage() {
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
                 📅 Daily presents trend
               </h3>
-
               <Trend
                 data={data.dailyTrend || []}
                 labelKey="d"
@@ -629,7 +608,6 @@ export default function AnalyticsHubPage() {
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
                 🥧 Status mix
               </h3>
-
               <Donut
                 parts={(data.byStatusRaw || []).map((status) => ({
                   label: status?._id || "UNKNOWN",
@@ -650,21 +628,18 @@ export default function AnalyticsHubPage() {
               label="Total requests"
               value={data.counts?.total ?? 0}
             />
-
             <KPI
               icon="✅"
               label="Approved"
               value={data.counts?.approved ?? 0}
               tone="text-emerald-300"
             />
-
             <KPI
               icon="⏳"
               label="Pending"
               value={data.counts?.pending ?? 0}
               tone="text-amber-300"
             />
-
             <KPI
               icon="❌"
               label="Rejected"
@@ -676,9 +651,8 @@ export default function AnalyticsHubPage() {
           <div className="grid gap-4 lg:grid-cols-2">
             <div className={panel}>
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
-                🌴 Days used by type (approved)
+                🌴 Days used by type
               </h3>
-
               <Bars
                 data={data.byType || []}
                 labelKey="type"
@@ -691,7 +665,6 @@ export default function AnalyticsHubPage() {
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
                 📈 Monthly trend
               </h3>
-
               <Trend
                 data={data.monthlyTrend || []}
                 labelKey="label"
@@ -713,7 +686,6 @@ export default function AnalyticsHubPage() {
                       className="flex justify-between text-slate-300"
                     >
                       <span>{topUser?.name || "Unknown employee"}</span>
-
                       <b>{topUser?.days || 0} days</b>
                     </div>
                   ))}
@@ -724,7 +696,7 @@ export default function AnalyticsHubPage() {
         </div>
       )}
 
-      {/* PAYROLL */}
+      {/* PAYROLL — HR/ADMIN ONLY */}
       {!loading && tab === "payroll" && hasCurrentData && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -734,16 +706,13 @@ export default function AnalyticsHubPage() {
               value={money(data.totals?.net)}
               tone="text-emerald-300"
             />
-
             <KPI icon="🧾" label="Gross" value={money(data.totals?.gross)} />
-
             <KPI
               icon="➖"
               label="Deductions"
               value={money(data.totals?.deductions)}
               tone="text-rose-300"
             />
-
             <KPI icon="📄" label="Payslips" value={data.totals?.slips ?? 0} />
           </div>
 
@@ -752,7 +721,6 @@ export default function AnalyticsHubPage() {
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
                 📈 Net payroll trend
               </h3>
-
               <Trend
                 data={data.monthly || []}
                 labelKey="label"
@@ -764,7 +732,6 @@ export default function AnalyticsHubPage() {
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
                 🏬 Cost by department
               </h3>
-
               <Bars
                 data={(data.byDepartment || []).map((department) => ({
                   name: department?.name || "Unassigned",
@@ -782,47 +749,44 @@ export default function AnalyticsHubPage() {
       {/* WORK */}
       {!loading && tab === "work" && hasCurrentData && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
             <KPI
               icon="✅"
-              label="Tasks done"
+              label={isTeamRole ? "Team tasks done" : "Tasks done"}
               value={`${data.tasks?.done ?? 0}/${data.tasks?.total ?? 0}`}
               sub={`${data.tasks?.completionPct ?? 0}% complete`}
               tone="text-emerald-300"
             />
-
             <KPI
               icon="🔥"
-              label="Overdue"
+              label={isTeamRole ? "Team overdue" : "Overdue"}
               value={data.tasks?.overdue ?? 0}
               tone="text-rose-300"
             />
-
             <KPI
               icon="📁"
-              label="Projects"
+              label={isTeamRole ? "Team projects" : "Projects"}
               value={`${data.projects?.active ?? 0}/${
                 data.projects?.total ?? 0
               }`}
               sub="active / total"
             />
-
             <KPI
               icon="⏰"
               label="Delayed projects"
               value={data.projects?.delayed ?? 0}
               tone="text-amber-300"
             />
-
             <KPI
               icon="💸"
-              label="Approved expenses"
+              label={
+                isTeamRole ? "Team approved expenses" : "Approved expenses"
+              }
               value={money(data.expenses?.approvedTotal)}
             />
-
             <KPI
               icon="⭐"
-              label="Avg rating"
+              label={isTeamRole ? "Team avg rating" : "Avg rating"}
               value={data.performance?.avgRating || "—"}
               sub={`goals ${data.performance?.goalCompletion ?? 0}%`}
               tone="text-indigo-300"
@@ -834,11 +798,10 @@ export default function AnalyticsHubPage() {
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
                 👤 Tasks per teammate
               </h3>
-
               <Bars
-                data={(data.tasks?.byUser || []).map((teamMember) => ({
-                  name: teamMember?.name || "Unknown",
-                  total: teamMember?.total || 0,
+                data={(data.tasks?.byUser || []).map((member) => ({
+                  name: member?.name || "Unknown",
+                  total: member?.total || 0,
                 }))}
                 labelKey="name"
                 valueKey="total"
@@ -850,7 +813,6 @@ export default function AnalyticsHubPage() {
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
                 🥧 Task status mix
               </h3>
-
               <Donut
                 parts={(data.tasks?.byStatusRaw || []).map((status) => ({
                   label: status?._id || "UNKNOWN",
@@ -862,10 +824,10 @@ export default function AnalyticsHubPage() {
         </div>
       )}
 
-      {/* RECRUITMENT */}
+      {/* RECRUITMENT — HR/ADMIN ONLY */}
       {!loading && tab === "recruitment" && hasCurrentData && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
             <KPI
               icon="🧲"
               label="Jobs"
@@ -880,7 +842,6 @@ export default function AnalyticsHubPage() {
                   label="Applications"
                   value={data.applications?.total ?? 0}
                 />
-
                 <KPI
                   icon="🔍"
                   label="Screening"
@@ -889,7 +850,6 @@ export default function AnalyticsHubPage() {
                     data.applications?.rates?.appToScreening ?? 0
                   }% of apps`}
                 />
-
                 <KPI
                   icon="⭐"
                   label="Shortlisted"
@@ -898,7 +858,6 @@ export default function AnalyticsHubPage() {
                     data.applications?.rates?.screeningToShortlist ?? 0
                   }% of screened`}
                 />
-
                 <KPI
                   icon="🎤"
                   label="Interviews"
@@ -907,7 +866,6 @@ export default function AnalyticsHubPage() {
                     data.applications?.rates?.interviewToOffer ?? 0
                   }% → offer`}
                 />
-
                 <KPI
                   icon="🤝"
                   label="Hires"
@@ -923,7 +881,7 @@ export default function AnalyticsHubPage() {
                 icon="📨"
                 label="Applications"
                 value="—"
-                sub="Add an Application model to unlock the funnel"
+                sub="No application model is available"
               />
             )}
           </div>
@@ -934,7 +892,6 @@ export default function AnalyticsHubPage() {
                 <h3 className="mb-2 text-sm font-semibold text-slate-300">
                   🌐 Applications by source
                 </h3>
-
                 <Bars
                   data={data.applications.bySource}
                   labelKey="source"
@@ -947,7 +904,6 @@ export default function AnalyticsHubPage() {
                 <h3 className="mb-2 text-sm font-semibold text-slate-300">
                   🤝 Hires by source
                 </h3>
-
                 <Bars
                   data={data.applications.bySource}
                   labelKey="source"
@@ -960,38 +916,34 @@ export default function AnalyticsHubPage() {
         </div>
       )}
 
-      {/* PLATFORM */}
+      {/* SUPER ADMIN PLATFORM */}
       {!loading && tab === "platform" && hasCurrentData && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
             <KPI
               icon="🏢"
               label="Companies"
               value={data.companies?.total ?? 0}
               sub={`+${data.companies?.newThisMonth ?? 0} this month`}
             />
-
             <KPI
               icon="🧪"
               label="On trial"
               value={data.companies?.trial ?? 0}
               tone="text-amber-300"
             />
-
             <KPI
               icon="👤"
               label="Platform users"
               value={data.users?.total ?? 0}
               sub={`+${data.users?.newThisMonth ?? 0} new`}
             />
-
             <KPI
               icon="💳"
               label="Paying companies"
               value={data.revenue?.payingCompanies ?? 0}
               tone="text-emerald-300"
             />
-
             <KPI
               icon="📈"
               label="MRR"
@@ -1001,7 +953,6 @@ export default function AnalyticsHubPage() {
               }% MoM`}
               tone="text-emerald-300"
             />
-
             <KPI
               icon="🗓"
               label="ARR"
@@ -1015,7 +966,6 @@ export default function AnalyticsHubPage() {
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
                 📦 Plan distribution
               </h3>
-
               <Donut
                 parts={(data.companies?.byPlan || []).map((plan) => ({
                   label: plan?.name || "Unknown",
@@ -1028,7 +978,6 @@ export default function AnalyticsHubPage() {
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
                 🚦 Status distribution
               </h3>
-
               <Donut
                 parts={(data.companies?.byStatus || []).map((status) => ({
                   label: status?.name || "Unknown",
@@ -1041,7 +990,6 @@ export default function AnalyticsHubPage() {
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
                 💰 MRR by plan
               </h3>
-
               <Bars
                 data={data.revenue?.mrrByPlan || []}
                 labelKey="plan"
@@ -1050,16 +998,10 @@ export default function AnalyticsHubPage() {
               />
             </div>
           </div>
-
-          <p className="text-xs text-slate-500">
-            ⚙️ MRR uses <code>PLAN_PRICING</code> in{" "}
-            <code>saasAnalyticsController.js</code>. Edit the prices there to
-            match your real plans.
-          </p>
         </div>
       )}
 
-      {/* MY STATS */}
+      {/* EMPLOYEE MY STATS */}
       {!loading && tab === "my" && hasCurrentData && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -1067,7 +1009,7 @@ export default function AnalyticsHubPage() {
               icon="🕒"
               label="Days marked (month)"
               value={(data.attendance || []).reduce(
-                (sum, attendanceRow) => sum + Number(attendanceRow?.count || 0),
+                (sum, row) => sum + Number(row?.count || 0),
                 0,
               )}
             />
@@ -1076,9 +1018,9 @@ export default function AnalyticsHubPage() {
               icon="✅"
               label="Tasks done"
               value={
-                (data.tasks || []).find((taskRow) =>
+                (data.tasks || []).find((row) =>
                   ["COMPLETED", "DONE"].includes(
-                    String(taskRow?._id || "").toUpperCase(),
+                    String(row?._id || "").toUpperCase(),
                   ),
                 )?.count || 0
               }
@@ -1089,8 +1031,7 @@ export default function AnalyticsHubPage() {
               label="Leaves approved"
               value={
                 (data.leaves || []).find(
-                  (leaveRow) =>
-                    String(leaveRow?._id || "").toUpperCase() === "APPROVED",
+                  (row) => String(row?._id || "").toUpperCase() === "APPROVED",
                 )?.count || 0
               }
             />
@@ -1136,4 +1077,6 @@ export default function AnalyticsHubPage() {
       )}
     </div>
   );
-}
+};
+
+export default AnalyticsHubPage;
