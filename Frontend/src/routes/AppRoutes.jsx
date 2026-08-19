@@ -45,7 +45,7 @@ import ExitProcessPage from "../pages/exit/ExitProcessPage.jsx";
 
 import CompanyProfilePage from "../pages/company/CompanyProfilePage.jsx";
 
-import BillingPage from "../pages/billing/BillingPage.jsx";
+import BillingPage from  "../pages/billing/BillingPage.jsx"
 import SubscriptionPage from "../pages/billing/SubscriptionPage.jsx";
 
 import GovernancePage from "../pages/governance/GovernancePage.jsx";
