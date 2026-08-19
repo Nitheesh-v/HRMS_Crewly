@@ -7,7 +7,7 @@ import ApiError from "../utils/ApiError.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import asyncHandler from "../utils/asyncHandler.js";
 import { getSecurityPolicy } from "../utils/securityPolicy.js";
-import { recordSecurityEvent } from "../utils/securityAuditService.js";
+import { recordSecurityEvent } from "../utils/securityauditService.js";
 
 const DAY = 24 * 60 * 60 * 1000;
 
