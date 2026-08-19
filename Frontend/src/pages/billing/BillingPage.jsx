@@ -93,11 +93,7 @@ export default function BillingPage() {
   }, [loadAll]);
 
   const afterVerify = async (msg) => {
-    flash(
-  "success",
-  msg ||
-    "Plan activated successfully",
-);
+    flash("success", msg || "Plan activated successfully");
     setPayModal(null);
     loadAll();
   };
@@ -165,17 +161,15 @@ export default function BillingPage() {
   if (!isAdmin) {
     return (
       <div className="p-6">
-       <div className="card flex items-center gap-3 p-6">
-  <ShieldX
-    aria-hidden="true"
-    className="h-5 w-5 shrink-0 text-crewly-red"
-    strokeWidth={1.8}
-  />
+        <div className="card flex items-center gap-3 p-6">
+          <ShieldX
+            aria-hidden="true"
+            className="h-5 w-5 shrink-0 text-crewly-red"
+            strokeWidth={1.8}
+          />
 
-  <span>
-    Billing is managed by the Company Admin only.
-  </span>
-</div>
+          <span>Billing is managed by the Company Admin only.</span>
+        </div>
       </div>
     );
   }
@@ -184,16 +178,14 @@ export default function BillingPage() {
     <div className="p-6 space-y-6">
       <div>
         <h1 className="flex items-center gap-2 text-xl font-bold">
-  <CreditCard
-    aria-hidden="true"
-    className="h-6 w-6 text-crewly-green"
-    strokeWidth={1.8}
-  />
+          <CreditCard
+            aria-hidden="true"
+            className="h-6 w-6 text-crewly-green"
+            strokeWidth={1.8}
+          />
 
-  <span>
-    Billing &amp; Plans
-  </span>
-</h1>
+          <span>Billing &amp; Plans</span>
+        </h1>
         <p className="text-sm text-crewly-dim">
           Upgrade, renew or change your subscription.
         </p>
@@ -251,30 +243,28 @@ export default function BillingPage() {
         <span className="text-sm text-crewly-dim">Billing cycle:</span>
         <div className="flex gap-2">
           {[
-  [1, "Monthly"],
-  [12, "Yearly — 2 months FREE"],
-].map(([m, label]) => (
-          <button
-  key={m}
-  onClick={() =>
-    setMonths(m)
-  }
-  className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition ${
-    months === m
-      ? "bg-crewly-green/15 text-crewly-green"
-      : "border border-crewly-border text-crewly-dim"
-  }`}
->
-  {m === 12 && (
-    <Gift
-      aria-hidden="true"
-      className="h-3.5 w-3.5"
-      strokeWidth={1.8}
-    />
-  )}
+            [1, "Monthly"],
+            [12, "Yearly — 2 months FREE"],
+          ].map(([m, label]) => (
+            <button
+              key={m}
+              onClick={() => setMonths(m)}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition ${
+                months === m
+                  ? "bg-crewly-green/15 text-crewly-green"
+                  : "border border-crewly-border text-crewly-dim"
+              }`}
+            >
+              {m === 12 && (
+                <Gift
+                  aria-hidden="true"
+                  className="h-3.5 w-3.5"
+                  strokeWidth={1.8}
+                />
+              )}
 
-  {label}
-</button>
+              {label}
+            </button>
           ))}
         </div>
       </div>
@@ -316,20 +306,15 @@ export default function BillingPage() {
                             .replace(/^./, (letter) => letter.toUpperCase()),
                         )
                   ).map((feature) => (
-                  <li
-  key={feature}
-  className="flex items-start gap-2"
->
-  <CircleCheckBig
-    aria-hidden="true"
-    className="mt-0.5 h-4 w-4 shrink-0 text-crewly-green"
-    strokeWidth={1.8}
-  />
+                    <li key={feature} className="flex items-start gap-2">
+                      <CircleCheckBig
+                        aria-hidden="true"
+                        className="mt-0.5 h-4 w-4 shrink-0 text-crewly-green"
+                        strokeWidth={1.8}
+                      />
 
-  <span>
-    {feature}
-  </span>
-</li>
+                      <span>{feature}</span>
+                    </li>
                   ))}
                 </ul>
                 <button
@@ -354,17 +339,15 @@ export default function BillingPage() {
 
       {/* payment history */}
       <div className="card overflow-x-auto p-0">
-       <div className="flex items-center gap-2 px-4 pt-4 text-sm font-semibold">
-  <ReceiptText
-    aria-hidden="true"
-    className="h-4 w-4 text-crewly-green"
-    strokeWidth={1.8}
-  />
+        <div className="flex items-center gap-2 px-4 pt-4 text-sm font-semibold">
+          <ReceiptText
+            aria-hidden="true"
+            className="h-4 w-4 text-crewly-green"
+            strokeWidth={1.8}
+          />
 
-  <span>
-    Payment History
-  </span>
-</div>
+          <span>Payment History</span>
+        </div>
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-crewly-border text-crewly-dim">
@@ -396,21 +379,20 @@ export default function BillingPage() {
                   <td className="px-4 py-3">{p.plan}</td>
                   <td className="px-4 py-3">{p.months} mo</td>
                   <td className="px-4 py-3">{money(p.amount)}</td>
-                 <td className="px-4 py-3 text-xs">
-  {p.gateway === "mock" ? (
-    <span className="inline-flex items-center gap-1.5 text-crewly-orange">
-      <FlaskConical
-        aria-hidden="true"
-        className="h-4 w-4"
-        strokeWidth={1.8}
-      />
-
-      TEST
-    </span>
-  ) : (
-    "Razorpay"
-  )}
-</td>
+                  <td className="px-4 py-3 text-xs">
+                    {p.gateway === "mock" ? (
+                      <span className="inline-flex items-center gap-1.5 text-crewly-orange">
+                        <FlaskConical
+                          aria-hidden="true"
+                          className="h-4 w-4"
+                          strokeWidth={1.8}
+                        />
+                        TEST
+                      </span>
+                    ) : (
+                      "Razorpay"
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <span
                       className={`badge ${p.status === "SUCCESS" ? "text-crewly-green" : p.status === "FAILED" ? "text-crewly-red" : "text-crewly-orange"}`}
@@ -429,17 +411,16 @@ export default function BillingPage() {
       {payModal && (
         <Modal
           onClose={() => setPayModal(null)}
-         title={
-  <span className="inline-flex items-center gap-2">
-    <FlaskConical
-      aria-hidden="true"
-      className="h-5 w-5 text-crewly-orange"
-      strokeWidth={1.8}
-    />
-
-    TEST MODE — Payment Simulator
-  </span>
-}
+          title={
+            <span className="inline-flex items-center gap-2">
+              <FlaskConical
+                aria-hidden="true"
+                className="h-5 w-5 text-crewly-orange"
+                strokeWidth={1.8}
+              />
+              TEST MODE — Payment Simulator
+            </span>
+          }
         >
           <div className="space-y-3">
             <p className="text-sm text-crewly-dim">
@@ -478,19 +459,19 @@ export default function BillingPage() {
                 }
               }}
             >
-            {busy ? (
-  "Processing…"
-) : (
-  <>
-    <FlaskConical
-      aria-hidden="true"
-      className="mr-2 h-4 w-4"
-      strokeWidth={1.8}
-    />
+              {busy ? (
+                "Processing…"
+              ) : (
+                <>
+                  <FlaskConical
+                    aria-hidden="true"
+                    className="mr-2 h-4 w-4"
+                    strokeWidth={1.8}
+                  />
 
-    {`Pay ${money(payModal.order.amount)} (simulate)`}
-  </>
-)}
+                  {`Pay ${money(payModal.order.amount)} (simulate)`}
+                </>
+              )}
             </button>
           </div>
         </Modal>
