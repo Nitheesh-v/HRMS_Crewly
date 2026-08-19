@@ -3,7 +3,7 @@ import AuditLog from "../models/AuditLog.js";
 import ApiError from "../utils/ApiError.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import asyncHandler from "../utils/asyncHandler.js";
-import { recordSecurityEvent } from "../utils/securityAuditService.js";
+import { recordSecurityEvent } from "../utils/securityauditService.js";
 
 const escapeRegex = (value) =>
   String(value)
