@@ -20,18 +20,48 @@ if (process.env.SMTP_HOST) {
   logger.info('📧 Mailer: MOCK mode (emails logged to console — set SMTP_* to send real mail)');
 }
 
-export const sendMail = async ({ to, subject, html }) => {
+export const sendMail = async ({
+  to,
+  subject,
+  html = "",
+  text = "",
+}) => {
   try {
     if (!transporter) {
-      logger.info(`📧 [MOCK EMAIL] → ${to} | ${subject}`);
+      logger.info(
+        `📧 [MOCK EMAIL] → ${to} | ${subject}`,
+      );
+
+      if (
+        process.env.NODE_ENV !==
+        "production"
+      ) {
+        logger.info(
+          `📧 [MOCK EMAIL BODY] ${text || html}`,
+        );
+      }
+
       return;
     }
+
     await transporter.sendMail({
-      from: process.env.SMTP_FROM || 'Crewly HRMS <no-reply@crewly.com>',
-      to, subject, html,
+      from:
+        process.env.SMTP_FROM ||
+        "Crewly HRMS <no-reply@crewly.com>",
+
+      to,
+      subject,
+
+      html:
+        html || undefined,
+
+      text:
+        text || undefined,
     });
-  } catch (err) {
-    logger.warn(`📧 Email to ${to} failed: ${err.message}`); // non-fatal by design
+  } catch (error) {
+    logger.warn(
+      `📧 Email to ${to} failed: ${error.message}`,
+    );
   }
 };
 

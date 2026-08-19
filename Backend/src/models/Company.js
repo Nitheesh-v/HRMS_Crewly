@@ -35,6 +35,54 @@ const companySchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+        phone: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
+    logoUrl: {
+      type: String,
+      default: '',
+    },
+
+    country: {
+      type: String,
+      default: 'India',
+      trim: true,
+    },
+
+    timezone: {
+      type: String,
+      default: 'Asia/Kolkata',
+      trim: true,
+    },
+
+    currency: {
+      type: String,
+      default: 'INR',
+      uppercase: true,
+      trim: true,
+    },
+
+    industry: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+
+    archivedAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
+    platformNotes: {
+      type: String,
+      default: '',
+      trim: true,
+      maxlength: 1000,
+    },
     subscription: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Subscription',
@@ -42,7 +90,12 @@ const companySchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['ACTIVE', 'SUSPENDED'],
+ enum: [
+  'ACTIVE',
+  'SUSPENDED',
+  'DEACTIVATED',
+  'ARCHIVED',
+],
       default: 'ACTIVE',
     },
     // Printed on the payslip header (blank = "Address not set")
@@ -56,4 +109,21 @@ const companySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+
+
+companySchema.index({
+  status: 1,
+  createdAt: -1,
+});
+
+companySchema.index({
+  archivedAt: 1,
+  createdAt: -1,
+});
+
+companySchema.index({
+  name: 'text',
+  code: 'text',
+  email: 'text',
+});
 export default mongoose.model('Company', companySchema);

@@ -1,20 +1,72 @@
 import { Router } from 'express';
 import { protect } from '../middlewares/authMiddleware.js';
-import { tenantContext } from '../middlewares/tenantMiddleware.js';
+import {
+  tenantContext,
+} from '../middlewares/tenantMiddleware.js';
+import {
+  checkSubscriptionStatus,
+  checkWriteAccess,
+  requireFeature,
+} from '../middlewares/subscriptionAccess.js';
+import {
+  requirePermission,
+} from '../middlewares/permissionMiddleware.js';
 import * as projectController from '../controllers/projectController.js';
 
 const router = Router();
 
-router.use(protect, tenantContext);
+router.use(
+  protect,
+  tenantContext,
+  checkSubscriptionStatus,
+  requireFeature('projects')
+);
 
-router.route('/')
-  .get(projectController.listProjects)
-  .post(projectController.createProject);
+router.get(
+  '/',
+  requirePermission(
+    'PROJECT_READ'
+  ),
+  projectController.listProjects
+);
 
-router.route('/:id')
-  .get(projectController.getProject)
-  .put(projectController.updateProject)
-  .delete(projectController.deleteProject);
+router.post(
+  '/',
+  checkWriteAccess,
+  requirePermission(
+    'PROJECT_CREATE'
+  ),
+  projectController.createProject
+);
+
+router.get(
+  '/:id',
+  requirePermission(
+    'PROJECT_READ'
+  ),
+  projectController.getProject
+);
+
+router.put(
+  '/:id',
+  checkWriteAccess,
+  requirePermission(
+    'PROJECT_UPDATE'
+  ),
+  projectController.updateProject
+);
+
+router.delete(
+  '/:id',
+  checkWriteAccess,
+  requirePermission(
+    'PROJECT_DELETE'
+  ),
+  projectController.deleteProject
+);
 
 export default router;
-export { router as projectRoutes };
+
+export {
+  router as projectRoutes,
+};

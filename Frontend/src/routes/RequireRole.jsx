@@ -1,13 +1,37 @@
 import { Navigate } from 'react-router-dom';
 import useAuth from '../hooks/useAuth.jsx';
+import {
+  getDashboardPath,
+} from '../utils/roles.js';
 
-// Usage: <RequireRole roles={['SUPER_ADMIN']}><Page/></RequireRole>
-const RequireRole = ({ roles, children }) => {
+const RequireRole = ({
+  roles,
+  children,
+}) => {
   const { user } = useAuth();
 
-  if (!user || !roles.includes(user.role)) {
-    return <Navigate to="/login" replace />;
+  if (!user) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+      />
+    );
   }
+
+  if (
+    !roles.includes(user.role)
+  ) {
+    return (
+      <Navigate
+        to={getDashboardPath(
+          user.role
+        )}
+        replace
+      />
+    );
+  }
+
   return children;
 };
 

@@ -1,24 +1,100 @@
 import { Router } from 'express';
-import { applyLeave, getMyLeaves, getPendingRequests, getLeaveRequests, decideLeave, cancelLeave } from '../controllers/leaveController.js';
-import { protect, authorize } from '../middlewares/authMiddleware.js';
-import { tenantContext, readOnlyIfExpired } from '../middlewares/tenantMiddleware.js';
-import { applyLeaveValidator, decideLeaveValidator } from '../validators/leaveValidator.js';
-import { validate } from '../validators/authValidator.js';
-import { ROLES } from '../utils/constants.js';
+import {
+  applyLeave,
+  getMyLeaves,
+  getPendingRequests,
+  getLeaveRequests,
+  decideLeave,
+  cancelLeave,
+} from '../controllers/leaveController.js';
+import { protect } from '../middlewares/authMiddleware.js';
+import {
+  tenantContext,
+} from '../middlewares/tenantMiddleware.js';
+import {
+  checkSubscriptionStatus,
+  checkWriteAccess,
+} from '../middlewares/subscriptionAccess.js';
+import {
+  requireAnyPermission,
+  requirePermission,
+} from '../middlewares/permissionMiddleware.js';
+import {
+  applyLeaveValidator,
+  decideLeaveValidator,
+} from '../validators/leaveValidator.js';
+import {
+  validate,
+} from '../validators/authValidator.js';
 
 const router = Router();
-router.use(protect, tenantContext);
 
-const SENIORS = [ROLES.COMPANY_ADMIN, ROLES.HR_MANAGER, ROLES.MANAGER, ROLES.TEAM_LEAD];
+router.use(
+  protect,
+  tenantContext,
+  checkSubscriptionStatus
+);
 
-// Self-service (all company users)
-router.post('/', readOnlyIfExpired, applyLeaveValidator, validate, applyLeave);
-router.get('/my', getMyLeaves);
-router.patch('/:id/cancel', readOnlyIfExpired, cancelLeave);
+// Employee self-service.
+router.post(
+  '/',
+  checkWriteAccess,
+  requireAnyPermission([
+    'LEAVE_CREATE_SELF',
+    'LEAVE_CREATE',
+  ]),
+  applyLeaveValidator,
+  validate,
+  applyLeave
+);
 
-// Approval workflow (Manager/TL subtree · HR/Admin whole company)
-router.get('/pending', authorize(...SENIORS), getPendingRequests);
-router.get('/requests', authorize(...SENIORS), getLeaveRequests);
-router.patch('/:id/decide', readOnlyIfExpired, authorize(...SENIORS), decideLeaveValidator, validate, decideLeave);
+router.get(
+  '/my',
+  requireAnyPermission([
+    'LEAVE_READ_SELF',
+    'LEAVE_READ',
+  ]),
+  getMyLeaves
+);
+
+router.patch(
+  '/:id/cancel',
+  checkWriteAccess,
+  requireAnyPermission([
+    'LEAVE_UPDATE_SELF',
+    'LEAVE_UPDATE',
+  ]),
+  cancelLeave
+);
+
+// Company/team approval.
+// Existing controllers retain org-subtree scoping.
+router.get(
+  '/pending',
+  requirePermission(
+    'LEAVE_READ'
+  ),
+  getPendingRequests
+);
+
+router.get(
+  '/requests',
+  requirePermission(
+    'LEAVE_READ'
+  ),
+  getLeaveRequests
+);
+
+router.patch(
+  '/:id/decide',
+  checkWriteAccess,
+  requireAnyPermission([
+    'LEAVE_APPROVE',
+    'LEAVE_REJECT',
+  ]),
+  decideLeaveValidator,
+  validate,
+  decideLeave
+);
 
 export default router;

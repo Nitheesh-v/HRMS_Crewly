@@ -1,5 +1,8 @@
 export const ROLES = {
   SUPER_ADMIN: 'SUPER_ADMIN',
+  PLATFORM_ADMIN: 'PLATFORM_ADMIN',
+SUPPORT_ADMIN: 'SUPPORT_ADMIN',
+BILLING_ADMIN: 'BILLING_ADMIN',
   COMPANY_ADMIN: 'COMPANY_ADMIN',
   HR_MANAGER: 'HR_MANAGER',
   MANAGER: 'MANAGER',
@@ -9,7 +12,17 @@ export const ROLES = {
 
 export const ALL_ROLES = Object.values(ROLES);
 
-export const getDashboardPath = (role) => (role === ROLES.SUPER_ADMIN ? '/admin' : '/app');
+export const PLATFORM_ROLES = [
+  ROLES.SUPER_ADMIN,
+  ROLES.PLATFORM_ADMIN,
+  ROLES.SUPPORT_ADMIN,
+  ROLES.BILLING_ADMIN,
+];
+
+export const getDashboardPath = (role) =>
+  PLATFORM_ROLES.includes(role)
+    ? '/super-admin/dashboard'
+    : '/app';
 
 // Mirrors the backend matrix — used to filter the role dropdown
 export const CREATION_RIGHTS = {

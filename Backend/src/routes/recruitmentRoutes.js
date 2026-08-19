@@ -1,29 +1,133 @@
 import { Router } from 'express';
-import { protect, authorize } from '../middlewares/authMiddleware.js';
-import { tenantContext, readOnlyIfExpired } from '../middlewares/tenantMiddleware.js';
-import { ROLES } from '../utils/constants.js';
+import { protect } from '../middlewares/authMiddleware.js';
 import {
-  createJobRules, updateJobRules, candidateRules, stageRules, offerRules,
+  tenantContext,
+} from '../middlewares/tenantMiddleware.js';
+import {
+  checkSubscriptionStatus,
+  checkUsageLimit,
+  checkWriteAccess,
+  requireFeature,
+} from '../middlewares/subscriptionAccess.js';
+import {
+  requireAnyPermission,
+  requirePermission,
+} from '../middlewares/permissionMiddleware.js';
+import {
+  createJobRules,
+  updateJobRules,
+  candidateRules,
+  stageRules,
+  offerRules,
 } from '../validators/recruitmentValidator.js';
 import {
-  listJobs, createJob, updateJob,
-  listCandidates, addCandidate, updateStage, updateOffer, convertCandidate,
+  listJobs,
+  createJob,
+  updateJob,
+  listCandidates,
+  addCandidate,
+  updateStage,
+  updateOffer,
+  convertCandidate,
 } from '../controllers/recruitmentController.js';
 
 const router = Router();
-router.use(protect, tenantContext, readOnlyIfExpired);
 
-// Recruitment is an HR function (per requirements: Company Admin + HR Manager)
-const HR = [ROLES.COMPANY_ADMIN, ROLES.HR_MANAGER];
+router.use(
+  protect,
+  tenantContext,
+  checkSubscriptionStatus,
+  requireFeature(
+    'recruitment'
+  )
+);
 
-router.get('/jobs', authorize(...HR), listJobs);
-router.post('/jobs', authorize(...HR), createJobRules, createJob);
-router.patch('/jobs/:id', authorize(...HR), updateJobRules, updateJob);
+router.get(
+  '/jobs',
+  requirePermission(
+    'RECRUITMENT_READ'
+  ),
+  listJobs
+);
 
-router.get('/candidates', authorize(...HR), listCandidates);
-router.post('/candidates', authorize(...HR), candidateRules, addCandidate);
-router.patch('/candidates/:id/stage', authorize(...HR), stageRules, updateStage);
-router.patch('/candidates/:id/offer', authorize(...HR), offerRules, updateOffer);
-router.post('/candidates/:id/convert', authorize(...HR), convertCandidate);
+router.post(
+  '/jobs',
+  checkWriteAccess,
+  requirePermission(
+    'RECRUITMENT_CREATE'
+  ),
+  checkUsageLimit(
+    'jobPostingsMonthly'
+  ),
+  createJobRules,
+  createJob
+);
+
+router.patch(
+  '/jobs/:id',
+  checkWriteAccess,
+  requirePermission(
+    'RECRUITMENT_UPDATE'
+  ),
+  updateJobRules,
+  updateJob
+);
+
+router.get(
+  '/candidates',
+  requireAnyPermission([
+    'CANDIDATE_READ',
+    'RECRUITMENT_READ',
+  ]),
+  listCandidates
+);
+
+router.post(
+  '/candidates',
+  checkWriteAccess,
+  requireAnyPermission([
+    'CANDIDATE_CREATE',
+    'RECRUITMENT_CREATE',
+  ]),
+  checkUsageLimit(
+    'recruitmentCandidatesMonthly'
+  ),
+  candidateRules,
+  addCandidate
+);
+
+router.patch(
+  '/candidates/:id/stage',
+  checkWriteAccess,
+  requireAnyPermission([
+    'CANDIDATE_UPDATE',
+    'RECRUITMENT_UPDATE',
+  ]),
+  stageRules,
+  updateStage
+);
+
+router.patch(
+  '/candidates/:id/offer',
+  checkWriteAccess,
+  requireAnyPermission([
+    'RECRUITMENT_APPROVE',
+    'CANDIDATE_UPDATE',
+  ]),
+  offerRules,
+  updateOffer
+);
+
+router.post(
+  '/candidates/:id/convert',
+  checkWriteAccess,
+  requirePermission(
+    'RECRUITMENT_APPROVE'
+  ),
+  checkUsageLimit(
+    'employees'
+  ),
+  convertCandidate
+);
 
 export default router;

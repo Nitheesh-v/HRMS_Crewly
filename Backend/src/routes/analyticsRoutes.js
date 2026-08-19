@@ -1,45 +1,148 @@
-// Phase 18 routes. The gate() helper checks req.user.role —
-// payroll is HR/Admin only, platform stats SUPER_ADMIN only.
 import { Router } from 'express';
-import * as authNS from "../middlewares/authMiddleware.js" // ⚠️ if boot fails here, use '../middlewares/authMiddleware.js' (match YOUR folder name)
+import * as authNS from '../middlewares/authMiddleware.js';
+import {
+  tenantContext,
+} from '../middlewares/tenantMiddleware.js';
+import {
+  checkSubscriptionStatus,
+  requireFeature,
+} from '../middlewares/subscriptionAccess.js';
+import {
+  requireAnyPermission,
+  requirePermission,
+} from '../middlewares/permissionMiddleware.js';
 import * as analyticsController from '../controllers/analyticsController.js';
-import * as saasAnalyticsController from '../controllers/saasAnalyticsController.js';
 import * as reportBuilderController from '../controllers/reportBuilderController.js';
 
-const protect = authNS.protect || authNS.default?.protect || authNS.default;
-
-// small role-checker middleware (403 if the role isn't allowed)
-function gate(...allowedRoles) {
-  return function checkRole(req, res, next) {
-    const role = req.user?.role;
-    if (role && (allowedRoles.includes(role) || role === 'SUPER_ADMIN')) return next();
-    return res.status(403).json({ statusCode: 403, success: false, message: 'Forbidden' });
-  };
-}
-
-const SENIORS = gate('COMPANY_ADMIN', 'HR_MANAGER', 'MANAGER', 'TEAM_LEAD');
-const HR_ONLY = gate('COMPANY_ADMIN', 'HR_MANAGER');
-const SUPER_ONLY = gate('SUPER_ADMIN');
+const protect =
+  authNS.protect ||
+  authNS.default?.protect ||
+  authNS.default;
 
 const router = Router();
-router.use(protect); // every route below needs a logged-in user
 
-// company analytics (managers/TLs auto-scoped inside the controller)
-router.get('/analytics/overview', SENIORS, analyticsController.overview);
-router.get('/analytics/attendance', SENIORS, analyticsController.attendance);
-router.get('/analytics/leaves', SENIORS, analyticsController.leaves);
-router.get('/analytics/payroll', HR_ONLY, analyticsController.payroll);      // 💰 HR/Admin only
-router.get('/analytics/work', SENIORS, analyticsController.work);
-router.get('/analytics/recruitment', HR_ONLY, analyticsController.recruitment);
-router.get('/analytics/my', analyticsController.myStats);                    // any role: own data only
+router.use(
+  protect,
+  tenantContext,
+  checkSubscriptionStatus
+);
 
-// platform analytics
-router.get('/saas/overview', SUPER_ONLY, saasAnalyticsController.saasOverview);
+router.get(
+  '/analytics/overview',
+  requirePermission(
+    'REPORT_READ'
+  ),
+  requireFeature(
+    'analytics'
+  ),
+  analyticsController.overview
+);
 
-// report builder
-router.get('/report-builder/meta', SENIORS, reportBuilderController.builderMeta);
-router.post('/report-builder/run', SENIORS, reportBuilderController.runReport);
-router.post('/report-builder/export', SENIORS, reportBuilderController.exportReport);
+router.get(
+  '/analytics/attendance',
+  requirePermission(
+    'ATTENDANCE_READ'
+  ),
+  requireFeature(
+    'analytics'
+  ),
+  analyticsController.attendance
+);
+
+router.get(
+  '/analytics/leaves',
+  requirePermission(
+    'LEAVE_READ'
+  ),
+  requireFeature(
+    'analytics'
+  ),
+  analyticsController.leaves
+);
+
+router.get(
+  '/analytics/payroll',
+  requirePermission(
+    'PAYROLL_READ'
+  ),
+  requireFeature(
+    'payroll'
+  ),
+  analyticsController.payroll
+);
+
+router.get(
+  '/analytics/work',
+  requireAnyPermission([
+    'PROJECT_READ',
+    'TASK_READ',
+  ]),
+  requireFeature(
+    'analytics'
+  ),
+  analyticsController.work
+);
+
+router.get(
+  '/analytics/recruitment',
+  requirePermission(
+    'RECRUITMENT_READ'
+  ),
+  requireFeature(
+    'recruitment'
+  ),
+  analyticsController.recruitment
+);
+
+// Own stats remains available to self-service users.
+router.get(
+  '/analytics/my',
+  requireAnyPermission([
+    'EMPLOYEE_READ_SELF',
+    'ATTENDANCE_READ_SELF',
+    'TASK_READ_SELF',
+  ]),
+  analyticsController.myStats
+);
+
+router.get(
+  '/report-builder/meta',
+  requirePermission(
+    'REPORT_READ'
+  ),
+  requireFeature(
+    'reports'
+  ),
+  reportBuilderController.builderMeta
+);
+
+router.post(
+  '/report-builder/run',
+  requirePermission(
+    'REPORT_READ'
+  ),
+  requireFeature(
+    'reports'
+  ),
+  reportBuilderController.runReport
+);
+
+router.post(
+  '/report-builder/export',
+  requirePermission(
+    'REPORT_EXPORT'
+  ),
+  requireFeature(
+    'reports'
+  ),
+  requireFeature(
+    'export'
+  ),
+  reportBuilderController.exportReport
+);
 
 export default router;
-export { router as analyticsRoutes };
+
+export {
+  router as analyticsRoutes,
+};

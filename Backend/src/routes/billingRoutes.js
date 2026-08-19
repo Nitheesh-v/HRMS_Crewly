@@ -2,8 +2,8 @@ import { Router } from 'express';
 import { protect, authorize } from '../middlewares/authMiddleware.js';
 import { tenantContext } from '../middlewares/tenantMiddleware.js';
 import { ROLES } from '../utils/constants.js';
-import { getPlans, getSubscription, checkout, verifyPayment, listPayments } from '../controllers/billingController.js';
-import '../utils/subscriptionWatchdog.js'; // ⏳ Phase 13: expiry reminders (self-starting)
+import { getPlans, getSubscription, checkout, verifyPayment, listPayments,listInvoices } from '../controllers/billingController.js';
+ // ⏳ Phase 13: expiry reminders (self-starting)
 
 
 
@@ -18,5 +18,9 @@ router.get('/subscription', authorize(ROLES.COMPANY_ADMIN), getSubscription);
 router.get('/payments', authorize(ROLES.COMPANY_ADMIN), listPayments);
 router.post('/checkout', authorize(ROLES.COMPANY_ADMIN), checkout);
 router.post('/verify', authorize(ROLES.COMPANY_ADMIN), verifyPayment);
+router.get(
+  '/invoices',
+  listInvoices
+);
 
 export default router;

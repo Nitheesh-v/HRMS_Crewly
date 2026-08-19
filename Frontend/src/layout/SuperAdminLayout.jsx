@@ -1,120 +1,383 @@
-import { Outlet, Link, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
-import { useSelector, useDispatch } from 'react-redux';
-import { selectUser } from '../redux/slices/authSlice';
-import { logout } from '../redux/slices/authSlice';
+import { useEffect, useState } from "react";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import useAuth from "../hooks/useAuth.jsx";
+import superAdminService from "../services/superAdminService.js";
 
-const SuperAdminSidebar = ({ isOpen, onClose }) => {
-  const user = useSelector(selectUser);
+const MENU = [
+  {
+    to: "/super-admin/dashboard",
+    label: "Dashboard",
+    icon: "📊",
+    roles: ["ALL"],
+  },
+  {
+    to: "/super-admin/companies",
+    label: "Companies",
+    icon: "🏢",
+    roles: ["ALL"],
+  },
+  {
+    to: "/super-admin/users",
+    label: "Users",
+    icon: "👥",
+    roles: ["SUPER_ADMIN", "PLATFORM_ADMIN", "SUPPORT_ADMIN"],
+  },
+  {
+    to: "/super-admin/subscriptions",
+    label: "Subscriptions",
+    icon: "🔄",
+    roles: ["SUPER_ADMIN", "BILLING_ADMIN"],
+  },
+  {
+    to: "/super-admin/plans",
+    label: "Plans",
+    icon: "📦",
+    roles: ["SUPER_ADMIN", "BILLING_ADMIN"],
+  },
+  {
+    to: "/super-admin/billing",
+    label: "Billing",
+    icon: "🧾",
+    roles: ["SUPER_ADMIN", "BILLING_ADMIN"],
+  },
+  {
+    to: "/super-admin/revenue",
+    label: "Revenue",
+    icon: "💰",
+    roles: ["SUPER_ADMIN", "BILLING_ADMIN", "PLATFORM_ADMIN"],
+  },
+  {
+    to: "/super-admin/usage",
+    label: "Usage",
+    icon: "📈",
+    roles: ["SUPER_ADMIN", "PLATFORM_ADMIN"],
+  },
+  {
+    to: "/super-admin/support",
+    label: "Support",
+    icon: "🎫",
+    roles: ["SUPER_ADMIN", "SUPPORT_ADMIN"],
+  },
+  {
+    to: "/super-admin/system-health",
+    label: "System Health",
+    icon: "🩺",
+    roles: ["SUPER_ADMIN", "PLATFORM_ADMIN"],
+  },
+  {
+    to: "/super-admin/audit-logs",
+    label: "Audit Logs",
+    icon: "🛡️",
+    roles: ["SUPER_ADMIN", "PLATFORM_ADMIN"],
+  },
+  {
+    to: "/super-admin/settings",
+    label: "Settings",
+    icon: "⚙️",
+    roles: ["SUPER_ADMIN", "PLATFORM_ADMIN"],
+  },
+];
+
+const SuperAdminLayout = () => {
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const dispatch = useDispatch();
 
-  const menuItems = [
-    { label: 'Dashboard', path: '/super-admin/dashboard', icon: '📊' },
-    { label: 'Companies', path: '/super-admin/companies', icon: '🏢' },
-    { label: 'Plans & Billing', path: '/super-admin/plans', icon: '💳' },
-    { label: 'Analytics', path: '/super-admin/analytics', icon: '📈' },
-    { label: 'Settings', path: '/super-admin/settings', icon: '⚙️' },
-    { label: 'Support Tickets', path: '/super-admin/support', icon: '🎫' },
-  ];
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-  const handleLogout = () => {
-    dispatch(logout());
-    navigate('/super-admin/login');
+  const [search, setSearch] = useState("");
+
+  const [results, setResults] = useState(null);
+
+  const [notifications, setNotifications] = useState({
+    rows: [],
+    unread: 0,
+  });
+
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  const [systemStatus, setSystemStatus] = useState("HEALTHY");
+
+  const visibleMenu = MENU.filter(
+    (item) => item.roles.includes("ALL") || item.roles.includes(user?.role),
+  );
+
+  useEffect(() => {
+    Promise.allSettled([
+      superAdminService.notifications(),
+      superAdminService.health(),
+    ]).then(([notificationResult, healthResult]) => {
+      if (notificationResult.status === "fulfilled") {
+        setNotifications(
+          notificationResult.value || {
+            rows: [],
+            unread: 0,
+          },
+        );
+      }
+
+      if (healthResult.status === "fulfilled") {
+        setSystemStatus(healthResult.value?.overall || "HEALTHY");
+      }
+    });
+  }, []);
+
+  const submitSearch = async (event) => {
+    event.preventDefault();
+
+    if (search.trim().length < 2) {
+      setResults(null);
+      return;
+    }
+
+    try {
+      const data = await superAdminService.search(search.trim());
+
+      setResults(data);
+    } catch {
+      setResults({
+        error: "Search failed",
+      });
+    }
   };
 
-  return (
-    <aside className={`fixed left-0 top-0 h-full w-64 bg-gray-900 transform transition-transform duration-300 z-40 ${isOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
-      <div className="flex flex-col h-full">
-        <div className="p-6 border-b border-gray-700">
-          <Link to="/super-admin/dashboard" className="flex items-center gap-2">
-            <div className="w-10 h-10 bg-yellow-500 rounded-lg flex items-center justify-center text-white font-bold text-xl">
-              ⚡
-            </div>
-            <span className="text-xl font-bold text-white">Crewly Admin</span>
-          </Link>
-        </div>
+  const handleLogout = async () => {
+    try {
+      await superAdminService.logout();
+    } catch {
+      // Local logout must still run.
+    }
 
-        <nav className="flex-1 p-4 overflow-y-auto" role="navigation" aria-label="Super admin navigation">
-          <ul className="space-y-1">
-            {menuItems.map((item) => (
-              <li key={item.path}>
-                <Link
-                  to={item.path}
-                  onClick={onClose}
-                  className="flex items-center gap-3 px-3 py-2.5 text-gray-300 rounded-lg hover:bg-gray-800 hover:text-white transition-colors group"
-                >
-                  <span className="text-lg">{item.icon}</span>
-                  <span className="font-medium">{item.label}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
+    logout();
 
-        <div className="p-4 border-t border-gray-700">
-          <div className="flex items-center gap-3 px-3 py-2 mb-3">
-            <div className="w-8 h-8 bg-yellow-500 rounded-full flex items-center justify-center text-white font-medium">
-              {user?.name?.[0] || 'S'}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white truncate">{user?.name || 'Super Admin'}</p>
-              <p className="text-xs text-gray-400">Super Administrator</p>
-            </div>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-3 py-2 text-gray-300 rounded-lg hover:bg-red-900/30 hover:text-red-400 transition-colors"
+    navigate("/super-admin/login", { replace: true });
+  };
+
+  const markAll = async () => {
+    try {
+      await superAdminService.markAllNotifications();
+
+      setNotifications((current) => ({
+        ...current,
+        unread: 0,
+
+        rows: current.rows.map((row) => ({
+          ...row,
+          read: true,
+        })),
+      }));
+    } catch {
+      // Notification failure is non-blocking.
+    }
+  };
+
+  const sidebar = (
+    <aside className="flex h-full w-64 flex-col border-r border-orange-500/20 bg-slate-950">
+      <div className="border-b border-slate-800 px-5 py-5">
+        <p className="text-xs font-semibold uppercase tracking-[0.25em] text-orange-400">
+          Provider Portal
+        </p>
+
+        <h1 className="mt-1 text-xl font-black text-white">
+          Crewly <span className="text-cyan-400">Control</span>
+        </h1>
+      </div>
+
+      <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+        {visibleMenu.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            onClick={() => setMobileOpen(false)}
+            className={({ isActive }) =>
+              `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
+                isActive
+                  ? "bg-orange-500/15 text-orange-300"
+                  : "text-slate-400 hover:bg-slate-900 hover:text-white"
+              }`
+            }
           >
-            <span className="text-lg">🚪</span>
-            <span className="font-medium">Logout</span>
-          </button>
-        </div>
+            <span>{item.icon}</span>
+            <span>{item.label}</span>
+          </NavLink>
+        ))}
+      </nav>
+
+      <div className="border-t border-slate-800 p-4">
+        <p className="truncate text-sm font-semibold text-white">
+          {user?.name || "Platform Admin"}
+        </p>
+
+        <p className="text-xs text-orange-400">
+          {user?.role?.replaceAll("_", " ")}
+        </p>
+
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="mt-3 w-full rounded-lg bg-slate-900 px-3 py-2 text-left text-sm text-slate-300 hover:text-red-300"
+        >
+          🚪 Logout
+        </button>
       </div>
     </aside>
   );
-};
 
-const SuperAdminHeader = ({ onMenuClick }) => {
   return (
-    <header className="fixed top-0 left-0 right-0 h-16 bg-gray-800 border-b border-gray-700 z-30 lg:left-64">
-      <div className="flex items-center justify-between h-full px-4 lg:px-6">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={onMenuClick}
-            className="lg:hidden p-2 rounded-lg hover:bg-gray-700"
-            aria-label="Toggle menu"
-          >
-            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-          <h1 className="text-lg font-semibold text-white">Super Admin Panel</h1>
-        </div>
+    <div className="min-h-screen bg-slate-950 text-slate-100">
+      <div className="fixed inset-y-0 left-0 z-40 hidden lg:block">
+        {sidebar}
       </div>
-    </header>
-  );
-};
 
-export const SuperAdminLayout = () => {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+      {mobileOpen && (
+        <div className="fixed inset-0 z-50 flex lg:hidden">
+          {sidebar}
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <SuperAdminSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <SuperAdminHeader onMenuClick={() => setSidebarOpen(true)} />
-      <main className="pt-16 lg:pl-64 min-h-screen">
-        <div className="p-4 lg:p-6">
-          <Outlet />
+          <button
+            type="button"
+            aria-label="Close menu"
+            className="flex-1 bg-black/60"
+            onClick={() => setMobileOpen(false)}
+          />
         </div>
-      </main>
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-30 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-          aria-hidden="true"
-        />
       )}
+
+      <div className="lg:pl-64">
+        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-slate-800 bg-slate-950/95 px-4 backdrop-blur lg:px-6">
+          <button
+            type="button"
+            className="rounded-lg border border-slate-700 px-3 py-2 lg:hidden"
+            onClick={() => setMobileOpen(true)}
+          >
+            ☰
+          </button>
+
+          <form onSubmit={submitSearch} className="relative max-w-xl flex-1">
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search companies, users, subscriptions, tickets…"
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm outline-none focus:border-orange-500"
+            />
+
+            {results && (
+              <div className="absolute left-0 right-0 top-11 max-h-80 overflow-auto rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-2xl">
+                {results.error ? (
+                  <p className="text-sm text-red-300">{results.error}</p>
+                ) : (
+                  Object.entries(results).map(
+                    ([type, rows]) =>
+                      Array.isArray(rows) &&
+                      rows.length > 0 && (
+                        <div key={type} className="mb-3">
+                          <p className="text-xs uppercase text-orange-400">
+                            {type}
+                          </p>
+
+                          {rows.slice(0, 5).map((row) => (
+                            <p
+                              key={row._id}
+                              className="mt-1 truncate text-sm text-slate-300"
+                            >
+                              {row.name ||
+                                row.subject ||
+                                row.email ||
+                                row.plan ||
+                                row.orderId}
+                            </p>
+                          ))}
+                        </div>
+                      ),
+                  )
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setResults(null)}
+                  className="text-xs text-slate-500"
+                >
+                  Close
+                </button>
+              </div>
+            )}
+          </form>
+
+          <span
+            className={`hidden rounded-full px-3 py-1 text-xs font-semibold sm:inline ${
+              systemStatus === "HEALTHY"
+                ? "bg-emerald-500/15 text-emerald-300"
+                : systemStatus === "DOWN"
+                  ? "bg-red-500/15 text-red-300"
+                  : "bg-amber-500/15 text-amber-300"
+            }`}
+          >
+            ● {systemStatus}
+          </span>
+
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowNotifications((value) => !value)}
+              className="relative rounded-lg border border-slate-700 px-3 py-2"
+            >
+              🔔
+              {notifications.unread > 0 && (
+                <span className="absolute -right-1 -top-1 rounded-full bg-orange-500 px-1.5 text-[10px]">
+                  {notifications.unread}
+                </span>
+              )}
+            </button>
+
+            {showNotifications && (
+              <div className="absolute right-0 top-12 w-80 rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-2xl">
+                <div className="mb-2 flex justify-between">
+                  <b>Platform alerts</b>
+
+                  <button
+                    type="button"
+                    onClick={markAll}
+                    className="text-xs text-orange-300"
+                  >
+                    Mark all read
+                  </button>
+                </div>
+
+                <div className="max-h-72 space-y-2 overflow-auto">
+                  {(notifications.rows || []).slice(0, 10).map((notice) => (
+                    <div
+                      key={notice._id}
+                      className="rounded-lg bg-slate-800 p-2"
+                    >
+                      <p className="text-sm font-medium">{notice.title}</p>
+
+                      <p className="text-xs text-slate-400">{notice.message}</p>
+                    </div>
+                  ))}
+
+                  {!notifications.rows?.length && (
+                    <p className="text-sm text-slate-500">
+                      No platform alerts.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <NavLink
+            to="/super-admin/settings"
+            className="hidden text-sm text-slate-300 sm:block"
+          >
+            {user?.name}
+          </NavLink>
+        </header>
+
+        <main className="p-4 lg:p-6">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 };
+
+export default SuperAdminLayout;
+export { SuperAdminLayout };

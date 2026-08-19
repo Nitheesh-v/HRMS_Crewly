@@ -1,22 +1,86 @@
 import { Router } from 'express';
-import { punchIn, punchOut, getMyToday, getMyAttendance, getCompanyAttendance, getMonthlyReport } from "../controllers/attendanceController.js"
-import { protect, authorize } from '../middlewares/authMiddleware.js';
-import { tenantContext, readOnlyIfExpired } from '../middlewares/tenantMiddleware.js';
-import { ROLES } from '../utils/constants.js';
+import {
+  punchIn,
+  punchOut,
+  getMyToday,
+  getMyAttendance,
+  getCompanyAttendance,
+  getMonthlyReport,
+} from '../controllers/attendanceController.js';
+import { protect } from '../middlewares/authMiddleware.js';
+import {
+  tenantContext,
+} from '../middlewares/tenantMiddleware.js';
+import {
+  checkSubscriptionStatus,
+  checkWriteAccess,
+} from '../middlewares/subscriptionAccess.js';
+import {
+  requireAnyPermission,
+  requirePermission,
+} from '../middlewares/permissionMiddleware.js';
 
 const router = Router();
 
-router.use(protect, tenantContext);
+router.use(
+  protect,
+  tenantContext,
+  checkSubscriptionStatus
+);
 
-// Self-service (every company user)
-router.post('/punch-in', readOnlyIfExpired, punchIn);
-router.post('/punch-out', readOnlyIfExpired, punchOut);
-router.get('/today', getMyToday);
-router.get('/my', getMyAttendance);
+// Self attendance.
+router.post(
+  '/punch-in',
+  checkWriteAccess,
+  requirePermission(
+    'ATTENDANCE_CREATE_SELF'
+  ),
+  punchIn
+);
 
-// Oversight (Admin / HR see company · Manager/TL see their subtree)
-const SENIORS = [ROLES.COMPANY_ADMIN, ROLES.HR_MANAGER, ROLES.MANAGER, ROLES.TEAM_LEAD];
-router.get('/company', authorize(...SENIORS), getCompanyAttendance);
-router.get('/report', authorize(...SENIORS), getMonthlyReport);
+router.post(
+  '/punch-out',
+  checkWriteAccess,
+  requirePermission(
+    'ATTENDANCE_CREATE_SELF'
+  ),
+  punchOut
+);
+
+router.get(
+  '/today',
+  requireAnyPermission([
+    'ATTENDANCE_READ_SELF',
+    'ATTENDANCE_READ',
+  ]),
+  getMyToday
+);
+
+router.get(
+  '/my',
+  requireAnyPermission([
+    'ATTENDANCE_READ_SELF',
+    'ATTENDANCE_READ',
+  ]),
+  getMyAttendance
+);
+
+// Company/team oversight.
+// Existing controllers still enforce company/subtree scope.
+router.get(
+  '/company',
+  requirePermission(
+    'ATTENDANCE_READ'
+  ),
+  getCompanyAttendance
+);
+
+router.get(
+  '/report',
+  requirePermission(
+    'ATTENDANCE_READ'
+  ),
+  getMonthlyReport
+);
 
 export default router;

@@ -1,12 +1,31 @@
 // ============================================================
-// 🧩 SELF-SERVICE ROUTES (Phase 9 + 14 + 15)
-// documents · employee files · lifecycle · announcements · support · dashboard
+// 🧩 SELF-SERVICE ROUTES
+// Documents · Employee Files · Lifecycle · Performance
+// Expenses · Assets · Announcements · Support · Dashboards
 // ============================================================
 
 import express from 'express';
 import multer from 'multer';
+
 import * as authMwNS from '../middlewares/authMiddleware.js';
 import * as tenantNS from '../middlewares/tenantMiddleware.js';
+
+import {
+  checkSubscriptionStatus,
+  checkWriteAccess,
+  checkUsageLimit,
+  requireFeature,
+} from '../middlewares/subscriptionAccess.js';
+
+import {
+  requireAnyPermission,
+  requirePermission,
+} from '../middlewares/permissionMiddleware.js';
+
+import {
+  documentUpload,
+} from '../middlewares/uploadMiddleware.js';
+
 import * as documentNS from '../controllers/documentController.js';
 import * as employeeDocsNS from '../controllers/employeeDocsController.js';
 import * as lifecycleNS from '../controllers/lifecycleController.js';
@@ -14,117 +33,814 @@ import * as perfNS from '../controllers/performanceController.js';
 import * as announcementNS from '../controllers/announcementController.js';
 import * as supportNS from '../controllers/supportController.js';
 import * as dashboardNS from '../controllers/dashboardController.js';
-import { documentUpload } from '../middlewares/uploadMiddleware.js';
 import * as expenseNS from '../controllers/expenseController.js';
 import * as assetNS from '../controllers/assetController.js';
 
+const mergeExports = (namespace) => ({
+  ...namespace,
 
+  ...(namespace.default &&
+  typeof namespace.default ===
+    'object'
+    ? namespace.default
+    : {}),
+});
 
+const {
+  protect,
+} = mergeExports(authMwNS);
 
+const {
+  tenantContext,
+} = mergeExports(tenantNS);
 
-// Phase 14 — field-name-agnostic uploader for employee-docs routes
+const documentController =
+  mergeExports(documentNS);
+
+const employeeDocsController =
+  mergeExports(employeeDocsNS);
+
+const lifecycleController =
+  mergeExports(lifecycleNS);
+
+const perfController =
+  mergeExports(perfNS);
+
+const announcementController =
+  mergeExports(announcementNS);
+
+const supportController =
+  mergeExports(supportNS);
+
+const dashboardController =
+  mergeExports(dashboardNS);
+
+const expenseController =
+  mergeExports(expenseNS);
+
+const assetController =
+  mergeExports(assetNS);
+
+// Field-name-agnostic document uploader.
 const anyDocUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  storage:
+    multer.memoryStorage(),
+
+  limits: {
+    fileSize:
+      10 * 1024 * 1024,
+  },
 }).any();
 
-const mergeExports = (ns) => ({ ...ns, ...(ns.default && typeof ns.default === 'object' ? ns.default : {}) });
-const { protect } = mergeExports(authMwNS);
-const tenant = mergeExports(tenantNS);
-const tenantContext = tenant.tenantContext;
+const router =
+  express.Router();
 
-const documentController = mergeExports(documentNS);
-const employeeDocsController = mergeExports(employeeDocsNS);
-const lifecycleController = mergeExports(lifecycleNS);
-const perfController = mergeExports(perfNS);
-const announcementController = mergeExports(announcementNS);
-const supportController = mergeExports(supportNS);
-const dashboardController = mergeExports(dashboardNS);
-const expenseController = mergeExports(expenseNS);
-const assetController = mergeExports(assetNS);
+router.use(
+  protect,
+  tenantContext,
+  checkSubscriptionStatus
+);
 
+// ============================================================
+// 📄 DOCUMENTS — EMPLOYEE SELF-SERVICE
+// ============================================================
 
+router.post(
+  '/documents',
+  checkWriteAccess,
 
+  requireAnyPermission([
+    'DOCUMENT_CREATE',
+    'DOCUMENT_CREATE_SELF',
+  ]),
 
+  requireFeature(
+    'documents'
+  ),
 
-const router = express.Router();
+  checkUsageLimit(
+    'fileUploadsMonthly'
+  ),
 
-router.use(protect, tenantContext);
+  documentUpload,
 
-// 📄 documents (employee self — Phase 9)
-router.post('/documents', documentUpload, documentController.uploadDocument);
-router.get('/documents/my', documentController.myDocuments);
-router.delete('/documents/:id', documentController.deleteDocument);
+  documentController
+    .uploadDocument
+);
 
-// 📁 employee files (Phase 14)
-router.get('/documents/meta/categories', employeeDocsController.getDocCategories);
-router.get('/documents/employee/:userId', employeeDocsController.employeeDocuments);
-router.post('/documents/for/:userId', anyDocUpload, employeeDocsController.hrUploadDocument);
-router.post('/documents/requests', employeeDocsController.createDocRequest);
-router.get('/documents/requests/my', employeeDocsController.myDocRequests);
-router.get('/documents/requests', employeeDocsController.listDocRequests);
-router.post('/documents/requests/:id/fulfill', anyDocUpload, employeeDocsController.fulfillDocRequest);
-router.patch('/documents/requests/:id/cancel', employeeDocsController.cancelDocRequest);
+router.get(
+  '/documents/my',
 
-// 🧬 employee lifecycle (Phase 15)
-router.get('/lifecycle/my', lifecycleController.myJourney);
-router.get('/lifecycle/overview', lifecycleController.overview);
-router.get('/lifecycle/company', lifecycleController.companyList);
-router.get('/lifecycle/user/:userId', lifecycleController.userJourney);
-router.post('/lifecycle/user/:userId/stage', lifecycleController.setStage);
-router.post('/lifecycle/user/:userId/promote', lifecycleController.promote);
-router.post('/lifecycle/user/:userId/transfer', lifecycleController.transfer);
+  requireAnyPermission([
+    'DOCUMENT_READ',
+    'DOCUMENT_READ_SELF',
+  ]),
 
+  documentController
+    .myDocuments
+);
 
+router.delete(
+  '/documents/:id',
+  checkWriteAccess,
 
-// 🎯 performance (Phase 16)
-router.post('/perf/cycles', perfController.createCycle);
-router.get('/perf/cycles', perfController.listCycles);
-router.patch('/perf/cycles/:id/status', perfController.transitionCycle);
-router.post('/perf/cycles/:id/enroll', perfController.enrollMissing);
-router.get('/perf/cycles/:id/my', perfController.myAppraisal);
-router.get('/perf/cycles/:id/team', perfController.teamBoard);
-router.put('/perf/appraisals/:id/goals', perfController.saveGoals);
-router.patch('/perf/appraisals/:id/goals/:goalId/progress', perfController.goalProgress);
-router.post('/perf/appraisals/:id/self-review', perfController.submitSelfReview);
-router.post('/perf/appraisals/:id/review', perfController.submitReview);
-router.get('/perf/history', perfController.history);
+  requireAnyPermission([
+    'DOCUMENT_DELETE',
+    'DOCUMENT_DELETE_SELF',
+  ]),
 
+  documentController
+    .deleteDocument
+);
 
-// 💸 expenses (Phase 17)
-router.post('/expenses', anyDocUpload, expenseController.submitExpense);
-router.get('/expenses/my', expenseController.myExpenses);
-router.get('/expenses/approvals', expenseController.approvalsQueue);
-router.get('/expenses/all', expenseController.allExpenses);
-router.post('/expenses/:id/manager-decide', expenseController.managerDecide);
-router.post('/expenses/:id/finance-decide', expenseController.financeDecide);
-router.post('/expenses/:id/reimburse', expenseController.markReimbursed);
-router.patch('/expenses/:id/cancel', expenseController.cancelExpense);
+// ============================================================
+// 📁 EMPLOYEE FILES
+// ============================================================
 
-// 🖥 assets (Phase 17)
-router.post('/assets', assetController.createAsset);
-router.get('/assets', assetController.listAssets);
-router.get('/assets/my', assetController.myAssets);
-router.post('/assets/:id/assign', assetController.assignAsset);
-router.post('/assets/:id/return', assetController.returnAsset);
-router.delete('/assets/:id', assetController.deleteAsset);
+router.get(
+  '/documents/meta/categories',
 
+  requireAnyPermission([
+    'DOCUMENT_READ',
+    'DOCUMENT_READ_SELF',
+  ]),
 
-// 📢 announcements
-router.post('/announcements', announcementController.createAnnouncement);
-router.get('/announcements', announcementController.listAnnouncements);
-router.delete('/announcements/:id', announcementController.deleteAnnouncement);
+  employeeDocsController
+    .getDocCategories
+);
 
-// 🎫 support
-router.post('/support', supportController.createTicket);
-router.get('/support/my', supportController.myTickets);
-router.get('/support', supportController.listTickets);
-router.post('/support/:id/reply', supportController.replyTicket);
-router.patch('/support/:id/status', supportController.updateTicketStatus);
+router.get(
+  '/documents/employee/:userId',
 
-// 📊 dashboards
-router.get('/dashboard/employee', dashboardController.employeeOverview);
-router.get('/dashboard/manager', dashboardController.managerOverview);
+  requirePermission(
+    'DOCUMENT_READ'
+  ),
+
+  employeeDocsController
+    .employeeDocuments
+);
+
+router.post(
+  '/documents/for/:userId',
+  checkWriteAccess,
+
+  requirePermission(
+    'DOCUMENT_CREATE'
+  ),
+
+  requireFeature(
+    'documents'
+  ),
+
+  checkUsageLimit(
+    'fileUploadsMonthly'
+  ),
+
+  anyDocUpload,
+
+  employeeDocsController
+    .hrUploadDocument
+);
+
+// HR asks an employee for a document.
+router.post(
+  '/documents/requests',
+  checkWriteAccess,
+
+  requirePermission(
+    'DOCUMENT_CREATE'
+  ),
+
+  employeeDocsController
+    .createDocRequest
+);
+
+// Employee views their own requests.
+router.get(
+  '/documents/requests/my',
+
+  requireAnyPermission([
+    'DOCUMENT_READ',
+    'DOCUMENT_READ_SELF',
+  ]),
+
+  employeeDocsController
+    .myDocRequests
+);
+
+// HR views company requests.
+router.get(
+  '/documents/requests',
+
+  requirePermission(
+    'DOCUMENT_READ'
+  ),
+
+  employeeDocsController
+    .listDocRequests
+);
+
+// Employee fulfils their own request.
+router.post(
+  '/documents/requests/:id/fulfill',
+  checkWriteAccess,
+
+  requireAnyPermission([
+    'DOCUMENT_CREATE',
+    'DOCUMENT_CREATE_SELF',
+  ]),
+
+  requireFeature(
+    'documents'
+  ),
+
+  checkUsageLimit(
+    'fileUploadsMonthly'
+  ),
+
+  anyDocUpload,
+
+  employeeDocsController
+    .fulfillDocRequest
+);
+
+// HR cancels a document request.
+router.patch(
+  '/documents/requests/:id/cancel',
+  checkWriteAccess,
+
+  requirePermission(
+    'DOCUMENT_UPDATE'
+  ),
+
+  employeeDocsController
+    .cancelDocRequest
+);
+
+// ============================================================
+// 🧬 EMPLOYEE LIFECYCLE
+// ============================================================
+
+router.get(
+  '/lifecycle/my',
+
+  requirePermission(
+    'LIFECYCLE_READ_SELF'
+  ),
+
+  lifecycleController
+    .myJourney
+);
+
+router.get(
+  '/lifecycle/overview',
+
+  requirePermission(
+    'LIFECYCLE_READ'
+  ),
+
+  lifecycleController
+    .overview
+);
+
+router.get(
+  '/lifecycle/company',
+
+  requirePermission(
+    'LIFECYCLE_READ'
+  ),
+
+  lifecycleController
+    .companyList
+);
+
+router.get(
+  '/lifecycle/user/:userId',
+
+  requirePermission(
+    'LIFECYCLE_READ'
+  ),
+
+  lifecycleController
+    .userJourney
+);
+
+router.post(
+  '/lifecycle/user/:userId/stage',
+  checkWriteAccess,
+
+  requirePermission(
+    'LIFECYCLE_UPDATE'
+  ),
+
+  lifecycleController
+    .setStage
+);
+
+router.post(
+  '/lifecycle/user/:userId/promote',
+  checkWriteAccess,
+
+  requirePermission(
+    'LIFECYCLE_UPDATE'
+  ),
+
+  lifecycleController
+    .promote
+);
+
+router.post(
+  '/lifecycle/user/:userId/transfer',
+  checkWriteAccess,
+
+  requirePermission(
+    'LIFECYCLE_UPDATE'
+  ),
+
+  lifecycleController
+    .transfer
+);
+
+// ============================================================
+// 🎯 PERFORMANCE
+// ============================================================
+
+router.post(
+  '/perf/cycles',
+  checkWriteAccess,
+
+  requirePermission(
+    'PERFORMANCE_CREATE'
+  ),
+
+  requireFeature(
+    'performance'
+  ),
+
+  perfController
+    .createCycle
+);
+
+router.get(
+  '/perf/cycles',
+
+  requireAnyPermission([
+    'PERFORMANCE_READ',
+    'PERFORMANCE_READ_SELF',
+  ]),
+
+  requireFeature(
+    'performance'
+  ),
+
+  perfController
+    .listCycles
+);
+
+router.patch(
+  '/perf/cycles/:id/status',
+  checkWriteAccess,
+
+  requirePermission(
+    'PERFORMANCE_APPROVE'
+  ),
+
+  requireFeature(
+    'performance'
+  ),
+
+  perfController
+    .transitionCycle
+);
+
+router.post(
+  '/perf/cycles/:id/enroll',
+  checkWriteAccess,
+
+  requirePermission(
+    'PERFORMANCE_CREATE'
+  ),
+
+  requireFeature(
+    'performance'
+  ),
+
+  perfController
+    .enrollMissing
+);
+
+router.get(
+  '/perf/cycles/:id/my',
+
+  requireAnyPermission([
+    'PERFORMANCE_READ',
+    'PERFORMANCE_READ_SELF',
+  ]),
+
+  requireFeature(
+    'performance'
+  ),
+
+  perfController
+    .myAppraisal
+);
+
+router.get(
+  '/perf/cycles/:id/team',
+
+  requirePermission(
+    'PERFORMANCE_READ'
+  ),
+
+  requireFeature(
+    'performance'
+  ),
+
+  perfController
+    .teamBoard
+);
+
+router.put(
+  '/perf/appraisals/:id/goals',
+  checkWriteAccess,
+
+  requirePermission(
+    'PERFORMANCE_UPDATE'
+  ),
+
+  requireFeature(
+    'performance'
+  ),
+
+  perfController
+    .saveGoals
+);
+
+router.patch(
+  '/perf/appraisals/:id/goals/:goalId/progress',
+  checkWriteAccess,
+
+  requireAnyPermission([
+    'PERFORMANCE_UPDATE',
+    'PERFORMANCE_UPDATE_SELF',
+  ]),
+
+  requireFeature(
+    'performance'
+  ),
+
+  perfController
+    .goalProgress
+);
+
+router.post(
+  '/perf/appraisals/:id/self-review',
+  checkWriteAccess,
+
+  requirePermission(
+    'PERFORMANCE_UPDATE_SELF'
+  ),
+
+  requireFeature(
+    'performance'
+  ),
+
+  perfController
+    .submitSelfReview
+);
+
+router.post(
+  '/perf/appraisals/:id/review',
+  checkWriteAccess,
+
+  requirePermission(
+    'PERFORMANCE_APPROVE'
+  ),
+
+  requireFeature(
+    'performance'
+  ),
+
+  perfController
+    .submitReview
+);
+
+router.get(
+  '/perf/history',
+
+  requireAnyPermission([
+    'PERFORMANCE_READ',
+    'PERFORMANCE_READ_SELF',
+  ]),
+
+  requireFeature(
+    'performance'
+  ),
+
+  perfController
+    .history
+);
+
+// ============================================================
+// 💸 EXPENSES
+// ============================================================
+
+router.post(
+  '/expenses',
+  checkWriteAccess,
+
+  requireAnyPermission([
+    'EXPENSE_CREATE',
+    'EXPENSE_CREATE_SELF',
+  ]),
+
+  anyDocUpload,
+
+  expenseController
+    .submitExpense
+);
+
+router.get(
+  '/expenses/my',
+
+  requireAnyPermission([
+    'EXPENSE_READ',
+    'EXPENSE_READ_SELF',
+  ]),
+
+  expenseController
+    .myExpenses
+);
+
+router.get(
+  '/expenses/approvals',
+
+  requirePermission(
+    'EXPENSE_APPROVE'
+  ),
+
+  expenseController
+    .approvalsQueue
+);
+
+router.get(
+  '/expenses/all',
+
+  requirePermission(
+    'EXPENSE_READ'
+  ),
+
+  expenseController
+    .allExpenses
+);
+
+router.post(
+  '/expenses/:id/manager-decide',
+  checkWriteAccess,
+
+  requirePermission(
+    'EXPENSE_APPROVE'
+  ),
+
+  expenseController
+    .managerDecide
+);
+
+router.post(
+  '/expenses/:id/finance-decide',
+  checkWriteAccess,
+
+  requirePermission(
+    'EXPENSE_APPROVE'
+  ),
+
+  expenseController
+    .financeDecide
+);
+
+router.post(
+  '/expenses/:id/reimburse',
+  checkWriteAccess,
+
+  requirePermission(
+    'EXPENSE_APPROVE'
+  ),
+
+  expenseController
+    .markReimbursed
+);
+
+router.patch(
+  '/expenses/:id/cancel',
+  checkWriteAccess,
+
+  requireAnyPermission([
+    'EXPENSE_UPDATE',
+    'EXPENSE_UPDATE_SELF',
+  ]),
+
+  expenseController
+    .cancelExpense
+);
+
+// ============================================================
+// 🖥 ASSETS
+// ============================================================
+
+router.post(
+  '/assets',
+  checkWriteAccess,
+
+  requirePermission(
+    'ASSET_CREATE'
+  ),
+
+  assetController
+    .createAsset
+);
+
+router.get(
+  '/assets',
+
+  requirePermission(
+    'ASSET_READ'
+  ),
+
+  assetController
+    .listAssets
+);
+
+router.get(
+  '/assets/my',
+
+  requireAnyPermission([
+    'ASSET_READ',
+    'ASSET_READ_SELF',
+  ]),
+
+  assetController
+    .myAssets
+);
+
+router.post(
+  '/assets/:id/assign',
+  checkWriteAccess,
+
+  requirePermission(
+    'ASSET_UPDATE'
+  ),
+
+  assetController
+    .assignAsset
+);
+
+router.post(
+  '/assets/:id/return',
+  checkWriteAccess,
+
+  requirePermission(
+    'ASSET_UPDATE'
+  ),
+
+  assetController
+    .returnAsset
+);
+
+router.delete(
+  '/assets/:id',
+  checkWriteAccess,
+
+  requirePermission(
+    'ASSET_DELETE'
+  ),
+
+  assetController
+    .deleteAsset
+);
+
+// ============================================================
+// 📢 ANNOUNCEMENTS
+// ============================================================
+
+router.post(
+  '/announcements',
+  checkWriteAccess,
+
+  requirePermission(
+    'ANNOUNCEMENT_CREATE'
+  ),
+
+  announcementController
+    .createAnnouncement
+);
+
+router.get(
+  '/announcements',
+
+  requirePermission(
+    'ANNOUNCEMENT_READ'
+  ),
+
+  announcementController
+    .listAnnouncements
+);
+
+router.delete(
+  '/announcements/:id',
+  checkWriteAccess,
+
+  requirePermission(
+    'ANNOUNCEMENT_DELETE'
+  ),
+
+  announcementController
+    .deleteAnnouncement
+);
+
+// ============================================================
+// 🎫 SUPPORT
+// ============================================================
+
+router.post(
+  '/support',
+  checkWriteAccess,
+
+  requirePermission(
+    'SUPPORT_CREATE'
+  ),
+
+  supportController
+    .createTicket
+);
+
+router.get(
+  '/support/my',
+
+  requireAnyPermission([
+    'SUPPORT_READ',
+    'SUPPORT_READ_SELF',
+  ]),
+
+  supportController
+    .myTickets
+);
+
+router.get(
+  '/support',
+
+  requirePermission(
+    'SUPPORT_READ'
+  ),
+
+  supportController
+    .listTickets
+);
+
+router.post(
+  '/support/:id/reply',
+  checkWriteAccess,
+
+  requireAnyPermission([
+    'SUPPORT_UPDATE',
+    'SUPPORT_UPDATE_SELF',
+    'SUPPORT_MANAGE',
+  ]),
+
+  supportController
+    .replyTicket
+);
+
+router.patch(
+  '/support/:id/status',
+  checkWriteAccess,
+
+  requirePermission(
+    'SUPPORT_MANAGE'
+  ),
+
+  supportController
+    .updateTicketStatus
+);
+
+// ============================================================
+// 📊 DASHBOARDS
+// Existing dashboard controllers remain role/scope aware.
+// ============================================================
+
+router.get(
+  '/dashboard/employee',
+  dashboardController
+    .employeeOverview
+);
+
+router.get(
+  '/dashboard/manager',
+  dashboardController
+    .managerOverview
+);
 
 export default router;
-export { router as selfServiceRoutes };
+
+export {
+  router as selfServiceRoutes,
+};

@@ -1,7 +1,48 @@
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import useAuth from "../hooks/useAuth.jsx";
+
 import { ROLES } from "../utils/roles.js";
 import NotificationBell from "../components/NotificationBell";
+import SubscriptionStatusBanner from "../components/SubscriptionStatusBanner.jsx";
+import { useState } from "react";
+
+import {
+  BarChart3,
+  Bell,
+  BellRing,
+  Building2,
+  CalendarDays,
+  CalendarOff,
+  CalendarRange,
+  CheckCircle2,
+  Clock,
+  CreditCard,
+  DoorOpen,
+  FileText,
+  Files,
+  FolderOpen,
+  GitBranch,
+  LayoutDashboard,
+  LifeBuoy,
+  ListTodo,
+  LockKeyhole,
+  Megaphone,
+  MessageCircle,
+  Monitor,
+  Network,
+  PartyPopper,
+  ReceiptText,
+  ScrollText,
+  Settings,
+  ShieldCheck,
+  Shuffle,
+  Sparkles,
+  Target,
+  Timer,
+  UserCircle,
+  Users,
+  Wallet,
+} from "lucide-react";
 
 const NAV_BY_ROLE = {
   [ROLES.COMPANY_ADMIN]: [
@@ -36,6 +77,10 @@ const NAV_BY_ROLE = {
     { to: "/app/exit", label: "🚪 Resignations & Exit" },
     { to: "/app/company", label: "⚙️ Company Settings" },
     { to: "/app/billing", label: "💳 Billing & Plans" },
+    {
+      to: "/app/subscription",
+      label: "💳 Subscription",
+    },
     { to: "/app/governance", label: "🛡️ Audit & Roles" },
     { to: "/app/profile", label: "👤 My Profile" },
     { to: "/app/notifications", label: "🔔 Notifications" },
@@ -45,6 +90,10 @@ const NAV_BY_ROLE = {
   [ROLES.HR_MANAGER]: [
     { to: "/app", label: "🏠 Dashboard", end: true },
     { to: "/app/users", label: "👥 Employees" },
+    {
+      to: "/app/subscription",
+      label: "💳 Plan & Usage",
+    },
     { to: "/app/departments", label: "🏬 Departments" },
     { to: "/app/analytics", label: "📉 HR Analytics" },
     { to: "/app/reports", label: "📑 Report Builder" },
@@ -165,23 +214,247 @@ const NAV_BY_ROLE = {
   ],
 };
 
+
+const NAV_ICON_BY_PATH = {
+  "/app":
+    LayoutDashboard,
+
+  "/app/meetings":
+    CalendarDays,
+
+  "/app/org-chart":
+    Network,
+
+  "/app/users":
+    Users,
+
+  "/app/departments":
+    Building2,
+
+  "/app/analytics":
+    BarChart3,
+
+  "/app/reports":
+    FileText,
+
+  "/app/attendance":
+    Clock,
+
+  "/app/attendance/report":
+    BarChart3,
+
+  "/app/leaves":
+    CalendarOff,
+
+  "/app/leaves/approvals":
+    CheckCircle2,
+
+  "/app/payroll":
+    Wallet,
+
+  "/app/payslips":
+    ReceiptText,
+
+  "/app/holidays":
+    PartyPopper,
+
+  "/app/shifts":
+    Shuffle,
+
+  "/app/schedules":
+    CalendarRange,
+
+  "/app/announcements":
+    Megaphone,
+
+  "/app/documents":
+    FileText,
+
+  "/app/employee-files":
+    Files,
+
+  "/app/lifecycle":
+    GitBranch,
+
+  "/app/performance":
+    Target,
+
+  "/app/expenses":
+    Wallet,
+
+  "/app/assets":
+    Monitor,
+
+  "/app/projects":
+    FolderOpen,
+
+  "/app/tasks":
+    ListTodo,
+
+  "/app/recruitment":
+    Users,
+
+  "/app/support":
+    LifeBuoy,
+
+  "/app/exit":
+    DoorOpen,
+
+  "/app/company":
+    Settings,
+
+  "/app/billing":
+    CreditCard,
+
+  "/app/subscription":
+    CreditCard,
+
+  "/app/governance":
+    ShieldCheck,
+
+  "/app/roles-permissions":
+    ShieldCheck,
+
+  "/app/profile":
+    UserCircle,
+
+  "/app/notifications":
+    Bell,
+
+  "/app/notification-settings":
+    BellRing,
+
+  "/app/security/sessions":
+    LockKeyhole,
+
+  "/app/security":
+    ShieldCheck,
+
+  "/app/audit-logs":
+    ScrollText,
+
+  "/app/security/settings":
+    Settings,
+};
+
+/*
+ * Removes the existing emoji prefix from labels.
+ * Example: "🏠 Dashboard" becomes "Dashboard".
+ */
+const cleanNavLabel = (label = "") =>
+  String(label)
+    .replace(
+      /^[^A-Za-z0-9]+/,
+      "",
+    )
+    .trim();
+
+const getSoonIcon = (label = "") => {
+  const cleanLabel =
+    cleanNavLabel(label);
+
+  if (
+    cleanLabel.includes(
+      "Celebrations",
+    )
+  ) {
+    return PartyPopper;
+  }
+
+  if (
+    cleanLabel.includes(
+      "Chat",
+    )
+  ) {
+    return MessageCircle;
+  }
+
+  if (
+    cleanLabel.includes(
+      "Time Tracking",
+    )
+  ) {
+    return Timer;
+  }
+
+  if (
+    cleanLabel.includes(
+      "Daily Reports",
+    )
+  ) {
+    return BarChart3;
+  }
+
+  if (
+    cleanLabel.includes(
+      "Employee Records",
+    )
+  ) {
+    return Files;
+  }
+
+  return Sparkles;
+};
+
+const getNavIcon = (item) =>
+  NAV_ICON_BY_PATH[
+    item.to
+  ] ||
+  getSoonIcon(item.label);
+
 const AppLayout = () => {
-  const { user, logout } = useAuth();
+  const { user, secureLogout } = useAuth();
+  const [loggingOut, setLoggingOut] = useState(false);
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    logout();
-    navigate("/login");
-  };
+  const handleLogout = async () => {
+    setLoggingOut(true);
 
+    await secureLogout();
+
+    navigate("/login", {
+      replace: true,
+    });
+  };
   const linkClass = ({ isActive }) =>
-    `block rounded-lg px-4 py-2.5 text-sm transition ${
+  `flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm transition ${
       isActive
         ? "bg-crewly-green/10 text-crewly-green"
         : "text-crewly-dim hover:bg-crewly-bg hover:text-crewly-text"
     }`;
 
-  const menu = NAV_BY_ROLE[user?.role] || NAV_BY_ROLE[ROLES.EMPLOYEE];
+  const baseMenu = NAV_BY_ROLE[user?.role] || NAV_BY_ROLE[ROLES.EMPLOYEE];
+
+  const securityMenu = [
+    {
+      to: "/app/security/sessions",
+      label: "🔐 Account Security",
+    },
+
+    ...([ROLES.COMPANY_ADMIN, ROLES.HR_MANAGER].includes(user?.role)
+      ? [
+          {
+            to: "/app/security",
+            label: "🛡 Security Dashboard",
+          },
+          {
+            to: "/app/audit-logs",
+            label: "📜 Audit Logs",
+          },
+        ]
+      : []),
+
+    ...(user?.role === ROLES.COMPANY_ADMIN
+      ? [
+          {
+            to: "/app/security/settings",
+            label: "⚙ Security Settings",
+          },
+        ]
+      : []),
+  ];
+
+  const menu = [...baseMenu, ...securityMenu];
 
   return (
     <div className="flex min-h-screen">
@@ -191,30 +464,65 @@ const AppLayout = () => {
         </div>
 
         <nav className="mt-5 flex-1 space-y-0.5 overflow-y-auto pr-1">
-          {menu.map((item) =>
-            item.soon ? (
-              <span
-                key={item.label}
-                title="Coming in an upcoming phase"
-                className="block cursor-not-allowed rounded-lg px-4 py-2.5 text-sm text-crewly-dim/40"
-              >
-                {item.label} <span className="text-[10px]">· soon</span>
-              </span>
-            ) : (
-              <NavLink
-                key={item.label}
-                to={item.to}
-                end={item.end}
-                className={linkClass}
-              >
-                {item.label}
-              </NavLink>
-            ),
-          )}
+    {menu.map((item) => {
+  const Icon =
+    getNavIcon(item);
+
+  const label =
+    cleanNavLabel(
+      item.label,
+    );
+
+  const key =
+    `${item.to || "soon"}-${label}`;
+
+  if (item.soon) {
+    return (
+      <span
+        key={key}
+        title="Coming in an upcoming phase"
+        className="flex cursor-not-allowed items-center gap-3 rounded-lg px-4 py-2.5 text-sm text-crewly-dim/40"
+      >
+        <Icon
+          aria-hidden="true"
+          className="h-[17px] w-[17px] shrink-0"
+          strokeWidth={1.8}
+        />
+
+        <span className="min-w-0 flex-1">
+          {label}
+        </span>
+
+        <span className="text-[10px]">
+          soon
+        </span>
+      </span>
+    );
+  }
+
+  return (
+    <NavLink
+      key={key}
+      to={item.to}
+      end={item.end}
+      className={linkClass}
+    >
+      <Icon
+        aria-hidden="true"
+        className="h-[17px] w-[17px] shrink-0"
+        strokeWidth={1.8}
+      />
+
+      <span className="min-w-0 flex-1">
+        {label}
+      </span>
+    </NavLink>
+  );
+})}
         </nav>
 
         <p className="pt-3 text-[11px] text-crewly-dim/60">
-          Crewly HRMS · Phase 14
+          Crewly HRMS · Phase 22
         </p>
       </aside>
 
@@ -243,13 +551,15 @@ const AppLayout = () => {
             <NotificationBell />
             <button
               onClick={handleLogout}
+              disabled={loggingOut}
               className="btn-ghost px-4 py-2 text-sm"
             >
-              ⏻ Logout
+              {loggingOut ? "Logging out…" : "⏻ Logout"}
             </button>
           </div>
         </header>
         <main className="flex-1 p-7">
+          <SubscriptionStatusBanner />
           <Outlet />
         </main>
       </div>

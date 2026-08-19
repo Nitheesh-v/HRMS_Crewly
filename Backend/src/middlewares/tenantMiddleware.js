@@ -10,19 +10,89 @@ export const tenantContext = asyncHandler(async (req, res, next) => {
 
   const company = await Company.findById(req.companyId).populate('subscription');
   if (!company) throw ApiError.forbidden('Company not found');
-  if (company.status === 'SUSPENDED') {
-    throw ApiError.forbidden('Your company account is suspended. Contact Crewly support.');
+  if (
+    [
+      'SUSPENDED',
+      'DEACTIVATED',
+      'ARCHIVED',
+    ].includes(company.status)
+  ) {
+    throw ApiError.forbidden(
+      `Your company account is ` +
+      `${company.status.toLowerCase()}. ` +
+      `Contact Crewly support.`
+    );
   }
   req.company = company;
   next();
 });
 
 // Expired subscription → READ-ONLY mode (from your requirements diagram)
-export const readOnlyIfExpired = (req, res, next) => {
-  const sub = req.company?.subscription;
-  const expired = sub && (sub.status === 'EXPIRED' || new Date(sub.endDate).getTime() < Date.now());
-  if (expired && req.method !== 'GET') {
-    throw ApiError.forbidden('Subscription expired — your account is in read-only mode. Please renew.');
+export const readOnlyIfExpired = (
+  req,
+  res,
+  next
+) => {
+  const subscription =
+    req.company?.subscription;
+
+  if (
+    !subscription ||
+    [
+      'ACTIVE',
+      'TRIAL',
+      'EXPIRING_SOON',
+      'GRACE_PERIOD',
+    ].includes(subscription.status)
+  ) {
+    return next();
   }
+
+  // Billing must remain available so an expired
+  // company can renew its subscription.
+  if (
+    req.originalUrl.startsWith(
+      '/api/billing'
+    )
+  ) {
+    return next();
+  }
+
+  const behavior =
+    subscription.expirationBehavior ||
+    'READ_ONLY';
+
+  if (
+    behavior ===
+    'FULL_ACCESS_BLOCKED'
+  ) {
+    throw ApiError.forbidden(
+      'Subscription expired — access is blocked until renewal.'
+    );
+  }
+
+  if (
+    behavior ===
+      'FEATURE_RESTRICTED' &&
+    !['GET', 'HEAD'].includes(
+      req.method
+    )
+  ) {
+    throw ApiError.forbidden(
+      'Subscription expired — restricted features are unavailable until renewal.'
+    );
+  }
+
+  if (
+    behavior === 'READ_ONLY' &&
+    !['GET', 'HEAD'].includes(
+      req.method
+    )
+  ) {
+    throw ApiError.forbidden(
+      'Subscription expired — your account is in read-only mode. Please renew.'
+    );
+  }
+
   next();
 };

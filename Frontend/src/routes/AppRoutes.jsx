@@ -1,174 +1,574 @@
-import { Routes, Route } from "react-router-dom";
+import {
+  Navigate,
+  Route,
+  Routes,
+} from "react-router-dom";
+
 import PublicLayout from "../layout/PublicLayout.jsx";
 import AppLayout from "../layout/AppLayout.jsx";
+import SuperAdminLayout from "../layout/SuperAdminLayout.jsx";
+
 import RequireAuth from "./RequireAuth.jsx";
 import RequireRole from "./RequireRole.jsx";
+
 import LandingPage from "../pages/landing/LandingPage.jsx";
 import LoginPage from "../pages/login/LoginPage.jsx";
 import RegisterCompanyPage from "../pages/register/RegisterCompanyPage.jsx";
+
+import ForgotPasswordPage from "../pages/security/ForgotPasswordPage.jsx";
+import ResetPasswordPage from "../pages/security/ResetPasswordPage.jsx";
+import ActiveSessionsPage from "../pages/security/ActiveSessionsPage.jsx";
+import SecurityDashboardPage from "../pages/security/SecurityDashboardPage.jsx";
+import AuditLogsPage from "../pages/security/AuditLogsPage.jsx";
+import SecuritySettingsPage from "../pages/security/SecuritySettingsPage.jsx";
+
 import DashboardPage from "../pages/dashboard/DashboardPage.jsx";
 import DepartmentsPage from "../pages/departments/DepartmentsPage.jsx";
 import UsersPage from "../pages/users/UsersPage.jsx";
 import OrgChartPage from "../pages/org-chart/OrgChartPage.jsx";
+
 import AttendancePage from "../pages/attendance/AttendancePage.jsx";
 import AttendanceReportPage from "../pages/attendance/AttendanceReportPage.jsx";
+
 import LeavesPage from "../pages/leaves/LeavesPage.jsx";
 import LeaveApprovalsPage from "../pages/leaves/LeaveApprovalsPage.jsx";
+
 import ProjectsPage from "../pages/projects/ProjectsPage.jsx";
 import ProjectDetailPage from "../pages/projects/ProjectDetailPage.jsx";
 import TasksPage from "../pages/tasks/TasksPage.jsx";
+
 import PayrollPage from "../pages/payroll/PayrollPage.jsx";
 import MyPayslipsPage from "../pages/payroll/MyPayslipsPage.jsx";
-import RecruitmentPage from "../pages/recruitment/RecruitmentPage";
-import ExitProcessPage from "../pages/exit/ExitProcessPage";
-import CompanyProfilePage from "../pages/company/CompanyProfilePage";
-import SuperAdminDashboard from "../pages/admin/SuperAdminDashboard.jsx";
-import NotFoundPage from "../pages/not-found/NotFoundPage.jsx";
-import BillingPage from "../pages/billing/billingPage.jsx";
+
+import RecruitmentPage from "../pages/recruitment/RecruitmentPage.jsx";
+import ExitProcessPage from "../pages/exit/ExitProcessPage.jsx";
+
+import CompanyProfilePage from "../pages/company/CompanyProfilePage.jsx";
+
+import BillingPage from "../pages/billing/BillingPage.jsx";
+import SubscriptionPage from "../pages/billing/SubscriptionPage.jsx";
+
 import GovernancePage from "../pages/governance/GovernancePage.jsx";
+import RolesPermissionsPage from "../pages/settings/RolesPermissionsPage.jsx";
+
 import MyProfilePage from "../pages/profile/MyProfilePage.jsx";
-import MyDocumentsPage from "../pages/documents/MyDocumentsPage";
+import MyDocumentsPage from "../pages/documents/MyDocumentsPage.jsx";
 import EmployeeFilesPage from "../pages/documents/EmployeeFilesPage.jsx";
-import MeetingsPage from "../pages/meetings/MeetingsPage";
-import AnnouncementsPage from "../pages/announcements/AnnouncementsPage";
-import SupportPage from "../pages/support/SupportPage";
-import NotificationsPage from "../pages/notifications/NotificationsPage";
+
+import MeetingsPage from "../pages/meetings/MeetingsPage.jsx";
+import AnnouncementsPage from "../pages/announcements/AnnouncementsPage.jsx";
+import SupportPage from "../pages/support/SupportPage.jsx";
+
+import NotificationsPage from "../pages/notifications/NotificationsPage.jsx";
 import NotificationSettingsPage from "../pages/notifications/NotificationSettingsPage.jsx";
+
 import LifecyclePage from "../pages/lifecycle/LifecyclePage.jsx";
 import PerformancePage from "../pages/performance/PerformancePage.jsx";
 import ExpensesPage from "../pages/expenses/ExpensesPage.jsx";
 import AssetsPage from "../pages/assets/AssetsPage.jsx";
+
 import HolidaysPage from "../pages/schedule/HolidaysPage.jsx";
 import ShiftsPage from "../pages/schedule/ShiftsPage.jsx";
 import SchedulesPage from "../pages/schedule/SchedulesPage.jsx";
+
 import AnalyticsHubPage from "../pages/analytics/AnalyticsHubPage.jsx";
 import ReportBuilderPage from "../pages/analytics/ReportBuilderPage.jsx";
 
-const SENIORS = ["COMPANY_ADMIN", "HR_MANAGER", "MANAGER", "TEAM_LEAD"];
-const HR = ["COMPANY_ADMIN", "HR_MANAGER"];
+import SuperAdminAuthPage from "../pages/admin/SuperAdminAuthPage.jsx";
+import SuperAdminDashboardPage from "../pages/admin/SuperAdminDashboardPage.jsx";
+import SuperAdminCompaniesPage from "../pages/admin/SuperAdminCompaniesPage.jsx";
+import SuperAdminCompanyDetailPage from "../pages/admin/SuperAdminCompanyDetailPage.jsx";
+import SuperAdminCommercePage from "../pages/admin/SuperAdminCommercePage.jsx";
+import SuperAdminOperationsPage from "../pages/admin/SuperAdminOperationsPage.jsx";
 
-const AppRoutes = () => {
-  return (
-    <Routes>
-      <Route element={<PublicLayout />}>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterCompanyPage />} />
-      </Route>
+import NotFoundPage from "../pages/not-found/NotFoundPage.jsx";
+
+const PLATFORM_ROLES = [
+  "SUPER_ADMIN",
+  "PLATFORM_ADMIN",
+  "SUPPORT_ADMIN",
+  "BILLING_ADMIN",
+];
+
+const TENANT_ROLES = [
+  "COMPANY_ADMIN",
+  "HR_MANAGER",
+  "MANAGER",
+  "TEAM_LEAD",
+  "EMPLOYEE",
+];
+
+const SENIORS = [
+  "COMPANY_ADMIN",
+  "HR_MANAGER",
+  "MANAGER",
+  "TEAM_LEAD",
+];
+
+const HR = [
+  "COMPANY_ADMIN",
+  "HR_MANAGER",
+];
+
+const COMPANY_ADMIN = [
+  "COMPANY_ADMIN",
+];
+
+const AppRoutes = () => (
+  <Routes>
+    {/* Public customer routes */}
+    <Route element={<PublicLayout />}>
+      <Route
+        path="/"
+        element={<LandingPage />}
+      />
 
       <Route
-        path="/app"
-        element={
-          <RequireAuth>
+        path="/login"
+        element={<LoginPage />}
+      />
+
+      <Route
+        path="/register"
+        element={<RegisterCompanyPage />}
+      />
+
+      <Route
+        path="/forgot-password"
+        element={<ForgotPasswordPage />}
+      />
+
+      <Route
+        path="/reset-password"
+        element={<ResetPasswordPage />}
+      />
+    </Route>
+
+    {/* Public Super Admin authentication */}
+    <Route
+      path="/super-admin/login"
+      element={<SuperAdminAuthPage />}
+    />
+
+    <Route
+      path="/super-admin/forgot-password"
+      element={<SuperAdminAuthPage />}
+    />
+
+    <Route
+      path="/super-admin/reset-password"
+      element={<SuperAdminAuthPage />}
+    />
+
+    {/* Tenant application */}
+    <Route
+      path="/app"
+      element={
+        <RequireAuth>
+          <RequireRole roles={TENANT_ROLES}>
             <AppLayout />
-          </RequireAuth>
-        }
-      >
-        <Route index element={<DashboardPage />} />
-        <Route path="departments" element={<DepartmentsPage />} />
-        <Route path="users" element={<UsersPage />} />
-        <Route path="org-chart" element={<OrgChartPage />} />
-        <Route path="attendance" element={<AttendancePage />} />
-        <Route
-          path="attendance/report"
-          element={
-            <RequireRole roles={SENIORS}>
-              <AttendanceReportPage />
-            </RequireRole>
-          }
-        />
-        <Route path="leaves" element={<LeavesPage />} />
-        <Route
-          path="leaves/approvals"
-          element={
-            <RequireRole roles={SENIORS}>
-              <LeaveApprovalsPage />
-            </RequireRole>
-          }
-        />
-        <Route path="projects" element={<ProjectsPage />} />
-        <Route path="projects/:id" element={<ProjectDetailPage />} />
-        <Route path="tasks" element={<TasksPage />} />
-        <Route
-          path="payroll"
-          element={
-            <RequireRole roles={HR}>
-              <PayrollPage />
-            </RequireRole>
-          }
-        />
-        <Route path="payslips" element={<MyPayslipsPage />} />
-        <Route path="company" element={<CompanyProfilePage />} />
-        <Route path="recruitment" element={<RecruitmentPage />} />
-        <Route path="exit" element={<ExitProcessPage />} />
-        <Route path="billing" element={<BillingPage />} />
-        {/* Phase 18: ONE analytics route — the role-aware hub (old placeholder removed) */}
-        <Route path="analytics" element={<AnalyticsHubPage />} />
-        <Route
-          path="reports"
-          element={
-            <RequireRole roles={SENIORS}>
-              <ReportBuilderPage />
-            </RequireRole>
-          }
-        />
-        <Route path="governance" element={<GovernancePage />} />
-        <Route path="profile" element={<MyProfilePage />} />
-        <Route path="documents" element={<MyDocumentsPage />} />
-        <Route
-          path="employee-files"
-          element={
-            <RequireRole roles={HR}>
-              <EmployeeFilesPage />
-            </RequireRole>
-          }
-        />
-        <Route path="lifecycle" element={<LifecyclePage />} />
-        <Route path="performance" element={<PerformancePage />} />
-        <Route path="expenses" element={<ExpensesPage />} />
-        <Route path="assets" element={<AssetsPage />} />
-        <Route path="holidays" element={<HolidaysPage />} />
-        <Route path="shifts" element={<ShiftsPage />} />
-        <Route
-          path="schedules"
-          element={
-            <RequireRole roles={HR}>
-              <SchedulesPage />
-            </RequireRole>
-          }
-        />
-        <Route path="meetings" element={<MeetingsPage />} />
-        <Route path="announcements" element={<AnnouncementsPage />} />
-        <Route path="support" element={<SupportPage />} />
-        <Route path="notifications" element={<NotificationsPage />} />
-        <Route path="notification-settings" element={<NotificationSettingsPage />} />
-      </Route>
+          </RequireRole>
+        </RequireAuth>
+      }
+    >
+      <Route
+        index
+        element={<DashboardPage />}
+      />
+
+      {/* Phase 22 — account security */}
+      <Route
+        path="security/sessions"
+        element={<ActiveSessionsPage />}
+      />
 
       <Route
-        path="/admin"
+        path="security"
         element={
-          <RequireAuth>
-            <RequireRole roles={["SUPER_ADMIN"]}>
-              <SuperAdminDashboard />
-            </RequireRole>
-          </RequireAuth>
-        }
-      />
-      {/* SUPER_ADMIN platform analytics — standalone page (no company sidebar needed) */}
-      <Route
-        path="/admin/analytics"
-        element={
-          <RequireAuth>
-            <RequireRole roles={["SUPER_ADMIN"]}>
-              <AnalyticsHubPage />
-            </RequireRole>
-          </RequireAuth>
+          <RequireRole roles={HR}>
+            <SecurityDashboardPage />
+          </RequireRole>
         }
       />
 
-      <Route path="*" element={<NotFoundPage />} />
-    </Routes>
-  );
-};
+      <Route
+        path="audit-logs"
+        element={
+          <RequireRole roles={HR}>
+            <AuditLogsPage />
+          </RequireRole>
+        }
+      />
+
+      <Route
+        path="security/settings"
+        element={
+          <RequireRole roles={COMPANY_ADMIN}>
+            <SecuritySettingsPage />
+          </RequireRole>
+        }
+      />
+
+      {/* Organization */}
+      <Route
+        path="departments"
+        element={<DepartmentsPage />}
+      />
+
+      <Route
+        path="users"
+        element={<UsersPage />}
+      />
+
+      <Route
+        path="org-chart"
+        element={<OrgChartPage />}
+      />
+
+      {/* Attendance */}
+      <Route
+        path="attendance"
+        element={<AttendancePage />}
+      />
+
+      <Route
+        path="attendance/report"
+        element={
+          <RequireRole roles={SENIORS}>
+            <AttendanceReportPage />
+          </RequireRole>
+        }
+      />
+
+      {/* Leave management */}
+      <Route
+        path="leaves"
+        element={<LeavesPage />}
+      />
+
+      <Route
+        path="leaves/approvals"
+        element={
+          <RequireRole roles={SENIORS}>
+            <LeaveApprovalsPage />
+          </RequireRole>
+        }
+      />
+
+      {/* Projects and tasks */}
+      <Route
+        path="projects"
+        element={<ProjectsPage />}
+      />
+
+      <Route
+        path="projects/:id"
+        element={<ProjectDetailPage />}
+      />
+
+      <Route
+        path="tasks"
+        element={<TasksPage />}
+      />
+
+      {/* Payroll */}
+      <Route
+        path="payroll"
+        element={
+          <RequireRole roles={HR}>
+            <PayrollPage />
+          </RequireRole>
+        }
+      />
+
+      <Route
+        path="payslips"
+        element={<MyPayslipsPage />}
+      />
+
+      {/* Company and subscription */}
+      <Route
+        path="company"
+        element={<CompanyProfilePage />}
+      />
+
+      <Route
+        path="billing"
+        element={<BillingPage />}
+      />
+
+      <Route
+        path="subscription"
+        element={
+          <RequireRole roles={HR}>
+            <SubscriptionPage />
+          </RequireRole>
+        }
+      />
+
+      {/* Recruitment and exit */}
+      <Route
+        path="recruitment"
+        element={<RecruitmentPage />}
+      />
+
+      <Route
+        path="exit"
+        element={<ExitProcessPage />}
+      />
+
+      {/* Analytics */}
+      <Route
+        path="analytics"
+        element={<AnalyticsHubPage />}
+      />
+
+      <Route
+        path="reports"
+        element={
+          <RequireRole roles={SENIORS}>
+            <ReportBuilderPage />
+          </RequireRole>
+        }
+      />
+
+      {/* Governance and RBAC */}
+      <Route
+        path="governance"
+        element={<GovernancePage />}
+      />
+
+      <Route
+        path="roles-permissions"
+        element={
+          <RequireRole roles={COMPANY_ADMIN}>
+            <RolesPermissionsPage />
+          </RequireRole>
+        }
+      />
+
+      {/* Employee profile and documents */}
+      <Route
+        path="profile"
+        element={<MyProfilePage />}
+      />
+
+      <Route
+        path="documents"
+        element={<MyDocumentsPage />}
+      />
+
+      <Route
+        path="employee-files"
+        element={
+          <RequireRole roles={HR}>
+            <EmployeeFilesPage />
+          </RequireRole>
+        }
+      />
+
+      {/* HR operations */}
+      <Route
+        path="lifecycle"
+        element={<LifecyclePage />}
+      />
+
+      <Route
+        path="performance"
+        element={<PerformancePage />}
+      />
+
+      <Route
+        path="expenses"
+        element={<ExpensesPage />}
+      />
+
+      <Route
+        path="assets"
+        element={<AssetsPage />}
+      />
+
+      {/* Scheduling */}
+      <Route
+        path="holidays"
+        element={<HolidaysPage />}
+      />
+
+      <Route
+        path="shifts"
+        element={<ShiftsPage />}
+      />
+
+      <Route
+        path="schedules"
+        element={
+          <RequireRole roles={HR}>
+            <SchedulesPage />
+          </RequireRole>
+        }
+      />
+
+      {/* Collaboration */}
+      <Route
+        path="meetings"
+        element={<MeetingsPage />}
+      />
+
+      <Route
+        path="announcements"
+        element={<AnnouncementsPage />}
+      />
+
+      <Route
+        path="support"
+        element={<SupportPage />}
+      />
+
+      <Route
+        path="notifications"
+        element={<NotificationsPage />}
+      />
+
+      <Route
+        path="notification-settings"
+        element={<NotificationSettingsPage />}
+      />
+    </Route>
+
+    {/* Super Admin application */}
+    <Route
+      path="/super-admin"
+      element={
+        <RequireAuth redirectTo="/super-admin/login">
+          <RequireRole roles={PLATFORM_ROLES}>
+            <SuperAdminLayout />
+          </RequireRole>
+        </RequireAuth>
+      }
+    >
+      <Route
+        index
+        element={
+          <Navigate
+            to="dashboard"
+            replace
+          />
+        }
+      />
+
+      <Route
+        path="dashboard"
+        element={<SuperAdminDashboardPage />}
+      />
+
+      <Route
+        path="companies"
+        element={<SuperAdminCompaniesPage />}
+      />
+
+      <Route
+        path="companies/:companyId"
+        element={<SuperAdminCompanyDetailPage />}
+      />
+
+      <Route
+        path="users"
+        element={
+          <SuperAdminOperationsPage mode="users" />
+        }
+      />
+
+      <Route
+        path="subscriptions"
+        element={
+          <SuperAdminCommercePage mode="subscriptions" />
+        }
+      />
+
+      <Route
+        path="plans"
+        element={
+          <SuperAdminCommercePage mode="plans" />
+        }
+      />
+
+      <Route
+        path="billing"
+        element={
+          <SuperAdminCommercePage mode="billing" />
+        }
+      />
+
+      <Route
+        path="revenue"
+        element={
+          <SuperAdminCommercePage mode="revenue" />
+        }
+      />
+
+      <Route
+        path="usage"
+        element={
+          <SuperAdminOperationsPage mode="usage" />
+        }
+      />
+
+      <Route
+        path="support"
+        element={
+          <SuperAdminOperationsPage mode="support" />
+        }
+      />
+
+      <Route
+        path="system-health"
+        element={
+          <SuperAdminOperationsPage mode="system-health" />
+        }
+      />
+
+      <Route
+        path="audit-logs"
+        element={
+          <SuperAdminOperationsPage mode="audit-logs" />
+        }
+      />
+
+      <Route
+        path="settings"
+        element={
+          <SuperAdminOperationsPage mode="settings" />
+        }
+      />
+    </Route>
+
+    {/* Legacy redirects */}
+    <Route
+      path="/admin"
+      element={
+        <Navigate
+          to="/super-admin/dashboard"
+          replace
+        />
+      }
+    />
+
+    <Route
+      path="/admin/analytics"
+      element={
+        <Navigate
+          to="/super-admin/dashboard"
+          replace
+        />
+      }
+    />
+
+    {/* Global fallback */}
+    <Route
+      path="*"
+      element={<NotFoundPage />}
+    />
+  </Routes>
+);
 
 export default AppRoutes;
