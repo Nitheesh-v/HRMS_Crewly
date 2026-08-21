@@ -9,6 +9,7 @@ export const RESOURCES = [
   "PAYROLL",
   "PAYSLIP",
   "RECRUITMENT",
+  "REQUISITION",
   "CANDIDATE",
   "INTERVIEW",
   "REPORT",
@@ -37,6 +38,7 @@ export const ACTIONS = [
   "EXPORT",
   "IMPORT",
   "MANAGE",
+  "SUBMIT",
 ];
 
 const actions = (resource, actionList, scope = "ALL") =>
@@ -69,6 +71,10 @@ export const DEFAULT_PERMISSIONS = [
   ...actions("PAYROLL", ["READ", "CREATE", "UPDATE", "APPROVE", "MANAGE"]),
 
   ...actions("RECRUITMENT", ["READ", "CREATE", "UPDATE", "DELETE", "APPROVE"]),
+
+  ...actions("REQUISITION", ["READ", "CREATE", "UPDATE", "SUBMIT"]),
+
+  ...actions("REQUISITION", ["READ", "UPDATE", "SUBMIT"], "SELF"),
 
   ...actions("CANDIDATE", ["READ", "CREATE", "UPDATE", "DELETE"]),
 
@@ -224,6 +230,11 @@ export const DEFAULT_ROLE_MATRIX = {
     "RECRUITMENT_CREATE",
     "RECRUITMENT_UPDATE",
 
+    "REQUISITION_READ",
+    "REQUISITION_CREATE",
+    "REQUISITION_UPDATE",
+    "REQUISITION_SUBMIT",
+
     "CANDIDATE_READ",
     "CANDIDATE_CREATE",
     "CANDIDATE_UPDATE",
@@ -260,6 +271,11 @@ export const DEFAULT_ROLE_MATRIX = {
     "LEAVE_READ",
     "LEAVE_APPROVE",
 
+    "REQUISITION_CREATE",
+    "REQUISITION_READ_SELF",
+    "REQUISITION_UPDATE_SELF",
+    "REQUISITION_SUBMIT_SELF",
+
     "PROJECT_READ",
     "PROJECT_CREATE",
     "PROJECT_UPDATE",
@@ -282,6 +298,11 @@ export const DEFAULT_ROLE_MATRIX = {
     "EMPLOYEE_READ_TEAM",
     "ATTENDANCE_READ",
     "LEAVE_READ",
+
+    "REQUISITION_CREATE",
+    "REQUISITION_READ_SELF",
+    "REQUISITION_UPDATE_SELF",
+    "REQUISITION_SUBMIT_SELF",
 
     "TASK_READ",
     "TASK_CREATE",

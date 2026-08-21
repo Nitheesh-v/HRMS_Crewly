@@ -41,6 +41,7 @@ import PayrollPage from "../pages/payroll/PayrollPage.jsx";
 import MyPayslipsPage from "../pages/payroll/MyPayslipsPage.jsx";
 
 import RecruitmentPage from "../pages/recruitment/RecruitmentPage.jsx";
+import RequisitionsPage from "../pages/recruitment/RequisitionsPage.jsx";
 import ExitProcessPage from "../pages/exit/ExitProcessPage.jsx";
 
 import CompanyProfilePage from "../pages/company/CompanyProfilePage.jsx";
@@ -309,7 +310,30 @@ const AppRoutes = () => (
       {/* Recruitment and exit */}
       <Route
         path="recruitment"
-        element={<RecruitmentPage />}
+        element={
+          <Navigate
+            to="/app/recruitment/requisitions"
+            replace
+          />
+        }
+      />
+
+      <Route
+        path="recruitment/requisitions"
+        element={
+          <RequireRole roles={SENIORS}>
+            <RequisitionsPage />
+          </RequireRole>
+        }
+      />
+
+      <Route
+        path="recruitment/legacy"
+        element={
+          <RequireRole roles={HR}>
+            <RecruitmentPage />
+          </RequireRole>
+        }
       />
 
       <Route

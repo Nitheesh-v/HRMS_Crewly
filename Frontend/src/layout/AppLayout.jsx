@@ -15,6 +15,7 @@ import {
   CalendarOff,
   CalendarRange,
   CheckCircle2,
+  ClipboardList,
   Clock,
   CreditCard,
   DoorOpen,
@@ -72,7 +73,7 @@ const NAV_BY_ROLE = {
     { to: "/app/assets", label: "🖥 Assets" },
     { to: "/app/projects", label: "📁 Projects" },
     { to: "/app/tasks", label: "📋 Tasks" },
-    { to: "/app/recruitment", label: "🧲 Recruitment" },
+    { to: "/app/recruitment/requisitions", label: "Recruitment" },
     { to: "/app/support", label: "🎫 Support Tickets" },
     { to: "/app/exit", label: "🚪 Resignations & Exit" },
     { to: "/app/company", label: "⚙️ Company Settings" },
@@ -108,7 +109,7 @@ const NAV_BY_ROLE = {
     { to: "/app/schedules", label: "🗓 Work Schedules" },
     { to: "/app/announcements", label: "📢 Announcements" },
     { label: "🥳 Celebrations", soon: true },
-    { to: "/app/recruitment", label: "🧲 Recruitment · Job Posting" },
+    { to: "/app/recruitment/requisitions", label: "Recruitment" },
     { to: "/app/documents", label: "📄 Documents" },
     { to: "/app/employee-files", label: "🗂 Employee Files" },
     { to: "/app/lifecycle", label: "🧬 Lifecycle" },
@@ -140,6 +141,7 @@ const NAV_BY_ROLE = {
     { to: "/app/performance", label: "📊 Performance" },
     { to: "/app/expenses", label: "💸 Expenses" },
     { to: "/app/assets", label: "🖥 Assets" },
+    { to: "/app/recruitment/requisitions", label: "Hiring Requisitions" },
     { label: "📊 Daily Reports", soon: true },
     { to: "/app/reports", label: "📑 Report Builder" },
     { to: "/app/payslips", label: "🧾 Payslips" },
@@ -173,6 +175,7 @@ const NAV_BY_ROLE = {
     { to: "/app/performance", label: "📊 Performance" },
     { to: "/app/expenses", label: "💸 Expenses" },
     { to: "/app/assets", label: "🖥 Assets" },
+    { to: "/app/recruitment/requisitions", label: "Hiring Requisitions" },
     { label: "📊 Daily Reports", soon: true },
     { to: "/app/payslips", label: "🧾 Payslips" },
     { to: "/app/documents", label: "📄 Documents" },
@@ -292,7 +295,10 @@ const NAV_ICON_BY_PATH = {
     ListTodo,
 
   "/app/recruitment":
-    Users,
+    ClipboardList,
+
+  "/app/recruitment/requisitions":
+    ClipboardList,
 
   "/app/support":
     LifeBuoy,
@@ -522,7 +528,7 @@ const AppLayout = () => {
         </nav>
 
         <p className="pt-3 text-[11px] text-crewly-dim/60">
-          Crewly HRMS · Phase 22
+          Crewly HRMS · Phase 27.1
         </p>
       </aside>
 

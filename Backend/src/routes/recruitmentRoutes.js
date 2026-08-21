@@ -21,6 +21,11 @@ import {
   offerRules,
 } from '../validators/recruitmentValidator.js';
 import {
+  createRequisitionRules,
+  submitRequisitionRules,
+  updateRequisitionRules,
+} from '../validators/requisitionValidator.js';
+import {
   listJobs,
   createJob,
   updateJob,
@@ -30,6 +35,14 @@ import {
   updateOffer,
   convertCandidate,
 } from '../controllers/recruitmentController.js';
+import {
+  requisitionCreate,
+  requisitionDetail,
+  requisitionList,
+  requisitionOptions,
+  requisitionSubmit,
+  requisitionUpdate,
+} from '../controllers/requisitionController.js';
 
 const router = Router();
 
@@ -40,6 +53,67 @@ router.use(
   requireFeature(
     'recruitment'
   )
+);
+
+// Phase 27.1 — requisition routes. Literal /options stays before /:id.
+router.get(
+  '/requisitions/options',
+  requireAnyPermission([
+    'REQUISITION_READ',
+    'REQUISITION_READ_SELF',
+    'REQUISITION_CREATE',
+  ]),
+  requisitionOptions
+);
+
+router.get(
+  '/requisitions',
+  requireAnyPermission([
+    'REQUISITION_READ',
+    'REQUISITION_READ_SELF',
+  ]),
+  requisitionList
+);
+
+router.post(
+  '/requisitions',
+  checkWriteAccess,
+  requireAnyPermission([
+    'REQUISITION_CREATE',
+  ]),
+  createRequisitionRules,
+  requisitionCreate
+);
+
+router.get(
+  '/requisitions/:id',
+  requireAnyPermission([
+    'REQUISITION_READ',
+    'REQUISITION_READ_SELF',
+  ]),
+  requisitionDetail
+);
+
+router.patch(
+  '/requisitions/:id',
+  checkWriteAccess,
+  requireAnyPermission([
+    'REQUISITION_UPDATE',
+    'REQUISITION_UPDATE_SELF',
+  ]),
+  updateRequisitionRules,
+  requisitionUpdate
+);
+
+router.post(
+  '/requisitions/:id/submit',
+  checkWriteAccess,
+  requireAnyPermission([
+    'REQUISITION_SUBMIT',
+    'REQUISITION_SUBMIT_SELF',
+  ]),
+  submitRequisitionRules,
+  requisitionSubmit
 );
 
 router.get(
