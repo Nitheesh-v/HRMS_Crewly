@@ -132,13 +132,21 @@ const RolesPermissionsPage = () => {
     setMessage("");
 
     try {
-      await permissionService.saveRolePermissions(
-        selectedRoleId,
-        selectedPermissions,
-      );
+      const updatedRole =
+        await permissionService.saveRolePermissions(
+          selectedRoleId,
+          selectedPermissions,
+        );
 
-      setMessage("Role permissions updated");
-      await load();
+      setRoles((current) =>
+        current.map((role) =>
+          role._id === updatedRole._id
+            ? updatedRole
+            : role,
+        ),
+      );
+      selectRole(updatedRole);
+      setMessage("Role permissions updated successfully");
       await refreshPermissions();
     } catch (error) {
       setMessage(error?.message || "Could not save permissions");
@@ -430,6 +438,11 @@ const RolesPermissionsPage = () => {
                       <p className="text-xs text-slate-500">
                         {selectedPermissions.length} permissions selected
                       </p>
+                      {message && (
+                        <p className="mt-1 text-xs text-indigo-300">
+                          {message}
+                        </p>
+                      )}
                     </div>
 
                     <Can permission="SETTINGS_MANAGE">

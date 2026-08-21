@@ -724,6 +724,12 @@ export const updateRolePermissions = async (
   res
 ) => {
   try {
+    // Data from frontend - requests from frontend
+    const permissionValues = Array.isArray(req.body.permissions)
+      ? req.body.permissions
+      : [];
+
+    // DB Logic - DB logics
     const role =
       await CompanyRole.findOne({
         _id: req.params.roleId,
@@ -741,7 +747,7 @@ export const updateRolePermissions = async (
 
     const permissions =
       await resolvePermissions(
-        req.body.permissions || []
+        permissionValues
       );
 
     const unavailable =
@@ -772,17 +778,42 @@ export const updateRolePermissions = async (
             permission.name
         ),
     };
-
-    role.permissions =
+    const permissionIds =
       permissions.map(
         (permission) =>
           permission._id
       );
 
-    role.updatedBy =
-      req.user._id;
+    // Atomic update avoids stale Mongoose __v conflicts while
+    // preserving the existing tenant boundary.
+    const updatedRole =
+      await CompanyRole.findOneAndUpdate(
+        {
+          _id: role._id,
+          companyId:
+            req.companyId,
+        },
+        {
+          $set: {
+            permissions:
+              permissionIds,
+            updatedBy:
+              req.user._id,
+          },
+        },
+        {
+          new: true,
+          runValidators: true,
+        }
+      ).populate('permissions');
 
-    await role.save();
+    if (!updatedRole) {
+      return fail(
+        res,
+        404,
+        'Role not found'
+      );
+    }
 
     invalidatePermissionCache({
       companyId:
@@ -798,7 +829,7 @@ export const updateRolePermissions = async (
         'CompanyRole',
 
       targetId:
-        role._id,
+        updatedRole._id,
 
       previousState:
         previous,
@@ -812,12 +843,11 @@ export const updateRolePermissions = async (
       },
     });
 
+    // Data to frontend - response to frontend
     return ok(
       res,
       200,
-      await role.populate(
-        'permissions'
-      ),
+      updatedRole,
       'Role permissions updated'
     );
   } catch (error) {
