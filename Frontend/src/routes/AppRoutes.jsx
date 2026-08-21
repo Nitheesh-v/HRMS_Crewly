@@ -41,6 +41,8 @@ import PayrollPage from "../pages/payroll/PayrollPage.jsx";
 import MyPayslipsPage from "../pages/payroll/MyPayslipsPage.jsx";
 
 import RecruitmentPage from "../pages/recruitment/RecruitmentPage.jsx";
+import RequisitionsPage from "../pages/recruitment/RequisitionsPage.jsx";
+import RequisitionReviewPage from "../pages/recruitment/RequisitionReviewPage.jsx";
 import ExitProcessPage from "../pages/exit/ExitProcessPage.jsx";
 
 import CompanyProfilePage from "../pages/company/CompanyProfilePage.jsx";
@@ -310,6 +312,26 @@ const AppRoutes = () => (
       <Route
         path="recruitment"
         element={<RecruitmentPage />}
+      />
+
+      {/* Phase 27.1 — hiring requests (Manager / TL / HR) */}
+      <Route
+        path="recruitment/requisitions"
+        element={
+          <RequireRole roles={SENIORS}>
+            <RequisitionsPage />
+          </RequireRole>
+        }
+      />
+
+      {/* Phase 27.2 — HR requisition review */}
+      <Route
+        path="recruitment/requisitions/review"
+        element={
+          <RequireRole roles={HR}>
+            <RequisitionReviewPage />
+          </RequireRole>
+        }
       />
 
       <Route

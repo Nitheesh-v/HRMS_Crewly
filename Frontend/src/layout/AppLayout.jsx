@@ -15,6 +15,8 @@ import {
   CalendarOff,
   CalendarRange,
   CheckCircle2,
+  ClipboardCheck,
+  ClipboardList,
   Clock,
   CreditCard,
   DoorOpen,
@@ -73,6 +75,11 @@ const NAV_BY_ROLE = {
     { to: "/app/projects", label: "📁 Projects" },
     { to: "/app/tasks", label: "📋 Tasks" },
     { to: "/app/recruitment", label: "🧲 Recruitment" },
+    { to: "/app/recruitment/requisitions", label: "🧾 Hiring Requests" },
+    {
+      to: "/app/recruitment/requisitions/review",
+      label: "🗳 Requisition Review",
+    },
     { to: "/app/support", label: "🎫 Support Tickets" },
     { to: "/app/exit", label: "🚪 Resignations & Exit" },
     { to: "/app/company", label: "⚙️ Company Settings" },
@@ -109,6 +116,11 @@ const NAV_BY_ROLE = {
     { to: "/app/announcements", label: "📢 Announcements" },
     { label: "🥳 Celebrations", soon: true },
     { to: "/app/recruitment", label: "🧲 Recruitment · Job Posting" },
+    { to: "/app/recruitment/requisitions", label: "🧾 Hiring Requests" },
+    {
+      to: "/app/recruitment/requisitions/review",
+      label: "🗳 Requisition Review",
+    },
     { to: "/app/documents", label: "📄 Documents" },
     { to: "/app/employee-files", label: "🗂 Employee Files" },
     { to: "/app/lifecycle", label: "🧬 Lifecycle" },
@@ -137,6 +149,7 @@ const NAV_BY_ROLE = {
     { to: "/app/leaves/approvals", label: "✅ Leave Approvals" },
     { to: "/app/projects", label: "📁 Projects" },
     { to: "/app/tasks", label: "📋 Tasks" },
+    { to: "/app/recruitment/requisitions", label: "🧾 Hiring Requests" },
     { to: "/app/performance", label: "📊 Performance" },
     { to: "/app/expenses", label: "💸 Expenses" },
     { to: "/app/assets", label: "🖥 Assets" },
@@ -170,6 +183,7 @@ const NAV_BY_ROLE = {
     { to: "/app/leaves/approvals", label: "✅ Approvals" },
     { to: "/app/projects", label: "📁 Projects · Assign Tasks" },
     { to: "/app/tasks", label: "📋 Team Tasks" },
+    { to: "/app/recruitment/requisitions", label: "🧾 Hiring Requests" },
     { to: "/app/performance", label: "📊 Performance" },
     { to: "/app/expenses", label: "💸 Expenses" },
     { to: "/app/assets", label: "🖥 Assets" },
@@ -293,6 +307,12 @@ const NAV_ICON_BY_PATH = {
 
   "/app/recruitment":
     Users,
+
+  "/app/recruitment/requisitions":
+    ClipboardList,
+
+  "/app/recruitment/requisitions/review":
+    ClipboardCheck,
 
   "/app/support":
     LifeBuoy,
