@@ -11,6 +11,7 @@ import { hasFeature } from "./subscriptionEngine.js";
 const CACHE_TTL = 5 * 60 * 1000;
 
 const permissionCache = new Map();
+let ensurePermissionsPromise = null;
 
 const cacheKey = (companyId, userId) => `${companyId}:${userId}`;
 
@@ -31,25 +32,29 @@ export const invalidatePermissionCache = ({ companyId, userId = null }) => {
 };
 
 export const ensurePermissions = async () => {
-  await Promise.all(
-    DEFAULT_PERMISSIONS.map((permission) =>
-      Permission.updateOne(
-        {
-          name: permission.name,
-        },
-        {
-          $setOnInsert: permission,
-        },
-        {
-          upsert: true,
-        },
-      ),
-    ),
-  );
+  if (!ensurePermissionsPromise) {
+    ensurePermissionsPromise = (async () => {
+      await Permission.bulkWrite(
+        DEFAULT_PERMISSIONS.map((permission) => ({
+          updateOne: {
+            filter: { name: permission.name },
+            update: { $setOnInsert: permission },
+            upsert: true,
+          },
+        })),
+        { ordered: false },
+      );
 
-  return Permission.find({
-    isActive: true,
-  }).lean();
+      return Permission.find({
+        isActive: true,
+      }).lean();
+    })().catch((error) => {
+      ensurePermissionsPromise = null;
+      throw error;
+    });
+  }
+
+  return ensurePermissionsPromise;
 };
 
 // Increment only when new default permissions are introduced.
@@ -206,6 +211,38 @@ export const permissionAllowedByPlan = async (companyId, permission) => {
   if (!feature) return true;
 
   return hasFeature(companyId, feature);
+};
+
+export const getPermissionPlanAvailability = async (
+  companyId,
+  permissions = [],
+) => {
+  const features = [
+    ...new Set(
+      permissions
+        .map((permission) => subscriptionFeatureFor(permission))
+        .filter(Boolean),
+    ),
+  ];
+
+  const featureRows = await Promise.all(
+    features.map(async (feature) => [
+      feature,
+      await hasFeature(companyId, feature),
+    ]),
+  );
+  const featureAvailability = Object.fromEntries(featureRows);
+
+  return Object.fromEntries(
+    permissions.map((permission) => {
+      const feature = subscriptionFeatureFor(permission);
+
+      return [
+        permission.name,
+        feature ? Boolean(featureAvailability[feature]) : true,
+      ];
+    }),
+  );
 };
 
 const findUserRole = async (user) => {

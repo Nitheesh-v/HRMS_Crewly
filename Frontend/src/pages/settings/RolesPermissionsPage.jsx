@@ -62,6 +62,15 @@ const RolesPermissionsPage = () => {
     return [];
   };
 
+  const loadUsers = async () => {
+    try {
+      const response = await permissionService.users();
+      setUsers(normalizeUsers(response));
+    } catch (error) {
+      setMessage(error?.message || "Could not load users");
+    }
+  };
+
   const selectRole = (role) => {
     setSelectedRoleId(role._id);
 
@@ -75,10 +84,9 @@ const RolesPermissionsPage = () => {
     setMessage("");
 
     try {
-      const [roleRows, permissionData, userRows] = await Promise.all([
+      const [roleRows, permissionData] = await Promise.all([
         permissionService.roles(),
         permissionService.permissions(),
-        permissionService.users(),
       ]);
 
       const normalizedRoles = Array.isArray(roleRows)
@@ -89,7 +97,6 @@ const RolesPermissionsPage = () => {
 
       setRoles(normalizedRoles);
       setGroups(permissionData?.groups || {});
-      setUsers(normalizeUsers(userRows));
 
       if (normalizedRoles.length) {
         const currentRole =
@@ -107,6 +114,7 @@ const RolesPermissionsPage = () => {
 
   useEffect(() => {
     load();
+    loadUsers();
   }, []);
 
   const togglePermission = (permissionId) => {
@@ -229,7 +237,7 @@ const RolesPermissionsPage = () => {
       setMessage("User role updated");
 
       await loadUserPermissions(selectedUserId);
-      await load();
+      await loadUsers();
     } catch (error) {
       setMessage(error?.message || "Could not assign role");
     }

@@ -9,6 +9,7 @@ import {
   ensureCompanyRoles,
   ensurePermissions,
   getPermissionPayload,
+  getPermissionPlanAvailability,
   invalidatePermissionCache,
   permissionAllowedByPlan,
 } from '../utils/permissionService.js';
@@ -118,23 +119,18 @@ const validatePlanPermissions = async (
   companyId,
   permissions
 ) => {
-  const unavailable = [];
+  const availability =
+    await getPermissionPlanAvailability(
+      companyId,
+      permissions,
+    );
 
-  for (const permission of permissions) {
-    const allowed =
-      await permissionAllowedByPlan(
-        companyId,
-        permission
-      );
-
-    if (!allowed) {
-      unavailable.push(
-        permission.name
-      );
-    }
-  }
-
-  return unavailable;
+  return permissions
+    .filter(
+      (permission) =>
+        !availability[permission.name],
+    )
+    .map((permission) => permission.name);
 };
 
 // ============================================================
@@ -143,6 +139,10 @@ const validatePlanPermissions = async (
 
 export const listPermissions = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
+    const companyId = req.companyId;
+
+    // DB Logic - DB logics
     await ensurePermissions();
 
     const permissions = await Permission.find({
@@ -151,15 +151,14 @@ export const listPermissions = async (req, res) => {
       .sort('group resource action scope')
       .lean();
 
+    const availability =
+      await getPermissionPlanAvailability(
+        companyId,
+        permissions,
+      );
     const groups = {};
 
     for (const permission of permissions) {
-      const available =
-        await permissionAllowedByPlan(
-          req.companyId,
-          permission
-        );
-
       const group =
         permission.group ||
         permission.resource;
@@ -170,10 +169,12 @@ export const listPermissions = async (req, res) => {
 
       groups[group].push({
         ...permission,
-        available,
+        available:
+          availability[permission.name] ?? true,
       });
     }
 
+    // Data to frontend - response to frontend
     return ok(
       res,
       200,
