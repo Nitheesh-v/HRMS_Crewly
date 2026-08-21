@@ -4,7 +4,9 @@ import useAuth from "../hooks/useAuth.jsx";
 import { ROLES } from "../utils/roles.js";
 import NotificationBell from "../components/NotificationBell";
 import SubscriptionStatusBanner from "../components/SubscriptionStatusBanner.jsx";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useDispatch } from "react-redux";
+import { fetchMyPermissions } from "../redux/slices/PermissionSlices.js";
 
 import {
   BarChart3,
@@ -410,8 +412,16 @@ const getNavIcon = (item) =>
 
 const AppLayout = () => {
   const { user, secureLogout } = useAuth();
+  const dispatch = useDispatch();
   const [loggingOut, setLoggingOut] = useState(false);
   const navigate = useNavigate();
+  const userId = user?.id || user?._id;
+
+  useEffect(() => {
+    if (userId) {
+      dispatch(fetchMyPermissions());
+    }
+  }, [dispatch, userId]);
 
   const handleLogout = async () => {
     setLoggingOut(true);

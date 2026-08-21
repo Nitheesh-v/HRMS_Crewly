@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import permissionService from "../../services/permissionService.js";
 import usePermission from "../../hooks/usePermission.js";
 import Can from "../../components/Can.jsx";
+import { Save } from "lucide-react";
 
 const panel = "rounded-xl border border-slate-700 bg-slate-900 p-4";
 
@@ -415,11 +416,16 @@ const RolesPermissionsPage = () => {
                 </div>
 
                 <div className={panel}>
-                  <div className="mb-4 flex flex-wrap justify-between gap-2">
-                    <h2 className="font-semibold">Permission Matrix</h2>
+                  <div className="sticky top-0 z-20 -mx-4 -mt-4 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-t-xl border-b border-slate-700 bg-slate-900/95 p-4 backdrop-blur">
+                    <div>
+                      <h2 className="font-semibold">Permission Matrix</h2>
+                      <p className="text-xs text-slate-500">
+                        {selectedPermissions.length} permissions selected
+                      </p>
+                    </div>
 
                     <Can permission="SETTINGS_MANAGE">
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
                           onClick={() =>
@@ -436,6 +442,16 @@ const RolesPermissionsPage = () => {
                           className={inp}
                         >
                           Clear All
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={saveRolePermissions}
+                          className={`${btn} gap-2`}
+                        >
+                          <Save className="h-4 w-4" />
+                          {busy ? "Saving…" : "Save Permissions"}
                         </button>
                       </div>
                     </Can>
@@ -492,16 +508,6 @@ const RolesPermissionsPage = () => {
                     ))}
                   </div>
 
-                  <Can permission="SETTINGS_MANAGE">
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={saveRolePermissions}
-                      className={`${btn} mt-5`}
-                    >
-                      {busy ? "Saving…" : "Save Permissions"}
-                    </button>
-                  </Can>
                 </div>
               </>
             )}
