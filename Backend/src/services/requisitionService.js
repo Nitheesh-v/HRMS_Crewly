@@ -257,7 +257,9 @@ const ensureDepartmentAccess = async ({ companyId, user, departmentId }) => {
   const department = await Department.findOne({
     _id: departmentId,
     companyId,
-    status: 'ACTIVE',
+    // Legacy departments may not have a stored status yet.
+    // Only an explicitly inactive department is unavailable.
+    status: { $ne: 'INACTIVE' },
   });
 
   if (!department) {
@@ -286,7 +288,11 @@ const ensureDepartmentAccess = async ({ companyId, user, departmentId }) => {
 
 export const getRequisitionOptions = async ({ companyId, user }) => {
   const canReadAll = await hasTenantPermission(user, 'READ');
-  const filter = { companyId, status: 'ACTIVE' };
+  const filter = {
+    companyId,
+    // Keep compatibility with departments created before status was stored.
+    status: { $ne: 'INACTIVE' },
+  };
 
   if (!canReadAll) {
     filter._id = user.department || { $exists: false };
