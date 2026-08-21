@@ -8,6 +8,9 @@ import {
 import {
   ensureDefaultPlans,
 } from './utils/platformPlans.js';
+import {
+  ensureCareerPortalIdentifiers,
+} from './utils/careerPortalIdentifiers.js';
 
 const startServer = async () => {
   try {
@@ -16,6 +19,9 @@ const startServer = async () => {
 
     // Seed and run one-time migrations for centralized plans.
     await ensureDefaultPlans();
+
+    // Phase 27.4 public identifiers and safe publication defaults.
+    await ensureCareerPortalIdentifiers();
 
     const server = app.listen(
       env.PORT,

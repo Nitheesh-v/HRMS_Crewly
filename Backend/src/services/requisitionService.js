@@ -11,6 +11,7 @@ import JobRequisition, {
 import TenantSequence from '../models/TenantSequence.js';
 import ApiError from '../utils/ApiError.js';
 import { notifyRoles, notifyUser } from '../utils/notify.js';
+import { nextJobCode } from '../utils/careerPortalIdentifiers.js';
 import { hasPermission } from '../utils/permissionService.js';
 import { recordAudit } from '../utils/securityauditService.js';
 
@@ -871,11 +872,13 @@ export const createJobFromRequisition = async ({
   }
 
   const now = new Date();
+  const jobCode = await nextJobCode(req.companyId);
   let job;
 
   try {
     job = await JobPosting.create({
       companyId: req.companyId,
+      jobCode,
       sourceRequisition: requisition._id,
       sourceRequisitionNumber: requisition.requisitionNumber,
       title: requisition.position,

@@ -7,6 +7,11 @@ import {
 import PublicLayout from "../layout/PublicLayout.jsx";
 import AppLayout from "../layout/AppLayout.jsx";
 import SuperAdminLayout from "../layout/SuperAdminLayout.jsx";
+import CareerPublicLayout from "../layout/CareerPublicLayout.jsx";
+import CareerLandingPage from "../pages/careers/CareerLandingPage.jsx";
+import CareerJobsPage from "../pages/careers/CareerJobsPage.jsx";
+import CareerJobDetailPage from "../pages/careers/CareerJobDetailPage.jsx";
+import CareerApplyShellPage from "../pages/careers/CareerApplyShellPage.jsx";
 
 import RequireAuth from "./RequireAuth.jsx";
 import RequirePermission from "./RequirePermission.jsx";
@@ -144,6 +149,29 @@ const AppRoutes = () => (
       <Route
         path="/reset-password"
         element={<ResetPasswordPage />}
+      />
+    </Route>
+
+    {/* Public company career portal — no tenant auth or application layout */}
+    <Route
+      path="/careers/:companySlug"
+      element={<CareerPublicLayout />}
+    >
+      <Route
+        index
+        element={<CareerLandingPage />}
+      />
+      <Route
+        path="jobs"
+        element={<CareerJobsPage />}
+      />
+      <Route
+        path="jobs/:jobCode"
+        element={<CareerJobDetailPage />}
+      />
+      <Route
+        path="jobs/:jobCode/apply"
+        element={<CareerApplyShellPage />}
       />
     </Route>
 

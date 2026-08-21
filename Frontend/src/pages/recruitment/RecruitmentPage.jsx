@@ -6,13 +6,18 @@ import {
   BriefcaseBusiness,
   Building2,
   CalendarDays,
+  Check,
+  Copy,
+  ExternalLink,
   FilePlus2,
+  Globe2,
   Users,
 } from 'lucide-react';
 import Modal from '../../components/Modal.jsx';
 import useAuth from '../../hooks/useAuth.jsx';
 import usePermission from '../../hooks/usePermission.js';
 import api from '../../services/api.js';
+import companyService from '../../services/companyService.js';
 import recruitmentService from '../../services/recruitmentService.js';
 import requisitionService from '../../services/requisitionService.js';
 import { ROLES } from '../../utils/roles.js';
@@ -41,7 +46,17 @@ const TYPE_LABEL = {
   TEMPORARY: 'Temporary',
 };
 
-const emptyJobForm = { title: '', department: '', location: 'On-site', employmentType: 'FULL_TIME', openings: 1, description: '' };
+const emptyJobForm = {
+  title: '',
+  department: '',
+  location: 'On-site',
+  employmentType: 'FULL_TIME',
+  openings: 1,
+  description: '',
+  publicationStatus: 'DRAFT',
+  applicationDeadline: '',
+  publicSalaryVisible: false,
+};
 const emptyCandForm = { name: '', email: '', phone: '', resumeLink: '', notes: '' };
 const isoDate = (d) => (d ? String(d).slice(0, 10) : '');
 const errText = (error) => error?.message || 'Something went wrong';
@@ -99,6 +114,8 @@ const RecruitmentPage = () => {
   const [selectedId, setSelectedId] = useState('');
   const [candidates, setCandidates] = useState([]);
   const [departments, setDepartments] = useState([]);
+  const [careerCompany, setCareerCompany] = useState(null);
+  const [copiedJobCode, setCopiedJobCode] = useState('');
   const [banner, setBanner] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -163,6 +180,13 @@ const RecruitmentPage = () => {
   }, []);
 
   useEffect(() => {
+    companyService
+      .getMy()
+      .then((company) => setCareerCompany(company))
+      .catch(() => setCareerCompany(null));
+  }, []);
+
+  useEffect(() => {
     const requestedJobId = searchParams.get('job');
 
     if (requestedJobId && jobs.some((job) => job._id === requestedJobId)) {
@@ -221,14 +245,41 @@ const RecruitmentPage = () => {
   }, [flash, searchParams, setSearchParams]);
 
   const selected = jobs.find((job) => job._id === selectedId);
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const minimumDeadline = tomorrow.toISOString().slice(0, 10);
+
+  const publicJobUrl = (job) => {
+    if (!careerCompany?.careerSlug || !job?.jobCode) return '';
+    return `${window.location.origin}/careers/${careerCompany.careerSlug}/jobs/${job.jobCode}`;
+  };
+
+  const copyPublicJobUrl = async (job) => {
+    const url = publicJobUrl(job);
+    if (!url) return;
+
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedJobCode(job.jobCode);
+      window.setTimeout(() => setCopiedJobCode(''), 2000);
+    } catch {
+      flash('error', 'Could not copy the public job URL');
+    }
+  };
 
   // ── job create / edit ──
   const openJobModal = (editing) => {
     setJobForm(editing
       ? {
-          title: editing.title, department: editing.department?._id || '',
-          location: editing.location, employmentType: editing.employmentType,
-          openings: editing.openings, description: editing.description || '',
+          title: editing.title,
+          department: editing.department?._id || '',
+          location: editing.location,
+          employmentType: editing.employmentType,
+          openings: editing.openings,
+          description: editing.description || '',
+          publicationStatus: editing.publicationStatus || 'DRAFT',
+          applicationDeadline: isoDate(editing.applicationDeadline),
+          publicSalaryVisible: Boolean(editing.publicSalaryVisible),
         }
       : emptyJobForm);
     setJobModal({
@@ -257,6 +308,9 @@ const RecruitmentPage = () => {
       const payload = {
         ...jobForm,
         openings: Number(jobForm.openings) || 1,
+        applicationDeadline: jobForm.applicationDeadline
+          ? new Date(`${jobForm.applicationDeadline}T23:59:59.999`).toISOString()
+          : null,
       };
       let createdJob = null;
 
@@ -439,6 +493,13 @@ const RecruitmentPage = () => {
                   }`}>
                     {selected.status}
                   </span>
+                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                    selected.publicationStatus === 'PUBLISHED'
+                      ? 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300'
+                      : 'border-slate-700 bg-slate-800/60 text-slate-400'
+                  }`}>
+                    {enumLabel(selected.publicationStatus || 'DRAFT')}
+                  </span>
                   {selected.sourceRequisitionNumber && (
                     <span className="inline-flex items-center gap-1 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[10px] font-semibold text-indigo-300">
                       <BadgeCheck className="h-3 w-3" /> {selected.sourceRequisitionNumber}
@@ -450,12 +511,59 @@ const RecruitmentPage = () => {
                   {selected.department?.name ? ` · ${selected.department.name}` : ''}
                 </div>
               </div>
+              {selected.publicationStatus === 'PUBLISHED' && publicJobUrl(selected) && (
+                <>
+                  <button
+                    type="button"
+                    className="btn-ghost gap-1.5 text-xs"
+                    onClick={() => copyPublicJobUrl(selected)}
+                    title="Copy public job URL"
+                  >
+                    {copiedJobCode === selected.jobCode
+                      ? <Check className="h-3.5 w-3.5 text-emerald-300" />
+                      : <Copy className="h-3.5 w-3.5" />}
+                    {copiedJobCode === selected.jobCode ? 'Copied' : 'Copy public link'}
+                  </button>
+                  <a
+                    className="btn-ghost gap-1.5 text-xs"
+                    href={publicJobUrl(selected)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" /> Open public job
+                  </a>
+                </>
+              )}
               <button className="btn-primary" onClick={() => setCandModal(true)} disabled={selected.status !== 'OPEN'}>+ Add Candidate</button>
               <button className="btn-ghost text-xs" onClick={() => openJobModal(selected)}>Edit Job</button>
               <button className="btn-ghost text-xs" onClick={toggleJobStatus}>
                 {selected.status === 'OPEN' ? 'Close Job' : 'Reopen Job'}
               </button>
             </div>
+
+            {selected.publicationStatus === 'PUBLISHED' && (
+              <div className={`mt-4 rounded-lg border px-3 py-2 text-xs ${
+                careerCompany?.careerPortalEnabled
+                  ? 'border-indigo-500/25 bg-indigo-500/10 text-indigo-200'
+                  : 'border-amber-500/25 bg-amber-500/10 text-amber-200'
+              }`}>
+                <div className="flex items-center gap-2">
+                  <Globe2 className="h-4 w-4 shrink-0" />
+                  {careerCompany?.careerPortalEnabled ? (
+                    <span className="min-w-0 truncate">
+                      Public URL: {publicJobUrl(selected) || 'Career URL is being prepared'}
+                    </span>
+                  ) : (
+                    <span>
+                      This job is published, but the company career portal is disabled.{' '}
+                      <Link to="/app/company" className="font-semibold underline">
+                        Open company settings
+                      </Link>
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
 
             {selected.sourceRequisition && (
               <div className="mt-4 grid gap-3 border-t border-slate-800 pt-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -703,6 +811,70 @@ const RecruitmentPage = () => {
               />
               <p className="mt-1 text-right text-[10px] text-slate-500">{jobForm.description.length}/2000</p>
             </div>
+
+            {jobModal.editing && (
+              <section className="rounded-xl border border-indigo-500/25 bg-indigo-500/5 p-4">
+                <div className="flex items-center gap-2">
+                  <Globe2 className="h-4 w-4 text-indigo-300" />
+                  <h3 className="text-sm font-semibold text-slate-200">Public career publication</h3>
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  Job code {jobModal.editing.jobCode || 'is being prepared'}. Publishing never changes the operational OPEN/CLOSED status.
+                </p>
+
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="label">Publication status</label>
+                    <select
+                      className="input"
+                      value={jobForm.publicationStatus}
+                      onChange={(event) => setJobForm((form) => ({
+                        ...form,
+                        publicationStatus: event.target.value,
+                      }))}
+                    >
+                      <option value="DRAFT">Draft</option>
+                      <option value="PUBLISHED">Published</option>
+                      <option value="PAUSED">Paused</option>
+                      <option value="ARCHIVED">Archived</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">Application deadline</label>
+                    <input
+                      type="date"
+                      className="input"
+                      value={jobForm.applicationDeadline}
+                      min={jobForm.publicationStatus === 'PUBLISHED' ? minimumDeadline : undefined}
+                      onChange={(event) => setJobForm((form) => ({
+                        ...form,
+                        applicationDeadline: event.target.value,
+                      }))}
+                    />
+                    <p className="mt-1 text-[10px] text-slate-500">Optional. Published jobs expire after this date.</p>
+                  </div>
+                </div>
+
+                <label className="mt-4 flex items-start gap-2 text-xs text-slate-300">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 rounded border-slate-600 bg-slate-900 text-indigo-500"
+                    checked={jobForm.publicSalaryVisible}
+                    onChange={(event) => setJobForm((form) => ({
+                      ...form,
+                      publicSalaryVisible: event.target.checked,
+                    }))}
+                  />
+                  Show the approved salary range on the public job page when salary data exists
+                </label>
+
+                {jobForm.publicationStatus === 'PUBLISHED' && jobModal.editing.status !== 'OPEN' && (
+                  <p className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                    Reopen this job before publishing it.
+                  </p>
+                )}
+              </section>
+            )}
 
             <div className="flex flex-col-reverse gap-2 border-t border-slate-800 pt-4 sm:flex-row sm:items-center sm:justify-end">
               {jobModal.requisition && (

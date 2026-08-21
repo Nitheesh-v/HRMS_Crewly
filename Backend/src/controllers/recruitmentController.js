@@ -17,6 +17,7 @@ import { ROLES } from '../utils/constants.js';
 import { sendMail, welcomeEmail } from '../utils/mailer.js';
 import { notifyUser } from '../utils/notify.js';
 import Subscription from '../models/Subscription.js';
+import { nextJobCode } from '../utils/careerPortalIdentifiers.js';
 
 // GET /api/recruitment/jobs
 export const listJobs = asyncHandler(async (req, res) => {
@@ -35,24 +36,119 @@ export const listJobs = asyncHandler(async (req, res) => {
 
 // POST /api/recruitment/jobs
 export const createJob = asyncHandler(async (req, res) => {
-  const { title, department, location, employmentType, openings, description } = req.body;
+  // Data from frontend - requests from frontend
+  const {
+    title,
+    department,
+    location,
+    employmentType,
+    openings,
+    description,
+  } = req.body;
+
+  // DB Logic - DB logics
+  const jobCode = await nextJobCode(req.companyId);
   const job = await JobPosting.create({
     companyId: req.companyId,
-    title, department: department || null, location, employmentType, openings, description,
+    jobCode,
+    title,
+    department: department || null,
+    location,
+    employmentType,
+    openings,
+    description,
+    publicationStatus: 'DRAFT',
     createdBy: req.user._id,
   });
-  
-  return ApiResponse.created(res, { message: 'Job posted', data: job });
+
+  // Data to frontend - response to frontend
+  return ApiResponse.created(res, {
+    message: 'Job saved as a publication draft',
+    data: job,
+  });
 });
 
-// PATCH /api/recruitment/jobs/:id  (edit fields, or close/reopen)
+// PATCH /api/recruitment/jobs/:id  (edit, publish, pause, close or reopen)
 export const updateJob = asyncHandler(async (req, res) => {
-  const job = await JobPosting.findOne({ _id: req.params.id, companyId: req.companyId });
+  // Data from frontend - requests from frontend
+  const editableFields = [
+    'title',
+    'department',
+    'location',
+    'employmentType',
+    'openings',
+    'description',
+    'status',
+    'publicationStatus',
+    'applicationDeadline',
+    'publicSalaryVisible',
+  ];
+
+  // DB Logic - DB logics
+  const job = await JobPosting.findOne({
+    _id: req.params.id,
+    companyId: req.companyId,
+  });
+
   if (!job) throw ApiError.notFound('Job not found');
-  ['title', 'department', 'location', 'employmentType', 'openings', 'description', 'status']
-    .forEach((f) => { if (req.body[f] !== undefined) job[f] = req.body[f] || (f === 'department' ? null : req.body[f]); });
+
+  const nextOperationalStatus = req.body.status || job.status;
+  const publishingNow = req.body.publicationStatus === 'PUBLISHED';
+  const deadlineWasProvided = Object.hasOwn(
+    req.body,
+    'applicationDeadline'
+  );
+  const nextDeadline = deadlineWasProvided
+    ? req.body.applicationDeadline || null
+    : job.applicationDeadline;
+
+  if (
+    publishingNow &&
+    nextOperationalStatus !== 'OPEN'
+  ) {
+    throw ApiError.badRequest('Reopen the job before publishing it');
+  }
+
+  if (
+    publishingNow &&
+    nextDeadline &&
+    new Date(nextDeadline).getTime() <= Date.now()
+  ) {
+    throw ApiError.badRequest(
+      'Application deadline must be in the future when publishing'
+    );
+  }
+
+  editableFields.forEach((field) => {
+    if (req.body[field] === undefined) return;
+
+    if (field === 'department') {
+      job[field] = req.body[field] || null;
+      return;
+    }
+
+    if (field === 'applicationDeadline') {
+      job[field] = req.body[field] || null;
+      return;
+    }
+
+    job[field] = req.body[field];
+  });
+
+  if (
+    job.publicationStatus === 'PUBLISHED' &&
+    !job.publishedAt
+  ) {
+    job.publishedAt = new Date();
+  }
+
   await job.save();
-  return ApiResponse.success(res, { message: 'Job updated', data: job });
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, {
+    message: 'Job updated',
+    data: job,
+  });
 });
 
 // GET /api/recruitment/candidates?job=<id>&stage=

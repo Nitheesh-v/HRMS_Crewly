@@ -10,6 +10,7 @@ const [
   { default: JobPosting },
   { default: JobRequisition },
   { default: Notification },
+  { default: TenantSequence },
   { createJobFromRequisition },
   { createJobFromRequisitionRules },
 ] = await Promise.all([
@@ -18,6 +19,7 @@ const [
   import('../src/models/JobPosting.js'),
   import('../src/models/JobRequisition.js'),
   import('../src/models/Notification.js'),
+  import('../src/models/TenantSequence.js'),
   import('../src/services/requisitionService.js'),
   import('../src/validators/requisitionValidator.js'),
 ]);
@@ -133,6 +135,7 @@ test('approved requisition creates one linked job with tenant-owned approved dat
     [Department, 'findOne', Department.findOne],
     [AuditLog, 'create', AuditLog.create],
     [Notification, 'create', Notification.create],
+    [TenantSequence, 'findOneAndUpdate', TenantSequence.findOneAndUpdate],
   ];
 
   let requisitionFilter;
@@ -184,6 +187,7 @@ test('approved requisition creates one linked job with tenant-owned approved dat
       notificationPayload = payload;
       return payload;
     };
+    TenantSequence.findOneAndUpdate = async () => ({ value: 1 });
 
     const result = await createJobFromRequisition(
       requestContext({
@@ -203,6 +207,7 @@ test('approved requisition creates one linked job with tenant-owned approved dat
     });
     assert.equal(departmentFilter.companyId, 'company-a');
     assert.equal(jobPayload.companyId, 'company-a');
+    assert.equal(jobPayload.jobCode, 'JOB-0001');
     assert.equal(jobPayload.sourceRequisition, 'requisition-1');
     assert.equal(jobPayload.sourceRequisitionNumber, 'JR-0001');
     assert.equal(jobPayload.title, 'Software Engineer');
@@ -302,6 +307,7 @@ test('a lost atomic link race removes the unlinked job and returns conflict', as
     [JobPosting, 'create', JobPosting.create],
     [JobPosting, 'deleteOne', JobPosting.deleteOne],
     [Department, 'findOne', Department.findOne],
+    [TenantSequence, 'findOneAndUpdate', TenantSequence.findOneAndUpdate],
   ];
   let deleteFilter;
 
@@ -309,6 +315,7 @@ test('a lost atomic link race removes the unlinked job and returns conflict', as
     JobRequisition.findOne = async () => ({ ...approvedRequisition });
     JobPosting.findOne = () => selectableQuery(null);
     Department.findOne = () => selectableQuery({ _id: 'department-1' });
+    TenantSequence.findOneAndUpdate = async () => ({ value: 2 });
     JobPosting.create = async (payload) => ({
       _id: 'job-loser',
       title: payload.title,

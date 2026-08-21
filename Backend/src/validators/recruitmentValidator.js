@@ -1,6 +1,10 @@
 import { body, validationResult } from 'express-validator';
 import ApiError from '../utils/ApiError.js';
-import { EMPLOYMENT_TYPES, JOB_STATUS } from '../models/JobPosting.js';
+import {
+  EMPLOYMENT_TYPES,
+  JOB_PUBLICATION_STATUSES,
+  JOB_STATUS,
+} from '../models/JobPosting.js';
 import { CANDIDATE_STAGES, OFFER_STATUS } from '../models/Candidate.js';
 
 const validate = (req, _res, next) => {
@@ -29,6 +33,19 @@ export const updateJobRules = [
   body('openings').optional({ values: 'falsy' }).isInt({ min: 1, max: 500 }).withMessage('Openings must be 1–500'),
   body('description').optional().trim().isLength({ max: 2000 }),
   body('status').optional({ values: 'falsy' }).isIn(JOB_STATUS).withMessage('Invalid job status'),
+  body('publicationStatus')
+    .optional({ values: 'falsy' })
+    .isIn(JOB_PUBLICATION_STATUSES)
+    .withMessage('Invalid job publication status'),
+  body('applicationDeadline')
+    .optional({ values: 'falsy', nullable: true })
+    .isISO8601()
+    .withMessage('Application deadline must be a valid date'),
+  body('publicSalaryVisible')
+    .optional()
+    .isBoolean()
+    .withMessage('Public salary visibility must be true or false')
+    .toBoolean(),
   validate,
 ];
 

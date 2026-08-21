@@ -26,6 +26,7 @@ import superAdminRoutes from "./superAdminRoutes.js";
 import rolePermissionRoutes from "./rolePermissionRoutes.js";
 import auditRoutes from "./auditRoutes.js";
 import securityRoutes from "./securityRoutes.js";
+import publicCareerRoutes from "./publicCareerRoutes.js";
 
 const router = Router();
 
@@ -36,6 +37,10 @@ router.get("/health", (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+// Public career reads are intentionally mounted before authenticated
+// tenant middleware. This router contains its own rate limiting and validation.
+router.use("/public/careers", publicCareerRoutes);
 
 // Records mutation activity after the response finishes.
 router.use(auditTrail);

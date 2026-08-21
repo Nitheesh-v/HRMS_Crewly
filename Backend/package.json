@@ -9,6 +9,7 @@
     "seed": "node src/seed.js",
     "test:requisition-approval": "MONGO_URI=mongodb://127.0.0.1:27017/crewly_test node --test test/requisitionApproval.test.js",
     "test:requisition-job": "MONGO_URI=mongodb://127.0.0.1:27017/crewly_test node --test test/requisitionJobCreation.test.js",
+    "test:career": "MONGO_URI=mongodb://127.0.0.1:27017/crewly_test node --test test/publicCareerPortal.test.js",
     "test:rms": "MONGO_URI=mongodb://127.0.0.1:27017/crewly_test node --test test/requisitionApproval.test.js test/requisitionJobCreation.test.js"
   },
   "keywords": [],

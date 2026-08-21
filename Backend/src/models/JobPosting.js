@@ -11,12 +11,25 @@ export const EMPLOYMENT_TYPES = [
   'TEMPORARY',
 ];
 export const JOB_STATUS = ['OPEN', 'CLOSED'];
+export const JOB_PUBLICATION_STATUSES = [
+  'DRAFT',
+  'PUBLISHED',
+  'PAUSED',
+  'ARCHIVED',
+];
 export const JOB_WORK_MODES = ['ONSITE', 'HYBRID', 'REMOTE'];
 export const JOB_EXPERIENCE_LEVELS = ['FRESHER', 'EXPERIENCED'];
 
 const jobPostingSchema = new mongoose.Schema(
   {
     companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true, index: true },
+    jobCode: {
+      type: String,
+      uppercase: true,
+      trim: true,
+      maxlength: 30,
+      default: '',
+    },
     title: { type: String, required: [true, 'Job title is required'], trim: true, minlength: 2, maxlength: 120 },
     department: { type: mongoose.Schema.Types.ObjectId, ref: 'Department', default: null },
     location: { type: String, trim: true, maxlength: 80, default: 'On-site' },
@@ -66,6 +79,26 @@ const jobPostingSchema = new mongoose.Schema(
       maxlength: 30,
       default: '',
     },
+    publicationStatus: {
+      type: String,
+      enum: JOB_PUBLICATION_STATUSES,
+      default: 'DRAFT',
+      index: true,
+    },
+    publishedAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+    applicationDeadline: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+    publicSalaryVisible: {
+      type: Boolean,
+      default: false,
+    },
     status: { type: String, enum: JOB_STATUS, default: 'OPEN' },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
@@ -81,5 +114,20 @@ jobPostingSchema.index(
     },
   }
 );
+jobPostingSchema.index(
+  { companyId: 1, jobCode: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      jobCode: { $gt: '' },
+    },
+  }
+);
+jobPostingSchema.index({
+  companyId: 1,
+  publicationStatus: 1,
+  status: 1,
+  publishedAt: -1,
+});
 
 export default mongoose.model('JobPosting', jobPostingSchema);
