@@ -149,3 +149,34 @@ export const submitRequisitionRules = [
     .withMessage('Submission comment must be 500 characters or fewer'),
   validate,
 ];
+
+export const approveRequisitionRules = [
+  body('comment')
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage('Approval comment must be 500 characters or fewer'),
+  validate,
+];
+
+export const rejectRequisitionRules = [
+  body('comment')
+    .trim()
+    .notEmpty()
+    .withMessage('A rejection reason is required')
+    .bail()
+    .isLength({ max: 500 })
+    .withMessage('Rejection reason must be 500 characters or fewer'),
+  validate,
+];
+
+export const sendBackRequisitionRules = [
+  body('comment')
+    .trim()
+    .notEmpty()
+    .withMessage('A send-back comment is required')
+    .bail()
+    .isLength({ max: 500 })
+    .withMessage('Send-back comment must be 500 characters or fewer'),
+  validate,
+];

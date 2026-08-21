@@ -45,6 +45,13 @@ export const REQUISITION_HIRING_REASONS = [
   'OTHER',
 ];
 
+export const REQUISITION_REVIEW_DECISIONS = [
+  '',
+  'APPROVED',
+  'REJECTED',
+  'SENT_BACK',
+];
+
 const historySchema = new mongoose.Schema(
   {
     action: {
@@ -228,6 +235,28 @@ const jobRequisitionSchema = new mongoose.Schema(
     submittedAt: {
       type: Date,
       default: null,
+    },
+    latestReview: {
+      decision: {
+        type: String,
+        enum: REQUISITION_REVIEW_DECISIONS,
+        default: '',
+      },
+      reviewedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null,
+      },
+      reviewedAt: {
+        type: Date,
+        default: null,
+      },
+      comment: {
+        type: String,
+        default: '',
+        trim: true,
+        maxlength: 500,
+      },
     },
     lastModifiedBy: {
       type: mongoose.Schema.Types.ObjectId,

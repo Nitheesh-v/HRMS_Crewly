@@ -23,6 +23,7 @@ import {
   X,
 } from 'lucide-react';
 import useAuth from '../../hooks/useAuth.jsx';
+import usePermission from '../../hooks/usePermission.js';
 import requisitionService from '../../services/requisitionService.js';
 import { ROLES } from '../../utils/roles.js';
 
@@ -245,8 +246,14 @@ const RequisitionCard = ({ requisition, onView, onEdit, onSubmit, canManage }) =
 
 const RequisitionsPage = () => {
   const { user } = useAuth();
+  const { hasAnyPermission } = usePermission();
   const isFullAccess = fullAccessRoles.includes(user?.role);
   const canCreate = creatorRoles.includes(user?.role);
+  const canReview = hasAnyPermission([
+    'REQUISITION_APPROVE',
+    'REQUISITION_REJECT',
+    'REQUISITION_SEND_BACK',
+  ]);
 
   const [requisitions, setRequisitions] = useState([]);
   const [summary, setSummary] = useState({});
@@ -466,9 +473,14 @@ const RequisitionsPage = () => {
             Existing jobs & candidate pipeline
           </Link>
         )}
-        <span className="cursor-not-allowed px-1 pb-3 text-slate-600" title="Phase 27.2">
-          HR approvals
-        </span>
+        {canReview && (
+          <Link
+            to="/app/recruitment/approvals"
+            className="px-1 pb-3 text-slate-400 transition hover:text-slate-200"
+          >
+            HR approvals
+          </Link>
+        )}
         <span className="cursor-not-allowed px-1 pb-3 text-slate-600" title="Later Phase 27 subphase">
           Analytics
         </span>

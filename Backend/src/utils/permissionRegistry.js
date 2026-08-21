@@ -39,6 +39,7 @@ export const ACTIONS = [
   "IMPORT",
   "MANAGE",
   "SUBMIT",
+  "SEND_BACK",
 ];
 
 const actions = (resource, actionList, scope = "ALL") =>
@@ -72,7 +73,15 @@ export const DEFAULT_PERMISSIONS = [
 
   ...actions("RECRUITMENT", ["READ", "CREATE", "UPDATE", "DELETE", "APPROVE"]),
 
-  ...actions("REQUISITION", ["READ", "CREATE", "UPDATE", "SUBMIT"]),
+  ...actions("REQUISITION", [
+    "READ",
+    "CREATE",
+    "UPDATE",
+    "SUBMIT",
+    "APPROVE",
+    "REJECT",
+    "SEND_BACK",
+  ]),
 
   ...actions("REQUISITION", ["READ", "UPDATE", "SUBMIT"], "SELF"),
 
@@ -234,6 +243,9 @@ export const DEFAULT_ROLE_MATRIX = {
     "REQUISITION_CREATE",
     "REQUISITION_UPDATE",
     "REQUISITION_SUBMIT",
+    "REQUISITION_APPROVE",
+    "REQUISITION_REJECT",
+    "REQUISITION_SEND_BACK",
 
     "CANDIDATE_READ",
     "CANDIDATE_CREATE",

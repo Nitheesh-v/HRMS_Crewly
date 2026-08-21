@@ -21,7 +21,10 @@ import {
   offerRules,
 } from '../validators/recruitmentValidator.js';
 import {
+  approveRequisitionRules,
   createRequisitionRules,
+  rejectRequisitionRules,
+  sendBackRequisitionRules,
   submitRequisitionRules,
   updateRequisitionRules,
 } from '../validators/requisitionValidator.js';
@@ -36,10 +39,13 @@ import {
   convertCandidate,
 } from '../controllers/recruitmentController.js';
 import {
+  requisitionApprove,
   requisitionCreate,
   requisitionDetail,
   requisitionList,
   requisitionOptions,
+  requisitionReject,
+  requisitionSendBack,
   requisitionSubmit,
   requisitionUpdate,
 } from '../controllers/requisitionController.js';
@@ -114,6 +120,31 @@ router.post(
   ]),
   submitRequisitionRules,
   requisitionSubmit
+);
+
+// Phase 27.2 — exact-permission HR decisions.
+router.post(
+  '/requisitions/:id/approve',
+  checkWriteAccess,
+  requirePermission('REQUISITION_APPROVE'),
+  approveRequisitionRules,
+  requisitionApprove
+);
+
+router.post(
+  '/requisitions/:id/reject',
+  checkWriteAccess,
+  requirePermission('REQUISITION_REJECT'),
+  rejectRequisitionRules,
+  requisitionReject
+);
+
+router.post(
+  '/requisitions/:id/send-back',
+  checkWriteAccess,
+  requirePermission('REQUISITION_SEND_BACK'),
+  sendBackRequisitionRules,
+  requisitionSendBack
 );
 
 router.get(

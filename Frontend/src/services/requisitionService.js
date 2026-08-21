@@ -49,6 +49,21 @@ const requisitionService = {
     api
       .post(`/recruitment/requisitions/${id}/submit`, { comment })
       .then(unwrap),
+
+  approve: (id, comment = '') =>
+    api
+      .post(`/recruitment/requisitions/${id}/approve`, { comment })
+      .then(unwrap),
+
+  reject: (id, comment) =>
+    api
+      .post(`/recruitment/requisitions/${id}/reject`, { comment })
+      .then(unwrap),
+
+  sendBack: (id, comment) =>
+    api
+      .post(`/recruitment/requisitions/${id}/send-back`, { comment })
+      .then(unwrap),
 };
 
 export default requisitionService;

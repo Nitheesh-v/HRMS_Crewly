@@ -9,7 +9,7 @@ import JobRequisition, {
 } from '../models/JobRequisition.js';
 import TenantSequence from '../models/TenantSequence.js';
 import ApiError from '../utils/ApiError.js';
-import { notifyRoles } from '../utils/notify.js';
+import { notifyRoles, notifyUser } from '../utils/notify.js';
 import { hasPermission } from '../utils/permissionService.js';
 import { recordAudit } from '../utils/securityauditService.js';
 
@@ -132,6 +132,15 @@ const requisitionSnapshot = (requisition) => ({
   requester: requisition.requester?._id || requisition.requester,
   status: requisition.status,
   submittedAt: requisition.submittedAt,
+  latestReview: {
+    decision: requisition.latestReview?.decision || '',
+    reviewedBy:
+      requisition.latestReview?.reviewedBy?._id ||
+      requisition.latestReview?.reviewedBy ||
+      null,
+    reviewedAt: requisition.latestReview?.reviewedAt || null,
+    comment: requisition.latestReview?.comment || '',
+  },
 });
 
 const changedFieldNames = (previous, next) =>
@@ -358,6 +367,7 @@ export const listRequisitions = async ({ companyId, user, query = {} }) => {
       .populate('department', 'name')
       .populate('requester', 'name role department')
       .populate('lastModifiedBy', 'name role')
+      .populate('latestReview.reviewedBy', 'name role')
       .sort({ updatedAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
@@ -401,6 +411,7 @@ export const getRequisition = async ({ companyId, user, requisitionId }) => {
     .populate('department', 'name')
     .populate('requester', 'name role department')
     .populate('lastModifiedBy', 'name role')
+    .populate('latestReview.reviewedBy', 'name role')
     .populate('history.actor', 'name role')
     .lean();
 
@@ -560,6 +571,16 @@ export const submitRequisition = async ({
   requisition.status = 'PENDING_HR';
   requisition.submittedAt = now;
   requisition.lastModifiedBy = req.user._id;
+
+  if (previousStatus === 'SENT_BACK') {
+    requisition.latestReview = {
+      decision: '',
+      reviewedBy: null,
+      reviewedAt: null,
+      comment: '',
+    };
+  }
+
   requisition.history.push(
     {
       action: 'REQUISITION_SUBMITTED',
@@ -604,7 +625,7 @@ export const submitRequisition = async ({
       type: 'RECRUITMENT',
       title: 'New requisition awaiting HR review',
       message: `${requisition.requisitionNumber} · ${requisition.position}`,
-      link: '/app/recruitment/requisitions',
+      link: '/app/recruitment/approvals',
     }
   );
 
@@ -614,3 +635,156 @@ export const submitRequisition = async ({
     requisitionId: requisition._id,
   });
 };
+
+const REVIEW_CONFIG = {
+  APPROVED: {
+    action: 'REQUISITION_APPROVED',
+    notificationTitle: 'Your requisition was approved',
+  },
+  REJECTED: {
+    action: 'REQUISITION_REJECTED',
+    notificationTitle: 'Your requisition was rejected',
+  },
+  SENT_BACK: {
+    action: 'REQUISITION_SENT_BACK',
+    notificationTitle: 'Changes requested on your requisition',
+  },
+};
+
+const reviewRequisition = async ({
+  req,
+  requisitionId,
+  decision,
+  comment = '',
+}) => {
+  const config = REVIEW_CONFIG[decision];
+  const normalizedComment = String(comment || '').trim();
+
+  if (!config) {
+    throw ApiError.badRequest('Invalid requisition review decision');
+  }
+
+  if (['REJECTED', 'SENT_BACK'].includes(decision) && !normalizedComment) {
+    throw ApiError.badRequest(
+      decision === 'REJECTED'
+        ? 'A rejection reason is required'
+        : 'A send-back comment is required'
+    );
+  }
+
+  const pending = await JobRequisition.findOne({
+    _id: requisitionId,
+    companyId: req.companyId,
+    status: 'PENDING_HR',
+  }).lean();
+
+  if (!pending) {
+    const tenantRequisition = await JobRequisition.findOne({
+      _id: requisitionId,
+      companyId: req.companyId,
+    })
+      .select('status')
+      .lean();
+
+    if (!tenantRequisition) {
+      throw ApiError.notFound('Requisition not found');
+    }
+
+    throw ApiError.conflict(
+      'This requisition is no longer pending HR review'
+    );
+  }
+
+  const now = new Date();
+  const historyEntry = {
+    action: config.action,
+    fromStatus: 'PENDING_HR',
+    toStatus: decision,
+    actor: req.user._id,
+    actorName: req.user.name,
+    actorRole: req.user.role,
+    comment: normalizedComment,
+    at: now,
+  };
+
+  const requisition = await JobRequisition.findOneAndUpdate(
+    {
+      _id: requisitionId,
+      companyId: req.companyId,
+      status: 'PENDING_HR',
+    },
+    {
+      $set: {
+        status: decision,
+        lastModifiedBy: req.user._id,
+        latestReview: {
+          decision,
+          reviewedBy: req.user._id,
+          reviewedAt: now,
+          comment: normalizedComment,
+        },
+      },
+      $push: { history: historyEntry },
+    },
+    { new: true, runValidators: true }
+  )
+    .populate('department', 'name')
+    .populate('requester', 'name role department')
+    .populate('lastModifiedBy', 'name role')
+    .populate('latestReview.reviewedBy', 'name role')
+    .populate('history.actor', 'name role');
+
+  if (!requisition) {
+    throw ApiError.conflict(
+      'Another reviewer has already decided this requisition'
+    );
+  }
+
+  await recordAudit({
+    req,
+    action: config.action,
+    companyId: req.companyId,
+    resource: 'JobRequisition',
+    resourceId: requisition._id,
+    targetUserId: pending.requester?._id || pending.requester,
+    previousValue: requisitionSnapshot(pending),
+    newValue: requisitionSnapshot(requisition),
+    metadata: {
+      decision,
+      comment: normalizedComment,
+      reviewerId: req.user._id,
+      reviewedAt: now,
+    },
+    critical: true,
+  });
+
+  const notificationMessage = [
+    `${requisition.requisitionNumber} · ${requisition.position}`,
+    normalizedComment,
+  ]
+    .filter(Boolean)
+    .join(' — ')
+    .slice(0, 300);
+
+  await notifyUser(
+    req.companyId,
+    pending.requester?._id || pending.requester,
+    {
+      type: 'RECRUITMENT',
+      title: config.notificationTitle,
+      message: notificationMessage,
+      link: '/app/recruitment/requisitions',
+    }
+  );
+
+  return requisition.toObject();
+};
+
+export const approveRequisition = (requestContext) =>
+  reviewRequisition({ ...requestContext, decision: 'APPROVED' });
+
+export const rejectRequisition = (requestContext) =>
+  reviewRequisition({ ...requestContext, decision: 'REJECTED' });
+
+export const sendBackRequisition = (requestContext) =>
+  reviewRequisition({ ...requestContext, decision: 'SENT_BACK' });

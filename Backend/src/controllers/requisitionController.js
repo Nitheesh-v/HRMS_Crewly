@@ -1,10 +1,13 @@
 import ApiResponse from '../utils/ApiResponse.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import {
+  approveRequisition,
   createRequisition,
   getRequisition,
   getRequisitionOptions,
   listRequisitions,
+  rejectRequisition,
+  sendBackRequisition,
   submitRequisition,
   updateRequisition,
 } from '../services/requisitionService.js';
@@ -121,6 +124,63 @@ export const requisitionSubmit = asyncHandler(async (req, res) => {
   // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: `${data.requisitionNumber} submitted to HR`,
+    data,
+  });
+});
+
+// POST /api/recruitment/requisitions/:id/approve
+export const requisitionApprove = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const requestContext = {
+    req,
+    requisitionId: req.params.id,
+    comment: req.body?.comment || '',
+  };
+
+  // DB Logic - DB logics
+  const data = await approveRequisition(requestContext);
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, {
+    message: `${data.requisitionNumber} approved`,
+    data,
+  });
+});
+
+// POST /api/recruitment/requisitions/:id/reject
+export const requisitionReject = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const requestContext = {
+    req,
+    requisitionId: req.params.id,
+    comment: req.body?.comment,
+  };
+
+  // DB Logic - DB logics
+  const data = await rejectRequisition(requestContext);
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, {
+    message: `${data.requisitionNumber} rejected`,
+    data,
+  });
+});
+
+// POST /api/recruitment/requisitions/:id/send-back
+export const requisitionSendBack = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const requestContext = {
+    req,
+    requisitionId: req.params.id,
+    comment: req.body?.comment,
+  };
+
+  // DB Logic - DB logics
+  const data = await sendBackRequisition(requestContext);
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, {
+    message: `${data.requisitionNumber} sent back for changes`,
     data,
   });
 });

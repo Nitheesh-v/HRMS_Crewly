@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "seed": "node src/seed.js"
+    "seed": "node src/seed.js",
+    "test:requisition-approval": "MONGO_URI=mongodb://127.0.0.1:27017/crewly_test node --test test/requisitionApproval.test.js"
   },
   "keywords": [],
   "author": "",

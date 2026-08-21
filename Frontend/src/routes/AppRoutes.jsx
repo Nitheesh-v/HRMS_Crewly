@@ -9,6 +9,7 @@ import AppLayout from "../layout/AppLayout.jsx";
 import SuperAdminLayout from "../layout/SuperAdminLayout.jsx";
 
 import RequireAuth from "./RequireAuth.jsx";
+import RequirePermission from "./RequirePermission.jsx";
 import RequireRole from "./RequireRole.jsx";
 
 import LandingPage from "../pages/landing/LandingPage.jsx";
@@ -41,6 +42,7 @@ import PayrollPage from "../pages/payroll/PayrollPage.jsx";
 import MyPayslipsPage from "../pages/payroll/MyPayslipsPage.jsx";
 
 import RecruitmentPage from "../pages/recruitment/RecruitmentPage.jsx";
+import RequisitionApprovalsPage from "../pages/recruitment/RequisitionApprovalsPage.jsx";
 import RequisitionsPage from "../pages/recruitment/RequisitionsPage.jsx";
 import ExitProcessPage from "../pages/exit/ExitProcessPage.jsx";
 
@@ -323,6 +325,23 @@ const AppRoutes = () => (
         element={
           <RequireRole roles={SENIORS}>
             <RequisitionsPage />
+          </RequireRole>
+        }
+      />
+
+      <Route
+        path="recruitment/approvals"
+        element={
+          <RequireRole roles={HR}>
+            <RequirePermission
+              any={[
+                "REQUISITION_APPROVE",
+                "REQUISITION_REJECT",
+                "REQUISITION_SEND_BACK",
+              ]}
+            >
+              <RequisitionApprovalsPage />
+            </RequirePermission>
           </RequireRole>
         }
       />
