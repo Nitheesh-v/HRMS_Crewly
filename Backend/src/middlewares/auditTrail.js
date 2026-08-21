@@ -31,6 +31,7 @@ const LABELS = [
   [/^POST \/api\/recruitment\/requisitions\/.*\/approve$/, 'Approved a job requisition'],
   [/^POST \/api\/recruitment\/requisitions\/.*\/reject$/, 'Rejected a job requisition'],
   [/^POST \/api\/recruitment\/requisitions\/.*\/send-back$/, 'Sent back a job requisition'],
+  [/^POST \/api\/recruitment\/requisitions\/.*\/create-job$/, 'Created a job from an approved requisition'],
   [/^POST \/api\/recruitment\/requisitions$/, 'Created a job requisition'],
   [/^PATCH \/api\/recruitment\/requisitions\//, 'Updated a job requisition'],
   [/^POST \/api\/recruitment\/jobs$/, 'Posted a job'],

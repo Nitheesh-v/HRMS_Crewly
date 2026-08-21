@@ -22,6 +22,7 @@ import {
 } from '../validators/recruitmentValidator.js';
 import {
   approveRequisitionRules,
+  createJobFromRequisitionRules,
   createRequisitionRules,
   rejectRequisitionRules,
   sendBackRequisitionRules,
@@ -41,6 +42,7 @@ import {
 import {
   requisitionApprove,
   requisitionCreate,
+  requisitionCreateJob,
   requisitionDetail,
   requisitionList,
   requisitionOptions,
@@ -145,6 +147,16 @@ router.post(
   requirePermission('REQUISITION_SEND_BACK'),
   sendBackRequisitionRules,
   requisitionSendBack
+);
+
+// Phase 27.3 — create one job from an approved requisition.
+router.post(
+  '/requisitions/:id/create-job',
+  checkWriteAccess,
+  requirePermission('RECRUITMENT_CREATE'),
+  checkUsageLimit('jobPostingsMonthly'),
+  createJobFromRequisitionRules,
+  requisitionCreateJob
 );
 
 router.get(

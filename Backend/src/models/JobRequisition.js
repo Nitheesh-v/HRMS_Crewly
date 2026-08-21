@@ -258,6 +258,21 @@ const jobRequisitionSchema = new mongoose.Schema(
         maxlength: 500,
       },
     },
+    jobPosting: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'JobPosting',
+      default: null,
+      index: true,
+    },
+    jobCreatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    jobCreatedAt: {
+      type: Date,
+      default: null,
+    },
     lastModifiedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

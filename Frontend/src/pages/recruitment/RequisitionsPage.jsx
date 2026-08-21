@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
   BriefcaseBusiness,
@@ -246,9 +246,11 @@ const RequisitionCard = ({ requisition, onView, onEdit, onSubmit, canManage }) =
 
 const RequisitionsPage = () => {
   const { user } = useAuth();
-  const { hasAnyPermission } = usePermission();
+  const navigate = useNavigate();
+  const { hasAnyPermission, hasPermission } = usePermission();
   const isFullAccess = fullAccessRoles.includes(user?.role);
   const canCreate = creatorRoles.includes(user?.role);
+  const canCreateJob = hasPermission('RECRUITMENT_CREATE');
   const canReview = hasAnyPermission([
     'REQUISITION_APPROVE',
     'REQUISITION_REJECT',
@@ -811,6 +813,26 @@ const RequisitionsPage = () => {
                 <StatusBadge status={detail.status} />
                 <span className={`text-xs font-semibold ${PRIORITY_STYLE[detail.priority]}`}>{enumLabel(detail.priority)} priority</span>
                 <span className="text-xs text-slate-500">Requested by {detail.requester?.name || detail.requesterName || 'Unknown'}</span>
+                {detail.status === 'APPROVED' && canCreateJob && (
+                  <div className="ml-auto">
+                    <button
+                      type="button"
+                      className="btn-primary gap-2 !px-3 !py-2 text-xs"
+                      onClick={() => {
+                        const jobId = detail.jobPosting?._id || detail.jobPosting;
+                        setDetail(null);
+                        navigate(
+                          jobId
+                            ? `/app/recruitment/legacy?job=${jobId}`
+                            : `/app/recruitment/legacy?requisition=${detail._id}`
+                        );
+                      }}
+                    >
+                      <BriefcaseBusiness className="h-3.5 w-3.5" />
+                      {detail.jobPosting ? 'Open created job' : 'Create job from approval'}
+                    </button>
+                  </div>
+                )}
                 {canManageRecord(detail) && ['DRAFT', 'SENT_BACK'].includes(detail.status) && (
                   <div className="ml-auto flex gap-2">
                     <button type="button" className="btn-ghost gap-2 !px-3 !py-2 text-xs" onClick={() => { setDetail(null); openEdit(detail); }}>

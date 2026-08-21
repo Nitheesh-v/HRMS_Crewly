@@ -1,4 +1,5 @@
 import Department from '../models/Department.js';
+import JobPosting from '../models/JobPosting.js';
 import JobRequisition, {
   REQUISITION_EMPLOYMENT_TYPES,
   REQUISITION_EXPERIENCE_LEVELS,
@@ -141,6 +142,10 @@ const requisitionSnapshot = (requisition) => ({
     reviewedAt: requisition.latestReview?.reviewedAt || null,
     comment: requisition.latestReview?.comment || '',
   },
+  jobPosting: requisition.jobPosting?._id || requisition.jobPosting || null,
+  jobCreatedBy:
+    requisition.jobCreatedBy?._id || requisition.jobCreatedBy || null,
+  jobCreatedAt: requisition.jobCreatedAt || null,
 });
 
 const changedFieldNames = (previous, next) =>
@@ -368,6 +373,8 @@ export const listRequisitions = async ({ companyId, user, query = {} }) => {
       .populate('requester', 'name role department')
       .populate('lastModifiedBy', 'name role')
       .populate('latestReview.reviewedBy', 'name role')
+      .populate('jobPosting', 'title status')
+      .populate('jobCreatedBy', 'name role')
       .sort({ updatedAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
@@ -412,6 +419,8 @@ export const getRequisition = async ({ companyId, user, requisitionId }) => {
     .populate('requester', 'name role department')
     .populate('lastModifiedBy', 'name role')
     .populate('latestReview.reviewedBy', 'name role')
+    .populate('jobPosting', 'title status')
+    .populate('jobCreatedBy', 'name role')
     .populate('history.actor', 'name role')
     .lean();
 
@@ -788,3 +797,191 @@ export const rejectRequisition = (requestContext) =>
 
 export const sendBackRequisition = (requestContext) =>
   reviewRequisition({ ...requestContext, decision: 'SENT_BACK' });
+
+const defaultJobDescription = (requisition) => {
+  const experience = requisition.experienceLevel === 'FRESHER'
+    ? 'Fresher'
+    : `${requisition.minExperience}–${requisition.maxExperience} years`;
+
+  return [
+    `${requisition.position} role${requisition.team ? ` for ${requisition.team}` : ''}.`,
+    requisition.requiredSkills?.length
+      ? `Required skills: ${requisition.requiredSkills.join(', ')}.`
+      : '',
+    requisition.preferredSkills?.length
+      ? `Preferred skills: ${requisition.preferredSkills.join(', ')}.`
+      : '',
+    `Experience: ${experience}.`,
+    requisition.hiringReasonDetails
+      ? `Hiring context: ${requisition.hiringReasonDetails}`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+    .slice(0, 2000);
+};
+
+export const createJobFromRequisition = async ({
+  req,
+  requisitionId,
+  payload = {},
+}) => {
+  const requisition = await JobRequisition.findOne({
+    _id: requisitionId,
+    companyId: req.companyId,
+  });
+
+  if (!requisition) {
+    throw ApiError.notFound('Requisition not found');
+  }
+
+  if (requisition.status !== 'APPROVED') {
+    throw ApiError.conflict(
+      'Only an approved requisition can be converted into a job'
+    );
+  }
+
+  if (requisition.jobPosting) {
+    throw ApiError.conflict(
+      'A job has already been created from this requisition'
+    );
+  }
+
+  const existingJob = await JobPosting.findOne({
+    companyId: req.companyId,
+    sourceRequisition: requisition._id,
+  }).select('_id');
+
+  if (existingJob) {
+    throw ApiError.conflict(
+      'A job has already been created from this requisition'
+    );
+  }
+
+  const department = await Department.findOne({
+    _id: requisition.department,
+    companyId: req.companyId,
+    status: { $ne: 'INACTIVE' },
+  }).select('_id');
+
+  if (!department) {
+    throw ApiError.badRequest(
+      'The approved requisition department is no longer available'
+    );
+  }
+
+  const now = new Date();
+  let job;
+
+  try {
+    job = await JobPosting.create({
+      companyId: req.companyId,
+      sourceRequisition: requisition._id,
+      sourceRequisitionNumber: requisition.requisitionNumber,
+      title: requisition.position,
+      department: department._id,
+      team: requisition.team,
+      location: requisition.location,
+      employmentType: requisition.employmentType,
+      openings: requisition.openings,
+      description:
+        String(payload.description || '').trim() ||
+        defaultJobDescription(requisition),
+      workMode: requisition.workMode,
+      experienceLevel: requisition.experienceLevel,
+      minExperience: requisition.minExperience,
+      maxExperience: requisition.maxExperience,
+      requiredSkills: requisition.requiredSkills,
+      preferredSkills: requisition.preferredSkills,
+      salaryMin: requisition.salaryMin,
+      salaryMax: requisition.salaryMax,
+      hiringBudget: requisition.hiringBudget,
+      hiringReason: requisition.hiringReason,
+      hiringReasonDetails: requisition.hiringReasonDetails,
+      priority: requisition.priority,
+      expectedJoiningDate: requisition.expectedJoiningDate,
+      status: 'OPEN',
+      createdBy: req.user._id,
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      throw ApiError.conflict(
+        'A job has already been created from this requisition'
+      );
+    }
+
+    throw error;
+  }
+
+  const linkedRequisition = await JobRequisition.findOneAndUpdate(
+    {
+      _id: requisition._id,
+      companyId: req.companyId,
+      status: 'APPROVED',
+      jobPosting: null,
+    },
+    {
+      $set: {
+        jobPosting: job._id,
+        jobCreatedBy: req.user._id,
+        jobCreatedAt: now,
+        lastModifiedBy: req.user._id,
+      },
+      $push: {
+        history: {
+          action: 'REQUISITION_JOB_CREATED',
+          fromStatus: 'APPROVED',
+          toStatus: 'APPROVED',
+          actor: req.user._id,
+          actorName: req.user.name,
+          actorRole: req.user.role,
+          comment: `Created job posting ${job.title}`,
+          at: now,
+        },
+      },
+    },
+    { new: true, runValidators: true }
+  );
+
+  if (!linkedRequisition) {
+    await JobPosting.deleteOne({
+      _id: job._id,
+      companyId: req.companyId,
+      sourceRequisition: requisition._id,
+    });
+
+    throw ApiError.conflict(
+      'Another HR user has already created a job from this requisition'
+    );
+  }
+
+  await recordAudit({
+    req,
+    action: 'REQUISITION_JOB_CREATED',
+    companyId: req.companyId,
+    resource: 'JobPosting',
+    resourceId: job._id,
+    targetUserId: requisition.requester,
+    previousValue: requisitionSnapshot(requisition),
+    newValue: requisitionSnapshot(linkedRequisition),
+    metadata: {
+      requisitionId: requisition._id,
+      requisitionNumber: requisition.requisitionNumber,
+      jobId: job._id,
+    },
+    statusCode: 201,
+    critical: true,
+  });
+
+  await notifyUser(req.companyId, requisition.requester, {
+    type: 'RECRUITMENT',
+    title: 'Job created from your approved requisition',
+    message: `${requisition.requisitionNumber} · ${job.title}`,
+    link: '/app/recruitment/requisitions',
+  });
+
+  await job.populate('department', 'name');
+  await job.populate('sourceRequisition', 'requisitionNumber position');
+
+  return job.toObject();
+};

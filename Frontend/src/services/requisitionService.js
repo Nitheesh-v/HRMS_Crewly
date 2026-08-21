@@ -64,6 +64,11 @@ const requisitionService = {
     api
       .post(`/recruitment/requisitions/${id}/send-back`, { comment })
       .then(unwrap),
+
+  createJob: (id, data = {}) =>
+    api
+      .post(`/recruitment/requisitions/${id}/create-job`, data)
+      .then(unwrap),
 };
 
 export default requisitionService;

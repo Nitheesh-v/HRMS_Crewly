@@ -2,6 +2,7 @@ import ApiResponse from '../utils/ApiResponse.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import {
   approveRequisition,
+  createJobFromRequisition,
   createRequisition,
   getRequisition,
   getRequisitionOptions,
@@ -181,6 +182,25 @@ export const requisitionSendBack = asyncHandler(async (req, res) => {
   // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: `${data.requisitionNumber} sent back for changes`,
+    data,
+  });
+});
+
+// POST /api/recruitment/requisitions/:id/create-job
+export const requisitionCreateJob = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const requestContext = {
+    req,
+    requisitionId: req.params.id,
+    payload: req.body || {},
+  };
+
+  // DB Logic - DB logics
+  const data = await createJobFromRequisition(requestContext);
+
+  // Data to frontend - response to frontend
+  return ApiResponse.created(res, {
+    message: `${data.title} job created from the approved requisition`,
     data,
   });
 });

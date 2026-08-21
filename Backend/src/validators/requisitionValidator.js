@@ -180,3 +180,12 @@ export const sendBackRequisitionRules = [
     .withMessage('Send-back comment must be 500 characters or fewer'),
   validate,
 ];
+
+export const createJobFromRequisitionRules = [
+  body('description')
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ max: 2000 })
+    .withMessage('Job description must be 2000 characters or fewer'),
+  validate,
+];

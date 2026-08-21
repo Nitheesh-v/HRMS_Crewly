@@ -1,9 +1,21 @@
-import { useCallback, useEffect, useState } from 'react';
-import api from '../../services/api';
-import recruitmentService from '../../services/recruitmentService';
-import Modal from '../../components/Modal';
-import useAuth from '../../hooks/useAuth';
-import { ROLES } from '../../utils/roles';
+/* eslint-disable react-hooks/set-state-in-effect */
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import {
+  BadgeCheck,
+  BriefcaseBusiness,
+  Building2,
+  CalendarDays,
+  FilePlus2,
+  Users,
+} from 'lucide-react';
+import Modal from '../../components/Modal.jsx';
+import useAuth from '../../hooks/useAuth.jsx';
+import usePermission from '../../hooks/usePermission.js';
+import api from '../../services/api.js';
+import recruitmentService from '../../services/recruitmentService.js';
+import requisitionService from '../../services/requisitionService.js';
+import { ROLES } from '../../utils/roles.js';
 
 
 
@@ -21,15 +33,67 @@ const OFFER_STYLE = {
   ACCEPTED: 'bg-crewly-green/10 text-crewly-green border border-crewly-green/40',
   DECLINED: 'bg-crewly-red/10 text-crewly-red border border-crewly-red/40',
 };
-const TYPE_LABEL = { FULL_TIME: 'Full Time', PART_TIME: 'Part Time', CONTRACT: 'Contract', INTERN: 'Internship' };
+const TYPE_LABEL = {
+  FULL_TIME: 'Full Time',
+  PART_TIME: 'Part Time',
+  CONTRACT: 'Contract',
+  INTERN: 'Internship',
+  TEMPORARY: 'Temporary',
+};
 
 const emptyJobForm = { title: '', department: '', location: 'On-site', employmentType: 'FULL_TIME', openings: 1, description: '' };
 const emptyCandForm = { name: '', email: '', phone: '', resumeLink: '', notes: '' };
 const isoDate = (d) => (d ? String(d).slice(0, 10) : '');
+const errText = (error) => error?.message || 'Something went wrong';
+const enumLabel = (value = '') =>
+  String(value)
+    .toLowerCase()
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+const moneyLabel = (value) =>
+  value === null || value === undefined
+    ? 'Not set'
+    : new Intl.NumberFormat('en-IN', {
+        style: 'currency',
+        currency: 'INR',
+        maximumFractionDigits: 0,
+      }).format(value);
+const dateLabel = (value) =>
+  value
+    ? new Intl.DateTimeFormat('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      }).format(new Date(value))
+    : 'Not set';
+const requisitionDescription = (requisition) => {
+  const experience = requisition.experienceLevel === 'FRESHER'
+    ? 'Fresher'
+    : `${requisition.minExperience}–${requisition.maxExperience} years`;
 
-export default function RecruitmentPage() {
+  return [
+    `${requisition.position} role${requisition.team ? ` for ${requisition.team}` : ''}.`,
+    requisition.requiredSkills?.length
+      ? `Required skills: ${requisition.requiredSkills.join(', ')}.`
+      : '',
+    requisition.preferredSkills?.length
+      ? `Preferred skills: ${requisition.preferredSkills.join(', ')}.`
+      : '',
+    `Experience: ${experience}.`,
+    requisition.hiringReasonDetails
+      ? `Hiring context: ${requisition.hiringReasonDetails}`
+      : '',
+  ].filter(Boolean).join('\n\n');
+};
+
+const RecruitmentPage = () => {
   const { user: me } = useAuth();
+  const { hasPermission } = usePermission();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const handledRequisition = useRef('');
   const isHR = [ROLES.COMPANY_ADMIN, ROLES.HR_MANAGER].includes(me?.role);
+  const canCreateJob = hasPermission('RECRUITMENT_CREATE');
 
   const [jobs, setJobs] = useState([]);
   const [selectedId, setSelectedId] = useState('');
@@ -38,7 +102,11 @@ export default function RecruitmentPage() {
   const [banner, setBanner] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const [jobModal, setJobModal] = useState({ open: false, editing: null });
+  const [jobModal, setJobModal] = useState({
+    open: false,
+    editing: null,
+    requisition: null,
+  });
   const [jobForm, setJobForm] = useState(emptyJobForm);
   const [candModal, setCandModal] = useState(false);
   const [candForm, setCandForm] = useState(emptyCandForm);
@@ -47,25 +115,41 @@ export default function RecruitmentPage() {
   const [convModal, setConvModal] = useState(null);   // { candidate, result }
   const [busy, setBusy] = useState(false);
 
-  const flash = (type, text) => { setBanner({ type, text }); setTimeout(() => setBanner(null), 5000); };
-  const errText = (err) => err?.response?.data?.message || err?.message || 'Something went wrong';
+  const flash = useCallback((type, text) => {
+    setBanner({ type, text });
+    window.setTimeout(() => setBanner(null), 5000);
+  }, []);
 
   const loadJobs = useCallback(async () => {
     try {
       const list = await recruitmentService.jobs();
       const arr = Array.isArray(list) ? list : [];
       setJobs(arr);
-      setSelectedId((cur) => cur || arr.find((j) => j.status === 'OPEN')?._id || arr[0]?._id || '');
-    } catch (err) { flash('error', errText(err)); } finally { setLoading(false); }
-  }, []);
+      setSelectedId((current) =>
+        current || arr.find((job) => job.status === 'OPEN')?._id || arr[0]?._id || ''
+      );
+      return arr;
+    } catch (error) {
+      flash('error', errText(error));
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  }, [flash]);
 
   const loadCandidates = useCallback(async () => {
-    if (!selectedId) { setCandidates([]); return; }
+    if (!selectedId) {
+      setCandidates([]);
+      return;
+    }
+
     try {
       const list = await recruitmentService.candidates(selectedId);
       setCandidates(Array.isArray(list) ? list : []);
-    } catch (err) { flash('error', errText(err)); }
-  }, [selectedId]);
+    } catch (error) {
+      flash('error', errText(error));
+    }
+  }, [flash, selectedId]);
 
   useEffect(() => { loadJobs(); }, [loadJobs]);
   useEffect(() => { loadCandidates(); }, [loadCandidates]);
@@ -78,7 +162,65 @@ export default function RecruitmentPage() {
     })();
   }, []);
 
-  const selected = jobs.find((j) => j._id === selectedId);
+  useEffect(() => {
+    const requestedJobId = searchParams.get('job');
+
+    if (requestedJobId && jobs.some((job) => job._id === requestedJobId)) {
+      setSelectedId(requestedJobId);
+    }
+  }, [jobs, searchParams]);
+
+  useEffect(() => {
+    const requisitionId = searchParams.get('requisition');
+
+    if (!requisitionId) {
+      handledRequisition.current = '';
+      return;
+    }
+
+    if (handledRequisition.current === requisitionId) return;
+    handledRequisition.current = requisitionId;
+
+    const loadApprovedRequisition = async () => {
+      try {
+        const requisition = await requisitionService.getById(requisitionId);
+        const linkedJobId = requisition.jobPosting?._id || requisition.jobPosting;
+
+        if (linkedJobId) {
+          flash('success', 'This approved requisition already has a job posting');
+          setSearchParams({ job: linkedJobId }, { replace: true });
+          return;
+        }
+
+        if (requisition.status !== 'APPROVED') {
+          flash('error', 'Only an approved requisition can create a job');
+          setSearchParams({}, { replace: true });
+          return;
+        }
+
+        setJobForm({
+          title: requisition.position,
+          department: requisition.department?._id || requisition.department || '',
+          location: requisition.location || '',
+          employmentType: requisition.employmentType || 'FULL_TIME',
+          openings: requisition.openings || 1,
+          description: requisitionDescription(requisition),
+        });
+        setJobModal({
+          open: true,
+          editing: null,
+          requisition,
+        });
+      } catch (error) {
+        flash('error', errText(error));
+        setSearchParams({}, { replace: true });
+      }
+    };
+
+    loadApprovedRequisition();
+  }, [flash, searchParams, setSearchParams]);
+
+  const selected = jobs.find((job) => job._id === selectedId);
 
   // ── job create / edit ──
   const openJobModal = (editing) => {
@@ -89,24 +231,64 @@ export default function RecruitmentPage() {
           openings: editing.openings, description: editing.description || '',
         }
       : emptyJobForm);
-    setJobModal({ open: true, editing: editing || null });
+    setJobModal({
+      open: true,
+      editing: editing || null,
+      requisition: null,
+    });
   };
 
-  const saveJob = async (e) => {
-    e.preventDefault();
+  const closeJobModal = () => {
+    if (busy) return;
+
+    const fromRequisition = Boolean(jobModal.requisition);
+    setJobModal({ open: false, editing: null, requisition: null });
+
+    if (fromRequisition) {
+      setSearchParams({}, { replace: true });
+    }
+  };
+
+  const saveJob = async (event) => {
+    event.preventDefault();
     setBusy(true);
+
     try {
-      const payload = { ...jobForm, openings: Number(jobForm.openings) || 1 };
+      const payload = {
+        ...jobForm,
+        openings: Number(jobForm.openings) || 1,
+      };
+      let createdJob = null;
+
       if (jobModal.editing) {
         await recruitmentService.updateJob(jobModal.editing._id, payload);
-        flash('success', 'Job updated ✅');
+        flash('success', 'Job updated');
+      } else if (jobModal.requisition) {
+        createdJob = await requisitionService.createJob(
+          jobModal.requisition._id,
+          { description: jobForm.description.trim() }
+        );
+        flash(
+          'success',
+          `${createdJob.title} created from ${jobModal.requisition.requisitionNumber}`
+        );
       } else {
-        await recruitmentService.createJob(payload);
-        flash('success', 'Job posted 🎉');
+        createdJob = await recruitmentService.createJob(payload);
+        flash('success', 'Job posted');
       }
-      setJobModal({ open: false, editing: null });
-      loadJobs();
-    } catch (err) { flash('error', errText(err)); } finally { setBusy(false); }
+
+      setJobModal({ open: false, editing: null, requisition: null });
+      await loadJobs();
+
+      if (createdJob?._id) {
+        setSelectedId(createdJob._id);
+        setSearchParams({ job: createdJob._id }, { replace: true });
+      }
+    } catch (error) {
+      flash('error', errText(error));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const toggleJobStatus = async () => {
@@ -177,14 +359,44 @@ export default function RecruitmentPage() {
   }
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex items-center justify-between">
+    <div className="space-y-5">
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-xl font-bold">🧑‍💼 Recruitment</h1>
-          <p className="text-sm text-crewly-dim">Jobs → pipeline → offer → employee. The full hiring loop.</p>
+          <div className="flex items-center gap-2 text-sm font-medium text-indigo-300">
+            <BriefcaseBusiness className="h-4 w-4" /> Recruitment workspace
+          </div>
+          <h1 className="mt-1 text-2xl font-bold text-slate-100">Jobs and hiring pipeline</h1>
+          <p className="mt-1 text-sm text-slate-400">
+            Create traceable jobs from approved requisitions and manage candidates.
+          </p>
         </div>
-        <button className="btn-primary" onClick={() => openJobModal(null)}>+ Post Job</button>
-      </div>
+        {canCreateJob && (
+          <button className="btn-primary gap-2" onClick={() => openJobModal(null)}>
+            <FilePlus2 className="h-4 w-4" /> Post standalone job
+          </button>
+        )}
+      </header>
+
+      <nav className="flex gap-6 overflow-x-auto border-b border-slate-800 text-sm">
+        <Link
+          to="/app/recruitment/requisitions"
+          className="px-1 pb-3 text-slate-400 transition hover:text-slate-200"
+        >
+          Requisitions
+        </Link>
+        <Link
+          to="/app/recruitment/approvals"
+          className="px-1 pb-3 text-slate-400 transition hover:text-slate-200"
+        >
+          HR approvals
+        </Link>
+        <span className="border-b-2 border-indigo-400 px-1 pb-3 font-semibold text-indigo-300">
+          Jobs & candidate pipeline
+        </span>
+        <span className="cursor-not-allowed px-1 pb-3 text-slate-600" title="Later Phase 27 subphase">
+          Analytics
+        </span>
+      </nav>
 
       {banner && (
         <div className={`card px-4 py-3 text-sm ${banner.type === 'error' ? 'text-crewly-red' : 'text-crewly-green'}`}>{banner.text}</div>
@@ -215,22 +427,85 @@ export default function RecruitmentPage() {
       {/* selected job header */}
       {selected && (
         <>
-          <div className="card p-4 flex flex-wrap items-center gap-3">
-            <div className="flex-1">
-              <div className="font-semibold">{selected.title}</div>
-              <div className="text-xs text-crewly-dim">
-                {TYPE_LABEL[selected.employmentType]} · {selected.location} · {selected.openings} opening(s)
-                {selected.department?.name ? ` · ${selected.department.name}` : ''}
+          <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-semibold text-slate-100">{selected.title}</p>
+                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                    selected.status === 'OPEN'
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                      : 'border-rose-500/30 bg-rose-500/10 text-rose-300'
+                  }`}>
+                    {selected.status}
+                  </span>
+                  {selected.sourceRequisitionNumber && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[10px] font-semibold text-indigo-300">
+                      <BadgeCheck className="h-3 w-3" /> {selected.sourceRequisitionNumber}
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1 text-xs text-slate-400">
+                  {TYPE_LABEL[selected.employmentType]} · {selected.location} · {selected.openings} opening(s)
+                  {selected.department?.name ? ` · ${selected.department.name}` : ''}
+                </div>
               </div>
+              <button className="btn-primary" onClick={() => setCandModal(true)} disabled={selected.status !== 'OPEN'}>+ Add Candidate</button>
+              <button className="btn-ghost text-xs" onClick={() => openJobModal(selected)}>Edit Job</button>
+              <button className="btn-ghost text-xs" onClick={toggleJobStatus}>
+                {selected.status === 'OPEN' ? 'Close Job' : 'Reopen Job'}
+              </button>
             </div>
-            <button className="btn-primary" onClick={() => setCandModal(true)} disabled={selected.status !== 'OPEN'}>+ Add Candidate</button>
-            <button className="btn-ghost text-xs" onClick={() => openJobModal(selected)}>✏️ Edit Job</button>
-            <button className="btn-ghost text-xs" onClick={toggleJobStatus}>
-              {selected.status === 'OPEN' ? '🔒 Close Job' : '🔓 Reopen Job'}
-            </button>
+
+            {selected.sourceRequisition && (
+              <div className="mt-4 grid gap-3 border-t border-slate-800 pt-4 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-lg bg-slate-950/50 p-3">
+                  <p className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-slate-500">
+                    <Building2 className="h-3 w-3" /> Team / work mode
+                  </p>
+                  <p className="mt-1 text-xs text-slate-200">
+                    {selected.team || 'No team'} · {enumLabel(selected.workMode)}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-slate-950/50 p-3">
+                  <p className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-slate-500">
+                    <Users className="h-3 w-3" /> Experience
+                  </p>
+                  <p className="mt-1 text-xs text-slate-200">
+                    {selected.experienceLevel === 'FRESHER'
+                      ? 'Fresher'
+                      : `${selected.minExperience}–${selected.maxExperience} years`}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-slate-950/50 p-3">
+                  <p className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-slate-500">
+                    Salary range
+                  </p>
+                  <p className="mt-1 text-xs text-slate-200">
+                    {moneyLabel(selected.salaryMin)} – {moneyLabel(selected.salaryMax)}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-slate-950/50 p-3">
+                  <p className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-slate-500">
+                    <CalendarDays className="h-3 w-3" /> Expected joining
+                  </p>
+                  <p className="mt-1 text-xs text-slate-200">{dateLabel(selected.expectedJoiningDate)}</p>
+                </div>
+                <div className="sm:col-span-2 xl:col-span-4">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-500">Approved skills</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {(selected.requiredSkills || []).map((skill) => (
+                      <span key={skill} className="rounded-full bg-indigo-500/10 px-2 py-1 text-[11px] text-indigo-300">
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* pipeline board */}
+          {/* Candidate pipeline board remains unchanged until Phase 27.8. */}
           <div className="flex gap-3 overflow-x-auto pb-2">
             {STAGES.map(({ key, label, dot }) => {
               const list = candidates.filter((c) => c.stage === key);
@@ -278,47 +553,174 @@ export default function RecruitmentPage() {
         </>
       )}
 
-      {/* ── job modal ── */}
+      {/* Job create/edit modal. Approved requisition fields stay read-only. */}
       {jobModal.open && (
-        <Modal onClose={() => setJobModal({ open: false, editing: null })}
-          title={jobModal.editing ? `✏️ Edit Job` : '📌 Post a Job'}>
-          <form onSubmit={saveJob} className="space-y-3">
+        <Modal
+          onClose={closeJobModal}
+          wide={Boolean(jobModal.requisition)}
+          title={
+            jobModal.editing
+              ? 'Edit job'
+              : jobModal.requisition
+                ? `Create job from ${jobModal.requisition.requisitionNumber}`
+                : 'Post a standalone job'
+          }
+        >
+          <form onSubmit={saveJob} className="space-y-5">
+            {jobModal.requisition ? (
+              <>
+                <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-4">
+                  <p className="flex items-center gap-2 text-sm font-semibold text-emerald-300">
+                    <BadgeCheck className="h-4 w-4" /> Approved hiring requirement
+                  </p>
+                  <p className="mt-1 text-xs text-emerald-200/70">
+                    Approved headcount, department, skills, salary, and work arrangement will be copied to the job and remain linked to this requisition.
+                  </p>
+                </div>
+
+                <section>
+                  <h3 className="mb-3 text-sm font-semibold text-slate-200">
+                    {jobModal.requisition.position}
+                  </h3>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {[
+                      ['Department', jobModal.requisition.department?.name || 'Unavailable'],
+                      ['Team', jobModal.requisition.team || 'Not set'],
+                      ['Openings', String(jobModal.requisition.openings)],
+                      ['Employment', TYPE_LABEL[jobModal.requisition.employmentType]],
+                      ['Experience', jobModal.requisition.experienceLevel === 'FRESHER' ? 'Fresher' : `${jobModal.requisition.minExperience}–${jobModal.requisition.maxExperience} years`],
+                      ['Work mode', enumLabel(jobModal.requisition.workMode)],
+                      ['Location', jobModal.requisition.location],
+                      ['Expected joining', dateLabel(jobModal.requisition.expectedJoiningDate)],
+                    ].map(([label, value]) => (
+                      <div key={label} className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
+                        <p className="text-[10px] uppercase tracking-wide text-slate-500">{label}</p>
+                        <p className="mt-1 text-xs text-slate-200">{value || 'Not set'}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+                    <p className="text-xs font-semibold text-slate-300">Approved skills</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {(jobModal.requisition.requiredSkills || []).map((skill) => (
+                        <span key={skill} className="rounded-full bg-indigo-500/10 px-2.5 py-1 text-xs text-indigo-300">
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                    {(jobModal.requisition.preferredSkills || []).length > 0 && (
+                      <>
+                        <p className="mt-4 text-[10px] uppercase tracking-wide text-slate-500">Preferred</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {jobModal.requisition.preferredSkills.map((skill) => (
+                            <span key={skill} className="rounded-full bg-sky-500/10 px-2.5 py-1 text-xs text-sky-300">
+                              {skill}
+                            </span>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+                    <p className="text-xs font-semibold text-slate-300">Approved budget</p>
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <div>
+                        <p className="text-[10px] uppercase text-slate-500">Salary min</p>
+                        <p className="mt-1 text-xs text-slate-200">{moneyLabel(jobModal.requisition.salaryMin)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase text-slate-500">Salary max</p>
+                        <p className="mt-1 text-xs text-slate-200">{moneyLabel(jobModal.requisition.salaryMax)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase text-slate-500">Hiring budget</p>
+                        <p className="mt-1 text-xs text-slate-200">{moneyLabel(jobModal.requisition.hiringBudget)}</p>
+                      </div>
+                    </div>
+                    <p className="mt-4 text-[10px] uppercase text-slate-500">Business reason</p>
+                    <p className="mt-1 text-xs text-slate-300">
+                      {enumLabel(jobModal.requisition.hiringReason)}
+                      {jobModal.requisition.hiringReasonDetails
+                        ? ` — ${jobModal.requisition.hiringReasonDetails}`
+                        : ''}
+                    </p>
+                  </div>
+                </section>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="label">Job Title *</label>
+                  <input
+                    className="input"
+                    value={jobForm.title}
+                    onChange={(event) => setJobForm((form) => ({ ...form, title: event.target.value }))}
+                    required
+                    minLength={3}
+                    maxLength={120}
+                    placeholder="Associate DevOps Engineer"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">Department</label>
+                    <select className="input" value={jobForm.department} onChange={(event) => setJobForm((form) => ({ ...form, department: event.target.value }))}>
+                      <option value="">— None —</option>
+                      {departments.map((department) => <option key={department._id} value={department._id}>{department.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">Employment Type</label>
+                    <select className="input" value={jobForm.employmentType} onChange={(event) => setJobForm((form) => ({ ...form, employmentType: event.target.value }))}>
+                      {Object.entries(TYPE_LABEL).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">Location</label>
+                    <input className="input" value={jobForm.location} onChange={(event) => setJobForm((form) => ({ ...form, location: event.target.value }))} placeholder="Chennai / Remote" />
+                  </div>
+                  <div>
+                    <label className="label">Openings</label>
+                    <input className="input" type="number" min="1" max="500" value={jobForm.openings} onChange={(event) => setJobForm((form) => ({ ...form, openings: event.target.value }))} />
+                  </div>
+                </div>
+              </>
+            )}
+
             <div>
-              <label className="label">Job Title *</label>
-              <input className="input" value={jobForm.title} onChange={(e) => setJobForm((f) => ({ ...f, title: e.target.value }))}
-                required minLength={3} placeholder="Associate DevOps Engineer" />
+              <label className="label">
+                {jobModal.requisition ? 'Job description and responsibilities' : 'Description'}
+              </label>
+              <textarea
+                className="input min-h-32"
+                maxLength={2000}
+                value={jobForm.description}
+                onChange={(event) => setJobForm((form) => ({ ...form, description: event.target.value }))}
+                placeholder="Describe responsibilities, outcomes, and role expectations"
+              />
+              <p className="mt-1 text-right text-[10px] text-slate-500">{jobForm.description.length}/2000</p>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="label">Department</label>
-                <select className="input" value={jobForm.department} onChange={(e) => setJobForm((f) => ({ ...f, department: e.target.value }))}>
-                  <option value="">— None —</option>
-                  {departments.map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="label">Employment Type</label>
-                <select className="input" value={jobForm.employmentType} onChange={(e) => setJobForm((f) => ({ ...f, employmentType: e.target.value }))}>
-                  {Object.entries(TYPE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="label">Location</label>
-                <input className="input" value={jobForm.location} onChange={(e) => setJobForm((f) => ({ ...f, location: e.target.value }))} placeholder="Coimbatore / Remote" />
-              </div>
-              <div>
-                <label className="label">Openings</label>
-                <input className="input" type="number" min="1" value={jobForm.openings} onChange={(e) => setJobForm((f) => ({ ...f, openings: e.target.value }))} />
-              </div>
-            </div>
-            <div>
-              <label className="label">Description</label>
-              <textarea className="input" rows={3} value={jobForm.description} onChange={(e) => setJobForm((f) => ({ ...f, description: e.target.value }))}
-                placeholder="What will this person work on?" />
-            </div>
-            <div className="flex justify-end gap-2">
-              <button type="button" className="btn-ghost" onClick={() => setJobModal({ open: false, editing: null })}>Cancel</button>
-              <button type="submit" className="btn-primary" disabled={busy}>{busy ? 'Saving…' : jobModal.editing ? 'Save Job' : 'Post Job'}</button>
+
+            <div className="flex flex-col-reverse gap-2 border-t border-slate-800 pt-4 sm:flex-row sm:items-center sm:justify-end">
+              {jobModal.requisition && (
+                <p className="text-xs text-slate-500 sm:mr-auto">
+                  Creating this job is recorded once and cannot be repeated for the same requisition.
+                </p>
+              )}
+              <button type="button" className="btn-ghost" onClick={closeJobModal} disabled={busy}>Cancel</button>
+              <button type="submit" className="btn-primary gap-2" disabled={busy}>
+                <BriefcaseBusiness className="h-4 w-4" />
+                {busy
+                  ? 'Saving…'
+                  : jobModal.editing
+                    ? 'Save Job'
+                    : jobModal.requisition
+                      ? 'Create open job'
+                      : 'Post Job'}
+              </button>
             </div>
           </form>
         </Modal>
@@ -452,4 +854,6 @@ export default function RecruitmentPage() {
       )}
     </div>
   );
-}
+};
+
+export default RecruitmentPage;

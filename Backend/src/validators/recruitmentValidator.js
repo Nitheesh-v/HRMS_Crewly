@@ -12,7 +12,7 @@ const validate = (req, _res, next) => {
 };
 
 export const createJobRules = [
-  body('title').trim().notEmpty().withMessage('Job title is required').isLength({ min: 3, max: 100 }).withMessage('Title must be 3–100 characters'),
+  body('title').trim().notEmpty().withMessage('Job title is required').isLength({ min: 3, max: 120 }).withMessage('Title must be 3–120 characters'),
   body('department').optional({ values: 'falsy' }).isMongoId().withMessage('Invalid department'),
   body('location').optional({ values: 'falsy' }).trim().isLength({ max: 80 }),
   body('employmentType').optional({ values: 'falsy' }).isIn(EMPLOYMENT_TYPES).withMessage('Invalid employment type'),
@@ -22,7 +22,7 @@ export const createJobRules = [
 ];
 
 export const updateJobRules = [
-  body('title').optional({ values: 'falsy' }).trim().isLength({ min: 3, max: 100 }),
+  body('title').optional({ values: 'falsy' }).trim().isLength({ min: 3, max: 120 }),
   body('department').optional({ values: 'falsy' }).isMongoId().withMessage('Invalid department'),
   body('location').optional({ values: 'falsy' }).trim().isLength({ max: 80 }),
   body('employmentType').optional({ values: 'falsy' }).isIn(EMPLOYMENT_TYPES).withMessage('Invalid employment type'),
