@@ -21,7 +21,11 @@ export const nextJobCode = async (companyId) => {
         $inc: { value: 1 },
         $setOnInsert: { companyId, key: 'JOB_POSTING' },
       },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      {
+        upsert: true,
+        returnDocument: 'after',
+        setDefaultsOnInsert: true,
+      }
     );
   } catch (error) {
     if (error.code !== 11000) throw error;
@@ -29,7 +33,7 @@ export const nextJobCode = async (companyId) => {
     sequence = await TenantSequence.findOneAndUpdate(
       { companyId, key: 'JOB_POSTING' },
       { $inc: { value: 1 } },
-      { new: true }
+      { returnDocument: 'after' }
     );
   }
 
@@ -46,7 +50,11 @@ const reserveJobCodeRange = async (companyId, count) => {
         $inc: { value: count },
         $setOnInsert: { companyId, key: 'JOB_POSTING' },
       },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      {
+        upsert: true,
+        returnDocument: 'after',
+        setDefaultsOnInsert: true,
+      }
     );
   } catch (error) {
     if (error.code !== 11000) throw error;
@@ -54,7 +62,7 @@ const reserveJobCodeRange = async (companyId, count) => {
     sequence = await TenantSequence.findOneAndUpdate(
       { companyId, key: 'JOB_POSTING' },
       { $inc: { value: count } },
-      { new: true }
+      { returnDocument: 'after' }
     );
   }
 
@@ -96,7 +104,7 @@ const claimCareerSlug = async ({ company, usedSlugs }) => {
           ],
         },
         { $set: { careerSlug } },
-        { new: true, runValidators: true }
+        { returnDocument: 'after', runValidators: true }
       ).select('_id');
 
       return Boolean(updated);

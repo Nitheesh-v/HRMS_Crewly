@@ -673,6 +673,30 @@ test('candidate inbox search and detail always include authenticated company sco
   }
 });
 
+test('candidate startup backfill enables Mongoose update-pipeline mode', async () => {
+  const restore = restorable(
+    [Candidate, 'find'],
+    [Candidate, 'updateMany']
+  );
+  let pipelineOptions;
+
+  try {
+    Candidate.find = () => leanQuery([]);
+    Candidate.updateMany = async (_filter, update, options = {}) => {
+      if (Array.isArray(update)) pipelineOptions = options;
+      return { modifiedCount: 0 };
+    };
+
+    const identifiers = await import('../src/utils/candidateIdentifiers.js');
+    const result = await identifiers.ensureCandidateIdentifiers();
+
+    assert.deepEqual(pipelineOptions, { updatePipeline: true });
+    assert.equal(result.applicationDatesBackfilled, 0);
+  } finally {
+    restore();
+  }
+});
+
 test('candidate RBAC, private retrieval and race-safe identifiers stay locked to exact boundaries', async () => {
   assert.ok(
     permissionRegistry.DEFAULT_ROLE_MATRIX.COMPANY_ADMIN.includes(

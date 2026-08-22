@@ -11,7 +11,11 @@ const updateSequence = async ({ companyId, update }) => {
         ...update,
         $setOnInsert: { companyId, key: SEQUENCE_KEY },
       },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      {
+        upsert: true,
+        returnDocument: 'after',
+        setDefaultsOnInsert: true,
+      }
     );
   } catch (error) {
     if (error.code !== 11000) throw error;
@@ -19,7 +23,7 @@ const updateSequence = async ({ companyId, update }) => {
     return TenantSequence.findOneAndUpdate(
       { companyId, key: SEQUENCE_KEY },
       update,
-      { new: true }
+      { returnDocument: 'after' }
     );
   }
 };
@@ -151,7 +155,8 @@ export const ensureCandidateIdentifiers = async () => {
             applicationDate: { $ifNull: ['$createdAt', '$$NOW'] },
           },
         },
-      ]
+      ],
+      { updatePipeline: true }
     ),
   ]);
 
