@@ -7,12 +7,12 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "seed": "node src/seed.js",
-    "test:requisition-approval": "MONGO_URI=mongodb://127.0.0.1:27017/crewly_test node --test test/requisitionApproval.test.js",
-    "test:requisition-job": "MONGO_URI=mongodb://127.0.0.1:27017/crewly_test node --test test/requisitionJobCreation.test.js",
-    "test:career": "MONGO_URI=mongodb://127.0.0.1:27017/crewly_test node --test test/publicCareerPortal.test.js",
-    "test:candidates": "MONGO_URI=mongodb://127.0.0.1:27017/crewly_test node --test test/candidateApplication.test.js",
-    "test:resume-parsing": "MONGO_URI=mongodb://127.0.0.1:27017/crewly_test node --test test/resumeParsing.test.js",
-    "test:rms": "MONGO_URI=mongodb://127.0.0.1:27017/crewly_test node --test test/requisitionApproval.test.js test/requisitionJobCreation.test.js"
+    "test:requisition-approval": "node --test test/requisitionApproval.test.js",
+    "test:requisition-job": "node --test test/requisitionJobCreation.test.js",
+    "test:career": "node --test test/publicCareerPortal.test.js",
+    "test:candidates": "node --test test/candidateApplication.test.js",
+    "test:resume-parsing": "node --test test/resumeParsing.test.js",
+    "test:rms": "node --test test/requisitionApproval.test.js test/requisitionJobCreation.test.js"
   },
   "keywords": [],
   "author": "",
