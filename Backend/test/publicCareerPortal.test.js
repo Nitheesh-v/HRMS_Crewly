@@ -159,6 +159,11 @@ test('public mappers expose only positive company and job whitelists', () => {
     recruiter: 'recruiter-private-id',
     sourceRequisition: 'requisition-private-id',
     hiringBudget: 500000,
+    hiringReasonDetails: 'Confidential replacement plan',
+    description:
+      'Public role summary.\n\n' +
+      'Hiring context: Confidential replacement plan\nDo not disclose.\n\n' +
+      'Build reliable systems.',
     internalNotes: 'private',
     applicants: ['candidate-private-id'],
     requiredSkills: ['Node.js'],
@@ -204,6 +209,12 @@ test('public mappers expose only positive company and job whitelists', () => {
   assert.equal(job.jobCode, 'JOB-0001');
   assert.equal(job.department, 'Engineering');
   assert.equal(job.numberOfOpenings, 2);
+  assert.equal(
+    job.description,
+    'Public role summary.\n\nBuild reliable systems.'
+  );
+  assert.equal(job.description.includes('Hiring context'), false);
+  assert.equal(job.description.includes('Do not disclose'), false);
   assert.equal(job.salary, undefined);
   assert.equal(job._id, undefined);
   assert.equal(job.companyId, undefined);

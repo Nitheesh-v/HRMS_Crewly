@@ -96,9 +96,6 @@ const requisitionDescription = (requisition) => {
       ? `Preferred skills: ${requisition.preferredSkills.join(', ')}.`
       : '',
     `Experience: ${experience}.`,
-    requisition.hiringReasonDetails
-      ? `Hiring context: ${requisition.hiringReasonDetails}`
-      : '',
   ].filter(Boolean).join('\n\n');
 };
 

@@ -67,12 +67,22 @@ const hasPublicSalary = (job) =>
     (value) => value !== null && value !== undefined
   );
 
+const publicDescription = (value) =>
+  String(value || '')
+    .split(/\r?\n\s*\r?\n/)
+    .map((section) => section.trim())
+    .filter(
+      (section) =>
+        section && !/^hiring context\s*:/i.test(section)
+    )
+    .join('\n\n');
+
 export const publicJobFields = (job) => ({
   jobCode: job.jobCode,
   title: job.title,
   department: job.department?.name || '',
   team: job.team || '',
-  description: job.description || '',
+  description: publicDescription(job.description),
   requiredSkills: Array.isArray(job.requiredSkills)
     ? job.requiredSkills
     : [],
