@@ -2,16 +2,26 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   BriefcaseBusiness,
+  CheckSquare2,
   FileCheck2,
   Filter,
   Inbox,
   MapPin,
   Search,
+  Send,
   UserRoundSearch,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import Modal from '../../components/Modal.jsx';
+import usePermission from '../../hooks/usePermission.js';
 import candidateService from '../../services/candidateService.js';
 import recruitmentService from '../../services/recruitmentService.js';
+import {
+  DISPOSITION_PIPELINE_STAGES,
+  PIPELINE_STAGES,
+  PIPELINE_STAGE_LABELS,
+  POSITIVE_PIPELINE_STAGES,
+} from './pipelineStages.js';
 
 const EMPTY_FILTERS = {
   search: '',
@@ -34,7 +44,26 @@ const dateLabel = (value) =>
 const sourceLabel = (value) =>
   value === 'CAREER_PAGE' ? 'Career page' : 'Internal';
 
+const BULK_ACTION_LABELS = {
+  SHORTLIST: 'Shortlist',
+  REJECT: 'Reject',
+  HOLD: 'Put on hold',
+  MOVE_STAGE: 'Move to stage',
+  ASSIGN_RECRUITER: 'Assign recruiter',
+  ASSIGN_HIRING_MANAGER: 'Assign hiring manager',
+  SEND_EMAIL: 'Send status notification',
+};
+
+const EMPTY_BULK_FORM = {
+  action: 'SHORTLIST',
+  targetStage: '',
+  userId: '',
+  reason: '',
+};
+
 const CandidateInboxPage = () => {
+  const { hasPermission } = usePermission();
+  const canUpdateCandidates = hasPermission('CANDIDATE_UPDATE');
   const [draftFilters, setDraftFilters] = useState(EMPTY_FILTERS);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [page, setPage] = useState(1);
@@ -43,6 +72,16 @@ const CandidateInboxPage = () => {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [pipelineOptions, setPipelineOptions] = useState({
+    stages: PIPELINE_STAGES,
+    recruiters: [],
+    hiringManagers: [],
+  });
+  const [bulkModal, setBulkModal] = useState(false);
+  const [bulkForm, setBulkForm] = useState(EMPTY_BULK_FORM);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkResult, setBulkResult] = useState(null);
 
   useEffect(() => {
     document.title = 'Candidate inbox — Crewly HRMS';
@@ -50,7 +89,20 @@ const CandidateInboxPage = () => {
       .jobs()
       .then((result) => setJobs(Array.isArray(result) ? result : []))
       .catch(() => setJobs([]));
-  }, []);
+
+    if (canUpdateCandidates) {
+      candidateService
+        .pipelineOptions()
+        .then((result) => setPipelineOptions({
+          stages: Array.isArray(result.stages) ? result.stages : PIPELINE_STAGES,
+          recruiters: Array.isArray(result.recruiters) ? result.recruiters : [],
+          hiringManagers: Array.isArray(result.hiringManagers)
+            ? result.hiringManagers
+            : [],
+        }))
+        .catch(() => {});
+    }
+  }, [canUpdateCandidates]);
 
   const loadCandidates = useCallback(async () => {
     setLoading(true);
@@ -66,6 +118,7 @@ const CandidateInboxPage = () => {
       };
       const result = await candidateService.list(params);
       setCandidates(result.candidates);
+      setSelectedIds([]);
       setMeta({
         page: result.meta.page || page,
         pages: result.meta.pages || 1,
@@ -99,6 +152,80 @@ const CandidateInboxPage = () => {
     setFilters(EMPTY_FILTERS);
     setPage(1);
   };
+
+  const toggleCandidate = (candidateId) => {
+    setSelectedIds((current) =>
+      current.includes(candidateId)
+        ? current.filter((id) => id !== candidateId)
+        : [...current, candidateId]
+    );
+  };
+
+  const toggleAllCandidates = () => {
+    setSelectedIds((current) =>
+      current.length === candidates.length
+        ? []
+        : candidates.map((candidate) => candidate.id)
+    );
+  };
+
+  const openBulkActions = () => {
+    setBulkForm(EMPTY_BULK_FORM);
+    setBulkResult(null);
+    setBulkModal(true);
+  };
+
+  const runBulkAction = async (event) => {
+    event.preventDefault();
+    setBulkBusy(true);
+    setBulkResult(null);
+
+    try {
+      const result = await candidateService.bulkAction({
+        candidateIds: selectedIds,
+        action: bulkForm.action,
+        ...(bulkForm.targetStage ? { targetStage: bulkForm.targetStage } : {}),
+        ...(bulkForm.userId ? { userId: bulkForm.userId } : {}),
+        ...(bulkForm.reason.trim() ? { reason: bulkForm.reason.trim() } : {}),
+      });
+      setBulkResult(result);
+      if (!result.failed?.length) {
+        setSelectedIds([]);
+        await loadCandidates();
+      } else {
+        const failedIds = result.failed.map((item) => String(item.candidateId));
+        await loadCandidates();
+        setSelectedIds(
+          selectedIds.filter((id) => failedIds.includes(String(id)))
+        );
+      }
+    } catch (requestError) {
+      setBulkResult({
+        summary: { requested: selectedIds.length, succeeded: 0, failed: selectedIds.length },
+        failed: [{ message: requestError?.message || 'Bulk action could not be completed' }],
+      });
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const assignmentOptions = bulkForm.action === 'ASSIGN_RECRUITER'
+    ? pipelineOptions.recruiters
+    : pipelineOptions.hiringManagers;
+  const selectedCandidates = candidates.filter((candidate) =>
+    selectedIds.includes(candidate.id)
+  );
+  const bulkMoveNeedsReason = bulkForm.action === 'MOVE_STAGE' &&
+    selectedCandidates.some((candidate) => {
+      const currentIndex = POSITIVE_PIPELINE_STAGES.indexOf(
+        candidate.currentStage || candidate.stage
+      );
+      const targetIndex = POSITIVE_PIPELINE_STAGES.indexOf(bulkForm.targetStage);
+      return currentIndex >= 0 && targetIndex >= 0 && targetIndex < currentIndex;
+    });
+  const bulkReasonRequired = ['REJECT', 'HOLD'].includes(bulkForm.action) ||
+    DISPOSITION_PIPELINE_STAGES.includes(bulkForm.targetStage) ||
+    bulkMoveNeedsReason;
 
   return (
     <div className="space-y-5">
@@ -159,12 +286,9 @@ const CandidateInboxPage = () => {
           </select>
           <select className="input" name="stage" value={draftFilters.stage} onChange={updateFilter}>
             <option value="">All stages</option>
-            <option value="APPLIED">Applied</option>
-            <option value="SCREENING">Screening</option>
-            <option value="INTERVIEW">Interview</option>
-            <option value="OFFER">Offer</option>
-            <option value="HIRED">Hired</option>
-            <option value="REJECTED">Rejected</option>
+            {PIPELINE_STAGES.map((stage) => (
+              <option key={stage} value={stage}>{PIPELINE_STAGE_LABELS[stage]}</option>
+            ))}
           </select>
           <label>
             <span className="mb-1 block text-xs text-slate-500">Applied from</span>
@@ -187,6 +311,31 @@ const CandidateInboxPage = () => {
         </div>
       ) : null}
 
+      {canUpdateCandidates && candidates.length > 0 ? (
+        <div className="flex flex-col gap-3 rounded-2xl border border-indigo-500/20 bg-indigo-500/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <label className="flex items-center gap-3 text-sm text-slate-300">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-indigo-500"
+              checked={selectedIds.length === candidates.length}
+              onChange={toggleAllCandidates}
+            />
+            Select this page
+            <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-indigo-200">
+              {selectedIds.length} selected
+            </span>
+          </label>
+          <button
+            type="button"
+            className="btn-primary gap-2"
+            onClick={openBulkActions}
+            disabled={!selectedIds.length}
+          >
+            <CheckSquare2 className="h-4 w-4" /> Bulk actions
+          </button>
+        </div>
+      ) : null}
+
       {loading ? (
         <div className="grid gap-3">
           {[1, 2, 3].map((item) => <div key={item} className="h-28 animate-pulse rounded-2xl bg-slate-900" />)}
@@ -200,11 +349,27 @@ const CandidateInboxPage = () => {
       ) : (
         <div className="space-y-3">
           {candidates.map((candidate) => (
-            <Link
+            <div
               key={candidate.id}
-              to={`/app/recruitment/candidates/${candidate.candidateCode || candidate.id}`}
-              className="block rounded-2xl border border-slate-800 bg-slate-900 p-5 transition hover:border-indigo-500/40 hover:bg-slate-900/80"
+              className={`flex items-start gap-4 rounded-2xl border bg-slate-900 p-5 transition ${
+                selectedIds.includes(candidate.id)
+                  ? 'border-indigo-500/50'
+                  : 'border-slate-800'
+              }`}
             >
+              {canUpdateCandidates ? (
+                <input
+                  type="checkbox"
+                  aria-label={`Select ${candidate.name}`}
+                  className="mt-1 h-4 w-4 shrink-0 rounded border-slate-600 bg-slate-900 text-indigo-500"
+                  checked={selectedIds.includes(candidate.id)}
+                  onChange={() => toggleCandidate(candidate.id)}
+                />
+              ) : null}
+              <Link
+                to={`/app/recruitment/candidates/${candidate.candidateCode || candidate.id}`}
+                className="min-w-0 flex-1 hover:opacity-90"
+              >
               <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -213,7 +378,7 @@ const CandidateInboxPage = () => {
                       {candidate.candidateCode}
                     </span>
                     <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
-                      {candidate.stage === 'APPLIED' ? 'Applied' : candidate.stage}
+                      {PIPELINE_STAGE_LABELS[candidate.currentStage || candidate.stage] || candidate.stage}
                     </span>
                   </div>
                   <p className="mt-1 truncate text-sm text-slate-400">{candidate.email} · {candidate.phone || 'No phone'}</p>
@@ -247,7 +412,8 @@ const CandidateInboxPage = () => {
                   </div>
                 </div>
               </div>
-            </Link>
+              </Link>
+            </div>
           ))}
         </div>
       )}
@@ -258,6 +424,137 @@ const CandidateInboxPage = () => {
           <span className="text-slate-400">Page {meta.page} of {meta.pages}</span>
           <button className="btn-ghost" type="button" onClick={() => setPage((value) => Math.min(meta.pages, value + 1))} disabled={page >= meta.pages}>Next</button>
         </div>
+      ) : null}
+
+      {bulkModal ? (
+        <Modal
+          title={`Bulk candidate action · ${selectedIds.length} selected`}
+          onClose={() => !bulkBusy && setBulkModal(false)}
+        >
+          <form className="space-y-4" onSubmit={runBulkAction}>
+            <div>
+              <label className="label">Action</label>
+              <select
+                className="input"
+                value={bulkForm.action}
+                onChange={(event) => {
+                  setBulkForm({
+                    ...EMPTY_BULK_FORM,
+                    action: event.target.value,
+                  });
+                  setBulkResult(null);
+                }}
+              >
+                {Object.entries(BULK_ACTION_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </div>
+
+            {bulkForm.action === 'MOVE_STAGE' ? (
+              <div>
+                <label className="label">Target stage *</label>
+                <select
+                  className="input"
+                  value={bulkForm.targetStage}
+                  onChange={(event) => setBulkForm((current) => ({
+                    ...current,
+                    targetStage: event.target.value,
+                  }))}
+                  required
+                >
+                  <option value="">Choose a stage</option>
+                  {pipelineOptions.stages.map((stage) => (
+                    <option key={stage} value={stage}>{PIPELINE_STAGE_LABELS[stage]}</option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+
+            {['ASSIGN_RECRUITER', 'ASSIGN_HIRING_MANAGER'].includes(bulkForm.action) ? (
+              <div>
+                <label className="label">
+                  {bulkForm.action === 'ASSIGN_RECRUITER' ? 'Recruiter' : 'Hiring manager'} *
+                </label>
+                <select
+                  className="input"
+                  value={bulkForm.userId}
+                  onChange={(event) => setBulkForm((current) => ({
+                    ...current,
+                    userId: event.target.value,
+                  }))}
+                  required
+                >
+                  <option value="">Choose an eligible user</option>
+                  {assignmentOptions.map((user) => (
+                    <option key={user.id} value={user.id}>{user.name} · {user.role}</option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+
+            {['REJECT', 'HOLD', 'MOVE_STAGE'].includes(bulkForm.action) ? (
+              <div>
+                <label className="label">Common reason {bulkReasonRequired ? '*' : '(optional)'}</label>
+                <textarea
+                  className="input min-h-24"
+                  value={bulkForm.reason}
+                  onChange={(event) => setBulkForm((current) => ({
+                    ...current,
+                    reason: event.target.value,
+                  }))}
+                  required={bulkReasonRequired}
+                  maxLength={1000}
+                  placeholder="This reason is recorded separately for every selected candidate"
+                />
+                <p className="mt-1 text-right text-[10px] text-slate-500">{bulkForm.reason.length}/1000</p>
+              </div>
+            ) : null}
+
+            {bulkForm.action === 'SEND_EMAIL' ? (
+              <div className="flex items-start gap-3 rounded-xl border border-sky-500/20 bg-sky-500/10 p-4 text-sm text-sky-100">
+                <Send className="mt-0.5 h-4 w-4 shrink-0" />
+                Each candidate will receive Crewly's fixed application-status notification. No free-form HTML or body content is accepted.
+              </div>
+            ) : null}
+
+            {bulkResult ? (
+              <div className={`rounded-xl border p-4 text-sm ${
+                bulkResult.summary?.failed
+                  ? 'border-amber-500/25 bg-amber-500/10 text-amber-100'
+                  : 'border-emerald-500/25 bg-emerald-500/10 text-emerald-100'
+              }`}>
+                <p className="font-semibold">
+                  {bulkResult.summary?.succeeded || 0} succeeded · {bulkResult.summary?.failed || 0} failed
+                </p>
+                {bulkResult.failed?.length ? (
+                  <ul className="mt-2 space-y-1 text-xs">
+                    {bulkResult.failed.map((item, index) => (
+                      <li key={`${item.candidateId || 'request'}-${index}`}>
+                        {item.candidateCode ? `${item.candidateCode}: ` : ''}{item.message}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="flex justify-end gap-2 border-t border-slate-800 pt-4">
+              <button type="button" className="btn-ghost" onClick={() => setBulkModal(false)} disabled={bulkBusy}>Close</button>
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={
+                  bulkBusy ||
+                  !selectedIds.length ||
+                  (bulkReasonRequired && !bulkForm.reason.trim())
+                }
+              >
+                {bulkBusy ? 'Processing individually…' : 'Run bulk action'}
+              </button>
+            </div>
+          </form>
+        </Modal>
       ) : null}
     </div>
   );

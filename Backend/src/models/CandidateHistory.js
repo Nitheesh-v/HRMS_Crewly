@@ -10,6 +10,8 @@ export const CANDIDATE_HISTORY_ACTIONS = [
   'RESUME_REPROCESS_REQUESTED',
   'ATS_PROCESSED',
   'ATS_REPROCESSED',
+  'CANDIDATE_ASSIGNMENT_UPDATED',
+  'CANDIDATE_EMAIL_SENT',
 ];
 
 const candidateHistorySchema = new mongoose.Schema(
@@ -39,7 +41,13 @@ const candidateHistorySchema = new mongoose.Schema(
     },
     source: {
       type: String,
-      enum: ['CAREER_PAGE', 'INTERNAL', 'RESUME_PARSER', 'ATS_ENGINE'],
+      enum: [
+        'CAREER_PAGE',
+        'INTERNAL',
+        'RESUME_PARSER',
+        'ATS_ENGINE',
+        'PIPELINE',
+      ],
       default: 'CAREER_PAGE',
     },
     actorType: {

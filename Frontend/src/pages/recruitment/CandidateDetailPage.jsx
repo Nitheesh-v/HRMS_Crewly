@@ -5,12 +5,12 @@ import {
   ArrowLeft,
   BriefcaseBusiness,
   Building2,
-  CalendarDays,
   Clock3,
   Download,
   ExternalLink,
   FileSearch,
   FileText,
+  GitBranch,
   GraduationCap,
   Languages,
   Link2,
@@ -23,9 +23,16 @@ import {
   Wrench,
 } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
+import Modal from '../../components/Modal.jsx';
 import ATSAnalysisPanel from '../../components/recruitment/ATSAnalysisPanel.jsx';
 import usePermission from '../../hooks/usePermission.js';
 import candidateService from '../../services/candidateService.js';
+import {
+  DISPOSITION_PIPELINE_STAGES,
+  PIPELINE_STAGES,
+  PIPELINE_STAGE_LABELS,
+  POSITIVE_PIPELINE_STAGES,
+} from './pipelineStages.js';
 
 const dateLabel = (value) =>
   value
@@ -134,6 +141,9 @@ const timelineLabel = (action) =>
     RESUME_REPROCESS_REQUESTED: 'Resume reprocessing requested',
     ATS_PROCESSED: 'ATS analysis completed',
     ATS_REPROCESSED: 'ATS analysis recalculated',
+    STAGE_CHANGED: 'Pipeline stage changed',
+    CANDIDATE_ASSIGNMENT_UPDATED: 'Candidate assignment updated',
+    CANDIDATE_EMAIL_SENT: 'Status notification sent',
   })[action] || enumLabel(action);
 
 const ParserCollection = ({ title, items, renderItem }) => {
@@ -408,6 +418,7 @@ const ParsedResumePanel = ({
 const CandidateDetailPage = () => {
   const { candidateRef } = useParams();
   const { hasPermission } = usePermission();
+  const canUpdateCandidates = hasPermission('CANDIDATE_UPDATE');
   const [candidate, setCandidate] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -423,6 +434,22 @@ const CandidateDetailPage = () => {
   const [atsError, setAtsError] = useState('');
   const [atsReprocessBusy, setAtsReprocessBusy] = useState(false);
   const [previousATSEvaluation, setPreviousATSEvaluation] = useState('');
+  const [pipelineOptions, setPipelineOptions] = useState({ stages: PIPELINE_STAGES });
+  const [stageModal, setStageModal] = useState(false);
+  const [stageTarget, setStageTarget] = useState('');
+  const [stageReason, setStageReason] = useState('');
+  const [stageBusy, setStageBusy] = useState(false);
+  const [stageError, setStageError] = useState('');
+
+  useEffect(() => {
+    if (!canUpdateCandidates) return;
+    candidateService
+      .pipelineOptions()
+      .then((result) => setPipelineOptions({
+        stages: Array.isArray(result.stages) ? result.stages : PIPELINE_STAGES,
+      }))
+      .catch(() => {});
+  }, [canUpdateCandidates]);
 
   useEffect(() => {
     let active = true;
@@ -614,6 +641,42 @@ const CandidateDetailPage = () => {
     }
   };
 
+  const openStageModal = () => {
+    const currentStage = candidate?.overview?.currentStage || candidate?.overview?.stage;
+    setStageTarget(currentStage || 'APPLIED');
+    setStageReason('');
+    setStageError('');
+    setStageModal(true);
+  };
+
+  const stageReasonRequired = (() => {
+    const currentStage = candidate?.overview?.currentStage || candidate?.overview?.stage;
+    if (DISPOSITION_PIPELINE_STAGES.includes(stageTarget)) return true;
+    const currentIndex = POSITIVE_PIPELINE_STAGES.indexOf(currentStage);
+    const targetIndex = POSITIVE_PIPELINE_STAGES.indexOf(stageTarget);
+    return currentIndex >= 0 && targetIndex >= 0 && targetIndex < currentIndex;
+  })();
+
+  const updateCandidateStage = async (event) => {
+    event.preventDefault();
+    setStageBusy(true);
+    setStageError('');
+
+    try {
+      await candidateService.updateStage(candidate.id, {
+        stage: stageTarget,
+        reason: stageReason.trim(),
+      });
+      const refreshed = await candidateService.detail(candidateRef);
+      setCandidate(refreshed);
+      setStageModal(false);
+    } catch (requestError) {
+      setStageError(requestError?.message || 'Candidate stage could not be updated');
+    } finally {
+      setStageBusy(false);
+    }
+  };
+
   if (loading) {
     return <div className="h-96 animate-pulse rounded-2xl bg-slate-900" />;
   }
@@ -647,7 +710,7 @@ const CandidateDetailPage = () => {
             <div className="flex flex-wrap items-center gap-2">
               <p className="font-mono text-xs font-semibold text-indigo-300">{candidate.candidateCode}</p>
               <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
-                {enumLabel(candidate.overview.stage)}
+                {PIPELINE_STAGE_LABELS[candidate.overview.currentStage || candidate.overview.stage] || enumLabel(candidate.overview.stage)}
               </span>
               <span className="rounded-full border border-slate-700 bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300">
                 {candidate.overview.source === 'CAREER_PAGE' ? 'Career page' : 'Internal'}
@@ -754,25 +817,54 @@ const CandidateDetailPage = () => {
           />
 
           <Section icon={Clock3} title="Candidate timeline">
-            {candidate.history?.length ? (
-              <ol className="space-y-4">
-                {candidate.history.map((event, index) => (
-                  <li key={`${event.action}-${event.eventAt}-${index}`} className="flex gap-3">
-                    <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-indigo-400" />
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-slate-200">{timelineLabel(event.action)}</p>
+            {candidate.timeline?.length ? (
+              <ol className="relative space-y-0 before:absolute before:bottom-2 before:left-[5px] before:top-2 before:w-px before:bg-slate-800">
+                {candidate.timeline.map((event, index) => (
+                  <li key={`${event.action}-${event.eventAt}-${index}`} className="relative flex gap-4 pb-6 last:pb-0">
+                    <span className={`relative z-10 mt-1.5 h-3 w-3 shrink-0 rounded-full ring-4 ring-slate-900 ${
+                      event.type === 'STAGE_TRANSITION' ? 'bg-indigo-400' : 'bg-slate-500'
+                    }`} />
+                    <div className="min-w-0 flex-1 rounded-xl border border-slate-800 bg-slate-950/30 p-4">
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                        <p className="text-sm font-medium text-slate-200">{timelineLabel(event.action)}</p>
+                        <p className="shrink-0 text-xs text-slate-500">{dateLabel(event.eventAt)}</p>
+                      </div>
                       <p className="mt-1 text-xs text-slate-500">
-                        {dateLabel(event.eventAt)} · {event.actorType === 'TENANT_USER' ? 'Tenant user' : enumLabel(event.actorType)}
+                        {event.actor?.name || (event.actorType === 'TENANT_USER' ? 'Tenant user' : enumLabel(event.actorType))}
                       </p>
+                      {event.type === 'STAGE_TRANSITION' ? (
+                        <div className="mt-3 rounded-lg border border-indigo-500/20 bg-indigo-500/5 p-3">
+                          <p className="text-xs font-medium text-indigo-200">
+                            {PIPELINE_STAGE_LABELS[event.fromStage] || enumLabel(event.fromStage)}
+                            {' → '}
+                            {PIPELINE_STAGE_LABELS[event.toStage] || enumLabel(event.toStage)}
+                          </p>
+                          {event.reason ? (
+                            <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-5 text-slate-300">{event.reason}</p>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {event.metadata?.assignmentType ? (
+                        <p className="mt-2 text-xs text-slate-400">
+                          {event.metadata.assignmentType === 'assignedRecruiter'
+                            ? 'Recruiter'
+                            : 'Hiring manager'}: {event.metadata.assigneeName || 'Assigned user'}
+                        </p>
+                      ) : null}
+                      {event.metadata?.template ? (
+                        <p className="mt-2 text-xs text-slate-400">
+                          Standard status notification · {event.metadata.delivered ? 'Delivered' : 'Delivery failed'}
+                        </p>
+                      ) : null}
                       {event.metadata?.parserVersion ? (
-                        <p className="mt-1 text-xs text-slate-400">
+                        <p className="mt-2 text-xs text-slate-400">
                           Parser {event.metadata.parserVersion}
                           {event.metadata.status ? ` · ${enumLabel(event.metadata.status)}` : ''}
                           {event.metadata.attempt ? ` · Attempt ${event.metadata.attempt}` : ''}
                         </p>
                       ) : null}
                       {event.metadata?.engineVersion ? (
-                        <p className="mt-1 text-xs text-slate-400">
+                        <p className="mt-2 text-xs text-slate-400">
                           ATS engine {event.metadata.engineVersion}
                           {event.metadata.score !== undefined ? ` · Score ${event.metadata.score}` : ''}
                           {event.metadata.category ? ` · ${enumLabel(event.metadata.category)} match` : ''}
@@ -808,8 +900,19 @@ const CandidateDetailPage = () => {
             ) : <p className="text-sm text-slate-500">No secure resume is available.</p>}
           </Section>
 
-          <Section icon={CalendarDays} title="Application status">
-            <Value label="Current stage" value={enumLabel(candidate.overview.stage)} />
+          <Section icon={GitBranch} title="Pipeline controls">
+            <Value
+              label="Current stage"
+              value={PIPELINE_STAGE_LABELS[
+                candidate.overview.currentStage || candidate.overview.stage
+              ] || enumLabel(candidate.overview.stage)}
+            />
+            {canUpdateCandidates &&
+            (candidate.overview.currentStage || candidate.overview.stage) !== 'JOINED' ? (
+              <button type="button" className="btn-primary mt-3 w-full justify-center" onClick={openStageModal}>
+                Change stage
+              </button>
+            ) : null}
             <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/40 p-4">
               <p className="text-[10px] uppercase tracking-wide text-slate-500">ATS policy</p>
               <p className="mt-1.5 text-xs leading-5 text-slate-400">
@@ -817,8 +920,70 @@ const CandidateDetailPage = () => {
               </p>
             </div>
           </Section>
+
+          <Section icon={UserRound} title="Pipeline owners">
+            <div className="space-y-3">
+              <Value label="Assigned recruiter" value={candidate.assignments?.recruiter?.name} />
+              <Value label="Hiring manager" value={candidate.assignments?.hiringManager?.name} />
+            </div>
+          </Section>
         </aside>
       </div>
+
+      {stageModal ? (
+        <Modal title={`Change stage · ${candidate.overview.name}`} onClose={() => !stageBusy && setStageModal(false)}>
+          <form className="space-y-4" onSubmit={updateCandidateStage}>
+            <div>
+              <label className="label">Target stage</label>
+              <select
+                className="input"
+                value={stageTarget}
+                onChange={(event) => {
+                  setStageTarget(event.target.value);
+                  setStageError('');
+                }}
+              >
+                {pipelineOptions.stages.map((stage) => (
+                  <option key={stage} value={stage}>{PIPELINE_STAGE_LABELS[stage]}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label">Reason {stageReasonRequired ? '*' : '(optional)'}</label>
+              <textarea
+                className="input min-h-24"
+                value={stageReason}
+                onChange={(event) => setStageReason(event.target.value)}
+                required={stageReasonRequired}
+                maxLength={1000}
+                placeholder={
+                  stageReasonRequired
+                    ? 'Explain the disposition or why this candidate is being sent back'
+                    : 'Add context to the immutable candidate timeline'
+                }
+              />
+              <p className="mt-1 text-right text-[10px] text-slate-500">{stageReason.length}/1000</p>
+            </div>
+            {stageError ? (
+              <p role="alert" className="rounded-xl border border-rose-500/25 bg-rose-500/10 p-3 text-sm text-rose-200">{stageError}</p>
+            ) : null}
+            <div className="flex justify-end gap-2 border-t border-slate-800 pt-4">
+              <button type="button" className="btn-ghost" onClick={() => setStageModal(false)} disabled={stageBusy}>Cancel</button>
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={
+                  stageBusy ||
+                  stageTarget === (candidate.overview.currentStage || candidate.overview.stage) ||
+                  (stageReasonRequired && !stageReason.trim())
+                }
+              >
+                {stageBusy ? 'Saving…' : 'Confirm stage change'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
     </div>
   );
 };

@@ -50,6 +50,21 @@ const candidateService = {
     api
       .post(`/recruitment/candidates/${candidateRef}/ats-reprocess`, {})
       .then(unwrap),
+
+  pipelineOptions: () =>
+    api
+      .get('/recruitment/candidates/pipeline-options')
+      .then(unwrap),
+
+  updateStage: (candidateId, data) =>
+    api
+      .patch(`/recruitment/candidates/${candidateId}/stage`, data)
+      .then(unwrap),
+
+  bulkAction: (data) =>
+    api
+      .post('/recruitment/candidates/bulk-actions', data)
+      .then(unwrap),
 };
 
 export default candidateService;

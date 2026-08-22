@@ -15,6 +15,9 @@ import {
   ensureCandidateIdentifiers,
 } from './utils/candidateIdentifiers.js';
 import {
+  ensureCandidatePipelineStages,
+} from './utils/candidatePipelineMigration.js';
+import {
   recoverPendingResumeProcessing,
 } from './services/resumeProcessingDispatcher.js';
 import { recoverPendingATSMatching } from './services/atsDispatcher.js';
@@ -32,6 +35,9 @@ const startServer = async () => {
 
     // Phase 27.5 candidate identifiers and compatible legacy defaults.
     await ensureCandidateIdentifiers();
+
+    // Phase 27.8 normalizes the canonical pipeline stage without losing legacy data.
+    await ensureCandidatePipelineStages();
 
     // Phase 27.6 recovers persisted parser jobs; extraction stays background-only.
     await recoverPendingResumeProcessing();

@@ -19,6 +19,7 @@ import { notifyUser } from '../utils/notify.js';
 import Subscription from '../models/Subscription.js';
 import { nextJobCode } from '../utils/careerPortalIdentifiers.js';
 import { nextCandidateCode } from '../utils/candidateIdentifiers.js';
+import { transitionCandidateStage } from '../services/candidatePipelineService.js';
 
 const normalizedList = (value, maximum, itemLength) =>
   [...new Set(
@@ -214,7 +215,7 @@ export const updateJob = asyncHandler(async (req, res) => {
 export const listCandidates = asyncHandler(async (req, res) => {
   const filter = { companyId: req.companyId };
   if (req.query.job) filter.job = req.query.job;
-  if (req.query.stage) filter.stage = req.query.stage;
+  if (req.query.stage) filter.currentStage = req.query.stage;
   const candidates = await Candidate.find(filter).populate('job', 'title').sort('-createdAt');
   return ApiResponse.success(res, { message: 'Candidates fetched', data: candidates });
 });
@@ -254,26 +255,14 @@ export const addCandidate = asyncHandler(async (req, res) => {
   return ApiResponse.created(res, { message: 'Candidate added', data: candidate });
 });
 
-// PATCH /api/recruitment/candidates/:id/stage  { stage }
-export const updateStage = asyncHandler(async (req, res) => {
-  const candidate = await Candidate.findOne({ _id: req.params.id, companyId: req.companyId });
-  if (!candidate) throw ApiError.notFound('Candidate not found');
-
-  const { stage } = req.body;
-  if (stage === 'HIRED') {
-    throw ApiError.badRequest('Use the 🎉 Convert action to hire — it creates the employee account');
-  }
-  candidate.stage = stage;
-  await candidate.save();
-  return ApiResponse.success(res, { message: `Moved to ${stage}`, data: candidate });
-});
-
 // PATCH /api/recruitment/candidates/:id/offer
 // { offerStatus: SENT|ACCEPTED|DECLINED, offerSalary?, offerJoiningDate? }
 export const updateOffer = asyncHandler(async (req, res) => {
   const candidate = await Candidate.findOne({ _id: req.params.id, companyId: req.companyId });
   if (!candidate) throw ApiError.notFound('Candidate not found');
-  if (candidate.stage === 'HIRED') throw ApiError.badRequest('Candidate is already HIRED');
+  if (['JOINED', 'HIRED'].includes(candidate.currentStage || candidate.stage)) {
+    throw ApiError.badRequest('Candidate is already JOINED');
+  }
 
   const { offerStatus, offerSalary, offerJoiningDate } = req.body;
 
@@ -284,7 +273,6 @@ export const updateOffer = asyncHandler(async (req, res) => {
     candidate.offerSalary = offerSalary;
     candidate.offerJoiningDate = offerJoiningDate;
     candidate.offerStatus = 'SENT';
-    candidate.stage = 'OFFER'; // auto-advance
   } else if (['ACCEPTED', 'DECLINED'].includes(offerStatus)) {
     if (candidate.offerStatus !== 'SENT') {
       throw ApiError.badRequest('Send the offer first, then mark it accepted/declined');
@@ -295,6 +283,25 @@ export const updateOffer = asyncHandler(async (req, res) => {
   }
 
   await candidate.save();
+  const offerTargetStage = offerStatus === 'SENT' ? 'OFFER' : 'OFFER_ACCEPTED';
+  if (
+    ['SENT', 'ACCEPTED'].includes(offerStatus) &&
+    (candidate.currentStage || candidate.stage) !== offerTargetStage
+  ) {
+    const transition = await transitionCandidateStage({
+      companyId: req.companyId,
+      candidateId: candidate._id,
+      targetStage: offerTargetStage,
+      reason: req.body.reason,
+      actorId: req.user._id,
+      metadata: {
+        source: 'PIPELINE',
+        action: offerStatus === 'SENT' ? 'OFFER_SENT' : 'OFFER_ACCEPTED',
+      },
+    });
+    candidate.currentStage = transition.candidate.currentStage;
+    candidate.stage = transition.candidate.stage;
+  }
   return ApiResponse.success(res, { message: `Offer ${offerStatus.toLowerCase()}`, data: candidate });
 });
 
@@ -302,7 +309,10 @@ export const updateOffer = asyncHandler(async (req, res) => {
 export const convertCandidate = asyncHandler(async (req, res) => {
   const candidate = await Candidate.findOne({ _id: req.params.id, companyId: req.companyId }).populate('job');
   if (!candidate) throw ApiError.notFound('Candidate not found');
-  if (candidate.stage === 'HIRED' || candidate.convertedUser) {
+  if (
+    ['JOINED', 'HIRED'].includes(candidate.currentStage || candidate.stage) ||
+    candidate.convertedUser
+  ) {
     throw ApiError.conflict('This candidate is already converted to an employee');
   }
   if (candidate.offerStatus !== 'ACCEPTED') {
@@ -346,9 +356,15 @@ export const convertCandidate = asyncHandler(async (req, res) => {
     employeeCode,
   });
 
-  candidate.stage = 'HIRED';
   candidate.convertedUser = user._id;
   await candidate.save();
+  await transitionCandidateStage({
+    companyId: req.companyId,
+    candidateId: candidate._id,
+    targetStage: 'JOINED',
+    actorId: req.user._id,
+    metadata: { source: 'PIPELINE', action: 'EMPLOYEE_CONVERSION' },
+  });
 
   // Phase 8 📧🔔 hired: welcome notification + credentials email
   notifyUser(req.companyId, user._id, {

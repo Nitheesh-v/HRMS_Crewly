@@ -1,20 +1,18 @@
 // ─────────────────────────────────────────────────────────────
 // Candidate — a person in the hiring pipeline of one job.
-//   stage       : APPLIED → ATS_SCREENING → SCREENING → INTERVIEW → OFFER → HIRED / REJECTED
+//   currentStage: canonical Phase 27.8 pipeline stage
+//   stage       : synchronized compatibility mirror for earlier recruitment code
 //   offerStatus : NONE → SENT → ACCEPTED / DECLINED
 // Convert creates the employee User account and copies the link
 // into convertedUser (prevents double conversion).
 // ─────────────────────────────────────────────────────────────
 import mongoose from 'mongoose';
+import { PIPELINE_STAGES } from './CandidatePipelineHistory.js';
 
+export const LEGACY_CANDIDATE_STAGES = ['SCREENING', 'INTERVIEW', 'HIRED'];
 export const CANDIDATE_STAGES = [
-  'APPLIED',
-  'ATS_SCREENING',
-  'SCREENING',
-  'INTERVIEW',
-  'OFFER',
-  'HIRED',
-  'REJECTED',
+  ...PIPELINE_STAGES,
+  ...LEGACY_CANDIDATE_STAGES,
 ];
 export const OFFER_STATUS = ['NONE', 'SENT', 'ACCEPTED', 'DECLINED'];
 export const CANDIDATE_SOURCES = ['INTERNAL', 'CAREER_PAGE'];
@@ -71,7 +69,25 @@ const candidateSchema = new mongoose.Schema(
       version: { type: String, trim: true, maxlength: 30, default: '' },
     },
     resumeLink: { type: String, trim: true, maxlength: 300, default: '' },
+    currentStage: {
+      type: String,
+      enum: PIPELINE_STAGES,
+      default: 'APPLIED',
+      index: true,
+    },
     stage: { type: String, enum: CANDIDATE_STAGES, default: 'APPLIED' },
+    assignedRecruiter: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+      index: true,
+    },
+    hiringManager: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+      index: true,
+    },
     // Offer letter tracking
     offerStatus: { type: String, enum: OFFER_STATUS, default: 'NONE' },
     offerSalary: { type: Number, min: 0, default: 0 },          // monthly CTC in ₹
@@ -92,6 +108,25 @@ candidateSchema.index(
   }
 );
 candidateSchema.index({ companyId: 1, applicationDate: -1 });
+candidateSchema.index({ companyId: 1, job: 1, currentStage: 1, source: 1 });
 candidateSchema.index({ companyId: 1, job: 1, stage: 1, source: 1 });
+
+// A document save cannot leave the indexed canonical stage and compatibility mirror apart.
+candidateSchema.pre('validate', function synchronizeCandidateStage() {
+  const normalizedStage =
+    ({ SCREENING: 'HR_SCREENING', INTERVIEW: 'INTERVIEW_1', HIRED: 'JOINED' })[
+      this.stage
+    ] || this.stage;
+
+  if (
+    this.isModified('currentStage') &&
+    !(this.isNew && this.currentStage === 'APPLIED' && normalizedStage !== 'APPLIED')
+  ) {
+    this.stage = this.currentStage;
+  } else if (this.isModified('stage')) {
+    this.currentStage = normalizedStage;
+    this.stage = normalizedStage;
+  }
+});
 
 export default mongoose.model('Candidate', candidateSchema);

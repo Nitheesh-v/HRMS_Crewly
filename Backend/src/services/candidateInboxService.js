@@ -1,10 +1,12 @@
 import mongoose from 'mongoose';
 import Candidate from '../models/Candidate.js';
 import CandidateHistory from '../models/CandidateHistory.js';
+import CandidatePipelineHistory from '../models/CandidatePipelineHistory.js';
 import CandidateResume from '../models/CandidateResume.js';
 import ResumeParseResult from '../models/ResumeParseResult.js';
 import ApiError from '../utils/ApiError.js';
 import { getStoredResumeAccess } from './resumeStorageService.js';
+import { normalizeCandidateStage } from './candidatePipelineService.js';
 
 const escapeRegex = (value) =>
   String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -24,7 +26,7 @@ const listFilter = ({ companyId, query }) => {
 
   if (query.job) filter.job = query.job;
   if (query.source) filter.source = query.source;
-  if (query.stage) filter.stage = query.stage;
+  if (query.stage) filter.currentStage = query.stage;
 
   if (query.dateFrom || query.dateTo) {
     filter.applicationDate = {};
@@ -40,7 +42,7 @@ const listFilter = ({ companyId, query }) => {
 
   if (query.search?.trim()) {
     const search = new RegExp(escapeRegex(query.search.trim()), 'i');
-    filter.$or = [
+    const searchFields = [
       { candidateCode: search },
       { name: search },
       { email: search },
@@ -48,6 +50,11 @@ const listFilter = ({ companyId, query }) => {
       { location: search },
       { skills: search },
     ];
+    if (filter.$and) {
+      filter.$and.push({ $or: searchFields });
+    } else {
+      filter.$or = searchFields;
+    }
   }
 
   return filter;
@@ -60,11 +67,21 @@ export const listCandidateInbox = async ({ companyId, query = {} }) => {
     Candidate.find(filter)
       .select(
         'candidateCode name email phone location totalExperience ' +
-          'relevantExperience skills source applicationDate applicationStatus stage status job'
+          'relevantExperience skills source applicationDate applicationStatus currentStage stage status job assignedRecruiter hiringManager'
       )
       .populate({
         path: 'job',
         select: 'jobCode title',
+        match: { companyId },
+      })
+      .populate({
+        path: 'assignedRecruiter',
+        select: 'name role status',
+        match: { companyId },
+      })
+      .populate({
+        path: 'hiringManager',
+        select: 'name role status',
         match: { companyId },
       })
       .sort({ applicationDate: -1, _id: -1 })
@@ -100,7 +117,24 @@ export const listCandidateInbox = async ({ companyId, query = {} }) => {
       source: candidate.source || 'INTERNAL',
       applicationDate: candidate.applicationDate || null,
       applicationStatus: candidate.applicationStatus || 'APPLIED',
-      stage: candidate.stage,
+      currentStage: normalizeCandidateStage(
+        candidate.currentStage || candidate.stage
+      ),
+      stage: normalizeCandidateStage(candidate.currentStage || candidate.stage),
+      assignedRecruiter: candidate.assignedRecruiter
+        ? {
+            id: candidate.assignedRecruiter._id,
+            name: candidate.assignedRecruiter.name,
+            role: candidate.assignedRecruiter.role,
+          }
+        : null,
+      hiringManager: candidate.hiringManager
+        ? {
+            id: candidate.hiringManager._id,
+            name: candidate.hiringManager.name,
+            role: candidate.hiringManager.role,
+          }
+        : null,
       status: candidate.status || 'ACTIVE',
       resumeAvailable: resumeSet.has(String(candidate._id)),
       job: candidate.job
@@ -131,7 +165,7 @@ export const getCandidateInboxDetail = async ({
     .select(
       'candidateCode name email phone location currentCompany currentJobTitle ' +
         'totalExperience relevantExperience expectedSalary noticePeriod ' +
-        'education skills links source applicationDate applicationStatus status stage job requisition consent'
+        'education skills links source applicationDate applicationStatus status currentStage stage job requisition consent assignedRecruiter hiringManager'
     )
     .populate({
       path: 'job',
@@ -139,11 +173,21 @@ export const getCandidateInboxDetail = async ({
       match: { companyId },
       populate: { path: 'department', select: 'name' },
     })
+    .populate({
+      path: 'assignedRecruiter',
+      select: 'name email role status',
+      match: { companyId },
+    })
+    .populate({
+      path: 'hiringManager',
+      select: 'name email role status',
+      match: { companyId },
+    })
     .lean();
 
   if (!candidate) throw ApiError.notFound('Candidate not found');
 
-  const [resume, history] = await Promise.all([
+  const [resume, history, pipelineHistory] = await Promise.all([
     CandidateResume.findOne({
       companyId,
       candidate: candidate._id,
@@ -157,11 +201,101 @@ export const getCandidateInboxDetail = async ({
       companyId,
       candidate: candidate._id,
     })
-      .select('action actorType eventAt metadata -_id')
+      .select('action actor actorType eventAt metadata -_id')
+      .populate({ path: 'actor', select: 'name' })
       .sort({ eventAt: -1 })
-      .limit(20)
+      .limit(50)
+      .lean(),
+    CandidatePipelineHistory.find({
+      companyId,
+      candidateId: candidate._id,
+    })
+      .select('fromStage toStage actor reason metadata createdAt -_id')
+      .populate({ path: 'actor', select: 'name' })
+      .sort({ createdAt: -1 })
+      .limit(50)
       .lean(),
   ]);
+
+  const timeline = [
+    ...history.map((event) => ({
+      type: 'ACTIVITY',
+      action: event.action,
+      actorType: event.actorType,
+      actor: event.actor
+        ? { id: event.actor._id, name: event.actor.name }
+        : null,
+      eventAt: event.eventAt,
+      fromStage: null,
+      toStage: null,
+      reason: '',
+      metadata: {
+        ...(event.metadata?.stage ? { stage: event.metadata.stage } : {}),
+        ...(event.metadata?.jobCode
+          ? { jobCode: event.metadata.jobCode }
+          : {}),
+        ...(event.metadata?.deliveryMode
+          ? { deliveryMode: event.metadata.deliveryMode }
+          : {}),
+        ...(event.metadata?.assignmentType
+          ? { assignmentType: event.metadata.assignmentType }
+          : {}),
+        ...(event.metadata?.assigneeName
+          ? { assigneeName: String(event.metadata.assigneeName).slice(0, 150) }
+          : {}),
+        ...(event.metadata?.template
+          ? { template: event.metadata.template }
+          : {}),
+        ...(event.metadata?.delivered !== undefined
+          ? { delivered: Boolean(event.metadata.delivered) }
+          : {}),
+        ...(event.metadata?.parserVersion
+          ? { parserVersion: event.metadata.parserVersion }
+          : {}),
+        ...(event.metadata?.status ? { status: event.metadata.status } : {}),
+        ...(event.metadata?.attempt !== undefined
+          ? { attempt: Number(event.metadata.attempt) || 0 }
+          : {}),
+        ...(event.metadata?.failureCategory
+          ? { failureCategory: event.metadata.failureCategory }
+          : {}),
+        ...(event.metadata?.warningCount !== undefined
+          ? { warningCount: Number(event.metadata.warningCount) || 0 }
+          : {}),
+        ...(event.metadata?.score !== undefined
+          ? { score: Number(event.metadata.score) || 0 }
+          : {}),
+        ...(event.metadata?.category
+          ? { category: event.metadata.category }
+          : {}),
+        ...(event.metadata?.engineVersion
+          ? { engineVersion: event.metadata.engineVersion }
+          : {}),
+        ...(event.metadata?.trigger
+          ? { trigger: event.metadata.trigger }
+          : {}),
+      },
+    })),
+    ...pipelineHistory.map((event) => ({
+      type: 'STAGE_TRANSITION',
+      action: 'STAGE_CHANGED',
+      actorType: event.metadata?.actorType || 'USER',
+      actor: event.actor
+        ? { id: event.actor._id, name: event.actor.name }
+        : null,
+      eventAt: event.createdAt,
+      fromStage: event.fromStage,
+      toStage: event.toStage,
+      reason: event.reason || '',
+      metadata: {
+        ...(event.metadata?.source ? { source: event.metadata.source } : {}),
+        ...(event.metadata?.action ? { action: event.metadata.action } : {}),
+      },
+    })),
+  ].sort(
+    (left, right) =>
+      new Date(left.eventAt).getTime() - new Date(right.eventAt).getTime()
+  );
 
   return {
     id: candidate._id,
@@ -172,7 +306,10 @@ export const getCandidateInboxDetail = async ({
       phone: candidate.phone || '',
       location: candidate.location || '',
       source: candidate.source || 'INTERNAL',
-      stage: candidate.stage,
+      currentStage: normalizeCandidateStage(
+        candidate.currentStage || candidate.stage
+      ),
+      stage: normalizeCandidateStage(candidate.currentStage || candidate.stage),
       status: candidate.status || 'ACTIVE',
       applicationDate: candidate.applicationDate || null,
       applicationStatus: candidate.applicationStatus || 'APPLIED',
@@ -195,6 +332,24 @@ export const getCandidateInboxDetail = async ({
       linkedIn: candidate.links?.linkedIn || '',
       github: candidate.links?.github || '',
       portfolio: candidate.links?.portfolio || '',
+    },
+    assignments: {
+      recruiter: candidate.assignedRecruiter
+        ? {
+            id: candidate.assignedRecruiter._id,
+            name: candidate.assignedRecruiter.name,
+            email: candidate.assignedRecruiter.email,
+            role: candidate.assignedRecruiter.role,
+          }
+        : null,
+      hiringManager: candidate.hiringManager
+        ? {
+            id: candidate.hiringManager._id,
+            name: candidate.hiringManager.name,
+            email: candidate.hiringManager.email,
+            role: candidate.hiringManager.role,
+          }
+        : null,
     },
     job: candidate.job
       ? {
@@ -226,6 +381,7 @@ export const getCandidateInboxDetail = async ({
           uploadedAt: resume.uploadedAt,
         }
       : { available: false },
+    timeline,
     history: history.map((event) => ({
       action: event.action,
       actorType: event.actorType,

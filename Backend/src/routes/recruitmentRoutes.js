@@ -17,7 +17,6 @@ import {
   createJobRules,
   updateJobRules,
   candidateRules,
-  stageRules,
   offerRules,
 } from '../validators/recruitmentValidator.js';
 import {
@@ -35,7 +34,6 @@ import {
   updateJob,
   listCandidates,
   addCandidate,
-  updateStage,
   updateOffer,
   convertCandidate,
 } from '../controllers/recruitmentController.js';
@@ -53,6 +51,11 @@ import {
   candidateATSResultRead,
 } from '../controllers/atsController.js';
 import {
+  candidatePipelineBulkAction,
+  candidatePipelineOptions,
+  candidatePipelineStageUpdate,
+} from '../controllers/candidatePipelineController.js';
+import {
   candidateInboxDetailRules,
   candidateInboxListRules,
   candidateResumeAccessRules,
@@ -65,6 +68,10 @@ import {
   atsReprocessRules,
   atsResultReadRules,
 } from '../validators/atsValidator.js';
+import {
+  bulkPipelineRules,
+  pipelineStageRules,
+} from '../validators/candidatePipelineValidator.js';
 import { securityRateLimit } from '../middlewares/securityRateLimit.js';
 import {
   requisitionApprove,
@@ -95,6 +102,14 @@ const atsReprocessRateLimit = securityRateLimit({
   keyGenerator: (req) =>
     `${req.companyId}:${req.user?._id}:${req.params.candidateId}:ats-reprocess`,
   message: 'Too many ATS recalculation requests. Please try again later.',
+});
+
+const pipelineBulkRateLimit = securityRateLimit({
+  windowMs: 15 * 60 * 1000,
+  maximum: 20,
+  keyGenerator: (req) =>
+    `${req.companyId}:${req.user?._id}:candidate-bulk-action`,
+  message: 'Too many bulk candidate actions. Please try again later.',
 });
 
 router.use(
@@ -240,6 +255,21 @@ router.get(
 );
 
 router.get(
+  '/candidates/pipeline-options',
+  requirePermission('CANDIDATE_READ'),
+  candidatePipelineOptions
+);
+
+router.post(
+  '/candidates/bulk-actions',
+  checkWriteAccess,
+  requirePermission('CANDIDATE_UPDATE'),
+  pipelineBulkRateLimit,
+  bulkPipelineRules,
+  candidatePipelineBulkAction
+);
+
+router.get(
   '/candidates/inbox',
   requirePermission('CANDIDATE_READ'),
   candidateInboxListRules,
@@ -307,8 +337,8 @@ router.patch(
   '/candidates/:id/stage',
   checkWriteAccess,
   requirePermission('CANDIDATE_UPDATE'),
-  stageRules,
-  updateStage
+  pipelineStageRules,
+  candidatePipelineStageUpdate
 );
 
 router.patch(

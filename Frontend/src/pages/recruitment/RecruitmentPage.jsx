@@ -21,18 +21,39 @@ import companyService from '../../services/companyService.js';
 import recruitmentService from '../../services/recruitmentService.js';
 import requisitionService from '../../services/requisitionService.js';
 import { ROLES } from '../../utils/roles.js';
+import {
+  DISPOSITION_PIPELINE_STAGES,
+  PIPELINE_STAGES,
+  PIPELINE_STAGE_LABELS,
+  POSITIVE_PIPELINE_STAGES,
+} from './pipelineStages.js';
 
-
-
-const STAGES = [
-  { key: 'APPLIED', label: 'Applied', dot: 'bg-slate-400' },
-  { key: 'SCREENING', label: 'Screening', dot: 'bg-yellow-400' },
-  { key: 'INTERVIEW', label: 'Interview', dot: 'bg-purple-400' },
-  { key: 'OFFER', label: 'Offer', dot: 'bg-crewly-orange' },
-  { key: 'HIRED', label: 'Hired 🎉', dot: 'bg-crewly-green' },
-  { key: 'REJECTED', label: 'Rejected', dot: 'bg-crewly-red' },
+const STAGE_DOTS = [
+  'bg-slate-400',
+  'bg-sky-400',
+  'bg-indigo-400',
+  'bg-violet-400',
+  'bg-purple-400',
+  'bg-fuchsia-400',
+  'bg-pink-400',
+  'bg-orange-400',
+  'bg-amber-400',
+  'bg-yellow-400',
+  'bg-lime-400',
+  'bg-cyan-400',
+  'bg-teal-400',
+  'bg-emerald-400',
+  'bg-green-400',
+  'bg-rose-400',
+  'bg-yellow-500',
+  'bg-slate-500',
 ];
-const STAGE_LABEL = Object.fromEntries(STAGES.map((s) => [s.key, s.label]));
+const STAGES = PIPELINE_STAGES.map((key, index) => ({
+  key,
+  label: PIPELINE_STAGE_LABELS[key],
+  dot: STAGE_DOTS[index],
+}));
+const STAGE_LABEL = PIPELINE_STAGE_LABELS;
 const OFFER_STYLE = {
   SENT: 'bg-sky-400/10 text-sky-400 border border-sky-400/40',
   ACCEPTED: 'bg-crewly-green/10 text-crewly-green border border-crewly-green/40',
@@ -139,6 +160,8 @@ const RecruitmentPage = () => {
   const [jobForm, setJobForm] = useState(emptyJobForm);
   const [candModal, setCandModal] = useState(false);
   const [candForm, setCandForm] = useState(emptyCandForm);
+  const [stageModal, setStageModal] = useState(null);
+  const [stageReason, setStageReason] = useState('');
   const [offerModal, setOfferModal] = useState(null); // candidate
   const [offerForm, setOfferForm] = useState({ offerSalary: '', offerJoiningDate: '' });
   const [convModal, setConvModal] = useState(null);   // { candidate, result }
@@ -408,11 +431,41 @@ const RecruitmentPage = () => {
     } catch (err) { flash('error', errText(err)); } finally { setBusy(false); }
   };
 
-  const moveStage = async (c, stage) => {
+  const requestStageMove = (candidate, targetStage) => {
+    const fromStage = candidate.currentStage || candidate.stage;
+    if (targetStage === fromStage) return;
+    setStageReason('');
+    setStageModal({ candidate, fromStage, targetStage });
+  };
+
+  const stageMoveRequiresReason = stageModal
+    ? DISPOSITION_PIPELINE_STAGES.includes(stageModal.targetStage) ||
+      (
+        POSITIVE_PIPELINE_STAGES.includes(stageModal.fromStage) &&
+        POSITIVE_PIPELINE_STAGES.indexOf(stageModal.targetStage) <
+          POSITIVE_PIPELINE_STAGES.indexOf(stageModal.fromStage)
+      )
+    : false;
+
+  const moveStage = async (event) => {
+    event.preventDefault();
+    if (!stageModal) return;
+    setBusy(true);
     try {
-      await recruitmentService.updateStage(c._id, stage);
-      loadCandidates();
-    } catch (err) { flash('error', errText(err)); }
+      await recruitmentService.updateStage(
+        stageModal.candidate._id,
+        stageModal.targetStage,
+        stageReason.trim()
+      );
+      flash('success', `Candidate moved to ${STAGE_LABEL[stageModal.targetStage]}`);
+      setStageModal(null);
+      setStageReason('');
+      await loadCandidates();
+    } catch (err) {
+      flash('error', errText(err));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const openOffer = (c) => {
@@ -659,52 +712,116 @@ const RecruitmentPage = () => {
             )}
           </div>
 
-          {/* Candidate pipeline board remains unchanged until Phase 27.8. */}
-          <div className="flex gap-3 overflow-x-auto pb-2">
+          {/* Phase 27.8 — every configured stage is visible and mutations use the audited API. */}
+          <div className="flex gap-3 overflow-x-auto pb-3" aria-label="Candidate pipeline board">
             {STAGES.map(({ key, label, dot }) => {
-              const list = candidates.filter((c) => c.stage === key);
+              const list = candidates.filter(
+                (candidate) => (candidate.currentStage || candidate.stage) === key
+              );
               return (
-                <div key={key} className="min-w-[215px] flex-1">
+                <div key={key} className="min-w-[230px] flex-1">
                   <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-crewly-dim">
                     <span className={`h-2 w-2 rounded-full ${dot}`} /> {label}
-                    <span className="ml-auto">{list.length}</span>
+                    <span className="ml-auto rounded-full bg-slate-800 px-2 py-0.5">{list.length}</span>
                   </div>
                   <div className="space-y-2">
-                    {list.length === 0 && <div className="card p-3 text-center text-[11px] text-crewly-dim">—</div>}
-                    {list.map((c) => (
-                      <div key={c._id} className="card p-3 space-y-2">
-                        <div className="font-medium text-sm">{c.name}</div>
-                        <div className="truncate text-xs text-crewly-dim" title={c.email}>{c.email}</div>
-                        {c.phone && <div className="text-xs text-crewly-dim">📞 {c.phone}</div>}
-                        {c.offerStatus !== 'NONE' && (
-                          <span className={`inline-block rounded-md px-2 py-0.5 text-[11px] ${OFFER_STYLE[c.offerStatus]}`}>
-                            Offer {c.offerStatus.toLowerCase()}
-                          </span>
-                        )}
-                        {c.stage !== 'HIRED' && (
-                          <select className="input !py-1 text-xs" value={c.stage} onChange={(e) => moveStage(c, e.target.value)}>
-                            {['APPLIED', 'SCREENING', 'INTERVIEW', 'OFFER', 'REJECTED'].map((s) => (
-                              <option key={s} value={s}>{STAGE_LABEL[s]}</option>
-                            ))}
-                          </select>
-                        )}
-                        <div className="flex gap-2">
-                          {['INTERVIEW', 'OFFER'].includes(c.stage) && c.stage !== 'REJECTED' && (
-                            <button className="btn-ghost px-2 py-0.5 text-[11px]" onClick={() => openOffer(c)}>💼 Offer</button>
+                    {list.length === 0 && <div className="card p-3 text-center text-[11px] text-crewly-dim">No candidates</div>}
+                    {list.map((candidate) => {
+                      const currentStage = candidate.currentStage || candidate.stage;
+                      return (
+                        <div key={candidate._id} className="card space-y-2 p-3">
+                          <Link
+                            className="block text-sm font-medium hover:text-indigo-300"
+                            to={`/app/recruitment/candidates/${candidate.candidateCode || candidate._id}`}
+                          >
+                            {candidate.name}
+                          </Link>
+                          <div className="truncate text-xs text-crewly-dim" title={candidate.email}>{candidate.email}</div>
+                          {candidate.phone && <div className="text-xs text-crewly-dim">{candidate.phone}</div>}
+                          {candidate.offerStatus !== 'NONE' && (
+                            <span className={`inline-block rounded-md px-2 py-0.5 text-[11px] ${OFFER_STYLE[candidate.offerStatus]}`}>
+                              Offer {candidate.offerStatus.toLowerCase()}
+                            </span>
                           )}
-                          {c.offerStatus === 'ACCEPTED' && c.stage !== 'HIRED' && (
-                            <button className="btn-ghost px-2 py-0.5 text-[11px] text-crewly-green"
-                              onClick={() => setConvModal({ candidate: c, result: null })}>🎉 Convert</button>
+                          {currentStage !== 'JOINED' && (
+                            <select
+                              aria-label={`Move ${candidate.name} to another stage`}
+                              className="input !py-1 text-xs"
+                              value={currentStage}
+                              onChange={(event) => requestStageMove(candidate, event.target.value)}
+                            >
+                              {PIPELINE_STAGES.map((stage) => (
+                                <option key={stage} value={stage}>{STAGE_LABEL[stage]}</option>
+                              ))}
+                            </select>
                           )}
+                          <div className="flex flex-wrap gap-2">
+                            {[
+                              'INTERVIEW_1',
+                              'INTERVIEW_2',
+                              'INTERVIEW_3',
+                              'MANAGER_ROUND',
+                              'HR_FINAL',
+                              'FINAL_REVIEW',
+                              'SELECTED',
+                              'OFFER',
+                            ].includes(currentStage) && (
+                              <button className="btn-ghost px-2 py-0.5 text-[11px]" onClick={() => openOffer(candidate)}>Offer</button>
+                            )}
+                            {candidate.offerStatus === 'ACCEPTED' && currentStage !== 'JOINED' && (
+                              <button className="btn-ghost px-2 py-0.5 text-[11px] text-crewly-green"
+                                onClick={() => setConvModal({ candidate, result: null })}>Convert</button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );
             })}
           </div>
         </>
+      )}
+
+      {stageModal && (
+        <Modal
+          onClose={() => !busy && setStageModal(null)}
+          title={`Move ${stageModal.candidate.name}`}
+        >
+          <form className="space-y-4" onSubmit={moveStage}>
+            <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+              <p className="text-xs uppercase tracking-wide text-slate-500">Stage transition</p>
+              <p className="mt-2 text-sm text-slate-200">
+                {STAGE_LABEL[stageModal.fromStage]} → {STAGE_LABEL[stageModal.targetStage]}
+              </p>
+            </div>
+            <div>
+              <label className="label">
+                Reason {stageMoveRequiresReason ? '*' : '(optional)'}
+              </label>
+              <textarea
+                className="input min-h-24"
+                value={stageReason}
+                onChange={(event) => setStageReason(event.target.value)}
+                maxLength={1000}
+                required={stageMoveRequiresReason}
+                placeholder={
+                  stageMoveRequiresReason
+                    ? 'Explain the disposition or why the candidate is being sent back'
+                    : 'Add context for the candidate timeline'
+                }
+              />
+              <p className="mt-1 text-right text-[10px] text-slate-500">{stageReason.length}/1000</p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button type="button" className="btn-ghost" onClick={() => setStageModal(null)} disabled={busy}>Cancel</button>
+              <button type="submit" className="btn-primary" disabled={busy || (stageMoveRequiresReason && !stageReason.trim())}>
+                {busy ? 'Moving…' : 'Confirm stage change'}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {/* Job create/edit modal. Approved requisition fields stay read-only. */}

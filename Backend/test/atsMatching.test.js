@@ -10,6 +10,7 @@ const [
   { default: AuditLog },
   { default: Candidate },
   { default: CandidateHistory },
+  { default: CandidatePipelineHistory },
   { default: CandidateResume },
   { default: JobPosting },
   { default: ResumeParseResult },
@@ -21,6 +22,7 @@ const [
   import('../src/models/AuditLog.js'),
   import('../src/models/Candidate.js'),
   import('../src/models/CandidateHistory.js'),
+  import('../src/models/CandidatePipelineHistory.js'),
   import('../src/models/CandidateResume.js'),
   import('../src/models/JobPosting.js'),
   import('../src/models/ResumeParseResult.js'),
@@ -82,6 +84,7 @@ const configuration = {
 const candidateInput = {
   _id: CANDIDATE_ID,
   job: JOB_ID,
+  currentStage: 'APPLIED',
   stage: 'APPLIED',
   skills: ['MongoDB'],
   totalExperience: 9,
@@ -92,6 +95,7 @@ const candidateInput = {
 
 const jobInput = {
   _id: JOB_ID,
+  createdBy: USER_ID,
   requiredSkills: ['Node.js', 'TypeScript', 'MongoDB', 'Docker'],
   preferredSkills: ['Redis', 'AWS'],
   minExperience: 5,
@@ -240,10 +244,12 @@ test('changing job requirements changes the score without producing a hiring dec
   assert.equal(Object.hasOwn(recalculated, 'rejected'), false);
 });
 
-test('processing upserts one tenant result, moves only APPLIED and emits processed/reprocessed audits', async () => {
+test('processing upserts one tenant result, records one immutable APPLIED transition and emits audits', async () => {
   const restore = restorable(
     [Candidate, 'findOne'],
+    [Candidate, 'findOneAndUpdate'],
     [Candidate, 'updateOne'],
+    [CandidatePipelineHistory, 'create'],
     [JobPosting, 'findOne'],
     [CandidateResume, 'findOne'],
     [ResumeParseResult, 'findOne'],
@@ -253,20 +259,43 @@ test('processing upserts one tenant result, moves only APPLIED and emits process
     [AuditLog, 'create']
   );
   let existing = null;
+  let candidateStage = 'APPLIED';
   const upserts = [];
   const stageUpdates = [];
+  const pipelineHistory = [];
   const history = [];
   const audits = [];
 
   try {
     Candidate.findOne = (filter) => {
       assert.equal(String(filter.companyId), COMPANY_ID);
-      assert.equal(String(filter.job), JOB_ID);
-      return leanQuery({ ...candidateInput, candidateCode: 'CAN-000203' });
+      if (filter.job) assert.equal(String(filter.job), JOB_ID);
+      return leanQuery({
+        ...candidateInput,
+        currentStage: candidateStage,
+        stage: candidateStage,
+        candidateCode: 'CAN-000203',
+      });
     };
-    Candidate.updateOne = async (filter, update) => {
+    Candidate.findOneAndUpdate = (filter, update) => {
       stageUpdates.push({ filter, update });
-      return { modifiedCount: 1 };
+      candidateStage = update.$set.currentStage;
+      return leanQuery({
+        ...candidateInput,
+        currentStage: candidateStage,
+        stage: candidateStage,
+        candidateCode: 'CAN-000203',
+      });
+    };
+    Candidate.updateOne = async () => ({ modifiedCount: 1 });
+    CandidatePipelineHistory.create = async (payload) => {
+      const event = {
+        _id: '64b000000000000000000209',
+        createdAt: new Date(),
+        ...payload,
+      };
+      pipelineHistory.push(event);
+      return event;
     };
     JobPosting.findOne = (filter) => {
       assert.equal(String(filter.companyId), COMPANY_ID);
@@ -338,9 +367,13 @@ test('processing upserts one tenant result, moves only APPLIED and emits process
       ]
     );
     assert.equal(upserts.every(({ options }) => options.upsert), true);
-    assert.equal(stageUpdates.length, 2);
-    assert.equal(stageUpdates.every(({ filter }) => filter.stage === 'APPLIED'), true);
-    assert.equal(stageUpdates.every(({ update }) => update.$set.stage === 'ATS_SCREENING'), true);
+    assert.equal(stageUpdates.length, 1);
+    assert.equal(stageUpdates[0].update.$set.stage, 'ATS_SCREENING');
+    assert.equal(pipelineHistory.length, 1);
+    assert.equal(pipelineHistory[0].fromStage, 'APPLIED');
+    assert.equal(pipelineHistory[0].toStage, 'ATS_SCREENING');
+    assert.equal(String(pipelineHistory[0].actor), USER_ID);
+    assert.equal(pipelineHistory[0].metadata.source, 'ATS_ENGINE');
     assert.deepEqual(history.map((event) => event.action), [
       'ATS_PROCESSED',
       'ATS_REPROCESSED',
@@ -348,6 +381,7 @@ test('processing upserts one tenant result, moves only APPLIED and emits process
     assert.equal(history[1].actorType, 'TENANT_USER');
     assert.equal(String(history[1].actor), USER_ID);
     assert.deepEqual(audits.map((event) => event.action), [
+      'CANDIDATE_STAGE_CHANGED',
       'ATS_PROCESSED',
       'ATS_REPROCESSED',
     ]);
@@ -357,10 +391,12 @@ test('processing upserts one tenant result, moves only APPLIED and emits process
   }
 });
 
-test('unchanged automatic input is skipped without duplicate score or audit records', async () => {
+test('unchanged automatic input is skipped without duplicate score, audit or stage history', async () => {
   const restore = restorable(
     [Candidate, 'findOne'],
+    [Candidate, 'findOneAndUpdate'],
     [Candidate, 'updateOne'],
+    [CandidatePipelineHistory, 'create'],
     [JobPosting, 'findOne'],
     [CandidateResume, 'findOne'],
     [ResumeParseResult, 'findOne'],
@@ -372,12 +408,32 @@ test('unchanged automatic input is skipped without duplicate score or audit reco
   let resultWrites = 0;
   let historyWrites = 0;
   let stageWrites = 0;
+  let pipelineWrites = 0;
+  let candidateStage = 'APPLIED';
 
   try {
-    Candidate.findOne = () => leanQuery(candidateInput);
-    Candidate.updateOne = async () => {
+    Candidate.findOne = () => leanQuery({
+      ...candidateInput,
+      currentStage: candidateStage,
+      stage: candidateStage,
+    });
+    Candidate.findOneAndUpdate = (_filter, update) => {
       stageWrites += 1;
-      return { modifiedCount: 1 };
+      candidateStage = update.$set.currentStage;
+      return leanQuery({
+        ...candidateInput,
+        currentStage: candidateStage,
+        stage: candidateStage,
+      });
+    };
+    Candidate.updateOne = async () => ({ modifiedCount: 1 });
+    CandidatePipelineHistory.create = async (payload) => {
+      pipelineWrites += 1;
+      return {
+        _id: '64b000000000000000000209',
+        createdAt: new Date(),
+        ...payload,
+      };
     };
     JobPosting.findOne = () => leanQuery(jobInput);
     CandidateResume.findOne = () => leanQuery({ _id: RESUME_ID });
@@ -417,7 +473,8 @@ test('unchanged automatic input is skipped without duplicate score or audit reco
 
     assert.equal(resultWrites, 1);
     assert.equal(historyWrites, 1);
-    assert.equal(stageWrites, 2);
+    assert.equal(stageWrites, 1);
+    assert.equal(pipelineWrites, 1);
     assert.equal(repeated.skipped, true);
     assert.equal(repeated.reason, 'UNCHANGED_INPUTS');
   } finally {

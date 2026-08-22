@@ -5,6 +5,7 @@ import Candidate from '../models/Candidate.js';
 import CandidateHistory from '../models/CandidateHistory.js';
 import CandidateResume from '../models/CandidateResume.js';
 import JobPosting from '../models/JobPosting.js';
+import JobRequisition from '../models/JobRequisition.js';
 import ResumeParseResult from '../models/ResumeParseResult.js';
 import ApiError from '../utils/ApiError.js';
 import { recordAudit } from '../utils/securityauditService.js';
@@ -13,6 +14,10 @@ import {
   normalizeSkills,
 } from './resumeNormalizationService.js';
 import { getATSScoringConfiguration } from './atsScoringConfig.js';
+import {
+  normalizeCandidateStage,
+  transitionCandidateStage,
+} from './candidatePipelineService.js';
 
 const roundScore = (value) => Math.round((Number(value) || 0) * 100) / 100;
 const boundedList = (values, maximum = 100, length = 200) =>
@@ -611,7 +616,7 @@ export const processATSMatch = async ({
     job: jobId,
   })
     .select(
-      '_id candidateCode job stage skills totalExperience education location noticePeriod'
+      '_id candidateCode job currentStage stage skills totalExperience education location noticePeriod'
     )
     .lean();
 
@@ -620,7 +625,7 @@ export const processATSMatch = async ({
   const [job, resume, parseResult] = await Promise.all([
     JobPosting.findOne({ _id: jobId, companyId })
       .select(
-        '_id requiredSkills preferredSkills minExperience educationRequirements location workMode maxNoticePeriod'
+        '_id requiredSkills preferredSkills minExperience educationRequirements location workMode maxNoticePeriod sourceRequisition createdBy'
       )
       .lean(),
     CandidateResume.findOne({
@@ -648,6 +653,18 @@ export const processATSMatch = async ({
     return { accepted: false, reason: 'MATCH_INPUTS_NOT_AVAILABLE' };
   }
 
+  let pipelineActorId = actorId;
+  if (!pipelineActorId && job.sourceRequisition) {
+    const requisition = await JobRequisition.findOne({
+      _id: job.sourceRequisition,
+      companyId,
+    })
+      .select('requester')
+      .lean();
+    pipelineActorId = requisition?.requester || null;
+  }
+  pipelineActorId ||= job.createdBy;
+
   const configuration = getATSScoringConfiguration();
   const inputFingerprint = fingerprintFor({
     candidate,
@@ -663,10 +680,18 @@ export const processATSMatch = async ({
     trigger !== 'MANUAL_REPROCESS' &&
     existing?.inputFingerprint === inputFingerprint
   ) {
-    await Candidate.updateOne(
-      { _id: candidateId, companyId, job: jobId, stage: 'APPLIED' },
-      { $set: { stage: 'ATS_SCREENING' } }
-    );
+    if (
+      normalizeCandidateStage(candidate.currentStage || candidate.stage) === 'APPLIED' &&
+      mongoose.isValidObjectId(pipelineActorId)
+    ) {
+      await transitionCandidateStage({
+        companyId,
+        candidateId,
+        targetStage: 'ATS_SCREENING',
+        actorId: pipelineActorId,
+        metadata: { source: 'ATS_ENGINE', actorType: 'SYSTEM' },
+      });
+    }
 
     return { accepted: true, skipped: true, reason: 'UNCHANGED_INPUTS' };
   }
@@ -703,10 +728,18 @@ export const processATSMatch = async ({
     }
   ).lean();
 
-  await Candidate.updateOne(
-    { _id: candidateId, companyId, job: jobId, stage: 'APPLIED' },
-    { $set: { stage: 'ATS_SCREENING' } }
-  );
+  if (
+    normalizeCandidateStage(candidate.currentStage || candidate.stage) === 'APPLIED' &&
+    mongoose.isValidObjectId(pipelineActorId)
+  ) {
+    await transitionCandidateStage({
+      companyId,
+      candidateId,
+      targetStage: 'ATS_SCREENING',
+      actorId: pipelineActorId,
+      metadata: { source: 'ATS_ENGINE', actorType: 'SYSTEM' },
+    });
+  }
 
   const action = existing ? 'ATS_REPROCESSED' : 'ATS_PROCESSED';
   const actorType = trigger === 'MANUAL_REPROCESS' ? 'TENANT_USER' : 'SYSTEM';

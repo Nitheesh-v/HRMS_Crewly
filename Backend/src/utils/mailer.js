@@ -123,6 +123,44 @@ export const applicationReceivedEmail = ({
   };
 };
 
+export const candidatePipelineUpdateEmail = ({
+  candidateName,
+  companyName,
+  jobTitle,
+  candidateCode,
+  stage,
+}) => {
+  const safeName = escapeHtml(candidateName);
+  const safeCompany = escapeHtml(companyName);
+  const safeJobTitle = escapeHtml(jobTitle);
+  const safeCandidateCode = escapeHtml(candidateCode);
+  const stageLabel = String(stage || '')
+    .toLowerCase()
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+  const safeStage = escapeHtml(stageLabel);
+  const safeSubjectCompany = String(companyName || 'the hiring team')
+    .replace(/[\r\n]/g, ' ')
+    .slice(0, 120);
+
+  return {
+    subject: `Application update — ${safeSubjectCompany}`,
+    text:
+      `Hello ${candidateName},\n\n` +
+      `${companyName} has updated your application for ${jobTitle}.\n` +
+      `Current status: ${stageLabel}.\n` +
+      `Application reference: ${candidateCode}.\n\n` +
+      'The hiring team will contact you if any action is required.',
+    html: shell('This is a standard application status notification.', `
+      <h2 style="margin:0 0 10px">Application update</h2>
+      <p>Hello ${safeName},</p>
+      <p><b>${safeCompany}</b> has updated your application for <b>${safeJobTitle}</b>.</p>
+      <p style="background:#f6f8fa;padding:12px;border-radius:8px">Current status: <b>${safeStage}</b><br/>Application reference: <b>${safeCandidateCode}</b></p>
+      <p style="color:#57606a;font-size:13px">The hiring team will contact you if any action is required.</p>`),
+  };
+};
+
 // Credentials email (new user / converted candidate)
 export const welcomeEmail = ({ name, email, password, companyName, code }) => ({
   subject: `Welcome to ${companyName || 'Crewly HRMS'} — your login credentials`,

@@ -7,7 +7,7 @@ import {
   JOB_STATUS,
   JOB_WORK_MODES,
 } from '../models/JobPosting.js';
-import { CANDIDATE_STAGES, OFFER_STATUS } from '../models/Candidate.js';
+import { OFFER_STATUS } from '../models/Candidate.js';
 
 const validate = (req, _res, next) => {
   const errors = validationResult(req);
@@ -105,11 +105,6 @@ export const candidateRules = [
   body('phone').optional({ values: 'falsy' }).trim().matches(/^[0-9+()\-\s]{6,20}$/).withMessage('Enter a valid phone number'),
   body('resumeLink').optional({ values: 'falsy' }).trim().isLength({ max: 300 }),
   body('notes').optional({ values: 'falsy' }).trim().isLength({ max: 500 }),
-  validate,
-];
-
-export const stageRules = [
-  body('stage').isIn(CANDIDATE_STAGES).withMessage('Invalid stage'),
   validate,
 ];
 
