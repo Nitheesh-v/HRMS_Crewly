@@ -15,6 +15,7 @@ import {
   parseResumeDeterministically,
 } from './resumeDeterministicParser.js';
 import { uniqueStrings } from './resumeNormalizationService.js';
+import { dispatchATSMatching } from './atsDispatcher.js';
 
 const MAX_ATTEMPTS = Math.min(
   20,
@@ -380,6 +381,17 @@ export const processResumeJob = async ({
       attempt: resume.parsingAttempts,
       warningCount: warnings.length,
     });
+
+    if (resultStatus === 'COMPLETED') {
+      dispatchATSMatching({
+        companyId: resume.companyId,
+        candidateId: resume.candidate,
+        jobId: resume.job,
+        resumeId: resume._id,
+        parseResultId: parseResult._id,
+        trigger: 'RESUME_PARSED',
+      });
+    }
 
     return { accepted: true, status: resultStatus };
   } catch (error) {

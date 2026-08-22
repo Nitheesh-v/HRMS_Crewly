@@ -20,6 +20,24 @@ import Subscription from '../models/Subscription.js';
 import { nextJobCode } from '../utils/careerPortalIdentifiers.js';
 import { nextCandidateCode } from '../utils/candidateIdentifiers.js';
 
+const normalizedList = (value, maximum, itemLength) =>
+  [...new Set(
+    (Array.isArray(value) ? value : String(value || '').split(','))
+      .map((item) => String(item || '').trim().slice(0, itemLength))
+      .filter(Boolean)
+  )].slice(0, maximum);
+
+const validateExperienceRange = ({ minExperience, maxExperience }) => {
+  if (
+    Number(maxExperience) > 0 &&
+    Number(minExperience) > Number(maxExperience)
+  ) {
+    throw ApiError.badRequest(
+      'Maximum experience must be greater than or equal to minimum experience'
+    );
+  }
+};
+
 // GET /api/recruitment/jobs
 export const listJobs = asyncHandler(async (req, res) => {
   const jobs = await JobPosting.find({ companyId: req.companyId })
@@ -45,9 +63,18 @@ export const createJob = asyncHandler(async (req, res) => {
     employmentType,
     openings,
     description,
+    workMode,
+    experienceLevel,
+    minExperience,
+    maxExperience,
+    requiredSkills,
+    preferredSkills,
+    educationRequirements,
+    maxNoticePeriod,
   } = req.body;
 
   // DB Logic - DB logics
+  validateExperienceRange({ minExperience, maxExperience });
   const jobCode = await nextJobCode(req.companyId);
   const job = await JobPosting.create({
     companyId: req.companyId,
@@ -58,6 +85,14 @@ export const createJob = asyncHandler(async (req, res) => {
     employmentType,
     openings,
     description,
+    workMode,
+    experienceLevel,
+    minExperience,
+    maxExperience,
+    requiredSkills: normalizedList(requiredSkills, 50, 60),
+    preferredSkills: normalizedList(preferredSkills, 50, 60),
+    educationRequirements: normalizedList(educationRequirements, 20, 200),
+    maxNoticePeriod,
     publicationStatus: 'DRAFT',
     createdBy: req.user._id,
   });
@@ -79,6 +114,14 @@ export const updateJob = asyncHandler(async (req, res) => {
     'employmentType',
     'openings',
     'description',
+    'workMode',
+    'experienceLevel',
+    'minExperience',
+    'maxExperience',
+    'requiredSkills',
+    'preferredSkills',
+    'educationRequirements',
+    'maxNoticePeriod',
     'status',
     'publicationStatus',
     'applicationDeadline',
@@ -92,6 +135,11 @@ export const updateJob = asyncHandler(async (req, res) => {
   });
 
   if (!job) throw ApiError.notFound('Job not found');
+
+  validateExperienceRange({
+    minExperience: req.body.minExperience ?? job.minExperience,
+    maxExperience: req.body.maxExperience ?? job.maxExperience,
+  });
 
   const nextOperationalStatus = req.body.status || job.status;
   const publishingNow = req.body.publicationStatus === 'PUBLISHED';
@@ -130,6 +178,16 @@ export const updateJob = asyncHandler(async (req, res) => {
 
     if (field === 'applicationDeadline') {
       job[field] = req.body[field] || null;
+      return;
+    }
+
+    if (['requiredSkills', 'preferredSkills'].includes(field)) {
+      job[field] = normalizedList(req.body[field], 50, 60);
+      return;
+    }
+
+    if (field === 'educationRequirements') {
+      job[field] = normalizedList(req.body[field], 20, 200);
       return;
     }
 

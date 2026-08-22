@@ -40,6 +40,16 @@ const candidateService = {
     api
       .post(`/recruitment/candidates/${candidateRef}/resume/reprocess`, {})
       .then(unwrap),
+
+  atsResult: (candidateRef) =>
+    api
+      .get(`/recruitment/candidates/${candidateRef}/ats-result`)
+      .then(unwrap),
+
+  reprocessATS: (candidateRef) =>
+    api
+      .post(`/recruitment/candidates/${candidateRef}/ats-reprocess`, {})
+      .then(unwrap),
 };
 
 export default candidateService;

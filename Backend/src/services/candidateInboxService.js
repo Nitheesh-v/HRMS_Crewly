@@ -254,6 +254,18 @@ export const getCandidateInboxDetail = async ({
         ...(event.metadata?.warningCount !== undefined
           ? { warningCount: Number(event.metadata.warningCount) || 0 }
           : {}),
+        ...(event.metadata?.score !== undefined
+          ? { score: Number(event.metadata.score) || 0 }
+          : {}),
+        ...(event.metadata?.category
+          ? { category: event.metadata.category }
+          : {}),
+        ...(event.metadata?.engineVersion
+          ? { engineVersion: event.metadata.engineVersion }
+          : {}),
+        ...(event.metadata?.trigger
+          ? { trigger: event.metadata.trigger }
+          : {}),
       },
     })),
   };

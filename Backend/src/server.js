@@ -17,6 +17,7 @@ import {
 import {
   recoverPendingResumeProcessing,
 } from './services/resumeProcessingDispatcher.js';
+import { recoverPendingATSMatching } from './services/atsDispatcher.js';
 
 const startServer = async () => {
   try {
@@ -34,6 +35,9 @@ const startServer = async () => {
 
     // Phase 27.6 recovers persisted parser jobs; extraction stays background-only.
     await recoverPendingResumeProcessing();
+
+    // Phase 27.7 recovers parsed candidates that do not yet have an ATS result.
+    await recoverPendingATSMatching();
 
     const server = app.listen(
       env.PORT,

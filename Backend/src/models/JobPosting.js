@@ -47,6 +47,15 @@ const jobPostingSchema = new mongoose.Schema(
     maxExperience: { type: Number, min: 0, max: 60, default: 0 },
     requiredSkills: { type: [String], default: [] },
     preferredSkills: { type: [String], default: [] },
+    educationRequirements: {
+      type: [{ type: String, trim: true, maxlength: 200 }],
+      default: [],
+      validate: {
+        validator: (value) => !Array.isArray(value) || value.length <= 20,
+        message: 'Education requirements cannot contain more than 20 entries',
+      },
+    },
+    maxNoticePeriod: { type: Number, min: 0, max: 365, default: 30 },
     salaryMin: { type: Number, min: 0, default: null },
     salaryMax: { type: Number, min: 0, default: null },
     hiringBudget: { type: Number, min: 0, default: null },

@@ -49,6 +49,10 @@ import {
   candidateResumeReprocess,
 } from '../controllers/resumeParsingController.js';
 import {
+  candidateATSReprocess,
+  candidateATSResultRead,
+} from '../controllers/atsController.js';
+import {
   candidateInboxDetailRules,
   candidateInboxListRules,
   candidateResumeAccessRules,
@@ -57,6 +61,10 @@ import {
   resumeParsedReadRules,
   resumeReprocessRules,
 } from '../validators/resumeParsingValidator.js';
+import {
+  atsReprocessRules,
+  atsResultReadRules,
+} from '../validators/atsValidator.js';
 import { securityRateLimit } from '../middlewares/securityRateLimit.js';
 import {
   requisitionApprove,
@@ -79,6 +87,14 @@ const resumeReprocessRateLimit = securityRateLimit({
   keyGenerator: (req) =>
     `${req.companyId}:${req.user?._id}:${req.params.candidateRef}:resume-reprocess`,
   message: 'Too many resume reprocessing requests. Please try again later.',
+});
+
+const atsReprocessRateLimit = securityRateLimit({
+  windowMs: 15 * 60 * 1000,
+  maximum: 5,
+  keyGenerator: (req) =>
+    `${req.companyId}:${req.user?._id}:${req.params.candidateId}:ats-reprocess`,
+  message: 'Too many ATS recalculation requests. Please try again later.',
 });
 
 router.use(
@@ -235,6 +251,22 @@ router.get(
   requirePermission('CANDIDATE_READ'),
   candidateInboxDetailRules,
   candidateInboxDetail
+);
+
+router.get(
+  '/candidates/:candidateId/ats-result',
+  requirePermission('CANDIDATE_READ'),
+  atsResultReadRules,
+  candidateATSResultRead
+);
+
+router.post(
+  '/candidates/:candidateId/ats-reprocess',
+  checkWriteAccess,
+  requirePermission('CANDIDATE_UPDATE'),
+  atsReprocessRateLimit,
+  atsReprocessRules,
+  candidateATSReprocess
 );
 
 router.get(

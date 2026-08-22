@@ -1,13 +1,21 @@
 // ─────────────────────────────────────────────────────────────
 // Candidate — a person in the hiring pipeline of one job.
-//   stage       : APPLIED → SCREENING → INTERVIEW → OFFER → HIRED / REJECTED
+//   stage       : APPLIED → ATS_SCREENING → SCREENING → INTERVIEW → OFFER → HIRED / REJECTED
 //   offerStatus : NONE → SENT → ACCEPTED / DECLINED
 // Convert creates the employee User account and copies the link
 // into convertedUser (prevents double conversion).
 // ─────────────────────────────────────────────────────────────
 import mongoose from 'mongoose';
 
-export const CANDIDATE_STAGES = ['APPLIED', 'SCREENING', 'INTERVIEW', 'OFFER', 'HIRED', 'REJECTED'];
+export const CANDIDATE_STAGES = [
+  'APPLIED',
+  'ATS_SCREENING',
+  'SCREENING',
+  'INTERVIEW',
+  'OFFER',
+  'HIRED',
+  'REJECTED',
+];
 export const OFFER_STATUS = ['NONE', 'SENT', 'ACCEPTED', 'DECLINED'];
 export const CANDIDATE_SOURCES = ['INTERNAL', 'CAREER_PAGE'];
 export const CANDIDATE_STATUSES = ['ACTIVE', 'ARCHIVED'];

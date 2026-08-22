@@ -23,6 +23,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
+import ATSAnalysisPanel from '../../components/recruitment/ATSAnalysisPanel.jsx';
 import usePermission from '../../hooks/usePermission.js';
 import candidateService from '../../services/candidateService.js';
 
@@ -131,6 +132,8 @@ const timelineLabel = (action) =>
     RESUME_PARSED: 'Resume parsing completed',
     RESUME_PARSE_FAILED: 'Resume parsing failed safely',
     RESUME_REPROCESS_REQUESTED: 'Resume reprocessing requested',
+    ATS_PROCESSED: 'ATS analysis completed',
+    ATS_REPROCESSED: 'ATS analysis recalculated',
   })[action] || enumLabel(action);
 
 const ParserCollection = ({ title, items, renderItem }) => {
@@ -415,13 +418,20 @@ const CandidateDetailPage = () => {
   const [parsedError, setParsedError] = useState('');
   const [reprocessBusy, setReprocessBusy] = useState(false);
   const [reprocessMessage, setReprocessMessage] = useState('');
+  const [ats, setAts] = useState(null);
+  const [atsLoading, setAtsLoading] = useState(true);
+  const [atsError, setAtsError] = useState('');
+  const [atsReprocessBusy, setAtsReprocessBusy] = useState(false);
+  const [previousATSEvaluation, setPreviousATSEvaluation] = useState('');
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     setParsedLoading(true);
+    setAtsLoading(true);
     setError('');
     setParsedError('');
+    setAtsError('');
 
     const load = async () => {
       try {
@@ -430,6 +440,15 @@ const CandidateDetailPage = () => {
         if (!active) return;
         setCandidate(detail);
         document.title = `${detail.overview.name} — Candidate — Crewly HRMS`;
+
+        try {
+          const atsResult = await candidateService.atsResult(candidateRef);
+          if (active) setAts(atsResult);
+        } catch (requestError) {
+          if (active) {
+            setAtsError(requestError?.message || 'ATS analysis could not be loaded');
+          }
+        }
 
         if (detail.resume?.available) {
           try {
@@ -449,6 +468,7 @@ const CandidateDetailPage = () => {
         if (active) {
           setLoading(false);
           setParsedLoading(false);
+          setAtsLoading(false);
         }
       }
     };
@@ -477,6 +497,13 @@ const CandidateDetailPage = () => {
               .detail(candidateRef)
               .then(setCandidate)
               .catch(() => {});
+            candidateService
+              .atsResult(candidateRef)
+              .then((atsResult) => {
+                setAts(atsResult);
+                setAtsError('');
+              })
+              .catch(() => {});
           }
         })
         .catch(() => {});
@@ -484,6 +511,39 @@ const CandidateDetailPage = () => {
 
     return () => window.clearInterval(timer);
   }, [candidateRef, parsedResume?.status]);
+
+  useEffect(() => {
+    if (ats?.status !== 'MATCHING_PENDING' && !atsReprocessBusy) {
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      candidateService
+        .atsResult(candidateRef)
+        .then((result) => {
+          setAts(result);
+          setAtsError('');
+
+          const evaluatedAt = result?.result?.evaluatedAt || '';
+          if (
+            result?.status === 'COMPLETED' &&
+            (!previousATSEvaluation || evaluatedAt !== previousATSEvaluation)
+          ) {
+            setAtsReprocessBusy(false);
+            setPreviousATSEvaluation('');
+            candidateService.detail(candidateRef).then(setCandidate).catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }, 2500);
+
+    return () => window.clearInterval(timer);
+  }, [
+    ats?.status,
+    atsReprocessBusy,
+    candidateRef,
+    previousATSEvaluation,
+  ]);
 
   const downloadResume = async () => {
     setResumeBusy(true);
@@ -521,12 +581,36 @@ const CandidateDetailPage = () => {
         reprocessAvailable: false,
         failure: null,
       }));
+      setAts({
+        status: 'PARSING_PENDING',
+        parserStatus: scheduled.status || 'RETRY_PENDING',
+        message: 'ATS matching will run again after resume reprocessing completes.',
+      });
       setReprocessMessage('Resume reprocessing was scheduled. This page will refresh the parser state automatically.');
       candidateService.detail(candidateRef).then(setCandidate).catch(() => {});
     } catch (requestError) {
       setParsedError(requestError?.message || 'Resume reprocessing could not be scheduled');
     } finally {
       setReprocessBusy(false);
+    }
+  };
+
+  const reprocessATS = async () => {
+    setAtsReprocessBusy(true);
+    setAtsError('');
+    setPreviousATSEvaluation(ats?.result?.evaluatedAt || '');
+
+    try {
+      const scheduled = await candidateService.reprocessATS(candidateRef);
+      setAts((current) => ({
+        ...(current || {}),
+        status: scheduled.status || 'MATCHING_PENDING',
+        message: 'ATS recalculation is running against the current job requirements.',
+      }));
+    } catch (requestError) {
+      setAtsError(requestError?.message || 'ATS recalculation could not be scheduled');
+      setAtsReprocessBusy(false);
+      setPreviousATSEvaluation('');
     }
   };
 
@@ -595,6 +679,15 @@ const CandidateDetailPage = () => {
               The sections below preserve information submitted by the candidate and remain separate from parser-derived data.
             </p>
           </div>
+
+          <ATSAnalysisPanel
+            ats={ats}
+            loading={atsLoading}
+            error={atsError}
+            canReprocess={hasPermission('CANDIDATE_UPDATE')}
+            reprocessBusy={atsReprocessBusy}
+            onReprocess={reprocessATS}
+          />
 
           <Section icon={BriefcaseBusiness} title="Professional profile">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -678,6 +771,13 @@ const CandidateDetailPage = () => {
                           {event.metadata.attempt ? ` · Attempt ${event.metadata.attempt}` : ''}
                         </p>
                       ) : null}
+                      {event.metadata?.engineVersion ? (
+                        <p className="mt-1 text-xs text-slate-400">
+                          ATS engine {event.metadata.engineVersion}
+                          {event.metadata.score !== undefined ? ` · Score ${event.metadata.score}` : ''}
+                          {event.metadata.category ? ` · ${enumLabel(event.metadata.category)} match` : ''}
+                        </p>
+                      ) : null}
                     </div>
                   </li>
                 ))}
@@ -711,9 +811,10 @@ const CandidateDetailPage = () => {
           <Section icon={CalendarDays} title="Application status">
             <Value label="Current stage" value={enumLabel(candidate.overview.stage)} />
             <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/40 p-4">
-              <p className="text-[10px] uppercase tracking-wide text-slate-500">Screening automation</p>
-              <p className="mt-1.5 text-sm font-medium text-slate-300">ATS analysis has not been processed yet</p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">No ATS score, ranking, matching, or automated hiring decision is available.</p>
+              <p className="text-[10px] uppercase tracking-wide text-slate-500">ATS policy</p>
+              <p className="mt-1.5 text-xs leading-5 text-slate-400">
+                ATS analysis is assistive. Crewly does not automatically shortlist, reject, or make hiring decisions.
+              </p>
             </div>
           </Section>
         </aside>

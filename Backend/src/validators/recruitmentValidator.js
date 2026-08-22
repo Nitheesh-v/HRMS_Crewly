@@ -2,8 +2,10 @@ import { body, validationResult } from 'express-validator';
 import ApiError from '../utils/ApiError.js';
 import {
   EMPLOYMENT_TYPES,
+  JOB_EXPERIENCE_LEVELS,
   JOB_PUBLICATION_STATUSES,
   JOB_STATUS,
+  JOB_WORK_MODES,
 } from '../models/JobPosting.js';
 import { CANDIDATE_STAGES, OFFER_STATUS } from '../models/Candidate.js';
 
@@ -15,6 +17,51 @@ const validate = (req, _res, next) => {
   throw err;
 };
 
+const boundedList = (field, maximum, itemLength) =>
+  body(field)
+    .optional()
+    .custom((value) => {
+      const values = Array.isArray(value)
+        ? value
+        : String(value || '').split(',');
+
+      if (values.length > maximum) {
+        throw new Error(`${field} cannot contain more than ${maximum} entries`);
+      }
+
+      if (values.some((item) => String(item).trim().length > itemLength)) {
+        throw new Error(`Each ${field} entry must be ${itemLength} characters or fewer`);
+      }
+
+      return true;
+    });
+
+const matchingRequirementRules = [
+  body('workMode')
+    .optional({ values: 'falsy' })
+    .isIn(JOB_WORK_MODES)
+    .withMessage('Invalid work mode'),
+  body('experienceLevel')
+    .optional({ values: 'falsy' })
+    .isIn(JOB_EXPERIENCE_LEVELS)
+    .withMessage('Invalid experience level'),
+  body('minExperience')
+    .optional({ nullable: true })
+    .isFloat({ min: 0, max: 60 })
+    .withMessage('Minimum experience must be between 0 and 60 years'),
+  body('maxExperience')
+    .optional({ nullable: true })
+    .isFloat({ min: 0, max: 60 })
+    .withMessage('Maximum experience must be between 0 and 60 years'),
+  boundedList('requiredSkills', 50, 60),
+  boundedList('preferredSkills', 50, 60),
+  boundedList('educationRequirements', 20, 200),
+  body('maxNoticePeriod')
+    .optional({ nullable: true })
+    .isInt({ min: 0, max: 365 })
+    .withMessage('Maximum notice period must be between 0 and 365 days'),
+];
+
 export const createJobRules = [
   body('title').trim().notEmpty().withMessage('Job title is required').isLength({ min: 3, max: 120 }).withMessage('Title must be 3–120 characters'),
   body('department').optional({ values: 'falsy' }).isMongoId().withMessage('Invalid department'),
@@ -22,6 +69,7 @@ export const createJobRules = [
   body('employmentType').optional({ values: 'falsy' }).isIn(EMPLOYMENT_TYPES).withMessage('Invalid employment type'),
   body('openings').optional({ values: 'falsy' }).isInt({ min: 1, max: 500 }).withMessage('Openings must be 1–500'),
   body('description').optional({ values: 'falsy' }).trim().isLength({ max: 2000 }),
+  ...matchingRequirementRules,
   validate,
 ];
 
@@ -46,6 +94,7 @@ export const updateJobRules = [
     .isBoolean()
     .withMessage('Public salary visibility must be true or false')
     .toBoolean(),
+  ...matchingRequirementRules,
   validate,
 ];
 

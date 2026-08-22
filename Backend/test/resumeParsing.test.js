@@ -23,6 +23,7 @@ const [
   processingService,
   inboxService,
   dispatcher,
+  atsDispatcher,
   permissionRegistry,
 ] = await Promise.all([
   import('../src/models/AuditLog.js'),
@@ -36,6 +37,7 @@ const [
   import('../src/services/resumeProcessingService.js'),
   import('../src/services/candidateInboxService.js'),
   import('../src/services/resumeProcessingDispatcher.js'),
+  import('../src/services/atsDispatcher.js'),
   import('../src/utils/permissionRegistry.js'),
 ]);
 
@@ -422,6 +424,7 @@ test('processing service persists completed state and never mutates Candidate da
       candidateMutationAttempted = true;
     };
 
+    const atsQueuedBefore = atsDispatcher.atsDispatcherState().queued;
     const processed = await processingService.processResumeJob({
       companyId: COMPANY_ID,
       candidateId: CANDIDATE_ID,
@@ -429,6 +432,10 @@ test('processing service persists completed state and never mutates Candidate da
     });
 
     assert.equal(processed.status, 'COMPLETED');
+    assert.equal(
+      atsDispatcher.atsDispatcherState().queued - atsQueuedBefore,
+      1
+    );
     assert.equal(candidateMutationAttempted, false);
     assert.equal(
       resumeUpdates.some(

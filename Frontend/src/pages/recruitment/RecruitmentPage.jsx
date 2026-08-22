@@ -53,11 +53,26 @@ const emptyJobForm = {
   employmentType: 'FULL_TIME',
   openings: 1,
   description: '',
+  workMode: 'ONSITE',
+  experienceLevel: 'EXPERIENCED',
+  minExperience: 0,
+  maxExperience: 0,
+  requiredSkills: '',
+  preferredSkills: '',
+  educationRequirements: '',
+  maxNoticePeriod: 30,
   publicationStatus: 'DRAFT',
   applicationDeadline: '',
   publicSalaryVisible: false,
 };
 const emptyCandForm = { name: '', email: '', phone: '', resumeLink: '', notes: '' };
+const splitList = (value) =>
+  [...new Set(
+    String(value || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
+  )];
 const isoDate = (d) => (d ? String(d).slice(0, 10) : '');
 const errText = (error) => error?.message || 'Something went wrong';
 const enumLabel = (value = '') =>
@@ -226,6 +241,14 @@ const RecruitmentPage = () => {
           employmentType: requisition.employmentType || 'FULL_TIME',
           openings: requisition.openings || 1,
           description: requisitionDescription(requisition),
+          workMode: requisition.workMode || 'ONSITE',
+          experienceLevel: requisition.experienceLevel || 'EXPERIENCED',
+          minExperience: requisition.minExperience || 0,
+          maxExperience: requisition.maxExperience || 0,
+          requiredSkills: (requisition.requiredSkills || []).join(', '),
+          preferredSkills: (requisition.preferredSkills || []).join(', '),
+          educationRequirements: '',
+          maxNoticePeriod: 30,
         });
         setJobModal({
           open: true,
@@ -274,6 +297,14 @@ const RecruitmentPage = () => {
           employmentType: editing.employmentType,
           openings: editing.openings,
           description: editing.description || '',
+          workMode: editing.workMode || 'ONSITE',
+          experienceLevel: editing.experienceLevel || 'EXPERIENCED',
+          minExperience: editing.minExperience || 0,
+          maxExperience: editing.maxExperience || 0,
+          requiredSkills: (editing.requiredSkills || []).join(', '),
+          preferredSkills: (editing.preferredSkills || []).join(', '),
+          educationRequirements: (editing.educationRequirements || []).join(', '),
+          maxNoticePeriod: editing.maxNoticePeriod ?? 30,
           publicationStatus: editing.publicationStatus || 'DRAFT',
           applicationDeadline: isoDate(editing.applicationDeadline),
           publicSalaryVisible: Boolean(editing.publicSalaryVisible),
@@ -305,6 +336,18 @@ const RecruitmentPage = () => {
       const payload = {
         ...jobForm,
         openings: Number(jobForm.openings) || 1,
+        minExperience: jobForm.experienceLevel === 'FRESHER'
+          ? 0
+          : Number(jobForm.minExperience) || 0,
+        maxExperience: jobForm.experienceLevel === 'FRESHER'
+          ? 0
+          : Number(jobForm.maxExperience) || 0,
+        requiredSkills: splitList(jobForm.requiredSkills),
+        preferredSkills: splitList(jobForm.preferredSkills),
+        educationRequirements: splitList(jobForm.educationRequirements),
+        maxNoticePeriod: jobForm.maxNoticePeriod === ''
+          ? 30
+          : Number(jobForm.maxNoticePeriod),
         applicationDeadline: jobForm.applicationDeadline
           ? new Date(`${jobForm.applicationDeadline}T23:59:59.999`).toISOString()
           : null,
@@ -799,6 +842,114 @@ const RecruitmentPage = () => {
                   </div>
                 </div>
               </>
+            )}
+
+            {!jobModal.requisition && (
+              <section className="rounded-xl border border-indigo-500/25 bg-indigo-500/5 p-4">
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-indigo-300" />
+                  <h3 className="text-sm font-semibold text-slate-200">ATS matching requirements</h3>
+                </div>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  These requirements feed the explainable ATS analysis. Changing them does not automatically shortlist or reject anyone.
+                </p>
+
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="label">Work mode</label>
+                    <select
+                      className="input"
+                      value={jobForm.workMode}
+                      onChange={(event) => setJobForm((form) => ({ ...form, workMode: event.target.value }))}
+                    >
+                      <option value="ONSITE">On-site</option>
+                      <option value="HYBRID">Hybrid</option>
+                      <option value="REMOTE">Remote</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">Experience level</label>
+                    <select
+                      className="input"
+                      value={jobForm.experienceLevel}
+                      onChange={(event) => setJobForm((form) => ({ ...form, experienceLevel: event.target.value }))}
+                    >
+                      <option value="EXPERIENCED">Experienced</option>
+                      <option value="FRESHER">Fresher</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">Minimum experience in years</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min="0"
+                      max="60"
+                      step="0.5"
+                      value={jobForm.minExperience}
+                      disabled={jobForm.experienceLevel === 'FRESHER'}
+                      onChange={(event) => setJobForm((form) => ({ ...form, minExperience: event.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Maximum experience in years</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min="0"
+                      max="60"
+                      step="0.5"
+                      value={jobForm.maxExperience}
+                      disabled={jobForm.experienceLevel === 'FRESHER'}
+                      onChange={(event) => setJobForm((form) => ({ ...form, maxExperience: event.target.value }))}
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="label">Required skills</label>
+                    <input
+                      className="input"
+                      value={jobForm.requiredSkills}
+                      maxLength={1000}
+                      onChange={(event) => setJobForm((form) => ({ ...form, requiredSkills: event.target.value }))}
+                      placeholder="Node.js, MongoDB, REST APIs"
+                    />
+                    <p className="mt-1 text-[10px] text-slate-500">Separate skills with commas.</p>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="label">Preferred skills</label>
+                    <input
+                      className="input"
+                      value={jobForm.preferredSkills}
+                      maxLength={1000}
+                      onChange={(event) => setJobForm((form) => ({ ...form, preferredSkills: event.target.value }))}
+                      placeholder="TypeScript, Redis"
+                    />
+                    <p className="mt-1 text-[10px] text-slate-500">Separate skills with commas.</p>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="label">Education requirements</label>
+                    <input
+                      className="input"
+                      value={jobForm.educationRequirements}
+                      maxLength={1000}
+                      onChange={(event) => setJobForm((form) => ({ ...form, educationRequirements: event.target.value }))}
+                      placeholder="Bachelor's degree in Computer Science"
+                    />
+                    <p className="mt-1 text-[10px] text-slate-500">Optional. Separate multiple requirements with commas.</p>
+                  </div>
+                  <div>
+                    <label className="label">Maximum notice period in days</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min="0"
+                      max="365"
+                      value={jobForm.maxNoticePeriod}
+                      onChange={(event) => setJobForm((form) => ({ ...form, maxNoticePeriod: event.target.value }))}
+                    />
+                  </div>
+                </div>
+              </section>
             )}
 
             <div>
