@@ -25,14 +25,18 @@ export const sendMail = async ({
   subject,
   html = "",
   text = "",
+  sensitive = false,
 }) => {
   try {
     if (!transporter) {
       logger.info(
-        `📧 [MOCK EMAIL] → ${to} | ${subject}`,
+        sensitive
+          ? `📧 [MOCK EMAIL] sensitive message queued | ${subject}`
+          : `📧 [MOCK EMAIL] → ${to} | ${subject}`,
       );
 
       if (
+        !sensitive &&
         process.env.NODE_ENV !==
         "production"
       ) {
@@ -41,7 +45,7 @@ export const sendMail = async ({
         );
       }
 
-      return;
+      return { delivered: true, mode: 'MOCK', error: '' };
     }
 
     await transporter.sendMail({
@@ -58,10 +62,18 @@ export const sendMail = async ({
       text:
         text || undefined,
     });
+
+    return { delivered: true, mode: 'SMTP', error: '' };
   } catch (error) {
     logger.warn(
-      `📧 Email to ${to} failed: ${error.message}`,
+      `📧 Email delivery failed: ${error.message}`,
     );
+
+    return {
+      delivered: false,
+      mode: transporter ? 'SMTP' : 'MOCK',
+      error: String(error.message || 'Email delivery failed').slice(0, 300),
+    };
   }
 };
 
@@ -71,6 +83,45 @@ const shell = (title, bodyHtml) => `
     <div style="padding:18px;color:#24292f">${bodyHtml}</div>
     <div style="padding:10px 18px;color:#8b949e;font-size:11px;border-top:1px solid #eee">${title}</div>
   </div>`;
+
+const escapeHtml = (value) =>
+  String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+
+export const applicationReceivedEmail = ({
+  candidateName,
+  companyName,
+  jobTitle,
+  jobCode,
+  applicationReference,
+}) => {
+  const safeName = escapeHtml(candidateName);
+  const safeCompany = escapeHtml(companyName);
+  const safeTitle = escapeHtml(jobTitle);
+  const safeJobCode = escapeHtml(jobCode);
+  const safeReference = escapeHtml(applicationReference);
+
+  return {
+    subject: `Application received — ${String(companyName || '')
+      .replace(/[\r\n]/g, ' ')
+      .slice(0, 120)}`,
+    text:
+      `Hello ${candidateName},\n\n` +
+      `${companyName} has received your application for ${jobTitle} (${jobCode}).\n` +
+      `Application reference: ${applicationReference}\n\n` +
+      'The hiring team will contact you if your profile is selected for a next step.',
+    html: shell('This is an application receipt, not a hiring decision.', `
+      <h2 style="margin:0 0 10px">Application received</h2>
+      <p>Hello ${safeName},</p>
+      <p><b>${safeCompany}</b> has received your application for <b>${safeTitle}</b> (${safeJobCode}).</p>
+      <p style="background:#f6f8fa;padding:12px;border-radius:8px">Application reference: <b>${safeReference}</b></p>
+      <p style="color:#57606a;font-size:13px">The hiring team will contact you if your profile is selected for a next step.</p>`),
+  };
+};
 
 // Credentials email (new user / converted candidate)
 export const welcomeEmail = ({ name, email, password, companyName, code }) => ({

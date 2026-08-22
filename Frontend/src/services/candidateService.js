@@ -1,0 +1,35 @@
+import api from './api.js';
+
+const unwrap = (response) =>
+  response?.data?.data ??
+  response?.data ??
+  response ??
+  {};
+
+const candidateService = {
+  list: async (params = {}) => {
+    const response = await api.get('/recruitment/candidates/inbox', {
+      params,
+    });
+    const data = unwrap(response);
+
+    return {
+      candidates: Array.isArray(data) ? data : [],
+      meta: response?.meta || {},
+    };
+  },
+
+  detail: (candidateRef) =>
+    api
+      .get(`/recruitment/candidates/${candidateRef}/detail`)
+      .then(unwrap),
+
+  resume: (candidateRef) =>
+    api
+      .get(`/recruitment/candidates/${candidateRef}/resume`, {
+        responseType: 'blob',
+      })
+      .then(unwrap),
+};
+
+export default candidateService;

@@ -152,6 +152,7 @@ const RequisitionApprovalsPage = () => {
   const canApprove = hasPermission('REQUISITION_APPROVE');
   const canReject = hasPermission('REQUISITION_REJECT');
   const canSendBack = hasPermission('REQUISITION_SEND_BACK');
+  const canReadCandidates = hasPermission('CANDIDATE_READ');
   const canDecide = hasAnyPermission([
     'REQUISITION_APPROVE',
     'REQUISITION_REJECT',
@@ -343,6 +344,14 @@ const RequisitionApprovalsPage = () => {
         <span className="border-b-2 border-indigo-400 px-1 pb-3 font-semibold text-indigo-300">
           HR approvals
         </span>
+        {canReadCandidates && (
+          <Link
+            to="/app/recruitment/candidates"
+            className="px-1 pb-3 text-slate-400 transition hover:text-slate-200"
+          >
+            Candidates
+          </Link>
+        )}
         <Link
           to="/app/recruitment/legacy"
           className="px-1 pb-3 text-slate-400 transition hover:text-slate-200"

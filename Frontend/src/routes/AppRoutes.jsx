@@ -47,6 +47,8 @@ import PayrollPage from "../pages/payroll/PayrollPage.jsx";
 import MyPayslipsPage from "../pages/payroll/MyPayslipsPage.jsx";
 
 import RecruitmentPage from "../pages/recruitment/RecruitmentPage.jsx";
+import CandidateDetailPage from "../pages/recruitment/CandidateDetailPage.jsx";
+import CandidateInboxPage from "../pages/recruitment/CandidateInboxPage.jsx";
 import RequisitionApprovalsPage from "../pages/recruitment/RequisitionApprovalsPage.jsx";
 import RequisitionsPage from "../pages/recruitment/RequisitionsPage.jsx";
 import ExitProcessPage from "../pages/exit/ExitProcessPage.jsx";
@@ -371,6 +373,24 @@ const AppRoutes = () => (
               <RequisitionApprovalsPage />
             </RequirePermission>
           </RequireRole>
+        }
+      />
+
+      <Route
+        path="recruitment/candidates"
+        element={
+          <RequirePermission permission="CANDIDATE_READ">
+            <CandidateInboxPage />
+          </RequirePermission>
+        }
+      />
+
+      <Route
+        path="recruitment/candidates/:candidateRef"
+        element={
+          <RequirePermission permission="CANDIDATE_READ">
+            <CandidateDetailPage />
+          </RequirePermission>
         }
       />
 

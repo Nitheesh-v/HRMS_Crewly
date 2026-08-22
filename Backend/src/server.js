@@ -11,6 +11,9 @@ import {
 import {
   ensureCareerPortalIdentifiers,
 } from './utils/careerPortalIdentifiers.js';
+import {
+  ensureCandidateIdentifiers,
+} from './utils/candidateIdentifiers.js';
 
 const startServer = async () => {
   try {
@@ -22,6 +25,9 @@ const startServer = async () => {
 
     // Phase 27.4 public identifiers and safe publication defaults.
     await ensureCareerPortalIdentifiers();
+
+    // Phase 27.5 candidate identifiers and compatible legacy defaults.
+    await ensureCandidateIdentifiers();
 
     const server = app.listen(
       env.PORT,

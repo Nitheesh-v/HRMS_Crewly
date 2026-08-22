@@ -51,9 +51,9 @@ export const updateJobRules = [
 
 export const candidateRules = [
   body('job').notEmpty().withMessage('Job is required').isMongoId().withMessage('Invalid job'),
-  body('name').trim().notEmpty().withMessage('Candidate name is required').isLength({ min: 2, max: 60 }),
+  body('name').trim().notEmpty().withMessage('Candidate name is required').isLength({ min: 2, max: 100 }),
   body('email').trim().isEmail().withMessage('Enter a valid email').normalizeEmail(),
-  body('phone').optional({ values: 'falsy' }).trim().matches(/^[0-9+\-\s]{6,15}$/).withMessage('Enter a valid phone number'),
+  body('phone').optional({ values: 'falsy' }).trim().matches(/^[0-9+()\-\s]{6,20}$/).withMessage('Enter a valid phone number'),
   body('resumeLink').optional({ values: 'falsy' }).trim().isLength({ max: 300 }),
   body('notes').optional({ values: 'falsy' }).trim().isLength({ max: 500 }),
   validate,

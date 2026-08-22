@@ -441,6 +441,12 @@ const RecruitmentPage = () => {
         >
           HR approvals
         </Link>
+        <Link
+          to="/app/recruitment/candidates"
+          className="px-1 pb-3 text-slate-400 transition hover:text-slate-200"
+        >
+          Candidates
+        </Link>
         <span className="border-b-2 border-indigo-400 px-1 pb-3 font-semibold text-indigo-300">
           Jobs & candidate pipeline
         </span>

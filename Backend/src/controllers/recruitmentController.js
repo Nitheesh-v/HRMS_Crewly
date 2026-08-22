@@ -18,6 +18,7 @@ import { sendMail, welcomeEmail } from '../utils/mailer.js';
 import { notifyUser } from '../utils/notify.js';
 import Subscription from '../models/Subscription.js';
 import { nextJobCode } from '../utils/careerPortalIdentifiers.js';
+import { nextCandidateCode } from '../utils/candidateIdentifiers.js';
 
 // GET /api/recruitment/jobs
 export const listJobs = asyncHandler(async (req, res) => {
@@ -162,17 +163,36 @@ export const listCandidates = asyncHandler(async (req, res) => {
 
 // POST /api/recruitment/candidates
 export const addCandidate = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const { job: jobId, name, email, phone, resumeLink, notes } = req.body;
+
+  // DB Logic - DB logics
   const job = await JobPosting.findOne({ _id: jobId, companyId: req.companyId });
   if (!job) throw ApiError.notFound('Job not found in your company');
   if (job.status !== 'OPEN') throw ApiError.badRequest('This job is CLOSED — reopen it to add candidates');
 
-  const dup = await Candidate.findOne({ job: jobId, email: email.toLowerCase() });
+  const dup = await Candidate.findOne({
+    companyId: req.companyId,
+    job: jobId,
+    email: email.toLowerCase(),
+  });
   if (dup) throw ApiError.conflict('This email is already added for this job');
 
+  const candidateCode = await nextCandidateCode(req.companyId);
   const candidate = await Candidate.create({
-    companyId: req.companyId, job: jobId, name, email, phone, resumeLink, notes,
+    companyId: req.companyId,
+    job: jobId,
+    candidateCode,
+    name,
+    email,
+    phone,
+    resumeLink,
+    notes,
+    source: 'INTERNAL',
+    applicationDate: new Date(),
   });
+
+  // Data to frontend - response to frontend
   return ApiResponse.created(res, { message: 'Candidate added', data: candidate });
 });
 

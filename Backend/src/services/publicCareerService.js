@@ -245,6 +245,37 @@ export const listPublicJobs = async ({ companySlug, query = {} }) => {
   };
 };
 
+export const resolvePublicApplicationTarget = async ({
+  companySlug,
+  jobCode,
+}) => {
+  const company = await resolveCareerTenant(companySlug);
+  const normalizedJobCode = String(jobCode || '').trim().toUpperCase();
+  const job = await JobPosting.findOne({
+    ...publicVisibilityFilter(company._id),
+    jobCode: normalizedJobCode,
+  })
+    .select(
+      '_id companyId sourceRequisition jobCode title status publicationStatus ' +
+        'applicationDeadline'
+    )
+    .lean();
+
+  if (job) return { company, job };
+
+  const wasPreviouslyPublished = await JobPosting.exists({
+    companyId: company._id,
+    jobCode: normalizedJobCode,
+    publishedAt: { $ne: null },
+  });
+
+  if (wasPreviouslyPublished) {
+    throw new ApiError(410, 'This job is no longer accepting applications');
+  }
+
+  throw ApiError.notFound('Job not found');
+};
+
 export const getPublicJob = async ({ companySlug, jobCode }) => {
   const company = await resolveCareerTenant(companySlug);
   const normalizedJobCode = String(jobCode || '').trim().toUpperCase();

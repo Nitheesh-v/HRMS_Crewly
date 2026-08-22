@@ -251,6 +251,7 @@ const RequisitionsPage = () => {
   const isFullAccess = fullAccessRoles.includes(user?.role);
   const canCreate = creatorRoles.includes(user?.role);
   const canCreateJob = hasPermission('RECRUITMENT_CREATE');
+  const canReadCandidates = hasPermission('CANDIDATE_READ');
   const canReview = hasAnyPermission([
     'REQUISITION_APPROVE',
     'REQUISITION_REJECT',
@@ -481,6 +482,14 @@ const RequisitionsPage = () => {
             className="px-1 pb-3 text-slate-400 transition hover:text-slate-200"
           >
             HR approvals
+          </Link>
+        )}
+        {canReadCandidates && (
+          <Link
+            to="/app/recruitment/candidates"
+            className="px-1 pb-3 text-slate-400 transition hover:text-slate-200"
+          >
+            Candidates
           </Link>
         )}
         <span className="cursor-not-allowed px-1 pb-3 text-slate-600" title="Later Phase 27 subphase">

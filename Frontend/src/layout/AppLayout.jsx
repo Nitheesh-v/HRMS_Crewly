@@ -1,5 +1,6 @@
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import useAuth from "../hooks/useAuth.jsx";
+import usePermission from "../hooks/usePermission.js";
 
 import { ROLES } from "../utils/roles.js";
 import NotificationBell from "../components/NotificationBell";
@@ -302,6 +303,9 @@ const NAV_ICON_BY_PATH = {
   "/app/recruitment/requisitions":
     ClipboardList,
 
+  "/app/recruitment/candidates":
+    Users,
+
   "/app/support":
     LifeBuoy,
 
@@ -412,6 +416,7 @@ const getNavIcon = (item) =>
 
 const AppLayout = () => {
   const { user, secureLogout } = useAuth();
+  const { hasPermission } = usePermission();
   const dispatch = useDispatch();
   const [loggingOut, setLoggingOut] = useState(false);
   const navigate = useNavigate();
@@ -470,7 +475,16 @@ const AppLayout = () => {
       : []),
   ];
 
-  const menu = [...baseMenu, ...securityMenu];
+  const candidateMenu = hasPermission('CANDIDATE_READ')
+    ? [
+        {
+          to: '/app/recruitment/candidates',
+          label: 'Candidates',
+        },
+      ]
+    : [];
+
+  const menu = [...baseMenu, ...candidateMenu, ...securityMenu];
 
   return (
     <div className="flex min-h-screen">

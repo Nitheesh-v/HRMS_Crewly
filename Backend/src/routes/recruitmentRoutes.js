@@ -40,6 +40,16 @@ import {
   convertCandidate,
 } from '../controllers/recruitmentController.js';
 import {
+  candidateInboxDetail,
+  candidateInboxList,
+  candidateResumeDownload,
+} from '../controllers/candidateInboxController.js';
+import {
+  candidateInboxDetailRules,
+  candidateInboxListRules,
+  candidateResumeAccessRules,
+} from '../validators/candidateInboxValidator.js';
+import {
   requisitionApprove,
   requisitionCreate,
   requisitionCreateJob,
@@ -192,20 +202,35 @@ router.patch(
 
 router.get(
   '/candidates',
-  requireAnyPermission([
-    'CANDIDATE_READ',
-    'RECRUITMENT_READ',
-  ]),
+  requirePermission('CANDIDATE_READ'),
   listCandidates
+);
+
+router.get(
+  '/candidates/inbox',
+  requirePermission('CANDIDATE_READ'),
+  candidateInboxListRules,
+  candidateInboxList
+);
+
+router.get(
+  '/candidates/:candidateRef/detail',
+  requirePermission('CANDIDATE_READ'),
+  candidateInboxDetailRules,
+  candidateInboxDetail
+);
+
+router.get(
+  '/candidates/:candidateRef/resume',
+  requirePermission('CANDIDATE_READ'),
+  candidateResumeAccessRules,
+  candidateResumeDownload
 );
 
 router.post(
   '/candidates',
   checkWriteAccess,
-  requireAnyPermission([
-    'CANDIDATE_CREATE',
-    'RECRUITMENT_CREATE',
-  ]),
+  requirePermission('CANDIDATE_CREATE'),
   checkUsageLimit(
     'recruitmentCandidatesMonthly'
   ),
@@ -216,10 +241,7 @@ router.post(
 router.patch(
   '/candidates/:id/stage',
   checkWriteAccess,
-  requireAnyPermission([
-    'CANDIDATE_UPDATE',
-    'RECRUITMENT_UPDATE',
-  ]),
+  requirePermission('CANDIDATE_UPDATE'),
   stageRules,
   updateStage
 );
@@ -227,10 +249,7 @@ router.patch(
 router.patch(
   '/candidates/:id/offer',
   checkWriteAccess,
-  requireAnyPermission([
-    'RECRUITMENT_APPROVE',
-    'CANDIDATE_UPDATE',
-  ]),
+  requirePermission('CANDIDATE_UPDATE'),
   offerRules,
   updateOffer
 );

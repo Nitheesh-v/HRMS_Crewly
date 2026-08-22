@@ -68,6 +68,14 @@ const publicCareerService = {
     publicApi
       .get(`/public/careers/${companySlug}/jobs/${jobCode}`)
       .then(unwrap),
+
+  apply: (companySlug, jobCode, formData) =>
+    publicApi
+      .post(
+        `/public/careers/${companySlug}/jobs/${jobCode}/apply`,
+        formData
+      )
+      .then(unwrap),
 };
 
 export default publicCareerService;
