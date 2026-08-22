@@ -14,6 +14,9 @@ import {
 import {
   ensureCandidateIdentifiers,
 } from './utils/candidateIdentifiers.js';
+import {
+  recoverPendingResumeProcessing,
+} from './services/resumeProcessingDispatcher.js';
 
 const startServer = async () => {
   try {
@@ -28,6 +31,9 @@ const startServer = async () => {
 
     // Phase 27.5 candidate identifiers and compatible legacy defaults.
     await ensureCandidateIdentifiers();
+
+    // Phase 27.6 recovers persisted parser jobs; extraction stays background-only.
+    await recoverPendingResumeProcessing();
 
     const server = app.listen(
       env.PORT,

@@ -13,11 +13,18 @@ export const RESUME_SCAN_STATUSES = [
   'ERROR',
 ];
 export const RESUME_PARSING_STATUSES = [
+  'PENDING',
+  'PROCESSING',
+  'COMPLETED',
+  'FAILED',
+  'RETRY_PENDING',
+  'UNSUPPORTED',
+  'REVIEW_REQUIRED',
+  // Legacy Phase 27.5 values remain readable during rolling upgrades.
   'NOT_REQUESTED',
   'PARSING_PENDING',
   'PARSING',
   'PARSED',
-  'FAILED',
 ];
 
 const candidateResumeSchema = new mongoose.Schema(
@@ -98,8 +105,47 @@ const candidateResumeSchema = new mongoose.Schema(
     parsingStatus: {
       type: String,
       enum: RESUME_PARSING_STATUSES,
-      default: 'NOT_REQUESTED',
+      default: 'PENDING',
       index: true,
+    },
+    parserVersion: {
+      type: String,
+      trim: true,
+      maxlength: 50,
+      default: '',
+    },
+    parsingAttempts: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 0,
+    },
+    parsingRequestedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    lastReprocessRequestedAt: {
+      type: Date,
+      default: null,
+    },
+    parsingStartedAt: {
+      type: Date,
+      default: null,
+    },
+    parsingCompletedAt: {
+      type: Date,
+      default: null,
+    },
+    processingLeaseId: {
+      type: String,
+      maxlength: 100,
+      default: '',
+      select: false,
+    },
+    processingLeaseExpiresAt: {
+      type: Date,
+      default: null,
+      select: false,
     },
     uploadedAt: {
       type: Date,
@@ -114,5 +160,10 @@ candidateResumeSchema.index(
   { unique: true }
 );
 candidateResumeSchema.index({ companyId: 1, job: 1, uploadedAt: -1 });
+candidateResumeSchema.index({
+  parsingStatus: 1,
+  processingLeaseExpiresAt: 1,
+  parsingRequestedAt: 1,
+});
 
 export default mongoose.model('CandidateResume', candidateResumeSchema);

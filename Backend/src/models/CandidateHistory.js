@@ -4,6 +4,10 @@ export const CANDIDATE_HISTORY_ACTIONS = [
   'CANDIDATE_APPLIED',
   'APPLICATION_CONFIRMATION_SENT',
   'APPLICATION_CONFIRMATION_FAILED',
+  'RESUME_PARSE_STARTED',
+  'RESUME_PARSED',
+  'RESUME_PARSE_FAILED',
+  'RESUME_REPROCESS_REQUESTED',
 ];
 
 const candidateHistorySchema = new mongoose.Schema(
@@ -33,13 +37,18 @@ const candidateHistorySchema = new mongoose.Schema(
     },
     source: {
       type: String,
-      enum: ['CAREER_PAGE', 'INTERNAL'],
+      enum: ['CAREER_PAGE', 'INTERNAL', 'RESUME_PARSER'],
       default: 'CAREER_PAGE',
     },
     actorType: {
       type: String,
       enum: ['PUBLIC_CANDIDATE', 'TENANT_USER', 'SYSTEM'],
       default: 'SYSTEM',
+    },
+    actor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
     },
     metadata: {
       type: mongoose.Schema.Types.Mixed,

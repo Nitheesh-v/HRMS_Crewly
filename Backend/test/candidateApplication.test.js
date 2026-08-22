@@ -406,7 +406,7 @@ test('public application builds controlled candidate, resume, history and PII-sa
     assert.equal(candidatePayload.applicationStatus, 'APPLIED');
     assert.equal(candidatePayload.status, 'ACTIVE');
     assert.deepEqual(candidatePayload.skills, ['Node.js', 'MongoDB']);
-    assert.equal(resumePayload.parsingStatus, 'NOT_REQUESTED');
+    assert.equal(resumePayload.parsingStatus, 'PENDING');
     assert.equal(resumePayload.scanStatus, 'NOT_CONFIGURED');
     assert.ok(resumePayload.storageKey);
     assert.equal(historyPayloads[0].action, 'CANDIDATE_APPLIED');

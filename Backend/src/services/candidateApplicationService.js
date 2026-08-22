@@ -7,6 +7,7 @@ import { recordAudit } from '../utils/securityauditService.js';
 import { checkLimit } from '../utils/subscriptionEngine.js';
 import { resolvePublicApplicationTarget } from './publicCareerService.js';
 import { sendApplicationConfirmation } from './candidateApplicationJobs.js';
+import { dispatchResumeProcessing } from './resumeProcessingDispatcher.js';
 import { inspectResumeFile } from './resumeSecurityService.js';
 import {
   deleteStoredResume,
@@ -114,6 +115,7 @@ export const submitCandidateApplication = async ({
   const candidateCode = await nextCandidateCode(company._id);
   let storedResume = null;
   let candidate = null;
+  let candidateResume = null;
 
   try {
     storedResume = await storeResume({ file, companyId: company._id });
@@ -155,14 +157,15 @@ export const submitCandidateApplication = async ({
       },
     });
 
-    await CandidateResume.create({
+    candidateResume = await CandidateResume.create({
       companyId: company._id,
       candidate: candidate._id,
       job: job._id,
       ...storedResume,
       ...resumeMetadata,
       status: 'UPLOADED',
-      parsingStatus: 'NOT_REQUESTED',
+      parsingStatus: 'PENDING',
+      parsingRequestedAt: submittedAt,
       uploadedAt: submittedAt,
     });
 
@@ -220,6 +223,13 @@ export const submitCandidateApplication = async ({
   });
 
   await sendApplicationConfirmation({ candidate, company, job });
+
+  // Queue-only handoff: the public application never waits for extraction/parsing.
+  dispatchResumeProcessing({
+    companyId: company._id,
+    candidateId: candidate._id,
+    resumeId: candidateResume._id,
+  });
 
   return publicResult({
     candidateCode: candidate.candidateCode,

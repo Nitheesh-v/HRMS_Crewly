@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import Candidate from '../models/Candidate.js';
 import CandidateHistory from '../models/CandidateHistory.js';
 import CandidateResume from '../models/CandidateResume.js';
+import ResumeParseResult from '../models/ResumeParseResult.js';
 import ApiError from '../utils/ApiError.js';
 import { getStoredResumeAccess } from './resumeStorageService.js';
 
@@ -149,7 +150,7 @@ export const getCandidateInboxDetail = async ({
       status: 'UPLOADED',
     })
       .select(
-        'originalFileName mimeType fileSize status scanStatus parsingStatus uploadedAt'
+        'originalFileName mimeType fileSize status scanStatus parsingStatus parserVersion parsingAttempts parsingRequestedAt parsingStartedAt parsingCompletedAt uploadedAt'
       )
       .lean(),
     CandidateHistory.find({
@@ -217,6 +218,11 @@ export const getCandidateInboxDetail = async ({
           fileSize: resume.fileSize,
           scanStatus: resume.scanStatus,
           parsingStatus: resume.parsingStatus,
+          parserVersion: resume.parserVersion || '',
+          parsingAttempts: resume.parsingAttempts || 0,
+          parsingRequestedAt: resume.parsingRequestedAt || null,
+          parsingStartedAt: resume.parsingStartedAt || null,
+          parsingCompletedAt: resume.parsingCompletedAt || null,
           uploadedAt: resume.uploadedAt,
         }
       : { available: false },
@@ -235,8 +241,136 @@ export const getCandidateInboxDetail = async ({
         ...(event.metadata?.delivered !== undefined
           ? { delivered: Boolean(event.metadata.delivered) }
           : {}),
+        ...(event.metadata?.parserVersion
+          ? { parserVersion: event.metadata.parserVersion }
+          : {}),
+        ...(event.metadata?.status ? { status: event.metadata.status } : {}),
+        ...(event.metadata?.attempt !== undefined
+          ? { attempt: Number(event.metadata.attempt) || 0 }
+          : {}),
+        ...(event.metadata?.failureCategory
+          ? { failureCategory: event.metadata.failureCategory }
+          : {}),
+        ...(event.metadata?.warningCount !== undefined
+          ? { warningCount: Number(event.metadata.warningCount) || 0 }
+          : {}),
       },
     })),
+  };
+};
+
+const currentParsingStatus = (value) =>
+  ({
+    NOT_REQUESTED: 'PENDING',
+    PARSING_PENDING: 'PENDING',
+    PARSING: 'PROCESSING',
+    PARSED: 'COMPLETED',
+  })[value] || value || 'PENDING';
+
+const safeParsedData = (value = {}) => ({
+  identity: {
+    name: value.identity?.name || '',
+    email: value.identity?.email || '',
+    phone: value.identity?.phone || '',
+    location: value.identity?.location || '',
+  },
+  summary: value.summary || '',
+  skills: Array.isArray(value.skills) ? value.skills : [],
+  education: Array.isArray(value.education) ? value.education : [],
+  workExperience: Array.isArray(value.workExperience)
+    ? value.workExperience
+    : [],
+  derivedExperienceMonths: value.derivedExperienceMonths || 0,
+  certifications: Array.isArray(value.certifications)
+    ? value.certifications
+    : [],
+  projects: Array.isArray(value.projects) ? value.projects : [],
+  links: Array.isArray(value.links) ? value.links : [],
+  languages: Array.isArray(value.languages) ? value.languages : [],
+  awards: Array.isArray(value.awards) ? value.awards : [],
+  achievements: Array.isArray(value.achievements) ? value.achievements : [],
+  publications: Array.isArray(value.publications) ? value.publications : [],
+  volunteering: Array.isArray(value.volunteering) ? value.volunteering : [],
+});
+
+export const getCandidateParsedResume = async ({
+  companyId,
+  candidateRef,
+}) => {
+  const candidate = await Candidate.findOne({
+    companyId,
+    ...candidateReferenceFilter(candidateRef),
+  })
+    .select('_id candidateCode')
+    .lean();
+
+  if (!candidate) throw ApiError.notFound('Candidate not found');
+
+  const resume = await CandidateResume.findOne({
+    companyId,
+    candidate: candidate._id,
+    status: 'UPLOADED',
+    scanStatus: { $ne: 'REJECTED' },
+  })
+    .select(
+      'parsingStatus parserVersion parsingAttempts parsingRequestedAt parsingStartedAt parsingCompletedAt'
+    )
+    .lean();
+
+  if (!resume) throw ApiError.notFound('Resume not found');
+
+  const result = await ResumeParseResult.findOne({
+    companyId,
+    candidate: candidate._id,
+    resume: resume._id,
+  })
+    .select(
+      'source parserVersion extractorVersion status structuredData warnings extractionConfidence attemptCount requestedAt startedAt completedAt failedAt nextRetryAllowedAt failureCategory safeErrorMessage processingMetadata createdAt updatedAt'
+    )
+    .sort({ createdAt: -1 })
+    .lean();
+  const status = currentParsingStatus(resume.parsingStatus || result?.status);
+  const retryBlocked = ['PENDING', 'RETRY_PENDING', 'PROCESSING'].includes(status);
+  const cooldownBlocked =
+    result?.nextRetryAllowedAt &&
+    new Date(result.nextRetryAllowedAt).getTime() > Date.now();
+
+  return {
+    candidateCode: candidate.candidateCode,
+    source: 'RESUME_PARSER',
+    status,
+    parserVersion: result?.parserVersion || resume.parserVersion || '',
+    extractorVersion: result?.extractorVersion || '',
+    attemptCount: result?.attemptCount || resume.parsingAttempts || 0,
+    requestedAt: result?.requestedAt || resume.parsingRequestedAt || null,
+    startedAt: result?.startedAt || resume.parsingStartedAt || null,
+    completedAt: result?.completedAt || resume.parsingCompletedAt || null,
+    failedAt: result?.failedAt || null,
+    nextRetryAllowedAt: result?.nextRetryAllowedAt || null,
+    warnings: Array.isArray(result?.warnings) ? result.warnings : [],
+    extractionConfidence: {
+      overall: result?.extractionConfidence?.overall || 0,
+      textExtraction: result?.extractionConfidence?.textExtraction || 0,
+      sectionDetection: result?.extractionConfidence?.sectionDetection || 0,
+      dateNormalization: result?.extractionConfidence?.dateNormalization || 0,
+    },
+    failure:
+      ['FAILED', 'UNSUPPORTED'].includes(status) && result
+        ? {
+            category: result.failureCategory || 'PARSER_FAILED',
+            message:
+              result.safeErrorMessage ||
+              'Resume processing did not complete. Reprocessing can be requested.',
+          }
+        : null,
+    processingMetadata: {
+      extractedCharacters: result?.processingMetadata?.extractedCharacters || 0,
+      pageCount: result?.processingMetadata?.pageCount || 0,
+      processedPageCount: result?.processingMetadata?.processedPageCount || 0,
+      processingDurationMs: result?.processingMetadata?.processingDurationMs || 0,
+    },
+    structuredData: safeParsedData(result?.structuredData),
+    reprocessAvailable: !retryBlocked && !cooldownBlocked,
   };
 };
 

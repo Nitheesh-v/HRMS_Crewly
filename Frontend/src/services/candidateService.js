@@ -30,6 +30,16 @@ const candidateService = {
         responseType: 'blob',
       })
       .then(unwrap),
+
+  parsedResume: (candidateRef) =>
+    api
+      .get(`/recruitment/candidates/${candidateRef}/resume/parsed`)
+      .then(unwrap),
+
+  reprocessResume: (candidateRef) =>
+    api
+      .post(`/recruitment/candidates/${candidateRef}/resume/reprocess`, {})
+      .then(unwrap),
 };
 
 export default candidateService;

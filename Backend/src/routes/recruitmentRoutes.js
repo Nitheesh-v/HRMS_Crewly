@@ -45,10 +45,19 @@ import {
   candidateResumeDownload,
 } from '../controllers/candidateInboxController.js';
 import {
+  candidateParsedResumeRead,
+  candidateResumeReprocess,
+} from '../controllers/resumeParsingController.js';
+import {
   candidateInboxDetailRules,
   candidateInboxListRules,
   candidateResumeAccessRules,
 } from '../validators/candidateInboxValidator.js';
+import {
+  resumeParsedReadRules,
+  resumeReprocessRules,
+} from '../validators/resumeParsingValidator.js';
+import { securityRateLimit } from '../middlewares/securityRateLimit.js';
 import {
   requisitionApprove,
   requisitionCreate,
@@ -63,6 +72,14 @@ import {
 } from '../controllers/requisitionController.js';
 
 const router = Router();
+
+const resumeReprocessRateLimit = securityRateLimit({
+  windowMs: 15 * 60 * 1000,
+  maximum: 5,
+  keyGenerator: (req) =>
+    `${req.companyId}:${req.user?._id}:${req.params.candidateRef}:resume-reprocess`,
+  message: 'Too many resume reprocessing requests. Please try again later.',
+});
 
 router.use(
   protect,
@@ -218,6 +235,22 @@ router.get(
   requirePermission('CANDIDATE_READ'),
   candidateInboxDetailRules,
   candidateInboxDetail
+);
+
+router.get(
+  '/candidates/:candidateRef/resume/parsed',
+  requirePermission('CANDIDATE_READ'),
+  resumeParsedReadRules,
+  candidateParsedResumeRead
+);
+
+router.post(
+  '/candidates/:candidateRef/resume/reprocess',
+  checkWriteAccess,
+  requirePermission('CANDIDATE_UPDATE'),
+  resumeReprocessRateLimit,
+  resumeReprocessRules,
+  candidateResumeReprocess
 );
 
 router.get(

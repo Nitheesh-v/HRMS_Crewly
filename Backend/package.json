@@ -11,6 +11,7 @@
     "test:requisition-job": "MONGO_URI=mongodb://127.0.0.1:27017/crewly_test node --test test/requisitionJobCreation.test.js",
     "test:career": "MONGO_URI=mongodb://127.0.0.1:27017/crewly_test node --test test/publicCareerPortal.test.js",
     "test:candidates": "MONGO_URI=mongodb://127.0.0.1:27017/crewly_test node --test test/candidateApplication.test.js",
+    "test:resume-parsing": "MONGO_URI=mongodb://127.0.0.1:27017/crewly_test node --test test/resumeParsing.test.js",
     "test:rms": "MONGO_URI=mongodb://127.0.0.1:27017/crewly_test node --test test/requisitionApproval.test.js test/requisitionJobCreation.test.js"
   },
   "keywords": [],
@@ -26,10 +27,12 @@
     "express-validator": "^7.3.2",
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
+    "mammoth": "^1.12.1",
     "mongoose": "^9.9.1",
     "morgan": "^1.11.0",
     "multer": "^2.2.0",
     "nodemailer": "^9.0.5",
+    "pdf-parse": "^2.4.5",
     "pdfkit": "^0.19.1",
     "razorpay": "^2.9.8",
     "winston": "^3.19.0"

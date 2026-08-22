@@ -1,23 +1,29 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useState } from 'react';
 import {
+  AlertTriangle,
   ArrowLeft,
   BriefcaseBusiness,
   Building2,
   CalendarDays,
+  Clock3,
   Download,
   ExternalLink,
+  FileSearch,
   FileText,
   GraduationCap,
+  Languages,
   Link2,
   Mail,
   MapPin,
   Phone,
+  RefreshCw,
   ShieldCheck,
   UserRound,
   Wrench,
 } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
+import usePermission from '../../hooks/usePermission.js';
 import candidateService from '../../services/candidateService.js';
 
 const dateLabel = (value) =>
@@ -73,38 +79,411 @@ const Section = ({ icon: Icon, title, children }) => (
   </section>
 );
 
+const parserStatus = {
+  PENDING: {
+    label: 'Pending',
+    detail: 'Secure resume extraction is queued.',
+    tone: 'border-amber-500/25 bg-amber-500/10 text-amber-200',
+  },
+  RETRY_PENDING: {
+    label: 'Retry pending',
+    detail: 'Authorized reprocessing is queued.',
+    tone: 'border-amber-500/25 bg-amber-500/10 text-amber-200',
+  },
+  PROCESSING: {
+    label: 'Processing',
+    detail: 'Text is being extracted and normalized.',
+    tone: 'border-sky-500/25 bg-sky-500/10 text-sky-200',
+  },
+  COMPLETED: {
+    label: 'Completed',
+    detail: 'Parser-derived fields are ready for HR review.',
+    tone: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200',
+  },
+  FAILED: {
+    label: 'Failed safely',
+    detail: 'The original application and resume were preserved.',
+    tone: 'border-rose-500/25 bg-rose-500/10 text-rose-200',
+  },
+  REVIEW_REQUIRED: {
+    label: 'Review required',
+    detail: 'Little or no machine-readable text was found.',
+    tone: 'border-orange-500/25 bg-orange-500/10 text-orange-200',
+  },
+  UNSUPPORTED: {
+    label: 'Unsupported',
+    detail: 'This document could not be processed by the safe extractor.',
+    tone: 'border-slate-600 bg-slate-800 text-slate-200',
+  },
+};
+
+const parseDateLabel = (value) => value?.original || 'Date not identified';
+
+const confidenceLabel = (value) =>
+  `${Math.round(Math.max(0, Math.min(1, Number(value) || 0)) * 100)}%`;
+
+const timelineLabel = (action) =>
+  ({
+    CANDIDATE_APPLIED: 'Application received',
+    APPLICATION_CONFIRMATION_SENT: 'Application confirmation sent',
+    APPLICATION_CONFIRMATION_FAILED: 'Application confirmation delivery failed',
+    RESUME_PARSE_STARTED: 'Resume parsing started',
+    RESUME_PARSED: 'Resume parsing completed',
+    RESUME_PARSE_FAILED: 'Resume parsing failed safely',
+    RESUME_REPROCESS_REQUESTED: 'Resume reprocessing requested',
+  })[action] || enumLabel(action);
+
+const ParserCollection = ({ title, items, renderItem }) => {
+  if (!items?.length) return null;
+
+  return (
+    <div>
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</h3>
+      <div className="mt-2 space-y-2">
+        {items.map((item, index) => (
+          <div key={`${title}-${index}`} className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+            {renderItem(item)}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const ParsedResumePanel = ({
+  parsed,
+  loading,
+  error,
+  canReprocess,
+  reprocessBusy,
+  reprocessMessage,
+  onReprocess,
+}) => {
+  if (loading) {
+    return <div className="h-44 animate-pulse rounded-2xl bg-slate-900" />;
+  }
+
+  if (!parsed) {
+    return (
+      <Section icon={FileSearch} title="Parser-derived resume information">
+        <p className="text-sm text-slate-500">{error || 'Parser information is not available for this resume.'}</p>
+      </Section>
+    );
+  }
+
+  const status = parserStatus[parsed.status] || parserStatus.PENDING;
+  const data = parsed.structuredData || {};
+  const namedGroups = [
+    ['Awards', data.awards],
+    ['Achievements', data.achievements],
+    ['Publications', data.publications],
+    ['Volunteering', data.volunteering],
+  ];
+  const hasParsedData = parsed.status === 'COMPLETED';
+
+  return (
+    <Section icon={FileSearch} title="Parser-derived resume information">
+      <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${status.tone}`}>
+              {status.label}
+            </span>
+            <p className="mt-2 text-sm text-slate-300">{status.detail}</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Source: Resume parser · Version {parsed.parserVersion || 'Awaiting parser'} · Attempt {parsed.attemptCount || 0}
+            </p>
+            {parsed.completedAt ? (
+              <p className="mt-1 text-xs text-slate-500">Processed {dateLabel(parsed.completedAt)}</p>
+            ) : null}
+          </div>
+          {canReprocess && parsed.reprocessAvailable ? (
+            <button
+              type="button"
+              className="btn-ghost shrink-0 gap-2"
+              onClick={onReprocess}
+              disabled={reprocessBusy}
+            >
+              <RefreshCw className={`h-4 w-4 ${reprocessBusy ? 'animate-spin' : ''}`} />
+              {reprocessBusy ? 'Scheduling…' : 'Reprocess resume'}
+            </button>
+          ) : null}
+        </div>
+        {reprocessMessage ? <p className="mt-3 text-xs text-emerald-300">{reprocessMessage}</p> : null}
+      </div>
+
+      {error ? (
+        <div role="alert" className="mt-3 rounded-xl border border-rose-500/25 bg-rose-500/10 p-4 text-sm text-rose-200">
+          {error}
+        </div>
+      ) : null}
+
+      {parsed.failure ? (
+        <div className="mt-3 flex items-start gap-2 rounded-xl border border-rose-500/25 bg-rose-500/10 p-4">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-300" />
+          <div>
+            <p className="text-sm font-medium text-rose-200">{parsed.failure.message}</p>
+            <p className="mt-1 text-xs text-rose-300/70">Category: {enumLabel(parsed.failure.category)}</p>
+          </div>
+        </div>
+      ) : null}
+
+      {parsed.warnings?.length ? (
+        <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-amber-300">Safe extraction warnings</p>
+          <ul className="mt-2 space-y-1 text-sm text-amber-100/80">
+            {parsed.warnings.map((warning, index) => <li key={`${warning}-${index}`}>• {warning}</li>)}
+          </ul>
+        </div>
+      ) : null}
+
+      {hasParsedData ? (
+        <div className="mt-5 space-y-5">
+          <div>
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Extraction confidence</h3>
+              <span className="text-sm font-semibold text-indigo-200">
+                {confidenceLabel(parsed.extractionConfidence?.overall)}
+              </span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-800">
+              <div
+                className="h-full rounded-full bg-indigo-400"
+                style={{ width: confidenceLabel(parsed.extractionConfidence?.overall) }}
+              />
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              Confidence measures extraction reliability only. It is not a candidate score or hiring assessment.
+            </p>
+          </div>
+
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Extracted identity</h3>
+            <div className="mt-2 grid gap-3 sm:grid-cols-2">
+              <Value label="Name" value={data.identity?.name} />
+              <Value label="Email" value={data.identity?.email} />
+              <Value label="Phone" value={data.identity?.phone} />
+              <Value label="Location" value={data.identity?.location} />
+            </div>
+          </div>
+
+          {data.summary ? (
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Summary</h3>
+              <p className="mt-2 whitespace-pre-line rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-sm leading-6 text-slate-300">
+                {data.summary}
+              </p>
+            </div>
+          ) : null}
+
+          {data.skills?.length ? (
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Normalized skills</h3>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {data.skills.map((skill, index) => (
+                  <span key={`${skill.normalized}-${index}`} className="rounded-lg border border-indigo-500/20 bg-indigo-500/10 px-2.5 py-1.5 text-xs text-indigo-200">
+                    {skill.display}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <ParserCollection
+            title="Work experience"
+            items={data.workExperience}
+            renderItem={(item) => (
+              <div>
+                <p className="font-medium text-slate-200">{item.title || 'Role not identified'}</p>
+                <p className="mt-1 text-sm text-slate-400">{item.employer || 'Employer not identified'}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {parseDateLabel(item.startDate)} — {item.isCurrent ? 'Present' : parseDateLabel(item.endDate)}
+                </p>
+                {item.description ? <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-400">{item.description}</p> : null}
+              </div>
+            )}
+          />
+
+          {data.derivedExperienceMonths ? (
+            <p className="text-xs text-slate-500">
+              Derived non-overlapping employment duration: {Math.floor(data.derivedExperienceMonths / 12)} years {data.derivedExperienceMonths % 12} months.
+            </p>
+          ) : null}
+
+          <ParserCollection
+            title="Education"
+            items={data.education}
+            renderItem={(item) => (
+              <div>
+                <p className="font-medium text-slate-200">{item.qualification || 'Qualification not identified'}</p>
+                <p className="mt-1 text-sm text-slate-400">{item.institution || 'Institution not identified'}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {parseDateLabel(item.startDate)} — {parseDateLabel(item.endDate)}
+                </p>
+                {item.grade ? <p className="mt-1 text-xs text-slate-400">Grade: {item.grade}</p> : null}
+              </div>
+            )}
+          />
+
+          <ParserCollection
+            title="Certifications"
+            items={data.certifications}
+            renderItem={(item) => (
+              <div>
+                <p className="font-medium text-slate-200">{item.name || 'Certification'}</p>
+                {item.issuer ? <p className="mt-1 text-sm text-slate-400">{item.issuer}</p> : null}
+                {item.issuedDate?.original ? <p className="mt-1 text-xs text-slate-500">Issued {item.issuedDate.original}</p> : null}
+              </div>
+            )}
+          />
+
+          <ParserCollection
+            title="Projects"
+            items={data.projects}
+            renderItem={(item) => (
+              <div>
+                <p className="font-medium text-slate-200">{item.name || 'Project'}</p>
+                {item.description ? <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-400">{item.description}</p> : null}
+                {safeHref(item.url) ? (
+                  <a className="mt-2 inline-flex items-center gap-1 text-xs text-indigo-300" href={safeHref(item.url)} target="_blank" rel="noreferrer">
+                    Project link <ExternalLink className="h-3 w-3" />
+                  </a>
+                ) : null}
+              </div>
+            )}
+          />
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            {data.languages?.length ? (
+              <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+                <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <Languages className="h-3.5 w-3.5" /> Languages
+                </h3>
+                <div className="mt-2 space-y-1 text-sm text-slate-300">
+                  {data.languages.map((item, index) => (
+                    <p key={`${item.name}-${index}`}>{item.name}{item.proficiency ? ` · ${item.proficiency}` : ''}</p>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {data.links?.length ? (
+              <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+                <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <Link2 className="h-3.5 w-3.5" /> Extracted links
+                </h3>
+                <div className="mt-2 space-y-2">
+                  {data.links.filter((item) => safeHref(item.url)).map((item, index) => (
+                    <a key={`${item.url}-${index}`} className="flex items-center gap-1 break-all text-sm text-indigo-300" href={safeHref(item.url)} target="_blank" rel="noreferrer">
+                      {item.label || 'Professional link'} <ExternalLink className="h-3 w-3 shrink-0" />
+                    </a>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          {namedGroups.map(([title, items]) => (
+            <ParserCollection
+              key={title}
+              title={title}
+              items={items}
+              renderItem={(item) => (
+                <div>
+                  <p className="font-medium text-slate-200">{item.title || title.slice(0, -1)}</p>
+                  {item.issuer ? <p className="mt-1 text-sm text-slate-400">{item.issuer}</p> : null}
+                  {item.description ? <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-400">{item.description}</p> : null}
+                </div>
+              )}
+            />
+          ))}
+        </div>
+      ) : null}
+    </Section>
+  );
+};
+
 const CandidateDetailPage = () => {
   const { candidateRef } = useParams();
+  const { hasPermission } = usePermission();
   const [candidate, setCandidate] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [resumeBusy, setResumeBusy] = useState(false);
   const [resumeError, setResumeError] = useState('');
+  const [parsedResume, setParsedResume] = useState(null);
+  const [parsedLoading, setParsedLoading] = useState(true);
+  const [parsedError, setParsedError] = useState('');
+  const [reprocessBusy, setReprocessBusy] = useState(false);
+  const [reprocessMessage, setReprocessMessage] = useState('');
 
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setParsedLoading(true);
     setError('');
+    setParsedError('');
 
-    candidateService
-      .detail(candidateRef)
-      .then((result) => {
+    const load = async () => {
+      try {
+        const detail = await candidateService.detail(candidateRef);
+
         if (!active) return;
-        setCandidate(result);
-        document.title = `${result.overview.name} — Candidate — Crewly HRMS`;
-      })
-      .catch((requestError) => {
-        if (!active) return;
-        setError(requestError?.message || 'Candidate could not be loaded');
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+        setCandidate(detail);
+        document.title = `${detail.overview.name} — Candidate — Crewly HRMS`;
+
+        if (detail.resume?.available) {
+          try {
+            const parsed = await candidateService.parsedResume(candidateRef);
+            if (active) setParsedResume(parsed);
+          } catch (requestError) {
+            if (active) {
+              setParsedError(requestError?.message || 'Parser information could not be loaded');
+            }
+          }
+        } else {
+          setParsedResume(null);
+        }
+      } catch (requestError) {
+        if (active) setError(requestError?.message || 'Candidate could not be loaded');
+      } finally {
+        if (active) {
+          setLoading(false);
+          setParsedLoading(false);
+        }
+      }
+    };
+
+    load();
 
     return () => {
       active = false;
     };
   }, [candidateRef]);
+
+  useEffect(() => {
+    if (!['PENDING', 'RETRY_PENDING', 'PROCESSING'].includes(parsedResume?.status)) {
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      candidateService
+        .parsedResume(candidateRef)
+        .then((result) => {
+          setParsedResume(result);
+          setParsedError('');
+
+          if (!['PENDING', 'RETRY_PENDING', 'PROCESSING'].includes(result.status)) {
+            candidateService
+              .detail(candidateRef)
+              .then(setCandidate)
+              .catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }, 2500);
+
+    return () => window.clearInterval(timer);
+  }, [candidateRef, parsedResume?.status]);
 
   const downloadResume = async () => {
     setResumeBusy(true);
@@ -124,6 +503,30 @@ const CandidateDetailPage = () => {
       setResumeError(requestError?.message || 'Resume could not be downloaded');
     } finally {
       setResumeBusy(false);
+    }
+  };
+
+  const reprocessResume = async () => {
+    setReprocessBusy(true);
+    setParsedError('');
+    setReprocessMessage('');
+
+    try {
+      const scheduled = await candidateService.reprocessResume(candidateRef);
+      setParsedResume((current) => ({
+        ...(current || {}),
+        status: scheduled.status || 'RETRY_PENDING',
+        parserVersion: scheduled.parserVersion || current?.parserVersion || '',
+        requestedAt: scheduled.requestedAt || new Date().toISOString(),
+        reprocessAvailable: false,
+        failure: null,
+      }));
+      setReprocessMessage('Resume reprocessing was scheduled. This page will refresh the parser state automatically.');
+      candidateService.detail(candidateRef).then(setCandidate).catch(() => {});
+    } catch (requestError) {
+      setParsedError(requestError?.message || 'Resume reprocessing could not be scheduled');
+    } finally {
+      setReprocessBusy(false);
     }
   };
 
@@ -186,6 +589,13 @@ const CandidateDetailPage = () => {
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
         <div className="space-y-5">
+          <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/5 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-indigo-300">Candidate-entered application details</p>
+            <p className="mt-1 text-sm text-slate-400">
+              The sections below preserve information submitted by the candidate and remain separate from parser-derived data.
+            </p>
+          </div>
+
           <Section icon={BriefcaseBusiness} title="Professional profile">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Value label="Current company" value={candidate.professional.currentCompany} />
@@ -239,6 +649,41 @@ const CandidateDetailPage = () => {
               </div>
             ) : <p className="text-sm text-slate-500">The linked job is unavailable.</p>}
           </Section>
+
+          <ParsedResumePanel
+            parsed={parsedResume}
+            loading={parsedLoading}
+            error={parsedError}
+            canReprocess={hasPermission('CANDIDATE_UPDATE')}
+            reprocessBusy={reprocessBusy}
+            reprocessMessage={reprocessMessage}
+            onReprocess={reprocessResume}
+          />
+
+          <Section icon={Clock3} title="Candidate timeline">
+            {candidate.history?.length ? (
+              <ol className="space-y-4">
+                {candidate.history.map((event, index) => (
+                  <li key={`${event.action}-${event.eventAt}-${index}`} className="flex gap-3">
+                    <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-indigo-400" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-200">{timelineLabel(event.action)}</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {dateLabel(event.eventAt)} · {event.actorType === 'TENANT_USER' ? 'Tenant user' : enumLabel(event.actorType)}
+                      </p>
+                      {event.metadata?.parserVersion ? (
+                        <p className="mt-1 text-xs text-slate-400">
+                          Parser {event.metadata.parserVersion}
+                          {event.metadata.status ? ` · ${enumLabel(event.metadata.status)}` : ''}
+                          {event.metadata.attempt ? ` · Attempt ${event.metadata.attempt}` : ''}
+                        </p>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            ) : <p className="text-sm text-slate-500">No timeline events are available.</p>}
+          </Section>
         </div>
 
         <aside className="space-y-5 xl:sticky xl:top-24">
@@ -267,8 +712,8 @@ const CandidateDetailPage = () => {
             <Value label="Current stage" value={enumLabel(candidate.overview.stage)} />
             <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/40 p-4">
               <p className="text-[10px] uppercase tracking-wide text-slate-500">Screening automation</p>
-              <p className="mt-1.5 text-sm font-medium text-slate-300">Not processed</p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">No ATS score, ranking, or automated hiring decision is available.</p>
+              <p className="mt-1.5 text-sm font-medium text-slate-300">ATS analysis has not been processed yet</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">No ATS score, ranking, matching, or automated hiring decision is available.</p>
             </div>
           </Section>
         </aside>
