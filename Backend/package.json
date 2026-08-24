@@ -15,7 +15,8 @@
     "test:ats": "node --test test/atsMatching.test.js",
     "test:pipeline": "node --test test/candidatePipeline.test.js",
     "test:interviews": "node --test test/interviewManagement.test.js",
-    "test:rms": "node --test test/requisitionApproval.test.js test/requisitionJobCreation.test.js test/interviewManagement.test.js"
+    "test:interview-evaluation": "node --test test/interviewEvaluation.test.js",
+    "test:rms": "node --test test/requisitionApproval.test.js test/requisitionJobCreation.test.js test/interviewManagement.test.js test/interviewEvaluation.test.js"
   },
   "keywords": [],
   "author": "",

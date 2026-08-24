@@ -26,6 +26,7 @@ import {
 import { Link, useParams } from 'react-router-dom';
 import Modal from '../../components/Modal.jsx';
 import ATSAnalysisPanel from '../../components/recruitment/ATSAnalysisPanel.jsx';
+import CandidateFinalReview from '../../components/recruitment/CandidateFinalReview.jsx';
 import InterviewDetailModal from '../../components/recruitment/InterviewDetailModal.jsx';
 import InterviewScheduleModal from '../../components/recruitment/InterviewScheduleModal.jsx';
 import usePermission from '../../hooks/usePermission.js';
@@ -154,6 +155,11 @@ const timelineLabel = (action) =>
     INTERVIEW_STARTED: 'Interview started',
     INTERVIEW_COMPLETED: 'Interview completed',
     INTERVIEW_NO_SHOW: 'Interview marked no-show',
+    INTERVIEW_FEEDBACK_SUBMITTED: 'Interview feedback submitted',
+    FINAL_REVIEW_STARTED: 'Final Review started',
+    CANDIDATE_SELECTED: 'Candidate selected by human decision',
+    CANDIDATE_REJECTED: 'Candidate rejected by human decision',
+    CANDIDATE_HOLD: 'Candidate placed on hold by human decision',
   })[action] || enumLabel(action);
 
 const INTERVIEW_ROUNDS = [
@@ -967,7 +973,14 @@ const CandidateDetailPage = () => {
                               {latestInterview.interviewCode} · {latestInterview.interviewers?.map((person) => person.name).join(', ')}
                             </p>
                             {latestInterview.status === 'COMPLETED' ? (
-                              <p className="mt-2 text-[11px] font-medium text-amber-300">Feedback pending · not implemented in Phase 27.9</p>
+                              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                                <span className={latestInterview.feedback?.pendingCount ? 'font-medium text-amber-300' : 'font-medium text-emerald-300'}>
+                                  {latestInterview.feedback?.pendingCount ? 'Feedback pending · ' : ''}{latestInterview.feedback?.submittedCount || 0}/{latestInterview.feedback?.assignedCount || 0} scorecards submitted
+                                </span>
+                                {latestInterview.feedback?.roundAverage !== null && latestInterview.feedback?.roundAverage !== undefined ? (
+                                  <span className="font-mono text-indigo-300">Average {Number(latestInterview.feedback.roundAverage).toFixed(2)}/10</span>
+                                ) : null}
+                              </div>
                             ) : null}
                             <button
                               type="button"
@@ -1024,6 +1037,22 @@ const CandidateDetailPage = () => {
                 </div>
               ) : null}
             </Section>
+          ) : null}
+
+          {canReadInterviews && hasPermission('INTERVIEW_FEEDBACK_READ') ? (
+            <CandidateFinalReview
+              candidate={candidate}
+              ats={ats}
+              interviews={interviews}
+              onChanged={async () => {
+                try {
+                  await refreshInterviewData();
+                  setInterviewError('');
+                } catch (requestError) {
+                  setInterviewError(requestError?.message || 'Refresh to reload Final Review changes');
+                }
+              }}
+            />
           ) : null}
 
           <ParsedResumePanel
@@ -1099,7 +1128,20 @@ const CandidateDetailPage = () => {
                               {event.metadata.status ? ` · ${enumLabel(event.metadata.status)}` : ''}
                             </p>
                           ) : null}
+                          {event.metadata.recommendation ? (
+                            <p className="mt-1 text-slate-400">
+                              {enumLabel(event.metadata.recommendation)}
+                              {event.metadata.overallScore !== undefined
+                                ? ` · ${Number(event.metadata.overallScore).toFixed(2)}/${event.metadata.maxOverallScore || 10}`
+                                : ''}
+                            </p>
+                          ) : null}
                         </div>
+                      ) : null}
+                      {event.metadata?.decision ? (
+                        <p className="mt-2 rounded-lg border border-slate-800 bg-slate-900 p-3 text-xs text-slate-300">
+                          {enumLabel(event.metadata.decision)} · {enumLabel(event.metadata.reasonCategory)}
+                        </p>
                       ) : null}
                     </div>
                   </li>
@@ -1139,7 +1181,9 @@ const CandidateDetailPage = () => {
               ] || enumLabel(candidate.overview.stage)}
             />
             {canUpdateCandidates &&
-            (candidate.overview.currentStage || candidate.overview.stage) !== 'JOINED' ? (
+            !['JOINED', 'FINAL_REVIEW', 'SELECTED'].includes(
+              candidate.overview.currentStage || candidate.overview.stage
+            ) ? (
               <button type="button" className="btn-primary mt-3 w-full justify-center" onClick={openStageModal}>
                 Change stage
               </button>
@@ -1174,9 +1218,18 @@ const CandidateDetailPage = () => {
                   setStageError('');
                 }}
               >
-                {pipelineOptions.stages.map((stage) => (
-                  <option key={stage} value={stage}>{PIPELINE_STAGE_LABELS[stage]}</option>
-                ))}
+                {pipelineOptions.stages
+                  .filter(
+                    (stage) =>
+                      !['FINAL_REVIEW', 'SELECTED'].includes(stage) &&
+                      !(
+                        (candidate.overview.currentStage || candidate.overview.stage) === 'HR_FINAL' &&
+                        ['REJECTED', 'HOLD'].includes(stage)
+                      )
+                  )
+                  .map((stage) => (
+                    <option key={stage} value={stage}>{PIPELINE_STAGE_LABELS[stage]}</option>
+                  ))}
               </select>
             </div>
             <div>

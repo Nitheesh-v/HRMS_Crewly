@@ -7,12 +7,14 @@ import {
   Eye,
   Filter,
   List,
+  MessageSquareText,
   Search,
   UserRoundCheck,
   Users,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import InterviewDetailModal from '../../components/recruitment/InterviewDetailModal.jsx';
+import InterviewFeedbackModal from '../../components/recruitment/InterviewFeedbackModal.jsx';
 import usePermission from '../../hooks/usePermission.js';
 import interviewService from '../../services/interviewService.js';
 
@@ -89,6 +91,26 @@ const StatusBadge = ({ status }) => (
   </span>
 );
 
+const FeedbackBadge = ({ feedback, assignmentOnly }) => {
+  if (!feedback?.enabled) return <span className="text-xs text-slate-600">Not open</span>;
+  if (assignmentOnly) {
+    const tone = ['SUBMITTED', 'LOCKED'].includes(feedback.ownStatus)
+      ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200'
+      : feedback.ownStatus === 'DRAFT'
+        ? 'border-indigo-500/25 bg-indigo-500/10 text-indigo-200'
+        : 'border-amber-500/25 bg-amber-500/10 text-amber-200';
+    return <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${tone}`}>{enumLabel(feedback.ownStatus)}</span>;
+  }
+  return (
+    <span className="text-xs text-slate-400">
+      {feedback.submittedCount || 0}/{feedback.assignedCount || 0} submitted
+      {feedback.roundAverage !== null && feedback.roundAverage !== undefined
+        ? ` · ${Number(feedback.roundAverage).toFixed(2)}/10`
+        : ''}
+    </span>
+  );
+};
+
 const KpiCard = ({ icon: Icon, label, value, detail }) => (
   <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
     <div className="flex items-start justify-between gap-3">
@@ -117,6 +139,7 @@ export const InterviewWorkspace = ({ assignmentOnly = false }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedInterviewId, setSelectedInterviewId] = useState('');
+  const [feedbackInterviewId, setFeedbackInterviewId] = useState('');
 
   useEffect(() => {
     document.title = assignmentOnly
@@ -245,7 +268,7 @@ export const InterviewWorkspace = ({ assignmentOnly = false }) => {
         <KpiCard icon={Clock3} label="Upcoming" value={kpis.upcoming || 0} detail="Active future assignments" />
         <KpiCard icon={UserRoundCheck} label="In progress" value={kpis.inProgress || 0} detail="Operational status" />
         <KpiCard icon={CheckCircle2} label="Completed" value={kpis.completed || 0} detail="Operational completion only" />
-        <KpiCard icon={List} label="Feedback pending" value={kpis.feedbackPending || 0} detail="Not enabled in Phase 27.9" />
+        <KpiCard icon={List} label="Feedback pending" value={kpis.feedbackPending || 0} detail={assignmentOnly ? 'Your completed scorecards still open' : 'Assigned scorecards still open'} />
       </section>
 
       <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
@@ -341,13 +364,26 @@ export const InterviewWorkspace = ({ assignmentOnly = false }) => {
                           <p className="mt-3 line-clamp-2 text-xs text-slate-400">
                             {interview.interviewers?.map((person) => person.name).join(', ')}
                           </p>
-                          <button
-                            type="button"
-                            className="btn-ghost mt-4 w-full justify-center gap-2"
-                            onClick={() => setSelectedInterviewId(interview.id)}
-                          >
-                            <Eye className="h-4 w-4" /> Open detail
-                          </button>
+                          <div className="mt-3"><FeedbackBadge feedback={interview.feedback} assignmentOnly={assignmentOnly} /></div>
+                          <div className="mt-4 grid gap-2">
+                            {assignmentOnly && interview.feedback?.enabled ? (
+                              <button
+                                type="button"
+                                className="btn-primary w-full justify-center gap-2"
+                                onClick={() => setFeedbackInterviewId(interview.id)}
+                              >
+                                <MessageSquareText className="h-4 w-4" />
+                                {['SUBMITTED', 'LOCKED'].includes(interview.feedback?.ownStatus) ? 'View scorecard' : interview.feedback?.ownStatus === 'DRAFT' ? 'Continue scorecard' : 'Start scorecard'}
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              className="btn-ghost w-full justify-center gap-2"
+                              onClick={() => setSelectedInterviewId(interview.id)}
+                            >
+                              <Eye className="h-4 w-4" /> Open detail
+                            </button>
+                          </div>
                         </article>
                       ))}
                     </div>
@@ -365,6 +401,7 @@ export const InterviewWorkspace = ({ assignmentOnly = false }) => {
                     <th className="px-5 py-3">Position and round</th>
                     <th className="px-5 py-3">Interviewers</th>
                     <th className="px-5 py-3">Status</th>
+                    <th className="px-5 py-3">Feedback</th>
                     <th className="px-5 py-3 text-right">Action</th>
                   </tr>
                 </thead>
@@ -389,10 +426,18 @@ export const InterviewWorkspace = ({ assignmentOnly = false }) => {
                         </p>
                       </td>
                       <td className="px-5 py-4"><StatusBadge status={interview.status} /></td>
+                      <td className="px-5 py-4"><FeedbackBadge feedback={interview.feedback} assignmentOnly={assignmentOnly} /></td>
                       <td className="px-5 py-4 text-right">
-                        <button type="button" className="btn-ghost inline-flex items-center gap-2" onClick={() => setSelectedInterviewId(interview.id)}>
-                          <Eye className="h-4 w-4" /> Detail
-                        </button>
+                        <div className="inline-flex flex-wrap justify-end gap-2">
+                          {assignmentOnly && interview.feedback?.enabled ? (
+                            <button type="button" className="btn-primary inline-flex items-center gap-2" onClick={() => setFeedbackInterviewId(interview.id)}>
+                              <MessageSquareText className="h-4 w-4" /> Scorecard
+                            </button>
+                          ) : null}
+                          <button type="button" className="btn-ghost inline-flex items-center gap-2" onClick={() => setSelectedInterviewId(interview.id)}>
+                            <Eye className="h-4 w-4" /> Detail
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -412,9 +457,17 @@ export const InterviewWorkspace = ({ assignmentOnly = false }) => {
                   </div>
                   <p className="mt-3 text-sm text-slate-300">{dateTimeLabel(interview.scheduledStartAt, interview.timezone)}</p>
                   <p className="mt-1 text-xs text-slate-500">{interview.job?.title} · {interview.interviewCode}</p>
-                  <button type="button" className="btn-ghost mt-4 w-full justify-center gap-2" onClick={() => setSelectedInterviewId(interview.id)}>
-                    <Eye className="h-4 w-4" /> Open detail
-                  </button>
+                  <div className="mt-3"><FeedbackBadge feedback={interview.feedback} assignmentOnly={assignmentOnly} /></div>
+                  <div className="mt-4 grid gap-2">
+                    {assignmentOnly && interview.feedback?.enabled ? (
+                      <button type="button" className="btn-primary w-full justify-center gap-2" onClick={() => setFeedbackInterviewId(interview.id)}>
+                        <MessageSquareText className="h-4 w-4" /> Scorecard
+                      </button>
+                    ) : null}
+                    <button type="button" className="btn-ghost w-full justify-center gap-2" onClick={() => setSelectedInterviewId(interview.id)}>
+                      <Eye className="h-4 w-4" /> Open detail
+                    </button>
+                  </div>
                 </article>
               ))}
             </div>
@@ -443,6 +496,14 @@ export const InterviewWorkspace = ({ assignmentOnly = false }) => {
           interviewId={selectedInterviewId}
           onClose={() => setSelectedInterviewId('')}
           onChanged={loadInterviews}
+        />
+      ) : null}
+
+      {feedbackInterviewId ? (
+        <InterviewFeedbackModal
+          interviewId={feedbackInterviewId}
+          onClose={() => setFeedbackInterviewId('')}
+          onSaved={loadInterviews}
         />
       ) : null}
     </div>

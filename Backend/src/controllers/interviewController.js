@@ -69,6 +69,7 @@ export const interviewList = asyncHandler(async (req, res) => {
   // DB Logic - DB logics
   const result = await listInterviews({
     companyId: req.companyId,
+    actor: req.user,
     query,
   });
 
@@ -107,6 +108,7 @@ export const candidateInterviewList = asyncHandler(async (req, res) => {
   const result = await getCandidateInterviews({
     companyId: req.companyId,
     candidateRef,
+    actor: req.user,
   });
 
   // Data to frontend - response to frontend

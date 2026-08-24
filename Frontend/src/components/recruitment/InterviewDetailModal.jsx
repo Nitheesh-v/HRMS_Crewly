@@ -7,6 +7,7 @@ import {
   ExternalLink,
   History,
   MapPin,
+  MessageSquareText,
   Play,
   RotateCw,
   UserRoundX,
@@ -14,7 +15,11 @@ import {
   X,
   XCircle,
 } from 'lucide-react';
+import usePermission from '../../hooks/usePermission.js';
 import interviewService from '../../services/interviewService.js';
+import recruitmentEvaluationService from '../../services/recruitmentEvaluationService.js';
+import InterviewFeedbackModal from './InterviewFeedbackModal.jsx';
+import InterviewFeedbackSummary from './InterviewFeedbackSummary.jsx';
 import InterviewScheduleModal from './InterviewScheduleModal.jsx';
 
 const enumLabel = (value = '') =>
@@ -54,6 +59,8 @@ const Value = ({ label, children }) => (
 );
 
 const InterviewDetailModal = ({ interviewId, onClose, onChanged }) => {
+  const { hasPermission } = usePermission();
+  const canReadFeedback = hasPermission('INTERVIEW_FEEDBACK_READ');
   const [interview, setInterview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -61,19 +68,32 @@ const InterviewDetailModal = ({ interviewId, onClose, onChanged }) => {
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   const loadDetail = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
       const result = await interviewService.detail(interviewId);
-      setInterview(result);
+      if (canReadFeedback && result.status === 'COMPLETED') {
+        const feedback = await recruitmentEvaluationService.submittedFeedback(interviewId);
+        setInterview({
+          ...result,
+          feedback: {
+            ...feedback,
+            ownStatus: result.feedback?.ownStatus || 'NOT_STARTED',
+            canSubmitOwn: Boolean(result.feedback?.canSubmitOwn),
+          },
+        });
+      } else {
+        setInterview(result);
+      }
     } catch (requestError) {
       setError(requestError?.message || 'Interview detail could not be loaded');
     } finally {
       setLoading(false);
     }
-  }, [interviewId]);
+  }, [canReadFeedback, interviewId]);
 
   useEffect(() => {
     loadDetail();
@@ -237,11 +257,29 @@ const InterviewDetailModal = ({ interviewId, onClose, onChanged }) => {
             </div>
 
             {interview.status === 'COMPLETED' ? (
-              <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-4">
-                <p className="text-sm font-semibold text-amber-200">Feedback pending</p>
-                <p className="mt-1 text-xs leading-5 text-amber-100/70">
-                  Feedback, scorecards, ratings, and recommendations are not implemented in Phase 27.9. Completion is operational only and does not advance or decide the candidate.
+              <div className="space-y-3">
+                <InterviewFeedbackSummary
+                  feedback={interview.feedback}
+                  compact={!canReadFeedback}
+                />
+                <p className="text-xs leading-5 text-slate-500">
+                  Ratings and recommendations remain decision support only and never change the candidate stage automatically.
                 </p>
+                {interview.feedback?.canSubmitOwn ||
+                !['NOT_STARTED', undefined].includes(interview.feedback?.ownStatus) ? (
+                  <button
+                    type="button"
+                    className="btn-primary inline-flex items-center gap-2"
+                    onClick={() => setFeedbackOpen(true)}
+                  >
+                    <MessageSquareText className="h-4 w-4" />
+                    {['SUBMITTED', 'LOCKED'].includes(interview.feedback?.ownStatus)
+                      ? 'View my submitted scorecard'
+                      : interview.feedback?.ownStatus === 'DRAFT'
+                        ? 'Continue my scorecard'
+                        : 'Complete my scorecard'}
+                  </button>
+                ) : null}
               </div>
             ) : null}
 
@@ -360,6 +398,17 @@ const InterviewDetailModal = ({ interviewId, onClose, onChanged }) => {
             setInterview(updated);
             setRescheduleOpen(false);
             await onChanged?.(updated);
+          }}
+        />
+      ) : null}
+
+      {feedbackOpen && interview ? (
+        <InterviewFeedbackModal
+          interviewId={interview.id}
+          onClose={() => setFeedbackOpen(false)}
+          onSaved={async () => {
+            await loadDetail();
+            await onChanged?.();
           }}
         />
       ) : null}

@@ -9,6 +9,7 @@ import Interview, {
   INTERVIEW_TYPES,
 } from '../models/Interview.js';
 import InterviewScheduleLock from '../models/InterviewScheduleLock.js';
+import InterviewFeedback from '../models/InterviewFeedback.js';
 import JobPosting from '../models/JobPosting.js';
 import JobRequisition from '../models/JobRequisition.js';
 import User from '../models/User.js';
@@ -23,6 +24,8 @@ import { hasPermission } from '../utils/permissionService.js';
 import { recordAudit } from '../utils/securityauditService.js';
 import { transitionCandidateStage } from './candidatePipelineService.js';
 import { dispatchInterviewNotification } from './interviewNotificationDispatcher.js';
+import { feedbackSummaryForInterviews } from './interviewFeedbackService.js';
+import { notifyFeedbackPending } from './recruitmentEvaluationNotificationService.js';
 import {
   interviewRoundOptions,
   resolveInterviewRound,
@@ -147,25 +150,28 @@ const candidateReferenceFilter = (candidateRef) =>
     ? { _id: candidateRef }
     : { candidateCode: String(candidateRef || '').trim().toUpperCase() };
 
-const interviewPopulate = (query) =>
+const interviewPopulate = (query, companyId) =>
   query
     .populate({
       path: 'candidate',
       select: 'candidateCode name email phone currentStage stage status job',
+      match: { companyId },
     })
     .populate({
       path: 'job',
       select: 'jobCode title location workMode employmentType status',
+      match: { companyId },
     })
     .populate({
       path: 'interviewers',
       select: 'name email role status',
+      match: { companyId },
     })
-    .populate({ path: 'createdBy', select: 'name role' })
-    .populate({ path: 'updatedBy', select: 'name role' })
-    .populate({ path: 'cancellation.cancelledBy', select: 'name role' })
-    .populate({ path: 'rescheduleHistory.changedBy', select: 'name role' })
-    .populate({ path: 'statusHistory.changedBy', select: 'name role' });
+    .populate({ path: 'createdBy', select: 'name role', match: { companyId } })
+    .populate({ path: 'updatedBy', select: 'name role', match: { companyId } })
+    .populate({ path: 'cancellation.cancelledBy', select: 'name role', match: { companyId } })
+    .populate({ path: 'rescheduleHistory.changedBy', select: 'name role', match: { companyId } })
+    .populate({ path: 'statusHistory.changedBy', select: 'name role', match: { companyId } });
 
 const safePerson = (person) =>
   person
@@ -185,6 +191,7 @@ const safeInterviewDto = (
     canReschedule = false,
     canCancel = false,
     canSetStatus = false,
+    feedbackSummary = null,
   } = {}
 ) => ({
   id: interview._id,
@@ -258,10 +265,17 @@ const safeInterviewDto = (
   updatedBy: safePerson(interview.updatedBy),
   createdAt: interview.createdAt,
   updatedAt: interview.updatedAt,
-  feedback: {
-    enabled: false,
-    status: 'NOT_IMPLEMENTED',
-  },
+  feedback:
+    feedbackSummary || {
+      enabled: interview.status === 'COMPLETED',
+      assignedCount: (interview.interviewers || []).length,
+      submittedCount: 0,
+      pendingCount: (interview.interviewers || []).length,
+      roundAverage: null,
+      maxOverallScore: 10,
+      ownStatus: 'NOT_STARTED',
+      canSubmitOwn: false,
+    },
   capabilities: {
     canReschedule,
     canCancel,
@@ -430,7 +444,8 @@ const loadCompany = async (companyId) => {
 
 const loadInterviewForResponse = async ({ companyId, interviewId }) =>
   interviewPopulate(
-    Interview.findOne({ _id: interviewId, companyId }).select('+internalNotes')
+    Interview.findOne({ _id: interviewId, companyId }).select('+internalNotes'),
+    companyId
   ).lean();
 
 const accessCapabilities = async ({ actor, interview }) => {
@@ -781,7 +796,8 @@ const listInterviewRecords = async ({ companyId, query, actorId = null }) => {
   const ascending = query.view === 'upcoming';
   const [interviews, total] = await Promise.all([
     interviewPopulate(
-      Interview.find(filter).select(actorId ? '+internalNotes' : '')
+      Interview.find(filter).select(actorId ? '+internalNotes' : ''),
+      companyId
     )
       .sort({ scheduledStartAt: ascending ? 1 : -1, _id: ascending ? 1 : -1 })
       .skip((page - 1) * limit)
@@ -805,14 +821,16 @@ const interviewKpis = async ({ companyId, actorId = null }) => {
   const company = await loadCompany(companyId);
   const today = companyDayUtcRange({ timezone: company.timezone });
   const base = { companyId, ...(actorId ? { interviewers: actorId } : {}) };
-  const [todayCount, inProgress, completed, upcoming] = await Promise.all([
+  const [todayCount, inProgress, completedInterviews, upcoming] = await Promise.all([
     Interview.countDocuments({
       ...base,
       scheduledStartAt: { $gte: today.start, $lt: today.end },
       status: { $ne: 'CANCELLED' },
     }),
     Interview.countDocuments({ ...base, status: 'IN_PROGRESS' }),
-    Interview.countDocuments({ ...base, status: 'COMPLETED' }),
+    Interview.find({ ...base, status: 'COMPLETED' })
+      .select('_id interviewers')
+      .lean(),
     Interview.countDocuments({
       ...base,
       scheduledEndAt: { $gte: new Date() },
@@ -820,31 +838,72 @@ const interviewKpis = async ({ companyId, actorId = null }) => {
     }),
   ]);
 
+  const completedIds = completedInterviews.map((interview) => interview._id);
+  const submitted = completedIds.length
+    ? await InterviewFeedback.find({
+        companyId,
+        interview: { $in: completedIds },
+        ...(actorId ? { interviewer: actorId } : {}),
+        status: { $in: ['SUBMITTED', 'LOCKED'] },
+      })
+        .select('interview interviewer')
+        .lean()
+    : [];
+  const submittedKeys = new Set(
+    submitted.map((feedback) =>
+      `${feedback.interview}:${feedback.interviewer}`
+    )
+  );
+  const feedbackPending = completedInterviews.reduce((total, interview) => {
+    if (actorId) {
+      return total +
+        (submittedKeys.has(`${interview._id}:${actorId}`) ? 0 : 1);
+    }
+    return (
+      total +
+      (interview.interviewers || []).filter(
+        (interviewerId) =>
+          !submittedKeys.has(`${interview._id}:${interviewerId}`)
+      ).length
+    );
+  }, 0);
+
   return {
     today: todayCount,
     inProgress,
-    completed,
+    completed: completedInterviews.length,
     upcoming,
-    feedbackPending: 0,
-    feedbackEnabled: false,
+    feedbackPending,
+    feedbackEnabled: true,
   };
 };
 
-export const listInterviews = async ({ companyId, query = {} }) => {
-  const [records, kpis] = await Promise.all([
+export const listInterviews = async ({ companyId, actor, query = {} }) => {
+  const [records, kpis, canReadFeedback] = await Promise.all([
     listInterviewRecords({ companyId, query }),
     interviewKpis({ companyId }),
+    hasPermission(actor, 'INTERVIEW_FEEDBACK_READ'),
   ]);
+  const feedbackByInterview = canReadFeedback
+    ? await feedbackSummaryForInterviews({
+        companyId,
+        interviews: records.interviews,
+      })
+    : new Map();
+
   return {
     interviews: records.interviews.map((interview) =>
       safeInterviewDto(interview, {
         canReschedule: ['SCHEDULED', 'RESCHEDULED'].includes(interview.status),
         canCancel: ACTIVE_INTERVIEW_STATUSES.includes(interview.status),
         canSetStatus: ACTIVE_INTERVIEW_STATUSES.includes(interview.status),
+        feedbackSummary: feedbackByInterview.get(String(interview._id)),
       })
     ),
     meta: records.meta,
-    kpis,
+    kpis: canReadFeedback
+      ? kpis
+      : { ...kpis, feedbackPending: 0, feedbackEnabled: false },
   };
 };
 
@@ -853,11 +912,19 @@ export const listMyInterviews = async ({ companyId, actor, query = {} }) => {
     listInterviewRecords({ companyId, query, actorId: actor._id }),
     interviewKpis({ companyId, actorId: actor._id }),
   ]);
+  const feedbackByInterview = await feedbackSummaryForInterviews({
+    companyId,
+    interviews: records.interviews,
+    actorId: actor._id,
+    includeAggregate: false,
+  });
+
   return {
     interviews: records.interviews.map((interview) =>
       safeInterviewDto(interview, {
         includeInternalNotes: true,
         canSetStatus: ACTIVE_INTERVIEW_STATUSES.includes(interview.status),
+        feedbackSummary: feedbackByInterview.get(String(interview._id)),
       })
     ),
     meta: records.meta,
@@ -865,7 +932,7 @@ export const listMyInterviews = async ({ companyId, actor, query = {} }) => {
   };
 };
 
-export const getCandidateInterviews = async ({ companyId, candidateRef }) => {
+export const getCandidateInterviews = async ({ companyId, candidateRef, actor }) => {
   const candidate = await Candidate.findOne({
     companyId,
     ...candidateReferenceFilter(candidateRef),
@@ -879,16 +946,27 @@ export const getCandidateInterviews = async ({ companyId, candidateRef }) => {
       companyId,
       candidate: candidate._id,
       job: candidate.job,
-    })
+    }),
+    companyId
   )
     .sort({ 'round.sequence': 1, scheduledStartAt: 1 })
     .lean();
+
+  const canReadFeedback = await hasPermission(actor, 'INTERVIEW_FEEDBACK_READ');
+  const feedbackByInterview = canReadFeedback
+    ? await feedbackSummaryForInterviews({
+        companyId,
+        interviews,
+        includeSubmittedDetails: true,
+      })
+    : new Map();
 
   return interviews.map((interview) =>
     safeInterviewDto(interview, {
       canReschedule: ['SCHEDULED', 'RESCHEDULED'].includes(interview.status),
       canCancel: ACTIVE_INTERVIEW_STATUSES.includes(interview.status),
       canSetStatus: ACTIVE_INTERVIEW_STATUSES.includes(interview.status),
+      feedbackSummary: feedbackByInterview.get(String(interview._id)),
     })
   );
 };
@@ -901,12 +979,22 @@ export const getInterviewDetail = async ({ companyId, interviewId, actor }) => {
     throw ApiError.forbidden('This interview is not assigned to you');
   }
 
+  const canReadFeedback = await hasPermission(actor, 'INTERVIEW_FEEDBACK_READ');
+  const feedbackByInterview = await feedbackSummaryForInterviews({
+    companyId,
+    interviews: [interview],
+    actorId: access.assigned ? actor._id : null,
+    includeSubmittedDetails: access.canReadAll && canReadFeedback,
+    includeAggregate: canReadFeedback,
+  });
+
   return safeInterviewDto(interview, {
     includeInternalNotes: access.canReadAll || access.assigned,
     includeDispatchMetadata: access.canReadAll,
     canReschedule: access.canReschedule,
     canCancel: access.canCancel,
     canSetStatus: access.canSetStatus && ACTIVE_INTERVIEW_STATUSES.includes(interview.status),
+    feedbackSummary: feedbackByInterview.get(String(interview._id)),
   });
 };
 
@@ -1400,9 +1488,25 @@ export const updateInterviewStatus = async ({
     job,
     interviewers: interviewerUsers,
   });
+  if (targetStatus === 'COMPLETED') {
+    await notifyFeedbackPending({
+      companyId,
+      interview: updated,
+      candidate,
+      interviewerIds: interviewerUsers.map((interviewer) => interviewer._id),
+    });
+  }
 
   const populated = await loadInterviewForResponse({ companyId, interviewId });
   const access = await accessCapabilities({ actor, interview: populated });
+  const canReadFeedback = await hasPermission(actor, 'INTERVIEW_FEEDBACK_READ');
+  const feedbackByInterview = await feedbackSummaryForInterviews({
+    companyId,
+    interviews: [populated],
+    actorId: access.assigned ? actor._id : null,
+    includeSubmittedDetails: access.canReadAll && canReadFeedback,
+    includeAggregate: canReadFeedback,
+  });
   return safeInterviewDto(populated, {
     includeInternalNotes: true,
     includeDispatchMetadata: access.canReadAll,
@@ -1410,5 +1514,6 @@ export const updateInterviewStatus = async ({
     canCancel: access.canCancel,
     canSetStatus:
       access.canSetStatus && ACTIVE_INTERVIEW_STATUSES.includes(populated.status),
+    feedbackSummary: feedbackByInterview.get(String(populated._id)),
   });
 };

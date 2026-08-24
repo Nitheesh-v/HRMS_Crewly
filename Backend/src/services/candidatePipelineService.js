@@ -82,10 +82,24 @@ export const transitionCandidateStage = async ({
   reason = '',
   actorId,
   metadata = {},
+  requestContext = null,
 }) => {
   const normalizedTarget = String(targetStage || '').toUpperCase();
   if (!PIPELINE_STAGES.includes(normalizedTarget)) {
     throw ApiError.badRequest('Choose a valid pipeline stage');
+  }
+  const workflowAction = String(metadata.action || '').toUpperCase();
+  if (
+    normalizedTarget === 'FINAL_REVIEW' &&
+    !['FINAL_REVIEW_STARTED', 'FINAL_DECISION_ROLLBACK'].includes(workflowAction)
+  ) {
+    throw ApiError.forbidden('Use the authorized Final Review workflow for this stage');
+  }
+  if (
+    normalizedTarget === 'SELECTED' &&
+    workflowAction !== 'FINAL_DECISION_SELECTED'
+  ) {
+    throw ApiError.forbidden('Use the authorized human-decision workflow to select a candidate');
   }
   if (!mongoose.isValidObjectId(actorId)) {
     throw ApiError.badRequest('A valid pipeline actor is required');
@@ -105,6 +119,13 @@ export const transitionCandidateStage = async ({
   );
   const changeReason = String(reason || '').trim().slice(0, 1000);
 
+  if (
+    ['HR_FINAL', 'FINAL_REVIEW'].includes(fromStage) &&
+    ['REJECTED', 'HOLD'].includes(normalizedTarget) &&
+    workflowAction !== `FINAL_DECISION_${normalizedTarget}`
+  ) {
+    throw ApiError.forbidden('Use Final Review and the authorized human-decision workflow for this outcome');
+  }
   if (fromStage === normalizedTarget) {
     throw ApiError.conflict(`Candidate is already in ${normalizedTarget}`);
   }
@@ -180,7 +201,7 @@ export const transitionCandidateStage = async ({
   }
 
   await recordAudit({
-    req: null,
+    req: requestContext,
     action: 'CANDIDATE_STAGE_CHANGED',
     companyId,
     actorId,
@@ -204,6 +225,7 @@ export const transitionCandidateStage = async ({
     fromStage,
     toStage: normalizedTarget,
     changedAt: history.createdAt,
+    pipelineHistoryId: history._id,
     candidate: updated,
   };
 };

@@ -12,6 +12,7 @@ export const RESOURCES = [
   "REQUISITION",
   "CANDIDATE",
   "INTERVIEW",
+  "INTERVIEW_FEEDBACK",
   "REPORT",
   "DOCUMENT",
   "PROJECT",
@@ -40,6 +41,7 @@ export const ACTIONS = [
   "MANAGE",
   "SUBMIT",
   "SEND_BACK",
+  "FINAL_DECISION",
 ];
 
 const actions = (resource, actionList, scope = "ALL") =>
@@ -85,11 +87,15 @@ export const DEFAULT_PERMISSIONS = [
 
   ...actions("REQUISITION", ["READ", "UPDATE", "SUBMIT"], "SELF"),
 
-  ...actions("CANDIDATE", ["READ", "CREATE", "UPDATE", "DELETE"]),
+  ...actions("CANDIDATE", ["READ", "CREATE", "UPDATE", "DELETE", "FINAL_DECISION"]),
 
   ...actions("INTERVIEW", ["READ", "CREATE", "UPDATE", "DELETE"]),
 
   ...actions("INTERVIEW", ["READ", "UPDATE"], "SELF"),
+
+  ...actions("INTERVIEW_FEEDBACK", ["READ"]),
+
+  ...actions("INTERVIEW_FEEDBACK", ["READ", "SUBMIT"], "SELF"),
 
   ...actions("REPORT", ["READ", "EXPORT"]),
 
@@ -186,6 +192,8 @@ const SELF_SERVICE_PERMISSIONS = [
 
   "INTERVIEW_READ_SELF",
   "INTERVIEW_UPDATE_SELF",
+  "INTERVIEW_FEEDBACK_READ_SELF",
+  "INTERVIEW_FEEDBACK_SUBMIT_SELF",
 
   "PROFILE_READ_SELF",
   "PROFILE_UPDATE_SELF",
@@ -255,10 +263,12 @@ export const DEFAULT_ROLE_MATRIX = {
     "CANDIDATE_READ",
     "CANDIDATE_CREATE",
     "CANDIDATE_UPDATE",
+    "CANDIDATE_FINAL_DECISION",
 
     "INTERVIEW_READ",
     "INTERVIEW_CREATE",
     "INTERVIEW_UPDATE",
+    "INTERVIEW_FEEDBACK_READ",
 
     "DOCUMENT_READ",
     "DOCUMENT_CREATE",

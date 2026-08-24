@@ -288,6 +288,21 @@ export const getCandidateInboxDetail = async ({
         ...(event.metadata?.roundName
           ? { roundName: String(event.metadata.roundName).slice(0, 120) }
           : {}),
+        ...(event.metadata?.recommendation
+          ? { recommendation: String(event.metadata.recommendation).slice(0, 40) }
+          : {}),
+        ...(event.metadata?.overallScore !== undefined
+          ? { overallScore: Number(event.metadata.overallScore) || 0 }
+          : {}),
+        ...(event.metadata?.maxOverallScore !== undefined
+          ? { maxOverallScore: Number(event.metadata.maxOverallScore) || 10 }
+          : {}),
+        ...(event.metadata?.decision
+          ? { decision: String(event.metadata.decision).slice(0, 40) }
+          : {}),
+        ...(event.metadata?.reasonCategory
+          ? { reasonCategory: String(event.metadata.reasonCategory).slice(0, 80) }
+          : {}),
         ...(event.metadata?.scheduledStartAt
           ? { scheduledStartAt: event.metadata.scheduledStartAt }
           : {}),

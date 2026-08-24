@@ -98,6 +98,16 @@ import {
   myInterviewList,
 } from '../controllers/interviewController.js';
 import {
+  interviewScorecardRead,
+  interviewSubmittedFeedbackRead,
+  myInterviewFeedbackRead,
+  myInterviewFeedbackSave,
+} from '../controllers/interviewFeedbackController.js';
+import {
+  candidateFinalDecisionCreate,
+  candidateFinalReviewStart,
+} from '../controllers/candidateDecisionController.js';
+import {
   cancelInterviewRules,
   candidateInterviewRules,
   interviewDetailRules,
@@ -106,6 +116,14 @@ import {
   scheduleInterviewRules,
   updateInterviewStatusRules,
 } from '../validators/interviewValidator.js';
+import {
+  interviewFeedbackReadRules,
+  interviewFeedbackSaveRules,
+} from '../validators/interviewFeedbackValidator.js';
+import {
+  finalDecisionRules,
+  finalReviewRules,
+} from '../validators/candidateDecisionValidator.js';
 
 const router = Router();
 
@@ -141,6 +159,14 @@ const interviewWriteRateLimit = securityRateLimit({
   message: 'Too many interview changes. Please try again later.',
 });
 
+const evaluationWriteRateLimit = securityRateLimit({
+  windowMs: 15 * 60 * 1000,
+  maximum: 30,
+  keyGenerator: (req) =>
+    `${req.companyId}:${req.user?._id}:recruitment-evaluation-write`,
+  message: 'Too many evaluation changes. Please try again later.',
+});
+
 router.use(
   protect,
   tenantContext,
@@ -168,6 +194,37 @@ router.get(
   requirePermission('INTERVIEW_READ_SELF'),
   interviewListRules,
   myInterviewList
+);
+
+// Phase 27.10 — assignment-scoped scorecards and independent feedback.
+router.get(
+  '/interviews/:id/scorecard',
+  requirePermission('INTERVIEW_FEEDBACK_READ_SELF'),
+  interviewFeedbackReadRules,
+  interviewScorecardRead
+);
+
+router.get(
+  '/interviews/:id/my-feedback',
+  requirePermission('INTERVIEW_FEEDBACK_READ_SELF'),
+  interviewFeedbackReadRules,
+  myInterviewFeedbackRead
+);
+
+router.put(
+  '/interviews/:id/my-feedback',
+  checkWriteAccess,
+  requirePermission('INTERVIEW_FEEDBACK_SUBMIT_SELF'),
+  evaluationWriteRateLimit,
+  interviewFeedbackSaveRules,
+  myInterviewFeedbackSave
+);
+
+router.get(
+  '/interviews/:id/feedback',
+  requirePermission('INTERVIEW_FEEDBACK_READ'),
+  interviewFeedbackReadRules,
+  interviewSubmittedFeedbackRead
 );
 
 router.get(
@@ -387,6 +444,25 @@ router.get(
   requirePermission('CANDIDATE_READ'),
   candidateInboxDetailRules,
   candidateInboxDetail
+);
+
+// Phase 27.10 — explicit human-only Final Review and final decision.
+router.post(
+  '/candidates/:candidateId/final-review',
+  checkWriteAccess,
+  requirePermission('CANDIDATE_FINAL_DECISION'),
+  evaluationWriteRateLimit,
+  finalReviewRules,
+  candidateFinalReviewStart
+);
+
+router.post(
+  '/candidates/:candidateId/final-decision',
+  checkWriteAccess,
+  requirePermission('CANDIDATE_FINAL_DECISION'),
+  evaluationWriteRateLimit,
+  finalDecisionRules,
+  candidateFinalDecisionCreate
 );
 
 router.get(

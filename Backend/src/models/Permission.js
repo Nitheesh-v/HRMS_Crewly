@@ -12,6 +12,7 @@ export const PERMISSION_ACTIONS = [
   'MANAGE',
   'SUBMIT',
   'SEND_BACK',
+  'FINAL_DECISION',
 ];
 
 export const PERMISSION_SCOPES = [

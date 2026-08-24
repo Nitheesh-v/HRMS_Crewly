@@ -583,7 +583,7 @@ const AppLayout = () => {
         </nav>
 
         <p className="pt-3 text-[11px] text-crewly-dim/60">
-          Crewly HRMS · Phase 27.9
+          Crewly HRMS · Phase 27.10
         </p>
       </aside>
 

@@ -18,6 +18,11 @@ export const CANDIDATE_HISTORY_ACTIONS = [
   'INTERVIEW_STARTED',
   'INTERVIEW_COMPLETED',
   'INTERVIEW_NO_SHOW',
+  'INTERVIEW_FEEDBACK_SUBMITTED',
+  'FINAL_REVIEW_STARTED',
+  'CANDIDATE_SELECTED',
+  'CANDIDATE_REJECTED',
+  'CANDIDATE_HOLD',
 ];
 
 const candidateHistorySchema = new mongoose.Schema(
@@ -54,6 +59,7 @@ const candidateHistorySchema = new mongoose.Schema(
         'ATS_ENGINE',
         'PIPELINE',
         'INTERVIEW',
+        'FINAL_DECISION',
       ],
       default: 'CAREER_PAGE',
     },
