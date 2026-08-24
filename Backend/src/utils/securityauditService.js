@@ -202,7 +202,11 @@ export const recordAudit = async ({
 
     path:
       req?.originalUrl
-        ?.split('?')[0] ||
+        ?.split('?')[0]
+        ?.replace(
+          /(\/api\/public\/candidate\/offers\/)[A-Za-z0-9_-]+/gi,
+          '$1[REDACTED]'
+        ) ||
       '/system',
 
     statusCode,

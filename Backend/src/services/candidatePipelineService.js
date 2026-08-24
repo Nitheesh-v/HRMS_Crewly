@@ -54,7 +54,9 @@ const safeTransitionMetadata = (metadata = {}) => ({
   ...(metadata.action
     ? { action: String(metadata.action).slice(0, 80) }
     : {}),
-  ...(metadata.actorType === 'SYSTEM' ? { actorType: 'SYSTEM' } : {}),
+  ...(['SYSTEM', 'CANDIDATE'].includes(metadata.actorType)
+    ? { actorType: metadata.actorType }
+    : {}),
 });
 
 const candidateStageGuard = (candidate, fromStage) => ({
@@ -95,11 +97,37 @@ export const transitionCandidateStage = async ({
   ) {
     throw ApiError.forbidden('Use the authorized Final Review workflow for this stage');
   }
+  const selectedActions = [
+    'FINAL_DECISION_SELECTED',
+    'OFFER_WITHDRAWN',
+    'OFFER_EXPIRED',
+    'OFFER_SEND_ROLLBACK',
+    'OFFER_DECISION_ROLLBACK',
+  ];
   if (
     normalizedTarget === 'SELECTED' &&
-    workflowAction !== 'FINAL_DECISION_SELECTED'
+    !selectedActions.includes(workflowAction)
   ) {
-    throw ApiError.forbidden('Use the authorized human-decision workflow to select a candidate');
+    throw ApiError.forbidden(
+      'Use the authorized human-decision workflow to select a candidate or the authorized offer rollback'
+    );
+  }
+  if (
+    normalizedTarget === 'OFFER' &&
+    ![
+      'OFFER_SENT',
+      'OFFER_DECISION_ROLLBACK',
+      'OFFER_WITHDRAWAL_ROLLBACK',
+      'OFFER_EXPIRY_ROLLBACK',
+    ].includes(workflowAction)
+  ) {
+    throw ApiError.forbidden('Use the authorized offer workflow for this stage');
+  }
+  if (
+    normalizedTarget === 'OFFER_ACCEPTED' &&
+    workflowAction !== 'OFFER_ACCEPTED'
+  ) {
+    throw ApiError.forbidden('Only a secure candidate acceptance can complete an offer');
   }
   if (!mongoose.isValidObjectId(actorId)) {
     throw ApiError.badRequest('A valid pipeline actor is required');
@@ -119,12 +147,63 @@ export const transitionCandidateStage = async ({
   );
   const changeReason = String(reason || '').trim().slice(0, 1000);
 
+  if (workflowAction === 'OFFER_SENT' && fromStage !== 'SELECTED') {
+    throw ApiError.conflict('Only a selected candidate can enter the offer stage');
+  }
+  if (
+    workflowAction === 'OFFER_ACCEPTED' &&
+    !['SELECTED', 'OFFER'].includes(fromStage)
+  ) {
+    throw ApiError.conflict('This candidate is not eligible to accept an offer');
+  }
+  if (workflowAction === 'OFFER_REJECTED' && !['SELECTED', 'OFFER'].includes(fromStage)) {
+    throw ApiError.conflict('This candidate is not eligible to reject an offer');
+  }
+  if (
+    ['OFFER_WITHDRAWN', 'OFFER_EXPIRED', 'OFFER_SEND_ROLLBACK'].includes(workflowAction) &&
+    fromStage !== 'OFFER'
+  ) {
+    throw ApiError.conflict('The candidate is not in the offer stage');
+  }
+  if (
+    workflowAction === 'OFFER_DECISION_ROLLBACK' &&
+    !['OFFER_ACCEPTED', 'REJECTED'].includes(fromStage)
+  ) {
+    throw ApiError.conflict('The candidate decision cannot be rolled back from this stage');
+  }
+  if (workflowAction === 'OFFER_WITHDRAWAL_ROLLBACK' && fromStage !== 'SELECTED') {
+    throw ApiError.conflict('The offer withdrawal cannot be rolled back from this stage');
+  }
+  if (workflowAction === 'OFFER_EXPIRY_ROLLBACK' && fromStage !== 'SELECTED') {
+    throw ApiError.conflict('The offer expiry cannot be rolled back from this stage');
+  }
+
   if (
     ['HR_FINAL', 'FINAL_REVIEW'].includes(fromStage) &&
     ['REJECTED', 'HOLD'].includes(normalizedTarget) &&
     workflowAction !== `FINAL_DECISION_${normalizedTarget}`
   ) {
     throw ApiError.forbidden('Use Final Review and the authorized human-decision workflow for this outcome');
+  }
+  const authorizedOfferActions = [
+    'OFFER_ACCEPTED',
+    'OFFER_REJECTED',
+    'OFFER_WITHDRAWN',
+    'OFFER_EXPIRED',
+    'OFFER_SEND_ROLLBACK',
+  ];
+  if (fromStage === 'OFFER' && !authorizedOfferActions.includes(workflowAction)) {
+    throw ApiError.forbidden(
+      'Only the authorized offer workflow can transition an offered candidate'
+    );
+  }
+  if (
+    fromStage === 'OFFER_ACCEPTED' &&
+    workflowAction !== 'OFFER_DECISION_ROLLBACK'
+  ) {
+    throw ApiError.forbidden(
+      'Offer acceptance is the Phase 27.11 boundary; use the next authorized workflow'
+    );
   }
   if (fromStage === normalizedTarget) {
     throw ApiError.conflict(`Candidate is already in ${normalizedTarget}`);

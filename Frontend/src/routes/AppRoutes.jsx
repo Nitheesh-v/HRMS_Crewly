@@ -12,6 +12,8 @@ import CareerLandingPage from "../pages/careers/CareerLandingPage.jsx";
 import CareerJobsPage from "../pages/careers/CareerJobsPage.jsx";
 import CareerJobDetailPage from "../pages/careers/CareerJobDetailPage.jsx";
 import CareerApplyShellPage from "../pages/careers/CareerApplyShellPage.jsx";
+import CandidateOfferPublicLayout from "../layout/CandidateOfferPublicLayout.jsx";
+import CandidateOfferPortalPage from "../pages/candidate/CandidateOfferPortalPage.jsx";
 
 import RequireAuth from "./RequireAuth.jsx";
 import RequirePermission from "./RequirePermission.jsx";
@@ -53,6 +55,9 @@ import RequisitionApprovalsPage from "../pages/recruitment/RequisitionApprovalsP
 import RequisitionsPage from "../pages/recruitment/RequisitionsPage.jsx";
 import InterviewsPage from "../pages/recruitment/InterviewsPage.jsx";
 import MyInterviewsPage from "../pages/recruitment/MyInterviewsPage.jsx";
+import OffersPage from "../pages/recruitment/OffersPage.jsx";
+import OfferDetailPage from "../pages/recruitment/OfferDetailPage.jsx";
+import OfferTemplatesPage from "../pages/recruitment/OfferTemplatesPage.jsx";
 import ExitProcessPage from "../pages/exit/ExitProcessPage.jsx";
 
 import CompanyProfilePage from "../pages/company/CompanyProfilePage.jsx";
@@ -177,6 +182,11 @@ const AppRoutes = () => (
         path="jobs/:jobCode/apply"
         element={<CareerApplyShellPage />}
       />
+    </Route>
+
+    {/* Public candidate offer portal — secure token authority, no employee session */}
+    <Route path="/candidate/offer" element={<CandidateOfferPublicLayout />}>
+      <Route path=":secureToken" element={<CandidateOfferPortalPage />} />
     </Route>
 
     {/* Public Super Admin authentication */}
@@ -392,6 +402,33 @@ const AppRoutes = () => (
         element={
           <RequirePermission permission="CANDIDATE_READ">
             <CandidateDetailPage />
+          </RequirePermission>
+        }
+      />
+
+      <Route
+        path="recruitment/offers"
+        element={
+          <RequirePermission permission="OFFER_READ">
+            <OffersPage />
+          </RequirePermission>
+        }
+      />
+
+      <Route
+        path="recruitment/offers/:offerId"
+        element={
+          <RequirePermission permission="OFFER_READ">
+            <OfferDetailPage />
+          </RequirePermission>
+        }
+      />
+
+      <Route
+        path="recruitment/offer-templates"
+        element={
+          <RequirePermission permission="OFFER_TEMPLATE_READ">
+            <OfferTemplatesPage />
           </RequirePermission>
         }
       />

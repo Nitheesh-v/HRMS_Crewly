@@ -13,6 +13,8 @@ export const RESOURCES = [
   "CANDIDATE",
   "INTERVIEW",
   "INTERVIEW_FEEDBACK",
+  "OFFER",
+  "OFFER_TEMPLATE",
   "REPORT",
   "DOCUMENT",
   "PROJECT",
@@ -42,6 +44,9 @@ export const ACTIONS = [
   "SUBMIT",
   "SEND_BACK",
   "FINAL_DECISION",
+  "RETURN",
+  "SEND",
+  "WITHDRAW",
 ];
 
 const actions = (resource, actionList, scope = "ALL") =>
@@ -96,6 +101,19 @@ export const DEFAULT_PERMISSIONS = [
   ...actions("INTERVIEW_FEEDBACK", ["READ"]),
 
   ...actions("INTERVIEW_FEEDBACK", ["READ", "SUBMIT"], "SELF"),
+
+  ...actions("OFFER", [
+    "READ",
+    "CREATE",
+    "UPDATE",
+    "SUBMIT",
+    "APPROVE",
+    "RETURN",
+    "SEND",
+    "WITHDRAW",
+  ]),
+
+  ...actions("OFFER_TEMPLATE", ["READ", "CREATE", "UPDATE"]),
 
   ...actions("REPORT", ["READ", "EXPORT"]),
 
@@ -264,6 +282,18 @@ export const DEFAULT_ROLE_MATRIX = {
     "CANDIDATE_CREATE",
     "CANDIDATE_UPDATE",
     "CANDIDATE_FINAL_DECISION",
+
+    "OFFER_READ",
+    "OFFER_CREATE",
+    "OFFER_UPDATE",
+    "OFFER_SUBMIT",
+    "OFFER_APPROVE",
+    "OFFER_RETURN",
+    "OFFER_SEND",
+    "OFFER_WITHDRAW",
+    "OFFER_TEMPLATE_READ",
+    "OFFER_TEMPLATE_CREATE",
+    "OFFER_TEMPLATE_UPDATE",
 
     "INTERVIEW_READ",
     "INTERVIEW_CREATE",

@@ -9,7 +9,6 @@ const recruitmentService = {
   addCandidate: (data) => api.post('/recruitment/candidates', data),
   updateStage: (id, stage, reason = '') =>
     api.patch(`/recruitment/candidates/${id}/stage`, { stage, reason }),
-  updateOffer: (id, data) => api.patch(`/recruitment/candidates/${id}/offer`, data),
   convert: (id) => api.post(`/recruitment/candidates/${id}/convert`),
 };
 

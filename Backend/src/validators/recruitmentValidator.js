@@ -7,7 +7,6 @@ import {
   JOB_STATUS,
   JOB_WORK_MODES,
 } from '../models/JobPosting.js';
-import { OFFER_STATUS } from '../models/Candidate.js';
 
 const validate = (req, _res, next) => {
   const errors = validationResult(req);
@@ -105,12 +104,5 @@ export const candidateRules = [
   body('phone').optional({ values: 'falsy' }).trim().matches(/^[0-9+()\-\s]{6,20}$/).withMessage('Enter a valid phone number'),
   body('resumeLink').optional({ values: 'falsy' }).trim().isLength({ max: 300 }),
   body('notes').optional({ values: 'falsy' }).trim().isLength({ max: 500 }),
-  validate,
-];
-
-export const offerRules = [
-  body('offerStatus').isIn(OFFER_STATUS.filter((s) => s !== 'NONE')).withMessage('Invalid offer status'),
-  body('offerSalary').optional({ values: 'falsy' }).isFloat({ min: 0 }).withMessage('Offer salary must be 0 or more'),
-  body('offerJoiningDate').optional({ values: 'falsy' }).isISO8601().withMessage('Joining date must be a valid date'),
   validate,
 ];

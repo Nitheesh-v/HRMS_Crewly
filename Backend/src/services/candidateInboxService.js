@@ -236,6 +236,9 @@ export const getCandidateInboxDetail = async ({
         ...(event.metadata?.jobCode
           ? { jobCode: event.metadata.jobCode }
           : {}),
+        ...(event.metadata?.offerCode
+          ? { offerCode: String(event.metadata.offerCode).slice(0, 40) }
+          : {}),
         ...(event.metadata?.deliveryMode
           ? { deliveryMode: event.metadata.deliveryMode }
           : {}),
@@ -434,6 +437,9 @@ export const getCandidateInboxDetail = async ({
         ...(event.metadata?.stage ? { stage: event.metadata.stage } : {}),
         ...(event.metadata?.jobCode
           ? { jobCode: event.metadata.jobCode }
+          : {}),
+        ...(event.metadata?.offerCode
+          ? { offerCode: String(event.metadata.offerCode).slice(0, 40) }
           : {}),
         ...(event.metadata?.deliveryMode
           ? { deliveryMode: event.metadata.deliveryMode }

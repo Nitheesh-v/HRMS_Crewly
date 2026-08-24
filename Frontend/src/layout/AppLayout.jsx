@@ -491,6 +491,15 @@ const AppLayout = () => {
       ]
     : [];
 
+  const offerMenu = hasPermission('OFFER_READ')
+    ? [
+        {
+          to: '/app/recruitment/offers',
+          label: 'Offers',
+        },
+      ]
+    : [];
+
   const interviewMenu = [
     ...(hasPermission('INTERVIEW_READ')
       ? [
@@ -513,6 +522,7 @@ const AppLayout = () => {
   const menu = [
     ...baseMenu,
     ...candidateMenu,
+    ...offerMenu,
     ...interviewMenu,
     ...securityMenu,
   ];

@@ -23,6 +23,19 @@ export const CANDIDATE_HISTORY_ACTIONS = [
   'CANDIDATE_SELECTED',
   'CANDIDATE_REJECTED',
   'CANDIDATE_HOLD',
+  'OFFER_DRAFT_CREATED',
+  'OFFER_UPDATED',
+  'OFFER_SUBMITTED',
+  'OFFER_APPROVED',
+  'OFFER_APPROVAL_INVALIDATED',
+  'OFFER_RETURNED',
+  'OFFER_SEND_FAILED',
+  'OFFER_SENT',
+  'OFFER_VIEWED',
+  'OFFER_ACCEPTED',
+  'OFFER_REJECTED',
+  'OFFER_EXPIRED',
+  'OFFER_WITHDRAWN',
 ];
 
 const candidateHistorySchema = new mongoose.Schema(
@@ -60,6 +73,7 @@ const candidateHistorySchema = new mongoose.Schema(
         'PIPELINE',
         'INTERVIEW',
         'FINAL_DECISION',
+        'OFFER',
       ],
       default: 'CAREER_PAGE',
     },

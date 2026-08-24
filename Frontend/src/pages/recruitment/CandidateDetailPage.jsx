@@ -27,6 +27,7 @@ import { Link, useParams } from 'react-router-dom';
 import Modal from '../../components/Modal.jsx';
 import ATSAnalysisPanel from '../../components/recruitment/ATSAnalysisPanel.jsx';
 import CandidateFinalReview from '../../components/recruitment/CandidateFinalReview.jsx';
+import CandidateOfferPanel from '../../components/recruitment/CandidateOfferPanel.jsx';
 import InterviewDetailModal from '../../components/recruitment/InterviewDetailModal.jsx';
 import InterviewScheduleModal from '../../components/recruitment/InterviewScheduleModal.jsx';
 import usePermission from '../../hooks/usePermission.js';
@@ -160,6 +161,19 @@ const timelineLabel = (action) =>
     CANDIDATE_SELECTED: 'Candidate selected by human decision',
     CANDIDATE_REJECTED: 'Candidate rejected by human decision',
     CANDIDATE_HOLD: 'Candidate placed on hold by human decision',
+    OFFER_DRAFT_CREATED: 'Offer draft created',
+    OFFER_UPDATED: 'Offer terms updated',
+    OFFER_SUBMITTED: 'Offer submitted for approval',
+    OFFER_APPROVED: 'Offer approved',
+    OFFER_APPROVAL_INVALIDATED: 'Offer approval invalidated by material edit',
+    OFFER_RETURNED: 'Offer returned for changes',
+    OFFER_SEND_FAILED: 'Offer delivery failed safely',
+    OFFER_SENT: 'Offer delivered securely',
+    OFFER_VIEWED: 'Offer viewed by candidate',
+    OFFER_ACCEPTED: 'Offer accepted by candidate',
+    OFFER_REJECTED: 'Offer rejected by candidate',
+    OFFER_EXPIRED: 'Offer expired',
+    OFFER_WITHDRAWN: 'Offer withdrawn',
   })[action] || enumLabel(action);
 
 const INTERVIEW_ROUNDS = [
@@ -465,6 +479,7 @@ const CandidateDetailPage = () => {
   const canUpdateCandidates = hasPermission('CANDIDATE_UPDATE');
   const canReadInterviews = hasPermission('INTERVIEW_READ');
   const canScheduleInterviews = hasPermission('INTERVIEW_CREATE');
+  const canReadOffers = hasPermission('OFFER_READ');
   const [candidate, setCandidate] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -825,6 +840,8 @@ const CandidateDetailPage = () => {
         </div>
       </header>
 
+      {canReadOffers ? <CandidateOfferPanel candidate={candidate} /> : null}
+
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
         <div className="space-y-5">
           <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/5 p-4">
@@ -1093,6 +1110,11 @@ const CandidateDetailPage = () => {
                           ) : null}
                         </div>
                       ) : null}
+                      {event.metadata?.offerCode ? (
+                        <p className="mt-2 font-mono text-xs text-indigo-300">
+                          Offer {event.metadata.offerCode}
+                        </p>
+                      ) : null}
                       {event.metadata?.assignmentType ? (
                         <p className="mt-2 text-xs text-slate-400">
                           {event.metadata.assignmentType === 'assignedRecruiter'
@@ -1221,7 +1243,7 @@ const CandidateDetailPage = () => {
                 {pipelineOptions.stages
                   .filter(
                     (stage) =>
-                      !['FINAL_REVIEW', 'SELECTED'].includes(stage) &&
+                      !['FINAL_REVIEW', 'SELECTED', 'OFFER', 'OFFER_ACCEPTED'].includes(stage) &&
                       !(
                         (candidate.overview.currentStage || candidate.overview.stage) === 'HR_FINAL' &&
                         ['REJECTED', 'HOLD'].includes(stage)

@@ -54,11 +54,6 @@ const STAGES = PIPELINE_STAGES.map((key, index) => ({
   dot: STAGE_DOTS[index],
 }));
 const STAGE_LABEL = PIPELINE_STAGE_LABELS;
-const OFFER_STYLE = {
-  SENT: 'bg-sky-400/10 text-sky-400 border border-sky-400/40',
-  ACCEPTED: 'bg-crewly-green/10 text-crewly-green border border-crewly-green/40',
-  DECLINED: 'bg-crewly-red/10 text-crewly-red border border-crewly-red/40',
-};
 const TYPE_LABEL = {
   FULL_TIME: 'Full Time',
   PART_TIME: 'Part Time',
@@ -162,8 +157,6 @@ const RecruitmentPage = () => {
   const [candForm, setCandForm] = useState(emptyCandForm);
   const [stageModal, setStageModal] = useState(null);
   const [stageReason, setStageReason] = useState('');
-  const [offerModal, setOfferModal] = useState(null); // candidate
-  const [offerForm, setOfferForm] = useState({ offerSalary: '', offerJoiningDate: '' });
   const [convModal, setConvModal] = useState(null);   // { candidate, result }
   const [busy, setBusy] = useState(false);
 
@@ -468,25 +461,6 @@ const RecruitmentPage = () => {
     }
   };
 
-  const openOffer = (c) => {
-    setOfferForm({ offerSalary: c.offerSalary || '', offerJoiningDate: isoDate(c.offerJoiningDate) });
-    setOfferModal(c);
-  };
-
-  const sendOffer = async (offerStatus) => {
-    setBusy(true);
-    try {
-      await recruitmentService.updateOffer(offerModal._id, {
-        offerStatus,
-        offerSalary: Number(offerForm.offerSalary) || 0,
-        offerJoiningDate: offerForm.offerJoiningDate,
-      });
-      flash('success', `Offer ${offerStatus.toLowerCase()} 📨`);
-      setOfferModal(null);
-      loadCandidates();
-    } catch (err) { flash('error', errText(err)); } finally { setBusy(false); }
-  };
-
   const doConvert = async () => {
     setBusy(true);
     try {
@@ -738,35 +712,28 @@ const RecruitmentPage = () => {
                           </Link>
                           <div className="truncate text-xs text-crewly-dim" title={candidate.email}>{candidate.email}</div>
                           {candidate.phone && <div className="text-xs text-crewly-dim">{candidate.phone}</div>}
-                          {candidate.offerStatus !== 'NONE' && (
-                            <span className={`inline-block rounded-md px-2 py-0.5 text-[11px] ${OFFER_STYLE[candidate.offerStatus]}`}>
-                              Offer {candidate.offerStatus.toLowerCase()}
-                            </span>
-                          )}
-                          {currentStage !== 'JOINED' && (
+                          {!['JOINED', 'SELECTED', 'OFFER', 'OFFER_ACCEPTED'].includes(currentStage) && (
                             <select
                               aria-label={`Move ${candidate.name} to another stage`}
                               className="input !py-1 text-xs"
                               value={currentStage}
                               onChange={(event) => requestStageMove(candidate, event.target.value)}
                             >
-                              {PIPELINE_STAGES.map((stage) => (
-                                <option key={stage} value={stage}>{STAGE_LABEL[stage]}</option>
-                              ))}
+                              {PIPELINE_STAGES
+                                .filter((stage) => !['OFFER', 'OFFER_ACCEPTED'].includes(stage))
+                                .map((stage) => (
+                                  <option key={stage} value={stage}>{STAGE_LABEL[stage]}</option>
+                                ))}
                             </select>
                           )}
                           <div className="flex flex-wrap gap-2">
-                            {[
-                              'INTERVIEW_1',
-                              'INTERVIEW_2',
-                              'INTERVIEW_3',
-                              'MANAGER_ROUND',
-                              'HR_FINAL',
-                              'FINAL_REVIEW',
-                              'SELECTED',
-                              'OFFER',
-                            ].includes(currentStage) && (
-                              <button className="btn-ghost px-2 py-0.5 text-[11px]" onClick={() => openOffer(candidate)}>Offer</button>
+                            {['SELECTED', 'OFFER'].includes(currentStage) && (
+                              <Link
+                                className="btn-ghost px-2 py-0.5 text-[11px]"
+                                to={`/app/recruitment/candidates/${candidate.candidateCode || candidate._id}`}
+                              >
+                                Enterprise offer
+                              </Link>
                             )}
                             {candidate.offerStatus === 'ACCEPTED' && currentStage !== 'JOINED' && (
                               <button className="btn-ghost px-2 py-0.5 text-[11px] text-crewly-green"
@@ -1200,53 +1167,6 @@ const RecruitmentPage = () => {
               <button type="submit" className="btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Add to Pipeline'}</button>
             </div>
           </form>
-        </Modal>
-      )}
-
-      {/* ── offer modal ── */}
-      {offerModal && (
-        <Modal onClose={() => setOfferModal(null)} title={`💼 Offer — ${offerModal.name}`}>
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="label">Offer Salary (₹/month)</label>
-                <input className="input" type="number" min="0" value={offerForm.offerSalary}
-                  onChange={(e) => setOfferForm((f) => ({ ...f, offerSalary: e.target.value }))}
-                  disabled={offerModal.offerStatus !== 'NONE'} />
-              </div>
-              <div>
-                <label className="label">Joining Date</label>
-                <input className="input" type="date" value={offerForm.offerJoiningDate}
-                  onChange={(e) => setOfferForm((f) => ({ ...f, offerJoiningDate: e.target.value }))}
-                  disabled={offerModal.offerStatus !== 'NONE'} />
-              </div>
-            </div>
-
-            {offerModal.offerStatus === 'NONE' && (
-              <button className="btn-primary w-full" disabled={busy} onClick={() => sendOffer('SENT')}>
-                {busy ? 'Sending…' : '📨 Mark Offer Sent'}
-              </button>
-            )}
-            {offerModal.offerStatus === 'SENT' && (
-              <>
-                <p className="text-xs text-crewly-dim">Offer sent. Now record the candidate's reply:</p>
-                <div className="flex gap-2">
-                  <button className="btn-primary flex-1" disabled={busy} onClick={() => sendOffer('ACCEPTED')}>✅ Accepted</button>
-                  <button className="btn-ghost flex-1 text-crewly-red" disabled={busy} onClick={() => sendOffer('DECLINED')}>❌ Declined</button>
-                </div>
-              </>
-            )}
-            {offerModal.offerStatus === 'ACCEPTED' && (
-              <div className="rounded-lg border border-crewly-green/40 bg-crewly-green/10 px-3 py-2 text-sm text-crewly-green">
-                Offer accepted 🎉 Close this and click <b>🎉 Convert</b> on the card to create the employee account.
-              </div>
-            )}
-            {offerModal.offerStatus === 'DECLINED' && (
-              <div className="rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-3 py-2 text-sm text-crewly-red">
-                Offer declined. Move the card to Rejected or keep it in Offer while you re-negotiate.
-              </div>
-            )}
-          </div>
         </Modal>
       )}
 

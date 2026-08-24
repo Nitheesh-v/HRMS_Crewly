@@ -255,55 +255,8 @@ export const addCandidate = asyncHandler(async (req, res) => {
   return ApiResponse.created(res, { message: 'Candidate added', data: candidate });
 });
 
-// PATCH /api/recruitment/candidates/:id/offer
-// { offerStatus: SENT|ACCEPTED|DECLINED, offerSalary?, offerJoiningDate? }
-export const updateOffer = asyncHandler(async (req, res) => {
-  const candidate = await Candidate.findOne({ _id: req.params.id, companyId: req.companyId });
-  if (!candidate) throw ApiError.notFound('Candidate not found');
-  if (['JOINED', 'HIRED'].includes(candidate.currentStage || candidate.stage)) {
-    throw ApiError.badRequest('Candidate is already JOINED');
-  }
-
-  const { offerStatus, offerSalary, offerJoiningDate } = req.body;
-
-  if (offerStatus === 'SENT') {
-    if (!offerSalary || !offerJoiningDate) {
-      throw ApiError.badRequest('Offer salary and joining date are required to send an offer');
-    }
-    candidate.offerSalary = offerSalary;
-    candidate.offerJoiningDate = offerJoiningDate;
-    candidate.offerStatus = 'SENT';
-  } else if (['ACCEPTED', 'DECLINED'].includes(offerStatus)) {
-    if (candidate.offerStatus !== 'SENT') {
-      throw ApiError.badRequest('Send the offer first, then mark it accepted/declined');
-    }
-    candidate.offerStatus = offerStatus;
-  } else {
-    throw ApiError.badRequest('Invalid offer status');
-  }
-
-  await candidate.save();
-  const offerTargetStage = offerStatus === 'SENT' ? 'OFFER' : 'OFFER_ACCEPTED';
-  if (
-    ['SENT', 'ACCEPTED'].includes(offerStatus) &&
-    (candidate.currentStage || candidate.stage) !== offerTargetStage
-  ) {
-    const transition = await transitionCandidateStage({
-      companyId: req.companyId,
-      candidateId: candidate._id,
-      targetStage: offerTargetStage,
-      reason: req.body.reason,
-      actorId: req.user._id,
-      metadata: {
-        source: 'PIPELINE',
-        action: offerStatus === 'SENT' ? 'OFFER_SENT' : 'OFFER_ACCEPTED',
-      },
-    });
-    candidate.currentStage = transition.candidate.currentStage;
-    candidate.stage = transition.candidate.stage;
-  }
-  return ApiResponse.success(res, { message: `Offer ${offerStatus.toLowerCase()}`, data: candidate });
-});
+// Legacy Candidate-embedded offer mutation was retired by Phase 27.11.
+// Candidate decisions now exist only on token-authorized OfferLetter endpoints.
 
 // POST /api/recruitment/candidates/:id/convert  → creates the employee!
 export const convertCandidate = asyncHandler(async (req, res) => {

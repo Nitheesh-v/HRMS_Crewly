@@ -17,7 +17,6 @@ import {
   createJobRules,
   updateJobRules,
   candidateRules,
-  offerRules,
 } from '../validators/recruitmentValidator.js';
 import {
   approveRequisitionRules,
@@ -34,7 +33,6 @@ import {
   updateJob,
   listCandidates,
   addCandidate,
-  updateOffer,
   convertCandidate,
 } from '../controllers/recruitmentController.js';
 import {
@@ -124,6 +122,39 @@ import {
   finalDecisionRules,
   finalReviewRules,
 } from '../validators/candidateDecisionValidator.js';
+import {
+  offerApprove,
+  offerCreate,
+  offerDetail,
+  offerDocumentRead,
+  offerList,
+  offerOptions,
+  offerReturn,
+  offerSend,
+  offerSubmit,
+  offerUpdate,
+  offerWithdraw,
+} from '../controllers/offerController.js';
+import {
+  offerTemplateCreate,
+  offerTemplateDeactivate,
+  offerTemplateDetail,
+  offerTemplateList,
+  offerTemplateUpdate,
+} from '../controllers/offerTemplateController.js';
+import {
+  createOfferRules,
+  listOfferRules,
+  offerActionRules,
+  offerReasonRules,
+  updateOfferRules,
+} from '../validators/offerValidator.js';
+import {
+  createOfferTemplateRules,
+  deactivateOfferTemplateRules,
+  listOfferTemplateRules,
+  updateOfferTemplateRules,
+} from '../validators/offerTemplateValidator.js';
 
 const router = Router();
 
@@ -175,6 +206,25 @@ router.use(
     'recruitment'
   )
 );
+
+// Phase 27.11 — tenant offer templates and enterprise offer workflow.
+router.get('/offer-templates', requirePermission('OFFER_TEMPLATE_READ'), listOfferTemplateRules, offerTemplateList);
+router.post('/offer-templates', checkWriteAccess, requirePermission('OFFER_TEMPLATE_CREATE'), createOfferTemplateRules, offerTemplateCreate);
+router.get('/offer-templates/:templateId', requirePermission('OFFER_TEMPLATE_READ'), deactivateOfferTemplateRules, offerTemplateDetail);
+router.patch('/offer-templates/:templateId', checkWriteAccess, requirePermission('OFFER_TEMPLATE_UPDATE'), updateOfferTemplateRules, offerTemplateUpdate);
+router.delete('/offer-templates/:templateId', checkWriteAccess, requirePermission('OFFER_TEMPLATE_UPDATE'), deactivateOfferTemplateRules, offerTemplateDeactivate);
+
+router.get('/offers', requirePermission('OFFER_READ'), listOfferRules, offerList);
+router.get('/offers/options', requirePermission('OFFER_CREATE'), offerOptions);
+router.post('/offers', checkWriteAccess, requirePermission('OFFER_CREATE'), createOfferRules, offerCreate);
+router.get('/offers/:offerId', requirePermission('OFFER_READ'), offerActionRules, offerDetail);
+router.patch('/offers/:offerId', checkWriteAccess, requirePermission('OFFER_UPDATE'), updateOfferRules, offerUpdate);
+router.post('/offers/:offerId/submit', checkWriteAccess, requirePermission('OFFER_SUBMIT'), offerActionRules, offerSubmit);
+router.post('/offers/:offerId/approve', checkWriteAccess, requirePermission('OFFER_APPROVE'), offerActionRules, offerApprove);
+router.post('/offers/:offerId/return', checkWriteAccess, requirePermission('OFFER_RETURN'), offerReasonRules, offerReturn);
+router.post('/offers/:offerId/send', checkWriteAccess, requirePermission('OFFER_SEND'), offerActionRules, offerSend);
+router.post('/offers/:offerId/withdraw', checkWriteAccess, requirePermission('OFFER_WITHDRAW'), offerReasonRules, offerWithdraw);
+router.get('/offers/:offerId/document', requirePermission('OFFER_READ'), offerActionRules, offerDocumentRead);
 
 // Phase 27.9 — interview management. Literal routes stay before /:id.
 router.get(
@@ -521,14 +571,6 @@ router.patch(
   requirePermission('CANDIDATE_UPDATE'),
   pipelineStageRules,
   candidatePipelineStageUpdate
-);
-
-router.patch(
-  '/candidates/:id/offer',
-  checkWriteAccess,
-  requirePermission('CANDIDATE_UPDATE'),
-  offerRules,
-  updateOffer
 );
 
 router.post(

@@ -29,6 +29,16 @@ export const sendMail = async ({
 }) => {
   try {
     if (!transporter) {
+      const runtimeMode = process.env.NODE_ENV || 'development';
+      if (!['development', 'test'].includes(runtimeMode)) {
+        logger.warn(`Email delivery unavailable outside local/test mode | ${subject}`);
+        return {
+          delivered: false,
+          mode: 'MOCK',
+          error: 'SMTP is not configured',
+        };
+      }
+
       logger.info(
         sensitive
           ? `📧 [MOCK EMAIL] sensitive message queued | ${subject}`
@@ -288,6 +298,86 @@ export const interviewerAssignmentEmail = ({
 };
 
 // Credentials email (new user / converted candidate)
+export const offerCandidateAccessEmail = ({ offer, portalUrl }) => {
+  const candidateName = offer.candidateSnapshot?.name || 'Candidate';
+  const companyName = offer.companySnapshot?.name || 'Hiring team';
+  const offerCode = offer.offerCode || '';
+  const designation = offer.terms?.designation || offer.jobSnapshot?.title || 'the role';
+  const expiryDate = offer.terms?.expiryDate
+    ? new Intl.DateTimeFormat('en-IN', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+      }).format(new Date(offer.terms.expiryDate))
+    : 'the stated expiry date';
+  const safeName = escapeHtml(candidateName);
+  const safeCompany = escapeHtml(companyName);
+  const safeCode = escapeHtml(offerCode);
+  const safeDesignation = escapeHtml(designation);
+  const safeExpiryDate = escapeHtml(expiryDate);
+  const safePortalUrl = /^https:\/\//i.test(portalUrl) || /^http:\/\/localhost(?::\d+)?\//i.test(portalUrl)
+    ? escapeHtml(portalUrl)
+    : '';
+
+  return {
+    subject: `Employment offer — ${String(companyName).replace(/[\r\n]/g, ' ').slice(0, 100)}`,
+    text:
+      `Hello ${candidateName},\n\n` +
+      `${companyName} has sent you an employment offer for ${designation}.\n` +
+      `Offer reference: ${offerCode}\n` +
+      `Offer expiry: ${expiryDate}\n\n` +
+      `Review and respond securely: ${portalUrl}\n\n` +
+      'Do not forward this private link. It expires on the date stated in your offer.',
+    html: shell('This private link provides access to your employment offer.', `
+      <h2 style="margin:0 0 10px">Your employment offer is ready</h2>
+      <p>Hello ${safeName},</p>
+      <p><b>${safeCompany}</b> has sent you an employment offer for <b>${safeDesignation}</b>.</p>
+      <p style="background:#f6f8fa;padding:12px;border-radius:8px">Offer reference: <b>${safeCode}</b><br/>Offer expiry: <b>${safeExpiryDate}</b></p>
+      ${safePortalUrl ? `<p><a href="${safePortalUrl}" style="display:inline-block;background:#172033;color:#fff;padding:11px 16px;border-radius:7px;text-decoration:none">Review offer securely</a></p>` : ''}
+      <p style="color:#57606a;font-size:13px">Do not forward this private link. It expires on the date stated in your offer.</p>`),
+  };
+};
+
+export const offerDecisionConfirmationEmail = ({ offer, decision }) => {
+  const candidateName = offer.candidateSnapshot?.name || 'Candidate';
+  const companyName = offer.companySnapshot?.name || 'Hiring team';
+  const offerCode = offer.offerCode || '';
+  const decisionLabel = decision === 'ACCEPTED' ? 'accepted' : 'rejected';
+
+  return {
+    subject: `Offer ${decisionLabel} — ${String(companyName).replace(/[\r\n]/g, ' ').slice(0, 100)}`,
+    text:
+      `Hello ${candidateName},\n\n` +
+      `Your decision to ${decisionLabel === 'accepted' ? 'accept' : 'reject'} offer ${offerCode} from ${companyName} has been recorded.\n\n` +
+      'The hiring team will contact you if another action is required.',
+    html: shell('This is a confirmation of your recorded offer decision.', `
+      <h2 style="margin:0 0 10px">Offer decision recorded</h2>
+      <p>Hello ${escapeHtml(candidateName)},</p>
+      <p>Your decision to <b>${escapeHtml(decisionLabel)}</b> offer <b>${escapeHtml(offerCode)}</b> from <b>${escapeHtml(companyName)}</b> has been recorded.</p>
+      <p style="color:#57606a;font-size:13px">The hiring team will contact you if another action is required.</p>`),
+  };
+};
+
+export const offerWithdrawnEmail = ({ offer }) => {
+  const candidateName = offer.candidateSnapshot?.name || 'Candidate';
+  const companyName = offer.companySnapshot?.name || 'Hiring team';
+  const offerCode = offer.offerCode || '';
+
+  return {
+    subject: `Offer withdrawn — ${String(companyName).replace(/[\r\n]/g, ' ').slice(0, 100)}`,
+    text:
+      `Hello ${candidateName},\n\n` +
+      `${companyName} has withdrawn offer ${offerCode}. The secure offer link is no longer active.\n\n` +
+      'Please contact the hiring team if you need clarification.',
+    html: shell('This message confirms that the secure offer is no longer active.', `
+      <h2 style="margin:0 0 10px">Offer withdrawn</h2>
+      <p>Hello ${escapeHtml(candidateName)},</p>
+      <p><b>${escapeHtml(companyName)}</b> has withdrawn offer <b>${escapeHtml(offerCode)}</b>. The secure offer link is no longer active.</p>
+      <p style="color:#57606a;font-size:13px">Please contact the hiring team if you need clarification.</p>`),
+  };
+};
+
 export const welcomeEmail = ({ name, email, password, companyName, code }) => ({
   subject: `Welcome to ${companyName || 'Crewly HRMS'} — your login credentials`,
   html: shell('You received this because an account was created for you.', `
