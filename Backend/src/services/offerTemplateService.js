@@ -20,10 +20,40 @@ const validateContent = (content) => {
 };
 
 export const ensureDefaultOfferTemplate = async ({ companyId, actorId }) => {
-  const existing = await OfferTemplate.findOne({ companyId, isDefault: true, isActive: true });
+  const usableContent = { $type: 'string', $regex: /\S/ };
+  const defaultFilter = {
+    companyId,
+    isDefault: true,
+    isActive: true,
+    content: usableContent,
+  };
+  const existing = await OfferTemplate.findOne(defaultFilter);
   if (existing) return existing;
 
-  const active = await OfferTemplate.findOne({ companyId, isActive: true }).sort({ createdAt: 1 });
+  // Earlier development records may contain an active template without body
+  // content. Preserve those records as inactive instead of letting Mongoose
+  // validation prevent every offer-editor request for the tenant.
+  await OfferTemplate.updateMany(
+    {
+      companyId,
+      isActive: true,
+      content: { $not: /\S/ },
+    },
+    {
+      $set: {
+        isActive: false,
+        isDefault: false,
+        defaultKey: null,
+        updatedBy: actorId,
+      },
+    }
+  );
+
+  const active = await OfferTemplate.findOne({
+    companyId,
+    isActive: true,
+    content: usableContent,
+  }).sort({ createdAt: 1 });
   if (active) {
     active.isDefault = true;
     active.updatedBy = actorId;
@@ -32,26 +62,38 @@ export const ensureDefaultOfferTemplate = async ({ companyId, actorId }) => {
       return active;
     } catch (error) {
       if (error.code !== 11000) throw error;
-      return OfferTemplate.findOne({ companyId, isDefault: true, isActive: true });
+      return OfferTemplate.findOne(defaultFilter);
     }
   }
 
   const parsed = validateContent(DEFAULT_OFFER_TEMPLATE_CONTENT);
-  try {
-    return await OfferTemplate.create({
-      companyId,
-      name: 'Standard Employment Offer',
-      description: 'Crewly standard plain-text employment offer template.',
-      content: DEFAULT_OFFER_TEMPLATE_CONTENT,
-      variables: parsed.variables,
-      isDefault: true,
-      createdBy: actorId,
-      updatedBy: actorId,
-    });
-  } catch (error) {
-    if (error.code !== 11000) throw error;
-    return OfferTemplate.findOne({ companyId, isDefault: true, isActive: true });
+  const fallbackNames = [
+    'Standard Employment Offer',
+    'Crewly Standard Employment Offer',
+  ];
+
+  for (const name of fallbackNames) {
+    try {
+      return await OfferTemplate.create({
+        companyId,
+        name,
+        description: 'Crewly standard plain-text employment offer template.',
+        content: DEFAULT_OFFER_TEMPLATE_CONTENT,
+        variables: parsed.variables,
+        isDefault: true,
+        createdBy: actorId,
+        updatedBy: actorId,
+      });
+    } catch (error) {
+      if (error.code !== 11000) throw error;
+      const concurrentDefault = await OfferTemplate.findOne(defaultFilter);
+      if (concurrentDefault) return concurrentDefault;
+    }
   }
+
+  throw ApiError.conflict(
+    'A valid default offer template could not be initialized; update the inactive template and try again'
+  );
 };
 
 export const listOfferTemplates = async ({ companyId, actorId, includeInactive = false }) => {

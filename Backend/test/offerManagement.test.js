@@ -14,6 +14,7 @@ const [
   renderer,
   { generateOfferPdf },
   tokenService,
+  templateService,
   { sendMail },
   { DEFAULT_ROLE_MATRIX, DEFAULT_PERMISSIONS },
   pipelineService,
@@ -25,6 +26,7 @@ const [
   import('../src/utils/offerTemplateRenderer.js'),
   import('../src/utils/offerPdfService.js'),
   import('../src/services/offerTokenService.js'),
+  import('../src/services/offerTemplateService.js'),
   import('../src/utils/mailer.js'),
   import('../src/utils/permissionRegistry.js'),
   import('../src/services/candidatePipelineService.js'),
@@ -118,6 +120,46 @@ test('allowlisted plain-text renderer is deterministic and reports unknown and u
   assert.equal(renderer.OFFER_TEMPLATE_VARIABLES.includes('probationPeriod'), true);
   assert.equal(renderer.OFFER_TEMPLATE_VARIABLES.includes('noticePeriod'), true);
   assert.equal(renderer.OFFER_TEMPLATE_VARIABLES.includes('constructor'), false);
+});
+
+test('default template initialization quarantines contentless active records and creates a usable fallback', async () => {
+  const originalFindOne = OfferTemplate.findOne;
+  const originalUpdateMany = OfferTemplate.updateMany;
+  const originalCreate = OfferTemplate.create;
+  const calls = [];
+  try {
+    OfferTemplate.findOne = (filter) => {
+      calls.push({ type: 'findOne', filter });
+      if (filter.isDefault) return Promise.resolve(null);
+      return { sort: async () => null };
+    };
+    OfferTemplate.updateMany = async (filter, update) => {
+      calls.push({ type: 'quarantine', filter, update });
+      return { modifiedCount: 1 };
+    };
+    OfferTemplate.create = async (payload) => {
+      calls.push({ type: 'create', payload });
+      return { _id: id(), ...payload };
+    };
+
+    const companyId = id();
+    const actorId = id();
+    const template = await templateService.ensureDefaultOfferTemplate({
+      companyId,
+      actorId,
+    });
+
+    const quarantine = calls.find((call) => call.type === 'quarantine');
+    assert.equal(String(quarantine.filter.companyId), String(companyId));
+    assert.equal(quarantine.update.$set.isActive, false);
+    assert.equal(quarantine.update.$set.isDefault, false);
+    assert.ok(template.content.length >= 20);
+    assert.equal(template.isDefault, true);
+  } finally {
+    OfferTemplate.findOne = originalFindOne;
+    OfferTemplate.updateMany = originalUpdateMany;
+    OfferTemplate.create = originalCreate;
+  }
 });
 
 test('dedicated offer records preserve snapshots, active uniqueness, immutable history and hashed-token fields', async () => {
