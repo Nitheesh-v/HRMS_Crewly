@@ -10,6 +10,12 @@ export const PERMISSION_ACTIONS = [
   'EXPORT',
   'IMPORT',
   'MANAGE',
+  'SUBMIT',
+  'SEND_BACK',
+  'FINAL_DECISION',
+  'RETURN',
+  'SEND',
+  'WITHDRAW',
 ];
 
 export const PERMISSION_SCOPES = [

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import permissionService from "../../services/permissionService.js";
 import usePermission from "../../hooks/usePermission.js";
 import Can from "../../components/Can.jsx";
+import { Save } from "lucide-react";
 
 const panel = "rounded-xl border border-slate-700 bg-slate-900 p-4";
 
@@ -61,6 +62,15 @@ const RolesPermissionsPage = () => {
     return [];
   };
 
+  const loadUsers = async () => {
+    try {
+      const response = await permissionService.users();
+      setUsers(normalizeUsers(response));
+    } catch (error) {
+      setMessage(error?.message || "Could not load users");
+    }
+  };
+
   const selectRole = (role) => {
     setSelectedRoleId(role._id);
 
@@ -74,10 +84,9 @@ const RolesPermissionsPage = () => {
     setMessage("");
 
     try {
-      const [roleRows, permissionData, userRows] = await Promise.all([
+      const [roleRows, permissionData] = await Promise.all([
         permissionService.roles(),
         permissionService.permissions(),
-        permissionService.users(),
       ]);
 
       const normalizedRoles = Array.isArray(roleRows)
@@ -88,7 +97,6 @@ const RolesPermissionsPage = () => {
 
       setRoles(normalizedRoles);
       setGroups(permissionData?.groups || {});
-      setUsers(normalizeUsers(userRows));
 
       if (normalizedRoles.length) {
         const currentRole =
@@ -106,6 +114,7 @@ const RolesPermissionsPage = () => {
 
   useEffect(() => {
     load();
+    loadUsers();
   }, []);
 
   const togglePermission = (permissionId) => {
@@ -123,13 +132,21 @@ const RolesPermissionsPage = () => {
     setMessage("");
 
     try {
-      await permissionService.saveRolePermissions(
-        selectedRoleId,
-        selectedPermissions,
-      );
+      const updatedRole =
+        await permissionService.saveRolePermissions(
+          selectedRoleId,
+          selectedPermissions,
+        );
 
-      setMessage("Role permissions updated");
-      await load();
+      setRoles((current) =>
+        current.map((role) =>
+          role._id === updatedRole._id
+            ? updatedRole
+            : role,
+        ),
+      );
+      selectRole(updatedRole);
+      setMessage("Role permissions updated successfully");
       await refreshPermissions();
     } catch (error) {
       setMessage(error?.message || "Could not save permissions");
@@ -228,7 +245,7 @@ const RolesPermissionsPage = () => {
       setMessage("User role updated");
 
       await loadUserPermissions(selectedUserId);
-      await load();
+      await loadUsers();
     } catch (error) {
       setMessage(error?.message || "Could not assign role");
     }
@@ -415,11 +432,21 @@ const RolesPermissionsPage = () => {
                 </div>
 
                 <div className={panel}>
-                  <div className="mb-4 flex flex-wrap justify-between gap-2">
-                    <h2 className="font-semibold">Permission Matrix</h2>
+                  <div className="sticky top-0 z-20 -mx-4 -mt-4 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-t-xl border-b border-slate-700 bg-slate-900/95 p-4 backdrop-blur">
+                    <div>
+                      <h2 className="font-semibold">Permission Matrix</h2>
+                      <p className="text-xs text-slate-500">
+                        {selectedPermissions.length} permissions selected
+                      </p>
+                      {message && (
+                        <p className="mt-1 text-xs text-indigo-300">
+                          {message}
+                        </p>
+                      )}
+                    </div>
 
                     <Can permission="SETTINGS_MANAGE">
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
                           onClick={() =>
@@ -436,6 +463,16 @@ const RolesPermissionsPage = () => {
                           className={inp}
                         >
                           Clear All
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={saveRolePermissions}
+                          className={`${btn} gap-2`}
+                        >
+                          <Save className="h-4 w-4" />
+                          {busy ? "Saving…" : "Save Permissions"}
                         </button>
                       </div>
                     </Can>
@@ -492,16 +529,6 @@ const RolesPermissionsPage = () => {
                     ))}
                   </div>
 
-                  <Can permission="SETTINGS_MANAGE">
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={saveRolePermissions}
-                      className={`${btn} mt-5`}
-                    >
-                      {busy ? "Saving…" : "Save Permissions"}
-                    </button>
-                  </Can>
                 </div>
               </>
             )}

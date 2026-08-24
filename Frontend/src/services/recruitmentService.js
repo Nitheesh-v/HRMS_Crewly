@@ -7,8 +7,8 @@ const recruitmentService = {
 
   candidates: (jobId) => api.get('/recruitment/candidates', { params: jobId ? { job: jobId } : {} }),
   addCandidate: (data) => api.post('/recruitment/candidates', data),
-  updateStage: (id, stage) => api.patch(`/recruitment/candidates/${id}/stage`, { stage }),
-  updateOffer: (id, data) => api.patch(`/recruitment/candidates/${id}/offer`, data),
+  updateStage: (id, stage, reason = '') =>
+    api.patch(`/recruitment/candidates/${id}/stage`, { stage, reason }),
   convert: (id) => api.post(`/recruitment/candidates/${id}/convert`),
 };
 

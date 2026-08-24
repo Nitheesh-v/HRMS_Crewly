@@ -7,8 +7,16 @@ import {
 import PublicLayout from "../layout/PublicLayout.jsx";
 import AppLayout from "../layout/AppLayout.jsx";
 import SuperAdminLayout from "../layout/SuperAdminLayout.jsx";
+import CareerPublicLayout from "../layout/CareerPublicLayout.jsx";
+import CareerLandingPage from "../pages/careers/CareerLandingPage.jsx";
+import CareerJobsPage from "../pages/careers/CareerJobsPage.jsx";
+import CareerJobDetailPage from "../pages/careers/CareerJobDetailPage.jsx";
+import CareerApplyShellPage from "../pages/careers/CareerApplyShellPage.jsx";
+import CandidateOfferPublicLayout from "../layout/CandidateOfferPublicLayout.jsx";
+import CandidateOfferPortalPage from "../pages/candidate/CandidateOfferPortalPage.jsx";
 
 import RequireAuth from "./RequireAuth.jsx";
+import RequirePermission from "./RequirePermission.jsx";
 import RequireRole from "./RequireRole.jsx";
 
 import LandingPage from "../pages/landing/LandingPage.jsx";
@@ -41,6 +49,15 @@ import PayrollPage from "../pages/payroll/PayrollPage.jsx";
 import MyPayslipsPage from "../pages/payroll/MyPayslipsPage.jsx";
 
 import RecruitmentPage from "../pages/recruitment/RecruitmentPage.jsx";
+import CandidateDetailPage from "../pages/recruitment/CandidateDetailPage.jsx";
+import CandidateInboxPage from "../pages/recruitment/CandidateInboxPage.jsx";
+import RequisitionApprovalsPage from "../pages/recruitment/RequisitionApprovalsPage.jsx";
+import RequisitionsPage from "../pages/recruitment/RequisitionsPage.jsx";
+import InterviewsPage from "../pages/recruitment/InterviewsPage.jsx";
+import MyInterviewsPage from "../pages/recruitment/MyInterviewsPage.jsx";
+import OffersPage from "../pages/recruitment/OffersPage.jsx";
+import OfferDetailPage from "../pages/recruitment/OfferDetailPage.jsx";
+import OfferTemplatesPage from "../pages/recruitment/OfferTemplatesPage.jsx";
 import ExitProcessPage from "../pages/exit/ExitProcessPage.jsx";
 
 import CompanyProfilePage from "../pages/company/CompanyProfilePage.jsx";
@@ -142,6 +159,34 @@ const AppRoutes = () => (
         path="/reset-password"
         element={<ResetPasswordPage />}
       />
+    </Route>
+
+    {/* Public company career portal — no tenant auth or application layout */}
+    <Route
+      path="/careers/:companySlug"
+      element={<CareerPublicLayout />}
+    >
+      <Route
+        index
+        element={<CareerLandingPage />}
+      />
+      <Route
+        path="jobs"
+        element={<CareerJobsPage />}
+      />
+      <Route
+        path="jobs/:jobCode"
+        element={<CareerJobDetailPage />}
+      />
+      <Route
+        path="jobs/:jobCode/apply"
+        element={<CareerApplyShellPage />}
+      />
+    </Route>
+
+    {/* Public candidate offer portal — secure token authority, no employee session */}
+    <Route path="/candidate/offer" element={<CandidateOfferPublicLayout />}>
+      <Route path=":secureToken" element={<CandidateOfferPortalPage />} />
     </Route>
 
     {/* Public Super Admin authentication */}
@@ -309,7 +354,110 @@ const AppRoutes = () => (
       {/* Recruitment and exit */}
       <Route
         path="recruitment"
-        element={<RecruitmentPage />}
+        element={
+          <Navigate
+            to="/app/recruitment/requisitions"
+            replace
+          />
+        }
+      />
+
+      <Route
+        path="recruitment/requisitions"
+        element={
+          <RequireRole roles={SENIORS}>
+            <RequisitionsPage />
+          </RequireRole>
+        }
+      />
+
+      <Route
+        path="recruitment/approvals"
+        element={
+          <RequireRole roles={HR}>
+            <RequirePermission
+              any={[
+                "REQUISITION_APPROVE",
+                "REQUISITION_REJECT",
+                "REQUISITION_SEND_BACK",
+              ]}
+            >
+              <RequisitionApprovalsPage />
+            </RequirePermission>
+          </RequireRole>
+        }
+      />
+
+      <Route
+        path="recruitment/candidates"
+        element={
+          <RequirePermission permission="CANDIDATE_READ">
+            <CandidateInboxPage />
+          </RequirePermission>
+        }
+      />
+
+      <Route
+        path="recruitment/candidates/:candidateRef"
+        element={
+          <RequirePermission permission="CANDIDATE_READ">
+            <CandidateDetailPage />
+          </RequirePermission>
+        }
+      />
+
+      <Route
+        path="recruitment/offers"
+        element={
+          <RequirePermission permission="OFFER_READ">
+            <OffersPage />
+          </RequirePermission>
+        }
+      />
+
+      <Route
+        path="recruitment/offers/:offerId"
+        element={
+          <RequirePermission permission="OFFER_READ">
+            <OfferDetailPage />
+          </RequirePermission>
+        }
+      />
+
+      <Route
+        path="recruitment/offer-templates"
+        element={
+          <RequirePermission permission="OFFER_TEMPLATE_READ">
+            <OfferTemplatesPage />
+          </RequirePermission>
+        }
+      />
+
+      <Route
+        path="recruitment/interviews"
+        element={
+          <RequirePermission permission="INTERVIEW_READ">
+            <InterviewsPage />
+          </RequirePermission>
+        }
+      />
+
+      <Route
+        path="recruitment/my-interviews"
+        element={
+          <RequirePermission permission="INTERVIEW_READ_SELF">
+            <MyInterviewsPage />
+          </RequirePermission>
+        }
+      />
+
+      <Route
+        path="recruitment/legacy"
+        element={
+          <RequireRole roles={HR}>
+            <RecruitmentPage />
+          </RequireRole>
+        }
       />
 
       <Route

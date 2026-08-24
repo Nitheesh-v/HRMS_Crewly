@@ -17,6 +17,10 @@ backend/dist/
 npm-debug.log*
 yarn-debug.log*
 
+# Private local development storage
+private_storage/
+Backend/private_storage/
+
 # OS files
 .DS_Store
 Thumbs.db

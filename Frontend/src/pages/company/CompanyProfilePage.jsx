@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Check, Copy, ExternalLink, Globe2 } from 'lucide-react';
 import companyService from '../../services/companyService';
 import useAuth from '../../hooks/useAuth';
 import { ROLES } from '../../utils/roles';
@@ -6,9 +7,20 @@ import { ROLES } from '../../utils/roles';
 
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-const emptyForm = { name: '', line: '', city: '', state: '', pincode: '' };
+const emptyForm = {
+  name: '',
+  line: '',
+  city: '',
+  state: '',
+  pincode: '',
+  careerSlug: '',
+  careerPortalEnabled: false,
+  careerAbout: '',
+  careerWebsite: '',
+  careerLocation: '',
+};
 
-export default function CompanyProfilePage() {
+const CompanyProfilePage = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === ROLES.COMPANY_ADMIN;
 
@@ -17,6 +29,7 @@ export default function CompanyProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [banner, setBanner] = useState(null);
+  const [copied, setCopied] = useState(false);
 
   const flash = (type, text) => {
     setBanner({ type, text });
@@ -33,10 +46,15 @@ export default function CompanyProfilePage() {
           city: company.address?.city || '',
           state: company.address?.state || '',
           pincode: company.address?.pincode || '',
+          careerSlug: company.careerSlug || '',
+          careerPortalEnabled: Boolean(company.careerPortalEnabled),
+          careerAbout: company.careerAbout || '',
+          careerWebsite: company.careerWebsite || '',
+          careerLocation: company.careerLocation || '',
         });
         setCode(company.code || '');
       } catch (err) {
-        flash('error', err?.response?.data?.message || 'Could not load company profile');
+        flash('error', err?.message || 'Could not load company profile');
       } finally {
         setLoading(false);
       }
@@ -52,10 +70,14 @@ export default function CompanyProfilePage() {
       await companyService.updateMy({
         name: form.name.trim(),
         address: { line: form.line.trim(), city: form.city.trim(), state: form.state.trim(), pincode: form.pincode.trim() },
+        careerPortalEnabled: form.careerPortalEnabled,
+        careerAbout: form.careerAbout.trim(),
+        careerWebsite: form.careerWebsite.trim(),
+        careerLocation: form.careerLocation.trim(),
       });
-      flash('success', 'Saved! New payslips will show this company info 🎉');
+      flash('success', 'Company profile and career portal settings saved.');
     } catch (err) {
-      flash('error', err?.response?.data?.message || 'Could not save');
+      flash('error', err?.message || 'Could not save');
     } finally {
       setSaving(false);
     }
@@ -63,6 +85,22 @@ export default function CompanyProfilePage() {
 
   const initials = (form.name || 'C').split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
   const now = new Date();
+  const careerPath = form.careerSlug ? `/careers/${form.careerSlug}` : '';
+  const careerUrl = careerPath && typeof window !== 'undefined'
+    ? `${window.location.origin}${careerPath}`
+    : '';
+
+  const copyCareerUrl = async () => {
+    if (!careerUrl) return;
+
+    try {
+      await navigator.clipboard.writeText(careerUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      flash('error', 'Could not copy the career portal URL');
+    }
+  };
 
   if (loading) return <div className="p-6 text-crewly-dim">Loading company profile…</div>;
 
@@ -81,7 +119,7 @@ export default function CompanyProfilePage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* ── form ── */}
-        <form onSubmit={save} className="card p-5 space-y-4">
+        <form id="company-profile-form" onSubmit={save} className="card p-5 space-y-4">
           <div>
             <label className="label">Company Name</label>
             <input className="input" value={form.name} onChange={set('name')} disabled={!isAdmin} required />
@@ -148,6 +186,126 @@ export default function CompanyProfilePage() {
           </p>
         </div>
       </div>
+
+      <section className="card p-5 space-y-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <Globe2 className="h-5 w-5 text-indigo-300" />
+              <h2 className="text-sm font-semibold">Public career portal</h2>
+            </div>
+            <p className="mt-1 text-xs text-crewly-dim">
+              Control your public careers page. Only published, open and unexpired jobs can appear.
+            </p>
+          </div>
+          <label className="flex items-center gap-2 text-xs font-medium">
+            <input
+              type="checkbox"
+              checked={form.careerPortalEnabled}
+              disabled={!isAdmin}
+              onChange={(event) => setForm((current) => ({
+                ...current,
+                careerPortalEnabled: event.target.checked,
+              }))}
+              className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-indigo-500"
+            />
+            Portal enabled
+          </label>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div>
+            <label className="label">Stable career slug</label>
+            <input className="input opacity-70" value={form.careerSlug} disabled />
+            <p className="mt-1 text-[11px] text-crewly-dim">
+              This tenant-safe identifier is assigned by Crewly and does not expose your company ID.
+            </p>
+          </div>
+          <div>
+            <label className="label">Public URL</label>
+            <div className="flex gap-2">
+              <input className="input min-w-0 opacity-70" value={careerUrl} disabled />
+              <button
+                type="button"
+                className="btn-ghost shrink-0 !px-3"
+                onClick={copyCareerUrl}
+                disabled={!careerUrl}
+                aria-label="Copy public career URL"
+              >
+                {copied ? <Check className="h-4 w-4 text-emerald-300" /> : <Copy className="h-4 w-4" />}
+              </button>
+              {form.careerPortalEnabled && careerUrl && (
+                <a
+                  href={careerUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-ghost shrink-0 !px-3"
+                  aria-label="Open public career portal"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <label className="label">Career page introduction</label>
+          <textarea
+            className="input min-h-28 resize-y"
+            maxLength={2000}
+            value={form.careerAbout}
+            onChange={set('careerAbout')}
+            disabled={!isAdmin}
+            placeholder="Tell candidates what makes your company a great place to work."
+          />
+          <p className="mt-1 text-right text-[11px] text-crewly-dim">
+            {form.careerAbout.length}/2000
+          </p>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div>
+            <label className="label">Company website</label>
+            <input
+              type="url"
+              className="input"
+              value={form.careerWebsite}
+              onChange={set('careerWebsite')}
+              disabled={!isAdmin}
+              placeholder="https://company.example"
+            />
+          </div>
+          <div>
+            <label className="label">Public location</label>
+            <input
+              className="input"
+              maxLength={180}
+              value={form.careerLocation}
+              onChange={set('careerLocation')}
+              disabled={!isAdmin}
+              placeholder="Chennai, Tamil Nadu"
+            />
+          </div>
+        </div>
+
+        {isAdmin ? (
+          <button
+            type="submit"
+            form="company-profile-form"
+            className="btn-primary"
+            disabled={saving}
+          >
+            {saving ? 'Saving…' : 'Save career settings'}
+          </button>
+        ) : (
+          <p className="text-xs text-crewly-dim">
+            Only the Company Admin can change public career settings.
+          </p>
+        )}
+      </section>
     </div>
   );
-}
+};
+
+export default CompanyProfilePage;

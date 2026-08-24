@@ -18,5 +18,27 @@ export const updateCompanyValidator = [
   body('address.city').optional({ values: 'falsy' }).trim().isLength({ max: 60 }).withMessage('City is too long'),
   body('address.state').optional({ values: 'falsy' }).trim().isLength({ max: 60 }).withMessage('State is too long'),
   body('address.pincode').optional({ values: 'falsy' }).trim().matches(/^[1-9][0-9]{5}$/).withMessage('Enter a valid 6-digit PIN code'),
+  body('careerPortalEnabled')
+    .optional()
+    .isBoolean()
+    .withMessage('Career portal setting must be true or false')
+    .toBoolean(),
+  body('careerAbout')
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ max: 2000 })
+    .withMessage('Career introduction must be 2000 characters or fewer'),
+  body('careerWebsite')
+    .optional({ values: 'falsy', nullable: true })
+    .trim()
+    .isURL({ protocols: ['http', 'https'], require_protocol: true })
+    .withMessage('Career website must be a complete http or https URL')
+    .isLength({ max: 300 })
+    .withMessage('Career website must be 300 characters or fewer'),
+  body('careerLocation')
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ max: 180 })
+    .withMessage('Public career location must be 180 characters or fewer'),
   validate,
 ];
