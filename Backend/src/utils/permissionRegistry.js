@@ -9,6 +9,7 @@ export const RESOURCES = [
   "PAYROLL",
   "PAYSLIP",
   "RECRUITMENT",
+  "REQUISITION",
   "CANDIDATE",
   "INTERVIEW",
   "REPORT",
@@ -37,6 +38,8 @@ export const ACTIONS = [
   "EXPORT",
   "IMPORT",
   "MANAGE",
+  "SUBMIT",
+  "SEND_BACK",
 ];
 
 const actions = (resource, actionList, scope = "ALL") =>
@@ -70,9 +73,23 @@ export const DEFAULT_PERMISSIONS = [
 
   ...actions("RECRUITMENT", ["READ", "CREATE", "UPDATE", "DELETE", "APPROVE"]),
 
+  ...actions("REQUISITION", [
+    "READ",
+    "CREATE",
+    "UPDATE",
+    "SUBMIT",
+    "APPROVE",
+    "REJECT",
+    "SEND_BACK",
+  ]),
+
+  ...actions("REQUISITION", ["READ", "UPDATE", "SUBMIT"], "SELF"),
+
   ...actions("CANDIDATE", ["READ", "CREATE", "UPDATE", "DELETE"]),
 
   ...actions("INTERVIEW", ["READ", "CREATE", "UPDATE", "DELETE"]),
+
+  ...actions("INTERVIEW", ["READ", "UPDATE"], "SELF"),
 
   ...actions("REPORT", ["READ", "EXPORT"]),
 
@@ -167,6 +184,9 @@ const SELF_SERVICE_PERMISSIONS = [
 
   "MEETING_READ_SELF",
 
+  "INTERVIEW_READ_SELF",
+  "INTERVIEW_UPDATE_SELF",
+
   "PROFILE_READ_SELF",
   "PROFILE_UPDATE_SELF",
 
@@ -224,9 +244,21 @@ export const DEFAULT_ROLE_MATRIX = {
     "RECRUITMENT_CREATE",
     "RECRUITMENT_UPDATE",
 
+    "REQUISITION_READ",
+    "REQUISITION_CREATE",
+    "REQUISITION_UPDATE",
+    "REQUISITION_SUBMIT",
+    "REQUISITION_APPROVE",
+    "REQUISITION_REJECT",
+    "REQUISITION_SEND_BACK",
+
     "CANDIDATE_READ",
     "CANDIDATE_CREATE",
     "CANDIDATE_UPDATE",
+
+    "INTERVIEW_READ",
+    "INTERVIEW_CREATE",
+    "INTERVIEW_UPDATE",
 
     "DOCUMENT_READ",
     "DOCUMENT_CREATE",
@@ -260,6 +292,11 @@ export const DEFAULT_ROLE_MATRIX = {
     "LEAVE_READ",
     "LEAVE_APPROVE",
 
+    "REQUISITION_CREATE",
+    "REQUISITION_READ_SELF",
+    "REQUISITION_UPDATE_SELF",
+    "REQUISITION_SUBMIT_SELF",
+
     "PROJECT_READ",
     "PROJECT_CREATE",
     "PROJECT_UPDATE",
@@ -282,6 +319,11 @@ export const DEFAULT_ROLE_MATRIX = {
     "EMPLOYEE_READ_TEAM",
     "ATTENDANCE_READ",
     "LEAVE_READ",
+
+    "REQUISITION_CREATE",
+    "REQUISITION_READ_SELF",
+    "REQUISITION_UPDATE_SELF",
+    "REQUISITION_SUBMIT_SELF",
 
     "TASK_READ",
     "TASK_CREATE",

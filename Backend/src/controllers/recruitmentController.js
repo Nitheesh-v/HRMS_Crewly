@@ -17,6 +17,27 @@ import { ROLES } from '../utils/constants.js';
 import { sendMail, welcomeEmail } from '../utils/mailer.js';
 import { notifyUser } from '../utils/notify.js';
 import Subscription from '../models/Subscription.js';
+import { nextJobCode } from '../utils/careerPortalIdentifiers.js';
+import { nextCandidateCode } from '../utils/candidateIdentifiers.js';
+import { transitionCandidateStage } from '../services/candidatePipelineService.js';
+
+const normalizedList = (value, maximum, itemLength) =>
+  [...new Set(
+    (Array.isArray(value) ? value : String(value || '').split(','))
+      .map((item) => String(item || '').trim().slice(0, itemLength))
+      .filter(Boolean)
+  )].slice(0, maximum);
+
+const validateExperienceRange = ({ minExperience, maxExperience }) => {
+  if (
+    Number(maxExperience) > 0 &&
+    Number(minExperience) > Number(maxExperience)
+  ) {
+    throw ApiError.badRequest(
+      'Maximum experience must be greater than or equal to minimum experience'
+    );
+  }
+};
 
 // GET /api/recruitment/jobs
 export const listJobs = asyncHandler(async (req, res) => {
@@ -35,63 +56,203 @@ export const listJobs = asyncHandler(async (req, res) => {
 
 // POST /api/recruitment/jobs
 export const createJob = asyncHandler(async (req, res) => {
-  const { title, department, location, employmentType, openings, description } = req.body;
+  // Data from frontend - requests from frontend
+  const {
+    title,
+    department,
+    location,
+    employmentType,
+    openings,
+    description,
+    workMode,
+    experienceLevel,
+    minExperience,
+    maxExperience,
+    requiredSkills,
+    preferredSkills,
+    educationRequirements,
+    maxNoticePeriod,
+  } = req.body;
+
+  // DB Logic - DB logics
+  validateExperienceRange({ minExperience, maxExperience });
+  const jobCode = await nextJobCode(req.companyId);
   const job = await JobPosting.create({
     companyId: req.companyId,
-    title, department: department || null, location, employmentType, openings, description,
+    jobCode,
+    title,
+    department: department || null,
+    location,
+    employmentType,
+    openings,
+    description,
+    workMode,
+    experienceLevel,
+    minExperience,
+    maxExperience,
+    requiredSkills: normalizedList(requiredSkills, 50, 60),
+    preferredSkills: normalizedList(preferredSkills, 50, 60),
+    educationRequirements: normalizedList(educationRequirements, 20, 200),
+    maxNoticePeriod,
+    publicationStatus: 'DRAFT',
     createdBy: req.user._id,
   });
-  
-  return ApiResponse.created(res, { message: 'Job posted', data: job });
+
+  // Data to frontend - response to frontend
+  return ApiResponse.created(res, {
+    message: 'Job saved as a publication draft',
+    data: job,
+  });
 });
 
-// PATCH /api/recruitment/jobs/:id  (edit fields, or close/reopen)
+// PATCH /api/recruitment/jobs/:id  (edit, publish, pause, close or reopen)
 export const updateJob = asyncHandler(async (req, res) => {
-  const job = await JobPosting.findOne({ _id: req.params.id, companyId: req.companyId });
+  // Data from frontend - requests from frontend
+  const editableFields = [
+    'title',
+    'department',
+    'location',
+    'employmentType',
+    'openings',
+    'description',
+    'workMode',
+    'experienceLevel',
+    'minExperience',
+    'maxExperience',
+    'requiredSkills',
+    'preferredSkills',
+    'educationRequirements',
+    'maxNoticePeriod',
+    'status',
+    'publicationStatus',
+    'applicationDeadline',
+    'publicSalaryVisible',
+  ];
+
+  // DB Logic - DB logics
+  const job = await JobPosting.findOne({
+    _id: req.params.id,
+    companyId: req.companyId,
+  });
+
   if (!job) throw ApiError.notFound('Job not found');
-  ['title', 'department', 'location', 'employmentType', 'openings', 'description', 'status']
-    .forEach((f) => { if (req.body[f] !== undefined) job[f] = req.body[f] || (f === 'department' ? null : req.body[f]); });
+
+  validateExperienceRange({
+    minExperience: req.body.minExperience ?? job.minExperience,
+    maxExperience: req.body.maxExperience ?? job.maxExperience,
+  });
+
+  const nextOperationalStatus = req.body.status || job.status;
+  const publishingNow = req.body.publicationStatus === 'PUBLISHED';
+  const deadlineWasProvided = Object.hasOwn(
+    req.body,
+    'applicationDeadline'
+  );
+  const nextDeadline = deadlineWasProvided
+    ? req.body.applicationDeadline || null
+    : job.applicationDeadline;
+
+  if (
+    publishingNow &&
+    nextOperationalStatus !== 'OPEN'
+  ) {
+    throw ApiError.badRequest('Reopen the job before publishing it');
+  }
+
+  if (
+    publishingNow &&
+    nextDeadline &&
+    new Date(nextDeadline).getTime() <= Date.now()
+  ) {
+    throw ApiError.badRequest(
+      'Application deadline must be in the future when publishing'
+    );
+  }
+
+  editableFields.forEach((field) => {
+    if (req.body[field] === undefined) return;
+
+    if (field === 'department') {
+      job[field] = req.body[field] || null;
+      return;
+    }
+
+    if (field === 'applicationDeadline') {
+      job[field] = req.body[field] || null;
+      return;
+    }
+
+    if (['requiredSkills', 'preferredSkills'].includes(field)) {
+      job[field] = normalizedList(req.body[field], 50, 60);
+      return;
+    }
+
+    if (field === 'educationRequirements') {
+      job[field] = normalizedList(req.body[field], 20, 200);
+      return;
+    }
+
+    job[field] = req.body[field];
+  });
+
+  if (
+    job.publicationStatus === 'PUBLISHED' &&
+    !job.publishedAt
+  ) {
+    job.publishedAt = new Date();
+  }
+
   await job.save();
-  return ApiResponse.success(res, { message: 'Job updated', data: job });
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, {
+    message: 'Job updated',
+    data: job,
+  });
 });
 
 // GET /api/recruitment/candidates?job=<id>&stage=
 export const listCandidates = asyncHandler(async (req, res) => {
   const filter = { companyId: req.companyId };
   if (req.query.job) filter.job = req.query.job;
-  if (req.query.stage) filter.stage = req.query.stage;
+  if (req.query.stage) filter.currentStage = req.query.stage;
   const candidates = await Candidate.find(filter).populate('job', 'title').sort('-createdAt');
   return ApiResponse.success(res, { message: 'Candidates fetched', data: candidates });
 });
 
 // POST /api/recruitment/candidates
 export const addCandidate = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const { job: jobId, name, email, phone, resumeLink, notes } = req.body;
+
+  // DB Logic - DB logics
   const job = await JobPosting.findOne({ _id: jobId, companyId: req.companyId });
   if (!job) throw ApiError.notFound('Job not found in your company');
   if (job.status !== 'OPEN') throw ApiError.badRequest('This job is CLOSED — reopen it to add candidates');
 
-  const dup = await Candidate.findOne({ job: jobId, email: email.toLowerCase() });
+  const dup = await Candidate.findOne({
+    companyId: req.companyId,
+    job: jobId,
+    email: email.toLowerCase(),
+  });
   if (dup) throw ApiError.conflict('This email is already added for this job');
 
+  const candidateCode = await nextCandidateCode(req.companyId);
   const candidate = await Candidate.create({
-    companyId: req.companyId, job: jobId, name, email, phone, resumeLink, notes,
+    companyId: req.companyId,
+    job: jobId,
+    candidateCode,
+    name,
+    email,
+    phone,
+    resumeLink,
+    notes,
+    source: 'INTERNAL',
+    applicationDate: new Date(),
   });
+
+  // Data to frontend - response to frontend
   return ApiResponse.created(res, { message: 'Candidate added', data: candidate });
-});
-
-// PATCH /api/recruitment/candidates/:id/stage  { stage }
-export const updateStage = asyncHandler(async (req, res) => {
-  const candidate = await Candidate.findOne({ _id: req.params.id, companyId: req.companyId });
-  if (!candidate) throw ApiError.notFound('Candidate not found');
-
-  const { stage } = req.body;
-  if (stage === 'HIRED') {
-    throw ApiError.badRequest('Use the 🎉 Convert action to hire — it creates the employee account');
-  }
-  candidate.stage = stage;
-  await candidate.save();
-  return ApiResponse.success(res, { message: `Moved to ${stage}`, data: candidate });
 });
 
 // PATCH /api/recruitment/candidates/:id/offer
@@ -99,7 +260,9 @@ export const updateStage = asyncHandler(async (req, res) => {
 export const updateOffer = asyncHandler(async (req, res) => {
   const candidate = await Candidate.findOne({ _id: req.params.id, companyId: req.companyId });
   if (!candidate) throw ApiError.notFound('Candidate not found');
-  if (candidate.stage === 'HIRED') throw ApiError.badRequest('Candidate is already HIRED');
+  if (['JOINED', 'HIRED'].includes(candidate.currentStage || candidate.stage)) {
+    throw ApiError.badRequest('Candidate is already JOINED');
+  }
 
   const { offerStatus, offerSalary, offerJoiningDate } = req.body;
 
@@ -110,7 +273,6 @@ export const updateOffer = asyncHandler(async (req, res) => {
     candidate.offerSalary = offerSalary;
     candidate.offerJoiningDate = offerJoiningDate;
     candidate.offerStatus = 'SENT';
-    candidate.stage = 'OFFER'; // auto-advance
   } else if (['ACCEPTED', 'DECLINED'].includes(offerStatus)) {
     if (candidate.offerStatus !== 'SENT') {
       throw ApiError.badRequest('Send the offer first, then mark it accepted/declined');
@@ -121,6 +283,25 @@ export const updateOffer = asyncHandler(async (req, res) => {
   }
 
   await candidate.save();
+  const offerTargetStage = offerStatus === 'SENT' ? 'OFFER' : 'OFFER_ACCEPTED';
+  if (
+    ['SENT', 'ACCEPTED'].includes(offerStatus) &&
+    (candidate.currentStage || candidate.stage) !== offerTargetStage
+  ) {
+    const transition = await transitionCandidateStage({
+      companyId: req.companyId,
+      candidateId: candidate._id,
+      targetStage: offerTargetStage,
+      reason: req.body.reason,
+      actorId: req.user._id,
+      metadata: {
+        source: 'PIPELINE',
+        action: offerStatus === 'SENT' ? 'OFFER_SENT' : 'OFFER_ACCEPTED',
+      },
+    });
+    candidate.currentStage = transition.candidate.currentStage;
+    candidate.stage = transition.candidate.stage;
+  }
   return ApiResponse.success(res, { message: `Offer ${offerStatus.toLowerCase()}`, data: candidate });
 });
 
@@ -128,7 +309,10 @@ export const updateOffer = asyncHandler(async (req, res) => {
 export const convertCandidate = asyncHandler(async (req, res) => {
   const candidate = await Candidate.findOne({ _id: req.params.id, companyId: req.companyId }).populate('job');
   if (!candidate) throw ApiError.notFound('Candidate not found');
-  if (candidate.stage === 'HIRED' || candidate.convertedUser) {
+  if (
+    ['JOINED', 'HIRED'].includes(candidate.currentStage || candidate.stage) ||
+    candidate.convertedUser
+  ) {
     throw ApiError.conflict('This candidate is already converted to an employee');
   }
   if (candidate.offerStatus !== 'ACCEPTED') {
@@ -172,9 +356,15 @@ export const convertCandidate = asyncHandler(async (req, res) => {
     employeeCode,
   });
 
-  candidate.stage = 'HIRED';
   candidate.convertedUser = user._id;
   await candidate.save();
+  await transitionCandidateStage({
+    companyId: req.companyId,
+    candidateId: candidate._id,
+    targetStage: 'JOINED',
+    actorId: req.user._id,
+    metadata: { source: 'PIPELINE', action: 'EMPLOYEE_CONVERSION' },
+  });
 
   // Phase 8 📧🔔 hired: welcome notification + credentials email
   notifyUser(req.companyId, user._id, {

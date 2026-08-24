@@ -25,14 +25,18 @@ export const sendMail = async ({
   subject,
   html = "",
   text = "",
+  sensitive = false,
 }) => {
   try {
     if (!transporter) {
       logger.info(
-        `📧 [MOCK EMAIL] → ${to} | ${subject}`,
+        sensitive
+          ? `📧 [MOCK EMAIL] sensitive message queued | ${subject}`
+          : `📧 [MOCK EMAIL] → ${to} | ${subject}`,
       );
 
       if (
+        !sensitive &&
         process.env.NODE_ENV !==
         "production"
       ) {
@@ -41,7 +45,7 @@ export const sendMail = async ({
         );
       }
 
-      return;
+      return { delivered: true, mode: 'MOCK', error: '' };
     }
 
     await transporter.sendMail({
@@ -58,10 +62,18 @@ export const sendMail = async ({
       text:
         text || undefined,
     });
+
+    return { delivered: true, mode: 'SMTP', error: '' };
   } catch (error) {
     logger.warn(
-      `📧 Email to ${to} failed: ${error.message}`,
+      `📧 Email delivery failed: ${error.message}`,
     );
+
+    return {
+      delivered: false,
+      mode: transporter ? 'SMTP' : 'MOCK',
+      error: String(error.message || 'Email delivery failed').slice(0, 300),
+    };
   }
 };
 
@@ -71,6 +83,209 @@ const shell = (title, bodyHtml) => `
     <div style="padding:18px;color:#24292f">${bodyHtml}</div>
     <div style="padding:10px 18px;color:#8b949e;font-size:11px;border-top:1px solid #eee">${title}</div>
   </div>`;
+
+const escapeHtml = (value) =>
+  String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+
+export const applicationReceivedEmail = ({
+  candidateName,
+  companyName,
+  jobTitle,
+  jobCode,
+  applicationReference,
+}) => {
+  const safeName = escapeHtml(candidateName);
+  const safeCompany = escapeHtml(companyName);
+  const safeTitle = escapeHtml(jobTitle);
+  const safeJobCode = escapeHtml(jobCode);
+  const safeReference = escapeHtml(applicationReference);
+
+  return {
+    subject: `Application received — ${String(companyName || '')
+      .replace(/[\r\n]/g, ' ')
+      .slice(0, 120)}`,
+    text:
+      `Hello ${candidateName},\n\n` +
+      `${companyName} has received your application for ${jobTitle} (${jobCode}).\n` +
+      `Application reference: ${applicationReference}\n\n` +
+      'The hiring team will contact you if your profile is selected for a next step.',
+    html: shell('This is an application receipt, not a hiring decision.', `
+      <h2 style="margin:0 0 10px">Application received</h2>
+      <p>Hello ${safeName},</p>
+      <p><b>${safeCompany}</b> has received your application for <b>${safeTitle}</b> (${safeJobCode}).</p>
+      <p style="background:#f6f8fa;padding:12px;border-radius:8px">Application reference: <b>${safeReference}</b></p>
+      <p style="color:#57606a;font-size:13px">The hiring team will contact you if your profile is selected for a next step.</p>`),
+  };
+};
+
+export const candidatePipelineUpdateEmail = ({
+  candidateName,
+  companyName,
+  jobTitle,
+  candidateCode,
+  stage,
+}) => {
+  const safeName = escapeHtml(candidateName);
+  const safeCompany = escapeHtml(companyName);
+  const safeJobTitle = escapeHtml(jobTitle);
+  const safeCandidateCode = escapeHtml(candidateCode);
+  const stageLabel = String(stage || '')
+    .toLowerCase()
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+  const safeStage = escapeHtml(stageLabel);
+  const safeSubjectCompany = String(companyName || 'the hiring team')
+    .replace(/[\r\n]/g, ' ')
+    .slice(0, 120);
+
+  return {
+    subject: `Application update — ${safeSubjectCompany}`,
+    text:
+      `Hello ${candidateName},\n\n` +
+      `${companyName} has updated your application for ${jobTitle}.\n` +
+      `Current status: ${stageLabel}.\n` +
+      `Application reference: ${candidateCode}.\n\n` +
+      'The hiring team will contact you if any action is required.',
+    html: shell('This is a standard application status notification.', `
+      <h2 style="margin:0 0 10px">Application update</h2>
+      <p>Hello ${safeName},</p>
+      <p><b>${safeCompany}</b> has updated your application for <b>${safeJobTitle}</b>.</p>
+      <p style="background:#f6f8fa;padding:12px;border-radius:8px">Current status: <b>${safeStage}</b><br/>Application reference: <b>${safeCandidateCode}</b></p>
+      <p style="color:#57606a;font-size:13px">The hiring team will contact you if any action is required.</p>`),
+  };
+};
+
+export const candidateInterviewEmail = ({
+  event,
+  candidateName,
+  companyName,
+  jobTitle,
+  interviewCode,
+  roundName,
+  scheduleLabel,
+  interviewType,
+  meetingLink = '',
+  location = '',
+  instructions = '',
+}) => {
+  const eventLabel = {
+    SCHEDULED: 'scheduled',
+    RESCHEDULED: 'rescheduled',
+    CANCELLED: 'cancelled',
+  }[event] || 'updated';
+  const safeEventLabel = escapeHtml(eventLabel);
+  const safeName = escapeHtml(candidateName);
+  const safeCompany = escapeHtml(companyName);
+  const safeJobTitle = escapeHtml(jobTitle);
+  const safeCode = escapeHtml(interviewCode);
+  const safeRound = escapeHtml(roundName);
+  const safeSchedule = escapeHtml(scheduleLabel);
+  const safeType = escapeHtml(interviewType);
+  const safeLocation = escapeHtml(location);
+  const safeInstructions = escapeHtml(instructions).replaceAll('\n', '<br/>');
+  const safeMeetingLink = /^https:\/\//i.test(meetingLink)
+    ? escapeHtml(meetingLink)
+    : '';
+  const subjectCompany = String(companyName || 'Hiring team')
+    .replace(/[\r\n]/g, ' ')
+    .slice(0, 100);
+  const scheduleText = event === 'CANCELLED'
+    ? 'The hiring team will contact you if another step is required.'
+    : `Schedule: ${scheduleLabel}\nType: ${interviewType}` +
+      (meetingLink ? `\nMeeting link: ${meetingLink}` : '') +
+      (location ? `\nLocation: ${location}` : '') +
+      (instructions ? `\nInstructions: ${instructions}` : '');
+  const scheduleHtml = event === 'CANCELLED'
+    ? '<p>The hiring team will contact you if another step is required.</p>'
+    : `<p style="background:#f6f8fa;padding:12px;border-radius:8px">
+        Schedule: <b>${safeSchedule}</b><br/>
+        Type: <b>${safeType}</b>
+        ${safeMeetingLink ? `<br/>Meeting link: <a href="${safeMeetingLink}">${safeMeetingLink}</a>` : ''}
+        ${safeLocation ? `<br/>Location: ${safeLocation}` : ''}
+      </p>
+      ${safeInstructions ? `<p><b>Instructions</b><br/>${safeInstructions}</p>` : ''}`;
+
+  return {
+    subject: `Interview ${eventLabel} — ${subjectCompany}`,
+    text:
+      `Hello ${candidateName},\n\n` +
+      `Your ${roundName} interview for ${jobTitle} with ${companyName} has been ${eventLabel}.\n` +
+      `Interview reference: ${interviewCode}\n${scheduleText}`,
+    html: shell('This message concerns an interview schedule, not a hiring decision.', `
+      <h2 style="margin:0 0 10px">Interview ${safeEventLabel}</h2>
+      <p>Hello ${safeName},</p>
+      <p>Your <b>${safeRound}</b> interview for <b>${safeJobTitle}</b> with <b>${safeCompany}</b> has been ${safeEventLabel}.</p>
+      <p>Interview reference: <b>${safeCode}</b></p>
+      ${scheduleHtml}`),
+  };
+};
+
+export const interviewerAssignmentEmail = ({
+  event,
+  interviewerName,
+  candidateName,
+  candidateEmail,
+  companyName,
+  jobTitle,
+  interviewCode,
+  roundName,
+  scheduleLabel,
+  interviewType,
+  meetingLink = '',
+  location = '',
+  internalNotes = '',
+}) => {
+  const eventLabel = {
+    SCHEDULED: 'scheduled',
+    RESCHEDULED: 'rescheduled',
+    CANCELLED: 'cancelled',
+    IN_PROGRESS: 'started',
+    COMPLETED: 'completed',
+    NO_SHOW: 'marked no-show',
+  }[event] || 'updated';
+  const safeMeetingLink = /^https:\/\//i.test(meetingLink)
+    ? escapeHtml(meetingLink)
+    : '';
+  const safeNotes = escapeHtml(internalNotes).replaceAll('\n', '<br/>');
+  const safeSchedule = escapeHtml(scheduleLabel);
+  const safeType = escapeHtml(interviewType);
+  const safeLocation = escapeHtml(location);
+  const subjectCompany = String(companyName || 'Crewly')
+    .replace(/[\r\n]/g, ' ')
+    .slice(0, 100);
+
+  return {
+    subject: `Interview ${eventLabel} — ${String(roundName || '').replace(/[\r\n]/g, ' ').slice(0, 100)}`,
+    text:
+      `Hello ${interviewerName},\n\n` +
+      `Interview ${interviewCode} has been ${eventLabel}.\n` +
+      `Candidate: ${candidateName} (${candidateEmail})\n` +
+      `Position: ${jobTitle}\nRound: ${roundName}\nSchedule: ${scheduleLabel}\nType: ${interviewType}` +
+      (meetingLink ? `\nMeeting link: ${meetingLink}` : '') +
+      (location ? `\nLocation: ${location}` : '') +
+      (internalNotes ? `\nInternal instructions: ${internalNotes}` : ''),
+    html: shell(`Interview workspace notification from ${escapeHtml(subjectCompany)}.`, `
+      <h2 style="margin:0 0 10px">Interview ${escapeHtml(eventLabel)}</h2>
+      <p>Hello ${escapeHtml(interviewerName)},</p>
+      <p>Interview <b>${escapeHtml(interviewCode)}</b> has been ${escapeHtml(eventLabel)}.</p>
+      <p style="background:#f6f8fa;padding:12px;border-radius:8px">
+        Candidate: <b>${escapeHtml(candidateName)}</b> (${escapeHtml(candidateEmail)})<br/>
+        Position: <b>${escapeHtml(jobTitle)}</b><br/>
+        Round: <b>${escapeHtml(roundName)}</b><br/>
+        Schedule: <b>${safeSchedule}</b><br/>
+        Type: <b>${safeType}</b>
+        ${safeMeetingLink ? `<br/>Meeting link: <a href="${safeMeetingLink}">${safeMeetingLink}</a>` : ''}
+        ${safeLocation ? `<br/>Location: ${safeLocation}` : ''}
+      </p>
+      ${safeNotes ? `<p><b>Internal instructions</b><br/>${safeNotes}</p>` : ''}`),
+  };
+};
 
 // Credentials email (new user / converted candidate)
 export const welcomeEmail = ({ name, email, password, companyName, code }) => ({

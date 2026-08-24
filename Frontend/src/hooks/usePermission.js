@@ -3,8 +3,13 @@ import {
   useMemo,
 } from "react";
 import {
+  useDispatch,
   useSelector,
 } from "react-redux";
+import {
+  fetchMyPermissions,
+  invalidatePermissions,
+} from "../redux/slices/PermissionSlices.js";
 
 const permissionKey = (value) => {
   if (!value) return "";
@@ -48,6 +53,8 @@ const flattenPermissions = (
     .filter(Boolean);
 
 const usePermission = () => {
+  const dispatch = useDispatch();
+
   /*
    * Primary Redux key: state.permissions
    * Singular fallback supports older local stores.
@@ -191,6 +198,17 @@ const usePermission = () => {
       permissionState.loading,
     );
 
+  const refreshPermissions =
+    useCallback(async () => {
+      dispatch(
+        invalidatePermissions(),
+      );
+
+      return dispatch(
+        fetchMyPermissions(),
+      ).unwrap();
+    }, [dispatch]);
+
   return {
     role,
     permissions,
@@ -206,6 +224,9 @@ const usePermission = () => {
     loadedUserId:
       permissionState.loadedUserId ||
       null,
+
+    refreshPermissions,
+    reloadPermissions: refreshPermissions,
 
     hasPermission,
 

@@ -8,6 +8,19 @@ import {
 import {
   ensureDefaultPlans,
 } from './utils/platformPlans.js';
+import {
+  ensureCareerPortalIdentifiers,
+} from './utils/careerPortalIdentifiers.js';
+import {
+  ensureCandidateIdentifiers,
+} from './utils/candidateIdentifiers.js';
+import {
+  ensureCandidatePipelineStages,
+} from './utils/candidatePipelineMigration.js';
+import {
+  recoverPendingResumeProcessing,
+} from './services/resumeProcessingDispatcher.js';
+import { recoverPendingATSMatching } from './services/atsDispatcher.js';
 
 const startServer = async () => {
   try {
@@ -16,6 +29,21 @@ const startServer = async () => {
 
     // Seed and run one-time migrations for centralized plans.
     await ensureDefaultPlans();
+
+    // Phase 27.4 public identifiers and safe publication defaults.
+    await ensureCareerPortalIdentifiers();
+
+    // Phase 27.5 candidate identifiers and compatible legacy defaults.
+    await ensureCandidateIdentifiers();
+
+    // Phase 27.8 normalizes the canonical pipeline stage without losing legacy data.
+    await ensureCandidatePipelineStages();
+
+    // Phase 27.6 recovers persisted parser jobs; extraction stays background-only.
+    await recoverPendingResumeProcessing();
+
+    // Phase 27.7 recovers parsed candidates that do not yet have an ATS result.
+    await recoverPendingATSMatching();
 
     const server = app.listen(
       env.PORT,

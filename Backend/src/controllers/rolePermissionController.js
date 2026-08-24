@@ -9,6 +9,7 @@ import {
   ensureCompanyRoles,
   ensurePermissions,
   getPermissionPayload,
+  getPermissionPlanAvailability,
   invalidatePermissionCache,
   permissionAllowedByPlan,
 } from '../utils/permissionService.js';
@@ -118,23 +119,18 @@ const validatePlanPermissions = async (
   companyId,
   permissions
 ) => {
-  const unavailable = [];
+  const availability =
+    await getPermissionPlanAvailability(
+      companyId,
+      permissions,
+    );
 
-  for (const permission of permissions) {
-    const allowed =
-      await permissionAllowedByPlan(
-        companyId,
-        permission
-      );
-
-    if (!allowed) {
-      unavailable.push(
-        permission.name
-      );
-    }
-  }
-
-  return unavailable;
+  return permissions
+    .filter(
+      (permission) =>
+        !availability[permission.name],
+    )
+    .map((permission) => permission.name);
 };
 
 // ============================================================
@@ -143,6 +139,10 @@ const validatePlanPermissions = async (
 
 export const listPermissions = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
+    const companyId = req.companyId;
+
+    // DB Logic - DB logics
     await ensurePermissions();
 
     const permissions = await Permission.find({
@@ -151,15 +151,14 @@ export const listPermissions = async (req, res) => {
       .sort('group resource action scope')
       .lean();
 
+    const availability =
+      await getPermissionPlanAvailability(
+        companyId,
+        permissions,
+      );
     const groups = {};
 
     for (const permission of permissions) {
-      const available =
-        await permissionAllowedByPlan(
-          req.companyId,
-          permission
-        );
-
       const group =
         permission.group ||
         permission.resource;
@@ -170,10 +169,12 @@ export const listPermissions = async (req, res) => {
 
       groups[group].push({
         ...permission,
-        available,
+        available:
+          availability[permission.name] ?? true,
       });
     }
 
+    // Data to frontend - response to frontend
     return ok(
       res,
       200,
@@ -723,6 +724,12 @@ export const updateRolePermissions = async (
   res
 ) => {
   try {
+    // Data from frontend - requests from frontend
+    const permissionValues = Array.isArray(req.body.permissions)
+      ? req.body.permissions
+      : [];
+
+    // DB Logic - DB logics
     const role =
       await CompanyRole.findOne({
         _id: req.params.roleId,
@@ -740,7 +747,7 @@ export const updateRolePermissions = async (
 
     const permissions =
       await resolvePermissions(
-        req.body.permissions || []
+        permissionValues
       );
 
     const unavailable =
@@ -771,17 +778,42 @@ export const updateRolePermissions = async (
             permission.name
         ),
     };
-
-    role.permissions =
+    const permissionIds =
       permissions.map(
         (permission) =>
           permission._id
       );
 
-    role.updatedBy =
-      req.user._id;
+    // Atomic update avoids stale Mongoose __v conflicts while
+    // preserving the existing tenant boundary.
+    const updatedRole =
+      await CompanyRole.findOneAndUpdate(
+        {
+          _id: role._id,
+          companyId:
+            req.companyId,
+        },
+        {
+          $set: {
+            permissions:
+              permissionIds,
+            updatedBy:
+              req.user._id,
+          },
+        },
+        {
+          new: true,
+          runValidators: true,
+        }
+      ).populate('permissions');
 
-    await role.save();
+    if (!updatedRole) {
+      return fail(
+        res,
+        404,
+        'Role not found'
+      );
+    }
 
     invalidatePermissionCache({
       companyId:
@@ -797,7 +829,7 @@ export const updateRolePermissions = async (
         'CompanyRole',
 
       targetId:
-        role._id,
+        updatedRole._id,
 
       previousState:
         previous,
@@ -811,12 +843,11 @@ export const updateRolePermissions = async (
       },
     });
 
+    // Data to frontend - response to frontend
     return ok(
       res,
       200,
-      await role.populate(
-        'permissions'
-      ),
+      updatedRole,
       'Role permissions updated'
     );
   } catch (error) {

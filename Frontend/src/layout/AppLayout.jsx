@@ -1,20 +1,25 @@
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import useAuth from "../hooks/useAuth.jsx";
+import usePermission from "../hooks/usePermission.js";
 
 import { ROLES } from "../utils/roles.js";
 import NotificationBell from "../components/NotificationBell";
 import SubscriptionStatusBanner from "../components/SubscriptionStatusBanner.jsx";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useDispatch } from "react-redux";
+import { fetchMyPermissions } from "../redux/slices/PermissionSlices.js";
 
 import {
   BarChart3,
   Bell,
   BellRing,
   Building2,
+  CalendarClock,
   CalendarDays,
   CalendarOff,
   CalendarRange,
   CheckCircle2,
+  ClipboardList,
   Clock,
   CreditCard,
   DoorOpen,
@@ -72,7 +77,7 @@ const NAV_BY_ROLE = {
     { to: "/app/assets", label: "🖥 Assets" },
     { to: "/app/projects", label: "📁 Projects" },
     { to: "/app/tasks", label: "📋 Tasks" },
-    { to: "/app/recruitment", label: "🧲 Recruitment" },
+    { to: "/app/recruitment/requisitions", label: "Recruitment" },
     { to: "/app/support", label: "🎫 Support Tickets" },
     { to: "/app/exit", label: "🚪 Resignations & Exit" },
     { to: "/app/company", label: "⚙️ Company Settings" },
@@ -108,7 +113,7 @@ const NAV_BY_ROLE = {
     { to: "/app/schedules", label: "🗓 Work Schedules" },
     { to: "/app/announcements", label: "📢 Announcements" },
     { label: "🥳 Celebrations", soon: true },
-    { to: "/app/recruitment", label: "🧲 Recruitment · Job Posting" },
+    { to: "/app/recruitment/requisitions", label: "Recruitment" },
     { to: "/app/documents", label: "📄 Documents" },
     { to: "/app/employee-files", label: "🗂 Employee Files" },
     { to: "/app/lifecycle", label: "🧬 Lifecycle" },
@@ -140,6 +145,7 @@ const NAV_BY_ROLE = {
     { to: "/app/performance", label: "📊 Performance" },
     { to: "/app/expenses", label: "💸 Expenses" },
     { to: "/app/assets", label: "🖥 Assets" },
+    { to: "/app/recruitment/requisitions", label: "Hiring Requisitions" },
     { label: "📊 Daily Reports", soon: true },
     { to: "/app/reports", label: "📑 Report Builder" },
     { to: "/app/payslips", label: "🧾 Payslips" },
@@ -173,6 +179,7 @@ const NAV_BY_ROLE = {
     { to: "/app/performance", label: "📊 Performance" },
     { to: "/app/expenses", label: "💸 Expenses" },
     { to: "/app/assets", label: "🖥 Assets" },
+    { to: "/app/recruitment/requisitions", label: "Hiring Requisitions" },
     { label: "📊 Daily Reports", soon: true },
     { to: "/app/payslips", label: "🧾 Payslips" },
     { to: "/app/documents", label: "📄 Documents" },
@@ -292,7 +299,19 @@ const NAV_ICON_BY_PATH = {
     ListTodo,
 
   "/app/recruitment":
+    ClipboardList,
+
+  "/app/recruitment/requisitions":
+    ClipboardList,
+
+  "/app/recruitment/candidates":
     Users,
+
+  "/app/recruitment/interviews":
+    CalendarClock,
+
+  "/app/recruitment/my-interviews":
+    CalendarClock,
 
   "/app/support":
     LifeBuoy,
@@ -404,8 +423,17 @@ const getNavIcon = (item) =>
 
 const AppLayout = () => {
   const { user, secureLogout } = useAuth();
+  const { hasPermission } = usePermission();
+  const dispatch = useDispatch();
   const [loggingOut, setLoggingOut] = useState(false);
   const navigate = useNavigate();
+  const userId = user?.id || user?._id;
+
+  useEffect(() => {
+    if (userId) {
+      dispatch(fetchMyPermissions());
+    }
+  }, [dispatch, userId]);
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -454,7 +482,40 @@ const AppLayout = () => {
       : []),
   ];
 
-  const menu = [...baseMenu, ...securityMenu];
+  const candidateMenu = hasPermission('CANDIDATE_READ')
+    ? [
+        {
+          to: '/app/recruitment/candidates',
+          label: 'Candidates',
+        },
+      ]
+    : [];
+
+  const interviewMenu = [
+    ...(hasPermission('INTERVIEW_READ')
+      ? [
+          {
+            to: '/app/recruitment/interviews',
+            label: 'Interviews',
+          },
+        ]
+      : []),
+    ...(hasPermission('INTERVIEW_READ_SELF')
+      ? [
+          {
+            to: '/app/recruitment/my-interviews',
+            label: 'My Interviews',
+          },
+        ]
+      : []),
+  ];
+
+  const menu = [
+    ...baseMenu,
+    ...candidateMenu,
+    ...interviewMenu,
+    ...securityMenu,
+  ];
 
   return (
     <div className="flex min-h-screen">
@@ -522,7 +583,7 @@ const AppLayout = () => {
         </nav>
 
         <p className="pt-3 text-[11px] text-crewly-dim/60">
-          Crewly HRMS · Phase 22
+          Crewly HRMS · Phase 27.9
         </p>
       </aside>
 

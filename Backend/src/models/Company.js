@@ -46,6 +46,49 @@ const companySchema = new mongoose.Schema(
       default: '',
     },
 
+    careerSlug: {
+      type: String,
+      unique: true,
+      sparse: true,
+      lowercase: true,
+      trim: true,
+      minlength: 3,
+      maxlength: 63,
+      match: [/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Career slug must be URL safe'],
+      default() {
+        return String(this.code || '')
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '');
+      },
+    },
+
+    careerPortalEnabled: {
+      type: Boolean,
+      default: false,
+    },
+
+    careerAbout: {
+      type: String,
+      default: '',
+      trim: true,
+      maxlength: 2000,
+    },
+
+    careerWebsite: {
+      type: String,
+      default: '',
+      trim: true,
+      maxlength: 300,
+    },
+
+    careerLocation: {
+      type: String,
+      default: '',
+      trim: true,
+      maxlength: 180,
+    },
+
     country: {
       type: String,
       default: 'India',
