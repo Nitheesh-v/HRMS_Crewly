@@ -210,8 +210,10 @@ export const getCandidateInboxDetail = async ({
       companyId,
       candidateId: candidate._id,
     })
-      .select('fromStage toStage actor reason metadata createdAt -_id')
-      .populate({ path: 'actor', select: 'name' })
+      .select(
+        'fromStage toStage changedBy changeReason metadata createdAt -_id'
+      )
+      .populate({ path: 'changedBy', select: 'name' })
       .sort({ createdAt: -1 })
       .limit(50)
       .lean(),
@@ -280,13 +282,13 @@ export const getCandidateInboxDetail = async ({
       type: 'STAGE_TRANSITION',
       action: 'STAGE_CHANGED',
       actorType: event.metadata?.actorType || 'USER',
-      actor: event.actor
-        ? { id: event.actor._id, name: event.actor.name }
+      actor: event.changedBy
+        ? { id: event.changedBy._id, name: event.changedBy.name }
         : null,
       eventAt: event.createdAt,
       fromStage: event.fromStage,
       toStage: event.toStage,
-      reason: event.reason || '',
+      reason: event.changeReason || '',
       metadata: {
         ...(event.metadata?.source ? { source: event.metadata.source } : {}),
         ...(event.metadata?.action ? { action: event.metadata.action } : {}),

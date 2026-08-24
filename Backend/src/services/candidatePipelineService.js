@@ -152,8 +152,8 @@ export const transitionCandidateStage = async ({
       jobPostingId: candidate.job,
       fromStage,
       toStage: normalizedTarget,
-      actor: actorId,
-      reason: changeReason,
+      changedBy: actorId,
+      changeReason,
       metadata: safeTransitionMetadata(metadata),
       createdAt: new Date(),
     });

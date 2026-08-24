@@ -113,15 +113,15 @@ test('pipeline stages, immutable ledger fields and required tenant indexes match
     'jobPostingId',
     'fromStage',
     'toStage',
-    'actor',
-    'reason',
+    'changedBy',
+    'changeReason',
     'metadata',
     'createdAt',
   ]) {
     assert.equal(schema.path(path).options.immutable, true, `${path} must be immutable`);
   }
-  assert.equal(schema.path('actor').options.required, true);
-  assert.equal(schema.path('reason').options.maxlength, 1000);
+  assert.equal(schema.path('changedBy').options.required, true);
+  assert.equal(schema.path('changeReason').options.maxlength, 1000);
 
   const indexes = schema.indexes().map(([fields]) => fields);
   assert.ok(indexes.some((fields) =>
@@ -180,7 +180,7 @@ test('single transition compares and sets both stage fields, then writes immutab
     assert.equal(histories.length, 1);
     assert.equal(histories[0].fromStage, 'APPLIED');
     assert.equal(histories[0].toStage, 'HR_SCREENING');
-    assert.equal(String(histories[0].actor), ACTOR_ID);
+    assert.equal(String(histories[0].changedBy), ACTOR_ID);
     assert.equal(audits[0].action, 'CANDIDATE_STAGE_CHANGED');
     assert.equal(String(audits[0].companyId), COMPANY_ID);
     assert.equal(result.toStage, 'HR_SCREENING');
@@ -445,8 +445,8 @@ test('candidate detail merges operational and immutable pipeline history chronol
       return query([{
         fromStage: 'APPLIED',
         toStage: 'HR_SCREENING',
-        actor: { _id: ACTOR_ID, name: '<Recruiter>' },
-        reason: '<script>not html</script>',
+        changedBy: { _id: ACTOR_ID, name: '<Recruiter>' },
+        changeReason: '<script>not html</script>',
         metadata: { source: 'MANUAL' },
         createdAt: later,
       }]);

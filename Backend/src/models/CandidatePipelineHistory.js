@@ -54,8 +54,8 @@ const candidatePipelineHistorySchema = new mongoose.Schema(
       required: true,
       immutable: true,
     },
-    actor: immutableRef('User'),
-    reason: {
+    changedBy: immutableRef('User'),
+    changeReason: {
       type: String,
       trim: true,
       maxlength: 1000,

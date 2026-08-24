@@ -372,7 +372,7 @@ test('processing upserts one tenant result, records one immutable APPLIED transi
     assert.equal(pipelineHistory.length, 1);
     assert.equal(pipelineHistory[0].fromStage, 'APPLIED');
     assert.equal(pipelineHistory[0].toStage, 'ATS_SCREENING');
-    assert.equal(String(pipelineHistory[0].actor), USER_ID);
+    assert.equal(String(pipelineHistory[0].changedBy), USER_ID);
     assert.equal(pipelineHistory[0].metadata.source, 'ATS_ENGINE');
     assert.deepEqual(history.map((event) => event.action), [
       'ATS_PROCESSED',
