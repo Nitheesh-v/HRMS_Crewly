@@ -15,6 +15,9 @@ export const RESOURCES = [
   "INTERVIEW_FEEDBACK",
   "OFFER",
   "OFFER_TEMPLATE",
+  "PRE_ONBOARDING",
+  "PRE_ONBOARDING_DOCUMENT",
+  "PRE_ONBOARDING_SETTINGS",
   "REPORT",
   "DOCUMENT",
   "PROJECT",
@@ -47,6 +50,8 @@ export const ACTIONS = [
   "RETURN",
   "SEND",
   "WITHDRAW",
+  "VERIFY",
+  "READY",
 ];
 
 const actions = (resource, actionList, scope = "ALL") =>
@@ -114,6 +119,19 @@ export const DEFAULT_PERMISSIONS = [
   ]),
 
   ...actions("OFFER_TEMPLATE", ["READ", "CREATE", "UPDATE"]),
+
+  ...actions("PRE_ONBOARDING", [
+    "READ",
+    "CREATE",
+    "UPDATE",
+    "SEND",
+    "READY",
+    "WITHDRAW",
+  ]),
+
+  ...actions("PRE_ONBOARDING_DOCUMENT", ["READ", "VERIFY"]),
+
+  ...actions("PRE_ONBOARDING_SETTINGS", ["READ", "MANAGE"]),
 
   ...actions("REPORT", ["READ", "EXPORT"]),
 
@@ -294,6 +312,17 @@ export const DEFAULT_ROLE_MATRIX = {
     "OFFER_TEMPLATE_READ",
     "OFFER_TEMPLATE_CREATE",
     "OFFER_TEMPLATE_UPDATE",
+
+    "PRE_ONBOARDING_READ",
+    "PRE_ONBOARDING_CREATE",
+    "PRE_ONBOARDING_UPDATE",
+    "PRE_ONBOARDING_SEND",
+    "PRE_ONBOARDING_READY",
+    "PRE_ONBOARDING_WITHDRAW",
+    "PRE_ONBOARDING_DOCUMENT_READ",
+    "PRE_ONBOARDING_DOCUMENT_VERIFY",
+    "PRE_ONBOARDING_SETTINGS_READ",
+    "PRE_ONBOARDING_SETTINGS_MANAGE",
 
     "INTERVIEW_READ",
     "INTERVIEW_CREATE",

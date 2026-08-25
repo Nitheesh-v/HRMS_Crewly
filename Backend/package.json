@@ -17,7 +17,8 @@
     "test:interviews": "node --test test/interviewManagement.test.js",
     "test:interview-evaluation": "node --test test/interviewEvaluation.test.js",
     "test:offers": "node --test test/offerManagement.test.js",
-    "test:rms": "node --test test/requisitionApproval.test.js test/requisitionJobCreation.test.js test/interviewManagement.test.js test/interviewEvaluation.test.js"
+    "test:pre-onboarding": "node --test test/preOnboarding.test.js",
+    "test:rms": "node --test test/requisitionApproval.test.js test/requisitionJobCreation.test.js test/interviewManagement.test.js test/interviewEvaluation.test.js test/preOnboarding.test.js"
   },
   "keywords": [],
   "author": "",

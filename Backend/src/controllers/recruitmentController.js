@@ -316,7 +316,7 @@ export const convertCandidate = asyncHandler(async (req, res) => {
     candidateId: candidate._id,
     targetStage: 'JOINED',
     actorId: req.user._id,
-    metadata: { source: 'PIPELINE', action: 'EMPLOYEE_CONVERSION' },
+    metadata: { source: 'PIPELINE', action: 'LEGACY_CONVERSION' },
   });
 
   // Phase 8 📧🔔 hired: welcome notification + credentials email

@@ -28,6 +28,7 @@ import Modal from '../../components/Modal.jsx';
 import ATSAnalysisPanel from '../../components/recruitment/ATSAnalysisPanel.jsx';
 import CandidateFinalReview from '../../components/recruitment/CandidateFinalReview.jsx';
 import CandidateOfferPanel from '../../components/recruitment/CandidateOfferPanel.jsx';
+import CandidatePreOnboardingPanel from '../../components/recruitment/CandidatePreOnboardingPanel.jsx';
 import InterviewDetailModal from '../../components/recruitment/InterviewDetailModal.jsx';
 import InterviewScheduleModal from '../../components/recruitment/InterviewScheduleModal.jsx';
 import usePermission from '../../hooks/usePermission.js';
@@ -174,6 +175,16 @@ const timelineLabel = (action) =>
     OFFER_REJECTED: 'Offer rejected by candidate',
     OFFER_EXPIRED: 'Offer expired',
     OFFER_WITHDRAWN: 'Offer withdrawn',
+    PRE_ONBOARDING_STARTED: 'Pre-onboarding started',
+    DOCUMENT_REQUESTED: 'Pre-onboarding documents requested',
+    DOCUMENT_UPLOADED: 'Candidate document uploaded',
+    DOCUMENT_RESUBMITTED: 'Candidate document resubmitted',
+    DOCUMENT_UNDER_REVIEW: 'Document moved under review',
+    DOCUMENT_VERIFIED: 'Document verified',
+    DOCUMENT_REJECTED: 'Document rejected',
+    DOCUMENT_RESUBMISSION_REQUIRED: 'Document resubmission required',
+    PRE_ONBOARDING_COMPLETED: 'Pre-onboarding documents completed',
+    READY_TO_JOIN: 'Candidate marked ready to join',
   })[action] || enumLabel(action);
 
 const INTERVIEW_ROUNDS = [
@@ -841,6 +852,13 @@ const CandidateDetailPage = () => {
       </header>
 
       {canReadOffers ? <CandidateOfferPanel candidate={candidate} /> : null}
+      <CandidatePreOnboardingPanel
+        candidate={candidate}
+        onStarted={() => {
+          // Keep the detail view in sync after the pipeline moves to PRE_ONBOARDING.
+          window.setTimeout(() => window.location.reload(), 400);
+        }}
+      />
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
         <div className="space-y-5">

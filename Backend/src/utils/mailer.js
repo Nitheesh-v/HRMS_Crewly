@@ -378,6 +378,89 @@ export const offerWithdrawnEmail = ({ offer }) => {
   };
 };
 
+export const preOnboardingAccessEmail = ({
+  candidateName,
+  companyName,
+  jobTitle,
+  designation,
+  joiningDate,
+  preOnboardingCode,
+  portalUrl,
+  expiryDays = 90,
+}) => {
+  const safeName = escapeHtml(candidateName);
+  const safeCompany = escapeHtml(companyName);
+  const safeJob = escapeHtml(jobTitle || designation || 'your role');
+  const safeCode = escapeHtml(preOnboardingCode || '');
+  const joiningLabel = joiningDate
+    ? new Intl.DateTimeFormat('en-IN', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+      }).format(new Date(joiningDate))
+    : 'the planned joining date';
+  const safeJoining = escapeHtml(joiningLabel);
+  const safePortalUrl =
+    /^https:\/\//i.test(portalUrl) ||
+    /^http:\/\/localhost(?::\d+)?\//i.test(portalUrl)
+      ? escapeHtml(portalUrl)
+      : '';
+
+  return {
+    subject: `Pre-onboarding documents — ${String(companyName || '')
+      .replace(/[\r\n]/g, ' ')
+      .slice(0, 100)}`,
+    text:
+      `Hello ${candidateName},\n\n` +
+      `${companyName} has started pre-onboarding for ${jobTitle || designation}.\n` +
+      `Reference: ${preOnboardingCode}\n` +
+      `Expected joining date: ${joiningLabel}\n\n` +
+      `Upload your documents securely: ${portalUrl}\n\n` +
+      `This private link remains valid for up to ${expiryDays} days. Do not forward it.`,
+    html: shell('This private link is for pre-joining document collection only.', `
+      <h2 style="margin:0 0 10px">Pre-onboarding is ready</h2>
+      <p>Hello ${safeName},</p>
+      <p><b>${safeCompany}</b> has started pre-onboarding for <b>${safeJob}</b>.</p>
+      <p style="background:#f6f8fa;padding:12px;border-radius:8px">Reference: <b>${safeCode}</b><br/>Expected joining date: <b>${safeJoining}</b></p>
+      ${safePortalUrl ? `<p><a href="${safePortalUrl}" style="display:inline-block;background:#172033;color:#fff;padding:11px 16px;border-radius:7px;text-decoration:none">Open secure document portal</a></p>` : ''}
+      <p style="color:#57606a;font-size:13px">This private link remains valid for up to ${Number(expiryDays) || 90} days. Do not forward it.</p>`),
+  };
+};
+
+export const preOnboardingDocumentDecisionEmail = ({
+  candidateName,
+  companyName,
+  requirementName,
+  decision,
+  reason = '',
+}) => {
+  const labels = {
+    VERIFIED: 'verified',
+    RESUBMISSION_REQUIRED: 'needs resubmission',
+    READY_TO_JOIN: 'marked ready to join',
+  };
+  const decisionLabel = labels[decision] || 'updated';
+  const safeReason = escapeHtml(reason).replaceAll('\n', '<br/>');
+
+  return {
+    subject: `Pre-onboarding update — ${String(companyName || '')
+      .replace(/[\r\n]/g, ' ')
+      .slice(0, 100)}`,
+    text:
+      `Hello ${candidateName},\n\n` +
+      `${companyName} updated your pre-onboarding item "${requirementName}": ${decisionLabel}.\n` +
+      (reason ? `Note: ${reason}\n` : '') +
+      '\nThe hiring team will contact you if another action is required.',
+    html: shell('This is a pre-onboarding status notification.', `
+      <h2 style="margin:0 0 10px">Pre-onboarding update</h2>
+      <p>Hello ${escapeHtml(candidateName)},</p>
+      <p><b>${escapeHtml(companyName)}</b> updated <b>${escapeHtml(requirementName)}</b>: <b>${escapeHtml(decisionLabel)}</b>.</p>
+      ${safeReason ? `<p style="background:#f6f8fa;padding:12px;border-radius:8px">${safeReason}</p>` : ''}
+      <p style="color:#57606a;font-size:13px">The hiring team will contact you if another action is required.</p>`),
+  };
+};
+
 export const welcomeEmail = ({ name, email, password, companyName, code }) => ({
   subject: `Welcome to ${companyName || 'Crewly HRMS'} — your login credentials`,
   html: shell('You received this because an account was created for you.', `

@@ -313,6 +313,9 @@ const NAV_ICON_BY_PATH = {
   "/app/recruitment/my-interviews":
     CalendarClock,
 
+  "/app/recruitment/pre-onboarding":
+    ClipboardList,
+
   "/app/support":
     LifeBuoy,
 
@@ -500,6 +503,15 @@ const AppLayout = () => {
       ]
     : [];
 
+  const preOnboardingMenu = hasPermission('PRE_ONBOARDING_READ')
+    ? [
+        {
+          to: '/app/recruitment/pre-onboarding',
+          label: 'Pre-Onboarding',
+        },
+      ]
+    : [];
+
   const interviewMenu = [
     ...(hasPermission('INTERVIEW_READ')
       ? [
@@ -523,6 +535,7 @@ const AppLayout = () => {
     ...baseMenu,
     ...candidateMenu,
     ...offerMenu,
+    ...preOnboardingMenu,
     ...interviewMenu,
     ...securityMenu,
   ];

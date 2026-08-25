@@ -155,6 +155,30 @@ import {
   listOfferTemplateRules,
   updateOfferTemplateRules,
 } from '../validators/offerTemplateValidator.js';
+import {
+  documentRequirementCreate,
+  documentRequirementDeactivate,
+  documentRequirementList,
+  documentRequirementUpdate,
+  preOnboardingDetail,
+  preOnboardingDocumentFile,
+  preOnboardingDocumentReject,
+  preOnboardingDocumentVerify,
+  preOnboardingList,
+  preOnboardingMarkReady,
+  preOnboardingResendInvite,
+  preOnboardingStart,
+} from '../controllers/preOnboardingController.js';
+import {
+  createRequirementRules,
+  documentActionRules,
+  listPreOnboardingRules,
+  preOnboardingIdRules,
+  rejectDocumentRules,
+  requirementIdRules,
+  startPreOnboardingRules,
+  updateRequirementRules,
+} from '../validators/preOnboardingValidator.js';
 
 const router = Router();
 
@@ -225,6 +249,88 @@ router.post('/offers/:offerId/return', checkWriteAccess, requirePermission('OFFE
 router.post('/offers/:offerId/send', checkWriteAccess, requirePermission('OFFER_SEND'), offerActionRules, offerSend);
 router.post('/offers/:offerId/withdraw', checkWriteAccess, requirePermission('OFFER_WITHDRAW'), offerReasonRules, offerWithdraw);
 router.get('/offers/:offerId/document', requirePermission('OFFER_READ'), offerActionRules, offerDocumentRead);
+
+// Phase 27.12 — enterprise pre-onboarding and candidate document management.
+router.get(
+  '/pre-onboarding/document-requirements',
+  requirePermission('PRE_ONBOARDING_SETTINGS_READ'),
+  documentRequirementList
+);
+router.post(
+  '/pre-onboarding/document-requirements',
+  checkWriteAccess,
+  requirePermission('PRE_ONBOARDING_SETTINGS_MANAGE'),
+  createRequirementRules,
+  documentRequirementCreate
+);
+router.patch(
+  '/pre-onboarding/document-requirements/:requirementId',
+  checkWriteAccess,
+  requirePermission('PRE_ONBOARDING_SETTINGS_MANAGE'),
+  updateRequirementRules,
+  documentRequirementUpdate
+);
+router.post(
+  '/pre-onboarding/document-requirements/:requirementId/deactivate',
+  checkWriteAccess,
+  requirePermission('PRE_ONBOARDING_SETTINGS_MANAGE'),
+  requirementIdRules,
+  documentRequirementDeactivate
+);
+
+router.get(
+  '/pre-onboarding',
+  requirePermission('PRE_ONBOARDING_READ'),
+  listPreOnboardingRules,
+  preOnboardingList
+);
+router.get(
+  '/pre-onboarding/:preOnboardingId',
+  requirePermission('PRE_ONBOARDING_READ'),
+  preOnboardingIdRules,
+  preOnboardingDetail
+);
+router.post(
+  '/pre-onboarding/:preOnboardingId/resend-invite',
+  checkWriteAccess,
+  requirePermission('PRE_ONBOARDING_SEND'),
+  preOnboardingIdRules,
+  preOnboardingResendInvite
+);
+router.post(
+  '/pre-onboarding/:preOnboardingId/documents/:documentId/verify',
+  checkWriteAccess,
+  requirePermission('PRE_ONBOARDING_DOCUMENT_VERIFY'),
+  documentActionRules,
+  preOnboardingDocumentVerify
+);
+router.post(
+  '/pre-onboarding/:preOnboardingId/documents/:documentId/reject',
+  checkWriteAccess,
+  requirePermission('PRE_ONBOARDING_DOCUMENT_VERIFY'),
+  rejectDocumentRules,
+  preOnboardingDocumentReject
+);
+router.post(
+  '/pre-onboarding/:preOnboardingId/mark-ready',
+  checkWriteAccess,
+  requirePermission('PRE_ONBOARDING_READY'),
+  preOnboardingIdRules,
+  preOnboardingMarkReady
+);
+router.get(
+  '/pre-onboarding/:preOnboardingId/documents/:documentId/file',
+  requirePermission('PRE_ONBOARDING_DOCUMENT_READ'),
+  documentActionRules,
+  preOnboardingDocumentFile
+);
+router.post(
+  '/candidates/:candidateId/pre-onboarding/start',
+  checkWriteAccess,
+  requirePermission('PRE_ONBOARDING_CREATE'),
+  startPreOnboardingRules,
+  preOnboardingStart
+);
 
 // Phase 27.9 — interview management. Literal routes stay before /:id.
 router.get(

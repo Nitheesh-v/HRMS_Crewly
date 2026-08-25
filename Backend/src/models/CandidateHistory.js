@@ -36,6 +36,16 @@ export const CANDIDATE_HISTORY_ACTIONS = [
   'OFFER_REJECTED',
   'OFFER_EXPIRED',
   'OFFER_WITHDRAWN',
+  'PRE_ONBOARDING_STARTED',
+  'DOCUMENT_REQUESTED',
+  'DOCUMENT_UPLOADED',
+  'DOCUMENT_RESUBMITTED',
+  'DOCUMENT_UNDER_REVIEW',
+  'DOCUMENT_VERIFIED',
+  'DOCUMENT_REJECTED',
+  'DOCUMENT_RESUBMISSION_REQUIRED',
+  'PRE_ONBOARDING_COMPLETED',
+  'READY_TO_JOIN',
 ];
 
 const candidateHistorySchema = new mongoose.Schema(
@@ -74,6 +84,7 @@ const candidateHistorySchema = new mongoose.Schema(
         'INTERVIEW',
         'FINAL_DECISION',
         'OFFER',
+        'PRE_ONBOARDING',
       ],
       default: 'CAREER_PAGE',
     },

@@ -14,6 +14,8 @@ import CareerJobDetailPage from "../pages/careers/CareerJobDetailPage.jsx";
 import CareerApplyShellPage from "../pages/careers/CareerApplyShellPage.jsx";
 import CandidateOfferPublicLayout from "../layout/CandidateOfferPublicLayout.jsx";
 import CandidateOfferPortalPage from "../pages/candidate/CandidateOfferPortalPage.jsx";
+import CandidatePreOnboardingPublicLayout from "../layout/CandidatePreOnboardingPublicLayout.jsx";
+import CandidatePreOnboardingPortalPage from "../pages/candidate/CandidatePreOnboardingPortalPage.jsx";
 
 import RequireAuth from "./RequireAuth.jsx";
 import RequirePermission from "./RequirePermission.jsx";
@@ -58,6 +60,9 @@ import MyInterviewsPage from "../pages/recruitment/MyInterviewsPage.jsx";
 import OffersPage from "../pages/recruitment/OffersPage.jsx";
 import OfferDetailPage from "../pages/recruitment/OfferDetailPage.jsx";
 import OfferTemplatesPage from "../pages/recruitment/OfferTemplatesPage.jsx";
+import PreOnboardingPage from "../pages/recruitment/PreOnboardingPage.jsx";
+import PreOnboardingDetailPage from "../pages/recruitment/PreOnboardingDetailPage.jsx";
+import PreOnboardingRequirementsPage from "../pages/recruitment/PreOnboardingRequirementsPage.jsx";
 import ExitProcessPage from "../pages/exit/ExitProcessPage.jsx";
 
 import CompanyProfilePage from "../pages/company/CompanyProfilePage.jsx";
@@ -187,6 +192,14 @@ const AppRoutes = () => (
     {/* Public candidate offer portal — secure token authority, no employee session */}
     <Route path="/candidate/offer" element={<CandidateOfferPublicLayout />}>
       <Route path=":secureToken" element={<CandidateOfferPortalPage />} />
+    </Route>
+
+    {/* Public candidate pre-onboarding portal — secure token authority only */}
+    <Route
+      path="/candidate/pre-onboarding"
+      element={<CandidatePreOnboardingPublicLayout />}
+    >
+      <Route path=":secureToken" element={<CandidatePreOnboardingPortalPage />} />
     </Route>
 
     {/* Public Super Admin authentication */}
@@ -429,6 +442,33 @@ const AppRoutes = () => (
         element={
           <RequirePermission permission="OFFER_TEMPLATE_READ">
             <OfferTemplatesPage />
+          </RequirePermission>
+        }
+      />
+
+      <Route
+        path="recruitment/pre-onboarding"
+        element={
+          <RequirePermission permission="PRE_ONBOARDING_READ">
+            <PreOnboardingPage />
+          </RequirePermission>
+        }
+      />
+
+      <Route
+        path="recruitment/pre-onboarding/requirements"
+        element={
+          <RequirePermission permission="PRE_ONBOARDING_SETTINGS_READ">
+            <PreOnboardingRequirementsPage />
+          </RequirePermission>
+        }
+      />
+
+      <Route
+        path="recruitment/pre-onboarding/:preOnboardingId"
+        element={
+          <RequirePermission permission="PRE_ONBOARDING_READ">
+            <PreOnboardingDetailPage />
           </RequirePermission>
         }
       />
