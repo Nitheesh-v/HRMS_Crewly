@@ -192,7 +192,7 @@ const RecruitmentDashboardPage = () => {
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-300">
-            Recruitment
+            Recruitment workspace
           </p>
           <h1 className="mt-2 text-2xl font-bold text-slate-100">Command center</h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-400">
@@ -211,6 +211,42 @@ const RecruitmentDashboardPage = () => {
           Refresh
         </button>
       </header>
+
+      <nav className="flex gap-6 overflow-x-auto border-b border-slate-800 text-sm">
+        <span className="border-b-2 border-indigo-400 px-1 pb-3 font-semibold text-indigo-300">
+          Dashboard
+        </span>
+        <Link
+          to="/app/recruitment/requisitions"
+          className="px-1 pb-3 text-slate-400 transition hover:text-slate-200"
+        >
+          Requisitions
+        </Link>
+        <Link
+          to="/app/recruitment/candidates"
+          className="px-1 pb-3 text-slate-400 transition hover:text-slate-200"
+        >
+          Candidates
+        </Link>
+        <Link
+          to="/app/recruitment/offers"
+          className="px-1 pb-3 text-slate-400 transition hover:text-slate-200"
+        >
+          Offers
+        </Link>
+        <Link
+          to="/app/recruitment/pre-onboarding"
+          className="px-1 pb-3 text-slate-400 transition hover:text-slate-200"
+        >
+          Pre-Onboarding
+        </Link>
+        <Link
+          to="/app/recruitment/interviews"
+          className="px-1 pb-3 text-slate-400 transition hover:text-slate-200"
+        >
+          Interviews
+        </Link>
+      </nav>
 
       <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
         <div className="mb-3 flex items-center gap-2 text-sm text-slate-300">
