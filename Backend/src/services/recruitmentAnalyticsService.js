@@ -200,18 +200,34 @@ export const getRecruitmentAnalyticsOverview = async ({
   const todayStart = startOfUtcDay(new Date());
   const todayEnd = endOfUtcDay(new Date());
 
-  // Department filter applies through jobs when candidate/job filter not set.
-  let departmentJobIds = null;
-  if (filters.departmentId) {
-    departmentJobIds = await JobPosting.find({
+  // Department/job scope: resolve allowed job IDs once and reuse everywhere.
+  // If department has zero jobs, force an empty scope (never leak company-wide counts).
+  let scopedJobIds = null;
+  if (filters.jobId || filters.departmentId) {
+    const jobQuery = {
       companyId,
-      department: filters.departmentId,
       ...(filters.jobId ? { _id: filters.jobId } : {}),
-    })
+      ...(filters.departmentId ? { department: filters.departmentId } : {}),
+    };
+    scopedJobIds = await JobPosting.find(jobQuery)
       .select('_id')
       .lean()
       .then((rows) => rows.map((row) => row._id));
   }
+
+  const emptyObjectId = oid('000000000000000000000000');
+  const jobScopeFilter = () => {
+    if (scopedJobIds === null) return {};
+    if (!scopedJobIds.length) return { job: emptyObjectId };
+    if (scopedJobIds.length === 1) return { job: scopedJobIds[0] };
+    return { job: { $in: scopedJobIds } };
+  };
+  const jobPostingIdScopeFilter = () => {
+    if (scopedJobIds === null) return {};
+    if (!scopedJobIds.length) return { jobPostingId: emptyObjectId };
+    if (scopedJobIds.length === 1) return { jobPostingId: scopedJobIds[0] };
+    return { jobPostingId: { $in: scopedJobIds } };
+  };
 
   const scopedJobMatch = {
     companyId: companyObjectId,
@@ -219,14 +235,19 @@ export const getRecruitmentAnalyticsOverview = async ({
     ...(filters.departmentId ? { department: filters.departmentId } : {}),
   };
 
-  const candidateBase = candidateMatch(filters);
-  if (departmentJobIds) {
-    candidateBase.job = { $in: departmentJobIds };
+  const candidateBase = {
+    ...candidateMatch(filters),
+    ...jobScopeFilter(),
+  };
+  // candidateMatch may set job from filters.jobId; department scope wins via jobScopeFilter.
+  if (scopedJobIds !== null) {
+    Object.assign(candidateBase, jobScopeFilter());
   }
   const candidateInPeriod = {
     ...candidateBase,
     applicationDate: { $gte: from, $lte: to },
   };
+  const jobScoped = jobScopeFilter();
 
   const [
     pendingRequisitions,
@@ -272,7 +293,7 @@ export const getRecruitmentAnalyticsOverview = async ({
     Candidate.countDocuments(candidateInPeriod),
     ATSResult.countDocuments({
       companyId: companyObjectId,
-      ...(filters.jobId ? { job: filters.jobId } : {}),
+      ...jobScoped,
       createdAt: { $gte: from, $lte: to },
       overallScore: { $gte: 0 },
     }),
@@ -282,12 +303,12 @@ export const getRecruitmentAnalyticsOverview = async ({
     }),
     Interview.countDocuments({
       companyId: companyObjectId,
-      ...(filters.jobId ? { job: filters.jobId } : {}),
+      ...jobScoped,
       scheduledStartAt: { $gte: from, $lte: to },
     }),
     Interview.countDocuments({
       companyId: companyObjectId,
-      ...(filters.jobId ? { job: filters.jobId } : {}),
+      ...jobScoped,
       scheduledStartAt: { $gte: todayStart, $lte: todayEnd },
       status: { $in: ['SCHEDULED', 'RESCHEDULED', 'IN_PROGRESS'] },
     }),
@@ -297,12 +318,12 @@ export const getRecruitmentAnalyticsOverview = async ({
     }),
     OfferLetter.countDocuments({
       companyId: companyObjectId,
-      ...(filters.jobId ? { job: filters.jobId } : {}),
+      ...jobScoped,
       'delivery.sentAt': { $gte: from, $lte: to },
     }),
     OfferLetter.countDocuments({
       companyId: companyObjectId,
-      ...(filters.jobId ? { job: filters.jobId } : {}),
+      ...jobScoped,
       status: 'ACCEPTED',
       acceptedAt: { $gte: from, $lte: to },
     }),
@@ -310,7 +331,7 @@ export const getRecruitmentAnalyticsOverview = async ({
       {
         $match: {
           companyId: companyObjectId,
-          ...(filters.jobId ? { job: filters.jobId } : {}),
+          ...jobScoped,
           createdAt: { $gte: from, $lte: to },
         },
       },
@@ -319,13 +340,34 @@ export const getRecruitmentAnalyticsOverview = async ({
     PreOnboarding.countDocuments({
       companyId,
       status: 'READY_TO_JOIN',
-      ...(filters.jobId ? { job: filters.jobId } : {}),
+      ...jobScoped,
     }),
-    CandidateEmployeeConversion.countDocuments({
-      companyId,
-      status: 'COMPLETED',
-      convertedAt: { $gte: from, $lte: to },
-    }),
+    // Joined conversions: when department/job scoped, only count conversions
+    // whose linked candidate belongs to scoped jobs.
+    (async () => {
+      if (scopedJobIds === null) {
+        return CandidateEmployeeConversion.countDocuments({
+          companyId,
+          status: 'COMPLETED',
+          convertedAt: { $gte: from, $lte: to },
+        });
+      }
+      if (!scopedJobIds.length) return 0;
+      const scopedCandidateIds = await Candidate.find({
+        companyId,
+        job: { $in: scopedJobIds },
+      })
+        .select('_id')
+        .lean()
+        .then((rows) => rows.map((row) => row._id));
+      if (!scopedCandidateIds.length) return 0;
+      return CandidateEmployeeConversion.countDocuments({
+        companyId,
+        status: 'COMPLETED',
+        convertedAt: { $gte: from, $lte: to },
+        candidate: { $in: scopedCandidateIds },
+      });
+    })(),
     Candidate.countDocuments({
       ...candidateBase,
       currentStage: 'JOINED',
@@ -337,17 +379,17 @@ export const getRecruitmentAnalyticsOverview = async ({
     OfferLetter.countDocuments({
       companyId,
       status: 'PENDING_APPROVAL',
-      ...(filters.jobId ? { job: filters.jobId } : {}),
+      ...jobScoped,
     }),
     OfferLetter.countDocuments({
       companyId,
       status: { $in: ['SENT', 'VIEWED'] },
-      ...(filters.jobId ? { job: filters.jobId } : {}),
+      ...jobScoped,
     }),
     PreOnboarding.countDocuments({
       companyId,
       status: { $in: ['UNDER_REVIEW', 'ACTION_REQUIRED', 'IN_PROGRESS'] },
-      ...(filters.jobId ? { job: filters.jobId } : {}),
+      ...jobScoped,
     }),
     JobRequisition.find({
       companyId,
@@ -363,7 +405,7 @@ export const getRecruitmentAnalyticsOverview = async ({
       {
         $match: {
           companyId: companyObjectId,
-          ...(filters.jobId ? { job: filters.jobId } : {}),
+          ...jobScoped,
         },
       },
       { $group: { _id: '$status', count: { $sum: 1 } } },
@@ -372,7 +414,7 @@ export const getRecruitmentAnalyticsOverview = async ({
       {
         $match: {
           companyId: companyObjectId,
-          ...(filters.jobId ? { job: filters.jobId } : {}),
+          ...jobScoped,
           createdAt: { $gte: from, $lte: to },
         },
       },
@@ -422,7 +464,7 @@ export const getRecruitmentAnalyticsOverview = async ({
         $match: {
           companyId: companyObjectId,
           createdAt: { $gte: from, $lte: to },
-          ...(filters.jobId ? { jobPostingId: filters.jobId } : {}),
+          ...jobPostingIdScopeFilter(),
         },
       },
       {
@@ -446,7 +488,7 @@ export const getRecruitmentAnalyticsOverview = async ({
           companyId: companyObjectId,
           status: 'ACCEPTED',
           acceptedAt: { $gte: from, $lte: to },
-          ...(filters.jobId ? { job: filters.jobId } : {}),
+          ...jobScoped,
         },
       },
       {
@@ -503,7 +545,7 @@ export const getRecruitmentAnalyticsOverview = async ({
         $match: {
           companyId: companyObjectId,
           'delivery.sentAt': { $gte: from, $lte: to },
-          ...(filters.jobId ? { job: filters.jobId } : {}),
+          ...jobScoped,
         },
       },
       {
@@ -516,13 +558,27 @@ export const getRecruitmentAnalyticsOverview = async ({
       },
       { $sort: { _id: 1 } },
     ]),
-    CandidateEmployeeConversion.aggregate([
+    (async () => {
+      const match = {
+        companyId: companyObjectId,
+        status: 'COMPLETED',
+        convertedAt: { $gte: from, $lte: to },
+      };
+      if (scopedJobIds !== null) {
+        if (!scopedJobIds.length) return [];
+        const scopedCandidateIds = await Candidate.find({
+          companyId,
+          job: { $in: scopedJobIds },
+        })
+          .select('_id')
+          .lean()
+          .then((rows) => rows.map((row) => row._id));
+        if (!scopedCandidateIds.length) return [];
+        match.candidate = { $in: scopedCandidateIds };
+      }
+      return CandidateEmployeeConversion.aggregate([
       {
-        $match: {
-          companyId: companyObjectId,
-          status: 'COMPLETED',
-          convertedAt: { $gte: from, $lte: to },
-        },
+        $match: match,
       },
       {
         $group: {
@@ -533,7 +589,8 @@ export const getRecruitmentAnalyticsOverview = async ({
         },
       },
       { $sort: { _id: 1 } },
-    ]),
+    ]);
+    })(),
     Promise.all([
       Department.find({ companyId }).select('_id name').sort({ name: 1 }).lean(),
       JobPosting.find({ companyId, status: 'OPEN' })
@@ -691,43 +748,45 @@ export const getRecruitmentAnalyticsOverview = async ({
 
   // Job table enrichment (bounded).
   const jobIds = jobRows.map((job) => job._id);
-  const [jobAppCounts, jobJoinedCounts, jobAtsAvg] = await Promise.all([
-    Candidate.aggregate([
-      {
-        $match: {
-          companyId: companyObjectId,
-          job: { $in: jobIds },
-          applicationDate: { $gte: from, $lte: to },
-        },
-      },
-      { $group: { _id: '$job', count: { $sum: 1 } } },
-    ]),
-    Candidate.aggregate([
-      {
-        $match: {
-          companyId: companyObjectId,
-          job: { $in: jobIds },
-          currentStage: 'JOINED',
-        },
-      },
-      { $group: { _id: '$job', count: { $sum: 1 } } },
-    ]),
-    ATSResult.aggregate([
-      {
-        $match: {
-          companyId: companyObjectId,
-          job: { $in: jobIds },
-        },
-      },
-      {
-        $group: {
-          _id: '$job',
-          avgScore: { $avg: '$overallScore' },
-          count: { $sum: 1 },
-        },
-      },
-    ]),
-  ]);
+  const [jobAppCounts, jobJoinedCounts, jobAtsAvg] = jobIds.length
+    ? await Promise.all([
+        Candidate.aggregate([
+          {
+            $match: {
+              companyId: companyObjectId,
+              job: { $in: jobIds },
+              applicationDate: { $gte: from, $lte: to },
+            },
+          },
+          { $group: { _id: '$job', count: { $sum: 1 } } },
+        ]),
+        Candidate.aggregate([
+          {
+            $match: {
+              companyId: companyObjectId,
+              job: { $in: jobIds },
+              currentStage: 'JOINED',
+            },
+          },
+          { $group: { _id: '$job', count: { $sum: 1 } } },
+        ]),
+        ATSResult.aggregate([
+          {
+            $match: {
+              companyId: companyObjectId,
+              job: { $in: jobIds },
+            },
+          },
+          {
+            $group: {
+              _id: '$job',
+              avgScore: { $avg: '$overallScore' },
+              count: { $sum: 1 },
+            },
+          },
+        ]),
+      ])
+    : [[], [], []];
   const jobAppMap = Object.fromEntries(
     jobAppCounts.map((row) => [String(row._id), row.count])
   );
@@ -789,7 +848,7 @@ export const getRecruitmentAnalyticsOverview = async ({
       companyId,
       scheduledStartAt: { $gte: todayStart, $lte: todayEnd },
       status: { $in: ['SCHEDULED', 'RESCHEDULED', 'IN_PROGRESS'] },
-      ...(filters.jobId ? { job: filters.jobId } : {}),
+      ...jobScoped,
     })
       .select('_id interviewCode scheduledStartAt status candidate job')
       .populate('candidate', 'name candidateCode')
@@ -809,7 +868,7 @@ export const getRecruitmentAnalyticsOverview = async ({
     OfferLetter.find({
       companyId,
       status: 'PENDING_APPROVAL',
-      ...(filters.jobId ? { job: filters.jobId } : {}),
+      ...jobScoped,
     })
       .select('_id offerCode status candidateSnapshot jobSnapshot createdAt')
       .sort({ createdAt: -1 })
@@ -818,7 +877,7 @@ export const getRecruitmentAnalyticsOverview = async ({
     OfferLetter.find({
       companyId,
       status: { $in: ['SENT', 'VIEWED'] },
-      ...(filters.jobId ? { job: filters.jobId } : {}),
+      ...jobScoped,
     })
       .select(
         '_id offerCode status candidateSnapshot jobSnapshot delivery.sentAt terms.expiryDate'
@@ -829,7 +888,7 @@ export const getRecruitmentAnalyticsOverview = async ({
     PreOnboarding.find({
       companyId,
       status: { $in: ['UNDER_REVIEW', 'ACTION_REQUIRED', 'IN_PROGRESS'] },
-      ...(filters.jobId ? { job: filters.jobId } : {}),
+      ...jobScoped,
     })
       .select(
         '_id preOnboardingCode status candidateSnapshot jobSnapshot updatedAt'
@@ -840,7 +899,7 @@ export const getRecruitmentAnalyticsOverview = async ({
     PreOnboarding.find({
       companyId,
       status: 'READY_TO_JOIN',
-      ...(filters.jobId ? { job: filters.jobId } : {}),
+      ...jobScoped,
     })
       .select(
         '_id preOnboardingCode status candidateSnapshot jobSnapshot candidate readyToJoinAt'
