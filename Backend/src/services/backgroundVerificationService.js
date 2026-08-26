@@ -303,18 +303,38 @@ const refreshCaseCounters = async ({ companyId, caseRecord, actorId }) => {
 };
 
 export const ensureDefaultBgvConfiguration = async ({ companyId, actorId }) => {
-  let settings = await BackgroundVerificationSettings.findOne({ companyId });
+  // Atomic upsert avoids duplicate-key races when settings + check-types
+  // load endpoints hit the same tenant concurrently (e.g. settings page).
+  let settings;
+  try {
+    settings = await BackgroundVerificationSettings.findOneAndUpdate(
+      { companyId },
+      {
+        $setOnInsert: {
+          companyId,
+          enabled: true,
+          triggerStage: 'PRE_JOINING',
+          provider: 'INTERNAL',
+          consentRequired: true,
+          bgvRequiredBeforeConversion: false,
+          bgvRequiredBeforeJoining: false,
+          updatedBy: actorId || null,
+        },
+      },
+      {
+        upsert: true,
+        new: true,
+        setDefaultsOnInsert: true,
+      }
+    );
+  } catch (error) {
+    // Another request may have completed the unique upsert first.
+    if (error.code !== 11000) throw error;
+    settings = await BackgroundVerificationSettings.findOne({ companyId });
+  }
+
   if (!settings) {
-    settings = await BackgroundVerificationSettings.create({
-      companyId,
-      enabled: true,
-      triggerStage: 'PRE_JOINING',
-      provider: 'INTERNAL',
-      consentRequired: true,
-      bgvRequiredBeforeConversion: false,
-      bgvRequiredBeforeJoining: false,
-      updatedBy: actorId || null,
-    });
+    throw ApiError.badRequest('BGV settings could not be initialized');
   }
 
   const existing = await BackgroundVerificationCheckType.countDocuments({ companyId });
@@ -329,7 +349,10 @@ export const ensureDefaultBgvConfiguration = async ({ companyId, actorId }) => {
         updatedBy: actorId,
       })),
       { ordered: false }
-    ).catch(() => {});
+    ).catch((error) => {
+      // Ignore duplicate-key races on default check-type seed.
+      if (error?.code !== 11000 && !error?.writeErrors) throw error;
+    });
   }
 
   return settings;
@@ -369,6 +392,10 @@ export const updateBgvSettings = async ({ companyId, actorId, payload = {} }) =>
     { $set: updates },
     { returnDocument: 'after', runValidators: true }
   );
+
+  if (!settings) {
+    throw ApiError.notFound('BGV settings not found');
+  }
 
   await recordAudit({
     req: null,
