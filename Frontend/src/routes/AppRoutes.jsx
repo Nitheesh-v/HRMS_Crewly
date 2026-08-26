@@ -52,6 +52,9 @@ import MyPayslipsPage from "../pages/payroll/MyPayslipsPage.jsx";
 
 import RecruitmentPage from "../pages/recruitment/RecruitmentPage.jsx";
 import RecruitmentDashboardPage from "../pages/recruitment/RecruitmentDashboardPage.jsx";
+import BackgroundVerificationPage from "../pages/recruitment/BackgroundVerificationPage.jsx";
+import BackgroundVerificationDetailPage from "../pages/recruitment/BackgroundVerificationDetailPage.jsx";
+import BackgroundVerificationSettingsPage from "../pages/recruitment/BackgroundVerificationSettingsPage.jsx";
 import CandidateDetailPage from "../pages/recruitment/CandidateDetailPage.jsx";
 import CandidateInboxPage from "../pages/recruitment/CandidateInboxPage.jsx";
 import RequisitionApprovalsPage from "../pages/recruitment/RequisitionApprovalsPage.jsx";
@@ -484,6 +487,33 @@ const AppRoutes = () => (
         element={
           <RequirePermission permission="PRE_ONBOARDING_READ">
             <PreOnboardingDetailPage />
+          </RequirePermission>
+        }
+      />
+
+      <Route
+        path="recruitment/background-verification"
+        element={
+          <RequirePermission permission="BACKGROUND_VERIFICATION_READ">
+            <BackgroundVerificationPage />
+          </RequirePermission>
+        }
+      />
+
+      <Route
+        path="recruitment/background-verification/settings"
+        element={
+          <RequirePermission permission="BACKGROUND_VERIFICATION_SETTINGS_READ">
+            <BackgroundVerificationSettingsPage />
+          </RequirePermission>
+        }
+      />
+
+      <Route
+        path="recruitment/background-verification/:caseId"
+        element={
+          <RequirePermission permission="BACKGROUND_VERIFICATION_READ">
+            <BackgroundVerificationDetailPage />
           </RequirePermission>
         }
       />

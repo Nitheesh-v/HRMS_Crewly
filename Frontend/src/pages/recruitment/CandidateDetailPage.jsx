@@ -30,6 +30,7 @@ import CandidateFinalReview from '../../components/recruitment/CandidateFinalRev
 import CandidateOfferPanel from '../../components/recruitment/CandidateOfferPanel.jsx';
 import CandidatePreOnboardingPanel from '../../components/recruitment/CandidatePreOnboardingPanel.jsx';
 import CandidateConversionPanel from '../../components/recruitment/CandidateConversionPanel.jsx';
+import CandidateBgvPanel from '../../components/recruitment/CandidateBgvPanel.jsx';
 import InterviewDetailModal from '../../components/recruitment/InterviewDetailModal.jsx';
 import InterviewScheduleModal from '../../components/recruitment/InterviewScheduleModal.jsx';
 import usePermission from '../../hooks/usePermission.js';
@@ -193,6 +194,10 @@ const timelineLabel = (action) =>
     ACCOUNT_SETUP_COMPLETED: 'Employee account setup completed',
     ONBOARDING_STARTED: 'Employee onboarding started',
     CANDIDATE_JOINED: 'Candidate marked joined',
+    BGV_STARTED: 'Background verification started',
+    BGV_INFORMATION_REQUESTED: 'BGV information requested',
+    BGV_REVIEW_REQUIRED: 'BGV review required',
+    BGV_COMPLETED: 'Background verification completed',
   })[action] || enumLabel(action);
 
 const INTERVIEW_ROUNDS = [
@@ -867,6 +872,7 @@ const CandidateDetailPage = () => {
           window.setTimeout(() => window.location.reload(), 400);
         }}
       />
+      <CandidateBgvPanel candidate={candidate} />
       <CandidateConversionPanel candidate={candidate} />
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">

@@ -45,6 +45,34 @@ import {
 } from '../validators/candidateConversionValidator.js';
 import { recruitmentAnalyticsOverview } from '../controllers/recruitmentAnalyticsController.js';
 import { recruitmentAnalyticsOverviewRules } from '../validators/recruitmentAnalyticsValidator.js';
+import {
+  bgvCaseAssign,
+  bgvCaseCancel,
+  bgvCaseComplete,
+  bgvCaseDetail,
+  bgvCaseList,
+  bgvCaseStart,
+  bgvCheckTypeCreate,
+  bgvCheckTypeList,
+  bgvCheckTypeUpdate,
+  bgvCheckUpdate,
+  bgvSettingsRead,
+  bgvSettingsUpdate,
+  candidateBgvSummary,
+} from '../controllers/backgroundVerificationController.js';
+import {
+  bgvAssignRules,
+  bgvCancelRules,
+  bgvCaseIdRules,
+  bgvCaseListRules,
+  bgvCheckActionRules,
+  bgvCheckTypeCreateRules,
+  bgvCheckTypeUpdateRules,
+  bgvCompleteRules,
+  bgvSettingsUpdateRules,
+  bgvStartRules,
+} from '../validators/backgroundVerificationValidator.js';
+
 
 import {
   candidateInboxDetail,
@@ -242,6 +270,93 @@ router.use(
   )
 );
 
+
+
+// Phase 27.15 — enterprise background verification.
+router.get(
+  '/background-verification/settings',
+  requirePermission('BACKGROUND_VERIFICATION_SETTINGS_READ'),
+  bgvSettingsRead
+);
+router.patch(
+  '/background-verification/settings',
+  checkWriteAccess,
+  requirePermission('BACKGROUND_VERIFICATION_SETTINGS_MANAGE'),
+  bgvSettingsUpdateRules,
+  bgvSettingsUpdate
+);
+router.get(
+  '/background-verification/check-types',
+  requirePermission('BACKGROUND_VERIFICATION_SETTINGS_READ'),
+  bgvCheckTypeList
+);
+router.post(
+  '/background-verification/check-types',
+  checkWriteAccess,
+  requirePermission('BACKGROUND_VERIFICATION_SETTINGS_MANAGE'),
+  bgvCheckTypeCreateRules,
+  bgvCheckTypeCreate
+);
+router.patch(
+  '/background-verification/check-types/:checkTypeId',
+  checkWriteAccess,
+  requirePermission('BACKGROUND_VERIFICATION_SETTINGS_MANAGE'),
+  bgvCheckTypeUpdateRules,
+  bgvCheckTypeUpdate
+);
+router.get(
+  '/background-verifications',
+  requirePermission('BACKGROUND_VERIFICATION_READ'),
+  bgvCaseListRules,
+  bgvCaseList
+);
+router.get(
+  '/background-verifications/:caseId',
+  requirePermission('BACKGROUND_VERIFICATION_READ'),
+  bgvCaseIdRules,
+  bgvCaseDetail
+);
+router.post(
+  '/background-verifications/:caseId/assign',
+  checkWriteAccess,
+  requirePermission('BACKGROUND_VERIFICATION_MANAGE'),
+  bgvAssignRules,
+  bgvCaseAssign
+);
+router.patch(
+  '/background-verifications/:caseId/checks/:checkId',
+  checkWriteAccess,
+  requirePermission('BACKGROUND_VERIFICATION_VERIFY'),
+  bgvCheckActionRules,
+  bgvCheckUpdate
+);
+router.post(
+  '/background-verifications/:caseId/complete',
+  checkWriteAccess,
+  requirePermission('BACKGROUND_VERIFICATION_MANAGE'),
+  bgvCompleteRules,
+  bgvCaseComplete
+);
+router.post(
+  '/background-verifications/:caseId/cancel',
+  checkWriteAccess,
+  requirePermission('BACKGROUND_VERIFICATION_MANAGE'),
+  bgvCancelRules,
+  bgvCaseCancel
+);
+router.post(
+  '/candidates/:candidateId/background-verification/start',
+  checkWriteAccess,
+  requirePermission('BACKGROUND_VERIFICATION_CREATE'),
+  bgvStartRules,
+  bgvCaseStart
+);
+router.get(
+  '/candidates/:candidateId/background-verification',
+  requirePermission('BACKGROUND_VERIFICATION_READ'),
+  bgvStartRules,
+  candidateBgvSummary
+);
 
 // Phase 27.14 — recruitment command center analytics.
 router.get(

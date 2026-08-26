@@ -521,6 +521,15 @@ const AppLayout = () => {
       ]
     : [];
 
+  const bgvMenu = hasPermission('BACKGROUND_VERIFICATION_READ')
+    ? [
+        {
+          to: '/app/recruitment/background-verification',
+          label: 'Background Verification',
+        },
+      ]
+    : [];
+
   const interviewMenu = [
     ...(hasPermission('INTERVIEW_READ')
       ? [
@@ -546,6 +555,7 @@ const AppLayout = () => {
     ...candidateMenu,
     ...offerMenu,
     ...preOnboardingMenu,
+    ...bgvMenu,
     ...interviewMenu,
     ...securityMenu,
   ];

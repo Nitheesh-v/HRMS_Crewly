@@ -26,6 +26,7 @@ import {
   resendAccountSetupForUser,
   sendAccountSetupInvitation,
 } from './accountSetupService.js';
+import { evaluateBgvForConversion } from './backgroundVerificationService.js';
 
 const isObjectId = (value) => mongoose.isValidObjectId(value);
 
@@ -353,6 +354,14 @@ const startEmployeeOnboarding = async ({
 export const getConversionPreview = async ({ companyId, candidateRef }) => {
   const context = await loadConversionContext({ companyId, candidateRef });
   const eligibility = evaluateConversionEligibility(context);
+  const bgvEligibility = await evaluateBgvForConversion({
+    companyId,
+    candidateId: context.candidate._id,
+  });
+  if (bgvEligibility.required && !bgvEligibility.satisfied) {
+    eligibility.blockingReasons.push(...bgvEligibility.blockingReasons);
+    eligibility.eligible = false;
+  }
 
   const existingConversion = await CandidateEmployeeConversion.findOne({
     companyId,
@@ -405,6 +414,7 @@ export const getConversionPreview = async ({ companyId, candidateRef }) => {
   return {
     eligible: eligibility.eligible,
     blockingReasons: eligibility.blockingReasons,
+    bgv: bgvEligibility,
     alreadyConverted: false,
     conversion: existingConversion ? conversionDto(existingConversion) : null,
     candidate: {
@@ -540,6 +550,14 @@ export const convertCandidateToEmployee = async ({
   }
 
   const eligibility = evaluateConversionEligibility(context);
+  const bgvEligibility = await evaluateBgvForConversion({
+    companyId,
+    candidateId: candidate._id,
+  });
+  if (bgvEligibility.required && !bgvEligibility.satisfied) {
+    eligibility.blockingReasons.push(...bgvEligibility.blockingReasons);
+    eligibility.eligible = false;
+  }
   if (!eligibility.eligible) {
     throw ApiError.conflict(eligibility.blockingReasons[0] || 'Candidate is not eligible');
   }
