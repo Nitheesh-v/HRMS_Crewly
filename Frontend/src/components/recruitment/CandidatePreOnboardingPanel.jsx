@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { ClipboardList, Loader2 } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import usePermission from '../../hooks/usePermission.js';
 import preOnboardingService from '../../services/preOnboardingService.js';
 import PreOnboardingStatusBadge from './PreOnboardingStatusBadge.jsx';
 
 const CandidatePreOnboardingPanel = ({ candidate, onStarted }) => {
   const navigate = useNavigate();
-  const { hasPermission } = usePermission();
+  const { candidateRef } = useParams();
+  const { hasPermission, permissions, loaded } = usePermission();
   const canStart = hasPermission('PRE_ONBOARDING_CREATE');
   const canRead = hasPermission('PRE_ONBOARDING_READ');
   const [busy, setBusy] = useState(false);
@@ -16,29 +17,73 @@ const CandidatePreOnboardingPanel = ({ candidate, onStarted }) => {
 
   const stage =
     candidate?.overview?.currentStage || candidate?.overview?.stage || '';
-  const candidateId = candidate?.overview?.id || candidate?.overview?._id;
 
-  if (!canRead && !canStart) return null;
-  if (!['OFFER_ACCEPTED', 'PRE_ONBOARDING'].includes(stage)) return null;
+  // Prefer Mongo id; fall back to candidate code / route ref for start API.
+  const candidateId =
+    candidate?.overview?.id ||
+    candidate?.overview?._id ||
+    candidate?.id ||
+    candidate?._id ||
+    candidate?.candidateCode ||
+    candidate?.overview?.candidateCode ||
+    candidateRef ||
+    '';
+
+  // Show panel once permissions are known and stage is eligible.
+  // If permissions failed to load new PRE_ONBOARDING_* keys, still show a clear message.
+  const stageEligible = ['OFFER_ACCEPTED', 'PRE_ONBOARDING'].includes(stage);
+  if (!stageEligible) return null;
+
+  const missingNewPermissions =
+    loaded &&
+    !canRead &&
+    !canStart &&
+    !permissions.some((name) => String(name).startsWith('PRE_ONBOARDING_'));
 
   const start = async () => {
-    if (!canStart || !candidateId) return;
+    if (!candidateId) {
+      setError('Candidate id is missing. Refresh the page and try again.');
+      return;
+    }
+    if (!canStart) {
+      setError(
+        'Your role is missing PRE_ONBOARDING_CREATE. Log out and log back in after backend permission migration, or ask a Company Admin to refresh roles.'
+      );
+      return;
+    }
+
     setBusy(true);
     setError('');
     setMessage('');
     try {
       const result = await preOnboardingService.start(candidateId);
       setMessage(
-        result.idempotent
+        result?.idempotent
           ? 'Pre-onboarding case already exists'
           : 'Pre-onboarding started and invite sent'
       );
       if (onStarted) onStarted(result);
-      if (result?.id) {
-        navigate(`/app/recruitment/pre-onboarding/${result.id}`);
+      const caseId = result?.id || result?._id || result?.case?.id;
+      if (caseId) {
+        navigate(`/app/recruitment/pre-onboarding/${caseId}`);
+      } else {
+        navigate('/app/recruitment/pre-onboarding');
       }
     } catch (requestError) {
-      setError(requestError.message || 'Pre-onboarding could not be started');
+      const status = requestError?.status || requestError?.payload?.statusCode;
+      if (status === 403) {
+        setError(
+          requestError.message ||
+            'Permission denied. Log out/in so PRE_ONBOARDING_* permissions migrate onto your HR role.'
+        );
+      } else if (status === 404) {
+        setError(
+          requestError.message ||
+            'Start API not found. Confirm frontend VITE_API_URL points at your local Backend running Phase 27.12 (not only production Render).'
+        );
+      } else {
+        setError(requestError.message || 'Pre-onboarding could not be started');
+      }
     } finally {
       setBusy(false);
     }
@@ -65,6 +110,13 @@ const CandidatePreOnboardingPanel = ({ candidate, onStarted }) => {
                 ? 'Offer is accepted. Start pre-onboarding to collect joining documents through a secure candidate portal.'
                 : 'This candidate is in pre-onboarding. Open the case to review documents and readiness.'}
             </p>
+            {missingNewPermissions ? (
+              <p className="mt-2 text-sm text-amber-200">
+                Your session does not include Phase 27.12 pre-onboarding permissions yet.
+                Restart the local backend on branch arena/01a0398f-hrms-crewly, confirm
+                VITE_API_URL points to that backend, then log out and log back in.
+              </p>
+            ) : null}
             {error ? (
               <p className="mt-2 text-sm text-rose-300">{error}</p>
             ) : null}
@@ -78,8 +130,12 @@ const CandidatePreOnboardingPanel = ({ candidate, onStarted }) => {
             <Link to="/app/recruitment/pre-onboarding" className="btn-ghost">
               Open board
             </Link>
-          ) : null}
-          {canStart && stage === 'OFFER_ACCEPTED' ? (
+          ) : (
+            <Link to="/app/recruitment/pre-onboarding" className="btn-ghost">
+              Open board
+            </Link>
+          )}
+          {stage === 'OFFER_ACCEPTED' ? (
             <button
               type="button"
               className="btn-primary gap-2"

@@ -348,6 +348,8 @@ export const getCandidateInboxDetail = async ({
     id: candidate._id,
     candidateCode: candidate.candidateCode,
     overview: {
+      id: candidate._id,
+      candidateCode: candidate.candidateCode || '',
       name: candidate.name,
       email: candidate.email,
       phone: candidate.phone || '',

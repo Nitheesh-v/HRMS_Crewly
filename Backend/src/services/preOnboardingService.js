@@ -669,13 +669,27 @@ export const startPreOnboarding = async ({
   requestContext = null,
   sendInvite = true,
 }) => {
-  if (!isObjectId(candidateId) || !isObjectId(actorId)) {
-    throw ApiError.badRequest('A valid candidate and actor are required');
+  if (!isObjectId(actorId)) {
+    throw ApiError.badRequest('A valid pipeline actor is required');
   }
+
+  const candidateFilter = isObjectId(candidateId)
+    ? { _id: candidateId, companyId }
+    : {
+        companyId,
+        candidateCode: String(candidateId || '').trim().toUpperCase(),
+      };
+
+  if (!candidateFilter._id && !candidateFilter.candidateCode) {
+    throw ApiError.badRequest('A valid candidate is required');
+  }
+
+  const candidate = await Candidate.findOne(candidateFilter).lean();
+  if (!candidate) throw ApiError.notFound('Candidate not found');
 
   const existing = await PreOnboarding.findOne({
     companyId,
-    candidate: candidateId,
+    candidate: candidate._id,
     activeKey: 'ACTIVE',
   }).select('+activeKey');
 
@@ -696,12 +710,6 @@ export const startPreOnboarding = async ({
     };
   }
 
-  const candidate = await Candidate.findOne({
-    _id: candidateId,
-    companyId,
-  }).lean();
-  if (!candidate) throw ApiError.notFound('Candidate not found');
-
   if (candidate.currentStage !== 'OFFER_ACCEPTED') {
     throw ApiError.conflict(
       'Pre-onboarding can start only after the candidate accepts an offer'
@@ -710,7 +718,7 @@ export const startPreOnboarding = async ({
 
   const offer = await OfferLetter.findOne({
     companyId,
-    candidate: candidateId,
+    candidate: candidate._id,
     status: 'ACCEPTED',
   })
     .sort({ acceptedAt: -1, createdAt: -1 })
@@ -795,7 +803,7 @@ export const startPreOnboarding = async ({
     if (error.code === 11000) {
       const raced = await PreOnboarding.findOne({
         companyId,
-        candidate: candidateId,
+        candidate: candidate._id,
         activeKey: 'ACTIVE',
       }).select('+activeKey');
       if (raced) {

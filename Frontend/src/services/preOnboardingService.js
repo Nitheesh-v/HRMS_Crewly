@@ -1,7 +1,25 @@
 import axios from 'axios';
 import api from './api.js';
 
-const unwrap = (response) => response?.data?.data ?? response?.data ?? response ?? {};
+// api interceptor already unwraps { success, data, meta } responses.
+// Accept both the unwrapped payload and a raw axios-style body.
+const unwrap = (response) => {
+  if (response == null) return {};
+  if (Array.isArray(response)) return response;
+  if (response?.data?.data !== undefined) return response.data.data;
+  if (response?.data !== undefined && response?.success !== undefined) {
+    return response.data;
+  }
+  if (response?.data !== undefined && response?.meta !== undefined) {
+    return response.data;
+  }
+  return response;
+};
+
+const metaOf = (response) =>
+  response?.meta ||
+  response?.data?.meta ||
+  {};
 
 const publicApi = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
@@ -12,7 +30,7 @@ const publicApi = axios.create({
 publicApi.interceptors.response.use(
   (response) => {
     if (response.config.responseType === 'blob') return response;
-    return response;
+    return response?.data?.data ?? response?.data ?? response;
   },
   async (error) => {
     const payload = error?.response?.data;
@@ -29,22 +47,29 @@ publicApi.interceptors.response.use(
 
 const list = async (params = {}) => {
   const response = await api.get('/recruitment/pre-onboarding', { params });
+  const data = unwrap(response);
+  const meta = metaOf(response);
   return {
-    cases: unwrap(response) || [],
-    meta: response?.data?.meta || {},
+    cases: Array.isArray(data) ? data : Array.isArray(data?.cases) ? data.cases : [],
+    meta,
   };
 };
 
 const detail = async (preOnboardingId) => {
   const response = await api.get(`/recruitment/pre-onboarding/${preOnboardingId}`);
+  const data = unwrap(response);
+  const meta = metaOf(response);
   return {
-    case: unwrap(response),
-    documents: response?.data?.meta?.documents || [],
-    history: response?.data?.meta?.history || [],
+    case: data?.case || data,
+    documents: meta.documents || data?.documents || [],
+    history: meta.history || data?.history || [],
   };
 };
 
 const start = async (candidateId, payload = {}) => {
+  if (!candidateId) {
+    throw new Error('Candidate id is required to start pre-onboarding');
+  }
   const response = await api.post(
     `/recruitment/candidates/${candidateId}/pre-onboarding/start`,
     payload
@@ -86,7 +111,7 @@ const downloadDocument = async (preOnboardingId, documentId, fileName = 'documen
     `/recruitment/pre-onboarding/${preOnboardingId}/documents/${documentId}/file`,
     { responseType: 'blob' }
   );
-  const blob = response.data;
+  const blob = response instanceof Blob ? response : response?.data;
   const url = window.URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
@@ -97,7 +122,8 @@ const downloadDocument = async (preOnboardingId, documentId, fileName = 'documen
 
 const listRequirements = async () => {
   const response = await api.get('/recruitment/pre-onboarding/document-requirements');
-  return unwrap(response) || [];
+  const data = unwrap(response);
+  return Array.isArray(data) ? data : [];
 };
 
 const createRequirement = async (payload) => {
@@ -123,35 +149,29 @@ const deactivateRequirement = async (requirementId) => {
   return unwrap(response);
 };
 
-const publicRead = async (secureToken) => {
-  const response = await publicApi.get(
+const publicRead = async (secureToken) =>
+  publicApi.get(
     `/public/candidate/pre-onboarding/${encodeURIComponent(secureToken)}`
   );
-  return unwrap(response);
-};
 
-const publicView = async (secureToken) => {
-  const response = await publicApi.post(
+const publicView = async (secureToken) =>
+  publicApi.post(
     `/public/candidate/pre-onboarding/${encodeURIComponent(secureToken)}/view`
   );
-  return unwrap(response);
-};
 
-const publicUpload = async (secureToken, requirementCode, formData) => {
-  const response = await publicApi.post(
+const publicUpload = async (secureToken, requirementCode, formData) =>
+  publicApi.post(
     `/public/candidate/pre-onboarding/${encodeURIComponent(secureToken)}/documents/${encodeURIComponent(requirementCode)}`,
     formData,
     { headers: { 'Content-Type': 'multipart/form-data' } }
   );
-  return unwrap(response);
-};
 
 const publicDocument = async (secureToken, documentCode) => {
   const response = await publicApi.get(
     `/public/candidate/pre-onboarding/${encodeURIComponent(secureToken)}/documents/${encodeURIComponent(documentCode)}`,
     { responseType: 'blob' }
   );
-  return response.data;
+  return response instanceof Blob ? response : response?.data;
 };
 
 const preOnboardingService = {
