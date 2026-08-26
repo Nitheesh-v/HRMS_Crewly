@@ -1807,9 +1807,23 @@ export const uploadCandidateRequirementDocument = async ({
       ['REJECTED', 'RESUBMISSION_REQUIRED', 'UPLOADED', 'UNDER_REVIEW'].includes(
         document.status
       ) &&
-      document.currentVersion >= 1 &&
+      Number(document.currentVersion || 0) >= 1 &&
       requirement.status !== 'PENDING'
   );
+
+  const nextVersionNumber = document
+    ? Number(document.currentVersion || 0) + 1
+    : 1;
+  const documentCode =
+    document?.documentCode || (await nextCandidateDocumentCode(companyId));
+
+  // Store the file first so we never create a document row with an invalid
+  // placeholder version if storage fails.
+  const storage = await storePreOnboardingDocument({
+    buffer: file.buffer,
+    companyId,
+    documentCode,
+  });
 
   if (!document) {
     document = await CandidateDocument.create({
@@ -1819,25 +1833,16 @@ export const uploadCandidateRequirementDocument = async ({
       preOnboarding: preOnboarding._id,
       candidateRequirement: requirement._id,
       requirementCode: requirement.code,
-      documentCode: await nextCandidateDocumentCode(companyId),
-      currentVersion: 0,
-      status: 'UPLOADED',
+      documentCode,
+      currentVersion: nextVersionNumber,
+      status: 'UNDER_REVIEW',
       documentNumberMasked: maskedNumber,
       documentNumberFingerprint: numberFingerprint,
       expiryDate: parsedExpiry,
       uploadedAt: new Date(),
       submittedAt: new Date(),
     });
-  }
-
-  const nextVersionNumber = (document.currentVersion || 0) + 1;
-  const storage = await storePreOnboardingDocument({
-    buffer: file.buffer,
-    companyId,
-    documentCode: document.documentCode,
-  });
-
-  if (document.activeVersion) {
+  } else if (document.activeVersion) {
     await CandidateDocumentVersion.updateMany(
       {
         companyId,
@@ -1848,28 +1853,41 @@ export const uploadCandidateRequirementDocument = async ({
     );
   }
 
-  const version = await CandidateDocumentVersion.create({
-    companyId,
-    candidateDocument: document._id,
-    preOnboarding: preOnboarding._id,
-    candidate: preOnboarding.candidate,
-    version: nextVersionNumber,
-    isActive: true,
-    originalFileName: inspection.originalFileName,
-    mimeType: inspection.mimeType,
-    fileSize: inspection.fileSize,
-    storageProvider: storage.storageProvider,
-    storageKey: storage.storageKey,
-    checksumSha256: inspection.checksumSha256,
-    scanStatus: inspection.scanStatus,
-    scanCheckedAt: inspection.scanCheckedAt,
-    status: 'UNDER_REVIEW',
-    uploadedByType: actorType === 'TENANT_USER' ? 'TENANT_USER' : 'CANDIDATE',
-    uploadedBy: actorId,
-    documentNumberMasked: maskedNumber,
-    expiryDate: parsedExpiry,
-    uploadedAt: new Date(),
-  });
+  let version;
+  try {
+    version = await CandidateDocumentVersion.create({
+      companyId,
+      candidateDocument: document._id,
+      preOnboarding: preOnboarding._id,
+      candidate: preOnboarding.candidate,
+      version: nextVersionNumber,
+      isActive: true,
+      originalFileName: inspection.originalFileName,
+      mimeType: inspection.mimeType,
+      fileSize: inspection.fileSize,
+      storageProvider: storage.storageProvider,
+      storageKey: storage.storageKey,
+      checksumSha256: inspection.checksumSha256,
+      scanStatus: inspection.scanStatus,
+      scanCheckedAt: inspection.scanCheckedAt,
+      status: 'UNDER_REVIEW',
+      uploadedByType: actorType === 'TENANT_USER' ? 'TENANT_USER' : 'CANDIDATE',
+      uploadedBy: actorId,
+      documentNumberMasked: maskedNumber,
+      expiryDate: parsedExpiry,
+      uploadedAt: new Date(),
+    });
+  } catch (error) {
+    // Best-effort cleanup of a brand-new empty document shell.
+    if (!isResubmission && nextVersionNumber === 1) {
+      await CandidateDocument.deleteOne({
+        _id: document._id,
+        companyId,
+        currentVersion: nextVersionNumber,
+      }).catch(() => {});
+    }
+    throw error;
+  }
 
   document.currentVersion = nextVersionNumber;
   document.activeVersion = version._id;
