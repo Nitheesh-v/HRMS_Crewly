@@ -1,25 +1,15 @@
 // ─────────────────────────────────────────────────────────────
-// Recruitment controller — jobs, candidates, offers, conversion.
+// Recruitment controller — jobs and candidates (legacy surfaces).
 //
-// ⚠️ RESPONSE CONTRACTS (RecruitmentPage depends on these):
-//   GET  /recruitment/jobs        → data: [ job + candidateCount ]
-//   GET  /recruitment/candidates  → data: [ candidate + job{title} ]
-//   POST /recruitment/candidates/:id/convert
-//       → data: { user: {name,email,role,employeeCode}, tempPassword }
+// Conversion: use convert-to-employee (Phase 27.13). Legacy convert is retired.
 // ─────────────────────────────────────────────────────────────
 import JobPosting from '../models/JobPosting.js';
 import Candidate from '../models/Candidate.js';
-import User from '../models/User.js';
 import ApiError from '../utils/ApiError.js';
 import ApiResponse from '../utils/ApiResponse.js';
 import asyncHandler from '../utils/asyncHandler.js';
-import { ROLES } from '../utils/constants.js';
-import { sendMail, welcomeEmail } from '../utils/mailer.js';
-import { notifyUser } from '../utils/notify.js';
-import Subscription from '../models/Subscription.js';
 import { nextJobCode } from '../utils/careerPortalIdentifiers.js';
 import { nextCandidateCode } from '../utils/candidateIdentifiers.js';
-import { transitionCandidateStage } from '../services/candidatePipelineService.js';
 
 const normalizedList = (value, maximum, itemLength) =>
   [...new Set(
@@ -258,80 +248,11 @@ export const addCandidate = asyncHandler(async (req, res) => {
 // Legacy Candidate-embedded offer mutation was retired by Phase 27.11.
 // Candidate decisions now exist only on token-authorized OfferLetter endpoints.
 
-// POST /api/recruitment/candidates/:id/convert  → creates the employee!
-export const convertCandidate = asyncHandler(async (req, res) => {
-  const candidate = await Candidate.findOne({ _id: req.params.id, companyId: req.companyId }).populate('job');
-  if (!candidate) throw ApiError.notFound('Candidate not found');
-  if (
-    ['JOINED', 'HIRED'].includes(candidate.currentStage || candidate.stage) ||
-    candidate.convertedUser
-  ) {
-    throw ApiError.conflict('This candidate is already converted to an employee');
-  }
-  if (candidate.offerStatus !== 'ACCEPTED') {
-    throw ApiError.badRequest('Convert is allowed only after the candidate ACCEPTS the offer');
-  }
-
-  const email = candidate.email.toLowerCase();
-  const exists = await User.findOne({ email, companyId: req.companyId });
-  if (exists) throw ApiError.conflict('A user with this email already exists in your company');
-
-  // Subscription employee limit (same rule as user creation)
-  const subscription = await Subscription.findOne({ company: req.companyId });
-  const limit = subscription?.limits?.employees;
-  if (limit) {
-    const active = await User.countDocuments({ companyId: req.companyId, status: 'ACTIVE' });
-    if (active >= limit) {
-      throw ApiError.forbidden(`Employee limit reached (${limit}) on your plan. Upgrade to convert more.`);
-    }
-  }
-
-  // Auto employee code: E001, E002… (skips taken ones)
-  let n = await User.countDocuments({ companyId: req.companyId }) + 1;
-  let employeeCode = `E${String(n).padStart(3, '0')}`;
-  while (await User.exists({ companyId: req.companyId, employeeCode })) {
-    n += 1;
-    employeeCode = `E${String(n).padStart(3, '0')}`;
-  }
-
-  // Temp password shown ONCE to HR — employee must reset after first login
-  const tempPassword = `Talent@${Math.floor(1000 + Math.random() * 9000)}`;
-
-  const user = await User.create({
-    name: candidate.name,
-    email,
-    password: tempPassword,
-    role: ROLES.EMPLOYEE,
-    companyId: req.companyId,
-    department: candidate.job?.department || null,
-    designation: candidate.job?.title?.slice(0, 80) || '',
-    dateOfJoining: candidate.offerJoiningDate || null,
-    employeeCode,
-  });
-
-  candidate.convertedUser = user._id;
-  await candidate.save();
-  await transitionCandidateStage({
-    companyId: req.companyId,
-    candidateId: candidate._id,
-    targetStage: 'JOINED',
-    actorId: req.user._id,
-    metadata: { source: 'PIPELINE', action: 'LEGACY_CONVERSION' },
-  });
-
-  // Phase 8 📧🔔 hired: welcome notification + credentials email
-  notifyUser(req.companyId, user._id, {
-    type: 'USER', title: 'Welcome aboard 🎉',
-    message: `You joined as ${candidate.job?.title}. HR will share your temporary password.`,
-    link: '/app',
-  });
-  sendMail({ to: email, ...welcomeEmail({ name: candidate.name, email, password: tempPassword, companyName: req.company?.name, code: req.company?.code }) });
-
-  return ApiResponse.created(res, {
-    message: `${candidate.name} is now an employee 🎉`,
-    data: {
-      user: { id: user._id, name: user.name, email: user.email, role: user.role, employeeCode },
-      tempPassword,
-    },
-  });
+// POST /api/recruitment/candidates/:id/convert
+// Phase 27.16 — legacy temp-password conversion is retired.
+// Use POST /candidates/:candidateId/convert-to-employee (secure account setup).
+export const convertCandidate = asyncHandler(async (_req, _res) => {
+  throw ApiError.badRequest(
+    'Legacy candidate conversion is retired. Use convert-to-employee after READY_TO_JOIN for secure account setup without temporary passwords.'
+  );
 });

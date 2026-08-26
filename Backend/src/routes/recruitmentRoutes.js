@@ -831,15 +831,12 @@ router.post(
   convertToEmployee
 );
 
-// Legacy convert endpoint retained for compatibility; prefer convert-to-employee.
+// Legacy convert endpoint: retired in Phase 27.16 (returns 400 guidance).
 router.post(
   '/candidates/:id/convert',
   checkWriteAccess,
   requirePermission(
     'RECRUITMENT_APPROVE'
-  ),
-  checkUsageLimit(
-    'employees'
   ),
   convertCandidate
 );

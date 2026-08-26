@@ -246,6 +246,14 @@ userSchema.index(
 
 // Same email can exist in DIFFERENT companies, but only once per company
 userSchema.index({ email: 1, companyId: 1 }, { unique: true });
+// Non-empty employee codes are unique per tenant (Phase 27.16 integrity).
+userSchema.index(
+  { companyId: 1, employeeCode: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { employeeCode: { $type: 'string', $gt: '' } },
+  }
+);
 userSchema.index({
   companyId: 1,
   status: 1,
