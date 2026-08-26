@@ -26,6 +26,7 @@ const CandidatePreOnboardingPortalPage = () => {
   const [error, setError] = useState('');
   const [busyCode, setBusyCode] = useState('');
   const [numbers, setNumbers] = useState({});
+  const [expiries, setExpiries] = useState({});
   const [files, setFiles] = useState({});
 
   useEffect(() => {
@@ -64,6 +65,22 @@ const CandidatePreOnboardingPortalPage = () => {
       return;
     }
 
+    if (
+      requirement.fileRules?.requiresDocumentNumber &&
+      !String(numbers[requirement.code] || '').trim()
+    ) {
+      setError(`Document number is required for ${requirement.name}`);
+      return;
+    }
+
+    if (
+      requirement.fileRules?.requiresExpiryDate &&
+      !String(expiries[requirement.code] || '').trim()
+    ) {
+      setError(`Expiry date is required for ${requirement.name}`);
+      return;
+    }
+
     setBusyCode(requirement.code);
     setError('');
     try {
@@ -72,12 +89,21 @@ const CandidatePreOnboardingPortalPage = () => {
       if (numbers[requirement.code]) {
         formData.append('documentNumber', numbers[requirement.code]);
       }
+      if (expiries[requirement.code]) {
+        // Send as ISO date so backend ISO8601 validation accepts it.
+        const expiryValue = String(expiries[requirement.code]);
+        const isoExpiry = expiryValue.includes('T')
+          ? expiryValue
+          : `${expiryValue}T00:00:00.000Z`;
+        formData.append('expiryDate', isoExpiry);
+      }
       const result = await preOnboardingService.publicUpload(
         secureToken,
         requirement.code,
         formData
       );
-      setCaseData(result.case);
+      const nextCase = result?.case || result;
+      setCaseData(nextCase);
       setFiles((current) => ({ ...current, [requirement.code]: null }));
     } catch (requestError) {
       setError(requestError.message || 'Document could not be uploaded');
@@ -204,6 +230,22 @@ const CandidatePreOnboardingPortalPage = () => {
                         value={numbers[requirement.code] || ''}
                         onChange={(event) =>
                           setNumbers((current) => ({
+                            ...current,
+                            [requirement.code]: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                  ) : null}
+                  {requirement.fileRules?.requiresExpiryDate ? (
+                    <label className="block">
+                      <span className="label">Expiry date</span>
+                      <input
+                        className="input"
+                        type="date"
+                        value={expiries[requirement.code] || ''}
+                        onChange={(event) =>
+                          setExpiries((current) => ({
                             ...current,
                             [requirement.code]: event.target.value,
                           }))
