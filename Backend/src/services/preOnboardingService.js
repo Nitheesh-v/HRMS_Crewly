@@ -11,6 +11,7 @@ import PreOnboardingDocumentRequirement from '../models/PreOnboardingDocumentReq
 import PreOnboardingHistory from '../models/PreOnboardingHistory.js';
 import ApiError from '../utils/ApiError.js';
 import env from '../config/env.js';
+import logger from '../config/logger.js';
 import {
   fingerprintSensitiveValue,
   maskDocumentNumber,
@@ -632,6 +633,17 @@ const sendInviteEmail = async ({
     ...message,
     sensitive: true,
   });
+
+  // Local testing only: sensitive MOCK mail intentionally hides the body/link.
+  if (
+    delivery.delivered &&
+    delivery.mode === 'MOCK' &&
+    ['development', 'test'].includes(String(env.NODE_ENV || 'development'))
+  ) {
+    logger.info(
+      `[DEV ONLY] Pre-onboarding portal for ${preOnboarding.preOnboardingCode} → ${preOnboarding.candidateSnapshot.email}: ${portalUrl}`
+    );
+  }
 
   await PreOnboarding.updateOne(
     { _id: preOnboarding._id, companyId },
