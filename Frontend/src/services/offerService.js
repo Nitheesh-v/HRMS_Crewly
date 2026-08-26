@@ -47,11 +47,21 @@ const offerService = {
   document: (offerId) => api.get(`/recruitment/offers/${offerId}/document`, { responseType: 'blob' }),
   templates: async (params = {}) => {
     const response = await api.get('/recruitment/offer-templates', { params });
-    if (Array.isArray(response)) return { templates: response, supportedVariables: [] };
-    return {
-      templates: Array.isArray(response?.data) ? response.data : [],
-      supportedVariables: response?.meta?.supportedVariables || [],
-    };
+    // api interceptor may return body.data (array) or full body when meta exists.
+    if (Array.isArray(response)) {
+      return { templates: response, supportedVariables: [] };
+    }
+    const templates = Array.isArray(response?.data)
+      ? response.data
+      : Array.isArray(response?.templates)
+        ? response.templates
+        : [];
+    const supportedVariables = Array.isArray(response?.meta?.supportedVariables)
+      ? response.meta.supportedVariables
+      : Array.isArray(response?.supportedVariables)
+        ? response.supportedVariables
+        : [];
+    return { templates, supportedVariables };
   },
   createTemplate: (payload) => api.post('/recruitment/offer-templates', payload).then(unwrap),
   updateTemplate: (templateId, payload) => api.patch(`/recruitment/offer-templates/${templateId}`, payload).then(unwrap),
