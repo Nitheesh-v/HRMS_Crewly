@@ -503,6 +503,15 @@ const AppLayout = () => {
       ]
     : [];
 
+  const recruitmentDashboardMenu = hasPermission('RECRUITMENT_ANALYTICS_READ')
+    ? [
+        {
+          to: '/app/recruitment',
+          label: 'Recruitment Dashboard',
+        },
+      ]
+    : [];
+
   const preOnboardingMenu = hasPermission('PRE_ONBOARDING_READ')
     ? [
         {
@@ -533,6 +542,7 @@ const AppLayout = () => {
 
   const menu = [
     ...baseMenu,
+    ...recruitmentDashboardMenu,
     ...candidateMenu,
     ...offerMenu,
     ...preOnboardingMenu,

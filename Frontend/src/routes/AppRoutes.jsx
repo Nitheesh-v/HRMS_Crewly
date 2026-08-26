@@ -51,6 +51,7 @@ import PayrollPage from "../pages/payroll/PayrollPage.jsx";
 import MyPayslipsPage from "../pages/payroll/MyPayslipsPage.jsx";
 
 import RecruitmentPage from "../pages/recruitment/RecruitmentPage.jsx";
+import RecruitmentDashboardPage from "../pages/recruitment/RecruitmentDashboardPage.jsx";
 import CandidateDetailPage from "../pages/recruitment/CandidateDetailPage.jsx";
 import CandidateInboxPage from "../pages/recruitment/CandidateInboxPage.jsx";
 import RequisitionApprovalsPage from "../pages/recruitment/RequisitionApprovalsPage.jsx";
@@ -374,10 +375,9 @@ const AppRoutes = () => (
       <Route
         path="recruitment"
         element={
-          <Navigate
-            to="/app/recruitment/requisitions"
-            replace
-          />
+          <RequirePermission permission="RECRUITMENT_ANALYTICS_READ">
+            <RecruitmentDashboardPage />
+          </RequirePermission>
         }
       />
 

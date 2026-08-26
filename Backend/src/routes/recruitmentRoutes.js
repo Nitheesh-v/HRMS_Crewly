@@ -43,6 +43,9 @@ import {
   conversionCandidateRules,
   convertToEmployeeRules,
 } from '../validators/candidateConversionValidator.js';
+import { recruitmentAnalyticsOverview } from '../controllers/recruitmentAnalyticsController.js';
+import { recruitmentAnalyticsOverviewRules } from '../validators/recruitmentAnalyticsValidator.js';
+
 import {
   candidateInboxDetail,
   candidateInboxList,
@@ -237,6 +240,15 @@ router.use(
   requireFeature(
     'recruitment'
   )
+);
+
+
+// Phase 27.14 — recruitment command center analytics.
+router.get(
+  '/analytics/overview',
+  requirePermission('RECRUITMENT_ANALYTICS_READ'),
+  recruitmentAnalyticsOverviewRules,
+  recruitmentAnalyticsOverview
 );
 
 // Phase 27.11 — tenant offer templates and enterprise offer workflow.
