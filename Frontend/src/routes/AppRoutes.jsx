@@ -63,6 +63,7 @@ import OfferTemplatesPage from "../pages/recruitment/OfferTemplatesPage.jsx";
 import PreOnboardingPage from "../pages/recruitment/PreOnboardingPage.jsx";
 import PreOnboardingDetailPage from "../pages/recruitment/PreOnboardingDetailPage.jsx";
 import PreOnboardingRequirementsPage from "../pages/recruitment/PreOnboardingRequirementsPage.jsx";
+import ConvertToEmployeePage from "../pages/recruitment/ConvertToEmployeePage.jsx";
 import ExitProcessPage from "../pages/exit/ExitProcessPage.jsx";
 
 import CompanyProfilePage from "../pages/company/CompanyProfilePage.jsx";
@@ -162,6 +163,11 @@ const AppRoutes = () => (
 
       <Route
         path="/reset-password"
+        element={<ResetPasswordPage />}
+      />
+
+      <Route
+        path="/setup-account"
         element={<ResetPasswordPage />}
       />
     </Route>
@@ -415,6 +421,15 @@ const AppRoutes = () => (
         element={
           <RequirePermission permission="CANDIDATE_READ">
             <CandidateDetailPage />
+          </RequirePermission>
+        }
+      />
+
+      <Route
+        path="recruitment/candidates/:candidateRef/convert"
+        element={
+          <RequirePermission permission="CANDIDATE_CONVERT">
+            <ConvertToEmployeePage />
           </RequirePermission>
         }
       />

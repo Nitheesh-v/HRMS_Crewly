@@ -461,6 +461,62 @@ export const preOnboardingDocumentDecisionEmail = ({
   };
 };
 
+export const accountSetupEmail = ({
+  name,
+  email,
+  companyName,
+  companyCode = '',
+  employeeCode = '',
+  designation = '',
+  joiningDate = null,
+  setupUrl,
+  expiryHours = 72,
+}) => {
+  const joiningLabel = joiningDate
+    ? new Intl.DateTimeFormat('en-IN', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+      }).format(new Date(joiningDate))
+    : 'your planned joining date';
+  const safeSetupUrl =
+    /^https:\/\//i.test(setupUrl) ||
+    /^http:\/\/localhost(?::\d+)?\//i.test(setupUrl)
+      ? escapeHtml(setupUrl)
+      : '';
+  const subjectCompany = String(companyName || 'Crewly HRMS')
+    .replace(/[\r\n]/g, ' ')
+    .slice(0, 100);
+
+  return {
+    subject: `Set up your ${subjectCompany} account`,
+    text:
+      `Hello ${name},\n\n` +
+      `Your employee account at ${companyName || 'the company'} is ready.\n` +
+      (employeeCode ? `Employee ID: ${employeeCode}\n` : '') +
+      (designation ? `Designation: ${designation}\n` : '') +
+      `Login email: ${email}\n` +
+      (companyCode ? `Company code: ${companyCode}\n` : '') +
+      `Joining date: ${joiningLabel}\n\n` +
+      `Set your password securely: ${setupUrl}\n` +
+      `This link expires in ${expiryHours} hours. Do not forward it.\n`,
+    html: shell('This private link lets you set your Crewly account password.', `
+      <h2 style="margin:0 0 10px">Welcome aboard</h2>
+      <p>Hello ${escapeHtml(name)},</p>
+      <p>Your employee account at <b>${escapeHtml(companyName || 'the company')}</b> is ready.</p>
+      <p style="background:#f6f8fa;padding:12px;border-radius:8px">
+        ${employeeCode ? `Employee ID: <b>${escapeHtml(employeeCode)}</b><br/>` : ''}
+        ${designation ? `Designation: <b>${escapeHtml(designation)}</b><br/>` : ''}
+        Login email: <b>${escapeHtml(email)}</b><br/>
+        ${companyCode ? `Company code: <b>${escapeHtml(companyCode)}</b><br/>` : ''}
+        Joining date: <b>${escapeHtml(joiningLabel)}</b>
+      </p>
+      ${safeSetupUrl ? `<p><a href="${safeSetupUrl}" style="display:inline-block;background:#172033;color:#fff;padding:11px 16px;border-radius:7px;text-decoration:none">Set up your password</a></p>` : ''}
+      <p style="color:#57606a;font-size:13px">This private link expires in ${Number(expiryHours) || 72} hours. Do not forward it. No temporary password is sent by email.</p>`),
+  };
+};
+
 export const welcomeEmail = ({ name, email, password, companyName, code }) => ({
   subject: `Welcome to ${companyName || 'Crewly HRMS'} — your login credentials`,
   html: shell('You received this because an account was created for you.', `

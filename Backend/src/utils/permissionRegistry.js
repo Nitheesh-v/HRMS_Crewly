@@ -52,6 +52,7 @@ export const ACTIONS = [
   "WITHDRAW",
   "VERIFY",
   "READY",
+  "CONVERT",
 ];
 
 const actions = (resource, actionList, scope = "ALL") =>
@@ -97,7 +98,14 @@ export const DEFAULT_PERMISSIONS = [
 
   ...actions("REQUISITION", ["READ", "UPDATE", "SUBMIT"], "SELF"),
 
-  ...actions("CANDIDATE", ["READ", "CREATE", "UPDATE", "DELETE", "FINAL_DECISION"]),
+  ...actions("CANDIDATE", [
+    "READ",
+    "CREATE",
+    "UPDATE",
+    "DELETE",
+    "FINAL_DECISION",
+    "CONVERT",
+  ]),
 
   ...actions("INTERVIEW", ["READ", "CREATE", "UPDATE", "DELETE"]),
 
@@ -300,6 +308,7 @@ export const DEFAULT_ROLE_MATRIX = {
     "CANDIDATE_CREATE",
     "CANDIDATE_UPDATE",
     "CANDIDATE_FINAL_DECISION",
+    "CANDIDATE_CONVERT",
 
     "OFFER_READ",
     "OFFER_CREATE",

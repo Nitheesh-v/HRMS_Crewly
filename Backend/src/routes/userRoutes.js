@@ -25,6 +25,11 @@ import {
   getOrgHierarchy,
   resetPassword,
 } from '../controllers/userController.js';
+import {
+  employeeRecruitmentOrigin,
+  resendEmployeeAccountSetup,
+} from '../controllers/candidateConversionController.js';
+import { employeeIdRules } from '../validators/candidateConversionValidator.js';
 
 const router = Router();
 
@@ -101,6 +106,30 @@ router.post(
   ),
   resetPasswordRules,
   resetPassword
+);
+
+// Phase 27.13 — recruitment origin + secure account setup resend.
+router.get(
+  '/:employeeId/recruitment-origin',
+  requireAnyPermission([
+    'USER_READ',
+    'EMPLOYEE_READ',
+    'CANDIDATE_READ',
+  ]),
+  employeeIdRules,
+  employeeRecruitmentOrigin
+);
+
+router.post(
+  '/:employeeId/resend-account-setup',
+  checkWriteAccess,
+  requireAnyPermission([
+    'USER_UPDATE',
+    'EMPLOYEE_UPDATE',
+    'CANDIDATE_CONVERT',
+  ]),
+  employeeIdRules,
+  resendEmployeeAccountSetup
 );
 
 export default router;

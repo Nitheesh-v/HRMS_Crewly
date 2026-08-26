@@ -4,50 +4,43 @@ import authService from "../../services/authService.js";
 
 const ResetPasswordPage = () => {
   const [searchParams] = useSearchParams();
-
   const navigate = useNavigate();
-
+  const isSetup = window.location.pathname.includes("setup-account");
   const token = searchParams.get("token") || "";
 
   const [form, setForm] = useState({
     newPassword: "",
     confirmPassword: "",
   });
-
   const [busy, setBusy] = useState(false);
-
   const [error, setError] = useState("");
 
   const submit = async (event) => {
     event.preventDefault();
-
     setError("");
 
     if (!token) {
-      setError("This reset link is incomplete. Request a new link.");
-
+      setError(
+        isSetup
+          ? "This account setup link is incomplete. Ask HR to resend the invitation."
+          : "This reset link is incomplete. Request a new link."
+      );
       return;
     }
 
     if (form.newPassword !== form.confirmPassword) {
       setError("Passwords do not match.");
-
       return;
     }
 
     setBusy(true);
-
     try {
-    await authService.resetPassword({
-  token,
-
-  newPassword:
-    form.newPassword,
-
-  confirmPassword:
-    form.confirmPassword,
-});
-      navigate("/login?password=reset", {
+      await authService.resetPassword({
+        token,
+        newPassword: form.newPassword,
+        confirmPassword: form.confirmPassword,
+      });
+      navigate(isSetup ? "/login?setup=complete" : "/login?password=reset", {
         replace: true,
       });
     } catch (requestError) {
@@ -61,14 +54,16 @@ const ResetPasswordPage = () => {
     <div className="flex items-center justify-center px-4 py-16">
       <form onSubmit={submit} className="card w-full max-w-md">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-crewly-green">
-          Secure reset
+          {isSetup ? "Account setup" : "Secure reset"}
         </p>
 
-        <h1 className="mt-2 text-2xl font-bold">Create a new password</h1>
+        <h1 className="mt-2 text-2xl font-bold">
+          {isSetup ? "Set up your Crewly account" : "Create a new password"}
+        </h1>
 
         <p className="mb-6 mt-1 text-sm text-crewly-dim">
           Use at least 10 characters with uppercase, lowercase, number and
-          special character.
+          special character. No temporary password is emailed.
         </p>
 
         {error && (
@@ -78,7 +73,6 @@ const ResetPasswordPage = () => {
         )}
 
         <label className="label">New password</label>
-
         <input
           className="input mb-4"
           type="password"
@@ -96,7 +90,6 @@ const ResetPasswordPage = () => {
         />
 
         <label className="label">Confirm password</label>
-
         <input
           className="input mb-6"
           type="password"
@@ -114,16 +107,26 @@ const ResetPasswordPage = () => {
         />
 
         <button className="btn-primary w-full" disabled={busy || !token}>
-          {busy ? "Updating…" : "Reset password"}
+          {busy
+            ? "Saving…"
+            : isSetup
+              ? "Set password and continue"
+              : "Reset password"}
         </button>
 
         <p className="mt-5 text-center text-sm text-crewly-dim">
-          <Link
-            to="/forgot-password"
-            className="text-crewly-green hover:underline"
-          >
-            Request another link
-          </Link>
+          {isSetup ? (
+            <Link to="/login" className="text-crewly-green hover:underline">
+              Back to login
+            </Link>
+          ) : (
+            <Link
+              to="/forgot-password"
+              className="text-crewly-green hover:underline"
+            >
+              Request another link
+            </Link>
+          )}
         </p>
       </form>
     </div>

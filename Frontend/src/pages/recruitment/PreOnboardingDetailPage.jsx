@@ -133,7 +133,7 @@ const PreOnboardingDetailPage = () => {
               Resend invite
             </button>
           ) : null}
-          {canReady ? (
+          {canReady && caseData.status !== 'READY_TO_JOIN' ? (
             <button
               type="button"
               className="btn-primary gap-2"
@@ -145,6 +145,14 @@ const PreOnboardingDetailPage = () => {
               <ShieldCheck className="h-4 w-4" />
               Mark ready to join
             </button>
+          ) : null}
+          {caseData.status === 'READY_TO_JOIN' ? (
+            <Link
+              to={`/app/recruitment/candidates/${caseData.candidate?.candidateCode || caseData.candidate?.id}/convert`}
+              className="btn-primary gap-2"
+            >
+              Convert to employee
+            </Link>
           ) : null}
         </div>
       </div>

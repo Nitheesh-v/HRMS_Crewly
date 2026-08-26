@@ -36,6 +36,14 @@ import {
   convertCandidate,
 } from '../controllers/recruitmentController.js';
 import {
+  conversionPreview,
+  convertToEmployee,
+} from '../controllers/candidateConversionController.js';
+import {
+  conversionCandidateRules,
+  convertToEmployeeRules,
+} from '../validators/candidateConversionValidator.js';
+import {
   candidateInboxDetail,
   candidateInboxList,
   candidateResumeDownload,
@@ -679,6 +687,24 @@ router.patch(
   candidatePipelineStageUpdate
 );
 
+// Phase 27.13 — secure candidate → employee conversion.
+router.get(
+  '/candidates/:candidateId/conversion-preview',
+  requirePermission('CANDIDATE_CONVERT'),
+  conversionCandidateRules,
+  conversionPreview
+);
+
+router.post(
+  '/candidates/:candidateId/convert-to-employee',
+  checkWriteAccess,
+  requirePermission('CANDIDATE_CONVERT'),
+  checkUsageLimit('employees'),
+  convertToEmployeeRules,
+  convertToEmployee
+);
+
+// Legacy convert endpoint retained for compatibility; prefer convert-to-employee.
 router.post(
   '/candidates/:id/convert',
   checkWriteAccess,

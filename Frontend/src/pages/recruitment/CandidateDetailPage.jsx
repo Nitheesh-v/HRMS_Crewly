@@ -29,6 +29,7 @@ import ATSAnalysisPanel from '../../components/recruitment/ATSAnalysisPanel.jsx'
 import CandidateFinalReview from '../../components/recruitment/CandidateFinalReview.jsx';
 import CandidateOfferPanel from '../../components/recruitment/CandidateOfferPanel.jsx';
 import CandidatePreOnboardingPanel from '../../components/recruitment/CandidatePreOnboardingPanel.jsx';
+import CandidateConversionPanel from '../../components/recruitment/CandidateConversionPanel.jsx';
 import InterviewDetailModal from '../../components/recruitment/InterviewDetailModal.jsx';
 import InterviewScheduleModal from '../../components/recruitment/InterviewScheduleModal.jsx';
 import usePermission from '../../hooks/usePermission.js';
@@ -185,6 +186,13 @@ const timelineLabel = (action) =>
     DOCUMENT_RESUBMISSION_REQUIRED: 'Document resubmission required',
     PRE_ONBOARDING_COMPLETED: 'Pre-onboarding documents completed',
     READY_TO_JOIN: 'Candidate marked ready to join',
+    CANDIDATE_CONVERSION_STARTED: 'Employee conversion started',
+    CANDIDATE_CONVERTED: 'Candidate converted to employee',
+    EMPLOYEE_CREATED: 'Employee account created',
+    ACCOUNT_SETUP_SENT: 'Account setup invitation sent',
+    ACCOUNT_SETUP_COMPLETED: 'Employee account setup completed',
+    ONBOARDING_STARTED: 'Employee onboarding started',
+    CANDIDATE_JOINED: 'Candidate marked joined',
   })[action] || enumLabel(action);
 
 const INTERVIEW_ROUNDS = [
@@ -859,6 +867,7 @@ const CandidateDetailPage = () => {
           window.setTimeout(() => window.location.reload(), 400);
         }}
       />
+      <CandidateConversionPanel candidate={candidate} />
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
         <div className="space-y-5">
