@@ -1,156 +1,175 @@
-# Phase 27 — Enterprise RMS + ATS (Crewly)
+Traceability goal:
+JR → JOB → CAN → Resume/ATS → Interviews → OFF → Pre-Onboarding → BGV → EMP → User login
 
-Final integration reference for Phase 27.1–27.16.
+2. Phase-by-Phase: What Was Done
+27.1 — Job Requisition
+Purpose: Capture hiring demand with approvals workflow.
+Done:
 
-## Lifecycle
+Requisition model, codes, statuses (DRAFT → SUBMITTED/PENDING_HR → APPROVED/REJECTED/SENT_BACK…)
+Create / update / submit APIs
+Manager/TL can raise; HR operates approval queue
+Tenant-scoped (companyId)
+27.2 — HR Requisition Approval
+Purpose: Formal HR decision gate.
+Done:
 
-```text
-Requisition → Approval → Job Opening → Career Portal Apply
-  → Resume Upload → Parse → ATS Score
-  → Pipeline / Interviews / Feedback
-  → Human Final Selection
-  → Offer (approve → PDF → secure portal) → Accept
-  → Pre-Onboarding (docs verify) → BGV (optional policy)
-  → READY_TO_JOIN → Convert to Employee
-  → Secure account setup → EmployeeLifecycle onboarding
-```
+Approve / Reject / Send-back with reasons
+Exact permission checks (REQUISITION_APPROVE, etc.)
+Approval UI (RequisitionApprovalsPage)
+27.3 — Job Opening
+Purpose: Turn approved requisition into a job.
+Done:
 
-## Entity map (actual models)
+Create job from approved requisition
+Job codes, publication statuses, open/closed
+Link job ↔ requisition (provenance)
+27.4 — Public Multi-Tenant Career Portal
+Purpose: External candidates browse/apply without employee login.
+Done:
 
-```text
-Company
-├── JobRequisition
-│     └── JobPosting (sourceRequisition)
-│           └── Candidate
-│                 ├── CandidateResume → ResumeParseResult
-│                 ├── ATSResult
-│                 ├── CandidatePipelineHistory / CandidateHistory
-│                 ├── Interview → InterviewFeedback
-│                 ├── OfferLetter (+ OfferAccessToken, OfferHistory, OfferTemplate)
-│                 ├── PreOnboarding
-│                 │     ├── CandidateDocumentRequirement (snapshot)
-│                 │     └── CandidateDocument → CandidateDocumentVersion
-│                 ├── BackgroundVerificationCase
-│                 │     └── BackgroundVerificationCheck (+ History)
-│                 ├── CandidateEmployeeConversion
-│                 └── User (Employee) via convertedUser / candidateId
-└── BackgroundVerificationSettings / CheckType
-```
+Public routes /api/public/careers/:companySlug…
+Only PUBLISHED jobs
+Company resolved by safe public slug (not raw companyId from client)
+Separate public Axios client (withCredentials: false)
+Rate limiting + validation
+27.5 — Candidate Application + Resume Upload
+Purpose: Capture applications with secure resume storage.
+Done:
 
-**Note:** Crewly has no separate `Employee` collection. Employees are `User` records with payroll/profile fields.
+Application APIs + candidate codes (CAN-######)
+Resume upload (PDF/DOCX), size/MIME checks
+Private storage (Cloudinary authenticated or local private)
+Malware scan abstraction (NOT_CONFIGURED — never fake CLEAN)
+No public permanent resume URLs
+27.6 — Deterministic Resume Parsing
+Purpose: Structured extraction without inventing facts.
+Done:
 
-## Public APIs (unauthenticated)
+Background-style processing dispatcher (no BullMQ yet)
+Parse statuses: completed / failed / unsupported / review
+Original resume preserved; candidate-entered data not silently overwritten
+Provenance via ResumeParseResult
+27.7 — Explainable ATS Matching
+Purpose: Assistive scoring, not auto-hire/reject.
+Done:
 
-| Mount | Authority | Mutations |
-|---|---|---|
-| `/api/public/careers/:companySlug…` | Company slug | Read published jobs; apply POST |
-| `/api/public/candidate/offers/:secureToken…` | Offer token hash | GET read-only; POST view/accept/reject |
-| `/api/public/candidate/pre-onboarding/:secureToken…` | Pre-onboarding token hash | GET read; POST view/upload |
-| `/setup-account?token=` (frontend) → `/api/auth/reset-password` | PasswordResetToken hash | Password set only |
+Weighted scoring (skills, experience, education, location/notice)
+Stores explanations, matched/missing skills, category (STRONG/GOOD/MODERATE/WEAK)
+Engine version + fingerprint for idempotent reprocess
+May advance pipeline APPLIED → ATS_SCREENING only
+Does not shortlist/select/reject automatically
+27.8 — Candidate Pipeline + Timeline
+Purpose: Controlled stage machine + history.
+Done:
 
-GET must never finalize decisions (offer accept/reject are POST only).
+Canonical stages through JOINED + dispositions
+Only transitionCandidateStage mutates stage (authorized workflow actions)
+Immutable CandidatePipelineHistory + business CandidateHistory timeline
+Bulk actions with tenant guards
+27.9 — Interview Management
+Purpose: Schedule and run interview rounds.
+Done:
 
-## Token types
+Interview model, statuses, reschedule/cancel (no hard delete of history)
+Interviewer assignment (same tenant)
+Notifications (mailer/dispatcher pattern)
+Timezone-aware scheduling utilities
+27.10 — Interview Evaluation + Human Final Selection
+Purpose: Structured feedback + human decision.
+Done:
 
-| Token | Storage | Scope |
-|---|---|---|
-| Offer access | SHA-256 only | Offer portal |
-| Pre-onboarding access | SHA-256 only | Pre-onboarding portal |
-| Account setup | PasswordResetToken hash | Password establish / reset |
+Scorecards + per-interviewer feedback ownership
+Unique feedback per interview/interviewer
+Submitted feedback locked by policy
+Final Review / Final Decision workflow (human only)
+ATS/scores never auto-select
+27.11 — Enterprise Offer Management
+Purpose: Controlled offers with PDF + candidate portal.
+Done (already on main before this branch):
 
-Raw tokens are never persisted. Rate limits key on token hash + IP.
+Templates (plain text, allowlisted variables)
+Offer state machine: DRAFT → … → SENT/VIEWED → ACCEPTED/REJECTED (+ EXPIRED/WITHDRAWN)
+Approval, PDFKit snapshot, private storage + checksum
+Secure offer tokens (hash only)
+Public candidate portal; GET is scanner-safe; accept/reject are POST
+Duplicate active-offer protection
+Pipeline: send → OFFER; accept → OFFER_ACCEPTED
+27.12 — Pre-Onboarding + Document Management (this branch)
+Purpose: After offer accept, collect/verify joining documents before employee creation.
 
-## Pipeline stages
+Done:
 
-Positive: `APPLIED` → … → `SELECTED` → `OFFER` → `OFFER_ACCEPTED` → `PRE_ONBOARDING` → `JOINED`  
-Disposition: `REJECTED` / `HOLD` / `WITHDRAWN`
+Configurable tenant document requirements (snapshot at start)
+PreOnboarding case + status machine through READY_TO_JOIN
+Versioned private candidate documents (resubmission keeps history)
+Secure candidate portal token (PRE_ONBOARDING_PORTAL capability)
+HR verify / reject / mark ready (backend readiness engine)
+Pipeline: OFFER_ACCEPTED → PRE_ONBOARDING via authorized action only
+No Employee/User/JOINED in this phase
+Notifications + audit + timeline events
+Fixes: candidate id for start button, expiry date UX, currentVersion validation, MOCK portal URL logging in dev
+27.13 — Candidate → Employee Conversion (this branch)
+Purpose: Create one employee account safely and hand off to existing onboarding.
 
-All mutations go through `transitionCandidateStage` with authorized workflow actions.
+Done:
 
-## Human decisions (non-negotiable)
+Conversion preview + convert APIs
+Eligibility: stage PRE_ONBOARDING, offer ACCEPTED, pre-onboarding READY_TO_JOIN, docs verified
+Optional BGV gate (when settings require it — wired in 27.15)
+Employee = User (Crewly has no separate Employee collection)
+Links: Candidate.convertedUser ↔ User.candidateId
+Unique conversion record (CandidateEmployeeConversion)
+Idempotent double-click protection
+No temp passwords — unusable password + secure setup token (hash only) via existing PasswordResetToken + /setup-account
+Starts EmployeeLifecycle onboarding once
+Pipeline → JOINED via EMPLOYEE_CONVERSION
+Atomic employee codes EMP-#### via TenantSequence (not countDocuments()+1)
+HR UI: Convert page + candidate panel
+27.14 — Recruitment Dashboard + Analytics (this branch)
+Purpose: HR command center for funnel, KPIs, queues.
 
-- ATS does **not** shortlist/reject
-- Interview scores do **not** select/reject
-- BGV discrepancy does **not** reject
-- Conversion requires HR confirmation after `READY_TO_JOIN`
+Done:
 
-## Secure conversion
+GET /api/recruitment/analytics/overview (tenant-scoped aggregations)
+KPIs: requisitions, open jobs, applications, ATS, shortlist, interviews, offers, ready-to-join, joined
+Funnel (history-first milestone counts)
+Sources, ATS distribution, offer outcomes, hiring speed (time-to-hire / fill proxy)
+Operational work queues with deep links
+Jobs table
+Filters: range, department, job, source, recruiter
+Fix: department filter applies to ATS/interviews/offers/etc. (empty dept → zeros, no leakage)
+UI: /app/recruitment Command Center; sidebar + tabs wired
+Permission: RECRUITMENT_ANALYTICS_READ
+No new chart library (Tailwind bars/sparklines)
+27.15 — Background Verification (this branch)
+Purpose: Human-controlled BGV; ready for third-party plugins later.
 
-Use:
+Done:
 
-```text
-POST /api/recruitment/candidates/:candidateId/convert-to-employee
-```
+Settings (trigger stage, consent, require-before-conversion flags)
+Configurable check types (snapshot onto case)
+Case + checks + immutable history
+Internal provider only (no paid vendor required)
+Provider registry + dispatcher seams for Phase 28 Redis/BullMQ + SpringVerify/OnGrid-style adapters
+HR board / detail / settings UI
+Candidate BGV panel (start/open)
+Outcomes: CLEAR / CLEAR_WITH_DISCREPANCIES / HOLD — never auto-reject
+Conversion eligibility hook
+Fix: atomic settings upsert (no Duplicate companyId race)
+27.16 — Final Integration + Security Hardening (this branch)
+Purpose: Close Phase 27 safely; no new major feature.
 
-Legacy:
+Done:
 
-```text
-POST /api/recruitment/candidates/:id/convert
-```
+Full security audit of tenant isolation, tokens, files, public APIs, pipeline, human-decision boundaries
+Retired legacy convert that emailed temp passwords (POST …/convert → 400 guidance)
+Unique index on (companyId, employeeCode) when non-empty
+Security regression test suite (phase27SecurityHardening.test.js)
+Developer documentation docs/PHASE_27_RMS_ATS.md
+UI branding footer → "Phase 27"
+Confirmed: GET offer is decision-free; scans not fake-CLEAN; conversion is secure path only
 
-is **retired** (returns 400). No temporary passwords.
 
-## BGV
 
-- Internal provider works without vendors
-- Provider registry + dispatcher ready for Phase 28 plugins + BullMQ
-- Optional gate: `bgvRequiredBeforeConversion` on settings
 
-## Key permissions (current roles only)
-
-| Area | Examples |
-|---|---|
-| Requisition | `REQUISITION_*` |
-| Candidate | `CANDIDATE_*`, `CANDIDATE_FINAL_DECISION`, `CANDIDATE_CONVERT` |
-| Interview | `INTERVIEW_*`, `INTERVIEW_FEEDBACK_*` |
-| Offer | `OFFER_*`, `OFFER_TEMPLATE_*` |
-| Pre-onboarding | `PRE_ONBOARDING_*` |
-| BGV | `BACKGROUND_VERIFICATION_*` |
-| Analytics | `RECRUITMENT_ANALYTICS_READ` |
-
-`SYSTEM_PERMISSION_VERSION` migrates defaults via atomic `$addToSet` (no role.save loops).
-
-No `HR_HEAD` / `HR_EXECUTIVE` in Phase 27.
-
-## File security
-
-| Asset | Storage | Scan claim |
-|---|---|---|
-| Resume | Private Cloudinary / local private | `NOT_CONFIGURED` unless real scanner |
-| Offer PDF | Authenticated private | N/A |
-| Pre-onboarding docs | Private | `NOT_CONFIGURED` unless real scanner |
-
-No permanent public URLs; storage keys are `select: false`.
-
-## Phase 28 queue inventory (not implemented)
-
-| Job | Trigger today | Payload refs only |
-|---|---|---|
-| `RESUME_PARSE` | Application / reprocess dispatcher | companyId, resumeId, candidateId |
-| `ATS_PROCESS` | After parse / reprocess | companyId, candidateId, jobId |
-| `RECRUITMENT_EMAIL` | Mailer call sites | companyId, template, entityId |
-| `INTERVIEW_NOTIFICATION` | Schedule/reschedule | companyId, interviewId |
-| `OFFER_PDF_GENERATE` | Approve | companyId, offerId |
-| `OFFER_SEND` | Send | companyId, offerId |
-| `DOCUMENT_SCAN` | Upload hooks | companyId, documentVersionId |
-| `BGV_VENDOR_SUBMIT` / `BGV_VENDOR_POLL` | BGV dispatcher | companyId, caseId |
-| `ACCOUNT_SETUP_EMAIL` | Conversion | companyId, userId |
-| `ANALYTICS_REFRESH` | Optional cache | companyId, range |
-
-Workers must re-fetch Mongo state. Never put binaries, raw tokens, passwords, or SMTP secrets in Redis payloads.
-
-## Tests
-
-```bash
-cd Backend
-node --test test/*.test.js
-npm run test:bgv
-npm run test:conversion
-npm run test:recruitment-analytics
-```
-
-Frontend:
-
-```bash
-cd Frontend && npm run build
-```
