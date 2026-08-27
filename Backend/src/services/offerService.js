@@ -11,6 +11,7 @@ import OfferTemplate from '../models/OfferTemplate.js';
 import User from '../models/User.js';
 import ApiError from '../utils/ApiError.js';
 import env from '../config/env.js';
+import logger from '../config/logger.js';
 import { nextOfferCode } from '../utils/offerIdentifiers.js';
 import {
   buildOfferTemplateValues,
@@ -1068,6 +1069,18 @@ export const sendOffer = async ({ companyId, actor, offerId, requestContext }) =
     ...message,
     sensitive: true,
   });
+
+  // Local testing only: sensitive MOCK mail intentionally hides the body/link.
+  // Print the candidate portal URL once so HR can open it without SMTP.
+  if (
+    delivery.delivered &&
+    delivery.mode === 'MOCK' &&
+    ['development', 'test'].includes(String(env.NODE_ENV || 'development'))
+  ) {
+    logger.info(
+      `[DEV ONLY] Offer portal for ${offer.offerCode} → ${offer.candidateSnapshot.email}: ${portalUrl}`
+    );
+  }
 
   if (!delivery.delivered) {
     await revokeOfferTokens({

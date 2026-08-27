@@ -198,6 +198,22 @@ mfa: {
     designation: { type: String, trim: true, maxlength: 80, default: "" },
     dateOfBirth: { type: Date, default: null },
     dateOfJoining: { type: Date, default: null },
+    // Phase 27.13 — optional recruitment provenance (Employee = User).
+    candidateId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Candidate",
+      default: null,
+      index: true,
+    },
+    accountSetupRequired: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    accountSetupCompletedAt: {
+      type: Date,
+      default: null,
+    },
     pan: {
       type: String,
       trim: true,
@@ -219,8 +235,25 @@ mfa: {
   { timestamps: true },
 );
 
+// One converted candidate maps to at most one employee user per tenant.
+userSchema.index(
+  { companyId: 1, candidateId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { candidateId: { $type: "objectId" } },
+  }
+);
+
 // Same email can exist in DIFFERENT companies, but only once per company
 userSchema.index({ email: 1, companyId: 1 }, { unique: true });
+// Non-empty employee codes are unique per tenant (Phase 27.16 integrity).
+userSchema.index(
+  { companyId: 1, employeeCode: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { employeeCode: { $type: 'string', $gt: '' } },
+  }
+);
 userSchema.index({
   companyId: 1,
   status: 1,

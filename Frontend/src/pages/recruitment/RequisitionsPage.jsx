@@ -465,6 +465,12 @@ const RequisitionsPage = () => {
       </header>
 
       <nav className="flex gap-6 overflow-x-auto border-b border-slate-800 text-sm">
+        <Link
+          to="/app/recruitment"
+          className="px-1 pb-3 text-slate-400 transition hover:text-slate-200"
+        >
+          Dashboard
+        </Link>
         <span className="border-b-2 border-indigo-400 px-1 pb-3 font-semibold text-indigo-300">
           Requisitions
         </span>
@@ -492,9 +498,12 @@ const RequisitionsPage = () => {
             Candidates
           </Link>
         )}
-        <span className="cursor-not-allowed px-1 pb-3 text-slate-600" title="Later Phase 27 subphase">
+        <Link
+          to="/app/recruitment"
+          className="px-1 pb-3 text-slate-400 transition hover:text-slate-200"
+        >
           Analytics
-        </span>
+        </Link>
       </nav>
 
       {banner && (

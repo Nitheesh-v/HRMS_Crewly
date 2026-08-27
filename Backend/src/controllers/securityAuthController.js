@@ -1064,6 +1064,12 @@ export const resetPassword =
       user.passwordChangedAt =
         new Date();
 
+      // Phase 27.13 — first-time account setup uses the same secure token path.
+      if (user.accountSetupRequired) {
+        user.accountSetupRequired = false;
+        user.accountSetupCompletedAt = new Date();
+      }
+
       user.tokenVersion =
         Number(
           user.tokenVersion ||
@@ -1076,6 +1082,18 @@ export const resetPassword =
         new Date();
 
       await resetToken.save();
+
+      if (user.accountSetupCompletedAt) {
+        await recordAudit({
+          req,
+          action: "ACCOUNT_SETUP_COMPLETED",
+          companyId: resetToken.companyId,
+          actorId: user._id,
+          resource: "User",
+          resourceId: user._id,
+          critical: true,
+        });
+      }
 
       await Promise.all([
         SecuritySession.updateMany(

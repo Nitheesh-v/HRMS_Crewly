@@ -28,6 +28,7 @@ import auditRoutes from "./auditRoutes.js";
 import securityRoutes from "./securityRoutes.js";
 import publicCareerRoutes from "./publicCareerRoutes.js";
 import publicCandidateOfferRoutes from "./publicCandidateOfferRoutes.js";
+import publicCandidatePreOnboardingRoutes from "./publicCandidatePreOnboardingRoutes.js";
 
 const router = Router();
 
@@ -43,6 +44,10 @@ router.get("/health", (req, res) => {
 // tenant middleware. This router contains its own rate limiting and validation.
 router.use("/public/careers", publicCareerRoutes);
 router.use("/public/candidate/offers", publicCandidateOfferRoutes);
+router.use(
+  "/public/candidate/pre-onboarding",
+  publicCandidatePreOnboardingRoutes,
+);
 
 // Records mutation activity after the response finishes.
 router.use(auditTrail);

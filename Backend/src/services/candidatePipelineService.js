@@ -129,6 +129,22 @@ export const transitionCandidateStage = async ({
   ) {
     throw ApiError.forbidden('Only a secure candidate acceptance can complete an offer');
   }
+  if (
+    normalizedTarget === 'PRE_ONBOARDING' &&
+    workflowAction !== 'PRE_ONBOARDING_STARTED'
+  ) {
+    throw ApiError.forbidden(
+      'Use the authorized pre-onboarding workflow to move a candidate into pre-onboarding'
+    );
+  }
+  if (
+    normalizedTarget === 'JOINED' &&
+    !['EMPLOYEE_CONVERSION', 'LEGACY_CONVERSION'].includes(workflowAction)
+  ) {
+    throw ApiError.forbidden(
+      'JOINED is reserved for authorized employee conversion after pre-onboarding'
+    );
+  }
   if (!mongoose.isValidObjectId(actorId)) {
     throw ApiError.badRequest('A valid pipeline actor is required');
   }
@@ -199,10 +215,31 @@ export const transitionCandidateStage = async ({
   }
   if (
     fromStage === 'OFFER_ACCEPTED' &&
-    workflowAction !== 'OFFER_DECISION_ROLLBACK'
+    ![
+      'OFFER_DECISION_ROLLBACK',
+      'PRE_ONBOARDING_STARTED',
+      'LEGACY_CONVERSION',
+    ].includes(workflowAction)
   ) {
     throw ApiError.forbidden(
-      'Offer acceptance is the Phase 27.11 boundary; use the next authorized workflow'
+      'Offer acceptance can only move into authorized pre-onboarding, offer decision rollback, or legacy conversion'
+    );
+  }
+  if (workflowAction === 'PRE_ONBOARDING_STARTED' && fromStage !== 'OFFER_ACCEPTED') {
+    throw ApiError.conflict(
+      'Only an offer-accepted candidate can enter pre-onboarding'
+    );
+  }
+  if (
+    fromStage === 'PRE_ONBOARDING' &&
+    ![
+      'EMPLOYEE_CONVERSION',
+      'LEGACY_CONVERSION',
+      'PRE_ONBOARDING_WITHDRAWN',
+    ].includes(workflowAction)
+  ) {
+    throw ApiError.forbidden(
+      'Pre-onboarding candidates can only leave this stage through authorized conversion or withdrawal'
     );
   }
   if (fromStage === normalizedTarget) {

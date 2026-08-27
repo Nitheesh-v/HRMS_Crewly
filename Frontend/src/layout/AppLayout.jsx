@@ -77,7 +77,7 @@ const NAV_BY_ROLE = {
     { to: "/app/assets", label: "🖥 Assets" },
     { to: "/app/projects", label: "📁 Projects" },
     { to: "/app/tasks", label: "📋 Tasks" },
-    { to: "/app/recruitment/requisitions", label: "Recruitment" },
+    { to: "/app/recruitment", label: "Recruitment" },
     { to: "/app/support", label: "🎫 Support Tickets" },
     { to: "/app/exit", label: "🚪 Resignations & Exit" },
     { to: "/app/company", label: "⚙️ Company Settings" },
@@ -113,7 +113,7 @@ const NAV_BY_ROLE = {
     { to: "/app/schedules", label: "🗓 Work Schedules" },
     { to: "/app/announcements", label: "📢 Announcements" },
     { label: "🥳 Celebrations", soon: true },
-    { to: "/app/recruitment/requisitions", label: "Recruitment" },
+    { to: "/app/recruitment", label: "Recruitment" },
     { to: "/app/documents", label: "📄 Documents" },
     { to: "/app/employee-files", label: "🗂 Employee Files" },
     { to: "/app/lifecycle", label: "🧬 Lifecycle" },
@@ -313,6 +313,9 @@ const NAV_ICON_BY_PATH = {
   "/app/recruitment/my-interviews":
     CalendarClock,
 
+  "/app/recruitment/pre-onboarding":
+    ClipboardList,
+
   "/app/support":
     LifeBuoy,
 
@@ -500,6 +503,33 @@ const AppLayout = () => {
       ]
     : [];
 
+  const recruitmentDashboardMenu = hasPermission('RECRUITMENT_ANALYTICS_READ')
+    ? [
+        {
+          to: '/app/recruitment',
+          label: 'Recruitment Dashboard',
+        },
+      ]
+    : [];
+
+  const preOnboardingMenu = hasPermission('PRE_ONBOARDING_READ')
+    ? [
+        {
+          to: '/app/recruitment/pre-onboarding',
+          label: 'Pre-Onboarding',
+        },
+      ]
+    : [];
+
+  const bgvMenu = hasPermission('BACKGROUND_VERIFICATION_READ')
+    ? [
+        {
+          to: '/app/recruitment/background-verification',
+          label: 'Background Verification',
+        },
+      ]
+    : [];
+
   const interviewMenu = [
     ...(hasPermission('INTERVIEW_READ')
       ? [
@@ -521,8 +551,11 @@ const AppLayout = () => {
 
   const menu = [
     ...baseMenu,
+    ...recruitmentDashboardMenu,
     ...candidateMenu,
     ...offerMenu,
+    ...preOnboardingMenu,
+    ...bgvMenu,
     ...interviewMenu,
     ...securityMenu,
   ];
@@ -593,7 +626,7 @@ const AppLayout = () => {
         </nav>
 
         <p className="pt-3 text-[11px] text-crewly-dim/60">
-          Crewly HRMS · Phase 27.10
+          Crewly HRMS · Phase 27
         </p>
       </aside>
 

@@ -206,6 +206,10 @@ export const recordAudit = async ({
         ?.replace(
           /(\/api\/public\/candidate\/offers\/)[A-Za-z0-9_-]+/gi,
           '$1[REDACTED]'
+        )
+        ?.replace(
+          /(\/api\/public\/candidate\/pre-onboarding\/)[A-Za-z0-9_-]+/gi,
+          '$1[REDACTED]'
         ) ||
       '/system',
 

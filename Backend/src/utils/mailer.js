@@ -378,6 +378,145 @@ export const offerWithdrawnEmail = ({ offer }) => {
   };
 };
 
+export const preOnboardingAccessEmail = ({
+  candidateName,
+  companyName,
+  jobTitle,
+  designation,
+  joiningDate,
+  preOnboardingCode,
+  portalUrl,
+  expiryDays = 90,
+}) => {
+  const safeName = escapeHtml(candidateName);
+  const safeCompany = escapeHtml(companyName);
+  const safeJob = escapeHtml(jobTitle || designation || 'your role');
+  const safeCode = escapeHtml(preOnboardingCode || '');
+  const joiningLabel = joiningDate
+    ? new Intl.DateTimeFormat('en-IN', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+      }).format(new Date(joiningDate))
+    : 'the planned joining date';
+  const safeJoining = escapeHtml(joiningLabel);
+  const safePortalUrl =
+    /^https:\/\//i.test(portalUrl) ||
+    /^http:\/\/localhost(?::\d+)?\//i.test(portalUrl)
+      ? escapeHtml(portalUrl)
+      : '';
+
+  return {
+    subject: `Pre-onboarding documents — ${String(companyName || '')
+      .replace(/[\r\n]/g, ' ')
+      .slice(0, 100)}`,
+    text:
+      `Hello ${candidateName},\n\n` +
+      `${companyName} has started pre-onboarding for ${jobTitle || designation}.\n` +
+      `Reference: ${preOnboardingCode}\n` +
+      `Expected joining date: ${joiningLabel}\n\n` +
+      `Upload your documents securely: ${portalUrl}\n\n` +
+      `This private link remains valid for up to ${expiryDays} days. Do not forward it.`,
+    html: shell('This private link is for pre-joining document collection only.', `
+      <h2 style="margin:0 0 10px">Pre-onboarding is ready</h2>
+      <p>Hello ${safeName},</p>
+      <p><b>${safeCompany}</b> has started pre-onboarding for <b>${safeJob}</b>.</p>
+      <p style="background:#f6f8fa;padding:12px;border-radius:8px">Reference: <b>${safeCode}</b><br/>Expected joining date: <b>${safeJoining}</b></p>
+      ${safePortalUrl ? `<p><a href="${safePortalUrl}" style="display:inline-block;background:#172033;color:#fff;padding:11px 16px;border-radius:7px;text-decoration:none">Open secure document portal</a></p>` : ''}
+      <p style="color:#57606a;font-size:13px">This private link remains valid for up to ${Number(expiryDays) || 90} days. Do not forward it.</p>`),
+  };
+};
+
+export const preOnboardingDocumentDecisionEmail = ({
+  candidateName,
+  companyName,
+  requirementName,
+  decision,
+  reason = '',
+}) => {
+  const labels = {
+    VERIFIED: 'verified',
+    RESUBMISSION_REQUIRED: 'needs resubmission',
+    READY_TO_JOIN: 'marked ready to join',
+  };
+  const decisionLabel = labels[decision] || 'updated';
+  const safeReason = escapeHtml(reason).replaceAll('\n', '<br/>');
+
+  return {
+    subject: `Pre-onboarding update — ${String(companyName || '')
+      .replace(/[\r\n]/g, ' ')
+      .slice(0, 100)}`,
+    text:
+      `Hello ${candidateName},\n\n` +
+      `${companyName} updated your pre-onboarding item "${requirementName}": ${decisionLabel}.\n` +
+      (reason ? `Note: ${reason}\n` : '') +
+      '\nThe hiring team will contact you if another action is required.',
+    html: shell('This is a pre-onboarding status notification.', `
+      <h2 style="margin:0 0 10px">Pre-onboarding update</h2>
+      <p>Hello ${escapeHtml(candidateName)},</p>
+      <p><b>${escapeHtml(companyName)}</b> updated <b>${escapeHtml(requirementName)}</b>: <b>${escapeHtml(decisionLabel)}</b>.</p>
+      ${safeReason ? `<p style="background:#f6f8fa;padding:12px;border-radius:8px">${safeReason}</p>` : ''}
+      <p style="color:#57606a;font-size:13px">The hiring team will contact you if another action is required.</p>`),
+  };
+};
+
+export const accountSetupEmail = ({
+  name,
+  email,
+  companyName,
+  companyCode = '',
+  employeeCode = '',
+  designation = '',
+  joiningDate = null,
+  setupUrl,
+  expiryHours = 72,
+}) => {
+  const joiningLabel = joiningDate
+    ? new Intl.DateTimeFormat('en-IN', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+      }).format(new Date(joiningDate))
+    : 'your planned joining date';
+  const safeSetupUrl =
+    /^https:\/\//i.test(setupUrl) ||
+    /^http:\/\/localhost(?::\d+)?\//i.test(setupUrl)
+      ? escapeHtml(setupUrl)
+      : '';
+  const subjectCompany = String(companyName || 'Crewly HRMS')
+    .replace(/[\r\n]/g, ' ')
+    .slice(0, 100);
+
+  return {
+    subject: `Set up your ${subjectCompany} account`,
+    text:
+      `Hello ${name},\n\n` +
+      `Your employee account at ${companyName || 'the company'} is ready.\n` +
+      (employeeCode ? `Employee ID: ${employeeCode}\n` : '') +
+      (designation ? `Designation: ${designation}\n` : '') +
+      `Login email: ${email}\n` +
+      (companyCode ? `Company code: ${companyCode}\n` : '') +
+      `Joining date: ${joiningLabel}\n\n` +
+      `Set your password securely: ${setupUrl}\n` +
+      `This link expires in ${expiryHours} hours. Do not forward it.\n`,
+    html: shell('This private link lets you set your Crewly account password.', `
+      <h2 style="margin:0 0 10px">Welcome aboard</h2>
+      <p>Hello ${escapeHtml(name)},</p>
+      <p>Your employee account at <b>${escapeHtml(companyName || 'the company')}</b> is ready.</p>
+      <p style="background:#f6f8fa;padding:12px;border-radius:8px">
+        ${employeeCode ? `Employee ID: <b>${escapeHtml(employeeCode)}</b><br/>` : ''}
+        ${designation ? `Designation: <b>${escapeHtml(designation)}</b><br/>` : ''}
+        Login email: <b>${escapeHtml(email)}</b><br/>
+        ${companyCode ? `Company code: <b>${escapeHtml(companyCode)}</b><br/>` : ''}
+        Joining date: <b>${escapeHtml(joiningLabel)}</b>
+      </p>
+      ${safeSetupUrl ? `<p><a href="${safeSetupUrl}" style="display:inline-block;background:#172033;color:#fff;padding:11px 16px;border-radius:7px;text-decoration:none">Set up your password</a></p>` : ''}
+      <p style="color:#57606a;font-size:13px">This private link expires in ${Number(expiryHours) || 72} hours. Do not forward it. No temporary password is sent by email.</p>`),
+  };
+};
+
 export const welcomeEmail = ({ name, email, password, companyName, code }) => ({
   subject: `Welcome to ${companyName || 'Crewly HRMS'} — your login credentials`,
   html: shell('You received this because an account was created for you.', `

@@ -36,6 +36,45 @@ import {
   convertCandidate,
 } from '../controllers/recruitmentController.js';
 import {
+  conversionPreview,
+  convertToEmployee,
+} from '../controllers/candidateConversionController.js';
+import {
+  conversionCandidateRules,
+  convertToEmployeeRules,
+} from '../validators/candidateConversionValidator.js';
+import { recruitmentAnalyticsOverview } from '../controllers/recruitmentAnalyticsController.js';
+import { recruitmentAnalyticsOverviewRules } from '../validators/recruitmentAnalyticsValidator.js';
+import {
+  bgvCaseAssign,
+  bgvCaseCancel,
+  bgvCaseComplete,
+  bgvCaseDetail,
+  bgvCaseList,
+  bgvCaseStart,
+  bgvCheckTypeCreate,
+  bgvCheckTypeList,
+  bgvCheckTypeUpdate,
+  bgvCheckUpdate,
+  bgvSettingsRead,
+  bgvSettingsUpdate,
+  candidateBgvSummary,
+} from '../controllers/backgroundVerificationController.js';
+import {
+  bgvAssignRules,
+  bgvCancelRules,
+  bgvCaseIdRules,
+  bgvCaseListRules,
+  bgvCheckActionRules,
+  bgvCheckTypeCreateRules,
+  bgvCheckTypeUpdateRules,
+  bgvCompleteRules,
+  bgvSettingsUpdateRules,
+  bgvStartRules,
+} from '../validators/backgroundVerificationValidator.js';
+
+
+import {
   candidateInboxDetail,
   candidateInboxList,
   candidateResumeDownload,
@@ -155,6 +194,30 @@ import {
   listOfferTemplateRules,
   updateOfferTemplateRules,
 } from '../validators/offerTemplateValidator.js';
+import {
+  documentRequirementCreate,
+  documentRequirementDeactivate,
+  documentRequirementList,
+  documentRequirementUpdate,
+  preOnboardingDetail,
+  preOnboardingDocumentFile,
+  preOnboardingDocumentReject,
+  preOnboardingDocumentVerify,
+  preOnboardingList,
+  preOnboardingMarkReady,
+  preOnboardingResendInvite,
+  preOnboardingStart,
+} from '../controllers/preOnboardingController.js';
+import {
+  createRequirementRules,
+  documentActionRules,
+  listPreOnboardingRules,
+  preOnboardingIdRules,
+  rejectDocumentRules,
+  requirementIdRules,
+  startPreOnboardingRules,
+  updateRequirementRules,
+} from '../validators/preOnboardingValidator.js';
 
 const router = Router();
 
@@ -207,6 +270,102 @@ router.use(
   )
 );
 
+
+
+// Phase 27.15 — enterprise background verification.
+router.get(
+  '/background-verification/settings',
+  requirePermission('BACKGROUND_VERIFICATION_SETTINGS_READ'),
+  bgvSettingsRead
+);
+router.patch(
+  '/background-verification/settings',
+  checkWriteAccess,
+  requirePermission('BACKGROUND_VERIFICATION_SETTINGS_MANAGE'),
+  bgvSettingsUpdateRules,
+  bgvSettingsUpdate
+);
+router.get(
+  '/background-verification/check-types',
+  requirePermission('BACKGROUND_VERIFICATION_SETTINGS_READ'),
+  bgvCheckTypeList
+);
+router.post(
+  '/background-verification/check-types',
+  checkWriteAccess,
+  requirePermission('BACKGROUND_VERIFICATION_SETTINGS_MANAGE'),
+  bgvCheckTypeCreateRules,
+  bgvCheckTypeCreate
+);
+router.patch(
+  '/background-verification/check-types/:checkTypeId',
+  checkWriteAccess,
+  requirePermission('BACKGROUND_VERIFICATION_SETTINGS_MANAGE'),
+  bgvCheckTypeUpdateRules,
+  bgvCheckTypeUpdate
+);
+router.get(
+  '/background-verifications',
+  requirePermission('BACKGROUND_VERIFICATION_READ'),
+  bgvCaseListRules,
+  bgvCaseList
+);
+router.get(
+  '/background-verifications/:caseId',
+  requirePermission('BACKGROUND_VERIFICATION_READ'),
+  bgvCaseIdRules,
+  bgvCaseDetail
+);
+router.post(
+  '/background-verifications/:caseId/assign',
+  checkWriteAccess,
+  requirePermission('BACKGROUND_VERIFICATION_MANAGE'),
+  bgvAssignRules,
+  bgvCaseAssign
+);
+router.patch(
+  '/background-verifications/:caseId/checks/:checkId',
+  checkWriteAccess,
+  requirePermission('BACKGROUND_VERIFICATION_VERIFY'),
+  bgvCheckActionRules,
+  bgvCheckUpdate
+);
+router.post(
+  '/background-verifications/:caseId/complete',
+  checkWriteAccess,
+  requirePermission('BACKGROUND_VERIFICATION_MANAGE'),
+  bgvCompleteRules,
+  bgvCaseComplete
+);
+router.post(
+  '/background-verifications/:caseId/cancel',
+  checkWriteAccess,
+  requirePermission('BACKGROUND_VERIFICATION_MANAGE'),
+  bgvCancelRules,
+  bgvCaseCancel
+);
+router.post(
+  '/candidates/:candidateId/background-verification/start',
+  checkWriteAccess,
+  requirePermission('BACKGROUND_VERIFICATION_CREATE'),
+  bgvStartRules,
+  bgvCaseStart
+);
+router.get(
+  '/candidates/:candidateId/background-verification',
+  requirePermission('BACKGROUND_VERIFICATION_READ'),
+  bgvStartRules,
+  candidateBgvSummary
+);
+
+// Phase 27.14 — recruitment command center analytics.
+router.get(
+  '/analytics/overview',
+  requirePermission('RECRUITMENT_ANALYTICS_READ'),
+  recruitmentAnalyticsOverviewRules,
+  recruitmentAnalyticsOverview
+);
+
 // Phase 27.11 — tenant offer templates and enterprise offer workflow.
 router.get('/offer-templates', requirePermission('OFFER_TEMPLATE_READ'), listOfferTemplateRules, offerTemplateList);
 router.post('/offer-templates', checkWriteAccess, requirePermission('OFFER_TEMPLATE_CREATE'), createOfferTemplateRules, offerTemplateCreate);
@@ -225,6 +384,88 @@ router.post('/offers/:offerId/return', checkWriteAccess, requirePermission('OFFE
 router.post('/offers/:offerId/send', checkWriteAccess, requirePermission('OFFER_SEND'), offerActionRules, offerSend);
 router.post('/offers/:offerId/withdraw', checkWriteAccess, requirePermission('OFFER_WITHDRAW'), offerReasonRules, offerWithdraw);
 router.get('/offers/:offerId/document', requirePermission('OFFER_READ'), offerActionRules, offerDocumentRead);
+
+// Phase 27.12 — enterprise pre-onboarding and candidate document management.
+router.get(
+  '/pre-onboarding/document-requirements',
+  requirePermission('PRE_ONBOARDING_SETTINGS_READ'),
+  documentRequirementList
+);
+router.post(
+  '/pre-onboarding/document-requirements',
+  checkWriteAccess,
+  requirePermission('PRE_ONBOARDING_SETTINGS_MANAGE'),
+  createRequirementRules,
+  documentRequirementCreate
+);
+router.patch(
+  '/pre-onboarding/document-requirements/:requirementId',
+  checkWriteAccess,
+  requirePermission('PRE_ONBOARDING_SETTINGS_MANAGE'),
+  updateRequirementRules,
+  documentRequirementUpdate
+);
+router.post(
+  '/pre-onboarding/document-requirements/:requirementId/deactivate',
+  checkWriteAccess,
+  requirePermission('PRE_ONBOARDING_SETTINGS_MANAGE'),
+  requirementIdRules,
+  documentRequirementDeactivate
+);
+
+router.get(
+  '/pre-onboarding',
+  requirePermission('PRE_ONBOARDING_READ'),
+  listPreOnboardingRules,
+  preOnboardingList
+);
+router.get(
+  '/pre-onboarding/:preOnboardingId',
+  requirePermission('PRE_ONBOARDING_READ'),
+  preOnboardingIdRules,
+  preOnboardingDetail
+);
+router.post(
+  '/pre-onboarding/:preOnboardingId/resend-invite',
+  checkWriteAccess,
+  requirePermission('PRE_ONBOARDING_SEND'),
+  preOnboardingIdRules,
+  preOnboardingResendInvite
+);
+router.post(
+  '/pre-onboarding/:preOnboardingId/documents/:documentId/verify',
+  checkWriteAccess,
+  requirePermission('PRE_ONBOARDING_DOCUMENT_VERIFY'),
+  documentActionRules,
+  preOnboardingDocumentVerify
+);
+router.post(
+  '/pre-onboarding/:preOnboardingId/documents/:documentId/reject',
+  checkWriteAccess,
+  requirePermission('PRE_ONBOARDING_DOCUMENT_VERIFY'),
+  rejectDocumentRules,
+  preOnboardingDocumentReject
+);
+router.post(
+  '/pre-onboarding/:preOnboardingId/mark-ready',
+  checkWriteAccess,
+  requirePermission('PRE_ONBOARDING_READY'),
+  preOnboardingIdRules,
+  preOnboardingMarkReady
+);
+router.get(
+  '/pre-onboarding/:preOnboardingId/documents/:documentId/file',
+  requirePermission('PRE_ONBOARDING_DOCUMENT_READ'),
+  documentActionRules,
+  preOnboardingDocumentFile
+);
+router.post(
+  '/candidates/:candidateId/pre-onboarding/start',
+  checkWriteAccess,
+  requirePermission('PRE_ONBOARDING_CREATE'),
+  startPreOnboardingRules,
+  preOnboardingStart
+);
 
 // Phase 27.9 — interview management. Literal routes stay before /:id.
 router.get(
@@ -573,14 +814,29 @@ router.patch(
   candidatePipelineStageUpdate
 );
 
+// Phase 27.13 — secure candidate → employee conversion.
+router.get(
+  '/candidates/:candidateId/conversion-preview',
+  requirePermission('CANDIDATE_CONVERT'),
+  conversionCandidateRules,
+  conversionPreview
+);
+
+router.post(
+  '/candidates/:candidateId/convert-to-employee',
+  checkWriteAccess,
+  requirePermission('CANDIDATE_CONVERT'),
+  checkUsageLimit('employees'),
+  convertToEmployeeRules,
+  convertToEmployee
+);
+
+// Legacy convert endpoint: retired in Phase 27.16 (returns 400 guidance).
 router.post(
   '/candidates/:id/convert',
   checkWriteAccess,
   requirePermission(
     'RECRUITMENT_APPROVE'
-  ),
-  checkUsageLimit(
-    'employees'
   ),
   convertCandidate
 );
