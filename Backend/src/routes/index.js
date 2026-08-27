@@ -1,6 +1,8 @@
 import { Router } from "express";
+import mongoose from "mongoose";
 import { auditTrail } from "../middlewares/auditTrail.js";
 import { platformUsage } from "../middlewares/platformUsage.js";
+import { getRedisHealth } from "../config/redis.js";
 
 import authRoutes from "./authRoutes.js";
 import companyRoutes from "./companyRoutes.js";
@@ -32,10 +34,38 @@ import publicCandidatePreOnboardingRoutes from "./publicCandidatePreOnboardingRo
 
 const router = Router();
 
+// Phase 28.1 — real infrastructure health. Public, read-only, and
+// secret-safe: only up/down/disabled + safe reason labels are
+// returned. Never the Redis URL, credentials, or stack traces.
+// Semantics:
+//   status "ok"        — MongoDB up; Redis up or intentionally disabled
+//   status "degraded"  — MongoDB up, but Redis enabled and unavailable
+//   status "unhealthy" — MongoDB down (the source of truth is unreachable)
+// Redis "disabled" is intentional configuration, never a fault.
+// success stays true: this endpoint itself is alive and reporting.
 router.get("/health", (req, res) => {
+  const mongodbUp = mongoose.connection.readyState === 1;
+  const redis = getRedisHealth();
+  const status = !mongodbUp
+    ? "unhealthy"
+    : redis.status === "down"
+      ? "degraded"
+      : "ok";
+
   res.json({
     success: true,
-    message: "Crewly HRMS API is healthy",
+    message:
+      status === "ok"
+        ? "Crewly HRMS API is healthy"
+        : status === "degraded"
+          ? "Crewly HRMS API is running with degraded infrastructure (Redis unavailable)"
+          : "Crewly HRMS API is unhealthy (MongoDB unavailable)",
+    status,
+    services: {
+      mongodb: mongodbUp ? "up" : "down",
+      redis: redis.status,
+      ...(redis.reason ? { redisReason: redis.reason } : {}),
+    },
     timestamp: new Date().toISOString(),
   });
 });

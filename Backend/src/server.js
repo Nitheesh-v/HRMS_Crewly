@@ -1,7 +1,12 @@
+import mongoose from 'mongoose';
 import app from './app.js';
 import env from './config/env.js';
 import connectDB from './config/db.js';
 import logger from './config/logger.js';
+import {
+  initializeRedis,
+  closeRedis,
+} from './config/redis.js';
 import {
   startSubscriptionLifecycle,
 } from './utils/subscriptionLifecycle.js';
@@ -26,6 +31,11 @@ const startServer = async () => {
   try {
     // Connect to MongoDB before accepting requests.
     await connectDB();
+
+    // Phase 28.1 — optional Redis infrastructure. Never throws at the
+    // API: unavailability degrades to a safe "down" state with bounded
+    // background reconnect (no business workflow depends on Redis yet).
+    await initializeRedis();
 
     // Seed and run one-time migrations for centralized plans.
     await ensureDefaultPlans();
@@ -57,16 +67,44 @@ const startServer = async () => {
     // Start the daily subscription lifecycle worker.
     startSubscriptionLifecycle();
 
+    let shuttingDown = false;
+
     const shutdown = (
       signal
     ) => {
+      if (shuttingDown) return;
+      shuttingDown = true;
+
       logger.info(
         `${signal} received. Shutting down gracefully...`
       );
 
-      server.close(() => {
+      // Hard stop so shutdown can never hang the process.
+      const hardStop = setTimeout(
+        () => {
+          logger.error(
+            'Graceful shutdown timed out after 10s — forcing exit.'
+          );
+          process.exit(1);
+        },
+        10000
+      );
+      hardStop.unref();
+
+      server.close(async () => {
         logger.info(
           'HTTP server closed.'
+        );
+
+        // Phase 28.1 — bounded Redis close (quit with timeout,
+        // disconnect fallback). Safe when Redis is disabled.
+        await closeRedis();
+
+        await mongoose.disconnect().catch(() => {});
+        clearTimeout(hardStop);
+
+        logger.info(
+          'Databases closed. Bye.'
         );
 
         process.exit(0);
