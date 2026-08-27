@@ -10,12 +10,14 @@
 // configuration.
 //
 // Output is secret-safe: never prints the connection URL, host,
-// username, or password — only safe failure categories.
+// username, or password — only safe failure categories and URL
+// shape diagnostics (length / spaces / scheme prefix).
 //
 // Exit codes (predictable policy):
 //   0 — Redis enabled and PING -> PONG succeeded
 //   1 — check could not be completed:
-//       Redis disabled / REDIS_URL missing / connection failed
+//       Redis disabled / REDIS_URL missing / URL malformed /
+//       connection failed
 // ============================================================
 
 import dotenv from 'dotenv';
@@ -38,6 +40,16 @@ const REASON_TEXT = {
   timeout: 'timed out — check network/firewall/endpoint availability',
   misconfigured: 'REDIS_URL is empty — set it privately in Backend/.env',
   connection_error: 'connection error — see safe classification above',
+};
+
+// Prints ONLY non-sensitive shape statistics — never the URL itself.
+const reportUrlShape = (url) => {
+  console.error(
+    `  URL shape: length=${url.length} ` +
+      `space=${url.includes(' ')} cr=${url.includes('\r')} ` +
+      `atSigns=${(url.match(/@/g) || []).length} ` +
+      `prefix="${url.slice(0, 8)}"`
+  );
 };
 
 const attemptConnect = (instance, timeoutMs) =>
@@ -79,12 +91,56 @@ const main = async () => {
     process.exit(1);
   }
 
+  // Safe URL shape validation BEFORE constructing the client.
+  // ioredis parses the URL inside its constructor, so a malformed
+  // value throws there — we detect it first and explain safely.
+  const rawUrl = String(process.env.REDIS_URL).trim();
+  let parsed;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    reportUrlShape(rawUrl);
+    console.error(
+      'Redis connectivity check failed: connection URL could not be parsed.'
+    );
+    console.error(
+      '  Common causes: a space or line break inside the value, a truncated'
+    );
+    console.error(
+      '  copy, or a missing "redis://" / "rediss://" prefix.'
+    );
+    console.error('  The URL itself is not printed.');
+    process.exit(1);
+  }
+
+  if (parsed.protocol !== 'redis:' && parsed.protocol !== 'rediss:') {
+    console.error(
+      `Redis connectivity check failed: unsupported scheme "${parsed.protocol}" — use redis:// or rediss://.`
+    );
+    process.exit(1);
+  }
+
+  if (!parsed.hostname) {
+    reportUrlShape(rawUrl);
+    console.error('Redis connectivity check failed: connection URL has no host.');
+    process.exit(1);
+  }
+
   console.log('Redis configuration detected.');
   console.log('Connecting...');
 
-  const instance = new Redis(String(process.env.REDIS_URL).trim(), {
-    ...createRedisOptions('general'),
-  });
+  let instance;
+  try {
+    instance = new Redis(rawUrl, {
+      ...createRedisOptions('general'),
+    });
+  } catch (error) {
+    reportUrlShape(rawUrl);
+    console.error(
+      `Redis connectivity check failed: ${error?.code || 'url_parse'} — connection URL was rejected by the client. The URL itself is not printed.`
+    );
+    process.exit(1);
+  }
 
   try {
     const result = await attemptConnect(instance, config.connectTimeoutMs);
@@ -116,8 +172,10 @@ const main = async () => {
 };
 
 main()
-  .catch(() => {
-    console.error('Redis connectivity check failed: unexpected error');
+  .catch((error) => {
+    console.error(
+      `Redis connectivity check failed: unexpected error (${error?.code || 'unknown'})`
+    );
     process.exit(1);
   })
   .then(() => {
