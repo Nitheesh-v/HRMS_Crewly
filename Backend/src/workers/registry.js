@@ -19,6 +19,18 @@
 // ============================================================
 
 import { JOB_NAMES } from '../config/queueConfig.js';
+import { classifySafeReason } from '../config/redis.js';
+
+// Safe classification of a FAILED JOB's error (logging only).
+// Real transport/Redis errors (they carry a .code or a RedisError
+// constructor) keep the 28.1 connection classification; anything a
+// processor throws is a processor error.
+export const classifyJobFailure = (error) => {
+  if (!error) return 'unknown';
+  const ctorName = String(error?.constructor?.name || '');
+  if (error.code || /Redis|Ioredis/i.test(ctorName)) return classifySafeReason(error);
+  return 'processor_error';
+};
 
 // Strict payload validator for infrastructure system jobs.
 // Known keys only; unknown keys are rejected (defense against

@@ -28,6 +28,7 @@ const {
   dispatchJob,
   registerProcessor,
   jobRegistry,
+  classifyJobFailure,
 } = await import('../src/config/queueConfig.js').then(async (qc) => {
   const reg = await import('../src/workers/registry.js');
   return { ...qc, ...reg };
@@ -200,6 +201,27 @@ test('registerProcessor validates its arguments', () => {
   assert.ok(jobRegistry.has('temp-test-job'));
   jobRegistry.delete('temp-test-job');
   assert.equal(jobRegistry.size, before);
+});
+
+// --- Safe job-failure classification -------------------------------------
+
+class FakeRedisError extends Error {}
+
+test('classifyJobFailure separates processor errors from connection errors', () => {
+  assert.equal(classifyJobFailure(new Error('controlled retry-test failure (attempt 1)')), 'processor_error');
+  assert.equal(classifyJobFailure(null), 'unknown');
+  assert.equal(classifyJobFailure(undefined), 'unknown');
+
+  const refused = new Error('connect ECONNREFUSED');
+  refused.code = 'ECONNREFUSED';
+  assert.equal(classifyJobFailure(refused), 'connection_refused');
+
+  const dns = new Error('getaddrinfo ENOTFOUND host');
+  dns.code = 'ENOTFOUND';
+  assert.equal(classifyJobFailure(dns), 'dns_resolution_failed');
+
+  const redisErr = new FakeRedisError('read timeout');
+  assert.equal(classifyJobFailure(redisErr), 'connection_error');
 });
 
 // --- Queue factory guards (no Redis required for these paths) ---------------

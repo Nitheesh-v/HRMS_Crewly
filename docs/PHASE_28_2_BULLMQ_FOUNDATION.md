@@ -130,6 +130,30 @@ counter includes the successful attempt, so it is not printed.) With the worker
 stopped it times out safely (15s) and prints: "the system worker is
 not running. Start it in a separate terminal: npm run worker:dev".
 
+## Graceful shutdown (Windows dev nuance)
+
+`npm run worker:dev` runs nodemon, and nodemon ALSO handles Ctrl+C. On
+Windows it kills the child node process (taskkill /f) before the
+worker's own close() finishes — so the final "Connections closed.
+Bye." line may be missing under nodemon. For a clean graceful-shutdown
+demo use the plain process:
+
+```powershell
+npm run worker        # then Ctrl+C once
+```
+
+Expected:
+```
+[Worker] SIGINT received — shutting down gracefully...
+[Worker] Closing (stopping acceptance, finishing active jobs)
+[Worker] Connections closed. Bye.
+```
+(A second Ctrl+C = "Second signal received — forcing immediate exit.")
+In production the worker runs under a process manager (PM2/systemd/
+container) which sends SIGTERM → the same graceful path. Jobs can
+never be lost either way: unfinished jobs' locks expire and BullMQ
+re-queues them (at-least-once).
+
 ## Failure behavior (documented)
 
 - Worker, Redis down at startup → safe error, exit 1 (no credentials).

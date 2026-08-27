@@ -40,7 +40,7 @@ import {
   parseWorkerConcurrency,
   redactConnectionSecrets,
 } from '../config/queueConfig.js';
-import { dispatchJob } from './registry.js';
+import { dispatchJob, classifyJobFailure } from './registry.js';
 
 const SHUTDOWN_HARD_STOP_MS = 10000;
 
@@ -120,7 +120,7 @@ const startWorker = async () => {
   worker.on('failed', (job, error) => {
     logger.warn(
       `[Worker] failed: ${job?.name || 'unknown'} (id=${job?.id || 'n/a'}, ` +
-        `attempt=${job?.attemptsStarted || 'n/a'}, reason=${classifySafeReason(error)}, ` +
+        `attempt=${job?.attemptsStarted || 'n/a'}, reason=${classifyJobFailure(error)}, ` +
         `detail=${safeErrorText(error)})`
     );
   });
