@@ -117,7 +117,9 @@ npm run test:bullmq:live    # opt-in live integration (isolated prefix)
 
 Expected: `queue:check` prints the prefix, `SYSTEM_HEALTH_CHECK
 enqueued (id=...)`, then `SYSTEM_HEALTH_CHECK COMPLETED (id=...,
-attempts=1, failedAttempts=0)` + safe result JSON. With the worker
+attempts=1)` + safe result JSON. (`attempts` = how many times the
+worker actually ran the processor; BullMQ's separate `attemptsMade`
+counter includes the successful attempt, so it is not printed.) With the worker
 stopped it times out safely (15s) and prints: "the system worker is
 not running. Start it in a separate terminal: npm run worker:dev".
 

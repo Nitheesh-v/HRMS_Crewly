@@ -152,7 +152,7 @@ const main = async () => {
         ? redactConnectionSecrets(JSON.stringify(job.returnvalue))
         : '(no result)';
     console.log(
-      `${jobName} COMPLETED (id=${job.id}, attempts=${job.attemptsStarted}, failedAttempts=${job.attemptsMade}).`
+      `${jobName} COMPLETED (id=${job.id}, attempts=${job.attemptsStarted}).`
     );
     console.log(`Result: ${result}`);
     if (wantDuplicate) {
@@ -160,9 +160,13 @@ const main = async () => {
         'Duplicate job id collapsed into a single job — idempotency behavior confirmed.'
       );
     }
-    if (wantRetry && job.attemptsMade >= 1) {
+    if (wantRetry && job.attemptsStarted >= 2) {
       console.log(
-        'Retry confirmed: attempt 1 failed, backoff applied, later attempt completed.'
+        'Retry confirmed: the processor ran 2 times (attempt 1 failed by design, backoff applied, attempt 2 completed).'
+      );
+    } else if (wantRetry) {
+      console.log(
+        'WARNING: job completed on the FIRST attempt — the retry was not exercised.'
       );
     }
     return;
