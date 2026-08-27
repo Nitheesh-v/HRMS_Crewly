@@ -1,10 +1,13 @@
 // ============================================================
 // 🚦 PHASE 28.2 — BULLMQ CONNECTIVITY/CYCLE CHECK
 //
-//   npm run queue:check                  → SYSTEM_HEALTH_CHECK round-trip
-//   npm run queue:check -- --retry-test  → controlled fail-once retry proof
-//   npm run queue:check -- --duplicate-test → duplicate job id collapse proof
-//   npm run queue:check -- --timeout 20000
+//   npm run queue:check         → SYSTEM_HEALTH_CHECK round-trip
+//   npm run queue:check:retry   → controlled fail-once retry proof
+//   npm run queue:check:duplicate → duplicate job id collapse proof
+//   node scripts/queue-check.js --retry-test [--timeout 20000]
+//
+// (Dedicated scripts because some npm versions silently strip
+//  --flag arguments after `npm run ... --`.)
 //
 // Flow: load env → confirm Redis configured → open system Queue
 // (dedicated connection, environment prefix) → enqueue → poll job

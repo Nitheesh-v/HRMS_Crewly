@@ -110,10 +110,17 @@ npm run test:bullmq         # hermetic 28.2 unit tests
 npm run redis:check         # 28.1 PING -> PONG
 npm run worker:dev          # terminal 2: system worker
 npm run queue:check         # terminal 3: health round-trip
-npm run queue:check -- --retry-test
-npm run queue:check -- --duplicate-test
+npm run queue:check:retry   # controlled fail-once retry proof
+npm run queue:check:duplicate # duplicate job id collapse proof
 npm run test:bullmq:live    # opt-in live integration (isolated prefix)
 ```
+
+NOTE: use the dedicated `queue:check:*` scripts (NOT
+`npm run queue:check -- --retry-test`). Some npm versions silently
+strip `--flag` arguments after `--` (keeps only bare values), which
+made the flag-based form run as a plain health check. Running
+`node scripts/queue-check.js --retry-test [--timeout 20000]`
+directly always works too.
 
 Expected: `queue:check` prints the prefix, `SYSTEM_HEALTH_CHECK
 enqueued (id=...)`, then `SYSTEM_HEALTH_CHECK COMPLETED (id=...,

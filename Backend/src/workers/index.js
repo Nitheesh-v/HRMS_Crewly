@@ -167,7 +167,12 @@ const startWorker = async () => {
   // --- Graceful shutdown (this process's own handlers) ---------------
   let shuttingDown = false;
   const shutdown = (signal) => {
-    if (shuttingDown) return;
+    if (shuttingDown) {
+      // Second signal: stop waiting, exit immediately (user pressed
+      // Ctrl+C again). Standard force-quit behavior.
+      logger.error('[Worker] Second signal received — forcing immediate exit.');
+      process.exit(1);
+    }
     shuttingDown = true;
     logger.info(`[Worker] ${signal} received — shutting down gracefully...`);
 
