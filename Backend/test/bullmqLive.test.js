@@ -53,7 +53,13 @@ const waitForJob = async (queue, jobId, timeoutMs = 30000) => {
     const job = await queue.getJob(jobId);
     if (job) {
       const state = await job.getState();
-      if (state === 'completed' || state === 'failed') return job;
+      if (state === 'completed' || state === 'failed') {
+        // Re-fetch after the terminal state: hash read and state
+        // read are separate commands; the atomic completion script
+        // may have landed between them (stale returnvalue).
+        const fresh = await queue.getJob(jobId);
+        return fresh ?? job;
+      }
     }
     await sleep(250);
   }

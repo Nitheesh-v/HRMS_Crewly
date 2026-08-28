@@ -60,13 +60,23 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Poll a job to a terminal state (bounded). Returns the final Job
 // or null on timeout.
+//
+// NOTE: the job hash (getJob) and the state (getState) are TWO
+// separate Redis reads. BullMQ finalizes a job with ONE atomic
+// script, so if the hash read lands just before that script, the
+// job object is stale (no returnvalue/failedReason) even though
+// getState already reports terminal. Re-fetch ONCE after the
+// terminal state is observed — by then the script has landed.
 const waitForJob = async (queue, jobId, timeoutMs) => {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const job = await queue.getJob(jobId);
     if (job) {
       const state = await job.getState();
-      if (state === 'completed' || state === 'failed') return job;
+      if (state === 'completed' || state === 'failed') {
+        const fresh = await queue.getJob(jobId);
+        return fresh ?? job;
+      }
     }
     await sleep(POLL_MS);
   }
@@ -150,10 +160,13 @@ const main = async () => {
 
   const state = await job.getState();
   if (state === 'completed') {
+    const rv = job.returnvalue;
     const result =
-      job.returnvalue && typeof job.returnvalue === 'object'
-        ? redactConnectionSecrets(JSON.stringify(job.returnvalue))
-        : '(no result)';
+      rv && typeof rv === 'object'
+        ? redactConnectionSecrets(JSON.stringify(rv))
+        : typeof rv === 'string'
+          ? `(string) ${redactConnectionSecrets(rv).slice(0, 200)}`
+          : '(no result)';
     console.log(
       `${jobName} COMPLETED (id=${job.id}, attempts=${job.attemptsStarted}).`
     );
