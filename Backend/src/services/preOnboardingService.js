@@ -18,9 +18,13 @@ import {
 } from '../utils/fieldEncryption.js';
 import {
   preOnboardingAccessEmail,
-  preOnboardingDocumentDecisionEmail,
   sendMail,
 } from '../utils/mailer.js';
+import { JOB_NAMES } from '../config/queueConfig.js';
+import {
+  requestEmailDelivery,
+  buildEventKey,
+} from './emailDeliveryService.js';
 import { recordAudit } from '../utils/securityauditService.js';
 import {
   nextCandidateDocumentCode,
@@ -1313,20 +1317,30 @@ export const verifyCandidateDocument = async ({
     critical: true,
   });
 
-  const requirement = await CandidateDocumentRequirement.findOne({
-    _id: document.candidateRequirement,
+  // 28.3: async email delivery (no token). The worker re-checks the
+  // document status + version before sending (stale review skipped).
+  await requestEmailDelivery({
+    jobName: JOB_NAMES.EMAIL_PREONBOARDING_DOC_DECISION,
+    eventType: 'PREONBOARDING_DOC_VERIFIED',
+    eventKey: buildEventKey(
+      'PREONBOARDING_DOC',
+      preOnboarding._id,
+      document._id,
+      'VERIFIED',
+      `v${document.currentVersion}`
+    ),
     companyId,
-  }).lean();
-
-  await sendMail({
-    to: preOnboarding.candidateSnapshot.email,
-    ...preOnboardingDocumentDecisionEmail({
-      candidateName: preOnboarding.candidateSnapshot.name,
-      companyName: preOnboarding.companySnapshot.name,
-      requirementName: requirement?.nameSnapshot || document.requirementCode,
+    entityType: 'CANDIDATE_DOCUMENT',
+    entityId: document._id,
+    recipientType: 'CANDIDATE',
+    recipientReference: preOnboarding.candidate,
+    payload: {
+      preOnboardingId: preOnboarding._id,
+      documentId: document._id,
+      requirementId: document.candidateRequirement,
       decision: 'VERIFIED',
-    }),
-    sensitive: true,
+      documentVersion: document.currentVersion,
+    },
   });
 
   const refreshed = await refreshCaseCounters({
@@ -1477,21 +1491,31 @@ export const rejectCandidateDocument = async ({
     critical: true,
   });
 
-  const requirement = await CandidateDocumentRequirement.findOne({
-    _id: document.candidateRequirement,
+  // 28.3: async email delivery (no token). The current rejection
+  // reason is re-read from MongoDB by the worker (never from the
+  // queue payload).
+  await requestEmailDelivery({
+    jobName: JOB_NAMES.EMAIL_PREONBOARDING_DOC_DECISION,
+    eventType: 'PREONBOARDING_DOC_RESUBMISSION_REQUIRED',
+    eventKey: buildEventKey(
+      'PREONBOARDING_DOC',
+      preOnboarding._id,
+      document._id,
+      'RESUBMISSION_REQUIRED',
+      `v${document.currentVersion}`
+    ),
     companyId,
-  }).lean();
-
-  await sendMail({
-    to: preOnboarding.candidateSnapshot.email,
-    ...preOnboardingDocumentDecisionEmail({
-      candidateName: preOnboarding.candidateSnapshot.name,
-      companyName: preOnboarding.companySnapshot.name,
-      requirementName: requirement?.nameSnapshot || document.requirementCode,
+    entityType: 'CANDIDATE_DOCUMENT',
+    entityId: document._id,
+    recipientType: 'CANDIDATE',
+    recipientReference: preOnboarding.candidate,
+    payload: {
+      preOnboardingId: preOnboarding._id,
+      documentId: document._id,
+      requirementId: document.candidateRequirement,
       decision: 'RESUBMISSION_REQUIRED',
-      reason: rejectionReason,
-    }),
-    sensitive: true,
+      documentVersion: document.currentVersion,
+    },
   });
 
   const refreshed = await refreshCaseCounters({
@@ -1649,15 +1673,20 @@ export const markPreOnboardingReady = async ({
     actorId,
   });
 
-  await sendMail({
-    to: updated.candidateSnapshot.email,
-    ...preOnboardingDocumentDecisionEmail({
-      candidateName: updated.candidateSnapshot.name,
-      companyName: updated.companySnapshot.name,
-      requirementName: 'Pre-onboarding',
+  // 28.3: async email delivery (no token).
+  await requestEmailDelivery({
+    jobName: JOB_NAMES.EMAIL_PREONBOARDING_DOC_DECISION,
+    eventType: 'PREONBOARDING_READY_TO_JOIN',
+    eventKey: buildEventKey('PREONBOARDING_READY', updated._id),
+    companyId,
+    entityType: 'PRE_ONBOARDING',
+    entityId: updated._id,
+    recipientType: 'CANDIDATE',
+    recipientReference: updated.candidate,
+    payload: {
+      preOnboardingId: updated._id,
       decision: 'READY_TO_JOIN',
-    }),
-    sensitive: true,
+    },
   });
 
   return {

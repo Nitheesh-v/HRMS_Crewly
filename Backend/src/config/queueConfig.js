@@ -26,11 +26,24 @@ export const QUEUE_NAMES = {
   ANALYTICS: 'analytics',
 };
 
-// Centralized job names (28.2 defines the two infrastructure jobs).
+// Centralized job names (28.2: infrastructure jobs; 28.3: email jobs).
+// Email jobs are domain-oriented; there is deliberately NO
+// SEND_ARBITRARY_EMAIL job — only trusted business services dispatch.
 export const JOB_NAMES = {
   SYSTEM_HEALTH_CHECK: 'system-health-check',
   SYSTEM_RETRY_TEST: 'system-retry-test',
+  EMAIL_APPLICATION_RECEIVED: 'email-application-received',
+  EMAIL_PIPELINE_UPDATE: 'email-pipeline-update',
+  EMAIL_INTERVIEW_CANDIDATE: 'email-interview-candidate',
+  EMAIL_INTERVIEW_INTERVIEWER: 'email-interview-interviewer',
+  EMAIL_OFFER_DECISION: 'email-offer-decision',
+  EMAIL_OFFER_WITHDRAWN: 'email-offer-withdrawn',
+  EMAIL_PREONBOARDING_DOC_DECISION: 'email-preonboarding-doc-decision',
 };
+
+export const EMAIL_JOB_NAMES = Object.values(JOB_NAMES).filter((name) =>
+  name.startsWith('email-')
+);
 
 // --- Defaults ------------------------------------------------------
 
@@ -55,6 +68,25 @@ export const getDefaultJobOptions = () => ({
   backoff: { ...DEFAULT_JOB_OPTIONS.backoff },
   removeOnComplete: { ...DEFAULT_JOB_OPTIONS.removeOnComplete },
   removeOnFail: { ...DEFAULT_JOB_OPTIONS.removeOnFail },
+});
+
+// Email-specific retry policy (28.3): SMTP failures are usually
+// transient; 5 attempts with 2s exponential backoff (~30s total)
+// balances prompt retry against provider load. Non-retryable
+// failures (auth, invalid recipient, config) fail fast inside the
+// processor and never consume these attempts.
+export const EMAIL_JOB_OPTIONS = Object.freeze({
+  attempts: 5,
+  backoff: { type: 'exponential', delay: 2000 },
+  removeOnComplete: { count: 100 },
+  removeOnFail: { count: 500 },
+});
+
+export const getEmailJobOptions = () => ({
+  attempts: EMAIL_JOB_OPTIONS.attempts,
+  backoff: { ...EMAIL_JOB_OPTIONS.backoff },
+  removeOnComplete: { ...EMAIL_JOB_OPTIONS.removeOnComplete },
+  removeOnFail: { ...EMAIL_JOB_OPTIONS.removeOnFail },
 });
 
 // --- Prefix / environment isolation --------------------------------
@@ -85,6 +117,22 @@ export const parseWorkerConcurrency = (source = process.env) => {
   return Math.min(
     MAX_WORKER_CONCURRENCY,
     Math.max(MIN_WORKER_CONCURRENCY, Math.trunc(parsed))
+  );
+};
+
+// Email worker: lower ceiling than the system worker on purpose.
+// SMTP providers rate-limit sending; email is externally bounded
+// (future CPU-bound workers like resume parsing get their own vars).
+export const DEFAULT_EMAIL_WORKER_CONCURRENCY = 2;
+const MIN_EMAIL_WORKER_CONCURRENCY = 1;
+const MAX_EMAIL_WORKER_CONCURRENCY = 10;
+
+export const parseEmailWorkerConcurrency = (source = process.env) => {
+  const parsed = Number(source.EMAIL_WORKER_CONCURRENCY);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_EMAIL_WORKER_CONCURRENCY;
+  return Math.min(
+    MAX_EMAIL_WORKER_CONCURRENCY,
+    Math.max(MIN_EMAIL_WORKER_CONCURRENCY, Math.trunc(parsed))
   );
 };
 

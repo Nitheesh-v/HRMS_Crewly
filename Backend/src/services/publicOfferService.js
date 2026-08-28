@@ -2,7 +2,11 @@ import CandidateHistory from '../models/CandidateHistory.js';
 import OfferLetter from '../models/OfferLetter.js';
 import ApiError from '../utils/ApiError.js';
 import { recordAudit } from '../utils/securityauditService.js';
-import { offerDecisionConfirmationEmail, sendMail } from '../utils/mailer.js';
+import { JOB_NAMES } from '../config/queueConfig.js';
+import {
+  requestEmailDelivery,
+  buildEventKey,
+} from './emailDeliveryService.js';
 import { transitionCandidateStage } from './candidatePipelineService.js';
 import { getStoredOfferDocument } from './offerDocumentStorageService.js';
 import {
@@ -329,10 +333,18 @@ const decision = async ({ rawToken, action, rejection = {}, requestContext }) =>
     critical: true,
   });
   await notifyOfferDecision({ companyId: offer.companyId, offer: updated, action: finalStatus });
-  await sendMail({
-    to: updated.candidateSnapshot.email,
-    ...offerDecisionConfirmationEmail({ offer: updated, decision: finalStatus }),
-    sensitive: true,
+  // 28.3: async email delivery (no portal token in this message).
+  // The worker re-checks the offer status before sending (stale skip).
+  await requestEmailDelivery({
+    jobName: JOB_NAMES.EMAIL_OFFER_DECISION,
+    eventType: `OFFER_${finalStatus}`,
+    eventKey: buildEventKey('OFFER_DECISION', offer._id, finalStatus),
+    companyId: offer.companyId,
+    entityType: 'OFFER',
+    entityId: offer._id,
+    recipientType: 'CANDIDATE',
+    recipientReference: offer.candidate,
+    payload: { offerId: offer._id, decision: finalStatus },
   });
   return { offer: publicDto(updated), idempotent: false };
 };

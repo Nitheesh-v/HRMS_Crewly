@@ -12,6 +12,7 @@ process.env.NODE_ENV = 'test';
 const [
   { default: AuditLog },
   { default: Candidate },
+  { default: EmailDelivery },
   { default: CandidateHistory },
   { default: CandidateResume },
   { default: Company },
@@ -29,6 +30,7 @@ const [
 ] = await Promise.all([
   import('../src/models/AuditLog.js'),
   import('../src/models/Candidate.js'),
+  import('../src/models/EmailDelivery.js'),
   import('../src/models/CandidateHistory.js'),
   import('../src/models/CandidateResume.js'),
   import('../src/models/Company.js'),
@@ -337,7 +339,10 @@ test('public application builds controlled candidate, resume, history and PII-sa
     [CandidateHistory, 'create'],
     [CandidateHistory, 'deleteMany'],
     [TenantSequence, 'findOneAndUpdate'],
-    [AuditLog, 'create']
+    [AuditLog, 'create'],
+    [EmailDelivery, 'findOne'],
+    [EmailDelivery, 'create'],
+    [EmailDelivery, 'updateOne']
   );
   let candidatePayload;
   let resumePayload;
@@ -364,6 +369,15 @@ test('public application builds controlled candidate, resume, history and PII-sa
     };
     CandidateHistory.deleteMany = async () => ({ deletedCount: 1 });
     AuditLog.create = async (payload) => payload;
+    // 28.3: the confirmation is a queued delivery intent. With no
+    // Redis in the test env the enqueue fails and the delivery is
+    // marked FAILED_TO_QUEUE — the application still succeeds.
+    EmailDelivery.findOne = async () => null;
+    EmailDelivery.create = async (payload) => ({
+      _id: '64b0000000000000000000e1',
+      ...payload,
+    });
+    EmailDelivery.updateOne = async () => ({ modifiedCount: 1 });
 
     const result = await applicationService.submitCandidateApplication({
       companySlug: 'acme-labs',
@@ -410,10 +424,17 @@ test('public application builds controlled candidate, resume, history and PII-sa
     assert.equal(resumePayload.scanStatus, 'NOT_CONFIGURED');
     assert.ok(resumePayload.storageKey);
     assert.equal(historyPayloads[0].action, 'CANDIDATE_APPLIED');
+    // 28.3: the confirmation is a queued delivery intent, not a
+    // synchronous send. The record exists either way; the queue
+    // outcome depends on whether Redis is available in the env.
+    const confirmation = historyPayloads.find(
+      (payload) =>
+        payload.action === 'APPLICATION_CONFIRMATION_REQUESTED' ||
+        payload.action === 'APPLICATION_CONFIRMATION_FAILED_TO_QUEUE'
+    );
+    assert.ok(confirmation, 'application confirmation record must exist');
     assert.ok(
-      historyPayloads.some(
-        (payload) => payload.action === 'APPLICATION_CONFIRMATION_SENT'
-      )
+      ['QUEUED', 'FAILED_TO_QUEUE'].includes(confirmation.metadata.deliveryStatus)
     );
     assert.deepEqual(Object.keys(result).sort(), [
       'applicationReference',
@@ -530,7 +551,7 @@ test('the same normalized email remains independently scoped to each job', async
   }
 });
 
-test('confirmation delivery failure is recorded without throwing or deleting the application', async () => {
+test('confirmation queue failure is recorded without throwing or deleting the application', async () => {
   const restore = restorable([CandidateHistory, 'create']);
   let historyPayload;
 
@@ -540,7 +561,11 @@ test('confirmation delivery failure is recorded without throwing or deleting the
       return payload;
     };
 
-    const result = await applicationJobs.sendApplicationConfirmation({
+    // 28.3: the transport is the BullMQ queue. A queue failure must
+    // be recorded (FAILED_TO_QUEUE) and never thrown — the business
+    // side (the committed application) is untouched, and there is no
+    // synchronous fallback.
+    const result = await applicationJobs.requestApplicationConfirmation({
       candidate: {
         _id: '64b000000000000000000031',
         companyId: eligibleCompany._id,
@@ -550,14 +575,16 @@ test('confirmation delivery failure is recorded without throwing or deleting the
       },
       company: eligibleCompany,
       job: eligibleJob,
-      deliver: async () => {
-        throw new Error('simulated transport failure');
+      dispatch: async () => {
+        throw new Error('simulated queue outage');
       },
     });
 
-    assert.equal(result.delivered, false);
-    assert.equal(historyPayload.action, 'APPLICATION_CONFIRMATION_FAILED');
-    assert.equal(historyPayload.metadata.delivered, false);
+    assert.equal(result.queued, false);
+    assert.equal(result.deliveryStatus, 'FAILED_TO_QUEUE');
+    assert.equal(historyPayload.action, 'APPLICATION_CONFIRMATION_FAILED_TO_QUEUE');
+    assert.equal(historyPayload.metadata.deliveryStatus, 'FAILED_TO_QUEUE');
+    assert.equal(historyPayload.metadata.deliveryId, null);
     assert.equal(
       JSON.stringify(historyPayload.metadata).includes('ada@example.com'),
       false

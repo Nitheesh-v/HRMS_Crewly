@@ -1,12 +1,16 @@
 // ============================================================
-// ⚙️ PHASE 28.2 — CREWLY SYSTEM WORKER (separate process)
+// ⚙️ PHASE 28.2/28.3 — CREWLY WORKER PROCESS
 //
 //   npm run worker:dev   (nodemon)
 //   npm run worker       (plain node)
 //
-// Architecture: the Express API and this Worker are separate
-// processes by design. The API serves HTTP; the Worker processes
-// background jobs. They scale independently, and a Worker crash
+// One process runs both BullMQ workers:
+//   - system queue (28.2 infrastructure jobs)
+//   - email queue  (28.3 email delivery jobs)
+//
+// Architecture: the Express API and this Worker process are
+// separate by design. The API serves HTTP; workers process
+// background jobs. They scale independently, and a worker crash
 // never takes down the API.
 //
 // UNLIKE the API (28.1 degraded mode), a WORKER REQUIRES Redis:
@@ -14,12 +18,12 @@
 // process fails fast with a safe error (no credentials logged).
 //
 // CONNECTION OWNERSHIP (verified in BullMQ 6.3.1 source):
-//   - This process creates ONE dedicated ioredis instance
-//     (bullmq-worker options: maxRetriesPerRequest null).
-//   - BullMQ uses it as the worker's main connection (shared —
+//   - One dedicated ioredis instance per worker (bullmq-worker
+//     options: maxRetriesPerRequest null).
+//   - BullMQ uses each as the worker's main connection (shared —
 //     BullMQ will NOT close it) and auto-duplicates it for the
-//     dedicated blocking connection (BullMQ closes the duplicate).
-//   - We close our instance explicitly after worker.close().
+//     blocking connection (BullMQ closes the duplicate).
+//   - We close our instances explicitly after worker.close().
 //
 // SHUTDOWN (SIGINT/SIGTERM): stop accepting work, let active jobs
 // finish (bounded 10s hard stop), close connections, exit.
@@ -38,15 +42,68 @@ import {
   QUEUE_NAMES,
   getQueuePrefix,
   parseWorkerConcurrency,
+  parseEmailWorkerConcurrency,
   redactConnectionSecrets,
+  EMAIL_JOB_NAMES,
 } from '../config/queueConfig.js';
-import { dispatchJob, classifyJobFailure } from './registry.js';
+import { dispatchJob, classifyJobFailure, registerProcessor, jobRegistry } from './registry.js';
+import { registerEmailProcessors } from './emailProcessor.js';
+import { markEmailDelivery } from '../services/emailDeliveryService.js';
 
 const SHUTDOWN_HARD_STOP_MS = 10000;
 
 // Safe error text: redact anything that could carry credentials.
 const safeErrorText = (error) =>
-  redactConnectionSecrets(`${error?.message || 'unknown error'}`.slice(0, 200));
+  redactConnectionSecrets(`${error?.message || 'unknown error'}`).slice(0, 200);
+
+// One set of safe event handlers per worker (queue label included).
+// Never logs full job.data — email payloads contain ids only, but
+// the rule is uniform for all future jobs.
+const attachEventHandlers = (worker, label) => {
+  worker.on('ready', () => {
+    logger.info(
+      `[Worker] ${label} ready (queue=${worker.name}, concurrency=${worker.concurrency})`
+    );
+  });
+
+  worker.on('active', (job) => {
+    logger.info(`[Worker] active: ${job.name} (id=${job.id}, attempt=${job.attemptsStarted})`);
+  });
+
+  worker.on('completed', (job) => {
+    logger.info(`[Worker] completed: ${job.name} (id=${job.id}, attempts=${job.attemptsStarted})`);
+  });
+
+  worker.on('failed', (job, error) => {
+    logger.warn(
+      `[Worker] failed: ${job?.name || 'unknown'} (id=${job?.id || 'n/a'}, ` +
+        `attempt=${job?.attemptsStarted || 'n/a'}, reason=${classifyJobFailure(error)}, ` +
+        `detail=${safeErrorText(error)})`
+    );
+    // When an email job exhausts its retries, persist the terminal
+    // state on the delivery record (Mongo is the audit of record).
+    if (job && EMAIL_JOB_NAMES.includes(job.name)) {
+      markEmailDelivery(job.data?.deliveryId, job.data?.companyId, {
+        status: 'FAILED',
+        lastFailureCategory: 'RETRIES_EXHAUSTED',
+      }).catch(() => {});
+    }
+  });
+
+  worker.on('stalled', (jobId) => {
+    logger.warn(`[Worker] stalled job detected (id=${jobId}) — BullMQ will re-queue it`);
+  });
+
+  worker.on('error', (error) => {
+    // Connection-level error; ioredis retries internally with its
+    // default bounded strategy. Log safely, never crash on it.
+    logger.warn(`[Worker] ${label} error (${classifySafeReason(error)}): ${safeErrorText(error)}`);
+  });
+
+  worker.on('closing', () => {
+    logger.info(`[Worker] ${label} closing (stopping acceptance, finishing active jobs)`);
+  });
+};
 
 const startWorker = async () => {
   dotenv.config();
@@ -70,99 +127,88 @@ const startWorker = async () => {
 
   const prefix = getQueuePrefix();
   const concurrency = parseWorkerConcurrency();
+  const emailConcurrency = parseEmailWorkerConcurrency();
 
   logger.info(
-    `[Worker] Starting system worker (prefix=${prefix}, concurrency=${concurrency})`
+    `[Worker] Starting workers (prefix=${prefix}, system concurrency=${concurrency}, email concurrency=${emailConcurrency})`
   );
 
-  // Dedicated worker connection (never the API's general client).
-  const connection = new Redis(String(process.env.REDIS_URL).trim(), {
-    ...createRedisOptions('bullmq-worker'),
-    connectionName: `crewly-worker-system`,
-  });
+  // Register the 28.3 email processors in the shared registry.
+  registerEmailProcessors({ registerProcessor });
 
-  let worker;
+  // One dedicated connection per worker (never the API's client).
+  const createWorkerConnection = (connectionName) =>
+    new Redis(String(process.env.REDIS_URL).trim(), {
+      ...createRedisOptions('bullmq-worker'),
+      connectionName,
+    });
+
+  const connections = [];
+  const workers = [];
+
   try {
-    worker = new Worker(QUEUE_NAMES.SYSTEM, dispatchJob, {
-      connection,
+    const systemConnection = createWorkerConnection('crewly-worker-system');
+    connections.push(systemConnection);
+    const systemWorker = new Worker(QUEUE_NAMES.SYSTEM, dispatchJob, {
+      connection: systemConnection,
       prefix,
       concurrency,
     });
+    workers.push(systemWorker);
+    attachEventHandlers(systemWorker, 'system worker');
+
+    const emailConnection = createWorkerConnection('crewly-worker-email');
+    connections.push(emailConnection);
+    const emailWorker = new Worker(QUEUE_NAMES.EMAIL, dispatchJob, {
+      connection: emailConnection,
+      prefix,
+      concurrency: emailConcurrency,
+    });
+    workers.push(emailWorker);
+    attachEventHandlers(emailWorker, 'email worker');
   } catch (error) {
     logger.error(`[Worker] Startup failed: ${safeErrorText(error)}`);
-    try {
-      connection.disconnect();
-    } catch {
-      /* ignore */
+    for (const connection of connections) {
+      try {
+        connection.disconnect();
+      } catch {
+        /* ignore */
+      }
     }
     process.exit(1);
   }
 
-  // --- Safe event logging (never logs full job.data) ----------------
-  worker.on('ready', () => {
-    logger.info(
-      `[Worker] System worker ready (queue=${QUEUE_NAMES.SYSTEM}, prefix=${prefix}, concurrency=${concurrency})`
-    );
-  });
-
-  worker.on('active', (job) => {
-    logger.info(
-      `[Worker] active: ${job.name} (id=${job.id}, attempt=${job.attemptsStarted})`
-    );
-  });
-
-  worker.on('completed', (job) => {
-    logger.info(
-      `[Worker] completed: ${job.name} (id=${job.id}, attempts=${job.attemptsStarted})`
-    );
-  });
-
-  worker.on('failed', (job, error) => {
-    logger.warn(
-      `[Worker] failed: ${job?.name || 'unknown'} (id=${job?.id || 'n/a'}, ` +
-        `attempt=${job?.attemptsStarted || 'n/a'}, reason=${classifyJobFailure(error)}, ` +
-        `detail=${safeErrorText(error)})`
-    );
-  });
-
-  worker.on('stalled', (jobId) => {
-    logger.warn(`[Worker] stalled job detected (id=${jobId}) — BullMQ will re-queue it`);
-  });
-
-  worker.on('error', (error) => {
-    // Connection-level error; ioredis retries internally with its
-    // default bounded strategy. Log safely, never crash on it.
-    logger.warn(
-      `[Worker] worker error (${classifySafeReason(error)}): ${safeErrorText(error)}`
-    );
-  });
-
-  worker.on('closing', () => {
-    logger.info('[Worker] Closing (stopping acceptance, finishing active jobs)');
-  });
-
-  // --- Readiness gate: worker must see Redis or fail fast -----------
+  // --- Readiness gate: BOTH workers must see Redis or fail fast -----
   const ready = await Promise.race([
-    worker
-      .waitUntilReady()
-      .then(() => true)
-      .catch(() => false),
+    Promise.all(
+      workers.map((w) =>
+        w
+          .waitUntilReady()
+          .then(() => true)
+          .catch(() => false)
+      )
+    ).then((results) => results.every(Boolean)),
     new Promise((resolve) => setTimeout(() => resolve(false), config.connectTimeoutMs)),
   ]);
 
   if (!ready) {
     logger.error(
-      `[Worker] Redis unavailable within ${config.connectTimeoutMs}ms — worker cannot start. ` +
+      `[Worker] Redis unavailable within ${config.connectTimeoutMs}ms — workers cannot start. ` +
         'Check REDIS_URL privately; the API is unaffected.'
     );
-    await worker.close().catch(() => {});
-    try {
-      connection.disconnect();
-    } catch {
-      /* ignore */
+    await Promise.allSettled(workers.map((w) => w.close().catch(() => {})));
+    for (const connection of connections) {
+      try {
+        connection.disconnect();
+      } catch {
+        /* ignore */
+      }
     }
     process.exit(1);
   }
+
+  const registrySize = jobRegistry.size;
+  logger.info(`[Worker] Workers online (prefix=${prefix}, registered jobs=${registrySize})`);
 
   // --- Graceful shutdown (this process's own handlers) ---------------
   let shuttingDown = false;
@@ -182,19 +228,22 @@ const startWorker = async () => {
     }, SHUTDOWN_HARD_STOP_MS);
     hardStop.unref();
 
-    worker
-      .close()
-      .catch((error) => logger.warn(`[Worker] close() error: ${safeErrorText(error)}`))
-      .finally(async () => {
+    Promise.allSettled(
+      workers.map((w) =>
+        w.close().catch((error) => logger.warn(`[Worker] close() error: ${safeErrorText(error)}`))
+      )
+    ).finally(async () => {
+      for (const connection of connections) {
         try {
           connection.disconnect();
         } catch {
           /* ignore */
         }
-        clearTimeout(hardStop);
-        logger.info('[Worker] Connections closed. Bye.');
-        process.exit(0);
-      });
+      }
+      clearTimeout(hardStop);
+      logger.info('[Worker] Connections closed. Bye.');
+      process.exit(0);
+    });
   };
 
   ['SIGINT', 'SIGTERM'].forEach((signal) => {

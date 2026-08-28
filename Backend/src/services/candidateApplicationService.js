@@ -6,7 +6,7 @@ import { nextCandidateCode } from '../utils/candidateIdentifiers.js';
 import { recordAudit } from '../utils/securityauditService.js';
 import { checkLimit } from '../utils/subscriptionEngine.js';
 import { resolvePublicApplicationTarget } from './publicCareerService.js';
-import { sendApplicationConfirmation } from './candidateApplicationJobs.js';
+import { requestApplicationConfirmation } from './candidateApplicationJobs.js';
 import { dispatchResumeProcessing } from './resumeProcessingDispatcher.js';
 import { inspectResumeFile } from './resumeSecurityService.js';
 import {
@@ -222,7 +222,8 @@ export const submitCandidateApplication = async ({
     critical: true,
   });
 
-  await sendApplicationConfirmation({ candidate, company, job });
+  // 28.3: async email handoff — the request never waits for SMTP.
+  await requestApplicationConfirmation({ candidate, company, job });
 
   // Queue-only handoff: the public application never waits for extraction/parsing.
   dispatchResumeProcessing({

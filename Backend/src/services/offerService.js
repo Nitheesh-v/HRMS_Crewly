@@ -22,9 +22,13 @@ import { randomToken, hashToken } from '../utils/securityPolicy.js';
 import { recordAudit } from '../utils/securityauditService.js';
 import {
   offerCandidateAccessEmail,
-  offerWithdrawnEmail,
   sendMail,
 } from '../utils/mailer.js';
+import { JOB_NAMES } from '../config/queueConfig.js';
+import {
+  requestEmailDelivery,
+  buildEventKey,
+} from './emailDeliveryService.js';
 import { transitionCandidateStage } from './candidatePipelineService.js';
 import {
   deleteStoredOfferDocument,
@@ -1267,10 +1271,17 @@ export const withdrawOffer = async ({ companyId, actor, offerId, reason, request
       message: `${updated.offerCode} was withdrawn.`,
     });
     if (['SENT', 'VIEWED'].includes(current.status)) {
-      await sendMail({
-        to: updated.candidateSnapshot.email,
-        ...offerWithdrawnEmail({ offer: updated }),
-        sensitive: true,
+      // 28.3: async email delivery (no portal token in this message).
+      await requestEmailDelivery({
+        jobName: JOB_NAMES.EMAIL_OFFER_WITHDRAWN,
+        eventType: 'OFFER_WITHDRAWN',
+        eventKey: buildEventKey('OFFER_WITHDRAWN', updated._id),
+        companyId,
+        entityType: 'OFFER',
+        entityId: updated._id,
+        recipientType: 'CANDIDATE',
+        recipientReference: updated.candidate,
+        payload: { offerId: updated._id },
       });
     }
     return safeOfferDto(updated);
