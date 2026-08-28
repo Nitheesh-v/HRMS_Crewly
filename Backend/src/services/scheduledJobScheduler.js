@@ -190,16 +190,16 @@ export const cancelInterviewReminder = (interview, scheduledStartAt) =>
 // dispatch through the Phase 28.3 email queue (eventKey idempotent).
 // Throws when NO email intent could be accepted → the scheduled job
 // retries (reminderDispatch stays PENDING for reconciliation).
-export const deliverInterviewReminder = async (interview, { dispatch } = {}) => {
+export const deliverInterviewReminder = async (interview, { dispatch, loadCandidate } = {}) => {
   const doDispatch = dispatch || requestEmailDelivery;
+  const doLoadCandidate = loadCandidate ||
+    ((candidateId, companyId) =>
+      Candidate.findOne({ _id: candidateId, companyId })
+        .select('_id')
+        .lean());
   const startAtIso = new Date(interview.scheduledStartAt).toISOString();
 
-  const candidate = await Candidate.findOne({
-    _id: interview.candidate,
-    companyId: interview.companyId,
-  })
-    .select('_id')
-    .lean();
+  const candidate = await doLoadCandidate(interview.candidate, interview.companyId);
   if (!candidate) return { recipients: 0 };
 
   const outcomes = [];

@@ -21,12 +21,14 @@ import test from 'node:test';
 process.env.NODE_ENV = 'test';
 process.env.MONGO_URI ||= 'mongodb://127.0.0.1:27017/crewly_test';
 
-const [scheduler, scheduledProcessor, emailProcessor, queueConfig] =
+const [scheduler, scheduledProcessor, emailProcessor, queueConfig, registry, mailer] =
   await Promise.all([
     import('../src/services/scheduledJobScheduler.js'),
     import('../src/workers/scheduledProcessor.js'),
     import('../src/workers/emailProcessor.js'),
     import('../src/config/queueConfig.js'),
+    import('../src/workers/registry.js'),
+    import('../src/utils/mailer.js'),
   ]);
 
 const {
@@ -38,6 +40,7 @@ const {
   cancelInterviewReminder,
   cancelOfferJobs,
   runScheduledReconcile,
+  deliverInterviewReminder,
 } = scheduler;
 const {
   interviewReminderProcessor,
@@ -63,16 +66,22 @@ const H = 60 * 60 * 1000;
 const inDays = (days) => new Date(Date.now() + days * 24 * H);
 const iso = (d) => new Date(d).toISOString();
 
+// FIXED timestamps shared by fixtures AND payloads — version checks
+// compare ISO strings, so fixtures must not drift by milliseconds
+// between "what Mongo holds" and "what the job references".
+const INTERVIEW_START = inDays(3);
+const OFFER_EXPIRY = inDays(10);
+
 const fakeInterview = (overrides = {}) => ({
   _id: INTERVIEW_ID,
   companyId: COMPANY_ID,
   candidate: CANDIDATE_ID,
   interviewers: [INTERVIEWER_ID],
   status: 'SCHEDULED',
-  scheduledStartAt: inDays(3),
+  scheduledStartAt: INTERVIEW_START,
   reminderDispatch: {
     state: 'PENDING',
-    dispatchAfter: new Date(inDays(3).getTime() - 24 * H),
+    dispatchAfter: new Date(INTERVIEW_START.getTime() - 24 * H),
     claimedAt: null,
     dispatchedAt: null,
     attempts: 0,
@@ -86,14 +95,14 @@ const fakeOffer = (overrides = {}) => ({
   companyId: COMPANY_ID,
   candidate: CANDIDATE_ID,
   status: 'SENT',
-  terms: { expiryDate: inDays(10) },
+  terms: { expiryDate: OFFER_EXPIRY },
   ...overrides,
 });
 
 const interviewPayload = (overrides = {}) => ({
   companyId: COMPANY_ID,
   interviewId: INTERVIEW_ID,
-  scheduledStartAtIso: iso(fakeInterview().scheduledStartAt),
+  scheduledStartAtIso: iso(INTERVIEW_START),
   correlationId: 'corr-1',
   ...overrides,
 });
@@ -101,7 +110,7 @@ const interviewPayload = (overrides = {}) => ({
 const offerPayload = (overrides = {}) => ({
   companyId: COMPANY_ID,
   offerId: OFFER_ID,
-  expiryDateIso: iso(fakeOffer().terms.expiryDate),
+  expiryDateIso: iso(OFFER_EXPIRY),
   correlationId: 'corr-1',
   ...overrides,
 });
@@ -500,7 +509,7 @@ test('offer expire: already EXPIRED → ALREADY_EXPIRED; future due-date → NOT
   assert.equal(already.reason, 'ALREADY_EXPIRED');
 
   const notDue = await offerExpireProcessor(job(offerPayload()), {
-    load: async () => fakeOffer({ terms: { expiryDate: inDays(10) } }),
+    load: async () => fakeOffer({ terms: { expiryDate: OFFER_EXPIRY } }),
     expire: async (args) => args.offer,
   });
   assert.equal(notDue.reason, 'NOT_DUE');
@@ -678,4 +687,181 @@ test('SCHEDULED job options: bounded retries with exponential backoff', () => {
   assert.equal(options.backoff.type, 'exponential');
   assert.ok(options.backoff.delay > 0);
   assert.equal(options.removeOnComplete.count, 100);
+});
+
+// ── Worker wiring (registry dispatch path) ─────────────────────
+
+test('wiring: scheduled + email processors register into the shared dispatch registry', () => {
+  scheduledProcessor.registerScheduledProcessors({ registerProcessor: registry.registerProcessor });
+  emailProcessor.registerEmailProcessors({ registerProcessor: registry.registerProcessor });
+
+  for (const name of [
+    JOB_NAMES.INTERVIEW_REMINDER,
+    JOB_NAMES.OFFER_EXPIRY_REMINDER,
+    JOB_NAMES.OFFER_EXPIRE,
+  ]) {
+    assert.ok(registry.jobRegistry.has(name), `registry must route ${name}`);
+  }
+  for (const name of queueConfig.EMAIL_JOB_NAMES) {
+    assert.ok(registry.jobRegistry.has(name), `registry must route ${name}`);
+  }
+  // dispatchJob resolves by job name (what the Worker calls).
+  assert.equal(typeof registry.dispatchJob, 'function');
+});
+
+test('wiring: dispatchJob rejects unknown job names (no silent no-op)', async () => {
+  await assert.rejects(
+    registry.dispatchJob({ name: 'bogus-job', data: {} }),
+    /No processor registered/
+  );
+});
+
+// ── deliverInterviewReminder dispatch contract ─────────────────
+
+test('deliverInterviewReminder: candidate + each interviewer → one 28.3 dispatch, distinct eventKeys', async () => {
+  const secondInterviewer = '64c000000000000000000415';
+  const interview = fakeInterview({ interviewers: [INTERVIEWER_ID, secondInterviewer] });
+  const calls = [];
+  const res = await deliverInterviewReminder(interview, {
+    loadCandidate: async () => ({ _id: CANDIDATE_ID }),
+    dispatch: async (args) => {
+      calls.push(args);
+      return { queued: true, duplicate: false };
+    },
+  });
+  assert.equal(res.recipients, 3); // candidate + 2 interviewers
+  assert.equal(calls.length, 3);
+  const [candidateCall, interviewerCall] = calls;
+  assert.equal(calls[2].payload.interviewerId, secondInterviewer);
+  // Candidate + both interviewers: three distinct idempotency keys.
+  const keys = calls.map((c) => c.eventKey);
+  assert.equal(new Set(keys).size, 3);
+  assert.equal(candidateCall.jobName, JOB_NAMES.EMAIL_INTERVIEW_CANDIDATE);
+  assert.equal(candidateCall.recipientType, 'CANDIDATE');
+  assert.equal(interviewerCall.jobName, JOB_NAMES.EMAIL_INTERVIEW_INTERVIEWER);
+  assert.equal(interviewerCall.recipientType, 'INTERVIEWER');
+  for (const call of calls) {
+    assert.equal(call.eventType, 'REMINDER');
+    assert.equal(call.entityType, 'INTERVIEW');
+    assert.equal(call.companyId, COMPANY_ID);
+    assert.equal(call.payload.eventType, 'REMINDER');
+    assert.equal(call.payload.scheduleVersion, iso(interview.scheduledStartAt));
+    // References only in the email job payload.
+    const serialized = JSON.stringify(call.payload);
+    assert.ok(!/http|@|token/i.test(serialized));
+  }
+  assert.notEqual(candidateCall.eventKey, interviewerCall.eventKey);
+  assert.match(candidateCall.eventKey, /INTERVIEW_CANDIDATE_REMINDER/);
+  assert.match(interviewerCall.eventKey, /INTERVIEW_INTERVIEWER_REMINDER/);
+});
+
+test('deliverInterviewReminder: no candidate → no dispatch, zero recipients', async () => {
+  const res = await deliverInterviewReminder(fakeInterview(), {
+    loadCandidate: async () => null,
+    dispatch: async () => assert.fail('must not dispatch'),
+  });
+  assert.deepEqual(res, { recipients: 0 });
+});
+
+test('deliverInterviewReminder: zero accepted intents → throw (job retries)', async () => {
+  await assert.rejects(
+    deliverInterviewReminder(fakeInterview(), {
+      loadCandidate: async () => ({ _id: CANDIDATE_ID }),
+      dispatch: async () => ({ queued: false, duplicate: false, error: 'redis down' }),
+    }),
+    /email dispatch unavailable/
+  );
+});
+
+test('deliverInterviewReminder: duplicates count as accepted (idempotent replay)', async () => {
+  const res = await deliverInterviewReminder(fakeInterview({ interviewers: [] }), {
+    loadCandidate: async () => ({ _id: CANDIDATE_ID }),
+    dispatch: async () => ({ queued: false, duplicate: true }),
+  });
+  assert.equal(res.recipients, 1); // candidate only, replayed via eventKey dedupe
+});
+
+// ── dispatchAfter fallback (policy re-derivation) ──────────────
+
+test('scheduleInterviewReminder: missing dispatchAfter falls back to the policy', async () => {
+  const calls = [];
+  const interview = fakeInterview({ reminderDispatch: { state: 'PENDING', dispatchAfter: null } });
+  await scheduleInterviewReminder(interview, {
+    enqueue: async (jobId, data, delay) => calls.push({ delay }),
+  });
+  // 3 days out → 24h-before → ~48h from now.
+  const expected = interview.scheduledStartAt.getTime() - 24 * H - Date.now();
+  assert.ok(Math.abs(calls[0].delay - expected) < 5000, 'policy fallback ≈ 24h-before');
+});
+
+// ── Reconcile error accounting ─────────────────────────────────
+
+test('runScheduledReconcile: loader failures are counted, never fatal', async () => {
+  const summary = await runScheduledReconcile({
+    enqueue: async () => {},
+    loadInterviews: async () => {
+      throw new Error('mongo blip');
+    },
+    loadOffers: async () => [fakeOffer()],
+  });
+  assert.ok(summary.interviews.errors >= 1);
+  assert.equal(summary.offers.checked, 1);
+  assert.equal(summary.offers.expiries, 1);
+});
+
+// ── Mailer templates (REMINDER variants + offer nudge) ─────────
+
+test('candidateInterviewEmail: REMINDER renders as a reminder, SCHEDULED unchanged', () => {
+  const base = {
+    candidateName: 'Jane',
+    companyName: 'Acme',
+    jobTitle: 'Engineer',
+    interviewCode: 'INT-1',
+    roundName: 'Technical',
+    scheduleLabel: 'Mon, 1 Sep 2026, 03:00 pm (Asia/Kolkata)',
+    interviewType: 'ONLINE',
+  };
+  const reminder = mailer.candidateInterviewEmail({ ...base, event: 'REMINDER' });
+  assert.match(reminder.subject, /^Interview reminder — Acme$/);
+  assert.match(reminder.text, /This is a reminder that your Technical interview/);
+  assert.match(reminder.html, /Interview reminder/);
+
+  const scheduled = mailer.candidateInterviewEmail({ ...base, event: 'SCHEDULED' });
+  assert.match(scheduled.subject, /^Interview scheduled — Acme$/);
+  assert.match(scheduled.text, /has been scheduled/);
+});
+
+test('interviewerAssignmentEmail: REMINDER says "is scheduled" (no "has been reminder")', () => {
+  const base = {
+    interviewerName: 'Bob',
+    candidateName: 'Jane',
+    candidateEmail: 'jane@example.com',
+    companyName: 'Acme',
+    jobTitle: 'Engineer',
+    interviewCode: 'INT-1',
+    roundName: 'Technical',
+    scheduleLabel: 'Mon, 1 Sep 2026, 03:00 pm (Asia/Kolkata)',
+    interviewType: 'ONLINE',
+  };
+  const reminder = mailer.interviewerAssignmentEmail({ ...base, event: 'REMINDER' });
+  assert.match(reminder.subject, /^Interview reminder — Technical$/);
+  assert.match(reminder.text, /is scheduled/);
+  assert.ok(!/has been reminder/i.test(reminder.text + reminder.html));
+});
+
+test('offerReminderEmail: non-sensitive nudge — no token, no URL, no compensation', () => {
+  const offer = fakeOffer();
+  offer.candidateSnapshot = { name: 'Jane' };
+  offer.companySnapshot = { name: 'Acme' };
+  offer.terms = { ...offer.terms, designation: 'Engineer' };
+  offer.offerCode = 'OF-1';
+  const msg = mailer.offerReminderEmail({ offer });
+  assert.match(msg.subject, /^Offer response reminder — Acme$/);
+  assert.match(msg.text, /OF-1/);
+  assert.match(msg.text, /Engineer/);
+  assert.match(msg.text, /secure link from your original offer email/);
+  const all = msg.text + msg.html;
+  assert.ok(!/https?:\/\//i.test(all), 'no portal URL (token would ride on it)');
+  assert.ok(!/token/i.test(all), 'no token language');
+  assert.ok(!/\$|₹|INR|salary|CTC/i.test(all), 'no compensation figures');
 });
