@@ -23,12 +23,20 @@
 
 import mongoose from 'mongoose';
 import logger from '../config/logger.js';
-import { JOB_NAMES } from '../config/queueConfig.js';
+import { JOB_NAMES, SCHEDULED_JOB_NAMES } from '../config/queueConfig.js';
 import Interview from '../models/Interview.js';
 import OfferLetter from '../models/OfferLetter.js';
+import PreOnboarding from '../models/PreOnboarding.js';
+import Candidate from '../models/Candidate.js';
+import CandidateDocumentRequirement from '../models/CandidateDocumentRequirement.js';
+import BackgroundVerificationCase from '../models/BackgroundVerificationCase.js';
 import { buildEventKey, requestEmailDelivery } from '../services/emailDeliveryService.js';
 import { deliverInterviewReminder } from '../services/scheduledJobScheduler.js';
 import { expireOfferIfDue } from '../services/offerService.js';
+import {
+  deliverPreOnboardingReminder,
+  deliverBgvReminder,
+} from '../services/reminderSchedulingService.js';
 
 const OBJECT_ID = /^[a-f0-9]{24}$/i;
 const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
@@ -264,17 +272,192 @@ export const offerExpireProcessor = async (job, deps = {}) => {
   return { processed: true, transitioned: true };
 };
 
+// ── PREONBOARDING_REMINDER (28.6) ───────────────────────────────
+//
+// Candidate nudge for still-open pre-onboarding work. Re-fetches
+// Mongo and revalidates the CONDITION (not just the version) before
+// dispatching through the 28.3 email queue. The email is
+// non-sensitive: no portal token, no document details.
+
+const PREONBOARDING_REMINDER_TYPES = new Set([
+  'DOCUMENTS_PENDING',
+  'DOCUMENT_RESUBMISSION',
+  'JOINING',
+]);
+
+export const preOnboardingReminderProcessor = async (job, deps = {}) => {
+  const load = deps.load ||
+    (async (value) =>
+      PreOnboarding.findOne({
+        _id: value.preOnboardingId,
+        companyId: value.companyId,
+      })
+        .select('companyId status candidate startedAt offerSnapshot.jobSnapshot')
+        .lean());
+  const loadRequirements = deps.loadRequirements ||
+    (async (preOnboarding, status) =>
+      CandidateDocumentRequirement.find({
+        companyId: preOnboarding.companyId,
+        preOnboarding: preOnboarding._id,
+        required: true,
+        status,
+      })
+        .select('updatedAt')
+        .sort({ updatedAt: -1 })
+        .limit(1)
+        .lean());
+  const loadCandidate = deps.loadCandidate ||
+    (async (preOnboarding) =>
+      Candidate.findOne({
+        _id: preOnboarding.candidate,
+        companyId: preOnboarding.companyId,
+      })
+        .select('_id convertedUser')
+        .lean());
+  const deliver = deps.deliver || deliverPreOnboardingReminder;
+
+  const data = job.data;
+  if (
+    !data ||
+    typeof data !== 'object' ||
+    Object.keys(data).sort().join(',') !==
+      'companyId,correlationId,preOnboardingId,reminderType,stateVersionIso' ||
+    !OBJECT_ID.test(data.companyId) ||
+    !OBJECT_ID.test(data.preOnboardingId) ||
+    !ISO_UTC.test(data.stateVersionIso) ||
+    Number.isNaN(Date.parse(data.stateVersionIso)) ||
+    !PREONBOARDING_REMINDER_TYPES.has(data.reminderType)
+  ) {
+    throw new Error('PREONBOARDING_REMINDER rejected: payload validation failed');
+  }
+
+  const preOnboarding = await load(data);
+  if (!preOnboarding) return { skipped: true, reason: 'NOT_FOUND' };
+  if (['COMPLETED', 'READY_TO_JOIN', 'WITHDRAWN'].includes(preOnboarding.status)) {
+    return { skipped: true, reason: 'WORKFLOW_COMPLETE' };
+  }
+  const candidate = await loadCandidate(preOnboarding);
+  if (!candidate) return { skipped: true, reason: 'NOT_FOUND' };
+  if (candidate.convertedUser) {
+    return { skipped: true, reason: 'CANDIDATE_CONVERTED' };
+  }
+
+  // Per-type state revalidation (condition must still hold).
+  let stale = false;
+  if (data.reminderType === 'DOCUMENTS_PENDING') {
+    if (new Date(preOnboarding.startedAt).toISOString() !== data.stateVersionIso) stale = true;
+    else {
+      const pending = await loadRequirements(preOnboarding, 'PENDING');
+      stale = pending.length === 0;
+    }
+  } else if (data.reminderType === 'DOCUMENT_RESUBMISSION') {
+    const rejected = await loadRequirements(preOnboarding, 'RESUBMISSION_REQUIRED');
+    stale = !rejected.length || new Date(rejected[0].updatedAt).toISOString() !== data.stateVersionIso;
+  } else if (data.reminderType === 'JOINING') {
+    const joiningDate = preOnboarding.offerSnapshot?.joiningDate;
+    stale =
+      !joiningDate ||
+      new Date(joiningDate).toISOString() !== data.stateVersionIso ||
+      new Date(joiningDate).getTime() <= Date.now();
+  }
+  if (stale) return { skipped: true, reason: 'STALE_STATE' };
+
+  const result = await deliver({
+    preOnboarding,
+    reminderType: data.reminderType,
+    stateVersionIso: data.stateVersionIso,
+    dispatch: deps.dispatch,
+  });
+  if (!result.dispatched) {
+    throw new Error('pre-onboarding reminder email dispatch unavailable');
+  }
+  logger.info(
+    `[Scheduled] pre-onboarding reminder dispatched (preOnboarding=${preOnboarding._id}, type=${data.reminderType})`
+  );
+  return { processed: true, reminderType: data.reminderType };
+};
+
+// ── BGV_REMINDER (28.6) ─────────────────────────────────────────
+//
+// HR reminder for open BGV work. Reference-based email (no
+// candidate PII beyond the snapshot the HR role already sees in
+// app notifications). Re-fetch + status revalidation first.
+
+const BGV_REMINDER_TYPES = new Set(['CANDIDATE_INFO', 'VERIFIER', 'REVIEW_REQUIRED']);
+
+export const bgvReminderProcessor = async (job, deps = {}) => {
+  const load = deps.load ||
+    (async (value) =>
+      BackgroundVerificationCase.findOne({
+        _id: value.caseId,
+        companyId: value.companyId,
+      })
+        .select('companyId status startedAt updatedAt consent assignedVerifier')
+        .lean());
+  const deliver = deps.deliver || deliverBgvReminder;
+
+  const data = job.data;
+  if (
+    !data ||
+    typeof data !== 'object' ||
+    Object.keys(data).sort().join(',') !==
+      'caseId,companyId,correlationId,reminderType,stateVersionIso' ||
+    !OBJECT_ID.test(data.companyId) ||
+    !OBJECT_ID.test(data.caseId) ||
+    !ISO_UTC.test(data.stateVersionIso) ||
+    Number.isNaN(Date.parse(data.stateVersionIso)) ||
+    !BGV_REMINDER_TYPES.has(data.reminderType)
+  ) {
+    throw new Error('BGV_REMINDER rejected: payload validation failed');
+  }
+
+  const caseRecord = await load(data);
+  if (!caseRecord) return { skipped: true, reason: 'NOT_FOUND' };
+  if (['COMPLETED', 'CANCELLED'].includes(caseRecord.status)) {
+    return { skipped: true, reason: 'CASE_CLOSED' };
+  }
+
+  const stale =
+    data.reminderType === 'CANDIDATE_INFO'
+      ? caseRecord.status !== 'AWAITING_CANDIDATE' ||
+        new Date(caseRecord.startedAt).toISOString() !== data.stateVersionIso
+      : data.reminderType === 'VERIFIER'
+        ? caseRecord.status !== 'AWAITING_VERIFIER' ||
+          !caseRecord.assignedVerifier ||
+          new Date(caseRecord.updatedAt || caseRecord.startedAt).toISOString() !== data.stateVersionIso
+        : caseRecord.status !== 'REVIEW_REQUIRED' ||
+          new Date(caseRecord.updatedAt || caseRecord.startedAt).toISOString() !== data.stateVersionIso;
+  if (stale) return { skipped: true, reason: 'STALE_STATE' };
+
+  const result = await deliver({
+    caseRecord,
+    reminderType: data.reminderType,
+    stateVersionIso: data.stateVersionIso,
+    dispatch: deps.dispatch,
+  });
+  if (!result.dispatched) {
+    throw new Error('BGV reminder email dispatch unavailable');
+  }
+  logger.info(
+    `[Scheduled] BGV reminder dispatched (case=${caseRecord._id}, type=${data.reminderType})`
+  );
+  return { processed: true, reminderType: data.reminderType };
+};
+
 export const registerScheduledProcessors = ({ registerProcessor }) => {
   // Thin adapters: the shared registry dispatches by job name.
   for (const [jobName, processor] of Object.entries({
     [JOB_NAMES.INTERVIEW_REMINDER]: interviewReminderProcessor,
     [JOB_NAMES.OFFER_EXPIRY_REMINDER]: offerExpiryReminderProcessor,
     [JOB_NAMES.OFFER_EXPIRE]: offerExpireProcessor,
+    [JOB_NAMES.PREONBOARDING_REMINDER]: preOnboardingReminderProcessor,
+    [JOB_NAMES.BGV_REMINDER]: bgvReminderProcessor,
   })) {
     registerProcessor(jobName, processor);
   }
   logger.info(
-    `[Queue] SCHEDULED processors ready (${JOB_NAMES.INTERVIEW_REMINDER}, ` +
-      `${JOB_NAMES.OFFER_EXPIRY_REMINDER}, ${JOB_NAMES.OFFER_EXPIRE})`
+    `[Queue] SCHEDULED processors ready (${SCHEDULED_JOB_NAMES.length} jobs: ` +
+      `${JOB_NAMES.INTERVIEW_REMINDER}, ${JOB_NAMES.OFFER_EXPIRY_REMINDER}, ` +
+      `${JOB_NAMES.OFFER_EXPIRE}, ${JOB_NAMES.PREONBOARDING_REMINDER}, ${JOB_NAMES.BGV_REMINDER})`
   );
 };

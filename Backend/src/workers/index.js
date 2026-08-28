@@ -4,13 +4,15 @@
 //   npm run worker:dev   (nodemon)
 //   npm run worker       (plain node)
 //
-// One process runs all five BullMQ workers:
+// One process runs all seven BullMQ workers:
 //   - system queue    (28.2 infrastructure jobs)
 //   - email queue     (28.3 email delivery jobs)
 //   - resume queue    (28.4 resume parsing jobs)
 //   - ats queue       (28.4 ATS matching jobs)
-//   - scheduled queue (28.5 delayed jobs: interview reminders,
-//     offer expiry reminders, offer expiry)
+//   - scheduled queue (28.5/28.6 delayed jobs: interview +
+//     pre-onboarding + BGV reminders, offer expiry)
+//   - documents queue (28.6 stored document processing)
+//   - bgv queue       (28.6 background verification execution)
 //
 // Architecture: the Express API and this Worker process are
 // separate by design. The API serves HTTP; workers process
@@ -52,6 +54,8 @@ import {
   parseResumeWorkerConcurrency,
   parseATSWorkerConcurrency,
   parseScheduledWorkerConcurrency,
+  parseDocumentWorkerConcurrency,
+  parseBgvWorkerConcurrency,
   redactConnectionSecrets,
   EMAIL_JOB_NAMES,
 } from '../config/queueConfig.js';
@@ -61,12 +65,16 @@ import { registerEmailProcessors } from './emailProcessor.js';
 import { registerResumeProcessors } from './resumeProcessor.js';
 import { registerATSProcessors } from './atsProcessor.js';
 import { registerScheduledProcessors } from './scheduledProcessor.js';
+import { registerDocumentProcessors } from './documentProcessor.js';
+import { registerBgvProcessors } from './bgvProcessor.js';
 import { markEmailDelivery } from '../services/emailDeliveryService.js';
 import {
   recoverPendingResumeProcessing,
 } from '../services/resumeProcessingDispatcher.js';
 import { recoverPendingATSMatching } from '../services/atsDispatcher.js';
 import { runScheduledReconcile } from '../services/scheduledJobScheduler.js';
+import { recoverPendingDocumentProcessing } from '../services/documentProcessingDispatcher.js';
+import { recoverPendingBgvProcessing } from '../services/bgvQueueDispatcher.js';
 
 const SHUTDOWN_HARD_STOP_MS = 10000;
 
@@ -183,19 +191,24 @@ const startWorker = async () => {
   const resumeConcurrency = parseResumeWorkerConcurrency();
   const atsConcurrency = parseATSWorkerConcurrency();
   const scheduledConcurrency = parseScheduledWorkerConcurrency();
+  const documentConcurrency = parseDocumentWorkerConcurrency();
+  const bgvConcurrency = parseBgvWorkerConcurrency();
 
   logger.info(
     `[Worker] Starting workers (prefix=${prefix}, system concurrency=${concurrency}, ` +
       `email concurrency=${emailConcurrency}, resume concurrency=${resumeConcurrency}, ` +
-      `ats concurrency=${atsConcurrency}, scheduled concurrency=${scheduledConcurrency})`
+      `ats concurrency=${atsConcurrency}, scheduled concurrency=${scheduledConcurrency}, ` +
+      `documents concurrency=${documentConcurrency}, bgv concurrency=${bgvConcurrency})`
   );
 
-  // Register the 28.3 email + 28.4 processing + 28.5 scheduled
-  // processors in the shared registry.
+  // Register the 28.3 email + 28.4 processing + 28.5 scheduled +
+  // 28.6 document/BGV processors in the shared registry.
   registerEmailProcessors({ registerProcessor });
   registerResumeProcessors({ registerProcessor });
   registerATSProcessors({ registerProcessor });
   registerScheduledProcessors({ registerProcessor });
+  registerDocumentProcessors({ registerProcessor });
+  registerBgvProcessors({ registerProcessor });
 
   // One dedicated connection per worker (never the API's client).
   const createWorkerConnection = (connectionName) =>
@@ -261,6 +274,29 @@ const startWorker = async () => {
     });
     workers.push(scheduledWorker);
     attachEventHandlers(scheduledWorker, 'scheduled worker');
+
+    // 28.6 documents queue: stored document processing (CPU + IO).
+    const documentConnection = createWorkerConnection('crewly-worker-documents');
+    connections.push(documentConnection);
+    const documentWorker = new Worker(QUEUE_NAMES.DOCUMENTS, dispatchJob, {
+      connection: documentConnection,
+      prefix,
+      concurrency: documentConcurrency,
+    });
+    workers.push(documentWorker);
+    attachEventHandlers(documentWorker, 'documents worker');
+
+    // 28.6 BGV queue: provider registration + polling (IO-bound,
+    // modest default — external providers must not be hammered).
+    const bgvConnection = createWorkerConnection('crewly-worker-bgv');
+    connections.push(bgvConnection);
+    const bgvWorker = new Worker(QUEUE_NAMES.BGV, dispatchJob, {
+      connection: bgvConnection,
+      prefix,
+      concurrency: bgvConcurrency,
+    });
+    workers.push(bgvWorker);
+    attachEventHandlers(bgvWorker, 'bgv worker');
   } catch (error) {
     logger.error(`[Worker] Startup failed: ${safeErrorText(error)}`);
     for (const connection of connections) {
@@ -344,6 +380,25 @@ const startWorker = async () => {
     logger.warn(
       `[Worker] Scheduled reconcile failed — jobs stay recoverable via ` +
         `npm run scheduled:reconcile (${safeErrorText(error)})`
+    );
+  }
+
+  // --- 28.6 document + BGV startup reconciliation ------------------
+  // Same shape as the 28.4/28.5 blocks: Mongo intent survives any
+  // Redis loss; deterministic job ids make re-derivation idempotent.
+  try {
+    const [documents, bgv] = await Promise.all([
+      recoverPendingDocumentProcessing(),
+      recoverPendingBgvProcessing(),
+    ]);
+    logger.info(
+      `[Worker] 28.6 reconcile: documents queued=${documents.scheduled}/${documents.checked}, ` +
+        `bgv cases queued=${bgv.queued}/${bgv.checked}, polls scheduled=${bgv.pollsScheduled}`
+    );
+  } catch (error) {
+    logger.warn(
+      `[Worker] 28.6 reconcile failed — jobs stay recoverable via ` +
+        `npm run queue:reconcile (${safeErrorText(error)})`
     );
   }
 

@@ -389,6 +389,87 @@ export const offerReminderEmail = ({ offer }) => {
   };
 };
 
+// 28.6: pre-onboarding candidate reminder — NON-SENSITIVE nudge.
+// No portal token / URL (the token-bearing invite email is
+// synchronous by 28.3 policy), no document details, no PII beyond
+// the candidate's own name + role.
+export const preOnboardingReminderEmail = ({ preOnboarding, reminderType }) => {
+  const candidateName = preOnboarding.candidateSnapshot?.name || 'Candidate';
+  const companyName = preOnboarding.companySnapshot?.name || 'Hiring team';
+  const jobTitle = preOnboarding.jobSnapshot?.title || 'your role';
+  const code = preOnboarding.preOnboardingCode || '';
+  const safeName = escapeHtml(candidateName);
+  const safeCompany = escapeHtml(companyName);
+  const safeJob = escapeHtml(jobTitle);
+  const safeCode = escapeHtml(code);
+
+  const bodyByType = {
+    DOCUMENTS_PENDING:
+      'Your pre-onboarding still has required documents waiting to be submitted.',
+    DOCUMENT_RESUBMISSION:
+      'One or more of your pre-onboarding documents need to be resubmitted. Please check the rejection notes in your pre-onboarding portal.',
+    JOINING: 'Your joining date is approaching and your pre-onboarding documents are being finalised.',
+    DEFAULT: 'There is an open item in your pre-onboarding.',
+  };
+  const body = bodyByType[reminderType] || bodyByType.DEFAULT;
+  const safeBody = escapeHtml(body);
+
+  return {
+    subject: `Pre-onboarding reminder — ${String(companyName).replace(/[\r\n]/g, ' ').slice(0, 100)}`,
+    text:
+      `Hello ${candidateName},\n\n` +
+      `This is a reminder about your pre-onboarding for ${jobTitle} with ${companyName}. ${body}\n` +
+      (code ? `Reference: ${code}\n` : '') +
+      '\nUse the secure link from your original pre-onboarding email to review and act. It stays valid until your pre-onboarding is completed.\n\n' +
+      'The hiring team will contact you if anything else is needed.',
+    html: shell('A reminder about pre-onboarding documents — the secure link in your original pre-onboarding email remains valid.', `
+      <h2 style="margin:0 0 10px">Pre-onboarding reminder</h2>
+      <p>Hello ${safeName},</p>
+      <p>This is a reminder about your pre-onboarding for <b>${safeJob}</b> with <b>${safeCompany}</b>. ${safeBody}</p>
+      ${safeCode ? `<p>Reference: <b>${safeCode}</b></p>` : ''}
+      <p>Use the secure link from your original pre-onboarding email to review and act. It stays valid until your pre-onboarding is completed.</p>
+      <p style="color:#57606a;font-size:13px">The hiring team will contact you if anything else is needed.</p>`),
+  };
+};
+
+// 28.6: BGV HR reminder — reference-based, internal audience.
+export const bgvReminderEmail = ({ caseRecord, reminderType, recipientName = 'Hiring team' }) => {
+  const candidateName = caseRecord.candidateSnapshot?.name || 'Candidate';
+  const companyName = caseRecord.companySnapshot?.name || 'Crewly';
+  const caseCode = caseRecord.caseCode || '';
+  const jobTitle = caseRecord.jobSnapshot?.title || '';
+  const safeCandidate = escapeHtml(candidateName);
+  const safeCompany = escapeHtml(companyName);
+  const safeCode = escapeHtml(caseCode);
+  const safeJob = escapeHtml(jobTitle);
+  const safeRecipient = escapeHtml(recipientName);
+
+  const bodyByType = {
+    CANDIDATE_INFO:
+      'This case is still waiting on candidate consent or information.',
+    VERIFIER:
+      'Checks on this case are still awaiting verifier action.',
+    REVIEW_REQUIRED:
+      'This case is ready for human review.',
+    DEFAULT: 'This case has open background-verification work.',
+  };
+  const body = bodyByType[reminderType] || bodyByType.DEFAULT;
+  const safeBody = escapeHtml(body);
+
+  return {
+    subject: `BGV reminder — ${safeCode || 'case'}`,
+    text:
+      `Hello ${recipientName},\n\n` +
+      `Background verification case ${caseCode} for ${candidateName} (${jobTitle} at ${companyName}) needs attention. ${body}\n\n` +
+      'Open the case in the recruitment workspace to continue.',
+    html: shell('Internal reminder about a background verification case.', `
+      <h2 style="margin:0 0 10px">BGV reminder</h2>
+      <p>Hello ${safeRecipient},</p>
+      <p>Background verification case <b>${safeCode}</b> for <b>${safeCandidate}</b>${safeJob ? ` (<b>${safeJob}</b>)` : ''} at <b>${safeCompany}</b> needs attention. ${safeBody}</p>
+      <p>Open the case in the recruitment workspace to continue.</p>`),
+  };
+};
+
 export const offerDecisionConfirmationEmail = ({ offer, decision }) => {
   const candidateName = offer.candidateSnapshot?.name || 'Candidate';
   const companyName = offer.companySnapshot?.name || 'Hiring team';

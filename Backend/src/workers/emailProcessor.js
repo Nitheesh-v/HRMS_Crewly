@@ -29,6 +29,7 @@ import OfferLetter from '../models/OfferLetter.js';
 import PreOnboarding from '../models/PreOnboarding.js';
 import CandidateDocument from '../models/CandidateDocument.js';
 import CandidateDocumentRequirement from '../models/CandidateDocumentRequirement.js';
+import BackgroundVerificationCase from '../models/BackgroundVerificationCase.js';
 import {
   sendMail,
   applicationReceivedEmail,
@@ -39,6 +40,8 @@ import {
   offerReminderEmail,
   offerWithdrawnEmail,
   preOnboardingDocumentDecisionEmail,
+  preOnboardingReminderEmail,
+  bgvReminderEmail,
 } from '../utils/mailer.js';
 import { formatInterviewSchedule } from '../utils/interviewDateTime.js';
 import { normalizeCandidateStage } from '../services/candidatePipelineService.js';
@@ -67,6 +70,14 @@ const EMAIL_JOB_KEYS = {
   [JOB_NAMES.EMAIL_OFFER_WITHDRAWN]: [...COMMON_KEYS, 'offerId'],
   // 28.5: non-sensitive candidate nudge (no token, no compensation).
   [JOB_NAMES.EMAIL_OFFER_REMINDER]: [...COMMON_KEYS, 'offerId', 'expiryDateIso'],
+  // 28.6: pre-onboarding candidate nudge (no token) + BGV HR notice.
+  [JOB_NAMES.EMAIL_PREONBOARDING_REMINDER]: [
+    ...COMMON_KEYS,
+    'preOnboardingId',
+    'reminderType',
+    'stateVersionIso',
+  ],
+  [JOB_NAMES.EMAIL_BGV_REMINDER]: [...COMMON_KEYS, 'caseId', 'reminderType', 'stateVersionIso'],
   [JOB_NAMES.EMAIL_PREONBOARDING_DOC_DECISION]: [
     ...COMMON_KEYS,
     'preOnboardingId',
@@ -523,6 +534,144 @@ const emailOfferReminder = async (value) => {
   return finishSend({ value, result });
 };
 
+// 28.6: pre-onboarding candidate reminder. Re-fetches the workflow
+// state and revalidates the CONDITION before sending (the scheduled
+// worker already validated once — belt and braces). Non-sensitive:
+// no portal token, no document details.
+const emailPreOnboardingReminder = async (value) => {
+  const preOnboarding = await PreOnboarding.findOne({
+    _id: value.preOnboardingId,
+    companyId: value.companyId,
+  }).lean();
+  if (!preOnboarding) {
+    await failTerminal({ value, category: 'ENTITY_NOT_FOUND' });
+    return { sent: false, reason: 'ENTITY_NOT_FOUND', deliveryId: value.deliveryId };
+  }
+  if (['COMPLETED', 'READY_TO_JOIN', 'WITHDRAWN'].includes(preOnboarding.status)) {
+    await skipStale(value);
+    return { skipped: true, reason: 'STALE_STATE', deliveryId: value.deliveryId };
+  }
+  const candidate = await Candidate.findOne({
+    _id: preOnboarding.candidate,
+    companyId: value.companyId,
+  })
+    .select('_id convertedUser')
+    .lean();
+  if (!candidate || candidate.convertedUser) {
+    await skipStale(value);
+    return { skipped: true, reason: 'STALE_STATE', deliveryId: value.deliveryId };
+  }
+  const reqBase = {
+    companyId: value.companyId,
+    preOnboarding: preOnboarding._id,
+    required: true,
+  };
+  if (value.reminderType === 'DOCUMENTS_PENDING') {
+    const pending = await CandidateDocumentRequirement.countDocuments({ ...reqBase, status: 'PENDING' });
+    if (pending === 0) {
+      await skipStale(value);
+      return { skipped: true, reason: 'STALE_STATE', deliveryId: value.deliveryId };
+    }
+  } else if (value.reminderType === 'DOCUMENT_RESUBMISSION') {
+    const rejected = await CandidateDocumentRequirement.countDocuments({
+      ...reqBase,
+      status: 'RESUBMISSION_REQUIRED',
+    });
+    if (rejected === 0) {
+      await skipStale(value);
+      return { skipped: true, reason: 'STALE_STATE', deliveryId: value.deliveryId };
+    }
+  } else if (value.reminderType === 'JOINING') {
+    const joiningDate = preOnboarding.offerSnapshot?.joiningDate;
+    if (!joiningDate || new Date(joiningDate).getTime() <= Date.now()) {
+      await skipStale(value);
+      return { skipped: true, reason: 'STALE_STATE', deliveryId: value.deliveryId };
+    }
+  } else {
+    await failTerminal({ value, category: 'STALE_STATE' });
+    return { skipped: true, reason: 'STALE_STATE', deliveryId: value.deliveryId };
+  }
+  if (!preOnboarding.candidateSnapshot?.email) {
+    await failTerminal({ value, category: 'ENTITY_NOT_FOUND' });
+    return { sent: false, reason: 'ENTITY_NOT_FOUND', deliveryId: value.deliveryId };
+  }
+  const result = await sendMail({
+    to: preOnboarding.candidateSnapshot.email,
+    ...preOnboardingReminderEmail({ preOnboarding, reminderType: value.reminderType }),
+    sensitive: false,
+  });
+  return finishSend({ value, result });
+};
+
+// 28.6: BGV HR reminder. Resolves the recipient server-side
+// (assigned verifier, else a company HR user) — the payload carries
+// no names/emails.
+const emailBgvReminder = async (value) => {
+  const caseRecord = await BackgroundVerificationCase.findOne({
+    _id: value.caseId,
+    companyId: value.companyId,
+  }).lean();
+  if (!caseRecord) {
+    await failTerminal({ value, category: 'ENTITY_NOT_FOUND' });
+    return { sent: false, reason: 'ENTITY_NOT_FOUND', deliveryId: value.deliveryId };
+  }
+  if (['COMPLETED', 'CANCELLED'].includes(caseRecord.status)) {
+    await skipStale(value);
+    return { skipped: true, reason: 'STALE_STATE', deliveryId: value.deliveryId };
+  }
+  if (value.reminderType === 'CANDIDATE_INFO') {
+    if (caseRecord.status !== 'AWAITING_CANDIDATE') {
+      await skipStale(value);
+      return { skipped: true, reason: 'STALE_STATE', deliveryId: value.deliveryId };
+    }
+  } else if (value.reminderType === 'VERIFIER') {
+    if (caseRecord.status !== 'AWAITING_VERIFIER' || !caseRecord.assignedVerifier) {
+      await skipStale(value);
+      return { skipped: true, reason: 'STALE_STATE', deliveryId: value.deliveryId };
+    }
+  } else if (value.reminderType === 'REVIEW_REQUIRED') {
+    if (caseRecord.status !== 'REVIEW_REQUIRED') {
+      await skipStale(value);
+      return { skipped: true, reason: 'STALE_STATE', deliveryId: value.deliveryId };
+    }
+  } else {
+    await failTerminal({ value, category: 'STALE_STATE' });
+    return { skipped: true, reason: 'STALE_STATE', deliveryId: value.deliveryId };
+  }
+
+  let recipient = caseRecord.assignedVerifier
+    ? await User.findOne({ _id: caseRecord.assignedVerifier, companyId: value.companyId })
+        .select('name email')
+        .lean()
+    : null;
+  if (!recipient) {
+    recipient = await User.findOne({
+      companyId: value.companyId,
+      role: { $in: ['HR_MANAGER', 'COMPANY_ADMIN'] },
+      status: 'ACTIVE',
+    })
+      .select('name email')
+      .sort({ createdAt: 1 })
+      .lean();
+  }
+  if (!recipient?.email) {
+    // No HR recipient configured — skip safely (not an error).
+    await skipStale(value);
+    return { skipped: true, reason: 'STALE_STATE', deliveryId: value.deliveryId };
+  }
+
+  const result = await sendMail({
+    to: recipient.email,
+    ...bgvReminderEmail({
+      caseRecord,
+      reminderType: value.reminderType,
+      recipientName: recipient.name || 'Hiring team',
+    }),
+    sensitive: false,
+  });
+  return finishSend({ value, result });
+};
+
 const emailOfferWithdrawn = async (value) => {
   const offer = await OfferLetter.findOne({ _id: value.offerId, companyId: value.companyId }).lean();
   if (!offer) {
@@ -646,6 +795,8 @@ const EMAIL_HANDLERS = {
   [JOB_NAMES.EMAIL_OFFER_DECISION]: emailOfferDecision,
   [JOB_NAMES.EMAIL_OFFER_REMINDER]: emailOfferReminder,
   [JOB_NAMES.EMAIL_OFFER_WITHDRAWN]: emailOfferWithdrawn,
+  [JOB_NAMES.EMAIL_PREONBOARDING_REMINDER]: emailPreOnboardingReminder,
+  [JOB_NAMES.EMAIL_BGV_REMINDER]: emailBgvReminder,
   [JOB_NAMES.EMAIL_PREONBOARDING_DOC_DECISION]: emailPreOnboardingDocDecision,
 };
 

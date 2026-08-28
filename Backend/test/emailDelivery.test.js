@@ -65,10 +65,12 @@ test('buildEventKey joins safe parts and rejects unsafe input', () => {
   assert.ok(key.includes('2026-08-28T04'));
 });
 
-test('all eight email job names are registered', () => {
+test('all ten email job names are registered', () => {
   // 28.5 added EMAIL_OFFER_REMINDER (non-sensitive nudge; the
   // token-bearing offer-SEND email stays synchronous by 28.3 policy).
-  assert.equal(EMAIL_JOB_NAMES.length, 8);
+  // 28.6 added EMAIL_PREONBOARDING_REMINDER (candidate nudge, no
+  // token) + EMAIL_BGV_REMINDER (HR, reference-based).
+  assert.equal(EMAIL_JOB_NAMES.length, 10);
   for (const name of EMAIL_JOB_NAMES) {
     assert.ok(JOB_NAMES && Object.values(JOB_NAMES).includes(name));
     assert.ok(name.startsWith('email-'));

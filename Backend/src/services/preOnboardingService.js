@@ -32,6 +32,13 @@ import {
 } from '../utils/preOnboardingIdentifiers.js';
 import { transitionCandidateStage } from './candidatePipelineService.js';
 import { inspectPreOnboardingFile } from './preOnboardingDocumentSecurityService.js';
+// Phase 28.6: background document processing + reminders.
+import { scheduleDocumentProcessing } from './documentProcessingDispatcher.js';
+import {
+  schedulePreOnboardingReminder,
+  cancelPreOnboardingReminderJobs,
+} from './reminderSchedulingService.js';
+import { getPreOnboardingReminderPolicy } from '../config/queueConfig.js';
 import {
   getStoredPreOnboardingDocument,
   storePreOnboardingDocument,
@@ -967,6 +974,27 @@ export const startPreOnboarding = async ({
 
   await notifyPreOnboardingStarted({ companyId, preOnboarding });
 
+  // Phase 28.6: reminders for open pre-onboarding work (never-
+  // throwing; Mongo state revalidated at execution).
+  const poReminderPolicy = getPreOnboardingReminderPolicy();
+  if (preOnboarding.startedAt) {
+    schedulePreOnboardingReminder({
+      preOnboarding,
+      reminderType: 'DOCUMENTS_PENDING',
+      stateVersion: preOnboarding.startedAt,
+      dueAt: new Date(new Date(preOnboarding.startedAt).getTime() + poReminderPolicy.documentsPendingOffsetMs),
+    }).catch(() => {});
+  }
+  const joiningDate = preOnboarding.offerSnapshot?.joiningDate;
+  if (joiningDate && new Date(joiningDate).getTime() > Date.now()) {
+    schedulePreOnboardingReminder({
+      preOnboarding,
+      reminderType: 'JOINING',
+      stateVersion: joiningDate,
+      dueAt: new Date(new Date(joiningDate).getTime() - poReminderPolicy.joiningDaysBefore),
+    }).catch(() => {});
+  }
+
   const refreshed = await refreshCaseCounters({
     companyId,
     preOnboarding,
@@ -1518,6 +1546,25 @@ export const rejectCandidateDocument = async ({
     },
   });
 
+  // Phase 28.6: resubmission reminder (versioned by the rejected
+  // requirement's state timestamp; reconcile rebuilds the same id).
+  const rejectedRequirement = await CandidateDocumentRequirement.findOne({
+    _id: document.candidateRequirement,
+    companyId,
+  })
+    .select('updatedAt')
+    .lean();
+  if (rejectedRequirement?.updatedAt) {
+    schedulePreOnboardingReminder({
+      preOnboarding,
+      reminderType: 'DOCUMENT_RESUBMISSION',
+      stateVersion: rejectedRequirement.updatedAt,
+      dueAt: new Date(
+        new Date(rejectedRequirement.updatedAt).getTime() + getPreOnboardingReminderPolicy().resubmissionOffsetMs
+      ),
+    }).catch(() => {});
+  }
+
   const refreshed = await refreshCaseCounters({
     companyId,
     preOnboarding,
@@ -1688,6 +1735,10 @@ export const markPreOnboardingReady = async ({
       decision: 'READY_TO_JOIN',
     },
   });
+
+  // Phase 28.6: workflow terminal — retire pending reminder jobs
+  // (best-effort; the worker also skips complete workflows).
+  cancelPreOnboardingReminderJobs(updated).catch(() => {});
 
   return {
     ...safePreOnboardingDto(updated, {
@@ -1917,6 +1968,12 @@ export const uploadCandidateRequirementDocument = async ({
     }
     throw error;
   }
+
+  // Phase 28.6: background security/integrity processing for the
+  // NEW version (references-only job; version-scoped; never throws).
+  // The synchronous upload-time inspection already ran; this
+  // re-verifies the STORED bytes and keeps scanStatus honest.
+  scheduleDocumentProcessing(version).catch(() => {});
 
   document.currentVersion = nextVersionNumber;
   document.activeVersion = version._id;

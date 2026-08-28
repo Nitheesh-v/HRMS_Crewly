@@ -83,10 +83,11 @@ export const buildOfferExpireJobId = (offerId, expiryDate) => {
   return `offer-expire-${id}-${epoch}`;
 };
 
-// Shared producer path. delayMs is clamped at 0 — a past executeAt
-// becomes an immediate job (business revalidation at execution still
-// applies). Never throws: returns { scheduled, error? }.
-const addScheduledJob = async ({
+// Shared producer path (28.5 + 28.6 reminder families). delayMs is
+// clamped at 0 — a past executeAt becomes an immediate job (business
+// revalidation at execution still applies). Never throws: returns
+// { scheduled, error? }.
+export const addScheduledJob = async ({
   jobName,
   jobId,
   payload,

@@ -37,7 +37,10 @@
     "processing:reconcile": "node scripts/processing-reconcile.js",
     "test:processing": "node --test test/processingQueue.test.js",
     "scheduled:reconcile": "node scripts/scheduled-reconcile.js",
-    "test:scheduled": "node --test test/scheduledJobs.test.js"
+    "test:scheduled": "node --test test/scheduledJobs.test.js",
+    "queue:reconcile": "node scripts/queue-reconcile.js",
+    "test:document-processing": "node --test test/documentProcessing.test.js",
+    "test:bgv-queue": "node --test test/bgvQueue.test.js"
   },
   "keywords": [],
   "author": "",

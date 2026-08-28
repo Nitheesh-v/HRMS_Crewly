@@ -42,6 +42,11 @@ export const JOB_NAMES = {
   // 28.5: offer reminder (candidate nudge, non-sensitive — the
   // token-bearing offer-SEND email stays synchronous by 28.3 policy).
   EMAIL_OFFER_REMINDER: 'email-offer-reminder',
+  // 28.6: pre-onboarding candidate reminder (non-sensitive nudge —
+  // the token-bearing invite email stays synchronous by 28.3 policy)
+  // and BGV HR reminder (reference-based, no candidate PII in payload).
+  EMAIL_PREONBOARDING_REMINDER: 'email-preonboarding-reminder',
+  EMAIL_BGV_REMINDER: 'email-bgv-reminder',
   // 28.4: processing jobs (resume parsing + ATS matching). One job name
   // per stage — reprocess/recovery reuse the same job with a fresh
   // deterministic job id (version-aware), not extra job names.
@@ -52,6 +57,14 @@ export const JOB_NAMES = {
   INTERVIEW_REMINDER: 'interview-reminder',
   OFFER_EXPIRY_REMINDER: 'offer-expiry-reminder',
   OFFER_EXPIRE: 'offer-expire',
+  // 28.6: document security/processing + BGV provider jobs.
+  DOCUMENT_PROCESS: 'document-process',
+  BGV_PROCESS_CHECK: 'bgv-process-check',
+  BGV_PROVIDER_POLL: 'bgv-provider-poll',
+  BGV_PROCESS_RESULT: 'bgv-process-result',
+  // 28.6: scheduled reminders (SCHEDULED queue, 28.5 architecture).
+  PREONBOARDING_REMINDER: 'preonboarding-reminder',
+  BGV_REMINDER: 'bgv-reminder',
 };
 
 export const EMAIL_JOB_NAMES = Object.values(JOB_NAMES).filter((name) =>
@@ -69,6 +82,17 @@ export const SCHEDULED_JOB_NAMES = Object.freeze([
   JOB_NAMES.INTERVIEW_REMINDER,
   JOB_NAMES.OFFER_EXPIRY_REMINDER,
   JOB_NAMES.OFFER_EXPIRE,
+  // 28.6: pre-onboarding + BGV reminders ride the same architecture.
+  JOB_NAMES.PREONBOARDING_REMINDER,
+  JOB_NAMES.BGV_REMINDER,
+]);
+
+// 28.6 document + BGV job names (their own reserved queues).
+export const DOCUMENT_JOB_NAMES = Object.freeze([JOB_NAMES.DOCUMENT_PROCESS]);
+export const BGV_JOB_NAMES = Object.freeze([
+  JOB_NAMES.BGV_PROCESS_CHECK,
+  JOB_NAMES.BGV_PROVIDER_POLL,
+  JOB_NAMES.BGV_PROCESS_RESULT,
 ]);
 
 // --- Defaults ------------------------------------------------------
@@ -167,6 +191,39 @@ export const getScheduledJobOptions = () => ({
   backoff: { ...SCHEDULED_JOB_OPTIONS.backoff },
   removeOnComplete: { ...SCHEDULED_JOB_OPTIONS.removeOnComplete },
   removeOnFail: { ...SCHEDULED_JOB_OPTIONS.removeOnFail },
+});
+
+// 28.6 document jobs: bounded retries for transient storage/scanner
+// blips. Permanent categories (unsupported file, corrupt file,
+// integrity mismatch, security rejection) complete as
+// PROCESSING_FAILED inside the processor and never consume these.
+export const DOCUMENT_JOB_OPTIONS = Object.freeze({
+  attempts: 3,
+  backoff: { type: 'exponential', delay: 2000 },
+  removeOnComplete: { count: 200 },
+  removeOnFail: { count: 500 },
+});
+
+export const getDocumentJobOptions = () => ({
+  attempts: DOCUMENT_JOB_OPTIONS.attempts,
+  backoff: { ...DOCUMENT_JOB_OPTIONS.backoff },
+  removeOnComplete: { ...DOCUMENT_JOB_OPTIONS.removeOnComplete },
+  removeOnFail: { ...DOCUMENT_JOB_OPTIONS.removeOnFail },
+});
+
+// 28.6 BGV jobs: conservative (future external vendors rate-limit).
+export const BGV_JOB_OPTIONS = Object.freeze({
+  attempts: 3,
+  backoff: { type: 'exponential', delay: 3000 },
+  removeOnComplete: { count: 200 },
+  removeOnFail: { count: 500 },
+});
+
+export const getBgvJobOptions = () => ({
+  attempts: BGV_JOB_OPTIONS.attempts,
+  backoff: { ...BGV_JOB_OPTIONS.backoff },
+  removeOnComplete: { ...BGV_JOB_OPTIONS.removeOnComplete },
+  removeOnFail: { ...BGV_JOB_OPTIONS.removeOnFail },
 });
 
 // --- Prefix / environment isolation --------------------------------
@@ -276,6 +333,86 @@ export const getOfferReminderOffsetMs = (source = process.env) => {
     MAX_OFFER_REMINDER_OFFSET_HOURS,
     Math.max(MIN_OFFER_REMINDER_OFFSET_HOURS, hours)
   ) * 60 * 60 * 1000;
+};
+
+// 28.6 document worker: file fetch + integrity + security checks
+// consume memory/CPU — keep the default modest.
+export const DEFAULT_DOCUMENT_WORKER_CONCURRENCY = 2;
+const MAX_DOCUMENT_WORKER_CONCURRENCY = 8;
+
+export const parseDocumentWorkerConcurrency = (source = process.env) => {
+  const parsed = Number(source.DOCUMENT_WORKER_CONCURRENCY);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_DOCUMENT_WORKER_CONCURRENCY;
+  return Math.min(
+    MAX_DOCUMENT_WORKER_CONCURRENCY,
+    Math.max(MIN_PROCESSING_WORKER_CONCURRENCY, Math.trunc(parsed))
+  );
+};
+
+// 28.6 BGV worker: conservative default; future per-vendor rate
+// limits may require tuning (no tenant throttling yet).
+export const DEFAULT_BGV_WORKER_CONCURRENCY = 2;
+const MAX_BGV_WORKER_CONCURRENCY = 8;
+
+export const parseBgvWorkerConcurrency = (source = process.env) => {
+  const parsed = Number(source.BGV_WORKER_CONCURRENCY);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_BGV_WORKER_CONCURRENCY;
+  return Math.min(
+    MAX_BGV_WORKER_CONCURRENCY,
+    Math.max(MIN_PROCESSING_WORKER_CONCURRENCY, Math.trunc(parsed))
+  );
+};
+
+// 28.6 centralized reminder policy (env-overridable, clamped).
+// ONE reminder per state per version — no repeated spam; idempotent
+// eventKeys make even a double-fire a single email.
+const clampedHours = (value, def, min, max) => {
+  const parsed = Number(value);
+  const hours = Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : def;
+  return Math.min(max, Math.max(min, hours));
+};
+
+export const getPreOnboardingReminderPolicy = (source = process.env) => {
+  const H = 60 * 60 * 1000;
+  const D = 24 * H;
+  return Object.freeze({
+    // Mandatory docs still pending after the pre-onboarding start.
+    documentsPendingOffsetMs: clampedHours(source.PREONBOARDING_DOCS_REMINDER_HOURS, 72, 12, 336) * H,
+    // After a HR rejection → resubmission reminder to the candidate.
+    resubmissionOffsetMs: clampedHours(source.PREONBOARDING_RESUBMISSION_REMINDER_HOURS, 48, 6, 336) * H,
+    // Joining-date reminder (days before joining, clamped 1-14).
+    joiningDaysBefore: (() => {
+      const parsed = Number(source.PREONBOARDING_JOINING_REMINDER_DAYS_BEFORE);
+      const days = Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 3;
+      return Math.min(14, Math.max(1, days));
+    })() * D,
+  });
+};
+
+export const getBgvReminderPolicy = (source = process.env) => {
+  const H = 60 * 60 * 1000;
+  return Object.freeze({
+    // Case awaiting the candidate's consent/information.
+    candidateInfoOffsetMs: clampedHours(source.BGV_CANDIDATE_REMINDER_HOURS, 48, 12, 336) * H,
+    // Case awaiting the assigned verifier.
+    verifierOffsetMs: clampedHours(source.BGV_VERIFIER_REMINDER_HOURS, 72, 12, 336) * H,
+  });
+};
+
+// 28.6 BGV provider polling ladder (external providers only).
+// Bounded, monotonically increasing; the window caps total polling.
+export const BGV_POLL_BACKOFF_MS = Object.freeze([
+  5 * 60 * 1000,
+  15 * 60 * 1000,
+  30 * 60 * 1000,
+  60 * 60 * 1000,
+]);
+export const BGV_POLL_MAX_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+export const nextBgvPollDelayMs = (pollAttempt) => {
+  const index = Math.max(0, Math.trunc(pollAttempt)) - 1;
+  const ladder = BGV_POLL_BACKOFF_MS;
+  return ladder[Math.min(ladder.length - 1, Math.max(0, index))];
 };
 
 // --- Job ID / idempotency convention --------------------------------

@@ -10,6 +10,10 @@
 //     re-claimed by the worker's 10-minute window).
 //   - Offers: SENT/VIEWED, expiry within the next 90 days →
 //     reminder job (when the offset window is open) + expiry job.
+//   - Pre-onboarding reminders (28.6): active workflows, docs
+//     pending / resubmission / joining-date (90-day window).
+//   - BGV reminders (28.6): open cases, candidate / verifier /
+//     review (60-day window).
 //
 // Re-running is safe:
 //   - job ids are deterministic (entity id + canonical timestamp)
@@ -25,6 +29,10 @@ import { getRedisConfig } from '../src/config/redis.js';
 import { getQueuePrefix } from '../src/config/queueConfig.js';
 import { closeAllQueues } from '../src/queues/queueFactory.js';
 import { runScheduledReconcile } from '../src/services/scheduledJobScheduler.js';
+import {
+  runPreOnboardingReminderReconcile,
+  runBgvReminderReconcile,
+} from '../src/services/reminderSchedulingService.js';
 
 const main = async () => {
   const config = getRedisConfig();
@@ -50,6 +58,18 @@ const main = async () => {
   });
 
   const summary = await runScheduledReconcile();
+  const preOnboardingSummary = await runPreOnboardingReminderReconcile().catch(() => ({
+    checked: 0,
+    queued: 0,
+    skipped: 0,
+    errors: 1,
+  }));
+  const bgvSummary = await runBgvReminderReconcile().catch(() => ({
+    checked: 0,
+    queued: 0,
+    skipped: 0,
+    errors: 1,
+  }));
 
   console.log(
     `Interviews: checked=${summary.interviews.checked}, ` +
@@ -61,9 +81,21 @@ const main = async () => {
       `reminders=${summary.offers.reminders}, expiries=${summary.offers.expiries}, ` +
       `errors=${summary.offers.errors}`
   );
+  console.log(
+    `Pre-onboarding reminders: checked=${preOnboardingSummary.checked}, ` +
+      `queued=${preOnboardingSummary.queued}, skipped=${preOnboardingSummary.skipped}, ` +
+      `errors=${preOnboardingSummary.errors}`
+  );
+  console.log(
+    `BGV reminders: checked=${bgvSummary.checked}, ` +
+      `queued=${bgvSummary.queued}, skipped=${bgvSummary.skipped}, ` +
+      `errors=${bgvSummary.errors}`
+  );
   if (
     summary.interviews.checked === 0 &&
-    summary.offers.checked === 0
+    summary.offers.checked === 0 &&
+    preOnboardingSummary.checked === 0 &&
+    bgvSummary.checked === 0
   ) {
     console.log('No pending scheduled work found. Nothing to do.');
   }
