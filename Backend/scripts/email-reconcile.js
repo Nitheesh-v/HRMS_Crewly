@@ -17,6 +17,7 @@
 // ============================================================
 
 import dotenv from 'dotenv';
+import mongoose from 'mongoose';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { getRedisConfig } from '../src/config/redis.js';
@@ -48,6 +49,16 @@ const main = async () => {
       : 'Mode: default (records older than 60s only)'
   );
 
+  // This script is standalone: it must open its own MongoDB
+  // connection (the API process's connection does not exist here).
+  if (!process.env.MONGO_URI) {
+    console.error('email:reconcile failed: MONGO_URI is not set in .env.');
+    process.exit(1);
+  }
+  await mongoose.connect(process.env.MONGO_URI, {
+    serverSelectionTimeoutMS: 10000,
+  });
+
   const summary = await reconcileStuckEmailDeliveries({
     minAgeMs: includeYoung ? 0 : 60000,
     limit: 100,
@@ -75,5 +86,6 @@ main()
   })
   .finally(async () => {
     await closeAllQueues().catch(() => {});
+    await mongoose.connection.close().catch(() => {});
     process.exit(process.exitCode || 0);
   });
