@@ -36,6 +36,12 @@ const safeText = (error) =>
 // colon-joined, no spaces/control chars, bounded length.
 export const buildEventKey = (...parts) => buildJobId(...parts);
 
+// BullMQ custom job ids may NOT contain ':' (it uses colons as its
+// key separator and rejects them). The delivery's Mongo id is
+// globally unique, so this single-part hyphen id is deterministic
+// and collision-free: email-<deliveryId>.
+export const buildEmailJobId = (deliveryId) => buildJobId(`email-${deliveryId}`);
+
 // Default enqueue — overridable in tests (dependency injection).
 export const defaultEnqueueEmail = (jobName, payload, jobId) =>
   enqueueJob(QUEUE_NAMES.EMAIL, jobName, payload, {
@@ -124,7 +130,7 @@ export const dispatchEmailDelivery = async ({
   await DeliveryModel.updateOne({ _id: delivery._id }, { $set: { payload: recordPayload } }).catch(() => {});
 
   // 3) Enqueue with a deterministic job id (no email/token inside).
-  const jobId = buildJobId('email', delivery._id);
+  const jobId = buildEmailJobId(delivery._id);
   try {
     const job = await enqueue(jobName, recordPayload, jobId);
     await DeliveryModel.updateOne(
@@ -210,7 +216,7 @@ export const reconcileStuckEmailDeliveries = async ({
 
   const results = [];
   for (const delivery of stuck) {
-    const jobId = buildJobId('email', delivery._id);
+    const jobId = buildEmailJobId(delivery._id);
     try {
       const job = await enqueue(delivery.jobName, delivery.payload || {}, jobId);
       await DeliveryModel.updateOne(

@@ -24,6 +24,7 @@ import {
 } from '../src/config/queueConfig.js';
 import {
   buildEventKey,
+  buildEmailJobId,
   dispatchEmailDelivery,
   requestEmailDelivery,
   claimEmailDelivery,
@@ -356,8 +357,8 @@ test('dispatchEmailDelivery persists intent then queues (PENDING → QUEUED)', a
   assert.equal(doc.payload.deliveryId, String(doc._id));
   assert.ok(doc.payload.correlationId);
   assert.ok(!('email' in doc.payload) && !('candidateEmail' in doc.payload));
-  // Deterministic job id: email:<deliveryId>.
-  assert.equal(enqueued[0].jobId, `email:${doc._id}`);
+  // Deterministic job id: email-<deliveryId> (colon-free for BullMQ).
+  assert.equal(enqueued[0].jobId, `email-${doc._id}`);
   assert.equal(enqueued[0].jobName, JOB_NAMES.EMAIL_APPLICATION_RECEIVED);
 
   // The enqueued payload must satisfy the worker's strict validator:
@@ -514,7 +515,7 @@ test('reconcile re-enqueues stuck deliveries once, idempotently', async () => {
   // Reconciliation keeps the deterministic job id (email:<deliveryId>).
   assert.equal(enqueueCalls.length, 2);
   for (const jobId of enqueueCalls) {
-    assert.ok(jobId.startsWith('email:'));
+    assert.ok(jobId.startsWith('email-'));
   }
 
   // Re-run: everything is QUEUED now — nothing happens.
@@ -526,17 +527,20 @@ test('reconcile re-enqueues stuck deliveries once, idempotently', async () => {
   assert.ok(first.results.every((r) => r.requeued));
 });
 
-// ─── buildJobId reuse (job ids) ───────────────────────────────
+// ─── Job ids (BullMQ custom ids) ───────────────────────────────
 
-test('email job ids are deterministic and secret-free', () => {
-  const id = buildJobId('email', DELIVERY);
-  assert.equal(id, `email:${DELIVERY}`);
-  assert.equal(id, buildJobId('email', DELIVERY));
-  // Structural safety: blank/control characters cannot appear in ids.
-  assert.throws(() => buildJobId('email', 'bad id'));
-  assert.throws(() => buildJobId('email', 'bad\u0001id'));
-  // Our job ids are email:<deliveryMongoId> — a Mongo ObjectId — so a
+test('email job ids are deterministic, colon-free and secret-free', () => {
+  const id = buildEmailJobId(DELIVERY);
+  assert.equal(id, `email-${DELIVERY}`);
+  assert.equal(id, buildEmailJobId(DELIVERY));
+  // BullMQ rejects custom job ids containing ':' (it uses ':' as its
+  // key separator) — the format must stay colon-free.
+  assert.ok(!id.includes(':'), 'BullMQ custom ids cannot contain colons');
+  // The id is email-<deliveryMongoId> — a Mongo ObjectId — so a
   // candidate's email address can never end up in the job id by
   // construction (spec §13).
   assert.ok(!id.includes('@'));
+  // Structural safety of the underlying builder is unchanged.
+  assert.throws(() => buildJobId('email', 'bad id'));
+  assert.throws(() => buildJobId('email', 'bad\u0001id'));
 });

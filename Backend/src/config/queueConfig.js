@@ -154,6 +154,11 @@ const hasUnsafeCharacters = (value) => {
   return false;
 };
 
+// NOTE: the ':' join is valid for Mongo keys (e.g. eventKey) but
+// BullMQ REJECTS custom job ids containing ':' ("Custom Id cannot
+// contain :"). When passing the result to Queue.add as jobId, use a
+// single hyphen-joined part instead (see buildEmailJobId in
+// services/emailDeliveryService.js).
 export const buildJobId = (...parts) => {
   const values = parts.map((part) => String(part ?? ''));
   for (const value of values) {

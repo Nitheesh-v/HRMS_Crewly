@@ -8,7 +8,7 @@ Status: COMPLETE (email queueing + delivery; no 28.4 work started — handoff at
 Business service (API process)
   1. commit business state to MongoDB (first)
   2. dispatchEmailDelivery()          → EmailDelivery row (PENDING) + payload refs only
-  3. enqueueJob(email, …, jobId)      → BullMQ email queue (deterministic id email:<deliveryId>)
+  3. enqueueJob(email, …, jobId)      → BullMQ email queue (deterministic id email-<deliveryId>)
   4. HTTP response returns            → business success, NEVER "email sent"
         │
         ▼  (BullMQ, crewly:<env>:email:*)
@@ -96,9 +96,12 @@ allowed to weaken it. In-app notifications (`notifyUser` /
 - The worker claim (`findOneAndUpdate` on non-terminal status) makes
   duplicate/replayed jobs safe no-ops; `SENT` is final and can never be
   overwritten.
-- Job id is deterministic: `email:<deliveryMongoId>` — reconciliation
-  re-adds the same job id, so BullMQ's job-id dedupe prevents
-  duplicates even on re-runs.
+- Job id is deterministic: `email-<deliveryMongoId>`. BullMQ REJECTS
+  custom job ids containing `:` (its key separator), so the id is
+  hyphen-joined, not colon-joined (the colon-joined form is still
+  used for the Mongo-only `eventKey`). Reconciliation re-adds the
+  same job id, so BullMQ's job-id dedupe prevents duplicates even on
+  re-runs.
 
 ## Retry + failure classification
 
