@@ -49,10 +49,13 @@ export const candidateResumeReprocess = asyncHandler(async (req, res) => {
     critical: true,
   });
 
-  dispatchResumeProcessing({
+  // 28.4: async BullMQ dispatch (never throws — the RETRY_PENDING
+  // Mongo intent is the recovery source if the queue is down).
+  void dispatchResumeProcessing({
     companyId: req.companyId,
     candidateId: result.candidate._id,
     resumeId: result.resume._id,
+    parsingRequestedAt: result.resume.parsingRequestedAt,
   });
 
   // Data to frontend - response to frontend

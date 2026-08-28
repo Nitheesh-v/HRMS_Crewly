@@ -80,6 +80,25 @@ export const enqueueJob = async (queueName, jobName, data, options = {}) => {
   return job;
 };
 
+// Reconciliation helper (28.3/28.4): BullMQ never re-creates a used
+// jobId — queue.add with an existing id returns the EXISTING job
+// regardless of state (including FAILED, which persists in the
+// failed set). Before re-adding a deterministic job id, clear the
+// slot only when the previous job is FAILED (a dead job). Live jobs
+// (waiting/active/delayed/completed) are left untouched so
+// reconciliation stays idempotent. Returns the previous state or
+// 'absent' / 'failed-removed'.
+export const prepareJobSlot = async (queue, jobId) => {
+  const existing = await queue.getJob(jobId);
+  if (!existing) return 'absent';
+  const state = await existing.getState();
+  if (state === 'failed') {
+    await existing.remove().catch(() => {});
+    return 'failed-removed';
+  }
+  return state;
+};
+
 // Close every queue this process opened: BullMQ backend first, then
 // the ioredis instances we created (BullMQ leaves those to us).
 export const closeAllQueues = async () => {

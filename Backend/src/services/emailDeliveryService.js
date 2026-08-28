@@ -17,7 +17,7 @@
 import { randomUUID } from 'node:crypto';
 import mongoose from 'mongoose';
 import EmailDelivery from '../models/EmailDelivery.js';
-import { enqueueJob, getQueue } from '../queues/queueFactory.js';
+import { enqueueJob, getQueue, prepareJobSlot } from '../queues/queueFactory.js';
 import {
   QUEUE_NAMES,
   JOB_NAMES,
@@ -60,16 +60,9 @@ export const defaultEnqueueEmail = (jobName, payload, jobId) =>
 // re-added as a fresh job. Alive jobs are left untouched.
 // Returns 'absent', 'failed-removed', or the observed live state.
 // Exported for hermetic tests.
-export const prepareEmailJobSlot = async (queue, jobId) => {
-  const existing = await queue.getJob(jobId);
-  if (!existing) return 'absent';
-  const state = await existing.getState();
-  if (state === 'failed') {
-    await existing.remove().catch(() => {});
-    return 'failed-removed';
-  }
-  return state;
-};
+// Shared slot prep (queueFactory) — keeps the deterministic job id
+// re-addable after a dead FAILED job without touching live jobs.
+export const prepareEmailJobSlot = (queue, jobId) => prepareJobSlot(queue, jobId);
 
 // Reconciliation enqueue: clears a dead previous job before adding.
 export const defaultReconcileEnqueue = async (jobName, payload, jobId) => {

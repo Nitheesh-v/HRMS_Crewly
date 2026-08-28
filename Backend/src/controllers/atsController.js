@@ -1,4 +1,3 @@
-import ApiError from '../utils/ApiError.js';
 import ApiResponse from '../utils/ApiResponse.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { dispatchATSMatching } from '../services/atsDispatcher.js';
@@ -34,7 +33,10 @@ export const candidateATSReprocess = asyncHandler(async (req, res) => {
     candidateRef: candidateId,
     actorId: req.user._id,
   });
-  const dispatched = dispatchATSMatching({
+  // 28.4: async BullMQ dispatch (never throws). The recalculation
+  // intent (recalculationPending) is ALREADY persisted in Mongo, so
+  // even a queue/Redis outage loses no work — recovery re-derives it.
+  await dispatchATSMatching({
     companyId: req.companyId,
     candidateId: prepared.candidate._id,
     jobId: prepared.job._id,
@@ -42,11 +44,8 @@ export const candidateATSReprocess = asyncHandler(async (req, res) => {
     parseResultId: prepared.parseResult._id,
     trigger: 'MANUAL_REPROCESS',
     actorId: req.user._id,
+    requestEpoch: prepared.requestedAt,
   });
-
-  if (!dispatched.accepted) {
-    throw new ApiError(503, 'ATS recalculation queue is temporarily full');
-  }
 
   // Data to frontend - response to frontend
   return ApiResponse.success(res, {

@@ -22,10 +22,7 @@ import {
 import {
   ensureCandidatePipelineStages,
 } from './utils/candidatePipelineMigration.js';
-import {
-  recoverPendingResumeProcessing,
-} from './services/resumeProcessingDispatcher.js';
-import { recoverPendingATSMatching } from './services/atsDispatcher.js';
+import { closeAllQueues } from './queues/queueFactory.js';
 
 const startServer = async () => {
   try {
@@ -49,11 +46,10 @@ const startServer = async () => {
     // Phase 27.8 normalizes the canonical pipeline stage without losing legacy data.
     await ensureCandidatePipelineStages();
 
-    // Phase 27.6 recovers persisted parser jobs; extraction stays background-only.
-    await recoverPendingResumeProcessing();
-
-    // Phase 27.7 recovers parsed candidates that do not yet have an ATS result.
-    await recoverPendingATSMatching();
+    // Phase 28.4: processing recovery (resume leases + missing ATS
+    // results) now runs in the WORKER process at startup, and on
+    // demand via `npm run processing:reconcile`. The API only
+    // enqueues; Mongo holds the durable intent.
 
     const server = app.listen(
       env.PORT,
@@ -96,8 +92,10 @@ const startServer = async () => {
           'HTTP server closed.'
         );
 
-        // Phase 28.1 — bounded Redis close (quit with timeout,
-        // disconnect fallback). Safe when Redis is disabled.
+        // Phase 28.3/28.4 — the API opens producer-side queues
+        // (email + processing dispatch). Close BullMQ queues first,
+        // then the shared 28.1 client. Safe when Redis is disabled.
+        await closeAllQueues().catch(() => {});
         await closeRedis();
 
         await mongoose.disconnect().catch(() => {});

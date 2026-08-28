@@ -4,9 +4,11 @@
 //   npm run worker:dev   (nodemon)
 //   npm run worker       (plain node)
 //
-// One process runs both BullMQ workers:
+// One process runs all four BullMQ workers:
 //   - system queue (28.2 infrastructure jobs)
 //   - email queue  (28.3 email delivery jobs)
+//   - resume queue (28.4 resume parsing jobs)
+//   - ats queue    (28.4 ATS matching jobs)
 //
 // Architecture: the Express API and this Worker process are
 // separate by design. The API serves HTTP; workers process
@@ -45,12 +47,21 @@ import {
   getQueuePrefix,
   parseWorkerConcurrency,
   parseEmailWorkerConcurrency,
+  parseResumeWorkerConcurrency,
+  parseATSWorkerConcurrency,
   redactConnectionSecrets,
   EMAIL_JOB_NAMES,
 } from '../config/queueConfig.js';
+import { closeAllQueues } from '../queues/queueFactory.js';
 import { dispatchJob, classifyJobFailure, registerProcessor, jobRegistry } from './registry.js';
 import { registerEmailProcessors } from './emailProcessor.js';
+import { registerResumeProcessors } from './resumeProcessor.js';
+import { registerATSProcessors } from './atsProcessor.js';
 import { markEmailDelivery } from '../services/emailDeliveryService.js';
+import {
+  recoverPendingResumeProcessing,
+} from '../services/resumeProcessingDispatcher.js';
+import { recoverPendingATSMatching } from '../services/atsDispatcher.js';
 
 const SHUTDOWN_HARD_STOP_MS = 10000;
 
@@ -90,6 +101,12 @@ const attachEventHandlers = (worker, label) => {
         lastFailureCategory: 'RETRIES_EXHAUSTED',
       }).catch(() => {});
     }
+    // 28.4 processing jobs need no extra bookkeeping on exhaustion:
+    // the resume business state is already terminal (FAILED via the
+    // final-attempt path) or RETRY_PENDING, and the ATS intent
+    // (missing result / recalculationPending) stays in Mongo —
+    // startup recovery / processing:reconcile re-derives it with a
+    // slot-prepared job id. Mongo is the audit of record.
   });
 
   worker.on('stalled', (jobId) => {
@@ -127,12 +144,13 @@ const startWorker = async () => {
     process.exit(1);
   }
 
-  // --- Fail fast: email jobs reload + persist via MongoDB -----------
-  // (The 28.2 system jobs don't need Mongo; the 28.3 email jobs do —
-  // a worker without Mongo cannot process the email queue.)
+  // --- Fail fast: email + processing jobs reload + persist via
+  // --- MongoDB (28.2 system jobs don't; 28.3 email and 28.4
+  // resume/ATS jobs do — a worker without Mongo cannot process
+  // those queues).
   if (!process.env.MONGO_URI) {
     logger.error(
-      '[Worker] MONGO_URI is empty — email jobs require MongoDB. ' +
+      '[Worker] MONGO_URI is empty — email and processing jobs require MongoDB. ' +
         'Set MONGO_URI privately in Backend/.env.'
     );
     process.exit(1);
@@ -141,11 +159,13 @@ const startWorker = async () => {
     await mongoose.connect(process.env.MONGO_URI, {
       serverSelectionTimeoutMS: config.connectTimeoutMs,
     });
-    logger.info('[Worker] MongoDB connected (email jobs can persist state)');
+    logger.info(
+      '[Worker] MongoDB connected (email + processing jobs can persist state)'
+    );
   } catch (error) {
     logger.error(
       `[Worker] MongoDB connection failed (${safeErrorText(error)}) — ` +
-        'email jobs cannot run. Check MONGO_URI; the API is unaffected.'
+        'email and processing jobs cannot run. Check MONGO_URI; the API is unaffected.'
     );
     process.exit(1);
   }
@@ -153,13 +173,20 @@ const startWorker = async () => {
   const prefix = getQueuePrefix();
   const concurrency = parseWorkerConcurrency();
   const emailConcurrency = parseEmailWorkerConcurrency();
+  const resumeConcurrency = parseResumeWorkerConcurrency();
+  const atsConcurrency = parseATSWorkerConcurrency();
 
   logger.info(
-    `[Worker] Starting workers (prefix=${prefix}, system concurrency=${concurrency}, email concurrency=${emailConcurrency})`
+    `[Worker] Starting workers (prefix=${prefix}, system concurrency=${concurrency}, ` +
+      `email concurrency=${emailConcurrency}, resume concurrency=${resumeConcurrency}, ` +
+      `ats concurrency=${atsConcurrency})`
   );
 
-  // Register the 28.3 email processors in the shared registry.
+  // Register the 28.3 email + 28.4 processing processors in the
+  // shared registry.
   registerEmailProcessors({ registerProcessor });
+  registerResumeProcessors({ registerProcessor });
+  registerATSProcessors({ registerProcessor });
 
   // One dedicated connection per worker (never the API's client).
   const createWorkerConnection = (connectionName) =>
@@ -191,6 +218,28 @@ const startWorker = async () => {
     });
     workers.push(emailWorker);
     attachEventHandlers(emailWorker, 'email worker');
+
+    // 28.4 processing queues. Resume is CPU-bound (PDF/DOCX
+    // extraction) so it defaults to single-flight; ATS is light.
+    const resumeConnection = createWorkerConnection('crewly-worker-resume');
+    connections.push(resumeConnection);
+    const resumeWorker = new Worker(QUEUE_NAMES.RESUME, dispatchJob, {
+      connection: resumeConnection,
+      prefix,
+      concurrency: resumeConcurrency,
+    });
+    workers.push(resumeWorker);
+    attachEventHandlers(resumeWorker, 'resume worker');
+
+    const atsConnection = createWorkerConnection('crewly-worker-ats');
+    connections.push(atsConnection);
+    const atsWorker = new Worker(QUEUE_NAMES.ATS, dispatchJob, {
+      connection: atsConnection,
+      prefix,
+      concurrency: atsConcurrency,
+    });
+    workers.push(atsWorker);
+    attachEventHandlers(atsWorker, 'ats worker');
   } catch (error) {
     logger.error(`[Worker] Startup failed: ${safeErrorText(error)}`);
     for (const connection of connections) {
@@ -203,7 +252,7 @@ const startWorker = async () => {
     process.exit(1);
   }
 
-  // --- Readiness gate: BOTH workers must see Redis or fail fast -----
+  // --- Readiness gate: ALL workers must see Redis or fail fast ------
   const ready = await Promise.race([
     Promise.all(
       workers.map((w) =>
@@ -236,6 +285,29 @@ const startWorker = async () => {
   const registrySize = jobRegistry.size;
   logger.info(`[Worker] Workers online (prefix=${prefix}, registered jobs=${registrySize})`);
 
+  // --- 28.4 startup recovery ------------------------------------------
+  // Mongo is the source of truth for processing intent. Re-derive any
+  // stuck resume/ATS work (expired leases, COMPLETED parse with no
+  // ATS result, pending recalculations) and re-enqueue it before the
+  // queues start serving. Idempotent (deterministic job ids + slot
+  // prep + dedupe); a failure here is NOT fatal — the same recovery
+  // runs on the next startup and via `npm run processing:reconcile`.
+  try {
+    const [resumeRecovery, atsRecovery] = await Promise.all([
+      recoverPendingResumeProcessing(),
+      recoverPendingATSMatching(),
+    ]);
+    logger.info(
+      `[Worker] Startup recovery: resume queued=${resumeRecovery.queued}/${resumeRecovery.pending}, ` +
+        `ats queued=${atsRecovery.queued}/${atsRecovery.pending}`
+    );
+  } catch (error) {
+    logger.warn(
+      `[Worker] Startup recovery failed — processing jobs stay recoverable via ` +
+        `npm run processing:reconcile (${safeErrorText(error)})`
+    );
+  }
+
   // --- Graceful shutdown (this process's own handlers) ---------------
   let shuttingDown = false;
   const shutdown = (signal) => {
@@ -259,6 +331,10 @@ const startWorker = async () => {
         w.close().catch((error) => logger.warn(`[Worker] close() error: ${safeErrorText(error)}`))
       )
     ).finally(async () => {
+      // Startup recovery (28.4) opens producer-side queues in this
+      // process — close them too (BullMQ leaves the ioredis
+      // instances to us, then we disconnect).
+      await closeAllQueues().catch(() => {});
       for (const connection of connections) {
         try {
           connection.disconnect();

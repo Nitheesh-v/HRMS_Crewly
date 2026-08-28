@@ -39,11 +39,22 @@ export const JOB_NAMES = {
   EMAIL_OFFER_DECISION: 'email-offer-decision',
   EMAIL_OFFER_WITHDRAWN: 'email-offer-withdrawn',
   EMAIL_PREONBOARDING_DOC_DECISION: 'email-preonboarding-doc-decision',
+  // 28.4: processing jobs (resume parsing + ATS matching). One job name
+  // per stage — reprocess/recovery reuse the same job with a fresh
+  // deterministic job id (version-aware), not extra job names.
+  RESUME_PARSE: 'resume-parse',
+  ATS_PROCESS: 'ats-process',
 };
 
 export const EMAIL_JOB_NAMES = Object.values(JOB_NAMES).filter((name) =>
   name.startsWith('email-')
 );
+
+// 28.4 processing job names (resume queue + ats queue).
+export const PROCESSING_JOB_NAMES = Object.freeze([
+  JOB_NAMES.RESUME_PARSE,
+  JOB_NAMES.ATS_PROCESS,
+]);
 
 // --- Defaults ------------------------------------------------------
 
@@ -87,6 +98,42 @@ export const getEmailJobOptions = () => ({
   backoff: { ...EMAIL_JOB_OPTIONS.backoff },
   removeOnComplete: { ...EMAIL_JOB_OPTIONS.removeOnComplete },
   removeOnFail: { ...EMAIL_JOB_OPTIONS.removeOnFail },
+});
+
+// 28.4 processing retry policy. Resume parsing: 3 attempts, 2s
+// exponential backoff — enough for transient storage/Mongo blips,
+// while permanent content errors (corrupt PDF, password protected)
+// fail fast inside the processor and never consume these attempts.
+// Business attempt accounting (CandidateResume.parsingAttempts, max 8)
+// is separate and persists across reconciliations.
+export const RESUME_JOB_OPTIONS = Object.freeze({
+  attempts: 3,
+  backoff: { type: 'exponential', delay: 2000 },
+  removeOnComplete: { count: 100 },
+  removeOnFail: { count: 500 },
+});
+
+// ATS scoring is deterministic and local — attempts only cover
+// transient Mongo/infrastructure failures.
+export const ATS_JOB_OPTIONS = Object.freeze({
+  attempts: 3,
+  backoff: { type: 'exponential', delay: 2000 },
+  removeOnComplete: { count: 100 },
+  removeOnFail: { count: 500 },
+});
+
+export const getResumeJobOptions = () => ({
+  attempts: RESUME_JOB_OPTIONS.attempts,
+  backoff: { ...RESUME_JOB_OPTIONS.backoff },
+  removeOnComplete: { ...RESUME_JOB_OPTIONS.removeOnComplete },
+  removeOnFail: { ...RESUME_JOB_OPTIONS.removeOnFail },
+});
+
+export const getATSJobOptions = () => ({
+  attempts: ATS_JOB_OPTIONS.attempts,
+  backoff: { ...ATS_JOB_OPTIONS.backoff },
+  removeOnComplete: { ...ATS_JOB_OPTIONS.removeOnComplete },
+  removeOnFail: { ...ATS_JOB_OPTIONS.removeOnFail },
 });
 
 // --- Prefix / environment isolation --------------------------------
@@ -133,6 +180,34 @@ export const parseEmailWorkerConcurrency = (source = process.env) => {
   return Math.min(
     MAX_EMAIL_WORKER_CONCURRENCY,
     Math.max(MIN_EMAIL_WORKER_CONCURRENCY, Math.trunc(parsed))
+  );
+};
+
+// 28.4 processing workers. Resume parsing is CPU-bound (PDF/DOCX
+// extraction + parser) — default 1 so a single large file cannot
+// starve the process or other tenants' jobs. ATS scoring is light
+// and deterministic — default 2.
+export const DEFAULT_RESUME_WORKER_CONCURRENCY = 1;
+export const DEFAULT_ATS_WORKER_CONCURRENCY = 2;
+const MIN_PROCESSING_WORKER_CONCURRENCY = 1;
+const MAX_RESUME_WORKER_CONCURRENCY = 4;
+const MAX_ATS_WORKER_CONCURRENCY = 10;
+
+export const parseResumeWorkerConcurrency = (source = process.env) => {
+  const parsed = Number(source.RESUME_WORKER_CONCURRENCY);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_RESUME_WORKER_CONCURRENCY;
+  return Math.min(
+    MAX_RESUME_WORKER_CONCURRENCY,
+    Math.max(MIN_PROCESSING_WORKER_CONCURRENCY, Math.trunc(parsed))
+  );
+};
+
+export const parseATSWorkerConcurrency = (source = process.env) => {
+  const parsed = Number(source.ATS_WORKER_CONCURRENCY);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_ATS_WORKER_CONCURRENCY;
+  return Math.min(
+    MAX_ATS_WORKER_CONCURRENCY,
+    Math.max(MIN_PROCESSING_WORKER_CONCURRENCY, Math.trunc(parsed))
   );
 };
 
