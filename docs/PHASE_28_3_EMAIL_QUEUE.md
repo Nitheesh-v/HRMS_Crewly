@@ -141,11 +141,15 @@ allowed to weaken it. In-app notifications (`notifyUser` /
 ## Reconciliation
 
 - `npm run email:reconcile` (optionally `--all` to ignore the 60s
-  minimum age) — scans `PENDING` orphans and `FAILED_TO_QUEUE`
-  deliveries and re-enqueues them with their original deterministic job
-  id. Re-runs are no-ops. It is a developer/ops CLI — there is NO
-  unauthenticated (or authenticated) HTTP endpoint for it, and it
-  requires Redis configuration.
+  minimum age) — scans `PENDING` orphans, `FAILED_TO_QUEUE`
+  deliveries, and **stale `QUEUED`** deliveries (a job can die in
+  Redis — e.g. retries exhausted while Mongo was unreachable —
+  leaving the record stuck) and re-enqueues them with their original
+  deterministic job id. Re-runs are safe: BullMQ's job-id dedupe
+  makes a re-add of an alive job a no-op, and the 60s min-age skips
+  healthy in-flight jobs. It is a developer/ops CLI — there is NO
+  unauthenticated (or authenticated) HTTP endpoint for it — and it
+  requires Redis + MongoDB configuration.
 - There are no Mongo transactions in these services, so the outbox
   pattern (intent-after-commit + reconciliation) is the consistency
   mechanism. Enqueue failure NEVER rolls back business state and there
@@ -262,7 +266,9 @@ Manual ladder (Redis + Mongo + MOCK mailer):
   `classifyEmailSendFailure` — new failure families must pick a retry
   policy deliberately.
 - **Reconciliation**: `scripts/email-reconcile.js` +
-  `reconcileStuckEmailDeliveries` (60s minAge, `--all` override).
+  `reconcileStuckEmailDeliveries` (60s minAge, `--all` override,
+  scans PENDING + FAILED_TO_QUEUE + stale QUEUED). The worker
+  process requires Redis AND MongoDB (fail-fast at startup).
 - **Stale-state rules**: per-handler predicates in
   `emailProcessor.js` — new handlers must re-fetch and re-check, never
   trust payload state.

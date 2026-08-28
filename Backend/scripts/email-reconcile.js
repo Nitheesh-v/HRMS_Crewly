@@ -4,14 +4,17 @@
 //   npm run email:reconcile
 //   npm run email:reconcile -- --all      (ignore the 60s min-age)
 //
-// Finds delivery intents that never reached the queue:
+// Finds stuck delivery intents and re-enqueues them with their
+// ORIGINAL deterministic job id (email-<deliveryId>):
 //   - PENDING          (created, enqueue never confirmed)
 //   - FAILED_TO_QUEUE  (enqueue failed, e.g. Redis was down)
-// and re-enqueues them with their ORIGINAL deterministic job id
-// (email:<deliveryId>). Re-running is safe:
-//   - already-QUEUED/SENT/... records are skipped
-//   - BullMQ's job id dedupe prevents a second job even if one
-//     already exists in the queue
+//   - stale QUEUED     (the job died in Redis — retries exhausted
+//                       while Mongo was unreachable, worker crash)
+// Re-running is safe:
+//   - SENT/STALE/FAILED records are never touched
+//   - BullMQ's job id dedupe prevents a second job even if the
+//     original job is still alive in the queue
+//   - the 60s min-age (--all to override) skips healthy in-flight jobs
 //
 // This is a developer/ops tool — it is NOT exposed over HTTP.
 // ============================================================

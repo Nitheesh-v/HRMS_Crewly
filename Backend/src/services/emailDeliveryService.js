@@ -178,7 +178,7 @@ export const claimEmailDelivery = async (deliveryId, companyId, { DeliveryModel 
       status: { $in: ['PENDING', 'QUEUED', 'PROCESSING'] },
     },
     { $set: { status: 'PROCESSING', processingAt: new Date() }, $inc: { attemptCount: 1 } },
-    { new: true }
+    { returnDocument: 'after' }
   );
 };
 
@@ -196,10 +196,17 @@ export const markEmailDelivery = async (deliveryId, companyId, update, { Deliver
   );
 };
 
-// Reconciliation core: re-enqueue stuck deliveries (PENDING orphans
-// and FAILED_TO_QUEUE) with their original deterministic job id.
-// Re-runs are no-ops: already-QUEUED records are skipped, and
-// BullMQ's job id dedupe prevents a second job even if one exists.
+// Reconciliation core: re-enqueue stuck deliveries with their
+// original deterministic job id. Scans:
+//   - PENDING         (created, enqueue never confirmed)
+//   - FAILED_TO_QUEUE (enqueue failed, e.g. Redis was down)
+//   - QUEUED          (stale: the job can DIE in Redis — retries
+//                      exhausted while Mongo was unreachable, worker
+//                      crash — leaving the record stuck in QUEUED
+//                      forever). Re-adding the same deterministic
+//                      job id is safe: if the original job is still
+//                      alive, BullMQ's job-id dedupe makes it a no-op.
+// The 60s min-age keeps this from touching healthy in-flight jobs.
 export const reconcileStuckEmailDeliveries = async ({
   minAgeMs = 60000,
   limit = 100,
@@ -208,7 +215,7 @@ export const reconcileStuckEmailDeliveries = async ({
 } = {}) => {
   const cutoff = new Date(Date.now() - minAgeMs);
   const stuck = await DeliveryModel.find({
-    status: { $in: ['PENDING', 'FAILED_TO_QUEUE'] },
+    status: { $in: ['PENDING', 'FAILED_TO_QUEUE', 'QUEUED'] },
     createdAt: { $lt: cutoff },
   })
     .limit(limit)

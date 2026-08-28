@@ -13,8 +13,9 @@
 // background jobs. They scale independently, and a worker crash
 // never takes down the API.
 //
-// UNLIKE the API (28.1 degraded mode), a WORKER REQUIRES Redis:
-// if Redis is disabled/misconfigured/unreachable at startup, this
+// UNLIKE the API (28.1 degraded mode), a WORKER REQUIRES Redis AND
+// MongoDB (email jobs reload state and persist delivery results):
+// if either is disabled/misconfigured/unreachable at startup, this
 // process fails fast with a safe error (no credentials logged).
 //
 // CONNECTION OWNERSHIP (verified in BullMQ 6.3.1 source):
@@ -32,6 +33,7 @@
 import dotenv from 'dotenv';
 import Redis from 'ioredis';
 import { Worker } from 'bullmq';
+import mongoose from 'mongoose';
 import logger from '../config/logger.js';
 import {
   getRedisConfig,
@@ -125,6 +127,29 @@ const startWorker = async () => {
     process.exit(1);
   }
 
+  // --- Fail fast: email jobs reload + persist via MongoDB -----------
+  // (The 28.2 system jobs don't need Mongo; the 28.3 email jobs do —
+  // a worker without Mongo cannot process the email queue.)
+  if (!process.env.MONGO_URI) {
+    logger.error(
+      '[Worker] MONGO_URI is empty — email jobs require MongoDB. ' +
+        'Set MONGO_URI privately in Backend/.env.'
+    );
+    process.exit(1);
+  }
+  try {
+    await mongoose.connect(process.env.MONGO_URI, {
+      serverSelectionTimeoutMS: config.connectTimeoutMs,
+    });
+    logger.info('[Worker] MongoDB connected (email jobs can persist state)');
+  } catch (error) {
+    logger.error(
+      `[Worker] MongoDB connection failed (${safeErrorText(error)}) — ` +
+        'email jobs cannot run. Check MONGO_URI; the API is unaffected.'
+    );
+    process.exit(1);
+  }
+
   const prefix = getQueuePrefix();
   const concurrency = parseWorkerConcurrency();
   const emailConcurrency = parseEmailWorkerConcurrency();
@@ -204,6 +229,7 @@ const startWorker = async () => {
         /* ignore */
       }
     }
+    await mongoose.connection.close().catch(() => {});
     process.exit(1);
   }
 
@@ -240,6 +266,7 @@ const startWorker = async () => {
           /* ignore */
         }
       }
+      await mongoose.connection.close().catch(() => {});
       clearTimeout(hardStop);
       logger.info('[Worker] Connections closed. Bye.');
       process.exit(0);

@@ -512,18 +512,22 @@ test('reconcile re-enqueues stuck deliveries once, idempotently', async () => {
   const first = await reconcileStuckEmailDeliveries({ minAgeMs: 60000, DeliveryModel: model, enqueue });
   assert.equal(first.scanned, 2);
   assert.equal(first.requeued, 2);
-  // Reconciliation keeps the deterministic job id (email:<deliveryId>).
+  // Reconciliation keeps the deterministic job id (email-<deliveryId>).
   assert.equal(enqueueCalls.length, 2);
   for (const jobId of enqueueCalls) {
     assert.ok(jobId.startsWith('email-'));
   }
+  const firstJobIds = [...enqueueCalls];
 
-  // Re-run: everything is QUEUED now — nothing happens.
+  // Re-run: the records are now QUEUED but still stale. Reconciliation
+  // re-adds the SAME deterministic job ids — in real BullMQ the job-id
+  // dedupe makes this a no-op when the original job is still alive,
+  // and a resurrection when it died. Either way: never a duplicate.
   enqueueCalls = [];
   const second = await reconcileStuckEmailDeliveries({ minAgeMs: 60000, DeliveryModel: model, enqueue });
-  assert.equal(second.scanned, 0);
-  assert.equal(second.requeued, 0);
-  assert.equal(enqueueCalls.length, 0);
+  assert.equal(second.scanned, 2);
+  assert.equal(second.requeued, 2);
+  assert.deepEqual(enqueueCalls, firstJobIds);
   assert.ok(first.results.every((r) => r.requeued));
 });
 
