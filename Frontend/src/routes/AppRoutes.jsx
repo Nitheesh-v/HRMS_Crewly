@@ -107,6 +107,7 @@ import SuperAdminCompaniesPage from "../pages/admin/SuperAdminCompaniesPage.jsx"
 import SuperAdminCompanyDetailPage from "../pages/admin/SuperAdminCompanyDetailPage.jsx";
 import SuperAdminCommercePage from "../pages/admin/SuperAdminCommercePage.jsx";
 import SuperAdminOperationsPage from "../pages/admin/SuperAdminOperationsPage.jsx";
+import SuperAdminBackgroundOperationsPage from "../pages/admin/SuperAdminBackgroundOperationsPage.jsx";
 
 import NotFoundPage from "../pages/not-found/NotFoundPage.jsx";
 
@@ -758,6 +759,11 @@ const AppRoutes = () => (
         element={
           <SuperAdminOperationsPage mode="system-health" />
         }
+      />
+
+      <Route
+        path="background-operations"
+        element={<SuperAdminBackgroundOperationsPage />}
       />
 
       <Route

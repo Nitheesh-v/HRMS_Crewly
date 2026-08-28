@@ -25,7 +25,7 @@
 // ============================================================
 
 import logger from '../config/logger.js';
-import { incrementWithTtl } from './redisCacheService.js';
+import { incrementWithTtl, noteCacheInvalidation } from './redisCacheService.js';
 
 const GENERATION_TTL_SECONDS = 24 * 60 * 60; // refreshed on every bump
 
@@ -40,6 +40,7 @@ export const bumpRecruitmentAnalyticsGeneration = async (companyId) => {
       GENERATION_TTL_SECONDS
     );
     if (generation !== null) {
+      noteCacheInvalidation();
       logger.debug(
         `[Cache] recruitment analytics generation bumped (generation=${generation})`
       );

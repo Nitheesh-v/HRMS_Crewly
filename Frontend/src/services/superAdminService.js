@@ -96,6 +96,40 @@ const superAdminService = {
   markNotification: (id) => patch(`/super-admin/notifications/${id}/read`, {}),
 
   markAllNotifications: () => patch("/super-admin/notifications/read-all", {}),
+
+  // ---- 28.8 Background Operations (queue / worker / cache ops) ----
+  opsOverview: () => get("/super-admin/operations/queues"),
+
+  opsFailedJobs: (queueName, params) =>
+    get(`/super-admin/operations/queues/${queueName}/failed`, params),
+
+  opsJobDetail: (queueName, jobId) =>
+    get(`/super-admin/operations/queues/${queueName}/jobs/${jobId}`),
+
+  opsRetryJob: (queueName, jobId) =>
+    post(`/super-admin/operations/queues/${queueName}/jobs/${jobId}/retry`, {}),
+
+  opsBatchRetry: (queueName, jobIds) =>
+    post(`/super-admin/operations/queues/${queueName}/retry-failed`, { jobIds }),
+
+  opsRemoveJob: (queueName, jobId) =>
+    api.delete(`/super-admin/operations/queues/${queueName}/jobs/${jobId}`).then(unwrap),
+
+  opsPauseQueue: (queueName) =>
+    post(`/super-admin/operations/queues/${queueName}/pause`, {}),
+
+  opsResumeQueue: (queueName) =>
+    post(`/super-admin/operations/queues/${queueName}/resume`, {}),
+
+  opsReconcilePreview: () => get("/super-admin/operations/reconcile/preview"),
+
+  opsReconcileRun: (area, limit) =>
+    post("/super-admin/operations/reconcile", { area, limit }),
+
+  opsCacheStatus: () => get("/super-admin/operations/cache"),
+
+  opsInvalidateCache: (companyId) =>
+    post("/super-admin/operations/cache/invalidate", { companyId }),
 };
 
 export default superAdminService;

@@ -190,6 +190,34 @@ const inFlight = new Map();
 
 // `io` is a DI seam ({ get, set, del }) used by hermetic tests; the
 // defaults are the real fail-open operations.
+// --- In-process status counters (28.8 cache ops) -----------------
+// Per-process counters only (multi-instance deploys show their
+// own slice — documented). Metadata: counts + timestamps, never
+// keys or payloads.
+const cacheStats = {
+  hits: 0,
+  misses: 0,
+  bypasses: 0,
+  writes: 0,
+  writeSkips: 0,
+  invalidations: 0,
+  lastEventAt: null,
+};
+const touchStats = () => {
+  cacheStats.lastEventAt = Date.now();
+};
+
+export const getCacheStats = () => ({ ...cacheStats });
+
+// Called by the analytics invalidation bump so the ops UI can
+// show when (in this process) the last invalidation happened.
+export const noteCacheInvalidation = () => {
+  cacheStats.invalidations += 1;
+  touchStats();
+};
+
+// --- Read-through with in-process single-flight ------------------
+
 export const getOrSetCache = async (key, { ttlSeconds, version = 1, loader, io = {} } = {}) => {
   const doGet = io.get || getCache;
   const doSet = io.set || setCache;
@@ -197,6 +225,8 @@ export const getOrSetCache = async (key, { ttlSeconds, version = 1, loader, io =
 
   if (!key || typeof loader !== 'function') {
     // No cache: run the source directly.
+    cacheStats.bypasses += 1;
+    touchStats();
     const value = await loader();
     return { value, cache: 'BYPASS' };
   }
@@ -213,6 +243,8 @@ export const getOrSetCache = async (key, { ttlSeconds, version = 1, loader, io =
     if (hit !== null && hit !== undefined) {
       const payload = parseEnvelope(hit, version);
       if (payload !== null) {
+        cacheStats.hits += 1;
+        touchStats();
         logger.info(
           `[Cache] ${keyNs(key)} hit durationMs=${Date.now() - startedAt}`
         );
@@ -221,11 +253,18 @@ export const getOrSetCache = async (key, { ttlSeconds, version = 1, loader, io =
       // Malformed envelope: exact delete + fall through to source.
       await doDelete(key);
     }
+    cacheStats.misses += 1;
+    touchStats();
     logger.info(`[Cache] ${keyNs(key)} miss — loading from source`);
     const value = await loader();
     const stored = await doSet(key, buildEnvelope(version, value), ttlSeconds).catch(
       () => false
     );
+    if (stored) {
+      cacheStats.writes += 1;
+    } else {
+      cacheStats.writeSkips += 1;
+    }
     logger.info(
       `[Cache] ${keyNs(key)} ${stored ? 'stored' : 'loaded (cache write skipped)'} durationMs=${Date.now() - startedAt}`
     );

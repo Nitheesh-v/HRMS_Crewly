@@ -73,8 +73,9 @@ import {
 } from '../services/resumeProcessingDispatcher.js';
 import { recoverPendingATSMatching } from '../services/atsDispatcher.js';
 import { runScheduledReconcile } from '../services/scheduledJobScheduler.js';
-import { recoverPendingDocumentProcessing } from '../services/documentProcessingDispatcher.js';
-import { recoverPendingBgvProcessing } from '../services/bgvQueueDispatcher.js';
+import { runDocumentReconcile } from '../services/documentProcessingDispatcher.js';
+import { runBgvReconcile } from '../services/bgvQueueDispatcher.js';
+import { startWorkerHeartbeat } from './workerHeartbeat.js';
 
 const SHUTDOWN_HARD_STOP_MS = 10000;
 
@@ -342,6 +343,26 @@ const startWorker = async () => {
   const registrySize = jobRegistry.size;
   logger.info(`[Worker] Workers online (prefix=${prefix}, registered jobs=${registrySize})`);
 
+  // --- 28.8 ops heartbeat ------------------------------------------
+  // One ephemeral Redis key tells the Super Admin "Background
+  // Operations" page this worker process is alive (ONLINE /
+  // SHUTTING_DOWN / OFFLINE). Best-effort: a heartbeat blip never
+  // affects job processing. Uses the system worker's own
+  // connection (worker-owned, closed below on shutdown).
+  let heartbeat = null;
+  try {
+    heartbeat = startWorkerHeartbeat(connections[0]);
+    logger.info(
+      `[Worker] Ops heartbeat started (id=${heartbeat.workerId})`
+    );
+  } catch (error) {
+    logger.warn(
+      `[Worker] Ops heartbeat unavailable (${safeErrorText(error)}) — ` +
+        'workers will show OFFLINE in the ops UI'
+    );
+    heartbeat = null;
+  }
+
   // --- 28.4 startup recovery ------------------------------------------
   // Mongo is the source of truth for processing intent. Re-derive any
   // stuck resume/ATS work (expired leases, COMPLETED parse with no
@@ -388,8 +409,8 @@ const startWorker = async () => {
   // Redis loss; deterministic job ids make re-derivation idempotent.
   try {
     const [documents, bgv] = await Promise.all([
-      recoverPendingDocumentProcessing(),
-      recoverPendingBgvProcessing(),
+      runDocumentReconcile(),
+      runBgvReconcile(),
     ]);
     logger.info(
       `[Worker] 28.6 reconcile: documents queued=${documents.scheduled}/${documents.checked}, ` +
@@ -414,6 +435,12 @@ const startWorker = async () => {
     shuttingDown = true;
     logger.info(`[Worker] ${signal} received — shutting down gracefully...`);
 
+    // Tell the ops UI we are on purpose (brief SHUTTING_DOWN
+    // window; the key expires on its own if we never get here).
+    if (heartbeat) {
+      void heartbeat.markShuttingDown().catch(() => {});
+    }
+
     const hardStop = setTimeout(() => {
       logger.error('[Worker] Graceful shutdown timed out after 10s — forcing exit.');
       process.exit(1);
@@ -425,6 +452,11 @@ const startWorker = async () => {
         w.close().catch((error) => logger.warn(`[Worker] close() error: ${safeErrorText(error)}`))
       )
     ).finally(async () => {
+      // Clear the ops heartbeat BEFORE closing connections (its
+      // key would expire anyway — this just makes OFFLINE exact).
+      if (heartbeat) {
+        await heartbeat.stop().catch(() => {});
+      }
       // Startup recovery (28.4) opens producer-side queues in this
       // process — close them too (BullMQ leaves the ioredis
       // instances to us, then we disconnect).
