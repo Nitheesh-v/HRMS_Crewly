@@ -145,8 +145,11 @@ allowed to weaken it. In-app notifications (`notifyUser` /
   deliveries, and **stale `QUEUED`** deliveries (a job can die in
   Redis — e.g. retries exhausted while Mongo was unreachable —
   leaving the record stuck) and re-enqueues them with their original
-  deterministic job id. Re-runs are safe: BullMQ's job-id dedupe
-  makes a re-add of an alive job a no-op, and the 60s min-age skips
+  deterministic job id. **BullMQ never re-creates an already-used
+  job id** (a re-add returns the existing job as a no-op), so before
+  adding, reconciliation removes the previous job **if and only if
+  it is FAILED**; alive jobs (waiting/active/delayed/completed) are
+  left untouched — that is the dedupe, and the 60s min-age skips
   healthy in-flight jobs. It is a developer/ops CLI — there is NO
   unauthenticated (or authenticated) HTTP endpoint for it — and it
   requires Redis + MongoDB configuration.

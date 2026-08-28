@@ -30,6 +30,7 @@ import {
   claimEmailDelivery,
   markEmailDelivery,
   reconcileStuckEmailDeliveries,
+  prepareEmailJobSlot,
 } from '../src/services/emailDeliveryService.js';
 import {
   validateEmailJobPayload,
@@ -529,6 +530,35 @@ test('reconcile re-enqueues stuck deliveries once, idempotently', async () => {
   assert.equal(second.requeued, 2);
   assert.deepEqual(enqueueCalls, firstJobIds);
   assert.ok(first.results.every((r) => r.requeued));
+});
+
+test('prepareEmailJobSlot removes a dead failed job but leaves alive jobs', async () => {
+  const job = (state) => {
+    const j = { removed: false, getState: async () => state };
+    j.remove = async () => {
+      j.removed = true;
+    };
+    return j;
+  };
+  const queueWith = (existing) => ({ getJob: async () => existing });
+
+  // No previous job → nothing to do.
+  assert.equal(await prepareEmailJobSlot(queueWith(null), 'email-x'), 'absent');
+
+  // A previous job that DIED (retries exhausted) must be removed,
+  // because BullMQ never re-creates an already-used jobId — without
+  // this the deterministic id could never be re-added.
+  const dead = job('failed');
+  assert.equal(await prepareEmailJobSlot(queueWith(dead), 'email-x'), 'failed-removed');
+  assert.equal(dead.removed, true);
+
+  // Alive jobs (waiting/active/delayed/completed) are the dedupe we
+  // want — never removed.
+  for (const state of ['waiting', 'active', 'delayed', 'completed']) {
+    const alive = job(state);
+    assert.equal(await prepareEmailJobSlot(queueWith(alive), 'email-x'), state);
+    assert.equal(alive.removed, false);
+  }
 });
 
 // ─── Job ids (BullMQ custom ids) ───────────────────────────────

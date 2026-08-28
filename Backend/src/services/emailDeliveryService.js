@@ -17,7 +17,7 @@
 import { randomUUID } from 'node:crypto';
 import mongoose from 'mongoose';
 import EmailDelivery from '../models/EmailDelivery.js';
-import { enqueueJob } from '../queues/queueFactory.js';
+import { enqueueJob, getQueue } from '../queues/queueFactory.js';
 import {
   QUEUE_NAMES,
   JOB_NAMES,
@@ -48,6 +48,38 @@ export const defaultEnqueueEmail = (jobName, payload, jobId) =>
     jobId,
     ...getEmailJobOptions(),
   });
+
+// BullMQ NEVER re-creates an already-used jobId: adding a job whose
+// id already exists returns the EXISTING job as a no-op. For a
+// waiting/active job that is the dedupe we want; for a job that DIED
+// (retries exhausted) it blocks recovery forever — the record sits
+// in QUEUED while the dead job lingers in the failed set.
+//
+// So reconciliation prepares the slot: if the previous job with this
+// id is FAILED, remove it so the same deterministic id can be
+// re-added as a fresh job. Alive jobs are left untouched.
+// Returns 'absent', 'failed-removed', or the observed live state.
+// Exported for hermetic tests.
+export const prepareEmailJobSlot = async (queue, jobId) => {
+  const existing = await queue.getJob(jobId);
+  if (!existing) return 'absent';
+  const state = await existing.getState();
+  if (state === 'failed') {
+    await existing.remove().catch(() => {});
+    return 'failed-removed';
+  }
+  return state;
+};
+
+// Reconciliation enqueue: clears a dead previous job before adding.
+export const defaultReconcileEnqueue = async (jobName, payload, jobId) => {
+  const queue = getQueue(QUEUE_NAMES.EMAIL);
+  await prepareEmailJobSlot(queue, jobId);
+  return enqueueJob(QUEUE_NAMES.EMAIL, jobName, payload, {
+    jobId,
+    ...getEmailJobOptions(),
+  });
+};
 
 const validateDispatchArgs = ({ jobName, eventType, eventKey, companyId, entityType, entityId, recipientType }) => {
   if (!jobName || !String(jobName).startsWith('email-')) {
@@ -211,7 +243,7 @@ export const reconcileStuckEmailDeliveries = async ({
   minAgeMs = 60000,
   limit = 100,
   DeliveryModel = EmailDelivery,
-  enqueue = defaultEnqueueEmail,
+  enqueue = defaultReconcileEnqueue,
 } = {}) => {
   const cutoff = new Date(Date.now() - minAgeMs);
   const stuck = await DeliveryModel.find({
