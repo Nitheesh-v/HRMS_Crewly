@@ -35,7 +35,9 @@
     "test:phase27-security": "node --test test/phase27SecurityHardening.test.js",
     "test:rms": "node --test test/requisitionApproval.test.js test/requisitionJobCreation.test.js test/interviewManagement.test.js test/interviewEvaluation.test.js test/preOnboarding.test.js test/candidateConversion.test.js test/recruitmentAnalytics.test.js test/backgroundVerification.test.js test/phase27SecurityHardening.test.js",
     "processing:reconcile": "node scripts/processing-reconcile.js",
-    "test:processing": "node --test test/processingQueue.test.js"
+    "test:processing": "node --test test/processingQueue.test.js",
+    "scheduled:reconcile": "node scripts/scheduled-reconcile.js",
+    "test:scheduled": "node --test test/scheduledJobs.test.js"
   },
   "keywords": [],
   "author": "",

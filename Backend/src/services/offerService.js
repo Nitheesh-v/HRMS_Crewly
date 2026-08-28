@@ -30,6 +30,7 @@ import {
   buildEventKey,
 } from './emailDeliveryService.js';
 import { transitionCandidateStage } from './candidatePipelineService.js';
+import { scheduleOfferJobs, cancelOfferJobs } from './scheduledJobScheduler.js';
 import {
   deleteStoredOfferDocument,
   getStoredOfferDocument,
@@ -1181,6 +1182,10 @@ export const sendOffer = async ({ companyId, actor, offerId, requestContext }) =
       title: 'Offer sent',
       message: `${updated.offerCode} was delivered to the candidate.`,
     });
+    // 28.5: schedule the offer expiry job (+ reminder when the offset
+    // window is still open). terms.expiryDate in Mongo is the intent;
+    // scheduled:reconcile rebuilds if the queue was unavailable.
+    scheduleOfferJobs(updated).catch(() => {});
     return safeOfferDto(updated);
   } catch (error) {
     await revokeOfferTokens({
@@ -1283,6 +1288,11 @@ export const withdrawOffer = async ({ companyId, actor, offerId, reason, request
         recipientReference: updated.candidate,
         payload: { offerId: updated._id },
       });
+    }
+    // 28.5: retire pending reminder/expiry jobs (best-effort; the
+    // expiry worker's atomic guard is the final protection).
+    if (['SENT', 'VIEWED'].includes(current.status)) {
+      cancelOfferJobs(updated).catch(() => {});
     }
     return safeOfferDto(updated);
   } catch (error) {

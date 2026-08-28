@@ -4,11 +4,13 @@
 //   npm run worker:dev   (nodemon)
 //   npm run worker       (plain node)
 //
-// One process runs all four BullMQ workers:
-//   - system queue (28.2 infrastructure jobs)
-//   - email queue  (28.3 email delivery jobs)
-//   - resume queue (28.4 resume parsing jobs)
-//   - ats queue    (28.4 ATS matching jobs)
+// One process runs all five BullMQ workers:
+//   - system queue    (28.2 infrastructure jobs)
+//   - email queue     (28.3 email delivery jobs)
+//   - resume queue    (28.4 resume parsing jobs)
+//   - ats queue       (28.4 ATS matching jobs)
+//   - scheduled queue (28.5 delayed jobs: interview reminders,
+//     offer expiry reminders, offer expiry)
 //
 // Architecture: the Express API and this Worker process are
 // separate by design. The API serves HTTP; workers process
@@ -49,6 +51,7 @@ import {
   parseEmailWorkerConcurrency,
   parseResumeWorkerConcurrency,
   parseATSWorkerConcurrency,
+  parseScheduledWorkerConcurrency,
   redactConnectionSecrets,
   EMAIL_JOB_NAMES,
 } from '../config/queueConfig.js';
@@ -57,11 +60,13 @@ import { dispatchJob, classifyJobFailure, registerProcessor, jobRegistry } from 
 import { registerEmailProcessors } from './emailProcessor.js';
 import { registerResumeProcessors } from './resumeProcessor.js';
 import { registerATSProcessors } from './atsProcessor.js';
+import { registerScheduledProcessors } from './scheduledProcessor.js';
 import { markEmailDelivery } from '../services/emailDeliveryService.js';
 import {
   recoverPendingResumeProcessing,
 } from '../services/resumeProcessingDispatcher.js';
 import { recoverPendingATSMatching } from '../services/atsDispatcher.js';
+import { runScheduledReconcile } from '../services/scheduledJobScheduler.js';
 
 const SHUTDOWN_HARD_STOP_MS = 10000;
 
@@ -107,6 +112,10 @@ const attachEventHandlers = (worker, label) => {
     // (missing result / recalculationPending) stays in Mongo —
     // startup recovery / processing:reconcile re-derives it with a
     // slot-prepared job id. Mongo is the audit of record.
+    // 28.5 scheduled jobs are the same shape: the Mongo scheduling
+    // intent (reminderDispatch PENDING/FAILED, terms.expiryDate)
+    // survives exhaustion and startup reconcile / scheduled:reconcile
+    // re-derives the job with a slot-prepared deterministic id.
   });
 
   worker.on('stalled', (jobId) => {
@@ -173,18 +182,20 @@ const startWorker = async () => {
   const emailConcurrency = parseEmailWorkerConcurrency();
   const resumeConcurrency = parseResumeWorkerConcurrency();
   const atsConcurrency = parseATSWorkerConcurrency();
+  const scheduledConcurrency = parseScheduledWorkerConcurrency();
 
   logger.info(
     `[Worker] Starting workers (prefix=${prefix}, system concurrency=${concurrency}, ` +
       `email concurrency=${emailConcurrency}, resume concurrency=${resumeConcurrency}, ` +
-      `ats concurrency=${atsConcurrency})`
+      `ats concurrency=${atsConcurrency}, scheduled concurrency=${scheduledConcurrency})`
   );
 
-  // Register the 28.3 email + 28.4 processing processors in the
-  // shared registry.
+  // Register the 28.3 email + 28.4 processing + 28.5 scheduled
+  // processors in the shared registry.
   registerEmailProcessors({ registerProcessor });
   registerResumeProcessors({ registerProcessor });
   registerATSProcessors({ registerProcessor });
+  registerScheduledProcessors({ registerProcessor });
 
   // One dedicated connection per worker (never the API's client).
   const createWorkerConnection = (connectionName) =>
@@ -238,6 +249,18 @@ const startWorker = async () => {
     });
     workers.push(atsWorker);
     attachEventHandlers(atsWorker, 'ats worker');
+
+    // 28.5 scheduled queue: delayed one-time jobs (interview
+    // reminders, offer expiry reminders, offer expiry).
+    const scheduledConnection = createWorkerConnection('crewly-worker-scheduled');
+    connections.push(scheduledConnection);
+    const scheduledWorker = new Worker(QUEUE_NAMES.SCHEDULED, dispatchJob, {
+      connection: scheduledConnection,
+      prefix,
+      concurrency: scheduledConcurrency,
+    });
+    workers.push(scheduledWorker);
+    attachEventHandlers(scheduledWorker, 'scheduled worker');
   } catch (error) {
     logger.error(`[Worker] Startup failed: ${safeErrorText(error)}`);
     for (const connection of connections) {
@@ -303,6 +326,24 @@ const startWorker = async () => {
     logger.warn(
       `[Worker] Startup recovery failed — processing jobs stay recoverable via ` +
         `npm run processing:reconcile (${safeErrorText(error)})`
+    );
+  }
+
+  // --- 28.5 scheduled reconciliation --------------------------------
+  // Delayed jobs persist in Redis across restarts, so startup only
+  // re-derives anything the queue lost (queue.add failure, prefix
+  // change, Redis incident). Bounded + idempotent; non-fatal.
+  try {
+    const scheduled = await runScheduledReconcile();
+    logger.info(
+      `[Worker] Scheduled reconcile: interviews ` +
+        `queued=${scheduled.interviews.scheduled}/${scheduled.interviews.checked}, ` +
+        `offer reminders=${scheduled.offers.reminders}, expiries=${scheduled.offers.expiries}`
+    );
+  } catch (error) {
+    logger.warn(
+      `[Worker] Scheduled reconcile failed — jobs stay recoverable via ` +
+        `npm run scheduled:reconcile (${safeErrorText(error)})`
     );
   }
 

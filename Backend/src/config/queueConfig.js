@@ -39,11 +39,19 @@ export const JOB_NAMES = {
   EMAIL_OFFER_DECISION: 'email-offer-decision',
   EMAIL_OFFER_WITHDRAWN: 'email-offer-withdrawn',
   EMAIL_PREONBOARDING_DOC_DECISION: 'email-preonboarding-doc-decision',
+  // 28.5: offer reminder (candidate nudge, non-sensitive — the
+  // token-bearing offer-SEND email stays synchronous by 28.3 policy).
+  EMAIL_OFFER_REMINDER: 'email-offer-reminder',
   // 28.4: processing jobs (resume parsing + ATS matching). One job name
   // per stage — reprocess/recovery reuse the same job with a fresh
   // deterministic job id (version-aware), not extra job names.
   RESUME_PARSE: 'resume-parse',
   ATS_PROCESS: 'ats-process',
+  // 28.5: scheduled (delayed) jobs — one-time future execution via
+  // native BullMQ delay (no QueueScheduler).
+  INTERVIEW_REMINDER: 'interview-reminder',
+  OFFER_EXPIRY_REMINDER: 'offer-expiry-reminder',
+  OFFER_EXPIRE: 'offer-expire',
 };
 
 export const EMAIL_JOB_NAMES = Object.values(JOB_NAMES).filter((name) =>
@@ -54,6 +62,13 @@ export const EMAIL_JOB_NAMES = Object.values(JOB_NAMES).filter((name) =>
 export const PROCESSING_JOB_NAMES = Object.freeze([
   JOB_NAMES.RESUME_PARSE,
   JOB_NAMES.ATS_PROCESS,
+]);
+
+// 28.5 scheduled job names (scheduled queue — delayed one-time jobs).
+export const SCHEDULED_JOB_NAMES = Object.freeze([
+  JOB_NAMES.INTERVIEW_REMINDER,
+  JOB_NAMES.OFFER_EXPIRY_REMINDER,
+  JOB_NAMES.OFFER_EXPIRE,
 ]);
 
 // --- Defaults ------------------------------------------------------
@@ -136,6 +151,24 @@ export const getATSJobOptions = () => ({
   removeOnFail: { ...ATS_JOB_OPTIONS.removeOnFail },
 });
 
+// 28.5 scheduled retry policy. Scheduled jobs are light (validate +
+// dispatch an email intent / one atomic transition); attempts cover
+// transient Mongo/Redis blips only. Stale/terminal business states
+// complete as SKIPPED inside the processor and never consume these.
+export const SCHEDULED_JOB_OPTIONS = Object.freeze({
+  attempts: 3,
+  backoff: { type: 'exponential', delay: 2000 },
+  removeOnComplete: { count: 100 },
+  removeOnFail: { count: 500 },
+});
+
+export const getScheduledJobOptions = () => ({
+  attempts: SCHEDULED_JOB_OPTIONS.attempts,
+  backoff: { ...SCHEDULED_JOB_OPTIONS.backoff },
+  removeOnComplete: { ...SCHEDULED_JOB_OPTIONS.removeOnComplete },
+  removeOnFail: { ...SCHEDULED_JOB_OPTIONS.removeOnFail },
+});
+
 // --- Prefix / environment isolation --------------------------------
 
 const sanitizeSegment = (value) =>
@@ -209,6 +242,40 @@ export const parseATSWorkerConcurrency = (source = process.env) => {
     MAX_ATS_WORKER_CONCURRENCY,
     Math.max(MIN_PROCESSING_WORKER_CONCURRENCY, Math.trunc(parsed))
   );
+};
+
+// 28.5 scheduled worker: jobs are light (validation + email-intent
+// dispatch / one atomic transition) — moderate default, bounded.
+export const DEFAULT_SCHEDULED_WORKER_CONCURRENCY = 4;
+const MAX_SCHEDULED_WORKER_CONCURRENCY = 10;
+
+export const parseScheduledWorkerConcurrency = (source = process.env) => {
+  const parsed = Number(source.SCHEDULED_WORKER_CONCURRENCY);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_SCHEDULED_WORKER_CONCURRENCY;
+  return Math.min(
+    MAX_SCHEDULED_WORKER_CONCURRENCY,
+    Math.max(MIN_PROCESSING_WORKER_CONCURRENCY, Math.trunc(parsed))
+  );
+};
+
+// 28.5 offer reminder offset: one candidate nudge at
+// expiry − offset. If the offer is sent inside that window, NO
+// reminder is scheduled (the send email is the notice). Default 48h,
+// clamped 1–168h. Interview reminders use the existing
+// reminderDispatchAfter policy (24h → 1h → immediate), not this var.
+export const DEFAULT_OFFER_REMINDER_OFFSET_HOURS = 48;
+const MIN_OFFER_REMINDER_OFFSET_HOURS = 1;
+const MAX_OFFER_REMINDER_OFFSET_HOURS = 168;
+
+export const getOfferReminderOffsetMs = (source = process.env) => {
+  const parsed = Number(source.OFFER_REMINDER_OFFSET_HOURS);
+  const hours = Number.isFinite(parsed) && parsed > 0
+    ? Math.trunc(parsed)
+    : DEFAULT_OFFER_REMINDER_OFFSET_HOURS;
+  return Math.min(
+    MAX_OFFER_REMINDER_OFFSET_HOURS,
+    Math.max(MIN_OFFER_REMINDER_OFFSET_HOURS, hours)
+  ) * 60 * 60 * 1000;
 };
 
 // --- Job ID / idempotency convention --------------------------------

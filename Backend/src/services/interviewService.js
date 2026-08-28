@@ -24,6 +24,10 @@ import { hasPermission } from '../utils/permissionService.js';
 import { recordAudit } from '../utils/securityauditService.js';
 import { transitionCandidateStage } from './candidatePipelineService.js';
 import { dispatchInterviewNotification } from './interviewNotificationDispatcher.js';
+import {
+  scheduleInterviewReminder,
+  cancelInterviewReminder,
+} from './scheduledJobScheduler.js';
 import { feedbackSummaryForInterviews } from './interviewFeedbackService.js';
 import { notifyFeedbackPending } from './recruitmentEvaluationNotificationService.js';
 import {
@@ -717,6 +721,11 @@ export const scheduleInterview = async ({
     interviewers: interviewerUsers,
   });
 
+  // 28.5: schedule the ONE reminder for this interview (fire-and-
+  // forget). reminderDispatch PENDING is the Mongo intent; if the
+  // queue is unavailable, scheduled:reconcile rebuilds the job.
+  scheduleInterviewReminder(interview).catch(() => {});
+
   const populated = await loadInterviewForResponse({
     companyId,
     interviewId: interview._id,
@@ -1206,6 +1215,12 @@ export const rescheduleInterview = async ({
     interviewers: interviewerUsers,
   });
 
+  // 28.5: supersede the old reminder job (best-effort remove) and
+  // schedule the new one. The worker's schedule-version check is the
+  // final guard if removal races the job execution.
+  cancelInterviewReminder(current, current.scheduledStartAt).catch(() => {});
+  scheduleInterviewReminder(updated).catch(() => {});
+
   const populated = await loadInterviewForResponse({ companyId, interviewId });
   return safeInterviewDto(populated, {
     includeInternalNotes: true,
@@ -1342,6 +1357,10 @@ export const cancelInterview = async ({
     job,
     interviewers: interviewerUsers,
   });
+
+  // 28.5: retire the pending reminder (best-effort; the worker also
+  // skips cancelled interviews at execution).
+  cancelInterviewReminder(updated, updated.scheduledStartAt).catch(() => {});
 
   const populated = await loadInterviewForResponse({ companyId, interviewId });
   return safeInterviewDto(populated, {
@@ -1488,6 +1507,11 @@ export const updateInterviewStatus = async ({
     job,
     interviewers: interviewerUsers,
   });
+  // 28.5: terminal transitions retire the pending reminder
+  // (best-effort; the worker skips terminal interviews at execution).
+  if (['COMPLETED', 'NO_SHOW'].includes(targetStatus)) {
+    cancelInterviewReminder(updated, updated.scheduledStartAt).catch(() => {});
+  }
   if (targetStatus === 'COMPLETED') {
     await notifyFeedbackPending({
       companyId,

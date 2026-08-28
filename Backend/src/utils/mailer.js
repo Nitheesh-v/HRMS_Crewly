@@ -188,7 +188,10 @@ export const candidateInterviewEmail = ({
     SCHEDULED: 'scheduled',
     RESCHEDULED: 'rescheduled',
     CANCELLED: 'cancelled',
+    REMINDER: 'reminder',
   }[event] || 'updated';
+  const isReminder = event === 'REMINDER';
+  const statusVerb = isReminder ? 'is scheduled' : `has been ${eventLabel}`;
   const safeEventLabel = escapeHtml(eventLabel);
   const safeName = escapeHtml(candidateName);
   const safeCompany = escapeHtml(companyName);
@@ -222,15 +225,19 @@ export const candidateInterviewEmail = ({
       ${safeInstructions ? `<p><b>Instructions</b><br/>${safeInstructions}</p>` : ''}`;
 
   return {
-    subject: `Interview ${eventLabel} — ${subjectCompany}`,
+    subject: isReminder ? `Interview reminder — ${subjectCompany}` : `Interview ${eventLabel} — ${subjectCompany}`,
     text:
       `Hello ${candidateName},\n\n` +
-      `Your ${roundName} interview for ${jobTitle} with ${companyName} has been ${eventLabel}.\n` +
-      `Interview reference: ${interviewCode}\n${scheduleText}`,
+      (isReminder
+        ? `This is a reminder that your ${roundName} interview for ${jobTitle} with ${companyName} is scheduled.`
+        : `Your ${roundName} interview for ${jobTitle} with ${companyName} has been ${eventLabel}.`) +
+      `\nInterview reference: ${interviewCode}\n${scheduleText}`,
     html: shell('This message concerns an interview schedule, not a hiring decision.', `
-      <h2 style="margin:0 0 10px">Interview ${safeEventLabel}</h2>
+      <h2 style="margin:0 0 10px">Interview ${isReminder ? 'reminder' : safeEventLabel}</h2>
       <p>Hello ${safeName},</p>
-      <p>Your <b>${safeRound}</b> interview for <b>${safeJobTitle}</b> with <b>${safeCompany}</b> has been ${safeEventLabel}.</p>
+      <p>${isReminder
+        ? `This is a reminder that your <b>${safeRound}</b> interview for <b>${safeJobTitle}</b> with <b>${safeCompany}</b> is scheduled.`
+        : `Your <b>${safeRound}</b> interview for <b>${safeJobTitle}</b> with <b>${safeCompany}</b> ${escapeHtml(statusVerb)}.`}</p>
       <p>Interview reference: <b>${safeCode}</b></p>
       ${scheduleHtml}`),
   };
@@ -258,7 +265,9 @@ export const interviewerAssignmentEmail = ({
     IN_PROGRESS: 'started',
     COMPLETED: 'completed',
     NO_SHOW: 'marked no-show',
+    REMINDER: 'reminder',
   }[event] || 'updated';
+  const isReminder = event === 'REMINDER';
   const safeMeetingLink = /^https:\/\//i.test(meetingLink)
     ? escapeHtml(meetingLink)
     : '';
@@ -271,19 +280,21 @@ export const interviewerAssignmentEmail = ({
     .slice(0, 100);
 
   return {
-    subject: `Interview ${eventLabel} — ${String(roundName || '').replace(/[\r\n]/g, ' ').slice(0, 100)}`,
+    subject: `Interview ${isReminder ? 'reminder' : eventLabel} — ${String(roundName || '').replace(/[\r\n]/g, ' ').slice(0, 100)}`,
     text:
       `Hello ${interviewerName},\n\n` +
-      `Interview ${interviewCode} has been ${eventLabel}.\n` +
+      (isReminder
+        ? `This is a reminder that interview ${interviewCode} is scheduled.\n`
+        : `Interview ${interviewCode} has been ${eventLabel}.\n`) +
       `Candidate: ${candidateName} (${candidateEmail})\n` +
       `Position: ${jobTitle}\nRound: ${roundName}\nSchedule: ${scheduleLabel}\nType: ${interviewType}` +
       (meetingLink ? `\nMeeting link: ${meetingLink}` : '') +
       (location ? `\nLocation: ${location}` : '') +
       (internalNotes ? `\nInternal instructions: ${internalNotes}` : ''),
     html: shell(`Interview workspace notification from ${escapeHtml(subjectCompany)}.`, `
-      <h2 style="margin:0 0 10px">Interview ${escapeHtml(eventLabel)}</h2>
+      <h2 style="margin:0 0 10px">Interview ${isReminder ? 'reminder' : escapeHtml(eventLabel)}</h2>
       <p>Hello ${escapeHtml(interviewerName)},</p>
-      <p>Interview <b>${escapeHtml(interviewCode)}</b> has been ${escapeHtml(eventLabel)}.</p>
+      <p>Interview <b>${escapeHtml(interviewCode)}</b> ${isReminder ? 'is scheduled' : `has been ${escapeHtml(eventLabel)}`}</p>
       <p style="background:#f6f8fa;padding:12px;border-radius:8px">
         Candidate: <b>${escapeHtml(candidateName)}</b> (${escapeHtml(candidateEmail)})<br/>
         Position: <b>${escapeHtml(jobTitle)}</b><br/>
@@ -336,6 +347,45 @@ export const offerCandidateAccessEmail = ({ offer, portalUrl }) => {
       <p style="background:#f6f8fa;padding:12px;border-radius:8px">Offer reference: <b>${safeCode}</b><br/>Offer expiry: <b>${safeExpiryDate}</b></p>
       ${safePortalUrl ? `<p><a href="${safePortalUrl}" style="display:inline-block;background:#172033;color:#fff;padding:11px 16px;border-radius:7px;text-decoration:none">Review offer securely</a></p>` : ''}
       <p style="color:#57606a;font-size:13px">Do not forward this private link. It expires on the date stated in your offer.</p>`),
+  };
+};
+
+// 28.5: offer expiry reminder — NON-SENSITIVE nudge (sensitive: false
+// at the call site). It intentionally carries NO portal token/URL and
+// NO compensation: the candidate uses the secure link from the
+// original (synchronous, token-bearing) offer email.
+export const offerReminderEmail = ({ offer }) => {
+  const candidateName = offer.candidateSnapshot?.name || 'Candidate';
+  const companyName = offer.companySnapshot?.name || 'Hiring team';
+  const offerCode = offer.offerCode || '';
+  const designation = offer.terms?.designation || offer.jobSnapshot?.title || 'the role';
+  const expiryDate = offer.terms?.expiryDate
+    ? new Intl.DateTimeFormat('en-IN', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+      }).format(new Date(offer.terms.expiryDate))
+    : 'the stated expiry date';
+  const safeName = escapeHtml(candidateName);
+  const safeCompany = escapeHtml(companyName);
+  const safeCode = escapeHtml(offerCode);
+  const safeDesignation = escapeHtml(designation);
+  const safeExpiryDate = escapeHtml(expiryDate);
+
+  return {
+    subject: `Offer response reminder — ${String(companyName).replace(/[\r\n]/g, ' ').slice(0, 100)}`,
+    text:
+      `Hello ${candidateName},\n\n` +
+      `This is a friendly reminder that offer ${offerCode} for ${designation} from ${companyName} is still open and will expire on ${expiryDate}.\n\n` +
+      `To review and respond, use the secure link from your original offer email. It stays valid until the expiry date.\n\n` +
+      'The hiring team will contact you if any further information is needed.',
+    html: shell('A reminder about a pending offer — the secure link in your original offer email remains valid until the stated expiry date.', `
+      <h2 style="margin:0 0 10px">Offer response reminder</h2>
+      <p>Hello ${safeName},</p>
+      <p>This is a friendly reminder that offer <b>${safeCode}</b> for <b>${safeDesignation}</b> from <b>${safeCompany}</b> is still open and will expire on <b>${safeExpiryDate}</b>.</p>
+      <p>To review and respond, use the secure link from your original offer email. It stays valid until the expiry date.</p>
+      <p style="color:#57606a;font-size:13px">The hiring team will contact you if any further information is needed.</p>`),
   };
 };
 

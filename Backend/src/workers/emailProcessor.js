@@ -36,6 +36,7 @@ import {
   candidateInterviewEmail,
   interviewerAssignmentEmail,
   offerDecisionConfirmationEmail,
+  offerReminderEmail,
   offerWithdrawnEmail,
   preOnboardingDocumentDecisionEmail,
 } from '../utils/mailer.js';
@@ -64,6 +65,8 @@ const EMAIL_JOB_KEYS = {
   [JOB_NAMES.EMAIL_INTERVIEW_INTERVIEWER]: [...COMMON_KEYS, 'interviewId', 'interviewerId', 'eventType', 'scheduleVersion'],
   [JOB_NAMES.EMAIL_OFFER_DECISION]: [...COMMON_KEYS, 'offerId', 'decision'],
   [JOB_NAMES.EMAIL_OFFER_WITHDRAWN]: [...COMMON_KEYS, 'offerId'],
+  // 28.5: non-sensitive candidate nudge (no token, no compensation).
+  [JOB_NAMES.EMAIL_OFFER_REMINDER]: [...COMMON_KEYS, 'offerId', 'expiryDateIso'],
   [JOB_NAMES.EMAIL_PREONBOARDING_DOC_DECISION]: [
     ...COMMON_KEYS,
     'preOnboardingId',
@@ -74,7 +77,9 @@ const EMAIL_JOB_KEYS = {
   ],
 };
 
-const INTERVIEW_EVENT_TYPES = new Set(['SCHEDULED', 'RESCHEDULED', 'CANCELLED', 'IN_PROGRESS', 'COMPLETED', 'NO_SHOW']);
+// 28.5: REMINDER = the one scheduled reminder per interview
+// schedule (dispatched by the SCHEDULED worker via the 28.3 queue).
+const INTERVIEW_EVENT_TYPES = new Set(['SCHEDULED', 'RESCHEDULED', 'CANCELLED', 'IN_PROGRESS', 'COMPLETED', 'NO_SHOW', 'REMINDER']);
 const OFFER_DECISIONS = new Set(['ACCEPTED', 'REJECTED']);
 const PREONBOARDING_DECISIONS = new Set(['VERIFIED', 'RESUBMISSION_REQUIRED', 'READY_TO_JOIN']);
 
@@ -196,13 +201,19 @@ const INTERVIEW_EVENT_ALLOWED_STATUS = {
   IN_PROGRESS: ['IN_PROGRESS'],
   COMPLETED: ['COMPLETED'],
   NO_SHOW: ['NO_SHOW'],
+  // A reminder is valid for any still-active upcoming schedule.
+  REMINDER: ['SCHEDULED', 'RESCHEDULED'],
 };
+
+// Schedule-version-checked events: the event must match the CURRENT
+// scheduledStartAt — a reschedule supersedes the previous version.
+const SCHEDULE_VERSIONED_EVENTS = new Set(['SCHEDULED', 'RESCHEDULED', 'REMINDER']);
 
 export const isInterviewEventStale = ({ currentStatus, currentStartAtIso, eventType, scheduleVersion }) => {
   const allowed = INTERVIEW_EVENT_ALLOWED_STATUS[eventType];
   if (!allowed || !allowed.includes(currentStatus)) return true;
   if (
-    (eventType === 'SCHEDULED' || eventType === 'RESCHEDULED') &&
+    SCHEDULE_VERSIONED_EVENTS.has(eventType) &&
     scheduleVersion &&
     currentStartAtIso &&
     String(currentStartAtIso) !== String(scheduleVersion)
@@ -476,6 +487,42 @@ const emailOfferDecision = async (value) => {
   return finishSend({ value, result });
 };
 
+// 28.5: offer expiry reminder — a NON-SENSITIVE nudge. It never
+// carries the secure portal token (the token-bearing offer-SEND
+// email is intentionally synchronous by 28.3 policy); the candidate
+// is directed to the link from the original offer email.
+const emailOfferReminder = async (value) => {
+  const offer = await OfferLetter.findOne({ _id: value.offerId, companyId: value.companyId }).lean();
+  if (!offer) {
+    await failTerminal({ value, category: 'ENTITY_NOT_FOUND' });
+    return { sent: false, reason: 'ENTITY_NOT_FOUND', deliveryId: value.deliveryId };
+  }
+  if (!['SENT', 'VIEWED'].includes(offer.status)) {
+    // Decided/withdrawn/expired after the reminder was queued.
+    await skipStale(value);
+    return { skipped: true, reason: 'STALE_STATE', deliveryId: value.deliveryId };
+  }
+  if (new Date(offer.terms?.expiryDate).toISOString() !== value.expiryDateIso) {
+    await skipStale(value);
+    return { skipped: true, reason: 'STALE_STATE', deliveryId: value.deliveryId };
+  }
+  if (new Date(offer.terms.expiryDate).getTime() <= Date.now()) {
+    // The atomic expiry path owns that moment (history/audit).
+    await skipStale(value);
+    return { skipped: true, reason: 'STALE_STATE', deliveryId: value.deliveryId };
+  }
+  if (!offer.candidateSnapshot?.email) {
+    await failTerminal({ value, category: 'ENTITY_NOT_FOUND' });
+    return { sent: false, reason: 'ENTITY_NOT_FOUND', deliveryId: value.deliveryId };
+  }
+  const result = await sendMail({
+    to: offer.candidateSnapshot.email,
+    ...offerReminderEmail({ offer }),
+    sensitive: false,
+  });
+  return finishSend({ value, result });
+};
+
 const emailOfferWithdrawn = async (value) => {
   const offer = await OfferLetter.findOne({ _id: value.offerId, companyId: value.companyId }).lean();
   if (!offer) {
@@ -597,6 +644,7 @@ const EMAIL_HANDLERS = {
   [JOB_NAMES.EMAIL_INTERVIEW_CANDIDATE]: emailInterviewCandidate,
   [JOB_NAMES.EMAIL_INTERVIEW_INTERVIEWER]: emailInterviewInterviewer,
   [JOB_NAMES.EMAIL_OFFER_DECISION]: emailOfferDecision,
+  [JOB_NAMES.EMAIL_OFFER_REMINDER]: emailOfferReminder,
   [JOB_NAMES.EMAIL_OFFER_WITHDRAWN]: emailOfferWithdrawn,
   [JOB_NAMES.EMAIL_PREONBOARDING_DOC_DECISION]: emailPreOnboardingDocDecision,
 };

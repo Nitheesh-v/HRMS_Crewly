@@ -21,6 +21,7 @@ import {
   safeOfferDto,
 } from './offerService.js';
 import { notifyOfferDecision } from './offerNotificationService.js';
+import { cancelOfferJobs } from './scheduledJobScheduler.js';
 import crypto from 'node:crypto';
 
 const genericFailure = () => ApiError.notFound('Offer is unavailable');
@@ -346,6 +347,9 @@ const decision = async ({ rawToken, action, rejection = {}, requestContext }) =>
     recipientReference: offer.candidate,
     payload: { offerId: offer._id, decision: finalStatus },
   });
+  // 28.5: retire pending reminder/expiry jobs (best-effort; the
+  // expiry worker's atomic guard is the final protection).
+  cancelOfferJobs(updated).catch(() => {});
   return { offer: publicDto(updated), idempotent: false };
 };
 
