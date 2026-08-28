@@ -1,3 +1,4 @@
+import './config/loadEnv.js'; // FIRST — .env must load before env-snapshotting imports
 import mongoose from 'mongoose';
 import app from './app.js';
 import env from './config/env.js';

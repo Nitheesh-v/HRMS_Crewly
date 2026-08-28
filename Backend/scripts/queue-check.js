@@ -24,9 +24,7 @@
 //       worker missing, job failed)
 // ============================================================
 
-import dotenv from 'dotenv';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import '../src/config/loadEnv.js'; // FIRST — before env-snapshotting imports
 import { randomUUID } from 'node:crypto';
 import {
   getQueue,
@@ -40,9 +38,6 @@ import {
   JOB_NAMES,
   redactConnectionSecrets,
 } from '../src/config/queueConfig.js';
-
-const backendDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-dotenv.config({ path: resolve(backendDir, '.env') });
 
 const args = process.argv.slice(2);
 const wantRetry = args.includes('--retry-test');

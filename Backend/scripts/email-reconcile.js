@@ -19,17 +19,12 @@
 // This is a developer/ops tool — it is NOT exposed over HTTP.
 // ============================================================
 
-import dotenv from 'dotenv';
+import '../src/config/loadEnv.js'; // FIRST — before env-snapshotting imports
 import mongoose from 'mongoose';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
 import { getRedisConfig } from '../src/config/redis.js';
 import { reconcileStuckEmailDeliveries } from '../src/services/emailDeliveryService.js';
 import { closeAllQueues } from '../src/queues/queueFactory.js';
 import { getQueuePrefix } from '../src/config/queueConfig.js';
-
-const backendDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-dotenv.config({ path: resolve(backendDir, '.env') });
 
 const args = process.argv.slice(2);
 const includeYoung = args.includes('--all');

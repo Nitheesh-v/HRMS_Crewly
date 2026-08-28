@@ -20,18 +20,13 @@
 //       connection failed
 // ============================================================
 
-import dotenv from 'dotenv';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import '../src/config/loadEnv.js'; // FIRST — before env-snapshotting imports
 import Redis from 'ioredis';
 import {
   createRedisOptions,
   getRedisConfig,
   classifySafeReason,
 } from '../src/config/redis.js';
-
-const backendDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-dotenv.config({ path: resolve(backendDir, '.env') });
 
 const REASON_TEXT = {
   auth_failed: 'authentication error — check REDIS_URL privately',

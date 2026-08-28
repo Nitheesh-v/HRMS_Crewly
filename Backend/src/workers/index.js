@@ -32,7 +32,7 @@
 // finish (bounded 10s hard stop), close connections, exit.
 // ============================================================
 
-import dotenv from 'dotenv';
+import '../config/loadEnv.js'; // FIRST — .env must load before env-snapshotting imports
 import Redis from 'ioredis';
 import { Worker } from 'bullmq';
 import mongoose from 'mongoose';
@@ -125,8 +125,6 @@ const attachEventHandlers = (worker, label) => {
 };
 
 const startWorker = async () => {
-  dotenv.config();
-
   // --- Fail fast: a worker cannot exist without Redis ---------------
   const config = getRedisConfig();
   if (!config.enabled) {
