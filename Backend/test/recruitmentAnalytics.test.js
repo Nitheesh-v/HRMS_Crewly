@@ -49,7 +49,11 @@ test('analytics route and service enforce company scope and documented metrics',
   assert.match(service, /acceptedAt/);
   assert.match(service, /applicationDate/);
   assert.doesNotMatch(service, /req\.body\.companyId/);
-  assert.doesNotMatch(service, /BullMQ|Redis/i);
+  // No direct queue (BullMQ) or ioredis client usage in this service.
+  // 28.7 added the centralized fail-open cache abstraction — that is
+  // the only infrastructure dependency allowed here.
+  assert.doesNotMatch(service, /BullMQ|new Redis|from 'ioredis'/);
+  assert.match(service, /redisCacheService/);
 });
 
 test('analytics source does not expose document contents or compensation in work queues', async () => {

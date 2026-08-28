@@ -14,6 +14,7 @@ import {
   buildEventKey,
 } from './emailDeliveryService.js';
 import { recordAudit } from '../utils/securityauditService.js';
+import { bumpRecruitmentAnalyticsGeneration } from './analyticsCacheInvalidation.js';
 
 const LEGACY_STAGE_MAP = {
   SCREENING: 'HR_SCREENING',
@@ -336,6 +337,9 @@ export const transitionCandidateStage = async ({
     critical: true,
   });
 
+  // 28.7: analytics cache generation bump (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(companyId).catch(() => {});
+
   return {
     candidateId: updated._id,
     candidateCode: updated.candidateCode,
@@ -654,6 +658,9 @@ export const bulkCandidateAction = async ({
       });
     }
   }
+
+  // 28.7: analytics cache generation bump (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(companyId).catch(() => {});
 
   return {
     action,

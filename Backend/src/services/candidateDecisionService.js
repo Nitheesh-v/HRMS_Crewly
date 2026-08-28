@@ -12,6 +12,7 @@ import {
   transitionCandidateStage,
 } from './candidatePipelineService.js';
 import { notifyHumanDecision } from './recruitmentEvaluationNotificationService.js';
+import { bumpRecruitmentAnalyticsGeneration } from './analyticsCacheInvalidation.js';
 
 const DECISION_REASON_CATEGORIES = {
   SELECTED: ['BEST_FIT', 'ROLE_ALIGNMENT', 'INTERVIEW_EVIDENCE', 'OTHER'],
@@ -202,6 +203,9 @@ export const startCandidateFinalReview = async ({
     statusCode: 200,
     critical: true,
   });
+
+  // 28.7: analytics cache generation bump (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(companyId).catch(() => {});
 
   return { ...transition, candidateHistoryId: timelineEvent._id, idempotent: false };
 };
@@ -533,6 +537,9 @@ export const recordCandidateFinalDecision = async ({
     candidate,
     decision: normalized.decision,
   });
+
+  // 28.7: analytics cache generation bump (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(companyId).catch(() => {});
 
   return safeDecisionDto(finalized);
 };

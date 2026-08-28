@@ -27,6 +27,7 @@ import {
   sendAccountSetupInvitation,
 } from './accountSetupService.js';
 import { evaluateBgvForConversion } from './backgroundVerificationService.js';
+import { bumpRecruitmentAnalyticsGeneration } from './analyticsCacheInvalidation.js';
 
 const isObjectId = (value) => mongoose.isValidObjectId(value);
 
@@ -986,6 +987,9 @@ export const convertCandidateToEmployee = async ({
     .populate('department', 'name')
     .populate('reportingTo', 'name role')
     .lean();
+
+  // 28.7: analytics cache generation bump (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(companyId).catch(() => {});
 
   return {
     idempotent: false,

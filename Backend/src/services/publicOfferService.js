@@ -22,6 +22,7 @@ import {
 } from './offerService.js';
 import { notifyOfferDecision } from './offerNotificationService.js';
 import { cancelOfferJobs } from './scheduledJobScheduler.js';
+import { bumpRecruitmentAnalyticsGeneration } from './analyticsCacheInvalidation.js';
 import crypto from 'node:crypto';
 
 const genericFailure = () => ApiError.notFound('Offer is unavailable');
@@ -350,6 +351,8 @@ const decision = async ({ rawToken, action, rejection = {}, requestContext }) =>
   // 28.5: retire pending reminder/expiry jobs (best-effort; the
   // expiry worker's atomic guard is the final protection).
   cancelOfferJobs(updated).catch(() => {});
+  // 28.7: analytics cache generation bump (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(offer.companyId).catch(() => {});
   return { offer: publicDto(updated), idempotent: false };
 };
 

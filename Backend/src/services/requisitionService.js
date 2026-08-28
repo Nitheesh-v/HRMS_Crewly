@@ -14,6 +14,7 @@ import { notifyRoles, notifyUser } from '../utils/notify.js';
 import { nextJobCode } from '../utils/careerPortalIdentifiers.js';
 import { hasPermission } from '../utils/permissionService.js';
 import { recordAudit } from '../utils/securityauditService.js';
+import { bumpRecruitmentAnalyticsGeneration } from './analyticsCacheInvalidation.js';
 
 const EDITABLE_FIELDS = [
   'department',
@@ -982,6 +983,9 @@ export const createJobFromRequisition = async ({
 
   await job.populate('department', 'name');
   await job.populate('sourceRequisition', 'requisitionNumber position');
+
+  // 28.7: analytics cache generation bump (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(req.companyId).catch(() => {});
 
   return job.toObject();
 };

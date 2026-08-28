@@ -9,6 +9,7 @@ import { resolvePublicApplicationTarget } from './publicCareerService.js';
 import { requestApplicationConfirmation } from './candidateApplicationJobs.js';
 import { dispatchResumeProcessing } from './resumeProcessingDispatcher.js';
 import { inspectResumeFile } from './resumeSecurityService.js';
+import { bumpRecruitmentAnalyticsGeneration } from './analyticsCacheInvalidation.js';
 import {
   deleteStoredResume,
   storeResume,
@@ -235,6 +236,9 @@ export const submitCandidateApplication = async ({
     resumeId: candidateResume._id,
     parsingRequestedAt: candidateResume.parsingRequestedAt,
   });
+
+  // 28.7: analytics cache generation bump (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(company._id).catch(() => {});
 
   return publicResult({
     candidateCode: candidate.candidateCode,

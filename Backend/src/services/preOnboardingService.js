@@ -39,6 +39,7 @@ import {
   cancelPreOnboardingReminderJobs,
 } from './reminderSchedulingService.js';
 import { getPreOnboardingReminderPolicy } from '../config/queueConfig.js';
+import { bumpRecruitmentAnalyticsGeneration } from './analyticsCacheInvalidation.js';
 import {
   getStoredPreOnboardingDocument,
   storePreOnboardingDocument,
@@ -1002,6 +1003,9 @@ export const startPreOnboarding = async ({
     actorType: 'TENANT_USER',
   });
 
+  // 28.7: analytics cache generation bump (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(companyId).catch(() => {});
+
   return {
     ...safePreOnboardingDto(refreshed.preOnboarding, {
       requirements: refreshed.requirements,
@@ -1388,6 +1392,9 @@ export const verifyCandidateDocument = async ({
     }).catch(() => {});
   }
 
+  // 28.7: analytics cache generation bump (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(companyId).catch(() => {});
+
   return {
     case: safePreOnboardingDto(refreshed.preOnboarding, {
       requirements: refreshed.requirements,
@@ -1572,6 +1579,9 @@ export const rejectCandidateDocument = async ({
     actorType: 'TENANT_USER',
   });
 
+  // 28.7: analytics cache generation bump (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(companyId).catch(() => {});
+
   return {
     case: safePreOnboardingDto(refreshed.preOnboarding, {
       requirements: refreshed.requirements,
@@ -1739,6 +1749,8 @@ export const markPreOnboardingReady = async ({
   // Phase 28.6: workflow terminal — retire pending reminder jobs
   // (best-effort; the worker also skips complete workflows).
   cancelPreOnboardingReminderJobs(updated).catch(() => {});
+  // 28.7: analytics cache generation bump (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(companyId).catch(() => {});
 
   return {
     ...safePreOnboardingDto(updated, {
@@ -2078,6 +2090,9 @@ export const uploadCandidateRequirementDocument = async ({
       preOnboarding: refreshed.preOnboarding,
     }).catch(() => {});
   }
+
+  // 28.7: analytics cache generation bump (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(companyId).catch(() => {});
 
   return {
     case: safePreOnboardingDto(refreshed.preOnboarding, {

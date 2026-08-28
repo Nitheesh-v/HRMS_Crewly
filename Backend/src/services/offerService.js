@@ -20,6 +20,7 @@ import {
 import { generateOfferPdf } from '../utils/offerPdfService.js';
 import { randomToken, hashToken } from '../utils/securityPolicy.js';
 import { recordAudit } from '../utils/securityauditService.js';
+import { bumpRecruitmentAnalyticsGeneration } from './analyticsCacheInvalidation.js';
 import {
   offerCandidateAccessEmail,
   sendMail,
@@ -503,6 +504,9 @@ export const expireOfferIfDue = async ({ offer: source, requestContext = null })
     title: 'Offer expired',
     message: `${offer.offerCode} expired without a candidate decision.`,
   });
+  // 28.7: analytics cache generation bump — also covers the 28.5
+  // offer-expiry worker path (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(offer.companyId).catch(() => {});
   return updated;
 };
 
@@ -766,6 +770,9 @@ export const updateOffer = async ({
     },
     critical: true,
   });
+
+  // 28.7: analytics cache generation bump (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(companyId).catch(() => {});
 
   return safeOfferDto(updated);
 };

@@ -14,6 +14,7 @@ import {
   normalizeSkills,
 } from './resumeNormalizationService.js';
 import { getATSScoringConfiguration } from './atsScoringConfig.js';
+import { bumpRecruitmentAnalyticsGeneration } from './analyticsCacheInvalidation.js';
 import {
   normalizeCandidateStage,
   transitionCandidateStage,
@@ -782,6 +783,10 @@ export const processATSMatch = async ({
     statusCode: 200,
     critical: true,
   });
+
+  // 28.7: analytics cache generation bump — covers the 28.4 ATS
+  // worker path and manual reprocess (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(companyId).catch(() => {});
 
   return {
     accepted: true,
