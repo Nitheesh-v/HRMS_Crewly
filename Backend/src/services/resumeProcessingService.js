@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import logger from '../config/logger.js';
 import Candidate from '../models/Candidate.js';
 import CandidateHistory from '../models/CandidateHistory.js';
 import CandidateResume from '../models/CandidateResume.js';
@@ -475,6 +476,14 @@ export const processResumeJob = async ({
     const failure = safeFailure(error, stage);
 
     if (failure.retryable && !finalAttempt) {
+      // Safe ops log (category + stage only — no file names, PII, or
+      // raw error text): makes transient blips diagnosable in the
+      // worker terminal without spamming the candidate timeline.
+      logger.warn(
+        `[ResumeProcessing] retryable failure (resume=${resume._id}, ` +
+          `category=${failure.category}, stage=${stage}, ` +
+          `attempt=${resume.parsingAttempts}) — keeping RETRY_PENDING for retry`
+      );
       // Transient (storage/persistence) failure with attempts left:
       // keep RETRY_PENDING (no history spam), release the lease, and
       // let the worker signal BullMQ to back off + retry.
@@ -491,6 +500,14 @@ export const processResumeJob = async ({
       }
       return { accepted: true, status: 'RETRY_PENDING', retryable: true };
     }
+
+    // Terminal (permanent content error, or retryable on the final
+    // attempt). Safe ops log: category + status, no PII/raw error.
+    logger.warn(
+      `[ResumeProcessing] terminal failure (resume=${resume._id}, ` +
+        `category=${failure.category}, stage=${stage}, status=${failure.status}, ` +
+        `attempt=${resume.parsingAttempts})`
+    );
 
     if (parseResult?._id) {
       try {

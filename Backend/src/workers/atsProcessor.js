@@ -22,6 +22,7 @@
 // ============================================================
 
 import mongoose from 'mongoose';
+import logger from '../config/logger.js';
 import { JOB_NAMES } from '../config/queueConfig.js';
 import { processATSMatch } from '../services/atsMatchingService.js';
 
@@ -101,6 +102,14 @@ export const atsProcessProcessor = async (job, { process = processATSMatch } = {
   // Business no-ops are terminal by design: a tenant/relationship
   // mismatch or missing input will not resolve on retry, so the job
   // completes (Mongo intent stays the recovery source of truth).
+  if (!result.accepted && result.reason) {
+    // Safe ops log (reason is an enum — ids only, no content): a
+    // tenant mismatch surfacing here is a security-relevant event.
+    logger.warn(
+      `[ATSProcessing] no-op (candidate=${value.candidateId}, reason=${result.reason})`
+    );
+  }
+
   return {
     processed: Boolean(result.accepted),
     candidateId: value.candidateId,
