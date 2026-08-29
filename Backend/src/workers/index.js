@@ -83,11 +83,20 @@ const SHUTDOWN_HARD_STOP_MS = 10000;
 const safeErrorText = (error) =>
   redactConnectionSecrets(`${error?.message || 'unknown error'}`).slice(0, 200);
 
+// 28.9 error-storm protection (§76): sustained Redis/provider
+// failures emit repeated 'error' events. Log the FIRST one, then
+// at most one summary line per 30s (with a suppressed count) so
+// the logs stay readable without hiding the problem.
+const ERROR_LOG_INTERVAL_MS = 30000;
+
 // One set of safe event handlers per worker (queue label included).
 // Never logs full job.data — email payloads contain ids only, but
 // the rule is uniform for all future jobs.
 const attachEventHandlers = (worker, label) => {
+  const errState = { last: 0, suppressed: 0 };
   worker.on('ready', () => {
+    errState.last = 0;
+    errState.suppressed = 0;
     logger.info(
       `[Worker] ${label} ready (queue=${worker.name}, concurrency=${worker.concurrency})`
     );
@@ -133,8 +142,20 @@ const attachEventHandlers = (worker, label) => {
 
   worker.on('error', (error) => {
     // Connection-level error; ioredis retries internally with its
-    // default bounded strategy. Log safely, never crash on it.
-    logger.warn(`[Worker] ${label} error (${classifySafeReason(error)}): ${safeErrorText(error)}`);
+    // default bounded strategy. Log safely, never crash on it —
+    // throttled to avoid a log storm on a sustained outage.
+    const now = Date.now();
+    if (now - errState.last < ERROR_LOG_INTERVAL_MS) {
+      errState.suppressed += 1;
+      return;
+    }
+    errState.last = now;
+    const suppressed = errState.suppressed;
+    errState.suppressed = 0;
+    logger.warn(
+      `[Worker] ${label} error (${classifySafeReason(error)}): ${safeErrorText(error)}` +
+        (suppressed ? ` (+${suppressed} similar errors suppressed in the last 30s)` : '')
+    );
   });
 
   worker.on('closing', () => {

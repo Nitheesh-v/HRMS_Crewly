@@ -67,6 +67,8 @@ export const startWorkerHeartbeat = (connection, source = process.env) => {
   let timer = null;
   let stopped = false;
   let inFlight = false;
+  let lastFailureLog = 0;
+  const FAILURE_LOG_INTERVAL_MS = 5 * 60 * 1000;
 
   const beat = async () => {
     if (stopped || !connection || inFlight) return;
@@ -93,10 +95,15 @@ export const startWorkerHeartbeat = (connection, source = process.env) => {
     } catch {
       // Heartbeat is best-effort visibility; a Redis blip must
       // never take down job processing. Absence of the key is
-      // itself the truth the ops UI shows.
-      logger.warn(
-        '[Worker] Heartbeat skipped (Redis unavailable — ops UI will show OFFLINE)'
-      );
+      // itself the truth the ops UI shows. Log the first failure,
+      // then at most one line per 5 minutes (no log storm).
+      const now = Date.now();
+      if (now - lastFailureLog >= FAILURE_LOG_INTERVAL_MS) {
+        lastFailureLog = now;
+        logger.warn(
+          '[Worker] Heartbeat skipped (Redis unavailable — ops UI will show OFFLINE)'
+        );
+      }
     } finally {
       inFlight = false;
     }

@@ -27,6 +27,7 @@ import { fileURLToPath } from 'node:url';
 process.env.NODE_ENV = 'test';
 process.env.MONGO_URI ||= 'mongodb://127.0.0.1:27017/crewly_test';
 process.env.REDIS_ENABLED ||= 'false';
+process.env.JWT_SECRET ||= 'ops-hermetic-test-secret';
 
 const {
   OPS_QUEUES,
@@ -79,6 +80,12 @@ const {
   PLATFORM_ROLES,
   superAdminSession,
 } = await import('../src/middlewares/superAdminAuth.js');
+
+const { protect } = await import('../src/middlewares/authMiddleware.js');
+const jwt = (await import('jsonwebtoken')).default;
+const { reconcileBackgroundWork } = await import(
+  '../src/services/opsReconcileCoordinator.js'
+);
 
 const VALID_OID = '64a1b2c3d4e5f6a7b8c9d0e1';
 const OTHER_OID = '64b2c3d4e5f6a7b8c9d0e2f3';
@@ -1031,6 +1038,106 @@ describe('reconciliation ops', () => {
 });
 
 // ---------------------------------------------------------------
+// Master reconciliation coordinator (28.9)
+// ---------------------------------------------------------------
+
+describe('master reconciliation coordinator', () => {
+  const fakeRunners = (failAreas = {}) => {
+    const calls = [];
+    const make = (area) =>
+      async (opts) => {
+        calls.push({ area, limit: opts.limit });
+        if (failAreas[area]) throw new Error(failAreas[area]);
+        return { checked: 1, requeued: 1, skipped: 0, failed: 0 };
+      };
+    return {
+      calls,
+      reconcileStuckEmailDeliveries: make('email'),
+      recoverPendingResumeProcessing: make('resume'),
+      recoverPendingATSMatching: make('ats'),
+      runScheduledReconcile: make('scheduled'),
+      runDocumentReconcile: make('documents'),
+      runBgvReconcile: make('bgv'),
+    };
+  };
+
+  test('dryRun returns preview counts only (no runners called)', async () => {
+    const runners = fakeRunners();
+    const deps = baseDeps({
+      EmailDelivery: { countDocuments: async () => 2 },
+      CandidateResume: { countDocuments: async () => 3 },
+      loadInterviewsForReminderReconcile: async () => [],
+      loadOffersForReconcile: async () => [],
+      loadDocumentVersionsForReconcile: async () => [],
+      loadCasesForBgvReconcile: async () => ({ missingSubmission: [], duePolls: [] }),
+      ...runners,
+    });
+    const out = await reconcileBackgroundWork(
+      { domains: ['email', 'resume'], dryRun: true, limit: 50 },
+      deps
+    );
+    assert.equal(out.dryRun, true);
+    assert.equal(out.domains.length, 2);
+    assert.equal(out.domains[0].area, 'email');
+    assert.equal(out.domains[0].eligible, 2);
+    assert.equal(runners.calls.length, 0, 'no runner may run in dryRun');
+  });
+
+  test("'all' runs all 6 existing runners sequentially, limit clamped", async () => {
+    const runners = fakeRunners();
+    const out = await reconcileBackgroundWork(
+      { domains: 'all', limit: 1000000 },
+      baseDeps(runners)
+    );
+    assert.equal(out.dryRun, false);
+    assert.equal(out.limit, RECONCILE_MAX_LIMIT);
+    assert.equal(out.domains.length, 6);
+    assert.equal(out.ok, true);
+    const areas = out.domains.map((d) => d.area);
+    assert.deepEqual(areas, Object.keys(RECONCILE_AREAS));
+    for (const call of runners.calls) {
+      assert.equal(call.limit, RECONCILE_MAX_LIMIT);
+    }
+  });
+
+  test('per-domain failure is isolated; remaining domains still run', async () => {
+    const runners = fakeRunners({ documents: 'mongo down' });
+    const out = await reconcileBackgroundWork(
+      { domains: 'all', limit: 10 },
+      baseDeps(runners)
+    );
+    assert.equal(out.ok, false);
+    const docs = out.domains.find((d) => d.area === 'documents');
+    assert.ok(docs.error, 'failed domain reported with a safe message');
+    assert.ok(!docs.error.includes('mongo down'), 'no raw error text leaks');
+    const email = out.domains.find((d) => d.area === 'email');
+    assert.equal(email.requeued, 1, 'other domains still ran');
+  });
+
+  test('unknown domain → 400; empty domains → 400', async () => {
+    await assert.rejects(
+      reconcileBackgroundWork({ domains: ['everything'] }, baseDeps()),
+      (err) => err instanceof OpsError && err.status === 400
+    );
+    await assert.rejects(
+      reconcileBackgroundWork({ domains: [] }, baseDeps()),
+      (err) => err instanceof OpsError && err.status === 400
+    );
+  });
+
+  test('duplicate domains are deduped; limit floors to 1', async () => {
+    const runners = fakeRunners();
+    const out = await reconcileBackgroundWork(
+      { domains: ['email', 'email', 'ats'], limit: -99 },
+      baseDeps(runners)
+    );
+    assert.equal(out.domains.length, 2);
+    assert.equal(runners.calls.length, 2);
+    assert.ok(runners.calls.every((c) => c.limit === 1));
+  });
+});
+
+// ---------------------------------------------------------------
 // Cache ops
 // ---------------------------------------------------------------
 
@@ -1222,5 +1329,79 @@ describe('platform permissions', () => {
     await superAdminSession(req, res, () => (nextCalled = true));
     assert.equal(res.statusCode !== 403, true);
     assert.equal(nextCalled, false); // invalid token → not next()
+  });
+
+  test('validly-signed CUSTOMER token + tenant role → 403 before any DB access', async () => {
+    // The platform chain is protect (JWT + user) THEN
+    // superAdminSession (role gate + AdminSession). A customer
+    // JWT is cryptographically valid — the DENIAL must come from
+    // the platform role gate, before AdminSession/Mongo is touched.
+    const token = jwt.sign(
+      { sub: '50e34f0a0a0a0a0a0a0a0a01', name: 'Tenant User' },
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+    for (const role of ['EMPLOYEE', 'HR_MANAGER', 'ADMIN']) {
+      const req = {
+        user: { _id: '50e34f0a0a0a0a0a0a0a0a01', role, name: 'Tenant User' },
+        headers: { authorization: `Bearer ${token}` },
+      };
+      const res = {
+        statusCode: null,
+        status(code) {
+          this.statusCode = code;
+          return this;
+        },
+        json(payload) {
+          this.body = payload;
+          return this;
+        },
+      };
+      const startedAt = Date.now();
+      await superAdminSession(req, res, () => {
+        throw new Error('next() must not be called for a tenant user');
+      });
+      // Role gate returns immediately — no Mongo buffering/timeout.
+      assert.ok(Date.now() - startedAt < 2000, 'must not touch the DB');
+      assert.equal(res.statusCode, 403, `role ${role} with a valid token`);
+    }
+  });
+
+  test('protect: anonymous → 401; malformed token → 401 (no DB access)', async () => {
+    const mkReqResNext = (authorization) => {
+      const req = {
+        headers: authorization ? { authorization } : {},
+        body: {},
+        ip: '127.0.0.1',
+        method: 'GET',
+        originalUrl: '/api/super-admin/operations/queues',
+      };
+      const res = {
+        statusCode: null,
+        status(code) {
+          this.statusCode = code;
+          return this;
+        },
+        json(payload) {
+          this.body = payload;
+          return this;
+        },
+      };
+      let captured = null;
+      const next = (error) => (captured = error);
+      return { req, res, next, getCaptured: () => captured };
+    };
+
+    // Anonymous: no token at all.
+    const anon = mkReqResNext(undefined);
+    await protect(anon.req, anon.res, anon.next);
+    assert.ok(anon.getCaptured(), 'error forwarded');
+    assert.equal(anon.getCaptured().statusCode, 401);
+
+    // Malformed token: fails jwt.verify BEFORE any user lookup.
+    const bad = mkReqResNext('Bearer not.a.jwt');
+    await protect(bad.req, bad.res, bad.next);
+    assert.ok(bad.getCaptured(), 'error forwarded');
+    assert.equal(bad.getCaptured().statusCode, 401);
   });
 });

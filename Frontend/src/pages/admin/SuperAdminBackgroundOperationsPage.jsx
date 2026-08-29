@@ -166,6 +166,7 @@ export default function SuperAdminBackgroundOperationsPage() {
   const [reconcileAreas, setReconcileAreas] = useState([]);
   const [reconcileLimits, setReconcileLimits] = useState({});
   const [reconcileResult, setReconcileResult] = useState({});
+  const [allLimit, setAllLimit] = useState(25);
 
   const [cache, setCache] = useState(null);
   const [cacheCompanyId, setCacheCompanyId] = useState("");
@@ -357,6 +358,29 @@ export default function SuperAdminBackgroundOperationsPage() {
         const data = await superAdminService.opsReconcileRun(area, limit);
         const src = data?.data ?? data ?? {};
         setReconcileResult((prev) => ({ ...prev, [area]: src }));
+        loadReconcilePreview();
+      },
+    });
+  };
+
+  const askReconcileAll = () => {
+    const limit = Math.min(100, Math.max(1, Number(allLimit) || 25));
+    setConfirm({
+      title: "Run recovery for ALL domains?",
+      danger: false,
+      confirmLabel: "Run all",
+      lines: [
+        `Email, Resume, ATS, Scheduled, Documents and BGV — each bounded to ${limit} items.`,
+        "Runs sequentially; one failing domain does not stop the others.",
+        "Idempotent: deterministic job ids — running it twice never duplicates work.",
+      ],
+      successMessage: "Recovery run completed for all domains",
+      action: async () => {
+        const data = await superAdminService.opsReconcileRun("all", limit);
+        const src = data?.data ?? data ?? {};
+        const byArea = {};
+        for (const d of src.domains || []) byArea[d.area] = d;
+        setReconcileResult((prev) => ({ ...prev, ...byArea }));
         loadReconcilePreview();
       },
     });
@@ -745,10 +769,38 @@ export default function SuperAdminBackgroundOperationsPage() {
             Recovery — re-derive missing background jobs
           </h2>
         </div>
-        <p className="mb-4 text-xs text-slate-500">
+        <p className="mb-3 text-xs text-slate-500">
           Calls the existing reconciliation services. Preview shows how much work is stuck;
-          each run is bounded (backend caps at 100) and idempotent.
+          each run is bounded (backend caps at 100 per domain) and idempotent.
         </p>
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2.5">
+          <Play className="h-4 w-4 text-cyan-400" />
+          <span className="text-sm text-slate-300">Recovery runbook (after an outage):</span>
+          <span className="text-xs text-slate-500">
+            restore Redis → start worker → preview → run
+          </span>
+          <span className="ml-auto flex items-center gap-2">
+            <label className="text-xs text-slate-500" htmlFor="all-limit">
+              up to per domain
+            </label>
+            <input
+              id="all-limit"
+              type="number"
+              min="1"
+              max="100"
+              value={allLimit}
+              onChange={(e) => setAllLimit(e.target.value)}
+              className="w-20 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-200"
+            />
+            <button
+              onClick={askReconcileAll}
+              disabled={!canManage}
+              className="rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Run all (bounded)
+            </button>
+          </span>
+        </div>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {reconcileAreas.map((area) => {
             const result = reconcileResult[area.area];
@@ -770,9 +822,16 @@ export default function SuperAdminBackgroundOperationsPage() {
                   )}
                 </div>
                 {result ? (
-                  <div className="mt-2 rounded-lg bg-slate-800/50 px-3 py-2 text-xs text-slate-300">
-                    Last run: checked {result.checked} · requeued {result.requeued} · skipped{" "}
-                    {result.skipped} · failed {result.failed}
+                  <div
+                    className={`mt-2 rounded-lg px-3 py-2 text-xs ${
+                      result.error
+                        ? "bg-amber-500/10 text-amber-200"
+                        : "bg-slate-800/50 text-slate-300"
+                    }`}
+                  >
+                    {result.error
+                      ? `Last run: ${result.error}`
+                      : `Last run: checked ${result.checked} · requeued ${result.requeued} · skipped ${result.skipped} · failed ${result.failed}`}
                   </div>
                 ) : (
                   <div className="mt-3 flex items-center gap-2">

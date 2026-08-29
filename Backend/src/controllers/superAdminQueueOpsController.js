@@ -27,6 +27,7 @@ import {
   invalidateCompanyAnalyticsCache,
   OpsError,
 } from '../services/opsQueueService.js';
+import { reconcileBackgroundWork } from '../services/opsReconcileCoordinator.js';
 
 const ok = (res, status, data, message) =>
   res.status(status).json({
@@ -227,16 +228,32 @@ export const reconcilePreviewHandler = async (req, res) => {
 };
 
 // ---------------------------------------------------------------
-// POST /operations/reconcile {area, limit}
+// POST /operations/reconcile {area | domains, limit, dryRun}
+//
+// area: one of the 6 domains, OR 'all' (master coordinator).
+// domains: explicit subset (takes precedence over area).
+// dryRun: preview counts only (no mutation).
 // ---------------------------------------------------------------
 
 export const reconcileRunHandler = async (req, res) => {
   try {
-    const data = await runReconcile({
-      area: req.body?.area,
-      limit: req.body?.limit,
-      actor: actorFrom(req),
-    });
+    const { area, limit, dryRun } = req.body || {};
+    const domains = req.body?.domains;
+    const usesCoordinator =
+      Array.isArray(domains) ||
+      (domains === undefined && (area === 'all' || area === undefined));
+    const data = usesCoordinator
+      ? await reconcileBackgroundWork({
+          domains: domains === undefined ? 'all' : domains,
+          limit,
+          dryRun: dryRun === true,
+          actor: actorFrom(req),
+        })
+      : await runReconcile({
+          area,
+          limit,
+          actor: actorFrom(req),
+        });
     return ok(res, 200, data, 'Reconciliation run completed');
   } catch (error) {
     if (error instanceof OpsError) return failOps(res, error);

@@ -14,6 +14,7 @@
     "queue:check": "node scripts/queue-check.js",
     "queue:check:retry": "node scripts/queue-check.js --retry-test",
     "queue:check:duplicate": "node scripts/queue-check.js --duplicate-test",
+    "ops:load-check": "node scripts/ops-load-check.js",
     "email:reconcile": "node scripts/email-reconcile.js",
     "test:email": "node --test test/emailDelivery.test.js",
     "test:bullmq": "node --test test/bullmqFoundation.test.js",
@@ -42,7 +43,12 @@
     "test:scheduled": "node --test test/scheduledJobs.test.js",
     "queue:reconcile": "node scripts/queue-reconcile.js",
     "test:document-processing": "node --test test/documentProcessing.test.js",
-    "test:bgv-queue": "node --test test/bgvQueue.test.js"
+    "test:bgv-queue": "node --test test/bgvQueue.test.js",
+    "test:cache": "node --test test/analyticsCache.test.js test/recruitmentAnalytics.test.js",
+    "test:operations": "node --test test/opsQueueOps.test.js",
+    "test:background-jobs": "node --test test/documentProcessing.test.js test/bgvQueue.test.js",
+    "test:phase28": "node --test test/redisFoundation.test.js test/bullmqFoundation.test.js test/emailDelivery.test.js test/processingQueue.test.js test/scheduledJobs.test.js test/documentProcessing.test.js test/bgvQueue.test.js test/analyticsCache.test.js test/recruitmentAnalytics.test.js test/opsQueueOps.test.js",
+    "test:all": "node --test test/analyticsCache.test.js test/atsMatching.test.js test/backgroundVerification.test.js test/bgvQueue.test.js test/bullmqFoundation.test.js test/candidateApplication.test.js test/candidateConversion.test.js test/candidatePipeline.test.js test/documentProcessing.test.js test/emailDelivery.test.js test/interviewEvaluation.test.js test/interviewManagement.test.js test/offerManagement.test.js test/opsQueueOps.test.js test/phase27SecurityHardening.test.js test/preOnboarding.test.js test/processingQueue.test.js test/publicCareerPortal.test.js test/recruitmentAnalytics.test.js test/redisFoundation.test.js test/requisitionApproval.test.js test/requisitionJobCreation.test.js test/resumeParsing.test.js test/scheduledJobs.test.js"
   },
   "keywords": [],
   "author": "",
