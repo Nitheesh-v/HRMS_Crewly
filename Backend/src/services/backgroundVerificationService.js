@@ -15,7 +15,12 @@ import ApiError from '../utils/ApiError.js';
 import { nextBgvCaseCode } from '../utils/bgvIdentifiers.js';
 import { notifyRoles } from '../utils/notify.js';
 import { recordAudit } from '../utils/securityauditService.js';
-import { dispatchBgvJob } from './bgv/bgvDispatcher.js';
+// Phase 28.6: background BGV execution (the 27.15 synchronous
+// dispatchBgvJob call site moved to the BGV queue; the provider
+// registry + internal provider are unchanged).
+import { scheduleBgvCaseProcessing, cancelBgvJobs } from './bgvQueueDispatcher.js';
+import { scheduleBgvReminder } from './reminderSchedulingService.js';
+import { getBgvReminderPolicy } from '../config/queueConfig.js';
 
 const isObjectId = (value) => mongoose.isValidObjectId(value);
 const clean = (value, max = 2000) => String(value || '').trim().slice(0, max);
@@ -195,6 +200,152 @@ const caseDto = (caseRecord, checks = [], { includeInternal = true } = {}) => ({
   updatedAt: caseRecord.updatedAt,
 });
 
+// ── Phase 28.6: background-execution helpers ────────────────────
+
+// History + HR in-app notice for SYSTEM-originated BGV events
+// (worker-driven; no HTTP actor).
+export const recordBgvSystemEvent = async ({
+  companyId,
+  caseRecord,
+  action,
+  previousStatus = '',
+  newStatus = '',
+  metadata = {},
+}) => {
+  await recordHistory({
+    companyId,
+    caseRecord,
+    action,
+    previousStatus,
+    newStatus,
+    actorId: null,
+    actorType: 'SYSTEM',
+    metadata,
+  });
+  await notifyRoles(companyId, ['COMPANY_ADMIN', 'HR_MANAGER'], {
+    type: 'RECRUITMENT',
+    title: `BGV ${action.replace(/_/g, ' ').toLowerCase()}`,
+    message: `${caseRecord.caseCode} — ${newStatus || 'updated'} (background process).`,
+    link: `/app/recruitment/background-verification/${caseRecord._id}`,
+  }).catch(() => {});
+};
+
+// Stop provider polling for a case (atomic) and retire the pending
+// poll job (best-effort; execution-time validation is the final
+// guard).
+export const stopCasePolling = async ({ companyId, caseId, reason = '' }) => {
+  const updated = await BackgroundVerificationCase.findOneAndUpdate(
+    { _id: caseId, companyId, 'polling.status': 'POLLING' },
+    {
+      $set: {
+        'polling.status': 'STOPPED',
+        'polling.stopReason': String(reason || '').slice(0, 120),
+        'polling.nextPollAt': null,
+      },
+    },
+    { returnDocument: 'after' }
+  );
+  if (updated) {
+    await cancelBgvJobs(updated).catch(() => {});
+  }
+  return Boolean(updated);
+};
+
+// Provider status → Crewly domain mapping (§38). Explicit and
+// conservative: anything unrecognized is skipped, never rejected.
+// A provider FAIL can become at most a DISCREPANCY for human
+// review — NEVER a candidate rejection.
+export const PROVIDER_RESULT_MAP = Object.freeze({
+  VERIFIED: 'VERIFIED',
+  PASS: 'VERIFIED',
+  CLEAR: 'VERIFIED',
+  MISMATCH: 'DISCREPANCY',
+  FAIL: 'DISCREPANCY',
+  DISCREPANCY: 'DISCREPANCY',
+  INCONCLUSIVE: 'UNABLE_TO_VERIFY',
+  UNABLE_TO_VERIFY: 'UNABLE_TO_VERIFY',
+  UNKNOWN: 'UNABLE_TO_VERIFY',
+});
+
+const ACTIONABLE_CHECK_STATUSES = ['NOT_STARTED', 'IN_PROGRESS', 'AWAITING_CANDIDATE', 'AWAITING_VERIFIER'];
+
+// Normalize + persist provider results into the domain (atomic,
+// per-check, idempotent for terminal checks). Used by the poll
+// processor and the future webhook path. Human review remains the
+// authority — this only records evidence.
+export const recordProviderBgvResult = async ({
+  companyId,
+  caseId,
+  results = [],
+  providerKey = 'INTERNAL',
+}) => {
+  const caseRecord = await BackgroundVerificationCase.findOne({ _id: caseId, companyId }).lean();
+  if (!caseRecord) return { skipped: true, reason: 'NOT_FOUND' };
+  if (['COMPLETED', 'CANCELLED'].includes(caseRecord.status)) {
+    return { skipped: true, reason: 'CASE_CLOSED' };
+  }
+
+  const now = new Date();
+  let updatedCount = 0;
+  for (const item of results) {
+    const target = PROVIDER_RESULT_MAP[String(item?.providerStatus || '').toUpperCase()];
+    if (!target) continue;
+    const summary = clean(String(item?.summary || ''), 2000);
+    const check = await BackgroundVerificationCheck.findOneAndUpdate(
+      {
+        companyId,
+        case: caseRecord._id,
+        code: String(item?.checkCode || '').toUpperCase(),
+        status: { $in: ACTIONABLE_CHECK_STATUSES },
+      },
+      {
+        $set: {
+          status: target,
+          source: 'PROVIDER',
+          resultSummary: summary,
+          verifiedAt: now,
+          completedAt: now,
+          ...(target === 'DISCREPANCY' ? { discrepancy: summary } : {}),
+        },
+      },
+      { returnDocument: 'after' }
+    );
+    if (!check) continue;
+    updatedCount += 1;
+    const historyAction =
+      target === 'VERIFIED'
+        ? 'BGV_CHECK_PROVIDER_VERIFIED'
+        : target === 'DISCREPANCY'
+          ? 'BGV_DISCREPANCY_RECORDED'
+          : 'BGV_CHECK_UNABLE_TO_VERIFY';
+    await recordHistory({
+      companyId,
+      caseRecord,
+      check,
+      action: historyAction,
+      previousStatus: '',
+      newStatus: target,
+      actorId: null,
+      actorType: 'SYSTEM',
+      metadata: { provider: providerKey, checkCode: check.code },
+    }).catch(() => {});
+  }
+
+  if (updatedCount > 0) {
+    const refreshed = await BackgroundVerificationCase.findOne({ _id: caseRecord._id, companyId }).lean();
+    if (refreshed) {
+      await refreshCaseCounters({ companyId, caseRecord: refreshed, actorId: caseRecord.updatedBy }).catch(() => {});
+      await notifyRoles(companyId, ['COMPANY_ADMIN', 'HR_MANAGER'], {
+        type: 'RECRUITMENT',
+        title: 'BGV provider results recorded',
+        message: `${caseRecord.caseCode} — ${updatedCount} check result(s) from provider ${providerKey} recorded. Human review required.`,
+        link: `/app/recruitment/background-verification/${caseRecord._id}`,
+      }).catch(() => {});
+    }
+  }
+  return { processed: true, updated: updatedCount };
+};
+
 export const evaluateBgvCaseReadiness = (checks = []) => {
   const required = checks.filter((item) => item.required);
   const optional = checks.filter((item) => !item.required);
@@ -296,6 +447,15 @@ const refreshCaseCounters = async ({ companyId, caseRecord, actorId }) => {
       title: 'BGV review required',
       message: `${updated.caseCode} is ready for human review.`,
       link: `/app/recruitment/background-verification/${updated._id}`,
+    }).catch(() => {});
+    // 28.6: schedule the HR review reminder (never-throwing).
+    scheduleBgvReminder({
+      caseRecord: updated,
+      reminderType: 'REVIEW_REQUIRED',
+      stateVersion: updated.updatedAt,
+      dueAt: new Date(
+        new Date(updated.updatedAt).getTime() + getBgvReminderPolicy().candidateInfoOffsetMs
+      ),
     }).catch(() => {});
   }
 
@@ -665,11 +825,29 @@ export const startBackgroundVerification = async ({
     case: caseRecord._id,
   }).lean();
 
-  await dispatchBgvJob('BGV_START', {
-    provider: 'INTERNAL',
-    caseRecord,
-    checks,
-  });
+  // Phase 28.6: provider registration runs on the BGV queue
+  // (never-throwing; Mongo case/checks are already committed, so a
+  // queue failure loses nothing — queue:reconcile re-derives it).
+  scheduleBgvCaseProcessing(caseRecord).catch(() => {});
+  const bgvReminderPolicy = getBgvReminderPolicy();
+  if (settings.consentRequired) {
+    scheduleBgvReminder({
+      caseRecord,
+      reminderType: 'CANDIDATE_INFO',
+      stateVersion: caseRecord.startedAt,
+      dueAt: new Date(new Date(caseRecord.startedAt).getTime() + bgvReminderPolicy.candidateInfoOffsetMs),
+    }).catch(() => {});
+  }
+  if (caseRecord.assignedVerifier) {
+    scheduleBgvReminder({
+      caseRecord,
+      reminderType: 'VERIFIER',
+      stateVersion: caseRecord.updatedAt || caseRecord.startedAt,
+      dueAt: new Date(
+        new Date(caseRecord.updatedAt || caseRecord.startedAt).getTime() + bgvReminderPolicy.verifierOffsetMs
+      ),
+    }).catch(() => {});
+  }
 
   await recordHistory({
     companyId,
@@ -928,6 +1106,16 @@ export const assignBgvVerifier = async ({
     critical: true,
   });
 
+  // 28.6: verifier reminder for the newly assigned case.
+  scheduleBgvReminder({
+    caseRecord,
+    reminderType: 'VERIFIER',
+    stateVersion: caseRecord.updatedAt,
+    dueAt: new Date(
+      new Date(caseRecord.updatedAt).getTime() + getBgvReminderPolicy().verifierOffsetMs
+    ),
+  }).catch(() => {});
+
   return getBackgroundVerification({ companyId, caseId });
 };
 
@@ -1175,6 +1363,11 @@ export const completeBackgroundVerification = async ({
     link: `/app/recruitment/background-verification/${caseRecord._id}`,
   }).catch(() => {});
 
+  // 28.6: retire polling + queued BGV jobs (best-effort; the
+  // worker's terminal-status check is the final guard).
+  stopCasePolling({ companyId, caseId, reason: 'CASE_COMPLETED' }).catch(() => {});
+  cancelBgvJobs({ _id: caseRecord._id, companyId, polling: caseRecord.polling }).catch(() => {});
+
   return {
     ...(await getBackgroundVerification({ companyId, caseId })),
     idempotent: false,
@@ -1234,6 +1427,10 @@ export const cancelBackgroundVerification = async ({
     metadata: { caseCode: caseRecord.caseCode, reason: cancellationReason },
     critical: true,
   });
+
+  // 28.6: retire polling + queued BGV jobs (best-effort).
+  stopCasePolling({ companyId, caseId, reason: 'CASE_CANCELLED' }).catch(() => {});
+  cancelBgvJobs({ _id: caseRecord._id, companyId, polling: caseRecord.polling }).catch(() => {});
 
   return {
     ...(await getBackgroundVerification({ companyId, caseId })),

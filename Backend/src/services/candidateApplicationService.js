@@ -6,9 +6,10 @@ import { nextCandidateCode } from '../utils/candidateIdentifiers.js';
 import { recordAudit } from '../utils/securityauditService.js';
 import { checkLimit } from '../utils/subscriptionEngine.js';
 import { resolvePublicApplicationTarget } from './publicCareerService.js';
-import { sendApplicationConfirmation } from './candidateApplicationJobs.js';
+import { requestApplicationConfirmation } from './candidateApplicationJobs.js';
 import { dispatchResumeProcessing } from './resumeProcessingDispatcher.js';
 import { inspectResumeFile } from './resumeSecurityService.js';
+import { bumpRecruitmentAnalyticsGeneration } from './analyticsCacheInvalidation.js';
 import {
   deleteStoredResume,
   storeResume,
@@ -222,14 +223,22 @@ export const submitCandidateApplication = async ({
     critical: true,
   });
 
-  await sendApplicationConfirmation({ candidate, company, job });
+  // 28.3: async email handoff — the request never waits for SMTP.
+  await requestApplicationConfirmation({ candidate, company, job });
 
-  // Queue-only handoff: the public application never waits for extraction/parsing.
-  dispatchResumeProcessing({
+  // 28.4: async BullMQ handoff — the public application never waits
+  // for extraction/parsing. Never throws: the PENDING Mongo intent is
+  // the recovery source if the queue is down (worker startup /
+  // npm run processing:reconcile re-enqueues it).
+  void dispatchResumeProcessing({
     companyId: company._id,
     candidateId: candidate._id,
     resumeId: candidateResume._id,
+    parsingRequestedAt: candidateResume.parsingRequestedAt,
   });
+
+  // 28.7: analytics cache generation bump (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(company._id).catch(() => {});
 
   return publicResult({
     candidateCode: candidate.candidateCode,

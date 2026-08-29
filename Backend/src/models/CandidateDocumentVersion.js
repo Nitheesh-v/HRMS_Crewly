@@ -121,9 +121,32 @@ const candidateDocumentVersionSchema = new mongoose.Schema(
       default: Date.now,
       immutable: true,
     },
+    // Phase 28.6 — background document processing infrastructure
+    // (28.4-style lease fields). This is EXECUTION state, kept
+    // separate from the business `status` and the security
+    // `scanStatus`: processing success never verifies a document.
+    processingStatus: {
+      type: String,
+      enum: ['PENDING', 'PROCESSING', 'PROCESSED', 'PROCESSING_FAILED'],
+      default: 'PENDING',
+      index: true,
+    },
+    processingVersion: { type: Number, default: 1, min: 1 },
+    processingAttempts: { type: Number, default: 0, min: 0 },
+    processingLastError: { type: String, default: '', maxlength: 200 },
+    processingLeaseId: { type: String, default: '', select: false },
+    processingLeaseExpiresAt: { type: Date, default: null, select: false },
+    processedAt: { type: Date, default: null },
   },
   { timestamps: true, versionKey: false }
 );
+
+// Stale-lease scan for reconciliation (28.4 pattern).
+candidateDocumentVersionSchema.index({
+  companyId: 1,
+  processingStatus: 1,
+  processingLeaseExpiresAt: 1,
+});
 
 candidateDocumentVersionSchema.index(
   { companyId: 1, candidateDocument: 1, version: 1 },

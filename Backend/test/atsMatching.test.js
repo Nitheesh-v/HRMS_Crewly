@@ -611,34 +611,75 @@ test('manual reprocess validates tenant-owned inputs and persists queue recovery
   }
 });
 
-test('dispatcher deduplicates persisted identities and rejects forged jobs', () => {
-  const before = dispatcher.atsDispatcherState().queued;
-  const first = dispatcher.dispatchATSMatching({
+test('dispatcher enqueues deterministic reference-only ATS jobs and rejects forged jobs', async () => {
+  const enqueued = [];
+  const enqueue = async (jobId, payload) => {
+    enqueued.push({ jobId, payload });
+    return { id: jobId };
+  };
+  const requestEpoch = new Date(1730000005000);
+  const jobShape = {
     companyId: COMPANY_ID,
     candidateId: CANDIDATE_ID,
     jobId: JOB_ID,
     resumeId: RESUME_ID,
     parseResultId: PARSE_RESULT_ID,
-  });
-  const second = dispatcher.dispatchATSMatching({
-    companyId: COMPANY_ID,
-    candidateId: CANDIDATE_ID,
-    jobId: JOB_ID,
-    resumeId: RESUME_ID,
-    parseResultId: PARSE_RESULT_ID,
-  });
-  const invalid = dispatcher.dispatchATSMatching({
-    companyId: 'not-an-id',
-    candidateId: CANDIDATE_ID,
-    jobId: JOB_ID,
-    resumeId: RESUME_ID,
-    parseResultId: PARSE_RESULT_ID,
-  });
+    trigger: 'RESUME_PARSED',
+    requestEpoch,
+  };
+  const first = await dispatcher.dispatchATSMatching(jobShape, { enqueue });
+  const second = await dispatcher.dispatchATSMatching(jobShape, { enqueue });
+  const forged = await dispatcher.dispatchATSMatching(
+    { ...jobShape, companyId: 'not-an-id' },
+    { enqueue }
+  );
+  const missing = await dispatcher.dispatchATSMatching(
+    { ...jobShape, parseResultId: undefined },
+    { enqueue }
+  );
 
   assert.equal(first.accepted, true);
-  assert.equal(second.accepted, true);
-  assert.equal(invalid.accepted, false);
-  assert.equal(dispatcher.atsDispatcherState().queued - before, 1);
+  assert.equal(first.queued, true);
+  assert.equal(first.provider, 'BULLMQ');
+  // Same logical request (same parse result + epoch) → same
+  // deterministic job id (BullMQ dedupe), not a second job.
+  assert.equal(second.jobId, first.jobId);
+  assert.equal(forged.accepted, false);
+  assert.equal(missing.accepted, false);
+  assert.equal(enqueued.length, 2);
+
+  // Payload contract: references only — no resume/candidate PII,
+  // no job posting body, no secrets.
+  const payload = enqueued[0].payload;
+  assert.deepEqual(
+    Object.keys(payload).sort(),
+    [
+      'candidateId',
+      'companyId',
+      'correlationId',
+      'engineVersion',
+      'jobId',
+      'parseResultId',
+      'resumeId',
+      'trigger',
+    ]
+  );
+  assert.equal(String(payload.candidateId), CANDIDATE_ID);
+  assert.equal(String(payload.parseResultId), PARSE_RESULT_ID);
+  assert.equal(payload.trigger, 'RESUME_PARSED');
+
+  // Job id: colon-free (BullMQ rule) and reconstructable from Mongo
+  // state (candidate + parse result + request epoch). A manual
+  // recalculate (new epoch) yields a fresh job id.
+  assert.ok(!first.jobId.includes(':'));
+  assert.equal(
+    first.jobId,
+    dispatcher.buildATSJobId(CANDIDATE_ID, PARSE_RESULT_ID, requestEpoch)
+  );
+  assert.notEqual(
+    dispatcher.buildATSJobId(CANDIDATE_ID, PARSE_RESULT_ID, new Date(1730000006000)),
+    first.jobId
+  );
 });
 
 test('ATS routes enforce exact candidate permissions and Employee has no ATS access', async () => {
@@ -711,11 +752,13 @@ test('parser completion dispatch and hostile-text-safe ATS UI remain wired', asy
     ),
   ]);
 
+  // 28.4: the chain calls the (DI-injectable) dispatch right after the
+  // COMPLETED guard — default is the BullMQ ATS dispatcher.
   const completedGuard = processingSource.indexOf("resultStatus === 'COMPLETED'");
-  const dispatchCall = processingSource.indexOf('dispatchATSMatching({', completedGuard);
+  const dispatchCall = processingSource.indexOf('dispatchATS({', completedGuard);
   assert.notEqual(completedGuard, -1);
   assert.notEqual(dispatchCall, -1);
-  assert.equal(dispatchCall - completedGuard < 150, true);
+  assert.equal(dispatchCall - completedGuard < 300, true);
   assert.match(panelSource, /Matched required skills/);
   assert.match(panelSource, /Missing preferred skills/);
   assert.match(panelSource, /Assistive analysis only/);

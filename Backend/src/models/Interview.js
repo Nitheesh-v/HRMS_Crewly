@@ -233,7 +233,9 @@ const interviewSchema = new mongoose.Schema(
       candidate: {
         state: {
           type: String,
-          enum: ['NOT_REQUESTED', 'DELIVERED', 'FAILED'],
+          // QUEUED = 28.3 async email delivery requested (final
+          // state lives on the EmailDelivery record, not here).
+          enum: ['NOT_REQUESTED', 'QUEUED', 'DELIVERED', 'FAILED'],
           default: 'NOT_REQUESTED',
         },
         mode: { type: String, default: '' },
@@ -244,7 +246,7 @@ const interviewSchema = new mongoose.Schema(
           user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
           emailState: {
             type: String,
-            enum: ['NOT_REQUESTED', 'DELIVERED', 'FAILED'],
+            enum: ['NOT_REQUESTED', 'QUEUED', 'DELIVERED', 'FAILED'],
             default: 'NOT_REQUESTED',
           },
           emailMode: { type: String, default: '' },

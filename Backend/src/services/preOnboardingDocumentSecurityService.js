@@ -84,6 +84,22 @@ export const scanDocumentForMalware = async (_file) => ({
   checkedAt: null,
 });
 
+// Phase 28.6 — background re-verification of the STORED bytes (the
+// worker's source of truth). Reuses the SAME structural validators
+// as the upload path (no new rules): throws ApiError(400) on active
+// content / invalid structure. The malware abstraction is applied on
+// top; without a configured scanner the result stays NOT_CONFIGURED —
+// this function never produces a fake CLEAN.
+export const verifyStoredDocumentBuffer = async ({ buffer, mimeType }) => {
+  if (!buffer?.length) throw ApiError.badRequest('Stored document is empty');
+  if (mimeType === 'application/pdf') {
+    validatePdf(buffer);
+  } else {
+    validateImage(buffer, mimeType);
+  }
+  return scanDocumentForMalware({ buffer, mimetype: mimeType });
+};
+
 export const inspectPreOnboardingFile = async ({
   file,
   allowedMimeTypes = PRE_ONBOARDING_ALLOWED_MIME_TYPES,

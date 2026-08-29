@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import logger from '../config/logger.js';
 import Candidate from '../models/Candidate.js';
 import CandidateHistory from '../models/CandidateHistory.js';
 import CandidateResume from '../models/CandidateResume.js';
@@ -138,6 +139,10 @@ const ensureParseResult = async ({ resume, status, now }) =>
     { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
   );
 
+// retryable = the failure is TRANSIENT (storage/infrastructure). The
+// worker keeps RETRY_PENDING state and lets BullMQ back off + retry;
+// terminal content errors (corrupt, password protected, unsupported,
+// parser crash) fail fast and only manual reprocess re-enters.
 const safeFailure = (error, stage) => {
   if (error instanceof ResumeExtractionError) {
     return {
@@ -145,6 +150,7 @@ const safeFailure = (error, stage) => {
       message: error.safeMessage,
       status:
         error.category === 'UNSUPPORTED_FORMAT' ? 'UNSUPPORTED' : 'FAILED',
+      retryable: false,
     };
   }
 
@@ -154,6 +160,7 @@ const safeFailure = (error, stage) => {
         category: 'RESOURCE_LIMIT',
         message: 'The stored resume exceeds the processing safety limit.',
         status: 'FAILED',
+        retryable: false,
       };
     }
 
@@ -161,6 +168,7 @@ const safeFailure = (error, stage) => {
       category: 'STORAGE_UNAVAILABLE',
       message: 'The original resume is temporarily unavailable for processing.',
       status: 'FAILED',
+      retryable: true,
     };
   }
 
@@ -171,7 +179,65 @@ const safeFailure = (error, stage) => {
         ? 'The parsed resume could not be saved. Reprocessing can be requested.'
         : 'The resume parser could not complete this document.',
     status: 'FAILED',
+    retryable: stage === 'PERSISTENCE',
   };
+};
+
+// Retryable transient failure with attempts remaining: clear the
+// lease and keep RETRY_PENDING so the next attempt (BullMQ backoff,
+// or worker recovery) can claim it. Deliberately NO history/audit
+// row — retries must not spam the candidate timeline.
+const persistRetryPending = async ({
+  resume,
+  parseResultId,
+  failure,
+  startedAt,
+}) => {
+  const now = new Date();
+  const duration = Math.max(0, now.getTime() - startedAt.getTime());
+
+  const updates = [
+    CandidateResume.updateOne(
+      {
+        _id: resume._id,
+        companyId: resume.companyId,
+        candidate: resume.candidate,
+        processingLeaseId: resume.processingLeaseId,
+      },
+      {
+        $set: {
+          parsingStatus: 'RETRY_PENDING',
+          processingLeaseId: '',
+          processingLeaseExpiresAt: null,
+        },
+      }
+    ),
+  ];
+
+  if (parseResultId) {
+    updates.push(
+      ResumeParseResult.updateOne(
+        {
+          _id: parseResultId,
+          companyId: resume.companyId,
+          processingLeaseId: resume.processingLeaseId,
+        },
+        {
+          $set: {
+            status: 'RETRY_PENDING',
+            completedAt: null,
+            failureCategory: failure.category,
+            safeErrorMessage: failure.message,
+            processingLeaseId: '',
+            processingLeaseExpiresAt: null,
+            'processingMetadata.processingDurationMs': duration,
+          },
+        }
+      )
+    );
+  }
+
+  await Promise.all(updates);
 };
 
 const persistFailure = async ({ resume, parseResultId, failure, startedAt }) => {
@@ -225,10 +291,19 @@ const persistFailure = async ({ resume, parseResultId, failure, startedAt }) => 
   });
 };
 
+// Worker entry (28.4): the BullMQ adapter calls this; the atomic
+// Mongo claim below is the single-flight guarantee (at-least-once
+// deliveries all lose except the claim winner).
+//   finalAttempt — the worker passes true when BullMQ has no more
+//     attempts left; retryable failures then fail terminally.
+//   dispatchATS  — DI seam (tests); default is the real BullMQ
+//     dispatcher from atsDispatcher.
 export const processResumeJob = async ({
   companyId,
   candidateId,
   resumeId,
+  finalAttempt = false,
+  dispatchATS = dispatchATSMatching,
 }) => {
   const now = new Date();
   const leaseId = crypto.randomUUID();
@@ -383,19 +458,56 @@ export const processResumeJob = async ({
     });
 
     if (resultStatus === 'COMPLETED') {
-      dispatchATSMatching({
+      // Chain AFTER the parse commit: a crash here leaves "COMPLETED
+      // parse + no ATSResult", which ATS recovery re-derives (§37).
+      dispatchATS({
         companyId: resume.companyId,
         candidateId: resume.candidate,
         jobId: resume.job,
         resumeId: resume._id,
         parseResultId: parseResult._id,
         trigger: 'RESUME_PARSED',
+        requestEpoch: completedAt,
       });
     }
 
     return { accepted: true, status: resultStatus };
   } catch (error) {
     const failure = safeFailure(error, stage);
+
+    if (failure.retryable && !finalAttempt) {
+      // Safe ops log (category + stage only — no file names, PII, or
+      // raw error text): makes transient blips diagnosable in the
+      // worker terminal without spamming the candidate timeline.
+      logger.warn(
+        `[ResumeProcessing] retryable failure (resume=${resume._id}, ` +
+          `category=${failure.category}, stage=${stage}, ` +
+          `attempt=${resume.parsingAttempts}) — keeping RETRY_PENDING for retry`
+      );
+      // Transient (storage/persistence) failure with attempts left:
+      // keep RETRY_PENDING (no history spam), release the lease, and
+      // let the worker signal BullMQ to back off + retry.
+      try {
+        await persistRetryPending({
+          resume,
+          parseResultId: parseResult?._id,
+          failure,
+          startedAt,
+        });
+      } catch {
+        // Lease will expire; recovery reclaims. Never throw here —
+        // the caller maps the retryable outcome for BullMQ.
+      }
+      return { accepted: true, status: 'RETRY_PENDING', retryable: true };
+    }
+
+    // Terminal (permanent content error, or retryable on the final
+    // attempt). Safe ops log: category + status, no PII/raw error.
+    logger.warn(
+      `[ResumeProcessing] terminal failure (resume=${resume._id}, ` +
+        `category=${failure.category}, stage=${stage}, status=${failure.status}, ` +
+        `attempt=${resume.parsingAttempts})`
+    );
 
     if (parseResult?._id) {
       try {

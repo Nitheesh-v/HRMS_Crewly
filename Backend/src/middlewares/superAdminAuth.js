@@ -21,6 +21,10 @@ export const PLATFORM_PERMISSIONS = {
     'audit:read',
     'settings:manage',
     'revenue:read',
+    // 28.8: can VIEW queue/worker/cache operations, but cannot
+    // retry, remove, pause, run reconciliation, or invalidate
+    // (those require operations:manage — SUPER_ADMIN only).
+    'operations:read',
   ],
 
   SUPPORT_ADMIN: [

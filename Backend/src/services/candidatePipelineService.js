@@ -8,11 +8,13 @@ import CandidatePipelineHistory, {
 } from '../models/CandidatePipelineHistory.js';
 import User from '../models/User.js';
 import ApiError from '../utils/ApiError.js';
+import { JOB_NAMES } from '../config/queueConfig.js';
 import {
-  candidatePipelineUpdateEmail,
-  sendMail,
-} from '../utils/mailer.js';
+  requestEmailDelivery,
+  buildEventKey,
+} from './emailDeliveryService.js';
 import { recordAudit } from '../utils/securityauditService.js';
+import { bumpRecruitmentAnalyticsGeneration } from './analyticsCacheInvalidation.js';
 
 const LEGACY_STAGE_MAP = {
   SCREENING: 'HR_SCREENING',
@@ -335,6 +337,9 @@ export const transitionCandidateStage = async ({
     critical: true,
   });
 
+  // 28.7: analytics cache generation bump (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(companyId).catch(() => {});
+
   return {
     candidateId: updated._id,
     candidateCode: updated.candidateCode,
@@ -456,27 +461,38 @@ const assignCandidate = async ({
   return { candidateId: candidate._id, assignedTo: assignee._id };
 };
 
+// Manual SEND_EMAIL bulk action (28.3): each explicit dispatch is a
+// distinct logical event (HR deliberately re-sent), so the event key
+// includes the dispatch time. The email is rendered by the worker
+// from CURRENT candidate state (stale stages are skipped).
 const sendCandidateUpdate = async ({
   companyId,
-  companyName,
   candidate,
   actorId,
+  dispatch = requestEmailDelivery,
 }) => {
-  const job = candidate.job || {};
   const currentStage = normalizeCandidateStage(
     candidate.currentStage || candidate.stage
   );
-  const delivery = await sendMail({
-    to: candidate.email,
-    ...candidatePipelineUpdateEmail({
-      candidateName: candidate.name,
-      companyName,
-      jobTitle: job.title || 'the position',
-      candidateCode: candidate.candidateCode,
-      stage: currentStage,
-    }),
-    sensitive: true,
+  const outcome = await dispatch({
+    jobName: JOB_NAMES.EMAIL_PIPELINE_UPDATE,
+    eventType: 'PIPELINE_UPDATE',
+    eventKey: buildEventKey(
+      'PIPELINE_UPDATE',
+      candidate._id,
+      currentStage,
+      Date.now()
+    ),
+    companyId,
+    entityType: 'CANDIDATE',
+    entityId: candidate._id,
+    recipientType: 'CANDIDATE',
+    recipientReference: candidate._id,
+    payload: { candidateId: candidate._id, stage: currentStage },
   });
+
+  const queued = Boolean(outcome.queued);
+  const deliveryStatus = queued ? 'QUEUED' : 'FAILED_TO_QUEUE';
 
   const event = await recordCandidateEvent({
     companyId,
@@ -486,8 +502,8 @@ const sendCandidateUpdate = async ({
     metadata: {
       template: 'APPLICATION_STATUS_UPDATE',
       stage: currentStage,
-      delivered: Boolean(delivery.delivered),
-      deliveryMode: delivery.mode,
+      queued,
+      deliveryStatus,
       bulk: true,
     },
   });
@@ -502,20 +518,22 @@ const sendCandidateUpdate = async ({
     metadata: {
       template: 'APPLICATION_STATUS_UPDATE',
       stage: currentStage,
-      delivered: Boolean(delivery.delivered),
-      deliveryMode: delivery.mode,
+      queued,
+      deliveryStatus,
       bulk: true,
       candidateHistoryId: event._id,
     },
-    statusCode: delivery.delivered ? 200 : 502,
+    statusCode: queued ? 200 : 502,
     critical: true,
   });
 
-  if (!delivery.delivered) {
-    throw new ApiError(502, 'Standard candidate email could not be delivered');
+  // This action's whole purpose is the email: if the queue is down
+  // there is no business state to protect — tell the user to retry.
+  if (!queued) {
+    throw new ApiError(502, 'Candidate email could not be queued for delivery');
   }
 
-  return { candidateId: candidate._id, delivered: true };
+  return { candidateId: candidate._id, queued: true };
 };
 
 const targetStageForAction = ({ action, targetStage }) =>
@@ -640,6 +658,9 @@ export const bulkCandidateAction = async ({
       });
     }
   }
+
+  // 28.7: analytics cache generation bump (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(companyId).catch(() => {});
 
   return {
     action,

@@ -18,9 +18,13 @@ import {
 } from '../utils/fieldEncryption.js';
 import {
   preOnboardingAccessEmail,
-  preOnboardingDocumentDecisionEmail,
   sendMail,
 } from '../utils/mailer.js';
+import { JOB_NAMES } from '../config/queueConfig.js';
+import {
+  requestEmailDelivery,
+  buildEventKey,
+} from './emailDeliveryService.js';
 import { recordAudit } from '../utils/securityauditService.js';
 import {
   nextCandidateDocumentCode,
@@ -28,6 +32,14 @@ import {
 } from '../utils/preOnboardingIdentifiers.js';
 import { transitionCandidateStage } from './candidatePipelineService.js';
 import { inspectPreOnboardingFile } from './preOnboardingDocumentSecurityService.js';
+// Phase 28.6: background document processing + reminders.
+import { scheduleDocumentProcessing } from './documentProcessingDispatcher.js';
+import {
+  schedulePreOnboardingReminder,
+  cancelPreOnboardingReminderJobs,
+} from './reminderSchedulingService.js';
+import { getPreOnboardingReminderPolicy } from '../config/queueConfig.js';
+import { bumpRecruitmentAnalyticsGeneration } from './analyticsCacheInvalidation.js';
 import {
   getStoredPreOnboardingDocument,
   storePreOnboardingDocument,
@@ -963,12 +975,36 @@ export const startPreOnboarding = async ({
 
   await notifyPreOnboardingStarted({ companyId, preOnboarding });
 
+  // Phase 28.6: reminders for open pre-onboarding work (never-
+  // throwing; Mongo state revalidated at execution).
+  const poReminderPolicy = getPreOnboardingReminderPolicy();
+  if (preOnboarding.startedAt) {
+    schedulePreOnboardingReminder({
+      preOnboarding,
+      reminderType: 'DOCUMENTS_PENDING',
+      stateVersion: preOnboarding.startedAt,
+      dueAt: new Date(new Date(preOnboarding.startedAt).getTime() + poReminderPolicy.documentsPendingOffsetMs),
+    }).catch(() => {});
+  }
+  const joiningDate = preOnboarding.offerSnapshot?.joiningDate;
+  if (joiningDate && new Date(joiningDate).getTime() > Date.now()) {
+    schedulePreOnboardingReminder({
+      preOnboarding,
+      reminderType: 'JOINING',
+      stateVersion: joiningDate,
+      dueAt: new Date(new Date(joiningDate).getTime() - poReminderPolicy.joiningDaysBefore),
+    }).catch(() => {});
+  }
+
   const refreshed = await refreshCaseCounters({
     companyId,
     preOnboarding,
     actorId,
     actorType: 'TENANT_USER',
   });
+
+  // 28.7: analytics cache generation bump (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(companyId).catch(() => {});
 
   return {
     ...safePreOnboardingDto(refreshed.preOnboarding, {
@@ -1313,20 +1349,30 @@ export const verifyCandidateDocument = async ({
     critical: true,
   });
 
-  const requirement = await CandidateDocumentRequirement.findOne({
-    _id: document.candidateRequirement,
+  // 28.3: async email delivery (no token). The worker re-checks the
+  // document status + version before sending (stale review skipped).
+  await requestEmailDelivery({
+    jobName: JOB_NAMES.EMAIL_PREONBOARDING_DOC_DECISION,
+    eventType: 'PREONBOARDING_DOC_VERIFIED',
+    eventKey: buildEventKey(
+      'PREONBOARDING_DOC',
+      preOnboarding._id,
+      document._id,
+      'VERIFIED',
+      `v${document.currentVersion}`
+    ),
     companyId,
-  }).lean();
-
-  await sendMail({
-    to: preOnboarding.candidateSnapshot.email,
-    ...preOnboardingDocumentDecisionEmail({
-      candidateName: preOnboarding.candidateSnapshot.name,
-      companyName: preOnboarding.companySnapshot.name,
-      requirementName: requirement?.nameSnapshot || document.requirementCode,
+    entityType: 'CANDIDATE_DOCUMENT',
+    entityId: document._id,
+    recipientType: 'CANDIDATE',
+    recipientReference: preOnboarding.candidate,
+    payload: {
+      preOnboardingId: preOnboarding._id,
+      documentId: document._id,
+      requirementId: document.candidateRequirement,
       decision: 'VERIFIED',
-    }),
-    sensitive: true,
+      documentVersion: document.currentVersion,
+    },
   });
 
   const refreshed = await refreshCaseCounters({
@@ -1345,6 +1391,9 @@ export const verifyCandidateDocument = async ({
       preOnboarding: refreshed.preOnboarding,
     }).catch(() => {});
   }
+
+  // 28.7: analytics cache generation bump (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(companyId).catch(() => {});
 
   return {
     case: safePreOnboardingDto(refreshed.preOnboarding, {
@@ -1477,22 +1526,51 @@ export const rejectCandidateDocument = async ({
     critical: true,
   });
 
-  const requirement = await CandidateDocumentRequirement.findOne({
+  // 28.3: async email delivery (no token). The current rejection
+  // reason is re-read from MongoDB by the worker (never from the
+  // queue payload).
+  await requestEmailDelivery({
+    jobName: JOB_NAMES.EMAIL_PREONBOARDING_DOC_DECISION,
+    eventType: 'PREONBOARDING_DOC_RESUBMISSION_REQUIRED',
+    eventKey: buildEventKey(
+      'PREONBOARDING_DOC',
+      preOnboarding._id,
+      document._id,
+      'RESUBMISSION_REQUIRED',
+      `v${document.currentVersion}`
+    ),
+    companyId,
+    entityType: 'CANDIDATE_DOCUMENT',
+    entityId: document._id,
+    recipientType: 'CANDIDATE',
+    recipientReference: preOnboarding.candidate,
+    payload: {
+      preOnboardingId: preOnboarding._id,
+      documentId: document._id,
+      requirementId: document.candidateRequirement,
+      decision: 'RESUBMISSION_REQUIRED',
+      documentVersion: document.currentVersion,
+    },
+  });
+
+  // Phase 28.6: resubmission reminder (versioned by the rejected
+  // requirement's state timestamp; reconcile rebuilds the same id).
+  const rejectedRequirement = await CandidateDocumentRequirement.findOne({
     _id: document.candidateRequirement,
     companyId,
-  }).lean();
-
-  await sendMail({
-    to: preOnboarding.candidateSnapshot.email,
-    ...preOnboardingDocumentDecisionEmail({
-      candidateName: preOnboarding.candidateSnapshot.name,
-      companyName: preOnboarding.companySnapshot.name,
-      requirementName: requirement?.nameSnapshot || document.requirementCode,
-      decision: 'RESUBMISSION_REQUIRED',
-      reason: rejectionReason,
-    }),
-    sensitive: true,
-  });
+  })
+    .select('updatedAt')
+    .lean();
+  if (rejectedRequirement?.updatedAt) {
+    schedulePreOnboardingReminder({
+      preOnboarding,
+      reminderType: 'DOCUMENT_RESUBMISSION',
+      stateVersion: rejectedRequirement.updatedAt,
+      dueAt: new Date(
+        new Date(rejectedRequirement.updatedAt).getTime() + getPreOnboardingReminderPolicy().resubmissionOffsetMs
+      ),
+    }).catch(() => {});
+  }
 
   const refreshed = await refreshCaseCounters({
     companyId,
@@ -1500,6 +1578,9 @@ export const rejectCandidateDocument = async ({
     actorId,
     actorType: 'TENANT_USER',
   });
+
+  // 28.7: analytics cache generation bump (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(companyId).catch(() => {});
 
   return {
     case: safePreOnboardingDto(refreshed.preOnboarding, {
@@ -1649,16 +1730,27 @@ export const markPreOnboardingReady = async ({
     actorId,
   });
 
-  await sendMail({
-    to: updated.candidateSnapshot.email,
-    ...preOnboardingDocumentDecisionEmail({
-      candidateName: updated.candidateSnapshot.name,
-      companyName: updated.companySnapshot.name,
-      requirementName: 'Pre-onboarding',
+  // 28.3: async email delivery (no token).
+  await requestEmailDelivery({
+    jobName: JOB_NAMES.EMAIL_PREONBOARDING_DOC_DECISION,
+    eventType: 'PREONBOARDING_READY_TO_JOIN',
+    eventKey: buildEventKey('PREONBOARDING_READY', updated._id),
+    companyId,
+    entityType: 'PRE_ONBOARDING',
+    entityId: updated._id,
+    recipientType: 'CANDIDATE',
+    recipientReference: updated.candidate,
+    payload: {
+      preOnboardingId: updated._id,
       decision: 'READY_TO_JOIN',
-    }),
-    sensitive: true,
+    },
   });
+
+  // Phase 28.6: workflow terminal — retire pending reminder jobs
+  // (best-effort; the worker also skips complete workflows).
+  cancelPreOnboardingReminderJobs(updated).catch(() => {});
+  // 28.7: analytics cache generation bump (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(companyId).catch(() => {});
 
   return {
     ...safePreOnboardingDto(updated, {
@@ -1889,6 +1981,12 @@ export const uploadCandidateRequirementDocument = async ({
     throw error;
   }
 
+  // Phase 28.6: background security/integrity processing for the
+  // NEW version (references-only job; version-scoped; never throws).
+  // The synchronous upload-time inspection already ran; this
+  // re-verifies the STORED bytes and keeps scanStatus honest.
+  scheduleDocumentProcessing(version).catch(() => {});
+
   document.currentVersion = nextVersionNumber;
   document.activeVersion = version._id;
   document.status = 'UNDER_REVIEW';
@@ -1992,6 +2090,9 @@ export const uploadCandidateRequirementDocument = async ({
       preOnboarding: refreshed.preOnboarding,
     }).catch(() => {});
   }
+
+  // 28.7: analytics cache generation bump (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(companyId).catch(() => {});
 
   return {
     case: safePreOnboardingDto(refreshed.preOnboarding, {

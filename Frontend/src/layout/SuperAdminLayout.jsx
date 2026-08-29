@@ -65,6 +65,12 @@ const MENU = [
     roles: ["SUPER_ADMIN", "PLATFORM_ADMIN"],
   },
   {
+    to: "/super-admin/background-operations",
+    label: "Background Operations",
+    icon: "🗂️",
+    roles: ["SUPER_ADMIN", "PLATFORM_ADMIN"],
+  },
+  {
     to: "/super-admin/audit-logs",
     label: "Audit Logs",
     icon: "🛡️",

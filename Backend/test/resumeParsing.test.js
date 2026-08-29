@@ -23,7 +23,6 @@ const [
   processingService,
   inboxService,
   dispatcher,
-  atsDispatcher,
   permissionRegistry,
 ] = await Promise.all([
   import('../src/models/AuditLog.js'),
@@ -37,7 +36,6 @@ const [
   import('../src/services/resumeProcessingService.js'),
   import('../src/services/candidateInboxService.js'),
   import('../src/services/resumeProcessingDispatcher.js'),
-  import('../src/services/atsDispatcher.js'),
   import('../src/utils/permissionRegistry.js'),
 ]);
 
@@ -424,18 +422,30 @@ test('processing service persists completed state and never mutates Candidate da
       candidateMutationAttempted = true;
     };
 
-    const atsQueuedBefore = atsDispatcher.atsDispatcherState().queued;
+    // 28.4: parse completion chains a BullMQ ATS job (injected here
+    // so the hermetic test never needs Redis). The chain payload must
+    // be references-only and carry the parse-completion epoch.
+    const atsDispatches = [];
     const processed = await processingService.processResumeJob({
       companyId: COMPANY_ID,
       candidateId: CANDIDATE_ID,
       resumeId: RESUME_ID,
+      dispatchATS: async (job) => {
+        atsDispatches.push(job);
+        return { accepted: true, queued: true, provider: 'BULLMQ' };
+      },
     });
 
     assert.equal(processed.status, 'COMPLETED');
-    assert.equal(
-      atsDispatcher.atsDispatcherState().queued - atsQueuedBefore,
-      1
-    );
+    assert.equal(atsDispatches.length, 1);
+    const chain = atsDispatches[0];
+    assert.equal(String(chain.companyId), COMPANY_ID);
+    assert.equal(String(chain.candidateId), CANDIDATE_ID);
+    assert.equal(String(chain.jobId), JOB_ID);
+    assert.equal(String(chain.resumeId), RESUME_ID);
+    assert.equal(String(chain.parseResultId), PARSE_RESULT_ID);
+    assert.equal(chain.trigger, 'RESUME_PARSED');
+    assert.ok(chain.requestEpoch instanceof Date);
     assert.equal(candidateMutationAttempted, false);
     assert.equal(
       resumeUpdates.some(
@@ -630,23 +640,77 @@ test('authenticated parser routes use exact read/update permissions and public r
   assert.equal(publicRoutes.includes('resume/reprocess'), false);
 });
 
-test('dispatcher deduplicates trusted IDs and RBAC reuses candidate permissions', () => {
-  const before = dispatcher.resumeProcessingDispatcherState().queued;
-  const first = dispatcher.dispatchResumeProcessing({
-    companyId: COMPANY_ID,
-    candidateId: CANDIDATE_ID,
-    resumeId: RESUME_ID,
-  });
-  const second = dispatcher.dispatchResumeProcessing({
-    companyId: COMPANY_ID,
-    candidateId: CANDIDATE_ID,
-    resumeId: RESUME_ID,
-  });
-  const after = dispatcher.resumeProcessingDispatcherState().queued;
+test('dispatcher enqueues deterministic reference-only BullMQ jobs and RBAC reuses candidate permissions', async () => {
+  const enqueued = [];
+  const enqueue = async (jobId, payload) => {
+    enqueued.push({ jobId, payload });
+    return { id: jobId };
+  };
+  const requestedAt = new Date(1730000000000);
+  const first = await dispatcher.dispatchResumeProcessing(
+    {
+      companyId: COMPANY_ID,
+      candidateId: CANDIDATE_ID,
+      resumeId: RESUME_ID,
+      parsingRequestedAt: requestedAt,
+    },
+    { enqueue }
+  );
+  const second = await dispatcher.dispatchResumeProcessing(
+    {
+      companyId: COMPANY_ID,
+      candidateId: CANDIDATE_ID,
+      resumeId: RESUME_ID,
+      parsingRequestedAt: requestedAt,
+    },
+    { enqueue }
+  );
+  const invalid = await dispatcher.dispatchResumeProcessing(
+    {
+      companyId: 'not-an-id',
+      candidateId: CANDIDATE_ID,
+      resumeId: RESUME_ID,
+      parsingRequestedAt: requestedAt,
+    },
+    { enqueue }
+  );
 
   assert.equal(first.accepted, true);
-  assert.equal(second.accepted, true);
-  assert.equal(after - before, 1);
+  assert.equal(first.queued, true);
+  assert.equal(first.provider, 'BULLMQ');
+  // Same logical request → same deterministic job id (BullMQ dedupe).
+  assert.equal(second.jobId, first.jobId);
+  assert.equal(invalid.accepted, false);
+  assert.equal(invalid.queued, false);
+  assert.equal(enqueued.length, 2);
+
+  // Payload contract: references only — no resume data, PII, secrets.
+  const payload = enqueued[0].payload;
+  assert.deepEqual(
+    Object.keys(payload).sort(),
+    ['candidateId', 'companyId', 'correlationId', 'parserVersion', 'resumeId']
+  );
+  assert.equal(String(payload.companyId), COMPANY_ID);
+  assert.equal(String(payload.candidateId), CANDIDATE_ID);
+  assert.equal(String(payload.resumeId), RESUME_ID);
+
+  // Job id: colon-free (BullMQ rule) and reconstructable from Mongo
+  // state (resume id + parser version + request epoch).
+  assert.ok(!first.jobId.includes(':'));
+  assert.equal(
+    first.jobId,
+    dispatcher.buildResumeJobId(
+      RESUME_ID,
+      processingService.resumeProcessingConfiguration.parserVersion,
+      requestedAt
+    )
+  );
+  // A new parse request (new parsingRequestedAt) → new job id.
+  assert.notEqual(
+    dispatcher.buildResumeJobId(RESUME_ID, 'deterministic-1.0.0', new Date(1730000001000)),
+    first.jobId
+  );
+
   assert.ok(
     permissionRegistry.DEFAULT_ROLE_MATRIX.COMPANY_ADMIN.includes(
       'CANDIDATE_UPDATE'

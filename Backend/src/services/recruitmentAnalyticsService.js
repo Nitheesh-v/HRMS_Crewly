@@ -12,6 +12,14 @@ import OfferLetter from '../models/OfferLetter.js';
 import PreOnboarding from '../models/PreOnboarding.js';
 import User from '../models/User.js';
 import ApiError from '../utils/ApiError.js';
+// Phase 28.7: safe Redis caching wrapper (MongoDB stays authoritative).
+import {
+  buildTenantCacheKey,
+  getCacheRaw,
+  getOrSetCache,
+  sha256Hex,
+} from './redisCacheService.js';
+import { recruitmentAnalyticsGenerationKey } from './analyticsCacheInvalidation.js';
 
 const isObjectId = (value) => mongoose.isValidObjectId(value);
 const oid = (value) => new mongoose.Types.ObjectId(String(value));
@@ -163,6 +171,125 @@ const resolveScopedFilters = async ({ companyId, query = {} }) => {
   return { filters, notes, companyObjectId };
 };
 
+// ============================================================
+//  PHASE 28.7 — cache wrapper (MongoDB remains authoritative)
+//
+//  cache key:
+//  crewly:cache:company:<companyId>:recruitment:analytics:v1:g<gen>:<hash>
+//
+//  - companyId comes from req.companyId (auth middleware) — never
+//    from query/body. The response is company-wide for every
+//    holder of RECRUITMENT_ANALYTICS_READ (no per-user scope),
+//    so (companyId + normalized filters + generation) is a safe
+//    cache identity.
+//  - filters are normalized (order-independent, falsy-dropped,
+//    case-canonical ids/range/source, dates → UTC instant) before
+//    hashing — equivalent requests share ONE cache entry.
+//  - generation: bumped by relevant mutations (see
+//    analyticsCacheInvalidation); old generations become
+//    unreachable and expire via their own TTL.
+//  - Redis down / disabled / disabled-TTL → BYPASS (direct Mongo).
+// ============================================================
+
+const CACHE_VERSION = 1;
+
+export const getRecruitmentAnalyticsCacheTtlSeconds = (source = process.env) => {
+  const raw = source.RECRUITMENT_ANALYTICS_CACHE_TTL_SECONDS;
+  if (raw === undefined || raw === '') return 60;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return 60;
+  if (parsed <= 0) return 0; // explicit opt-out
+  return Math.min(3600, Math.max(10, Math.trunc(parsed)));
+};
+
+// Deterministic normalization of the VALIDATED query. Returns null
+// when the query is not safely cacheable (caller bypasses cache;
+// the service's own validation still runs).
+export const normalizeAnalyticsQuery = (query, range) => {
+  const out = {};
+  if (query.from || query.to) {
+    // Explicit range: the preset is ignored by parseDateRange, so
+    // it must not influence the key either.
+    if (query.from) {
+      const t = new Date(query.from);
+      if (Number.isNaN(t.getTime())) return null;
+      out.from = t.toISOString();
+    }
+    if (query.to) {
+      const t = new Date(query.to);
+      if (Number.isNaN(t.getTime())) return null;
+      out.to = t.toISOString();
+    }
+  } else {
+    // Preset-driven (now-anchored): the preset IS the range.
+    out.range = range.preset || 'LAST_30_DAYS';
+  }
+  for (const field of ['jobId', 'departmentId', 'recruiterId', 'hiringManagerId']) {
+    if (query[field]) out[field] = String(query[field]).toLowerCase();
+  }
+  if (query.source) out.source = String(query.source).toUpperCase();
+  return out;
+};
+
+export const stableSerialize = (obj) =>
+  JSON.stringify(
+    Object.keys(obj)
+      .sort()
+      .reduce((acc, key) => {
+        acc[key] = obj[key];
+        return acc;
+      }, {})
+  );
+
+const readAnalyticsGeneration = async (companyId) => {
+  const raw = await getCacheRaw(recruitmentAnalyticsGenerationKey(companyId));
+  if (raw === null || raw === undefined) return 0;
+  const generation = parseInt(raw, 10);
+  return Number.isFinite(generation) && generation > 0 ? generation : 0;
+};
+
+// Builds the tenant-scoped deterministic key, or null (bypass) when
+// Redis is unavailable or the query is not cacheable.
+export const buildRecruitmentAnalyticsCacheKey = async ({ companyId, query = {}, range }) => {
+  const normalized = normalizeAnalyticsQuery(query, range);
+  if (!normalized) return null;
+  const generation = await readAnalyticsGeneration(companyId);
+  if (generation === null) return null; // Redis reported down
+  const filterHash = sha256Hex(stableSerialize(normalized)).slice(0, 16);
+  return buildTenantCacheKey({
+    companyId,
+    namespace: 'recruitment:analytics',
+    version: CACHE_VERSION,
+    segments: [`g${generation}`, filterHash],
+  });
+};
+
+export const getRecruitmentAnalyticsOverview = async ({ companyId, query = {} }) => {
+  // Validate BEFORE touching the cache (invalid queries must never
+  // be cached, and authorization already happened in the route).
+  const range = parseDateRange(query);
+  const { filters, notes, companyObjectId } = await resolveScopedFilters({
+    companyId,
+    query,
+  });
+
+  const context = { companyId, query, range, filters, notes, companyObjectId };
+  const ttlSeconds = getRecruitmentAnalyticsCacheTtlSeconds();
+  const cacheKey = ttlSeconds > 0
+    ? await buildRecruitmentAnalyticsCacheKey({ companyId, query, range })
+    : null;
+
+  if (!cacheKey) {
+    return calculateRecruitmentAnalyticsOverview(context);
+  }
+  const { value } = await getOrSetCache(cacheKey, {
+    ttlSeconds,
+    version: CACHE_VERSION,
+    loader: () => calculateRecruitmentAnalyticsOverview(context),
+  });
+  return value;
+};
+
 const candidateMatch = (filters, { from, to } = {}) => {
   const match = { companyId: filters.companyId };
   if (filters.jobId) match.job = filters.jobId;
@@ -185,16 +312,16 @@ const endOfUtcDay = (date) => {
   return value;
 };
 
-export const getRecruitmentAnalyticsOverview = async ({
+// The actual aggregations (unchanged 27.14 logic) — the SOLE data
+// authority. Wrapped by getRecruitmentAnalyticsOverview (28.7 cache).
+const calculateRecruitmentAnalyticsOverview = async ({
   companyId,
-  query = {},
+  query,
+  range,
+  filters,
+  notes,
+  companyObjectId,
 }) => {
-  const range = parseDateRange(query);
-  const { filters, notes, companyObjectId } = await resolveScopedFilters({
-    companyId,
-    query,
-  });
-
   const from = range.from;
   const to = range.to;
   const todayStart = startOfUtcDay(new Date());

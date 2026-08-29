@@ -10,6 +10,7 @@ import ApiResponse from '../utils/ApiResponse.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { nextJobCode } from '../utils/careerPortalIdentifiers.js';
 import { nextCandidateCode } from '../utils/candidateIdentifiers.js';
+import { bumpRecruitmentAnalyticsGeneration } from '../services/analyticsCacheInvalidation.js';
 
 const normalizedList = (value, maximum, itemLength) =>
   [...new Set(
@@ -87,6 +88,9 @@ export const createJob = asyncHandler(async (req, res) => {
     publicationStatus: 'DRAFT',
     createdBy: req.user._id,
   });
+
+  // 28.7: analytics cache generation bump (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(req.companyId).catch(() => {});
 
   // Data to frontend - response to frontend
   return ApiResponse.created(res, {
@@ -193,6 +197,9 @@ export const updateJob = asyncHandler(async (req, res) => {
   }
 
   await job.save();
+
+  // 28.7: analytics cache generation bump (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(req.companyId).catch(() => {});
 
   // Data to frontend - response to frontend
   return ApiResponse.success(res, {

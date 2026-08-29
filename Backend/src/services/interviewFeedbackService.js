@@ -10,6 +10,7 @@ import {
   snapshotFromScorecard,
 } from './interviewScorecardService.js';
 import { notifyFeedbackComplete } from './recruitmentEvaluationNotificationService.js';
+import { bumpRecruitmentAnalyticsGeneration } from './analyticsCacheInvalidation.js';
 
 const isAssigned = (interview, actorId) =>
   (interview.interviewers || []).some(
@@ -503,6 +504,9 @@ export const saveOwnInterviewFeedback = async ({
   if (submittedInterviewerIds.length === interview.interviewers.length) {
     await notifyFeedbackComplete({ companyId, interview, candidate: interview.candidate });
   }
+
+  // 28.7: analytics cache generation bump (fire-and-forget, never throws).
+  bumpRecruitmentAnalyticsGeneration(companyId).catch(() => {});
 
   return safeOwnFeedbackDto(submitted);
 };

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import logger from '../config/logger.js';
 import {
   publicCareerFilters,
   publicCareerHeader,
@@ -69,11 +70,22 @@ router.post(
 );
 
 // Public failures never include stack traces or database details.
-router.use((error, _req, res, _next) => {
+router.use((error, req, res, _next) => {
   const statusCode = error.statusCode || 500;
   const message = statusCode >= 500
     ? 'Career portal is temporarily unavailable'
     : error.message || 'Career portal request failed';
+
+  // Server-side only: a 5xx must be diagnosable in the API console.
+  // The client always gets the safe message above — no stack or DB
+  // detail crosses the wire.
+  if (statusCode >= 500) {
+    logger.error(
+      `[Public careers] ${req.method} ${req.originalUrl} failed (${statusCode}): ` +
+        `${error.message || 'unknown error'}\n` +
+        `${error.stack || ''}`
+    );
+  }
 
   return res.status(statusCode).json({
     success: false,

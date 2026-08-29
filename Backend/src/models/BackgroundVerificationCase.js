@@ -159,9 +159,34 @@ const backgroundVerificationCaseSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+    // Phase 28.6 — provider execution infrastructure (adapter-ready).
+    // Idempotency: one logical submission per case; the worker claims
+    // providerReference with set-if-empty before calling the provider.
+    // No provider credentials ever live here or in the queue.
+    providerSubmission: {
+      providerRequestId: { type: String, default: '', maxlength: 200, select: false },
+      submittedAt: { type: Date, default: null },
+    },
+    polling: {
+      status: {
+        type: String,
+        enum: ['NOT_APPLICABLE', 'POLLING', 'STOPPED'],
+        default: 'NOT_APPLICABLE',
+      },
+      attempts: { type: Number, default: 0, min: 0 },
+      nextPollAt: { type: Date, default: null, select: false },
+      stopReason: { type: String, default: '', maxlength: 120 },
+    },
   },
   { timestamps: true, versionKey: false }
 );
+
+// Due-poll scan for reconciliation (external providers only).
+backgroundVerificationCaseSchema.index({
+  companyId: 1,
+  'polling.status': 1,
+  'polling.nextPollAt': 1,
+});
 
 backgroundVerificationCaseSchema.index(
   { companyId: 1, caseCode: 1 },

@@ -349,7 +349,11 @@ test('routes, access guards, audit actions, queue boundary and frontend surfaces
   assert.equal(service.includes('setInterval'), false);
   assert.equal(dispatcher.includes('setTimeout'), false);
   assert.equal(dispatcher.includes('setInterval'), false);
-  assert.equal(dispatcher.includes('BullMQ'), false);
+  // The dispatcher must not touch the queue infrastructure directly —
+  // it persists delivery intents through the controlled email
+  // delivery service (28.3).
+  assert.equal(dispatcher.includes("from 'bullmq'"), false);
+  assert.equal(/new (Queue|Worker)\s*\(/.test(dispatcher), false);
   assert.equal(controller.includes('// Data from frontend - requests from frontend'), true);
   assert.equal(controller.includes('// DB Logic - DB logics'), true);
   assert.equal(controller.includes('// Data to frontend - response to frontend'), true);
