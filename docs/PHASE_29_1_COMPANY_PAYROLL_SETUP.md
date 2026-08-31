@@ -76,6 +76,16 @@ Foundation / configuration layer of the Payroll module.
    on top of the existing `ROLE_PERMISSIONS_UPDATED` row. Nothing is written
    when no payroll permission changed. Auditing never blocks role admin.
 
+   `utils/payrollActionAudit.js` prepares the §11 hooks for the sensitive
+   payroll actions that arrive with the later phases: salary changed, payroll
+   prepared / calculated / recalculated / reviewed / approved / rejected /
+   locked / reopened, bank file generated, payment confirmed, marked paid,
+   payslips generated / released / re-released. Each hook maps to the
+   permission that authorises it (a test asserts the permission exists), so
+   29.2+ calls one function instead of inventing an audit shape. Bank account
+   numbers are masked to the last 4 digits and PAN/UAN/ESI are recorded as
+   `[REDACTED]` before anything is written.
+
 ### Default payroll posture
 
 | Role | Payroll Setup | Run / prepare | Approve | Payment | Payslips | Scope |
@@ -428,10 +438,10 @@ History is readable through the existing `/api/audit` surface
 ```
 npm run test:payroll        # both payroll suites (hermetic)
 npm run test:payroll-setup  # 33 tests — company payroll setup
-npm run test:payroll-rbac   # 22 tests — permissions, templates, scope, audit
+npm run test:payroll-rbac   # 27 tests — permissions, templates, scope, audit
 ```
 
-**55 hermetic tests** (no MongoDB, no Redis, no network). Both are included in
+**60 hermetic tests** (no MongoDB, no Redis, no network). Both are included in
 `npm run test:all`.
 
 Coverage: PAN/TAN/GST/CIN/IFSC/account/currency/prefix validation · conditional
@@ -484,6 +494,26 @@ settlement · payroll reports.
 
 Statutory *rates, ceilings and formulas* are **not** stored here either (§10):
 29.1 records what applies; the engine decides how much.
+
+---
+
+## Phase 29.2 handoff (Salary Components)
+
+29.2 can create `SALARY_COMPONENT_*` routes and gate them with
+`requirePermission('SALARY_COMPONENT_MANAGE')` + `resolvePayrollScope()`. No
+new RBAC plumbing is needed: the permissions, scopes, templates and audit
+hooks all already exist. When 29.2 writes a sensitive action, call:
+
+```js
+await payrollActionAudit({
+  audit: writeAuditLog,
+  req,
+  action: 'SALARY_CHANGED',
+  targetId: employeeId,
+  period: '2026-08',
+  context: { previousCTC, newCTC },
+});
+```
 
 ---
 

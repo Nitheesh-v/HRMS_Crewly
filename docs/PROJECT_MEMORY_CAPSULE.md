@@ -270,6 +270,9 @@ Frontend first (node_modules may be missing).
   SELF|TEAM|DEPARTMENT|ASSIGNED_DEPARTMENTS|COMPANY (utils/payrollScope.js,
   team reach reuses orgHelpers.getSubtreeIds), payroll permission grant/revoke
   audit, and tenant→role→permission→scope enforced on payslip access.
+  utils/payrollActionAudit.js holds the §11 sensitive-action audit hooks
+  (salary changed … payslips released) for 29.2+; bank numbers are masked to
+  the last 4 digits and PAN/UAN/ESI are written as [REDACTED].
   SYSTEM_PERMISSION_VERSION is 15. Only PAYROLL_SETUP_* is enforced today;
   the rest of the catalogue is declared for the later payroll phases.
 - Phase 29.1 closed: Company Payroll Setup (backend model/service/routes/

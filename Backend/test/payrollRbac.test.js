@@ -5,13 +5,14 @@ import test from 'node:test';
 // Hermetic suite: no MongoDB, no Redis, no network.
 process.env.REDIS_ENABLED ||= 'false';
 
-const [registry, templates, scope, auditRules, access, roleModel] = await Promise.all([
+const [registry, templates, scope, auditRules, access, roleModel, actionAudit] = await Promise.all([
   import('../src/utils/permissionRegistry.js'),
   import('../src/utils/roleTemplates.js'),
   import('../src/utils/payrollScope.js'),
   import('../src/utils/payrollPermissionAudit.js'),
   import('../src/services/payroll/payrollAccessService.js'),
   import('../src/models/CompanyRole.js'),
+  import('../src/utils/payrollActionAudit.js'),
 ]);
 
 const { DEFAULT_PERMISSIONS, DEFAULT_ROLE_MATRIX, RESOURCES, ACTIONS } = registry;
@@ -31,6 +32,12 @@ const {
   resolvePayrollScope,
 } = scope;
 const { diffPermissionSets, isPayrollPermission } = auditRules;
+const {
+  PAYROLL_AUDIT_ACTIONS,
+  maskAccountNumber,
+  payrollActionAudit,
+  redactPayrollContext,
+} = actionAudit;
 
 const ALL_NAMES = DEFAULT_PERMISSIONS.map((permission) => permission.name);
 const COMPANY_A = 'aaaaaaaaaaaaaaaaaaaaaaaa';
@@ -604,4 +611,88 @@ test('audit failures never break role administration', async () => {
     roleName: 'HR Head',
   });
   assert.deepEqual(result, []);
+});
+
+// ── §11 — sensitive payroll action audit hooks (29.2+ will call these) ──────
+
+test('every sensitive payroll action maps to a permission that exists', () => {
+  const known = new Set(DEFAULT_PERMISSIONS.map((permission) => permission.name));
+
+  for (const [key, definition] of Object.entries(PAYROLL_AUDIT_ACTIONS)) {
+    assert.ok(known.has(definition.permission), `${key} maps to unknown permission ${definition.permission}`);
+  }
+
+  // The actions §11 explicitly lists must all be covered.
+  for (const action of [
+    'SALARY_CHANGED',
+    'PAYROLL_CALCULATED',
+    'PAYROLL_LOCKED',
+    'PAYROLL_APPROVED',
+    'BANK_FILE_GENERATED',
+    'PAYROLL_MARKED_PAID',
+    'PAYSLIPS_RELEASED',
+  ]) {
+    assert.ok(PAYROLL_AUDIT_ACTIONS[action], `missing audit hook for ${action}`);
+  }
+});
+
+test('bank account numbers are masked before they reach the audit log', () => {
+  assert.equal(maskAccountNumber('123456789012'), 'XXXXXXXX9012');
+  assert.equal(maskAccountNumber(''), '');
+  assert.equal(maskAccountNumber(null), '');
+
+  const safe = redactPayrollContext({
+    bankAccountNumber: '123456789012',
+    employeeName: 'John',
+    panNumber: 'ABCPD1234K',
+    netSalary: 84520.75,
+  });
+
+  assert.equal(safe.bankAccountNumber, 'XXXXXXXX9012');
+  assert.equal(safe.employeeName, 'John', 'non-sensitive context is preserved');
+  assert.equal(safe.panNumber, '[REDACTED]');
+  assert.equal(safe.netSalary, 84521, 'amounts are rounded to whole units');
+  assert.ok(!JSON.stringify(safe).includes('123456789012'));
+  assert.ok(!JSON.stringify(safe).includes('ABCPD1234K'));
+});
+
+test('sensitive payroll actions are audited with actor, tenant and period', async () => {
+  const rows = [];
+  const audit = async (row) => rows.push(row);
+
+  const written = await payrollActionAudit({
+    audit,
+    req: { user: { _id: 'actor-1' }, companyId: 'company-a' },
+    action: 'PAYROLL_LOCKED',
+    targetId: 'run-42',
+    period: '2026-08',
+    context: { bankAccountNumber: '123456789012', totalNetPay: 4821500.4 },
+  });
+
+  assert.ok(written);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].action, 'Payroll locked');
+  assert.equal(rows[0].targetId, 'run-42');
+  assert.equal(rows[0].previousState.actor, 'actor-1');
+  assert.equal(rows[0].previousState.companyId, 'company-a');
+  assert.equal(rows[0].previousState.period, '2026-08');
+  assert.equal(rows[0].newState.permission, 'PAYROLL_RUN_LOCK');
+  assert.equal(rows[0].newState.bankAccountNumber, 'XXXXXXXX9012');
+  assert.ok(!JSON.stringify(rows[0]).includes('123456789012'));
+});
+
+test('a failing action audit never blocks an authorised payroll action', async () => {
+  const written = await payrollActionAudit({
+    audit: async () => {
+      throw new Error('audit store offline');
+    },
+    req: { user: { _id: 'actor-1' }, companyId: 'company-a' },
+    action: 'PAYSLIPS_RELEASED',
+  });
+
+  assert.equal(written, null);
+});
+
+test('action audit is a no-op without an audit function', async () => {
+  assert.equal(await payrollActionAudit({ action: 'PAYROLL_APPROVED' }), null);
 });
