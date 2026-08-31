@@ -74,13 +74,16 @@ const safeDate = (v) => {
 
 /* ── GET /documents/meta/categories — everyone (for selects) ── */
 export const getDocCategories = asyncHandler(async (req, res) => {
+  // Data to frontend - response to frontend
   ok(res, 200, DOC_CATEGORIES.map((value) => ({ value, label: DOC_CATEGORY_LABELS[value] })), 'Document categories');
 });
 
 /* ── GET /documents/employee/:userId — HR file cabinet ── */
 export const employeeDocuments = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin can open employee files');
 
+  // DB Logic - DB logics
   const employee = await User.findOne({ _id: req.params.userId, companyId: req.companyId })
     .select('name email role designation department')
     .lean();
@@ -97,11 +100,13 @@ export const employeeDocuments = asyncHandler(async (req, res) => {
       .lean(),
   ]);
 
+  // Data to frontend - response to frontend
   ok(res, 200, { employee, documents, requests }, 'Employee file cabinet');
 });
 
 /* ── POST /documents/for/:userId — HR uploads on behalf of an employee ── */
 export const hrUploadDocument = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin can upload employee documents');
 
   const file = getFile(req);
@@ -110,6 +115,7 @@ if (!file) {
       return fail(res, 400, 'No file received by the server');
     }
 
+  // DB Logic - DB logics
   const employee = await User.findOne({ _id: req.params.userId, companyId: req.companyId }).select('name');
   if (!employee) return fail(res, 404, 'Employee not found in your company');
 
@@ -136,14 +142,17 @@ if (!file) {
     link: '/app/documents',
   });
 
+  // Data to frontend - response to frontend
   ok(res, 201, doc, 'Document uploaded');
 });
 
 /* ── POST /documents/requests — HR asks an employee to upload ── */
 export const createDocRequest = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin can request documents');
 
   const { userId, category = 'OTHER', note = '', dueDate = null } = req.body;
+  // DB Logic - DB logics
   const employee = await User.findOne({ _id: userId, companyId: req.companyId }).select('name');
   if (!employee) return fail(res, 404, 'Employee not found in your company');
 
@@ -162,40 +171,48 @@ export const createDocRequest = asyncHandler(async (req, res) => {
     link: '/app/documents',
   });
 
+  // Data to frontend - response to frontend
   ok(res, 201, request, 'Document request sent');
 });
 
 /* ── GET /documents/requests/my — employee's request inbox ── */
 export const myDocRequests = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const requests = await DocumentRequest.find({ companyId: req.companyId, user: req.user._id })
     .populate('requestedBy', 'name role')
     .sort('-createdAt')
     .lean();
+  // Data to frontend - response to frontend
   ok(res, 200, requests, 'My document requests');
 });
 
 /* ── GET /documents/requests?userId=&status= — HR overview ── */
 const DOC_REQUEST_FILTER = ['PENDING', 'FULFILLED', 'CANCELLED'];
 export const listDocRequests = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin can view document requests');
 
   const filter = { companyId: req.companyId };
   if (req.query.userId) filter.user = req.query.userId;
   if (req.query.status && DOC_REQUEST_FILTER.includes(req.query.status)) filter.status = req.query.status;
 
+  // DB Logic - DB logics
   const requests = await DocumentRequest.find(filter)
     .populate('user', 'name email role designation')
     .populate('requestedBy', 'name')
     .sort('-createdAt')
     .limit(200)
     .lean();
+  // Data to frontend - response to frontend
   ok(res, 200, requests, 'Document requests');
 });
 
 /* ── POST /documents/requests/:id/fulfill — employee uploads the requested file ── */
 export const fulfillDocRequest = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const request = await DocumentRequest.findOne({ _id: req.params.id, companyId: req.companyId });
   if (!request) return fail(res, 404, 'Request not found');
+  // Data from frontend - requests from frontend
   if (String(request.user) !== String(req.user._id)) return fail(res, 403, 'This request is for another employee');
   if (request.status !== 'PENDING') return fail(res, 409, `This request is already ${request.status.toLowerCase()}`);
 
@@ -227,13 +244,16 @@ export const fulfillDocRequest = asyncHandler(async (req, res) => {
     link: '/app/employee-files',
   });
 
+  // Data to frontend - response to frontend
   ok(res, 201, { request, document: doc }, 'Uploaded — request fulfilled ✅');
 });
 
 /* ── PATCH /documents/requests/:id/cancel — HR withdraws a pending request ── */
 export const cancelDocRequest = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin can cancel requests');
 
+  // DB Logic - DB logics
   const request = await DocumentRequest.findOne({ _id: req.params.id, companyId: req.companyId });
   if (!request) return fail(res, 404, 'Request not found');
   if (request.status !== 'PENDING') return fail(res, 409, 'Only pending requests can be cancelled');
@@ -247,5 +267,6 @@ export const cancelDocRequest = asyncHandler(async (req, res) => {
     link: '/app/documents',
   });
 
+  // Data to frontend - response to frontend
   ok(res, 200, request, 'Request cancelled');
 });

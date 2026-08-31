@@ -202,7 +202,9 @@ export const listPermissions = async (req, res) => {
 
 export const myPermissions = async (req, res) => {
   try {
+    // DB Logic - DB logics
     await ensureCompanyRoles(
+      // Data from frontend - requests from frontend
       req.companyId
     );
 
@@ -212,6 +214,7 @@ export const myPermissions = async (req, res) => {
       );
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       data,
@@ -228,7 +231,9 @@ export const myPermissions = async (req, res) => {
 
 export const listRoles = async (req, res) => {
   try {
+    // DB Logic - DB logics
     await ensureCompanyRoles(
+      // Data from frontend - requests from frontend
       req.companyId,
       req.user._id
     );
@@ -245,6 +250,7 @@ export const listRoles = async (req, res) => {
         .lean();
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       roles,
@@ -269,6 +275,7 @@ export const listRoles = async (req, res) => {
 export const getRoleTemplates = async (req, res) => {
   try {
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -287,7 +294,9 @@ export const getRoleTemplates = async (req, res) => {
 export const createRole = async (req, res) => {
   try {
     const advancedRbac =
+      // DB Logic - DB logics
       await hasFeature(
+        // Data from frontend - requests from frontend
         req.companyId,
         'advancedRbac'
       );
@@ -420,6 +429,7 @@ export const createRole = async (req, res) => {
     });
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       201,
       role,
@@ -445,7 +455,9 @@ export const createRole = async (req, res) => {
 export const getRole = async (req, res) => {
   try {
     const role =
+      // DB Logic - DB logics
       await roleForCompany(
+        // Data from frontend - requests from frontend
         req.companyId,
         req.params.roleId
       );
@@ -459,6 +471,7 @@ export const getRole = async (req, res) => {
     }
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       role,
@@ -477,6 +490,7 @@ export const getRole = async (req, res) => {
 export const updateRole = async (req, res) => {
   try {
     const role =
+      // DB Logic - DB logics
       await CompanyRole.findOne({
         _id: req.params.roleId,
         companyId:
@@ -530,6 +544,7 @@ export const updateRole = async (req, res) => {
     }
 
     if (
+      // Data from frontend - requests from frontend
       req.body.description !== undefined
     ) {
       role.description =
@@ -557,6 +572,7 @@ export const updateRole = async (req, res) => {
     });
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       role,
@@ -582,7 +598,9 @@ export const updateRole = async (req, res) => {
 export const duplicateRole = async (req, res) => {
   try {
     const advancedRbac =
+      // DB Logic - DB logics
       await hasFeature(
+        // Data from frontend - requests from frontend
         req.companyId,
         'advancedRbac'
       );
@@ -655,6 +673,7 @@ export const duplicateRole = async (req, res) => {
     });
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       201,
       role,
@@ -682,6 +701,7 @@ export const duplicateRole = async (req, res) => {
 export const deactivateRole = async (req, res) => {
   try {
     const role =
+      // DB Logic - DB logics
       await CompanyRole.findOne({
         _id: req.params.roleId,
         companyId:
@@ -731,6 +751,7 @@ export const deactivateRole = async (req, res) => {
 
     role.isActive = false;
     role.updatedBy =
+      // Data from frontend - requests from frontend
       req.user._id;
 
     await role.save();
@@ -759,6 +780,7 @@ export const deactivateRole = async (req, res) => {
     });
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       role,
@@ -933,6 +955,7 @@ export const updateRolePermissions = async (
 export const assignUserRole = async (req, res) => {
   try {
     if (
+      // Data from frontend - requests from frontend
       String(req.params.userId) ===
       String(req.user._id)
     ) {
@@ -944,6 +967,7 @@ export const assignUserRole = async (req, res) => {
     }
 
     const [user, role] =
+      // DB Logic - DB logics
       await Promise.all([
         User.findOne({
           _id: req.params.userId,
@@ -1033,6 +1057,7 @@ export const assignUserRole = async (req, res) => {
     });
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -1064,6 +1089,7 @@ export const assignUserRole = async (req, res) => {
 export const userPermissions = async (req, res) => {
   try {
     const user =
+      // DB Logic - DB logics
       await User.findOne({
         _id: req.params.userId,
         companyId:
@@ -1090,6 +1116,7 @@ export const userPermissions = async (req, res) => {
       );
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -1126,6 +1153,7 @@ export const updateUserPermissions = async (
 ) => {
   try {
     if (
+      // Data from frontend - requests from frontend
       String(req.params.userId) ===
       String(req.user._id)
     ) {
@@ -1137,6 +1165,7 @@ export const updateUserPermissions = async (
     }
 
     const user =
+      // DB Logic - DB logics
       await User.findOne({
         _id: req.params.userId,
         companyId:
@@ -1325,6 +1354,7 @@ export const updateUserPermissions = async (
     });
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       await getPermissionPayload(
@@ -1363,6 +1393,7 @@ export const platformCompanyRoles = async (
       );
     }
 
+    // DB Logic - DB logics
     await ensureCompanyRoles(
       companyId
     );
@@ -1381,6 +1412,7 @@ export const platformCompanyRoles = async (
         .lean();
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       roles,

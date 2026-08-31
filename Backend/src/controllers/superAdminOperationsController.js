@@ -65,6 +65,7 @@ const auditAction = async (
 
 export const platformUsers = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(100, Math.max(10, Number(req.query.limit) || 25));
     const match = { companyId: { $ne: null } };
@@ -97,6 +98,7 @@ export const platformUsers = async (req, res) => {
       ];
     }
 
+    // DB Logic - DB logics
     const [rows, total] = await Promise.all([
       User.find(match)
         .select(
@@ -113,6 +115,7 @@ export const platformUsers = async (req, res) => {
     ]);
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -145,6 +148,7 @@ export const usage = async (req, res) => {
       .toISOString()
       .slice(0, 10);
 
+    // Data from frontend - requests from frontend
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(100, Math.max(10, Number(req.query.limit) || 25));
     const companyMatch = { archivedAt: null };
@@ -158,6 +162,7 @@ export const usage = async (req, res) => {
       );
     }
 
+    // DB Logic - DB logics
     const [companies, total] = await Promise.all([
       Company.find(companyMatch)
         .select('name code subscription status')
@@ -368,6 +373,7 @@ export const usage = async (req, res) => {
     });
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -400,6 +406,7 @@ export const usage = async (req, res) => {
 
 export const support = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(100, Math.max(10, Number(req.query.limit) || 25));
     const match = {};
@@ -419,6 +426,7 @@ export const support = async (req, res) => {
       match.companyId = req.query.companyId;
     }
 
+    // DB Logic - DB logics
     const [rows, total, counts] = await Promise.all([
       SupportTicket.find(match)
         .populate('companyId', 'name code')
@@ -442,6 +450,7 @@ export const support = async (req, res) => {
     ]);
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -463,7 +472,9 @@ export const support = async (req, res) => {
 
 export const updateSupport = async (req, res) => {
   try {
+    // DB Logic - DB logics
     const ticket = await SupportTicket.findById(
+      // Data from frontend - requests from frontend
       req.params.ticketId
     );
 
@@ -539,6 +550,7 @@ export const updateSupport = async (req, res) => {
       ticket.toObject()
     );
 
+    // Data to frontend - response to frontend
     return ok(res, 200, ticket, 'Support ticket updated');
   } catch (error) {
     return fail(res, 500, error.message);
@@ -610,6 +622,7 @@ export const health = async (req, res) => {
         : 'HEALTHY';
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -630,6 +643,7 @@ export const health = async (req, res) => {
 
 export const auditLogs = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(100, Math.max(10, Number(req.query.limit) || 25));
     const match = {};
@@ -651,6 +665,7 @@ export const auditLogs = async (req, res) => {
       );
     }
 
+    // DB Logic - DB logics
     const [rows, total] = await Promise.all([
       AuditLog.find(match)
         .populate('actor', 'name email role')
@@ -664,6 +679,7 @@ export const auditLogs = async (req, res) => {
     ]);
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -689,6 +705,7 @@ export const auditLogs = async (req, res) => {
 export const getSettings = async (req, res) => {
   try {
     const settings =
+      // DB Logic - DB logics
       await PlatformSettings.findOneAndUpdate(
         { key: 'GLOBAL' },
         {
@@ -703,6 +720,7 @@ export const getSettings = async (req, res) => {
         }
       ).lean();
 
+    // Data to frontend - response to frontend
     return ok(res, 200, settings, 'Platform settings');
   } catch (error) {
     return fail(res, 500, error.message);
@@ -711,6 +729,7 @@ export const getSettings = async (req, res) => {
 
 export const updateSettings = async (req, res) => {
   try {
+    // DB Logic - DB logics
     const previous = await PlatformSettings.findOne({
       key: 'GLOBAL',
     }).lean();
@@ -732,6 +751,7 @@ export const updateSettings = async (req, res) => {
       );
     });
 
+    // Data from frontend - requests from frontend
     update.updatedBy = req.user._id;
 
     const settings =
@@ -759,6 +779,7 @@ export const updateSettings = async (req, res) => {
     );
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       settings,
@@ -776,6 +797,7 @@ export const updateSettings = async (req, res) => {
 export const notifications = async (req, res) => {
   try {
     const match =
+      // Data from frontend - requests from frontend
       req.query.unread === 'true'
         ? {
             readBy: {
@@ -784,6 +806,7 @@ export const notifications = async (req, res) => {
           }
         : {};
 
+    // DB Logic - DB logics
     const [rows, unread] = await Promise.all([
       SystemEvent.find(match)
         .populate('companyId', 'name code')
@@ -799,6 +822,7 @@ export const notifications = async (req, res) => {
     ]);
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       { rows, unread },
@@ -811,7 +835,9 @@ export const notifications = async (req, res) => {
 
 export const markNotification = async (req, res) => {
   try {
+    // DB Logic - DB logics
     await SystemEvent.updateOne(
+      // Data from frontend - requests from frontend
       { _id: req.params.eventId },
       {
         $addToSet: {
@@ -820,6 +846,7 @@ export const markNotification = async (req, res) => {
       }
     );
 
+    // Data to frontend - response to frontend
     return ok(res, 200, {}, 'Notification marked read');
   } catch (error) {
     return fail(res, 500, error.message);
@@ -828,6 +855,7 @@ export const markNotification = async (req, res) => {
 
 export const markAllNotifications = async (req, res) => {
   try {
+    // DB Logic - DB logics
     await SystemEvent.updateMany(
       {
         readBy: {
@@ -841,6 +869,7 @@ export const markAllNotifications = async (req, res) => {
       }
     );
 
+    // Data to frontend - response to frontend
     return ok(res, 200, {}, 'All notifications marked read');
   } catch (error) {
     return fail(res, 500, error.message);
@@ -860,6 +889,7 @@ export const platformAdmins = async (req, res) => {
       'BILLING_ADMIN',
     ];
 
+    // DB Logic - DB logics
     const [rows, sessions] = await Promise.all([
       User.find({
         companyId: null,
@@ -895,6 +925,7 @@ export const platformAdmins = async (req, res) => {
     );
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       rows.map((row) => ({

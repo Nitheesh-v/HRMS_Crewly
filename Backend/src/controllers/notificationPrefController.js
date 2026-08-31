@@ -6,7 +6,9 @@ const ok = (res, status, data, message) =>
 
 // GET /api/notification-prefs  → my toggles (missing = all ON)
 export const getMyPrefs = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const pref = await NotificationPref.findOne({ user: req.user._id }).lean();
+  // Data to frontend - response to frontend
   ok(res, 200, {
     inapp: pref?.inapp || {},
     email: pref?.email || {},
@@ -25,10 +27,13 @@ export const updateMyPrefs = asyncHandler(async (req, res) => {
       if (typeof src[c] === 'boolean') clean[key][c] = src[c];
     });
   }
+  // DB Logic - DB logics
   const pref = await NotificationPref.findOneAndUpdate(
+    // Data from frontend - requests from frontend
     { user: req.user._id },
     { $set: { company: req.companyId, ...clean } },
     { new: true, upsert: true, setDefaultsOnInsert: true }
   );
+  // Data to frontend - response to frontend
   ok(res, 200, pref, 'Preferences saved');
 });

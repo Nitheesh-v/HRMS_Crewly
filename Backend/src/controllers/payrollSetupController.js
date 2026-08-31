@@ -38,15 +38,21 @@ const requireTenant = (req) => {
 
 // GET /api/payroll/setup
 export const getPayrollSetupConfig = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const companyId = requireTenant(req);
+  // DB Logic - DB logics
   const result = await getPayrollSetup({ companyId });
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: 'Payroll setup', data: result });
 });
 
 // POST /api/payroll/setup/start
 export const startSetup = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const companyId = requireTenant(req);
+  // DB Logic - DB logics
   const result = await startPayrollSetup({ companyId, actor: actorOf(req), req });
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: result.started ? 'Payroll setup started' : 'Payroll setup already started',
     data: result,
@@ -55,7 +61,9 @@ export const startSetup = asyncHandler(async (req, res) => {
 
 // PATCH /api/payroll/setup/:section  (LEGAL | STATUTORY | POLICY | BANK)
 export const updateSection = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const companyId = requireTenant(req);
+  // DB Logic - DB logics
   const result = await updatePayrollSetupSection({
     companyId,
     section: req.params.section,
@@ -64,29 +72,36 @@ export const updateSection = asyncHandler(async (req, res) => {
     req,
     expectedVersion: req.body?.configVersion ?? req.body?.expectedVersion ?? null,
   });
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: 'Payroll setup saved', data: result });
 });
 
 // POST /api/payroll/setup/activate
 export const activateSetup = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const companyId = requireTenant(req);
+  // DB Logic - DB logics
   const result = await activatePayrollSetup({
     companyId,
     actor: actorOf(req),
     req,
     expectedVersion: req.body?.configVersion ?? req.body?.expectedVersion ?? null,
   });
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: 'Payroll activated', data: result });
 });
 
 // POST /api/payroll/setup/suspend
 export const suspendSetup = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const companyId = requireTenant(req);
+  // DB Logic - DB logics
   const result = await suspendPayrollSetup({
     companyId,
     reason: req.body?.reason || '',
     actor: actorOf(req),
     req,
   });
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: 'Payroll suspended', data: result });
 });

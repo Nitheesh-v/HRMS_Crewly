@@ -41,11 +41,13 @@ const pickDetails = (body) => {
 // GET /api/users — filters + pagination
 // data = ARRAY of users (PayrollPage/ProjectsPage read res.data directly!)
 export const listUsers = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const { search, role, department, status } = req.query;
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(200, Number(req.query.limit) || 10);
 
   const filter = { companyId: req.companyId };
+    // DB Logic - DB logics
     const __scope = await scopedUserFilter(req);
   if (__scope) filter._id = __scope;
   if (role) filter.role = role;
@@ -69,6 +71,7 @@ export const listUsers = asyncHandler(async (req, res) => {
     User.countDocuments(filter),
   ]);
 
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: 'Users fetched',
     data: users,
@@ -78,16 +81,19 @@ export const listUsers = asyncHandler(async (req, res) => {
 
 // GET /api/users/:id
 export const getUser = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const user = await User.findOne({ _id: req.params.id, companyId: req.companyId })
     .select('-password')
     .populate('department', 'name')
     .populate('reportingTo', 'name role');
   if (!user) throw ApiError.notFound('User not found');
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: 'User fetched', data: user });
 });
 
 // POST /api/users
 export const createUser = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const { name, email, password, role, department, reportingTo } = req.body;
 
   if (!canManage(req.user.role, role)) {
@@ -95,6 +101,7 @@ export const createUser = asyncHandler(async (req, res) => {
   }
 
   // Subscription employee limit (Trial = 10)
+  // DB Logic - DB logics
   const subscription = await Subscription.findOne({ company: req.companyId });
   const limit = subscription?.limits?.employees;
   if (limit) {
@@ -135,14 +142,17 @@ export const createUser = asyncHandler(async (req, res) => {
   });
   sendMail({ to: email, ...welcomeEmail({ name, email, password, companyName: req.company?.name, code: req.company?.code }) });
 
+  // Data to frontend - response to frontend
   return ApiResponse.created(res, { message: 'User created', data: { user: out } });
 });
 
 // PATCH /api/users/:id
 export const updateUser = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const target = await User.findOne({ _id: req.params.id, companyId: req.companyId });
   if (!target) throw ApiError.notFound('User not found');
 
+  // Data from frontend - requests from frontend
   const isSelf = String(target._id) === String(req.user._id);
   if (!isSelf && !canManage(req.user.role, target.role)) {
     throw ApiError.forbidden('You cannot edit this user');
@@ -187,18 +197,22 @@ export const updateUser = asyncHandler(async (req, res) => {
 
   const out = await User.findById(target._id).select('-password')
     .populate('department', 'name').populate('reportingTo', 'name role');
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: 'User updated', data: { user: out } });
 });
 
 // POST /api/users/:id/reset-password
 export const resetPassword = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const target = await User.findOne({ _id: req.params.id, companyId: req.companyId }).select('+password');
   if (!target) throw ApiError.notFound('User not found');
+  // Data from frontend - requests from frontend
   if (!canManage(req.user.role, target.role)) {
     throw ApiError.forbidden('You cannot reset this user\'s password');
   }
   target.password = req.body.newPassword; // pre-save hook hashes it
   await target.save();
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: `Password reset for ${target.name}` });
 });
 

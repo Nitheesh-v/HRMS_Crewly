@@ -38,6 +38,7 @@ const notifyLeave = async (userId, payload) => {
 
 /* ------------------ POST /api/leaves (apply) ------------------ */
 export const applyLeave = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!req.companyId) throw ApiError.forbidden('Only company users can apply for leave');
   const { type, startDate, endDate, reason } = req.body;
 
@@ -49,6 +50,7 @@ export const applyLeave = asyncHandler(async (req, res) => {
   if (days === 0) throw ApiError.badRequest('Selected dates contain no working days (Sat/Sun are off)');
 
   // No overlap with an existing PENDING/APPROVED request
+  // DB Logic - DB logics
   const overlap = await Leave.findOne({
     user: req.user._id,
     status: { $in: ['PENDING', 'APPROVED'] },
@@ -97,11 +99,13 @@ export const applyLeave = asyncHandler(async (req, res) => {
       .catch(() => {});
   }
 
+  // Data to frontend - response to frontend
   ApiResponse.created(res, { message: `Leave applied — ${days} working day(s). Waiting for approval.`, data: leave });
 });
 
 /* -------------- GET /api/leaves/my (history + balance) -------------- */
 export const getMyLeaves = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const leaves = await Leave.find({ user: req.user._id })
     .populate('approver', 'name')
     .sort('-createdAt');
@@ -110,21 +114,26 @@ export const getMyLeaves = asyncHandler(async (req, res) => {
   const committed = await committedDays(req.user._id, year);
   const balance = buildBalance(committed);
 
+  // Data to frontend - response to frontend
   ApiResponse.success(res, { message: 'My leaves', data: { leaves, balance, year } });
 });
 
 /* ------- GET /api/leaves/pending (approvers' queue) ------- */
 export const getPendingRequests = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const ids = await resolveScopeIds(req);
   const leaves = await Leave.find({ companyId: req.companyId, status: 'PENDING', user: { $in: ids } })
     .populate({ path: 'user', select: 'name email role designation department', populate: { path: 'department', select: 'name' } })
     .sort('createdAt');
+  // Data to frontend - response to frontend
   ApiResponse.success(res, { message: 'Pending leave requests', data: leaves });
 });
 
 /* ------- GET /api/leaves/requests?status= (approvers' history) ------- */
 export const getLeaveRequests = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const ids = await resolveScopeIds(req);
+  // Data from frontend - requests from frontend
   const statusFilter = req.query.status && req.query.status !== 'ALL'
     ? req.query.status
     : ['APPROVED', 'REJECTED', 'CANCELLED'];
@@ -133,13 +142,16 @@ export const getLeaveRequests = asyncHandler(async (req, res) => {
     .populate({ path: 'user', select: 'name email role designation' })
     .populate('approver', 'name')
     .sort('-decidedAt');
+  // Data to frontend - response to frontend
   ApiResponse.success(res, { message: 'Leave requests', data: leaves });
 });
 
 /* --------- PATCH /api/leaves/:id/decide (approve/reject) --------- */
 export const decideLeave = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const { action, note } = req.body;
 
+  // DB Logic - DB logics
   const leave = await Leave.findOne({ _id: req.params.id, companyId: req.companyId });
   if (!leave) throw ApiError.notFound('Leave request not found');
 
@@ -175,6 +187,7 @@ export const decideLeave = asyncHandler(async (req, res) => {
     emailText: `Hi, your ${label} leave from ${leave.startDate} to ${leave.endDate} (${leave.days} working day(s)) was ${approved ? 'APPROVED' : 'REJECTED'} by ${req.user.name}.${note ? ` Note: ${note}` : ''}`,
   });
 
+  // Data to frontend - response to frontend
   ApiResponse.success(res, {
     message: `Leave ${leave.status.toLowerCase()} for ${dayCount(leave)} day(s)`,
     data: { id: leave._id, status: leave.status },
@@ -185,8 +198,10 @@ const dayCount = (leave) => leave.days;
 
 /* --------- PATCH /api/leaves/:id/cancel (own pending) --------- */
 export const cancelLeave = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const leave = await Leave.findOne({ _id: req.params.id, companyId: req.companyId });
   if (!leave) throw ApiError.notFound('Leave request not found');
+  // Data from frontend - requests from frontend
   if (String(leave.user) !== String(req.user._id)) {
     throw ApiError.forbidden('You can only cancel your own requests');
   }
@@ -196,5 +211,6 @@ export const cancelLeave = asyncHandler(async (req, res) => {
 
   leave.status = 'CANCELLED';
   await leave.save();
+  // Data to frontend - response to frontend
   ApiResponse.success(res, { message: 'Leave request cancelled' });
 });

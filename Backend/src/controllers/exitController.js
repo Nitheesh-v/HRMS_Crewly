@@ -30,6 +30,7 @@ const startOfDayUTC = (s) => new Date(`${s}T00:00:00Z`);
 
 // POST /api/exit/resign — any employee submits their own
 export const resign = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const { reason, lastWorkingDate } = req.body;
   const today = todayIST();
 
@@ -37,6 +38,7 @@ export const resign = asyncHandler(async (req, res) => {
   if (lwd < today) throw ApiError.badRequest('Last working date cannot be in the past');
 
   // Only ONE active resignation at a time
+  // DB Logic - DB logics
   const existing = await Resignation.findOne({
     companyId: req.companyId,
     user: req.user._id,
@@ -61,14 +63,17 @@ export const resign = asyncHandler(async (req, res) => {
     link: '/app/exit',
   });
 
+  // Data to frontend - response to frontend
   return ApiResponse.created(res, { message: 'Resignation submitted. HR will review it.', data: resignation });
 });
 
 // GET /api/exit/my — own history
 export const myResignations = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const list = await Resignation.find({ companyId: req.companyId, user: req.user._id })
     .populate('decidedBy', 'name')
     .sort('-createdAt');
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: 'Your resignations', data: list });
 });
 
@@ -77,6 +82,7 @@ export const listRequests = asyncHandler(async (req, res) => {
   const today = todayIST();
 
   // 🧹 Lazy sweep: deactivate accounts whose last working date passed
+  // DB Logic - DB logics
   const approved = await Resignation.find({ companyId: req.companyId, status: 'APPROVED' })
     .populate('user', 'status');
   for (const r of approved) {
@@ -85,18 +91,22 @@ export const listRequests = asyncHandler(async (req, res) => {
     }
   }
 
+  // Data from frontend - requests from frontend
   const filter = { companyId: req.companyId };
   if (req.query.status) filter.status = req.query.status;
   const list = await Resignation.find(filter)
     .populate('user', 'name email role status employeeCode')
     .populate('decidedBy', 'name')
     .sort('-createdAt');
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: 'Resignation requests', data: list });
 });
 
 // PATCH /api/exit/:id/decide { action: APPROVE|REJECT, note? } — HR
 export const decideResignation = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const { action, note } = req.body;
+  // DB Logic - DB logics
   const resignation = await Resignation.findOne({ _id: req.params.id, companyId: req.companyId })
     .populate('user', 'name status');
   if (!resignation) throw ApiError.notFound('Resignation not found');
@@ -127,13 +137,16 @@ export const decideResignation = asyncHandler(async (req, res) => {
     message: msg, link: '/app/exit',
   });
 
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: msg, data: resignation });
 });
 
 // PATCH /api/exit/:id/withdraw — owner only, while PENDING
 export const withdrawResignation = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const resignation = await Resignation.findOne({ _id: req.params.id, companyId: req.companyId });
   if (!resignation) throw ApiError.notFound('Resignation not found');
+  // Data from frontend - requests from frontend
   if (String(resignation.user) !== String(req.user._id)) {
     throw ApiError.forbidden('You can only withdraw your own resignation');
   }
@@ -141,5 +154,6 @@ export const withdrawResignation = asyncHandler(async (req, res) => {
 
   resignation.status = 'WITHDRAWN';
   await resignation.save();
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: 'Resignation withdrawn', data: resignation });
 });

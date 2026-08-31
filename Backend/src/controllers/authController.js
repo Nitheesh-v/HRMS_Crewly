@@ -174,6 +174,7 @@ export const registerCompany = asyncHandler(async (req, res) => {
   let committed = false;
 
   try {
+    // DB Logic - DB logics
     const code = await generateCompanyCode(companyName);
 
     [company] = await Company.create(
@@ -353,6 +354,7 @@ export const registerCompany = asyncHandler(async (req, res) => {
 // ============================================================
 
 export const login = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const { companyCode, email, password } = req.body;
 
   const code = String(companyCode || "")
@@ -367,6 +369,7 @@ export const login = asyncHandler(async (req, res) => {
     throw ApiError.forbidden("Use the separate Super Admin portal to sign in.");
   }
 
+  // DB Logic - DB logics
   const company = await Company.findOne({
     code,
   }).populate("subscription");
@@ -585,6 +588,7 @@ export const login = asyncHandler(async (req, res) => {
     },
   ).catch(() => {});
 
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: "Login successful",
 
@@ -615,6 +619,7 @@ export const getMe = asyncHandler(async (req, res) => {
 
   let subscriptionInfo = null;
 
+  // Data from frontend - requests from frontend
   if (req.companyId) {
     const company = await Company.findById(req.companyId).populate(
       "subscription",
@@ -631,6 +636,7 @@ export const getMe = asyncHandler(async (req, res) => {
     }
   }
 
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: "Current user",
 

@@ -28,10 +28,12 @@ const notifyAsset = async (userId, payload) => {
 
 /* ── POST /assets — HR/Admin adds equipment ── */
 export const createAsset = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin manage assets');
   const { name, category = 'OTHER', serialNumber = '', note = '' } = req.body;
   if (!name?.trim()) return fail(res, 400, 'Asset name is required');
 
+  // DB Logic - DB logics
   const asset = await Asset.create({
     companyId: req.companyId,
     name: name.trim(),
@@ -39,36 +41,44 @@ export const createAsset = asyncHandler(async (req, res) => {
     serialNumber: serialNumber.trim(),
     note: note.trim(),
   });
+  // Data to frontend - response to frontend
   ok(res, 201, asset, 'Asset added 🖥');
 });
 
 /* ── GET /assets?status= — HR/Admin inventory ── */
 export const listAssets = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin view inventory');
   const filter = { companyId: req.companyId };
   if (req.query.status && CATS && req.query.status !== 'ALL') filter.status = req.query.status;
+  // DB Logic - DB logics
   const rows = await Asset.find(filter)
     .populate('currentHolder', 'name email role designation')
     .populate('assignments.user', 'name')
     .sort('-createdAt')
     .limit(500)
     .lean();
+  // Data to frontend - response to frontend
   ok(res, 200, rows, 'Assets');
 });
 
 /* ── GET /assets/my — equipment in MY hands ── */
 export const myAssets = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const rows = await Asset.find({ companyId: req.companyId, currentHolder: req.user._id })
     .sort('-updatedAt')
     .lean();
+  // Data to frontend - response to frontend
   ok(res, 200, rows, 'My assets');
 });
 
 /* ── POST /assets/:id/assign { userId, note } — HR/Admin ── */
 export const assignAsset = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin assign assets');
   const { userId, note = '' } = req.body;
 
+  // DB Logic - DB logics
   const [asset, employee] = await Promise.all([
     Asset.findOne({ _id: req.params.id, companyId: req.companyId }),
     User.findOne({ _id: userId, companyId: req.companyId }).select('name status'),
@@ -87,14 +97,17 @@ export const assignAsset = asyncHandler(async (req, res) => {
     message: `${asset.name}${asset.serialNumber ? ` (S/N ${asset.serialNumber})` : ''} is now in your care${note ? ` — "${note}"` : ''}`,
     link: '/app/assets',
   });
+  // Data to frontend - response to frontend
   ok(res, 200, asset, `Assigned to ${employee.name} 🖥`);
 });
 
 /* ── POST /assets/:id/return { note } — HR/Admin ── */
 export const returnAsset = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin process returns');
   const { note = '' } = req.body;
 
+  // DB Logic - DB logics
   const asset = await Asset.findOne({ _id: req.params.id, companyId: req.companyId });
   if (!asset) return fail(res, 404, 'Asset not found');
   if (asset.status !== 'ASSIGNED') return fail(res, 409, 'Asset is not assigned');
@@ -111,15 +124,19 @@ export const returnAsset = asyncHandler(async (req, res) => {
   await asset.save();
 
   notifyAsset(holderId, { title: '↩️ Asset return confirmed', message: `${asset.name} was returned to the inventory. Thank you!`, link: '/app/assets' });
+  // Data to frontend - response to frontend
   ok(res, 200, asset, 'Asset returned — available again ✅');
 });
 
 /* ── DELETE /assets/:id — HR/Admin, only when AVAILABLE ── */
 export const deleteAsset = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin delete assets');
+  // DB Logic - DB logics
   const asset = await Asset.findOne({ _id: req.params.id, companyId: req.companyId });
   if (!asset) return fail(res, 404, 'Asset not found');
   if (asset.status !== 'AVAILABLE') return fail(res, 409, 'Return the asset before deleting it');
   await asset.deleteOne();
+  // Data to frontend - response to frontend
   ok(res, 200, { id: asset._id }, 'Asset removed');
 });

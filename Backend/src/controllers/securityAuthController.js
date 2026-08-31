@@ -144,12 +144,14 @@ export const refresh =
     async (req, res) => {
       try {
         const data =
+          // DB Logic - DB logics
           await rotateRefreshToken({
             req,
             res,
           });
 
         return ApiResponse.success(
+          // Data to frontend - response to frontend
           res,
           {
             message:
@@ -176,6 +178,7 @@ export const refresh =
 export const logout =
   asyncHandler(
     async (req, res) => {
+      // DB Logic - DB logics
       await revokeCurrentSession({
         req,
         res,
@@ -200,6 +203,7 @@ export const logout =
       });
 
       return ApiResponse.success(
+        // Data to frontend - response to frontend
         res,
         {
           message:
@@ -217,6 +221,7 @@ export const logout =
 export const logoutAll =
   asyncHandler(
     async (req, res) => {
+      // DB Logic - DB logics
       await revokeAllUserSessions({
         req,
         res,
@@ -238,6 +243,7 @@ export const logoutAll =
       });
 
       return ApiResponse.success(
+        // Data to frontend - response to frontend
         res,
         {
           message:
@@ -264,6 +270,7 @@ export const sessionsWithHistory =
         sessionDocuments,
         companyEvents,
         auditLoginLogs,
+      // DB Logic - DB logics
       ] = await Promise.all([
         SecuritySession.find({
           companyId:
@@ -332,6 +339,7 @@ export const sessionsWithHistory =
       ]);
 
       const currentUserId =
+        // Data from frontend - requests from frontend
         String(req.user._id);
 
       const currentEmail =
@@ -547,6 +555,7 @@ export const sessionsWithHistory =
           .slice(0, 20);
 
       return ApiResponse.success(
+        // Data to frontend - response to frontend
         res,
         {
           message:
@@ -576,6 +585,7 @@ export const revokeSession =
   asyncHandler(
     async (req, res) => {
       const session =
+        // DB Logic - DB logics
         await SecuritySession.findOne({
           _id:
             req.params.sessionId,
@@ -597,6 +607,7 @@ export const revokeSession =
 
       if (
         session.sessionId ===
+        // Data from frontend - requests from frontend
         req.sessionId
       ) {
         throw ApiError.badRequest(
@@ -656,6 +667,7 @@ export const revokeSession =
       });
 
       return ApiResponse.success(
+        // Data to frontend - response to frontend
         res,
         {
           message:
@@ -689,7 +701,9 @@ export const changePassword =
       }
 
       const user =
+        // DB Logic - DB logics
         await User.findById(
+          // Data from frontend - requests from frontend
           req.user._id,
         )
           .select("+password")
@@ -808,6 +822,7 @@ export const changePassword =
       });
 
       return ApiResponse.success(
+        // Data to frontend - response to frontend
         res,
         {
           message:
@@ -830,6 +845,7 @@ export const forgotPassword =
 
       const companyCode =
         String(
+          // Data from frontend - requests from frontend
           req.body.companyCode ||
           "",
         )
@@ -844,6 +860,7 @@ export const forgotPassword =
           .toLowerCase();
 
       const company =
+        // DB Logic - DB logics
         await Company.findOne({
           code: companyCode,
         }).select("_id");
@@ -936,6 +953,7 @@ export const forgotPassword =
       }
 
       return ApiResponse.success(
+        // Data to frontend - response to frontend
         res,
         {
           message:
@@ -978,6 +996,7 @@ export const resetPassword =
       }
 
       const resetToken =
+        // DB Logic - DB logics
         await PasswordResetToken.findOne({
           tokenHash:
             hashToken(token),
@@ -1158,6 +1177,7 @@ export const resetPassword =
       });
 
       return ApiResponse.success(
+        // Data to frontend - response to frontend
         res,
         {
           message:

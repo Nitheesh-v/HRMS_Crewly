@@ -69,7 +69,7 @@ const bracket = (doc, x, yTop, yBottom, color) => {
 };
 
 // One tinted section (Gross Pay OR Deductions): bg + title + table + footer total
-function moneySection(doc, { top, title, sub, accent, diamondColor, bg, line, head, rows, footerLabel, footerTotal }) {
+const moneySection = (doc, { top, title, sub, accent, diamondColor, bg, line, head, rows, footerLabel, footerTotal }) => {
   const X = 166.5, W = 385.3;
   const headerY = top + 26;
   const firstRow = headerY + 17;
@@ -108,12 +108,12 @@ function moneySection(doc, { top, title, sub, accent, diamondColor, bg, line, he
   doc.text(footerLabel, 400, fy, { width: 90, align: 'right' });
   doc.text(inr(footerTotal), 491, fy, { width: 60, align: 'right' });
   return bgBottom;
-}
+};
 
 // ─────────────────────────────────────────────────────────────
 // Main entry: streams the finished PDF into the HTTP response.
 // ─────────────────────────────────────────────────────────────
-export function streamPayslipPdf({ payroll, employee, company, leaveBalance }, res) {
+export const streamPayslipPdf = ({ payroll, employee, company, leaveBalance }, res) => {
   const e = payroll.earnings;
   const d = payroll.deductions;
   const [yr, mn] = payroll.month.split('-').map(Number);
@@ -222,4 +222,4 @@ export function streamPayslipPdf({ payroll, employee, company, leaveBalance }, r
   doc.text('This is a computer generated payslip and does not require a signature', 300, 800, { width: 265, align: 'right' });
 
   doc.end();
-}
+};

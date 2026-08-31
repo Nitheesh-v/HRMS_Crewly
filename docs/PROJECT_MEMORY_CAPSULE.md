@@ -259,6 +259,32 @@ Frontend first (node_modules may be missing).
 - Report exactly ONE build plan (with required subsections) BEFORE
   coding; no repeated plans; implement one phase only; STOP with a next-
   phase handoff at the end.
+- **Controller comment convention (house style):** every request handler
+  carries three section comments, in this order:
+
+    ```js
+    export const offerDetail = asyncHandler(async (req, res) => {
+      // Data from frontend - requests from frontend
+      const { offerId } = req.params;
+      // DB Logic - DB logics
+      const result = await getOffer({ companyId: req.companyId, offerId });
+      // Data to frontend - response to frontend
+      return ApiResponse.success(res, { message: 'Offer fetched', data: result.offer });
+    });
+    ```
+
+  Placement rules: the request comment goes before the first statement that
+  reads `req` (params / query / body); the DB comment before the first
+  service or query call; the response comment before the statement that
+  emits the response (`return`, `res.json(...)`, `ApiResponse.x(res, ...)`).
+  When a handler is wrapped in `try { }`, the comments go INSIDE the try,
+  never in the catch. If the very first statement is already the query,
+  omit the request comment rather than mislabelling a DB call.
+- **ES6+ only, everywhere:** `const`/`let`, arrow functions, destructuring,
+  spread/rest, template literals, optional chaining (`?.`), `??`,
+  `async`/`await`, and ESM `import`/`export`. Never `var`, never
+  `function` declarations, never `require()`/`module.exports`, never
+  `.prototype`, `Object.assign` or `.indexOf()` where modern syntax exists.
 - Preferred closing phrase: "pit rules locked in 🏁".
 
 ## 9. Current state (2026-08-31)

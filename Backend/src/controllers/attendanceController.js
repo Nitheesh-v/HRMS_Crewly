@@ -165,10 +165,12 @@ const expectedOnDate = async (companyId, user, date) => {
 // ============================================================
 
 export const punchIn = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   assertCompanyUser(req);
 
   const date = todayString();
 
+  // DB Logic - DB logics
   const existing = await Attendance.findOne({
     companyId: req.companyId,
 
@@ -214,6 +216,7 @@ export const punchIn = asyncHandler(async (req, res) => {
     lateMinutes: evaluation.lateMinutes || 0,
   });
 
+  // Data to frontend - response to frontend
   return ApiResponse.created(res, {
     message:
       status === "LATE"
@@ -229,8 +232,10 @@ export const punchIn = asyncHandler(async (req, res) => {
 // ============================================================
 
 export const punchOut = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   assertCompanyUser(req);
 
+  // DB Logic - DB logics
   const record = await Attendance.findOne({
     companyId: req.companyId,
 
@@ -273,6 +278,7 @@ export const punchOut = asyncHandler(async (req, res) => {
 
   await record.save();
 
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message:
       `Punched out. Worked ` +
@@ -290,8 +296,10 @@ export const punchOut = asyncHandler(async (req, res) => {
 // ============================================================
 
 export const getMyToday = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   assertCompanyUser(req);
 
+  // DB Logic - DB logics
   const record = await Attendance.findOne({
     companyId: req.companyId,
 
@@ -300,6 +308,7 @@ export const getMyToday = asyncHandler(async (req, res) => {
     date: todayString(),
   });
 
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: "Today's attendance",
 
@@ -312,12 +321,14 @@ export const getMyToday = asyncHandler(async (req, res) => {
 // ============================================================
 
 export const getMyAttendance = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   assertCompanyUser(req);
 
   const month = req.query.month || todayString().slice(0, 7);
 
   const { start, end } = monthRange(month);
 
+  // DB Logic - DB logics
   const records = await Attendance.find({
     companyId: req.companyId,
 
@@ -353,6 +364,7 @@ export const getMyAttendance = asyncHandler(async (req, res) => {
 
   const absent = Math.max(0, workingDays - present);
 
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: "My attendance",
 
@@ -377,8 +389,10 @@ export const getMyAttendance = asyncHandler(async (req, res) => {
 // ============================================================
 
 export const getCompanyAttendance = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const date = req.query.date || todayString();
 
+  // DB Logic - DB logics
   const userIds = await resolveScopeIds(req);
 
   const [users, records] = await Promise.all([
@@ -432,6 +446,7 @@ export const getCompanyAttendance = asyncHandler(async (req, res) => {
     absent: rows.filter((row) => row.expected && !row.record).length,
   };
 
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: "Company attendance",
 
@@ -448,10 +463,12 @@ export const getCompanyAttendance = asyncHandler(async (req, res) => {
 // ============================================================
 
 export const getMonthlyReport = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const month = req.query.month || todayString().slice(0, 7);
 
   const { start, end } = monthRange(month);
 
+  // DB Logic - DB logics
   const userIds = await resolveScopeIds(req);
 
   const userFilter = {
@@ -570,6 +587,7 @@ export const getMonthlyReport = asyncHandler(async (req, res) => {
     }),
   );
 
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: "Monthly attendance report",
 

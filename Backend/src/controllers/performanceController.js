@@ -70,10 +70,12 @@ const serializeForOwner = (app, cycle) => {
 
 /* ── POST /perf/cycles — HR starts a cycle ── */
 export const createCycle = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin can start a performance cycle');
   const { name, startDate = '', endDate = '' } = req.body;
   if (!name?.trim()) return fail(res, 400, 'Cycle name is required (e.g. "H2 2026")');
 
+  // DB Logic - DB logics
   const cycle = await PerformanceCycle.create({
     companyId: req.companyId,
     name: name.trim(),
@@ -98,20 +100,25 @@ export const createCycle = asyncHandler(async (req, res) => {
     )
     .catch(() => {});
 
+  // Data to frontend - response to frontend
   ok(res, 201, cycle, 'Cycle created — everyone enrolled 🎯');
 });
 
 /* ── GET /perf/cycles — everyone ── */
 export const listCycles = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const cycles = await PerformanceCycle.find({ companyId: req.companyId }).sort('-createdAt').limit(24).lean();
   const current = await currentOrLatestCycle(req.companyId);
+  // Data to frontend - response to frontend
   ok(res, 200, { cycles, currentId: current?._id || null }, 'Cycles');
 });
 
 /* ── PATCH /perf/cycles/:id/status — HR advances the phase ── */
 export const transitionCycle = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin can move a cycle');
   const { to } = req.body;
+  // DB Logic - DB logics
   const cycle = await loadCycle(req);
   if (!cycle) return fail(res, 404, 'Cycle not found');
 
@@ -157,20 +164,25 @@ export const transitionCycle = asyncHandler(async (req, res) => {
   }
 
   await cycle.save();
+  // Data to frontend - response to frontend
   ok(res, 200, cycle, `Cycle moved to ${to}`);
 });
 
 /* ── POST /perf/cycles/:id/enroll — HR re-syncs new joiners ── */
 export const enrollMissing = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin can enroll');
+  // DB Logic - DB logics
   const cycle = await loadCycle(req);
   if (!cycle) return fail(res, 404, 'Cycle not found');
   await enrollAll(req.companyId, cycle._id);
+  // Data to frontend - response to frontend
   ok(res, 200, { ok: true }, 'Everyone enrolled');
 });
 
 /* ── GET /perf/cycles/:id/my — employee's own appraisal (lazy) ── */
 export const myAppraisal = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const cycle = (await loadCycle(req)) || (await currentOrLatestCycle(req.companyId));
   if (!cycle) return fail(res, 404, 'No performance cycle yet — HR will start one');
 
@@ -181,13 +193,16 @@ export const myAppraisal = asyncHandler(async (req, res) => {
       Appraisal.findOne({ companyId: req.companyId, cycle: cycle._id, user: req.user._id })
     );
   }
+  // Data to frontend - response to frontend
   ok(res, 200, { appraisal: serializeForOwner(app, cycle), cycle }, 'My appraisal');
 });
 
 /* ── PUT /perf/appraisals/:id/goals — owner sets goals (GOAL_SETTING/ACTIVE) ── */
 export const saveGoals = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const app = await Appraisal.findOne({ _id: req.params.id, companyId: req.companyId });
   if (!app) return fail(res, 404, 'Appraisal not found');
+  // Data from frontend - requests from frontend
   if (String(app.user) !== String(req.user._id) && !isHR(req)) return fail(res, 403, 'Only the owner can set goals');
 
   const cycle = await PerformanceCycle.findById(app.cycle).lean();
@@ -210,13 +225,16 @@ export const saveGoals = asyncHandler(async (req, res) => {
   app.goals = goals;
   app.status = cycle.status === 'ACTIVE' ? 'IN_PROGRESS' : 'GOALS';
   await app.save();
+  // Data to frontend - response to frontend
   ok(res, 200, app, `${goals.length} goal(s) saved`);
 });
 
 /* ── PATCH /perf/appraisals/:id/goals/:goalId/progress — owner, work period ── */
 export const goalProgress = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const app = await Appraisal.findOne({ _id: req.params.id, companyId: req.companyId });
   if (!app) return fail(res, 404, 'Appraisal not found');
+  // Data from frontend - requests from frontend
   if (String(app.user) !== String(req.user._id)) return fail(res, 403, 'Only the owner updates progress');
 
   const cycle = await PerformanceCycle.findById(app.cycle).lean();
@@ -228,13 +246,16 @@ export const goalProgress = asyncHandler(async (req, res) => {
   if (req.body?.note !== undefined) goal.note = String(req.body.note).slice(0, 300);
   app.status = 'IN_PROGRESS';
   await app.save();
+  // Data to frontend - response to frontend
   ok(res, 200, app, 'Progress updated');
 });
 
 /* ── POST /perf/appraisals/:id/self-review — owner, SELF_REVIEW phase ── */
 export const submitSelfReview = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const app = await Appraisal.findOne({ _id: req.params.id, companyId: req.companyId });
   if (!app) return fail(res, 404, 'Appraisal not found');
+  // Data from frontend - requests from frontend
   if (String(app.user) !== String(req.user._id)) return fail(res, 403, 'Only the owner submits the self review');
 
   const cycle = await PerformanceCycle.findById(app.cycle).lean();
@@ -257,13 +278,16 @@ export const submitSelfReview = asyncHandler(async (req, res) => {
     link: '/app/performance',
   });
 
+  // Data to frontend - response to frontend
   ok(res, 200, app, 'Self-review submitted ✅');
 });
 
 /* ── POST /perf/appraisals/:id/review — TL/Mgr/HR review (REVIEW phase) ── */
 export const submitReview = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!SENIORS.includes(req.user.role)) return fail(res, 403, 'Only reviewers can submit reviews');
 
+  // DB Logic - DB logics
   const app = await Appraisal.findOne({ _id: req.params.id, companyId: req.companyId });
   if (!app) return fail(res, 404, 'Appraisal not found');
 
@@ -306,13 +330,16 @@ export const submitReview = asyncHandler(async (req, res) => {
     });
   }
 
+  // Data to frontend - response to frontend
   ok(res, 200, app, `${slot === 'tlReview' ? 'Team Lead' : 'Manager'} review saved ✅`);
 });
 
 /* ── GET /perf/cycles/:id/team — seniors' review board ── */
 export const teamBoard = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!SENIORS.includes(req.user.role)) return fail(res, 403, 'Only seniors can view the team board');
 
+  // DB Logic - DB logics
   const cycle = await loadCycle(req);
   if (!cycle) return fail(res, 404, 'Cycle not found');
 
@@ -328,15 +355,18 @@ export const teamBoard = asyncHandler(async (req, res) => {
     .limit(500)
     .lean();
 
+  // Data to frontend - response to frontend
   ok(res, 200, { appraisals: apps, cycle }, 'Team board');
 });
 
 /* ── GET /perf/history?userId= — final ratings across cycles ── */
 export const history = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const targetId = req.query.userId || String(req.user._id);
   if (targetId !== String(req.user._id) && !isHR(req)) {
     return fail(res, 403, 'Only HR can view other people\'s history');
   }
+  // DB Logic - DB logics
   const rows = await Appraisal.find({
     companyId: req.companyId,
     user: targetId,
@@ -346,5 +376,6 @@ export const history = asyncHandler(async (req, res) => {
     .sort('-updatedAt')
     .limit(30)
     .lean();
+  // Data to frontend - response to frontend
   ok(res, 200, rows, 'Performance history');
 });

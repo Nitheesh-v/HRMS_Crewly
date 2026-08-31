@@ -60,12 +60,14 @@ const money = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 
 /* ── POST /expenses — anyone submits (receipt optional) ── */
 export const submitExpense = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const { category = 'OTHER', amount, expenseDate = '', description = '' } = req.body;
   const amt = Number(amount);
   if (!Number.isFinite(amt) || amt < 1 || amt > 10000000) return fail(res, 400, 'Enter a valid amount');
 
   const file = getFile(req);
   let receipt = { url: '', publicId: '', mime: '' };
+  // DB Logic - DB logics
   if (file) receipt = await uploadBuffer(req.companyId, file);
 
   const manager = req.user.reportingTo || null;
@@ -90,23 +92,27 @@ export const submitExpense = asyncHandler(async (req, res) => {
   if (manager) notifyExp(manager, payload);
   else notifyFinance(req.companyId, payload);
 
+  // Data to frontend - response to frontend
   ok(res, 201, expense, 'Expense submitted ✅');
 });
 
 /* ── GET /expenses/my ── */
 export const myExpenses = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const rows = await Expense.find({ companyId: req.companyId, user: req.user._id })
     .populate('managerApproval.by', 'name')
     .populate('financeApproval.by', 'name')
     .sort('-createdAt')
     .limit(200)
     .lean();
+  // Data to frontend - response to frontend
   ok(res, 200, rows, 'My expenses');
 });
 
 /* ── GET /expenses/approvals — role-aware queue ── */
 export const approvalsQueue = asyncHandler(async (req, res) => {
   let rows;
+  // Data from frontend - requests from frontend
   if (isHR(req)) {
     rows = await Expense.find({ companyId: req.companyId, status: 'PENDING_FINANCE' })
       .populate('user', 'name email role designation')
@@ -126,14 +132,17 @@ export const approvalsQueue = asyncHandler(async (req, res) => {
   } else {
     rows = [];
   }
+  // Data to frontend - response to frontend
   ok(res, 200, rows, 'Approvals queue');
 });
 
 /* ── POST /expenses/:id/manager-decide ── */
 export const managerDecide = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const { action, note = '' } = req.body;
   if (!['APPROVE', 'REJECT'].includes(action)) return fail(res, 400, 'action must be APPROVE or REJECT');
 
+  // DB Logic - DB logics
   const exp = await Expense.findOne({ _id: req.params.id, companyId: req.companyId });
   if (!exp) return fail(res, 404, 'Expense not found');
   if (exp.status !== 'PENDING_MANAGER') return fail(res, 409, `Already ${exp.status.toLowerCase().replaceAll('_', ' ')}`);
@@ -161,15 +170,18 @@ export const managerDecide = asyncHandler(async (req, res) => {
   }
 
   await exp.save();
+  // Data to frontend - response to frontend
   ok(res, 200, exp, `Expense ${action.toLowerCase()}d`);
 });
 
 /* ── POST /expenses/:id/finance-decide — HR/Admin ── */
 export const financeDecide = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!isHR(req)) return fail(res, 403, 'Only HR / Finance can decide at this stage');
   const { action, note = '' } = req.body;
   if (!['APPROVE', 'REJECT'].includes(action)) return fail(res, 400, 'action must be APPROVE or REJECT');
 
+  // DB Logic - DB logics
   const exp = await Expense.findOne({ _id: req.params.id, companyId: req.companyId });
   if (!exp) return fail(res, 404, 'Expense not found');
   if (exp.status !== 'PENDING_FINANCE') return fail(res, 409, `Status is ${exp.status.toLowerCase().replaceAll('_', ' ')}`);
@@ -185,13 +197,16 @@ export const financeDecide = asyncHandler(async (req, res) => {
   }
 
   await exp.save();
+  // Data to frontend - response to frontend
   ok(res, 200, exp, `Expense ${action.toLowerCase()}d`);
 });
 
 /* ── POST /expenses/:id/reimburse — HR/Admin ── */
 export const markReimbursed = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!isHR(req)) return fail(res, 403, 'Only HR / Finance can mark reimbursement');
 
+  // DB Logic - DB logics
   const exp = await Expense.findOne({ _id: req.params.id, companyId: req.companyId });
   if (!exp) return fail(res, 404, 'Expense not found');
   if (exp.status !== 'APPROVED') return fail(res, 409, 'Only APPROVED expenses can be reimbursed');
@@ -202,27 +217,33 @@ export const markReimbursed = asyncHandler(async (req, res) => {
   await exp.save();
 
   notifyExp(exp.user, { title: '💸 Expense reimbursed', message: `${money(exp.amount)} has been reimbursed. Check your account!`, link: '/app/expenses' });
+  // Data to frontend - response to frontend
   ok(res, 200, exp, 'Marked as reimbursed 💸');
 });
 
 /* ── PATCH /expenses/:id/cancel — owner while pending ── */
 export const cancelExpense = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const exp = await Expense.findOne({ _id: req.params.id, companyId: req.companyId });
   if (!exp) return fail(res, 404, 'Expense not found');
+  // Data from frontend - requests from frontend
   if (String(exp.user) !== String(req.user._id)) return fail(res, 403, 'You can only cancel your own expenses');
   if (!['PENDING_MANAGER', 'PENDING_FINANCE'].includes(exp.status)) return fail(res, 409, 'Too late to cancel');
 
   exp.status = 'CANCELLED';
   await exp.save();
+  // Data to frontend - response to frontend
   ok(res, 200, exp, 'Expense cancelled');
 });
 
 /* ── GET /expenses/all?status= — HR/Admin overview + totals ── */
 export const allExpenses = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!isHR(req)) return fail(res, 403, 'Only HR / Finance can view all expenses');
 
   const filter = { companyId: req.companyId };
   if (req.query.status) filter.status = req.query.status;
+  // DB Logic - DB logics
   const rows = await Expense.find(filter)
     .populate('user', 'name email role designation')
     .sort('-createdAt')
@@ -237,5 +258,6 @@ export const allExpenses = asyncHandler(async (req, res) => {
     },
     {}
   );
+  // Data to frontend - response to frontend
   ok(res, 200, { expenses: rows, totals }, 'All expenses');
 });

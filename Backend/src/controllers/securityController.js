@@ -42,6 +42,7 @@ export const securityDashboard = asyncHandler(async (req, res) => {
     eventTypes,
     dailyEvents,
     recentEvents,
+  // DB Logic - DB logics
   ] = await Promise.all([
     SecuritySession.countDocuments({
       ...companyFilter,
@@ -157,6 +158,7 @@ export const securityDashboard = asyncHandler(async (req, res) => {
       .lean(),
   ]);
 
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: "Security dashboard",
 
@@ -187,6 +189,7 @@ export const securityDashboard = asyncHandler(async (req, res) => {
  * page, limit, severity, type, search, from, to
  */
 export const listSecurityEvents = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const page = Math.max(1, Number(req.query.page) || 1);
 
   const limit = Math.min(100, Math.max(10, Number(req.query.limit) || 25));
@@ -238,6 +241,7 @@ export const listSecurityEvents = asyncHandler(async (req, res) => {
     }
   }
 
+  // DB Logic - DB logics
   const [events, total] = await Promise.all([
     SecurityEvent.find(filter)
       .populate("user", "name email role")
@@ -249,6 +253,7 @@ export const listSecurityEvents = asyncHandler(async (req, res) => {
     SecurityEvent.countDocuments(filter),
   ]);
 
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: "Security events",
 
@@ -269,8 +274,10 @@ export const listSecurityEvents = asyncHandler(async (req, res) => {
  * GET /api/security/settings
  */
 export const getSecuritySettings = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const policy = await getSecurityPolicy(req.companyId);
 
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: "Security settings",
 
@@ -297,8 +304,10 @@ const booleanValue = (value) => value === true;
  * Company Admin only.
  */
 export const updateSecuritySettings = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const input = req.body || {};
 
+  // DB Logic - DB logics
   const current = await getSecurityPolicy(req.companyId);
 
   const password = input.password || {};
@@ -454,6 +463,7 @@ export const updateSecuritySettings = asyncHandler(async (req, res) => {
     },
   });
 
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: "Security settings updated",
 

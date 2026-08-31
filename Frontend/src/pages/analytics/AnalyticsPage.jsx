@@ -11,7 +11,7 @@ const moneyK = (v) => (v >= 100000 ? `₹${(v / 100000).toFixed(1)}L` : v >= 100
 const ROLE_COLORS = ['#3fb950', '#58a6ff', '#bc8cff', '#f0a35e', '#8b949e', '#f85149'];
 
 // tiny CSS bar chart — no dependency, respects dark theme
-function BarChart({ title, data, formatY = (v) => v, color = '#3fb950', labelKey = 'month', valueKey = 'value', sub }) {
+const BarChart = ({ title, data, formatY = (v) => v, color = '#3fb950', labelKey = 'month', valueKey = 'value', sub }) => {
   const max = Math.max(1, ...data.map((d) => d[valueKey]));
   return (
     <div className="card p-5">
@@ -28,9 +28,9 @@ function BarChart({ title, data, formatY = (v) => v, color = '#3fb950', labelKey
       </div>
     </div>
   );
-}
+};
 
-function StatCard({ icon, label, value }) {
+const StatCard = ({ icon, label, value }) => {
   return (
     <div className="card p-4">
       <div className="text-xl">{icon}</div>
@@ -38,7 +38,7 @@ function StatCard({ icon, label, value }) {
       <div className="text-xs text-crewly-dim">{label}</div>
     </div>
   );
-}
+};
 
 export default function AnalyticsPage() {
   useAuth();

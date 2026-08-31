@@ -78,10 +78,12 @@ const withUserFilter = (match, scopeIds, departmentIds, field = "user") => {
 
 export const overview = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     const companyId = req.user.companyId;
     if (!companyId) return fail(res, 400, "Company context required");
 
     const { from, to, preset } = core.rangeFromQuery(req.query);
+    // DB Logic - DB logics
     const scopeIds = await scopeUserIds(req);
     const isTeamScope = Array.isArray(scopeIds);
     const User = await core.getModel("User");
@@ -369,6 +371,7 @@ export const overview = async (req, res) => {
         };
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -402,8 +405,10 @@ export const overview = async (req, res) => {
 
 export const attendance = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     const companyId = req.user.companyId;
     const { from, to, preset } = core.rangeFromQuery(req.query);
+    // DB Logic - DB logics
     const Attendance = await core.getModel("Attendance");
     const scopeIds = await scopeUserIds(req);
 
@@ -479,6 +484,7 @@ export const attendance = async (req, res) => {
     }));
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -513,8 +519,10 @@ export const attendance = async (req, res) => {
 
 export const leaves = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     const companyId = req.user.companyId;
     const { from, to, preset } = core.rangeFromQuery(req.query);
+    // DB Logic - DB logics
     const Leave = await core.getModel("Leave");
     const scopeIds = await scopeUserIds(req);
 
@@ -610,6 +618,7 @@ export const leaves = async (req, res) => {
       byStatus.find((row) => row._id === status)?.count || 0;
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -651,8 +660,10 @@ export const leaves = async (req, res) => {
 
 export const payroll = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     const companyId = req.user.companyId;
     const { from, to, preset } = core.rangeFromQuery(req.query);
+    // DB Logic - DB logics
     const Payroll = await core.getModel("Payroll");
 
     const grossExpression = core.firstNonNull(
@@ -765,6 +776,7 @@ export const payroll = async (req, res) => {
     };
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -794,7 +806,9 @@ export const payroll = async (req, res) => {
 
 export const work = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     const companyId = req.user.companyId;
+    // DB Logic - DB logics
     const scopeIds = await scopeUserIds(req);
     const isTeamScope = Array.isArray(scopeIds);
     const now = new Date();
@@ -1009,6 +1023,7 @@ export const work = async (req, res) => {
     };
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -1069,7 +1084,9 @@ export const work = async (req, res) => {
 
 export const recruitment = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     const companyId = req.user.companyId;
+    // DB Logic - DB logics
     const JobPosting = await core.getModel("JobPosting");
     const Candidate = await core.getModel("Candidate");
 
@@ -1120,6 +1137,7 @@ export const recruitment = async (req, res) => {
     const hires = candidateCount(["HIRED"]);
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -1171,6 +1189,7 @@ export const recruitment = async (req, res) => {
 
 export const myStats = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     const companyId = req.user.companyId;
     const myId = req.user._id;
 
@@ -1178,6 +1197,7 @@ export const myStats = async (req, res) => {
       preset: "this_month",
     });
 
+    // DB Logic - DB logics
     const Attendance = await core.getModel("Attendance");
     const Leave = await core.getModel("Leave");
     const Task = await core.getModel("Task");
@@ -1278,6 +1298,7 @@ export const myStats = async (req, res) => {
       ]);
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {

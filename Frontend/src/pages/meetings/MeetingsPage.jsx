@@ -39,7 +39,7 @@ const rangeFor = (view, cursor) => {
   return [startOfDay(new Date()), new Date(Date.now() + 30 * DAY_MS)]; // agenda
 };
 
-function Chip({ m, onClick, dense }) {
+const Chip = ({ m, onClick, dense }) => {
   const tm = TYPE_META[m.type] || TYPE_META.PRIVATE;
   const cancelled = m.status === 'CANCELLED';
   return (
@@ -51,9 +51,9 @@ function Chip({ m, onClick, dense }) {
       {!dense && `${fmtHM(m.occStart || m.startAt)} · `}{m.title}{m.recurrence !== 'NONE' ? ' 🔁' : ''}
     </button>
   );
-}
+};
 
-function MeetingFormModal({ initial, me, role, onClose, onSaved }) {
+const MeetingFormModal = ({ initial, me, role, onClose, onSaved }) => {
   const isEdit = Boolean(initial?._id);
   const [users, setUsers] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -217,7 +217,7 @@ function MeetingFormModal({ initial, me, role, onClose, onSaved }) {
       </div>
     </div>
   );
-}
+};
 
 export default function MeetingsPage() {
   const user = useSelector((s) => s.auth.user);

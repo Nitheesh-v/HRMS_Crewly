@@ -74,6 +74,7 @@ const generateCompanyCode = async (name) => {
 
 export const listCompanies = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(100, Math.max(10, Number(req.query.limit) || 25));
 
@@ -142,6 +143,7 @@ export const listCompanies = async (req, res) => {
       });
     }
 
+    // DB Logic - DB logics
     const [rows, countRows] = await Promise.all([
       Company.aggregate([
         ...basePipeline,
@@ -207,6 +209,7 @@ export const listCompanies = async (req, res) => {
     const total = countRows[0]?.total || 0;
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -231,12 +234,14 @@ export const listCompanies = async (req, res) => {
 
 export const companyDetail = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     const { companyId } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(companyId)) {
       return fail(res, 400, 'Invalid company id');
     }
 
+    // DB Logic - DB logics
     const company = await Company.findById(companyId)
       .populate('subscription')
       .lean();
@@ -379,6 +384,7 @@ export const companyDetail = async (req, res) => {
     };
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -465,6 +471,7 @@ export const createCompany = async (req, res) => {
       );
     }
 
+    // DB Logic - DB logics
     const plan = await getPlan(planKey);
 
     if (!plan) {
@@ -473,6 +480,7 @@ export const createCompany = async (req, res) => {
     }
 
     const code =
+      // Data from frontend - requests from frontend
       req.body.code?.trim().toLowerCase() ||
       (await generateCompanyCode(name));
 
@@ -566,6 +574,7 @@ export const createCompany = async (req, res) => {
     }
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       201,
       {
@@ -600,6 +609,7 @@ export const createCompany = async (req, res) => {
 
 export const updateCompany = async (req, res) => {
   try {
+    // DB Logic - DB logics
     const company = await Company.findById(req.params.companyId);
 
     if (!company || company.archivedAt) {
@@ -626,6 +636,7 @@ export const updateCompany = async (req, res) => {
       }
     });
 
+    // Data from frontend - requests from frontend
     if (req.body.address) {
       const currentAddress =
         typeof company.address?.toObject === 'function'
@@ -648,6 +659,7 @@ export const updateCompany = async (req, res) => {
       company.toObject()
     );
 
+    // Data to frontend - response to frontend
     return ok(res, 200, company, 'Company information updated');
   } catch (error) {
     return fail(res, 500, error.message);
@@ -666,6 +678,7 @@ export const setCompanyStatus = async (req, res) => {
       'DEACTIVATED',
     ];
 
+    // Data from frontend - requests from frontend
     if (!allowedStatuses.includes(req.body.status)) {
       return fail(
         res,
@@ -674,6 +687,7 @@ export const setCompanyStatus = async (req, res) => {
       );
     }
 
+    // DB Logic - DB logics
     const company = await Company.findById(req.params.companyId);
 
     if (!company || company.archivedAt) {
@@ -694,6 +708,7 @@ export const setCompanyStatus = async (req, res) => {
     );
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -714,6 +729,7 @@ export const setCompanyStatus = async (req, res) => {
 
 export const archiveCompany = async (req, res) => {
   try {
+    // DB Logic - DB logics
     const company = await Company.findById(req.params.companyId);
 
     if (!company || company.archivedAt) {
@@ -726,6 +742,7 @@ export const archiveCompany = async (req, res) => {
     await company.save();
 
     await audit(
+      // Data from frontend - requests from frontend
       req,
       'PLATFORM_COMPANY_ARCHIVED',
       company._id,
@@ -734,6 +751,7 @@ export const archiveCompany = async (req, res) => {
     );
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       { id: company._id },
@@ -750,6 +768,7 @@ export const archiveCompany = async (req, res) => {
 
 export const globalSearch = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     const query = String(req.query.q || '').trim();
 
     if (query.length < 2) {
@@ -774,6 +793,7 @@ export const globalSearch = async (req, res) => {
       : [];
 
     const [companies, users, subscriptions, payments, tickets] =
+      // DB Logic - DB logics
       await Promise.all([
         Company.find({
           archivedAt: null,
@@ -827,6 +847,7 @@ export const globalSearch = async (req, res) => {
       ]);
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {

@@ -28,8 +28,10 @@ const dto = (s) => ({
 // GET /api/shifts (HR)
 export const listShifts = async (req, res) => {
   try {
+    // DB Logic - DB logics
     const docs = await Shift.find({ companyId: req.user.companyId })
       .populate('departments', 'name').populate('employees', 'name').sort('-isActive name').lean();
+    // Data to frontend - response to frontend
     return ok(res, 200, { shifts: docs.map(dto) }, 'Shifts');
   } catch (e) { return fail(res, 500, e.message); }
 };
@@ -37,10 +39,13 @@ export const listShifts = async (req, res) => {
 // POST /api/shifts (HR)
 export const createShift = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     const b = req.body || {};
     if (!b.name?.trim()) return fail(res, 400, 'Shift name is required');
+    // DB Logic - DB logics
     const doc = await Shift.create({ ...b, name: b.name.trim(), companyId: req.user.companyId, createdBy: req.user._id, updatedBy: req.user._id });
     await engine.auditSafe({ path: req.originalUrl, method: req.method, path: req.originalUrl, method: req.method, path: req.originalUrl, method: req.method, companyId: req.user.companyId, userId: req.user._id, action: 'SHIFT_CREATED', target: doc.name, next: { startTime: doc.startTime, endTime: doc.endTime } });
+    // Data to frontend - response to frontend
     return ok(res, 201, { id: String(doc._id) }, `Shift "${doc.name}" created 🔀`);
   } catch (e) {
     if (e?.name === 'ValidationError') return fail(res, 400, Object.values(e.errors || {}).map((x) => x.message).join(', ') || 'Invalid shift');
@@ -51,9 +56,11 @@ export const createShift = async (req, res) => {
 // PUT /api/shifts/:id (HR)
 export const updateShift = async (req, res) => {
   try {
+    // DB Logic - DB logics
     const doc = await Shift.findOne({ _id: req.params.id, companyId: req.user.companyId });
     if (!doc) return fail(res, 404, 'Shift not found');
     const prev = { name: doc.name, startTime: doc.startTime, endTime: doc.endTime, isActive: doc.isActive };
+    // Data from frontend - requests from frontend
     const b = req.body || {};
     ['name', 'type', 'startTime', 'endTime', 'breakMinutes', 'graceMinutes', 'overtimeEligible', 'overtimeRatePerHour', 'shiftAllowance', 'nightAllowance', 'lateRule', 'earlyCheckoutRule', 'branch', 'departments', 'employees', 'isActive'].forEach((k) => {
       if (b[k] !== undefined) doc[k] = b[k];
@@ -61,6 +68,7 @@ export const updateShift = async (req, res) => {
     doc.updatedBy = req.user._id;
     await doc.save();
     await engine.auditSafe({ path: req.originalUrl, method: req.method, path: req.originalUrl, method: req.method, path: req.originalUrl, method: req.method, companyId: req.user.companyId, userId: req.user._id, action: 'SHIFT_MODIFIED', target: doc.name, prev, next: { name: doc.name, startTime: doc.startTime, endTime: doc.endTime, isActive: doc.isActive } });
+    // Data to frontend - response to frontend
     return ok(res, 200, { id: String(doc._id) }, 'Shift updated ✅');
   } catch (e) {
     if (e?.name === 'ValidationError') return fail(res, 400, Object.values(e.errors || {}).map((x) => x.message).join(', ') || 'Invalid shift');
@@ -71,11 +79,14 @@ export const updateShift = async (req, res) => {
 // DELETE /api/shifts/:id (HR, soft)
 export const deleteShift = async (req, res) => {
   try {
+    // DB Logic - DB logics
     const doc = await Shift.findOne({ _id: req.params.id, companyId: req.user.companyId });
     if (!doc) return fail(res, 404, 'Shift not found');
     doc.isActive = false;
+    // Data from frontend - requests from frontend
     doc.updatedBy = req.user._id;
     await doc.save();
+    // Data to frontend - response to frontend
     return ok(res, 200, {}, 'Shift deactivated 🗑');
   } catch (e) { return fail(res, 500, e.message); }
 };
@@ -83,7 +94,9 @@ export const deleteShift = async (req, res) => {
 // POST /api/shifts/:id/assign  { userIds?: [], departmentId?, effectiveFrom?, reason?, scheduleId? } (HR)
 export const assignShift = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     const companyId = req.user.companyId;
+    // DB Logic - DB logics
     const shift = await Shift.findOne({ _id: req.params.id, companyId, isActive: true }).lean();
     if (!shift) return fail(res, 404, 'Shift not found');
     const { userIds = [], departmentId = null, effectiveFrom, reason = '', scheduleId = null } = req.body || {};
@@ -114,6 +127,7 @@ export const assignShift = async (req, res) => {
     }
 
     await engine.auditSafe({ path: req.originalUrl, method: req.method, path: req.originalUrl, method: req.method, path: req.originalUrl, method: req.method, companyId, userId: req.user._id, action: userIds.length > 1 ? 'SHIFT_BULK_ASSIGNED' : 'SHIFT_ASSIGNED', target: shift.name, next: { userIds, departmentId, effectiveFrom: engine.dstr(from), reason } });
+    // Data to frontend - response to frontend
     return ok(res, 200, { assigned }, `Assigned "${shift.name}" ✅ (${assigned} record${assigned === 1 ? '' : 's'})`);
   } catch (e) { return fail(res, 500, e.message); }
 };
@@ -121,6 +135,7 @@ export const assignShift = async (req, res) => {
 // GET /api/shifts/history/:userId (HR) — full audit trail, prev→new
 export const shiftHistory = async (req, res) => {
   try {
+    // DB Logic - DB logics
     const docs = await ShiftAssignment.find({ companyId: req.user.companyId, user: req.params.userId })
       .populate('shift', 'name type startTime endTime')
       .populate('prevShift', 'name')
@@ -128,6 +143,7 @@ export const shiftHistory = async (req, res) => {
       .sort('-effectiveFrom')
       .limit(50)
       .lean();
+    // Data to frontend - response to frontend
     return ok(res, 200, {
       history: docs.map((a) => ({
         id: String(a._id),
@@ -146,10 +162,12 @@ export const shiftHistory = async (req, res) => {
 // GET /api/shifts/my  (self)
 export const myShift = async (req, res) => {
   try {
+    // DB Logic - DB logics
     const { shift, schedule, source } = await engine.resolveShiftForUser(req.user.companyId, req.user, new Date());
     const history = await ShiftAssignment.find({ companyId: req.user.companyId, user: req.user._id, scope: 'EMPLOYEE' })
       .populate('shift', 'name type startTime endTime').populate('prevShift', 'name').populate('changedBy', 'name')
       .sort('-effectiveFrom').limit(10).lean();
+    // Data to frontend - response to frontend
     return ok(res, 200, {
       current: { shift: shift ? dto(shift) : null, schedule: schedule || null, source },
       history: history.map((a) => ({
@@ -169,7 +187,9 @@ export const myShift = async (req, res) => {
 // GET /api/my-roster  (self) — shift + schedule + working days + today + upcoming holidays
 export const myRoster = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     const companyId = req.user.companyId;
+    // DB Logic - DB logics
     const { shift, schedule: asgSchedule, source } = await engine.resolveShiftForUser(companyId, req.user, new Date());
     const schedule = asgSchedule || (await engine.resolveScheduleForUser(companyId, req.user));
     const workingDays = await engine.getWorkingDaysForUser(companyId, req.user, schedule);
@@ -178,6 +198,7 @@ export const myRoster = async (req, res) => {
     const holToday = await engine.holidayOnDate(companyId, req.user, today);
     const upcoming = await engine.getHolidaysForUser(companyId, req.user, { from: today, to: engine.addDays(today, 60) });
     const rule = shift || schedule;
+    // Data to frontend - response to frontend
     return ok(res, 200, {
       today: {
         date: today,
@@ -200,6 +221,7 @@ export const myRoster = async (req, res) => {
 // POST /api/shifts/evaluate  { punchIn, punchOut?, userId? (HR) } — demo/verify engine
 export const evaluatePunchApi = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     const { punchIn, punchOut, userId } = req.body || {};
     if (!punchIn) return fail(res, 400, 'punchIn is required');
     let user = req.user;
@@ -208,9 +230,11 @@ export const evaluatePunchApi = async (req, res) => {
       user = await User.findOne({ _id: userId, companyId: req.user.companyId }).lean();
       if (!user) return fail(res, 404, 'User not found');
     }
+    // DB Logic - DB logics
     const { shift } = await engine.resolveShiftForUser(req.user.companyId, user, new Date(punchIn));
     const rule = shift || (await engine.resolveScheduleForUser(req.user.companyId, user));
     const result = engine.evaluatePunch({ rule, punchIn, punchOut });
+    // Data to frontend - response to frontend
     return ok(res, 200, { rule: rule ? { name: rule.name, startTime: rule.startTime, endTime: rule.endTime } : null, result }, 'Evaluation');
   } catch (e) { return fail(res, 500, e.message); }
 };
@@ -218,12 +242,15 @@ export const evaluatePunchApi = async (req, res) => {
 // GET /api/shifts/payroll-inputs?userId=&year=&month= (HR) — payroll consumes THIS
 export const payrollInputs = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     const { userId, year, month } = req.query;
     if (!userId) return fail(res, 400, 'userId is required');
+    // DB Logic - DB logics
     const User = (await import('../models/User.js')).default;
     const user = await User.findOne({ _id: userId, companyId: req.user.companyId }).lean();
     if (!user) return fail(res, 404, 'User not found');
     const data = await engine.buildPayrollInputs(req.user.companyId, user, parseInt(year, 10) || new Date().getUTCFullYear(), parseInt(month, 10) || new Date().getUTCMonth() + 1);
+    // Data to frontend - response to frontend
     return ok(res, 200, data, 'Payroll inputs');
   } catch (e) { return fail(res, 500, e.message); }
 };

@@ -53,7 +53,7 @@ const countWorkingDays = (start, end) => {
 };
 
 // ── the money math for one user + one month ─────────────────
-async function calculateMonth(companyId, userId, structure, month) {
+const calculateMonth = async (companyId, userId, structure, month) => {
   const { start, end } = monthBounds(month);
   const currentMonth = todayIST().slice(0, 7);
   // Current month → count only days ELAPSED so far (fair mid-month runs).
@@ -97,44 +97,53 @@ async function calculateMonth(companyId, userId, structure, month) {
     deductions: { pf, professionalTax, attendanceDeduction, total },
     netPay: gross - total,
   };
-}
+};
 
 // GET /api/payroll/my — employee's own payslips
 export const getMyPayslips = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const list = await Payroll.find({ companyId: req.companyId, user: req.user._id }).sort('-month');
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: 'Your payslips', data: list });
 });
 
 // GET /api/payroll/structures — STRUCTURE DOCS with user populated
 // (PayrollPage builds its user×structure table from this + /users)
 export const getStructures = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const structures = await SalaryStructure.find({ companyId: req.companyId })
     .populate('user', 'name email role designation employeeCode')
     .sort('-createdAt');
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: 'Salary structures', data: structures });
 });
 
 // PUT /api/payroll/structure/:userId
 export const upsertStructure = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const target = await User.findOne({ _id: req.params.userId, companyId: req.companyId });
   if (!target) throw ApiError.notFound('User not found in your company');
 
+  // Data from frontend - requests from frontend
   const { basic, hra, allowances = 0, pfPercent = 12, professionalTax = 0 } = req.body;
   const structure = await SalaryStructure.findOneAndUpdate(
     { companyId: req.companyId, user: target._id },
     { $set: { companyId: req.companyId, basic, hra, allowances, pfPercent, professionalTax } },
     { new: true, upsert: true, runValidators: true }
   );
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: `Salary structure saved for ${target.name}`, data: { structure } });
 });
 
 // POST /api/payroll/generate
 // data = { generated: [{ name }], skipped: [{ name, reason }] }
 export const generatePayroll = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const { month } = req.body;
   if (!MONTH_RE.test(month)) throw ApiError.badRequest('Month must be in YYYY-MM format');
   if (month > todayIST().slice(0, 7)) throw ApiError.badRequest('Cannot generate payroll for a future month');
 
+  // DB Logic - DB logics
   const users = await User.find({ companyId: req.companyId, status: 'ACTIVE' }).select('_id name');
   const structures = await SalaryStructure.find({ companyId: req.companyId });
   const byUser = new Map(structures.map((s) => [String(s.user), s]));
@@ -165,6 +174,7 @@ export const generatePayroll = asyncHandler(async (req, res) => {
     generated.push({ name: user.name });
   }
 
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: `Payroll run completed for ${month}`,
     data: { generated, skipped },
@@ -174,29 +184,35 @@ export const generatePayroll = asyncHandler(async (req, res) => {
 // GET /api/payroll?month=YYYY-MM
 // data = { rows: [...], month }  (PayrollPage reads payroll.rows)
 export const listPayroll = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const month = req.query.month || todayIST().slice(0, 7);
+  // DB Logic - DB logics
   const rows = await Payroll.find({ companyId: req.companyId, month })
     .populate({
       path: 'user',
       select: 'name email role department employeeCode designation',
       populate: { path: 'department', select: 'name' },
     });
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: `Payroll for ${month}`, data: { rows, month } });
 });
 
 // PATCH /api/payroll/:id/pay
 export const markPaid = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const payroll = await Payroll.findOne({ _id: req.params.id, companyId: req.companyId });
   if (!payroll) throw ApiError.notFound('Payroll record not found');
   if (payroll.status === 'PAID') throw ApiError.badRequest('This payroll is already marked as PAID');
   payroll.status = 'PAID';
   payroll.paidAt = new Date();
   await payroll.save();
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: 'Marked as PAID', data: payroll });
 });
 
 // GET /api/payroll/:id/payslip — professional PDF (owner or HR)
 export const downloadPayslip = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const payroll = await Payroll.findOne({ _id: req.params.id, companyId: req.companyId })
     .populate({ path: 'user', select: '-password', populate: { path: 'department', select: 'name' } });
   if (!payroll) throw ApiError.notFound('Payroll record not found');
@@ -232,5 +248,6 @@ export const downloadPayslip = asyncHandler(async (req, res) => {
   const filename = `Payslip-${payroll.user.name}-${MONTH_FULL[mn - 1]}, ${yr}.pdf`;
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+  // Data from frontend - requests from frontend
   streamPayslipPdf({ payroll, employee: payroll.user, company: req.company, leaveBalance }, res);
 });

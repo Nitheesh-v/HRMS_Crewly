@@ -24,7 +24,7 @@ const inp = 'w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-1
 const inpSm = 'rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm text-slate-100 placeholder-slate-500 outline-none focus:border-indigo-400';
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 
-function CreateProjectModal({ onClose, onCreated }) {
+const CreateProjectModal = ({ onClose, onCreated }) => {
   const [managers, setManagers] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [form, setForm] = useState({
@@ -128,7 +128,7 @@ function CreateProjectModal({ onClose, onCreated }) {
       </div>
     </div>
   );
-}
+};
 
 export default function ProjectsPage() {
   const navigate = useNavigate();

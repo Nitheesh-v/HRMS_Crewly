@@ -59,7 +59,9 @@ const canReviewTask = async (req, task) => {
 
 // GET /api/tasks
 export const listTasks = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const filter = { company: req.companyId };
+  // DB Logic - DB logics
   const scope = await getScopedUserIds(req);
   if (scope) {
     filter.$or = [{ assignedTo: { $in: scope } }, { assignedBy: req.user._id }];
@@ -81,11 +83,13 @@ export const listTasks = asyncHandler(async (req, res) => {
     .sort({ createdAt: -1 })
     .limit(300);
 
+  // Data to frontend - response to frontend
   ok(res, 200, tasks, 'Tasks fetched');
 });
 
 // GET /api/tasks/:id
 export const getTask = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const task = await Task.findOne({ _id: req.params.id, company: req.companyId });
   if (!task) throw new ApiError(404, 'Task not found');
   if (!(await canViewTask(req, task))) throw new ApiError(403, 'This task is outside your visibility');
@@ -99,11 +103,13 @@ export const getTask = asyncHandler(async (req, res) => {
     { path: 'attachments.uploadedBy', select: 'name' },
   ]);
 
+  // Data to frontend - response to frontend
   ok(res, 200, task, 'Task fetched');
 });
 
 // POST /api/tasks  — TL/Manager/Admin assign; fan-out per employee
 export const createTask = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!ASSIGN_ROLES.includes(req.user.role)) {
     throw new ApiError(403, 'Employees cannot assign tasks — ask your Team Lead or Manager');
   }
@@ -114,6 +120,7 @@ export const createTask = asyncHandler(async (req, res) => {
   if (!assignees.length) throw new ApiError(400, 'Pick at least one employee');
 
   // 1) same-company validation on EVERY assignee (API-bypass proof)
+  // DB Logic - DB logics
   const users = await User.find({ _id: { $in: assignees } }).select('name role companyId');
   if (users.length !== assignees.length) throw new ApiError(400, 'One or more assignees not found');
   users.forEach((u) => {
@@ -181,14 +188,17 @@ export const createTask = asyncHandler(async (req, res) => {
     }
   });
 
+  // Data to frontend - response to frontend
   ok(res, 201, docs, `${docs.length} task(s) created`);
 });
 
 // PUT /api/tasks/:id
 export const updateTask = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const task = await Task.findOne({ _id: req.params.id, company: req.companyId });
   if (!task) throw new ApiError(404, 'Task not found');
 
+  // Data from frontend - requests from frontend
   const isCreator = String(task.assignedBy) === String(req.user._id);
   if (!isAdmin(req) && !isCreator) {
     throw new ApiError(403, 'Only the task creator or company admin can edit details');
@@ -213,14 +223,17 @@ export const updateTask = asyncHandler(async (req, res) => {
   }
 
   await task.save();
+  // Data to frontend - response to frontend
   ok(res, 200, task, 'Task updated');
 });
 
 // PATCH /api/tasks/:id/status
 export const updateTaskStatus = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const task = await Task.findOne({ _id: req.params.id, company: req.companyId });
   if (!task) throw new ApiError(404, 'Task not found');
 
+  // Data from frontend - requests from frontend
   const { status, note = '' } = req.body;
   if (!TASK_STATUS.includes(status)) throw new ApiError(400, 'Invalid status');
 
@@ -262,14 +275,17 @@ export const updateTaskStatus = asyncHandler(async (req, res) => {
     notify(task.assignedTo, { title, message: `"${task.title}"${note ? ` — ${note}` : ''}`, link: '/app/tasks' });
   }
 
+  // Data to frontend - response to frontend
   ok(res, 200, task, 'Status updated');
 });
 
 // POST /api/tasks/:id/comments
 export const addComment = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const { text } = req.body;
   if (!text?.trim()) throw new ApiError(400, 'Comment text is required');
 
+  // DB Logic - DB logics
   const task = await Task.findOne({ _id: req.params.id, company: req.companyId });
   if (!task) throw new ApiError(404, 'Task not found');
   if (!(await canViewTask(req, task))) throw new ApiError(403, 'This task is outside your visibility');
@@ -285,14 +301,17 @@ export const addComment = asyncHandler(async (req, res) => {
   }
 
   await task.populate({ path: 'comments.user', select: 'name avatarUrl role' });
+  // Data to frontend - response to frontend
   ok(res, 201, task.comments, 'Comment added');
 });
 
 // POST /api/tasks/:id/attachments
 export const uploadAttachment = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const task = await Task.findOne({ _id: req.params.id, company: req.companyId });
   if (!task) throw new ApiError(404, 'Task not found');
   if (!(await canViewTask(req, task))) throw new ApiError(403, 'This task is outside your visibility');
+  // Data from frontend - requests from frontend
   if (!req.file) throw new ApiError(400, 'No file uploaded');
 
   const isImage = /^image\//.test(req.file.mimetype);
@@ -319,14 +338,17 @@ export const uploadAttachment = asyncHandler(async (req, res) => {
 
   task.attachments.push({ name: req.file.originalname, url, publicId, resourceType, size: req.file.size, uploadedBy: req.user._id });
   await task.save();
+  // Data to frontend - response to frontend
   ok(res, 201, task.attachments, 'Attachment uploaded');
 });
 
 // DELETE /api/tasks/:id/attachments/:attachmentId
 export const deleteAttachment = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const task = await Task.findOne({ _id: req.params.id, company: req.companyId });
   if (!task) throw new ApiError(404, 'Task not found');
 
+  // Data from frontend - requests from frontend
   const att = task.attachments.id(req.params.attachmentId);
   if (!att) throw new ApiError(404, 'Attachment not found');
 
@@ -336,17 +358,21 @@ export const deleteAttachment = asyncHandler(async (req, res) => {
 
   att.deleteOne();
   await task.save();
+  // Data to frontend - response to frontend
   ok(res, 200, task.attachments, 'Attachment removed');
 });
 
 // DELETE /api/tasks/:id
 export const deleteTask = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const task = await Task.findOne({ _id: req.params.id, company: req.companyId });
   if (!task) throw new ApiError(404, 'Task not found');
 
+  // Data from frontend - requests from frontend
   const isCreator = String(task.assignedBy) === String(req.user._id);
   if (!isAdmin(req) && !isCreator) throw new ApiError(403, 'Only the task creator or company admin can delete');
 
   await task.deleteOne();
+  // Data to frontend - response to frontend
   ok(res, 200, { id: req.params.id }, 'Task deleted');
 });

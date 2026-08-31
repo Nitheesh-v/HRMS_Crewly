@@ -54,7 +54,9 @@ export const current = async (
 ) => {
   try {
     const data =
+      // DB Logic - DB logics
       await subscriptionView(
+        // Data from frontend - requests from frontend
         req.companyId
       );
 
@@ -67,6 +69,7 @@ export const current = async (
     }
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       data,
@@ -87,7 +90,9 @@ export const features = async (
 ) => {
   try {
     const view =
+      // DB Logic - DB logics
       await subscriptionView(
+        // Data from frontend - requests from frontend
         req.companyId
       );
 
@@ -100,6 +105,7 @@ export const features = async (
     }
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -127,7 +133,9 @@ export const usage = async (
 ) => {
   try {
     const view =
+      // DB Logic - DB logics
       await subscriptionView(
+        // Data from frontend - requests from frontend
         req.companyId
       );
 
@@ -140,6 +148,7 @@ export const usage = async (
     }
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -164,6 +173,7 @@ export const history = async (
   try {
     if (
       !HR.includes(
+        // Data from frontend - requests from frontend
         req.user.role
       )
     ) {
@@ -175,6 +185,7 @@ export const history = async (
     }
 
     const rows =
+      // DB Logic - DB logics
       await SubscriptionHistory.find({
         companyId:
           req.companyId,
@@ -188,6 +199,7 @@ export const history = async (
         .lean();
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       rows,
@@ -208,7 +220,9 @@ export const plans = async (
 ) => {
   try {
     const subscription =
+      // DB Logic - DB logics
       await getCurrentSubscription(
+        // Data from frontend - requests from frontend
         req.companyId
       );
 
@@ -248,6 +262,7 @@ export const plans = async (
     }
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -283,6 +298,7 @@ export const quotePlanChange = async (
   try {
     if (
       !HR.includes(
+        // Data from frontend - requests from frontend
         req.user.role
       )
     ) {
@@ -299,6 +315,7 @@ export const quotePlanChange = async (
       );
 
     const validation =
+      // DB Logic - DB logics
       await validatePlanChange(
         req.companyId,
         targetCode
@@ -345,6 +362,7 @@ export const quotePlanChange = async (
       );
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -395,6 +413,7 @@ export const downgrade = async (
 ) => {
   try {
     if (
+      // Data from frontend - requests from frontend
       req.user.role !==
       'COMPANY_ADMIN'
     ) {
@@ -406,6 +425,7 @@ export const downgrade = async (
     }
 
     const result =
+      // DB Logic - DB logics
       await changePlan({
         companyId:
           req.companyId,
@@ -436,6 +456,7 @@ export const downgrade = async (
     }
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       result.subscription,
@@ -456,6 +477,7 @@ export const cancel = async (
 ) => {
   try {
     if (
+      // Data from frontend - requests from frontend
       req.user.role !==
       'COMPANY_ADMIN'
     ) {
@@ -467,6 +489,7 @@ export const cancel = async (
     }
 
     const subscription =
+      // DB Logic - DB logics
       await cancelSubscription({
         companyId:
           req.companyId,
@@ -482,6 +505,7 @@ export const cancel = async (
       });
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       subscription,
@@ -502,6 +526,7 @@ export const restore = async (
 ) => {
   try {
     if (
+      // Data from frontend - requests from frontend
       req.user.role !==
       'COMPANY_ADMIN'
     ) {
@@ -513,6 +538,7 @@ export const restore = async (
     }
 
     const subscription =
+      // DB Logic - DB logics
       await restoreSubscription({
         companyId:
           req.companyId,
@@ -528,6 +554,7 @@ export const restore = async (
       });
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       subscription,
@@ -548,6 +575,7 @@ export const toggleAutoRenew = async (
 ) => {
   try {
     if (
+      // Data from frontend - requests from frontend
       req.user.role !==
       'COMPANY_ADMIN'
     ) {
@@ -559,6 +587,7 @@ export const toggleAutoRenew = async (
     }
 
     const subscription =
+      // DB Logic - DB logics
       await getCurrentSubscription(
         req.companyId
       );
@@ -577,6 +606,7 @@ export const toggleAutoRenew = async (
     await subscription.save();
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -600,13 +630,16 @@ export const limit = async (
 ) => {
   try {
     const result =
+      // DB Logic - DB logics
       await checkLimit(
+        // Data from frontend - requests from frontend
         req.companyId,
         req.params.resource,
         0
       );
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       result,
@@ -627,12 +660,15 @@ export const feature = async (
 ) => {
   try {
     const allowed =
+      // DB Logic - DB logics
       await hasFeature(
+        // Data from frontend - requests from frontend
         req.companyId,
         req.params.feature
       );
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {

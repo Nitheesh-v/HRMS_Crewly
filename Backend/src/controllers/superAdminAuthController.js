@@ -104,8 +104,10 @@ const createSession = async (user, req) => {
 
 export const login = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     const { email = "", password = "" } = req.body;
 
+    // DB Logic - DB logics
     const user = await User.findOne({
       email: email.toLowerCase().trim(),
 
@@ -173,6 +175,7 @@ export const login = async (req, res) => {
     });
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -193,6 +196,7 @@ export const login = async (req, res) => {
 
 export const verifyTwoFactor = async (req, res) => {
   try {
+    // DB Logic - DB logics
     const challenge = await PlatformToken.findOne({
       _id: req.body.challengeId,
 
@@ -211,6 +215,7 @@ export const verifyTwoFactor = async (req, res) => {
 
     challenge.attempts += 1;
 
+    // Data from frontend - requests from frontend
     if (challenge.attempts > 5 || challenge.tokenHash !== hash(req.body.code)) {
       await challenge.save();
 
@@ -237,6 +242,7 @@ export const verifyTwoFactor = async (req, res) => {
     await audit(req, "SUPER_ADMIN_2FA_LOGIN");
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -257,10 +263,12 @@ export const verifyTwoFactor = async (req, res) => {
 
 export const forgotPassword = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     const email = String(req.body.email || "")
       .toLowerCase()
       .trim();
 
+    // DB Logic - DB logics
     const user = await User.findOne({
       email,
       companyId: null,
@@ -305,6 +313,7 @@ export const forgotPassword = async (req, res) => {
     }
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {},
@@ -321,12 +330,14 @@ export const forgotPassword = async (req, res) => {
 
 export const resetPassword = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     const { token, password } = req.body;
 
     if (!password || password.length < 10) {
       return fail(res, 400, "Password must contain at least 10 characters");
     }
 
+    // DB Logic - DB logics
     const reset = await PlatformToken.findOne({
       tokenHash: hash(token),
 
@@ -369,6 +380,7 @@ export const resetPassword = async (req, res) => {
       },
     );
 
+    // Data to frontend - response to frontend
     return ok(res, 200, {}, "Password reset successful. Please sign in.");
   } catch (error) {
     return fail(res, 500, error.message);
@@ -381,9 +393,11 @@ export const resetPassword = async (req, res) => {
 
 export const changePassword = async (req, res) => {
   try {
+    // DB Logic - DB logics
     const user = await User.findById(req.user._id).select("+password");
 
     const currentPasswordValid = await user.comparePassword(
+      // Data from frontend - requests from frontend
       req.body.currentPassword,
     );
 
@@ -420,6 +434,7 @@ export const changePassword = async (req, res) => {
 
     await audit(req, "SUPER_ADMIN_PASSWORD_CHANGED");
 
+    // Data to frontend - response to frontend
     return ok(res, 200, {}, "Password changed");
   } catch (error) {
     return fail(res, 500, error.message);
@@ -432,8 +447,10 @@ export const changePassword = async (req, res) => {
 
 export const setTwoFactor = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     req.user.twoFactorEnabled = req.body.enabled === true;
 
+    // DB Logic - DB logics
     await req.user.save();
 
     await audit(
@@ -444,6 +461,7 @@ export const setTwoFactor = async (req, res) => {
     );
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -462,6 +480,7 @@ export const setTwoFactor = async (req, res) => {
 
 export const sessions = async (req, res) => {
   try {
+    // DB Logic - DB logics
     const rows = await AdminSession.find({
       user: req.user._id,
 
@@ -478,6 +497,7 @@ export const sessions = async (req, res) => {
       current: row.sessionId === req.adminSession.sessionId,
     }));
 
+    // Data to frontend - response to frontend
     return ok(res, 200, data, "Active sessions");
   } catch (error) {
     return fail(res, 500, error.message);
@@ -490,6 +510,7 @@ export const sessions = async (req, res) => {
 
 export const logoutOthers = async (req, res) => {
   try {
+    // DB Logic - DB logics
     await AdminSession.updateMany(
       {
         user: req.user._id,
@@ -510,6 +531,7 @@ export const logoutOthers = async (req, res) => {
 
     await audit(req, "SUPER_ADMIN_OTHER_SESSIONS_REVOKED");
 
+    // Data to frontend - response to frontend
     return ok(res, 200, {}, "Other sessions logged out");
   } catch (error) {
     return fail(res, 500, error.message);
@@ -522,14 +544,17 @@ export const logoutOthers = async (req, res) => {
 
 export const logout = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     req.adminSession.revokedAt = new Date();
 
     req.adminSession.revokedBy = req.user._id;
 
+    // DB Logic - DB logics
     await req.adminSession.save();
 
     await audit(req, "SUPER_ADMIN_LOGOUT");
 
+    // Data to frontend - response to frontend
     return ok(res, 200, {}, "Logged out");
   } catch (error) {
     return fail(res, 500, error.message);

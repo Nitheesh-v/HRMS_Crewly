@@ -65,6 +65,7 @@ const audit = async (
 
 export const listSubscriptions = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(100, Math.max(10, Number(req.query.limit) || 25));
     const match = {};
@@ -131,6 +132,7 @@ export const listSubscriptions = async (req, res) => {
       });
     }
 
+    // DB Logic - DB logics
     const [rows, countRows] = await Promise.all([
       Subscription.aggregate([
         ...pipeline,
@@ -170,6 +172,7 @@ export const listSubscriptions = async (req, res) => {
     const total = countRows[0]?.total || 0;
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -194,6 +197,7 @@ export const listSubscriptions = async (req, res) => {
 
 export const updateSubscription = async (req, res) => {
   try {
+    // DB Logic - DB logics
     const subscription = await Subscription.findOne({
       company: req.params.companyId,
     });
@@ -204,6 +208,7 @@ export const updateSubscription = async (req, res) => {
 
     const previous = subscription.toObject();
     const planKey = String(
+      // Data from frontend - requests from frontend
       req.body.plan || subscription.plan
     ).toUpperCase();
 
@@ -317,6 +322,7 @@ export const updateSubscription = async (req, res) => {
     });
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       subscription,
@@ -333,12 +339,14 @@ export const updateSubscription = async (req, res) => {
 
 export const listPlans = async (req, res) => {
   try {
+    // DB Logic - DB logics
     await ensureDefaultPlans(req.user._id);
 
     const plans = await SubscriptionPlan.find({})
       .sort('prices.monthly')
       .lean();
 
+    // Data to frontend - response to frontend
     return ok(res, 200, plans, 'Plans');
   } catch (error) {
     return fail(res, 500, error.message);
@@ -347,12 +355,14 @@ export const listPlans = async (req, res) => {
 
 export const savePlan = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     const key = String(req.body.key || '').toUpperCase();
 
     if (!key) {
       return fail(res, 400, 'Plan key is required');
     }
 
+    // DB Logic - DB logics
     const previous = await SubscriptionPlan.findOne({
       key,
     }).lean();
@@ -396,6 +406,7 @@ export const savePlan = async (req, res) => {
     );
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       previous ? 200 : 201,
       plan,
@@ -416,6 +427,7 @@ export const savePlan = async (req, res) => {
 
 export const listBilling = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(100, Math.max(10, Number(req.query.limit) || 25));
     const paymentMatch = {};
@@ -425,6 +437,7 @@ export const listBilling = async (req, res) => {
     }
 
     const [payments, paymentTotal, invoices, invoiceTotal] =
+      // DB Logic - DB logics
       await Promise.all([
         Payment.find(paymentMatch)
           .populate('companyId', 'name code')
@@ -446,6 +459,7 @@ export const listBilling = async (req, res) => {
       ]);
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -474,10 +488,12 @@ export const updatePayment = async (req, res) => {
       'REFUNDED',
     ];
 
+    // Data from frontend - requests from frontend
     if (!statuses.includes(req.body.status)) {
       return fail(res, 400, 'Invalid payment status');
     }
 
+    // DB Logic - DB logics
     const payment = await Payment.findById(
       req.params.paymentId
     );
@@ -522,6 +538,7 @@ export const updatePayment = async (req, res) => {
       payment.toObject()
     );
 
+    // Data to frontend - response to frontend
     return ok(res, 200, payment, 'Payment updated');
   } catch (error) {
     return fail(res, 500, error.message);
@@ -541,6 +558,7 @@ export const revenueAnalytics = async (req, res) => {
     );
 
     const [payments, subscriptions, failedPayments] =
+      // DB Logic - DB logics
       await Promise.all([
         Payment.find({
           status: 'SUCCESS',

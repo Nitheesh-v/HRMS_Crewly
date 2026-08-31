@@ -95,16 +95,20 @@ const populateJourney = (query) =>
 
 /* ── GET /lifecycle/my — employee's own journey ── */
 export const myJourney = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const rec = await getOrCreate(req.companyId, req.user._id);
   if (!rec) return fail(res, 404, 'Lifecycle record not found');
   await populateJourney(rec.populate ? EmployeeLifecycle.findById(rec._id) : rec); // noop guard
   const fresh = await populateJourney(EmployeeLifecycle.findById(rec._id)).lean();
+  // Data to frontend - response to frontend
   ok(res, 200, fresh, 'My journey');
 });
 
 /* ── GET /lifecycle/overview — HR: stage census + probation radar ── */
 export const overview = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin can view the lifecycle overview');
+  // DB Logic - DB logics
   await ensureAll(req.companyId);
   const recs = await EmployeeLifecycle.find({ companyId: req.companyId })
     .populate('user', 'name email role designation status')
@@ -118,12 +122,15 @@ export const overview = asyncHandler(async (req, res) => {
     .filter((r) => r.stage === 'PROBATION' && r.probationEndsOn && new Date(r.probationEndsOn).getTime() <= soon)
     .map((r) => ({ lifecycleId: r._id, user: r.user, probationEndsOn: r.probationEndsOn }));
 
+  // Data to frontend - response to frontend
   ok(res, 200, { counts, probationEnding, total: recs.length }, 'Lifecycle overview');
 });
 
 /* ── GET /lifecycle/company?stage= — HR: full list ── */
 export const companyList = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin can view company lifecycles');
+  // DB Logic - DB logics
   await ensureAll(req.companyId);
   const filter = { companyId: req.companyId };
   if (req.query.stage && STAGES.includes(req.query.stage)) filter.stage = req.query.stage;
@@ -132,24 +139,30 @@ export const companyList = asyncHandler(async (req, res) => {
     .sort('-updatedAt')
     .limit(500)
     .lean();
+  // Data to frontend - response to frontend
   ok(res, 200, recs, 'Company lifecycles');
 });
 
 /* ── GET /lifecycle/user/:userId — HR: one journey ── */
 export const userJourney = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin can view employee journeys');
+  // DB Logic - DB logics
   const rec = await getOrCreate(req.companyId, req.params.userId, req.user._id);
   if (!rec) return fail(res, 404, 'Employee not found in your company');
   const fresh = await populateJourney(EmployeeLifecycle.findById(rec._id)).lean();
+  // Data to frontend - response to frontend
   ok(res, 200, fresh, 'Employee journey');
 });
 
 /* ── POST /lifecycle/user/:userId/stage — HR: move stage ── */
 export const setStage = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin can change lifecycle stages');
   if (String(req.params.userId) === String(req.user._id)) return fail(res, 400, 'You cannot run lifecycle actions on yourself');
 
   const { to, note = '', probationMonths = 3, noticeDays = 30 } = req.body;
+  // DB Logic - DB logics
   const rec = await getOrCreate(req.companyId, req.params.userId, req.user._id);
   if (!rec) return fail(res, 404, 'Employee not found in your company');
 
@@ -189,11 +202,13 @@ export const setStage = asyncHandler(async (req, res) => {
   notifyLife(rec.user, { title: messages[0], message: note ? `${messages[1]} — "${note}"` : messages[1], link: '/app/lifecycle' });
 
   const fresh = await populateJourney(EmployeeLifecycle.findById(rec._id)).lean();
+  // Data to frontend - response to frontend
   ok(res, 200, fresh, `Moved to ${to}`);
 });
 
 /* ── POST /lifecycle/user/:userId/promote — HR: designation/role bump ── */
 export const promote = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin can promote');
   if (String(req.params.userId) === String(req.user._id)) return fail(res, 400, 'You cannot promote yourself');
 
@@ -205,6 +220,7 @@ export const promote = asyncHandler(async (req, res) => {
   }
   if (!designation.trim() && !role) return fail(res, 400, 'Give a new designation and/or role');
 
+  // DB Logic - DB logics
   const u = await User.findOne({ _id: req.params.userId, companyId: req.companyId }).select('name role designation');
   if (!u) return fail(res, 404, 'Employee not found in your company');
 
@@ -231,17 +247,20 @@ export const promote = asyncHandler(async (req, res) => {
   });
 
   const fresh = await populateJourney(EmployeeLifecycle.findById(rec._id)).lean();
+  // Data to frontend - response to frontend
   ok(res, 200, fresh, 'Promotion recorded 🚀');
 });
 
 /* ── POST /lifecycle/user/:userId/transfer — HR: department change ── */
 export const transfer = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin can transfer');
   if (String(req.params.userId) === String(req.user._id)) return fail(res, 400, 'You cannot transfer yourself');
 
   const { departmentId, note = '' } = req.body;
   if (!departmentId) return fail(res, 400, 'Pick a department');
 
+  // DB Logic - DB logics
   const [u, dept] = await Promise.all([
     User.findOne({ _id: req.params.userId, companyId: req.companyId }).select('name department'),
     Department.findOne({ _id: departmentId, companyId: req.companyId }).select('name'),
@@ -269,5 +288,6 @@ export const transfer = asyncHandler(async (req, res) => {
   });
 
   const fresh = await populateJourney(EmployeeLifecycle.findById(rec._id)).lean();
+  // Data to frontend - response to frontend
   ok(res, 200, fresh, 'Transfer recorded 🔄');
 });

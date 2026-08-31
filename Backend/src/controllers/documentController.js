@@ -55,6 +55,7 @@ const uploadDocument = asyncHandler(async (req, res) => {
 
   // 🔔 Phase 13: tell Admin/HR a document arrived (fire & forget — the upload never waits)
   try {
+    // DB Logic - DB logics
     const bosses = await User.find({ companyId: req.companyId, role: { $in: ['COMPANY_ADMIN', 'HR_MANAGER'] } }).select('_id');
     bosses.forEach((b) => notifySmart(b._id, {
       title: '📄 Document uploaded',
@@ -68,16 +69,20 @@ const uploadDocument = asyncHandler(async (req, res) => {
 });
 
 const myDocuments = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const docs = await Document.find({ user: req.user._id }).sort({ createdAt: -1 }).lean();
+  // Data to frontend - response to frontend
   res.json({ success: true, data: docs });
 });
 
 const deleteDocument = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const doc = await Document.findOneAndDelete({ _id: req.params.id, user: req.user._id });
   if (!doc) return res.status(404).json({ success: false, message: 'Document not found' });
   if (cloudinaryReady && doc.publicId) {
     try { await cloudinary.uploader.destroy(doc.publicId, { resource_type: 'auto' }); } catch { /* ignore */ }
   }
+  // Data to frontend - response to frontend
   res.json({ success: true, message: 'Document deleted', data: { id: doc._id } });
 });
 

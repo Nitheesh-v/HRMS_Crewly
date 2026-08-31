@@ -35,6 +35,7 @@ const NOT_PLATFORM = { code: { $nin: ['crewly', 'CREWLY', 'Crewly'] } };
 
 // ── GET /admin-api/overview ───────────────────────────────────────────────
 const overview = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const companies = await Company.find(NOT_PLATFORM).select('_id status').lean();
   const ids = companies.map((c) => c._id);
 
@@ -67,6 +68,7 @@ const overview = asyncHandler(async (req, res) => {
     }
   });
 
+  // Data to frontend - response to frontend
   res.json({
     success: true,
     data: {
@@ -81,6 +83,7 @@ const overview = asyncHandler(async (req, res) => {
 
 // ── GET /admin-api/companies ──────────────────────────────────────────────
 const companies = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const list = await Company.find(NOT_PLATFORM).sort({ createdAt: -1 }).lean();
   const ids = list.map((c) => c._id);
 
@@ -114,6 +117,7 @@ const companies = asyncHandler(async (req, res) => {
     };
   });
 
+  // Data to frontend - response to frontend
   res.json({ success: true, data: rows });
 });
 
@@ -122,6 +126,7 @@ const revenue = asyncHandler(async (req, res) => {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
 
+  // DB Logic - DB logics
   const grouped = await Payment.aggregate([
     { $match: { createdAt: { $gte: start }, status: HEALTHY_PAYMENT } },
     {
@@ -148,19 +153,23 @@ const revenue = asyncHandler(async (req, res) => {
     });
   }
 
+  // Data to frontend - response to frontend
   res.json({ success: true, data: months });
 });
 
 // ── PATCH /admin-api/companies/:id/status — suspend / activate ────────────
 const setCompanyStatus = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const { status } = req.body;
   if (!['ACTIVE', 'SUSPENDED'].includes(status)) {
     return res.status(400).json({ success: false, message: 'status must be ACTIVE or SUSPENDED' });
   }
+  // DB Logic - DB logics
   const company = await Company.findByIdAndUpdate(req.params.id, { status }, { new: true });
   if (!company) {
     return res.status(404).json({ success: false, message: 'Company not found' });
   }
+  // Data to frontend - response to frontend
   res.json({
     success: true,
     message: `${company.name} is now ${status}`,

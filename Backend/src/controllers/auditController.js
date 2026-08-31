@@ -92,12 +92,14 @@ const buildFilter = (companyId, query) => {
 };
 
 export const listAuditLogs = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const page = Math.max(1, Number(req.query.page) || 1);
 
   const limit = Math.min(100, Math.max(10, Number(req.query.limit) || 25));
 
   const filter = buildFilter(req.companyId, req.query);
 
+  // DB Logic - DB logics
   const [logs, total] = await Promise.all([
     AuditLog.find(filter)
       .populate("actor", "name email role")
@@ -109,6 +111,7 @@ export const listAuditLogs = asyncHandler(async (req, res) => {
     AuditLog.countDocuments(filter),
   ]);
 
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: "Audit logs",
 
@@ -124,10 +127,12 @@ export const listAuditLogs = asyncHandler(async (req, res) => {
 });
 
 export const auditLogDetail = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!mongoose.isValidObjectId(req.params.id)) {
     throw ApiError.badRequest("Invalid audit log id");
   }
 
+  // DB Logic - DB logics
   const log = await AuditLog.findOne({
     _id: req.params.id,
     companyId: req.companyId,
@@ -139,6 +144,7 @@ export const auditLogDetail = asyncHandler(async (req, res) => {
     throw ApiError.notFound("Audit log not found");
   }
 
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: "Audit log detail",
     data: log,
@@ -147,6 +153,7 @@ export const auditLogDetail = asyncHandler(async (req, res) => {
 
 export const auditSummary = asyncHandler(async (req, res) => {
   const since =
+    // Data from frontend - requests from frontend
     validDate(req.query.from) ||
     new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
@@ -158,6 +165,7 @@ export const auditSummary = asyncHandler(async (req, res) => {
     },
   };
 
+  // DB Logic - DB logics
   const [total, failed, methods, actions] = await Promise.all([
     AuditLog.countDocuments(match),
 
@@ -209,6 +217,7 @@ export const auditSummary = asyncHandler(async (req, res) => {
     ]),
   ]);
 
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: "Audit summary",
 
@@ -239,8 +248,10 @@ const csvCell = (value) => {
 };
 
 export const exportAuditCsv = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const filter = buildFilter(req.companyId, req.query);
 
+  // DB Logic - DB logics
   const logs = await AuditLog.find(filter)
     .sort("-createdAt")
     .limit(10000)
@@ -299,5 +310,6 @@ export const exportAuditCsv = asyncHandler(async (req, res) => {
     `attachment; filename="crewly-audit-${stamp}.csv"`,
   );
 
+  // Data to frontend - response to frontend
   return res.status(200).send(csv);
 });

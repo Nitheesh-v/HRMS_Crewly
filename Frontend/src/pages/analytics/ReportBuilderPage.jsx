@@ -22,7 +22,7 @@ export default function ReportBuilderPage() {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState('');
 
-  function flash(message) { setToast(message); setTimeout(() => setToast(''), 3500); }
+  const flash = (message) => { setToast(message); setTimeout(() => setToast(''), 3500); };
 
   // chosen module's full definition (fields list etc.)
   const currentModule = modules.find((m) => m.key === module);
@@ -42,19 +42,19 @@ export default function ReportBuilderPage() {
   }, []);
 
   // when the module changes, re-tick its default fields
-  function pickModule(key) {
+  const pickModule = (key) => {
     const def = modules.find((m) => m.key === key);
     setModuleKey(key);
     setFields(def ? def.fields.map((f) => f.key) : []);
     setResult(null);
-  }
+  };
 
-  function toggleField(key) {
+  const toggleField = (key) => {
     setFields(fields.includes(key) ? fields.filter((f) => f !== key) : [...fields, key]);
-  }
+  };
 
   // the payload both run + export share (same query → same data → same RBAC)
-  function buildPayload(pageNumber) {
+  const buildPayload = (pageNumber) => {
     return {
       module,
       fields,
@@ -65,9 +65,9 @@ export default function ReportBuilderPage() {
       page: pageNumber,
       pageSize: 25,
     };
-  }
+  };
 
-  async function run(pageNumber) {
+  const run = async (pageNumber) => {
     setBusy(true);
     setPage(pageNumber);
     try {
@@ -77,9 +77,9 @@ export default function ReportBuilderPage() {
       flash(e?.response?.data?.message || e.message);
     }
     setBusy(false);
-  }
+  };
 
-  async function download(format) {
+  const download = async (format) => {
     try {
       const blobOrText = await analyticsService.exportReport(buildPayload(1), format);
       const blob = blobOrText instanceof Blob ? blobOrText : new Blob([blobOrText]);
@@ -92,7 +92,7 @@ export default function ReportBuilderPage() {
     } catch (e) {
       flash(e?.response?.data?.message || 'Export failed');
     }
-  }
+  };
 
   const totalPages = result ? Math.max(1, Math.ceil(result.total / result.pageSize)) : 1;
 

@@ -371,7 +371,7 @@ const MODULES = {
 // GET /api/report-builder/meta
 // ============================================================
 
-export async function builderMeta(req, res) {
+export const builderMeta = async (req, res) => {
   const isHR =
     req.user.role === "COMPANY_ADMIN" || req.user.role === "HR_MANAGER";
 
@@ -395,13 +395,13 @@ export async function builderMeta(req, res) {
     },
     "Report builder meta",
   );
-}
+};
 
 // ============================================================
 // MANAGER / TEAM LEAD SCOPE
 // ============================================================
 
-async function teamScopeIds(req) {
+const teamScopeIds = async (req) => {
   const isTeamRole =
     req.user.role === "MANAGER" || req.user.role === "TEAM_LEAD";
 
@@ -420,19 +420,19 @@ async function teamScopeIds(req) {
   const ids = await getSubtreeIds(companyId, req.user._id);
 
   return ids.map(objectId);
-}
+};
 
-function intersectIds(first = [], second = []) {
+const intersectIds = (first = [], second = []) => {
   const secondSet = new Set(second.map(String));
 
   return first.filter((id) => secondSet.has(String(id)));
-}
+};
 
 // ============================================================
 // DEPARTMENT FILTER
 // ============================================================
 
-async function applyDepartmentFilter({ req, definition, match, scopeIds }) {
+const applyDepartmentFilter = async ({ req, definition, match, scopeIds }) => {
   const departmentId =
     req.body.filters?.departmentId || req.body.filters?.department;
 
@@ -469,13 +469,13 @@ async function applyDepartmentFilter({ req, definition, match, scopeIds }) {
   match[definition.scopeField] = {
     $in: allowedIds,
   };
-}
+};
 
 // ============================================================
 // PAYROLL PERIOD FILTER
 // ============================================================
 
-function applyPayrollPeriodFilter(match, filters) {
+const applyPayrollPeriodFilter = (match, filters) => {
   const month = String(filters.month || "").trim();
 
   const year = String(filters.year || "").trim();
@@ -499,14 +499,14 @@ function applyPayrollPeriodFilter(match, filters) {
       $regex: `^${year}-`,
     };
   }
-}
+};
 
 // ============================================================
 // SHARED REPORT ENGINE
 // Used by both Generate and Export.
 // ============================================================
 
-async function buildRows(req, cap) {
+const buildRows = async (req, cap) => {
   const definition = MODULES[req.body?.module];
 
   if (!definition) {
@@ -669,13 +669,13 @@ async function buildRows(req, cap) {
     from,
     to,
   };
-}
+};
 
 // ============================================================
 // POST /api/report-builder/run
 // ============================================================
 
-export async function runReport(req, res) {
+export const runReport = async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.body.page, 10) || 1);
 
@@ -740,13 +740,13 @@ export async function runReport(req, res) {
       error.message || "Could not generate report",
     );
   }
-}
+};
 
 // ============================================================
 // POST /api/report-builder/export?format=csv|xls
 // ============================================================
 
-export async function exportReport(req, res) {
+export const exportReport = async (req, res) => {
   try {
     const result = await buildRows(req, 5000);
 
@@ -793,4 +793,4 @@ export async function exportReport(req, res) {
       error.message || "Could not export report",
     );
   }
-}
+};

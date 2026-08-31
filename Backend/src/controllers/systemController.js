@@ -17,27 +17,36 @@ import { PERMISSION_MATRIX } from '../utils/permissions.js';
 
 // ── 🔔 notifications ─────────────────────────────────────────
 export const myNotifications = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const list = await Notification.find({ user: req.user._id }).sort('-createdAt').limit(20);
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: 'Notifications', data: list });
 });
 
 export const unreadCount = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const count = await Notification.countDocuments({ user: req.user._id, readAt: null });
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: 'Unread count', data: { count } });
 });
 
 export const markRead = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   await Notification.updateOne({ _id: req.params.id, user: req.user._id }, { $set: { readAt: new Date() } });
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: 'Marked read' });
 });
 
 export const markAllRead = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   await Notification.updateMany({ user: req.user._id, readAt: null }, { $set: { readAt: new Date() } });
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: 'All marked read' });
 });
 
 // ── 📜 audit (HR) — filters + pagination, data = ARRAY + meta ──
 export const audit = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const { search, status } = req.query;
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(50, Number(req.query.limit) || 15);
@@ -52,10 +61,12 @@ export const audit = asyncHandler(async (req, res) => {
     ];
   }
 
+  // DB Logic - DB logics
   const [logs, total] = await Promise.all([
     AuditLog.find(filter).sort('-createdAt').skip((page - 1) * limit).limit(limit),
     AuditLog.countDocuments(filter),
   ]);
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: 'Audit logs', data: logs,
     meta: { page, pages: Math.max(1, Math.ceil(total / limit)), total },
@@ -64,6 +75,7 @@ export const audit = asyncHandler(async (req, res) => {
 
 // ── 🔐 permission matrix ─────────────────────────────────────
 export const permissionMatrix = asyncHandler(async (req, res) => {
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: 'Role permission matrix', data: PERMISSION_MATRIX });
 });
 
@@ -91,6 +103,7 @@ const lastNMonths = (n) => {
 };
 
 export const analyticsOverview = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const companyId = req.companyId;
   const months = lastNMonths(6);
   const monthStart = `${months[0]}-01`;
@@ -99,6 +112,7 @@ export const analyticsOverview = asyncHandler(async (req, res) => {
     roleAgg, activeEmployees, departments,
     pendingLeaves, pendingExits, openJobs,
     monthAttendance, leaveAgg, payrollAgg,
+  // DB Logic - DB logics
   ] = await Promise.all([
     User.aggregate([{ $match: { companyId, status: 'ACTIVE' } }, { $group: { _id: '$role', count: { $sum: 1 } } }]),
     User.countDocuments({ companyId, status: 'ACTIVE' }),
@@ -129,6 +143,7 @@ export const analyticsOverview = asyncHandler(async (req, res) => {
   const leaveMap = new Map(leaveAgg.map((x) => [x._id, x.count]));
   const payrollMap = new Map(payrollAgg.map((x) => [x._id, x.netPay]));
 
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: 'Analytics overview',
     data: {

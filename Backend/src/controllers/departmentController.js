@@ -6,6 +6,7 @@ import asyncHandler from '../utils/asyncHandler.js';
 
 // GET /api/departments — list with member counts (all company users can view)
 export const getDepartments = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const departments = await Department.find({
       companyId: req.companyId,
       // 🔒 Phase 10 — a manager sees only their own department; Admin/HR see all
@@ -13,6 +14,7 @@ export const getDepartments = asyncHandler(async (req, res) => {
     }).sort('name');
 
   const counts = await User.aggregate([
+    // Data from frontend - requests from frontend
     { $match: { companyId: req.companyId, status: 'ACTIVE', department: { $ne: null } } },
     { $group: { _id: '$department', count: { $sum: 1 } } },
   ]);
@@ -24,29 +26,37 @@ export const getDepartments = asyncHandler(async (req, res) => {
     memberCount: countMap[d._id.toString()] || 0,
   }));
 
+  // Data to frontend - response to frontend
   ApiResponse.success(res, { message: 'Departments', data });
 });
 
 // POST /api/departments
 export const createDepartment = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const { name, description } = req.body;
+  // DB Logic - DB logics
   const department = await Department.create({ name, description, companyId: req.companyId });
+  // Data to frontend - response to frontend
   ApiResponse.created(res, { message: 'Department created', data: department });
 });
 
 // PUT /api/departments/:id
 export const updateDepartment = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const department = await Department.findOneAndUpdate(
+    // Data from frontend - requests from frontend
     { _id: req.params.id, companyId: req.companyId }, // tenant-scoped!
     { $set: { name: req.body.name, description: req.body.description, status: req.body.status } },
     { new: true, runValidators: true }
   );
   if (!department) throw ApiError.notFound('Department not found');
+  // Data to frontend - response to frontend
   ApiResponse.success(res, { message: 'Department updated', data: department });
 });
 
 // DELETE /api/departments/:id — blocked while members are assigned
 export const deleteDepartment = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const department = await Department.findOne({ _id: req.params.id, companyId: req.companyId });
   if (!department) throw ApiError.notFound('Department not found');
 
@@ -56,5 +66,6 @@ export const deleteDepartment = asyncHandler(async (req, res) => {
   }
 
   await department.deleteOne();
+  // Data to frontend - response to frontend
   ApiResponse.success(res, { message: 'Department deleted' });
 });

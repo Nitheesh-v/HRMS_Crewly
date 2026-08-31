@@ -22,7 +22,7 @@ const toInputDate = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const isOverdue = (t) => t.dueDate && t.status !== 'COMPLETED' && String(t.dueDate).slice(0, 10) < todayISO();
 
-function EditProjectModal({ project, isAdmin, onClose, onSaved }) {
+const EditProjectModal = ({ project, isAdmin, onClose, onSaved }) => {
   const [users, setUsers] = useState([]);
   const [form, setForm] = useState({
     name: project.name || '',
@@ -154,7 +154,7 @@ function EditProjectModal({ project, isAdmin, onClose, onSaved }) {
       </div>
     </div>
   );
-}
+};
 
 export default function ProjectDetailPage() {
   const { id } = useParams();

@@ -80,6 +80,7 @@ const getRazorpay = async () => {
 
 // GET /api/billing/plans
 export const getPlans = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   await ensureDefaultPlans();
 
   const codes = ["TRIAL", "BASIC", "PRO", "ENTERPRISE"];
@@ -103,6 +104,7 @@ export const getPlans = asyncHandler(async (req, res) => {
     });
   }
 
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: "Plans",
     data,
@@ -111,12 +113,14 @@ export const getPlans = asyncHandler(async (req, res) => {
 
 // GET /api/billing/subscription — current plan + live usage
 export const getSubscription = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const view = await subscriptionView(req.companyId);
 
   if (!view) {
     throw ApiError.notFound("Subscription not found");
   }
 
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: "Subscription",
     data: {
@@ -142,6 +146,7 @@ export const checkout = asyncHandler(async (req, res) => {
     PROFESSIONAL: "PRO",
   };
 
+  // Data from frontend - requests from frontend
   const requestedPlan = String(req.body.plan || "").toUpperCase();
 
   const plan = planAliases[requestedPlan] || requestedPlan;
@@ -154,6 +159,7 @@ export const checkout = asyncHandler(async (req, res) => {
 
   const months = billingCycle === "YEARLY" ? 12 : 1;
 
+  // DB Logic - DB logics
   const planDef = await getPlan(plan);
 
   if (!planDef || ["FREE", "TRIAL"].includes(plan)) {
@@ -262,6 +268,7 @@ export const checkout = asyncHandler(async (req, res) => {
   // 4. RETURN CHECKOUT RESPONSE
   // =====================================================
 
+  // Data to frontend - response to frontend
   return ApiResponse.created(res, {
     message: "Checkout created",
 
@@ -289,7 +296,9 @@ export const checkout = asyncHandler(async (req, res) => {
 
 // POST /api/billing/verify — success → upgrade subscription
 export const verifyPayment = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const { paymentId, razorpay_payment_id, razorpay_signature } = req.body;
+  // DB Logic - DB logics
   const payment = await Payment.findOne({
     _id: paymentId,
     companyId: req.companyId,
@@ -479,6 +488,7 @@ planName: (await getPlan(sub.plan))?.name || sub.plan,
     link: "/app/billing",
   });
 
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: `${planDef.name} plan activated — full access restored 🎉`,
    data: {
@@ -494,9 +504,11 @@ planName: (await getPlan(sub.plan))?.name || sub.plan,
 
 // GET /api/billing/payments — company payment history
 export const listPayments = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const payments = await Payment.find({ companyId: req.companyId })
     .sort("-createdAt")
     .limit(50);
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: "Payments", data: payments });
 });
 
@@ -505,6 +517,7 @@ export const listPayments = asyncHandler(async (req, res) => {
 // GET /api/billing/invoices
 // Company identity always comes from authenticated req.companyId.
 export const listInvoices = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const invoices = await Invoice.find({
     companyId: req.companyId,
   })
@@ -517,6 +530,7 @@ export const listInvoices = asyncHandler(async (req, res) => {
     .limit(100)
     .lean();
 
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: 'Invoices',
     data: invoices,

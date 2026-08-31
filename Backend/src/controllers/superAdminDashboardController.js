@@ -39,6 +39,7 @@ export const dashboard = async (req, res) => {
   try {
     // Only inserts plans that do not exist.
     // Super Admin plan edits are never overwritten.
+    // DB Logic - DB logics
     await ensureDefaultPlans(req.user._id);
 
     const now = new Date();
@@ -435,6 +436,7 @@ export const dashboard = async (req, res) => {
       .reduce((total, row) => total + row.count, 0);
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {
@@ -531,6 +533,7 @@ export const charts = async (req, res) => {
       companyStatus,
       activity,
       existingCompanies,
+    // DB Logic - DB logics
     ] = await Promise.all([
       Company.aggregate([
         {
@@ -767,6 +770,7 @@ export const charts = async (req, res) => {
       .size;
 
     return ok(
+      // Data to frontend - response to frontend
       res,
       200,
       {

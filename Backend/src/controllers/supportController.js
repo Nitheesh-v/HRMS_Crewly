@@ -32,6 +32,7 @@ const createTicket = asyncHandler(async (req, res) => {
     message: message.trim(),
   });
   try {
+    // DB Logic - DB logics
     await notify.notifyRoles?.(req.companyId, HR_SIDE, {
       title: '🎫 New support ticket',
       message: `${req.user.name}: ${ticket.subject}`,
@@ -42,20 +43,25 @@ const createTicket = asyncHandler(async (req, res) => {
 });
 
 const myTickets = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const list = await Ticket.find({ user: req.user._id }).sort({ createdAt: -1 }).lean();
+  // Data to frontend - response to frontend
   res.json({ success: true, data: list });
 });
 
 const listTickets = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!HR_SIDE.includes(req.user.role)) {
     return res.status(403).json({ success: false, message: 'HR access only' });
   }
   const filter = { companyId: req.companyId };
   if (req.query.status) filter.status = req.query.status;
+  // DB Logic - DB logics
   const list = await Ticket.find(filter)
     .populate('user', 'name email role designation')
     .sort({ status: 1, createdAt: -1 })
     .lean();
+  // Data to frontend - response to frontend
   res.json({ success: true, data: list });
 });
 
@@ -108,6 +114,7 @@ const updateTicketStatus = asyncHandler(async (req, res) => {
   if (!ticket) return res.status(404).json({ success: false, message: 'Ticket not found' });
 
   try {
+    // DB Logic - DB logics
     await notify.notifyUser?.(req.companyId, ticket.user, {
       title: `🎫 Ticket ${status.replace('_', ' ')}`,
       message: ticket.subject,

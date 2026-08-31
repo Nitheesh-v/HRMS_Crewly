@@ -6,10 +6,10 @@
 // ============================================================
 
 // Turn a Date into a "2026-08-13" string (used for display + file names)
-export function dstr(date) {
+export const dstr = (date) => {
   if (!date) return null;
   return new Date(date).toISOString().slice(0, 10);
-}
+};
 
 // The presets allowed in our date-range dropdown
 export const REPORT_PRESETS = [
@@ -19,7 +19,7 @@ export const REPORT_PRESETS = [
 
 // Convert "?preset=this_month" into real { from, to } Date objects.
 // Controllers call this once, then reuse from/to everywhere.
-export function rangeFromQuery(query) {
+export const rangeFromQuery = (query) => {
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth(); // 0 = January
@@ -64,21 +64,21 @@ export function rangeFromQuery(query) {
     if (query.to) to = new Date(new Date(query.to).getTime() + 86399999); // include the whole "to" day
   }
   return { from, to, preset };
-}
+};
 
 // ------------------------------------------------------------
 // safe() — run ONE database query. If it fails, return the
 // fallback (0 or []) instead of throwing. This is why one
 // broken chart can show "—" while the rest of the page works.
 // ------------------------------------------------------------
-export async function safe(runQuery, fallback) {
+export const safe = async (runQuery, fallback) => {
   try {
     return await runQuery();
   } catch (error) {
     console.warn('[reporting] one metric failed:', error.message);
     return fallback;
   }
-}
+};
 
 // ------------------------------------------------------------
 // getModel() — lazy-loads a Mongoose model by name.
@@ -86,13 +86,13 @@ export async function safe(runQuery, fallback) {
 // does not exist (e.g. Application), we can catch it gently.
 // ------------------------------------------------------------
 const modelCache = {};
-export async function getModel(name) {
+export const getModel = async (name) => {
   if (!modelCache[name]) {
     const module = await import(`../models/${name}.js`);
     modelCache[name] = module.default || module;
   }
   return modelCache[name];
-}
+};
 
 // ------------------------------------------------------------
 // firstNonNull([...]) — build a Mongo "use the first field that
@@ -102,53 +102,53 @@ export async function getModel(name) {
 // firstNonNull(['$netSalary', '$net'], 0)
 //   → { $ifNull: ['$netSalary', { $ifNull: ['$net', 0] }] }
 // ------------------------------------------------------------
-export function firstNonNull(fieldPaths, fallback = 0) {
+export const firstNonNull = (fieldPaths, fallback = 0) => {
   let expression = fallback;
   for (let i = fieldPaths.length - 1; i >= 0; i -= 1) {
     expression = { $ifNull: [fieldPaths[i], expression] };
   }
   return expression;
-}
+};
 
 // ------------------------------------------------------------
 // CSV export: turn rows into a downloadable .csv text file.
 // esc() wraps values in quotes when they contain commas/quotes.
 // ------------------------------------------------------------
-export function toCsv(columns, rows) {
-  function esc(value) {
+export const toCsv = (columns, rows) => {
+  const esc = (value) => {
     const text = value === null || value === undefined ? '' : String(value);
     const needsQuotes = text.includes(',') || text.includes('"') || text.includes('\n');
     return needsQuotes ? `"${text.replace(/"/g, '""')}"` : text;
-  }
+  };
   const headerLine = columns.map((col) => esc(col.label)).join(',');
   const dataLines = rows.map((row) => columns.map((col) => esc(row[col.key])).join(','));
   return [headerLine, ...dataLines].join('\n');
-}
+};
 
-export function sendCsv(res, filename, csvText) {
+export const sendCsv = (res, filename, csvText) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.send(`﻿${csvText}`); // ﻿ helps Excel read UTF-8 correctly
-}
+};
 
 // Excel export: a simple HTML table — Excel opens it like a native .xls
-export function sendXls(res, filename, columns, rows) {
-  function cell(value) {
+export const sendXls = (res, filename, columns, rows) => {
+  const cell = (value) => {
     const text = value === null || value === undefined ? '' : String(value);
     return `<td>${text.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</td>`;
-  }
+  };
   const header = columns.map((c) => `<th>${c.label}</th>`).join('');
   const body = rows.map((row) => `<tr>${columns.map((c) => cell(row[c.key])).join('')}</tr>`).join('');
   res.setHeader('Content-Type', 'application/vnd.ms-excel; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.send(`<html><body><table border="1"><tr>${header}</tr>${body}</table></body></html>`);
-}
+};
 
 // Small formatters used across the app
-export function money(amount) {
+export const money = (amount) => {
   return `₹${Number(amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
-}
-export function pct(part, total) {
+};
+export const pct = (part, total) => {
   if (!total || total <= 0) return 0;
   return Math.round((part / total) * 1000) / 10; // 1 decimal place
-}
+};

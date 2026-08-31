@@ -32,16 +32,19 @@ const validateExperienceRange = ({ minExperience, maxExperience }) => {
 
 // GET /api/recruitment/jobs
 export const listJobs = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const jobs = await JobPosting.find({ companyId: req.companyId })
     .populate('department', 'name')
     .sort('-createdAt');
   // candidate count per job, in ONE aggregate query
   const counts = await Candidate.aggregate([
+    // Data from frontend - requests from frontend
     { $match: { companyId: req.companyId } },
     { $group: { _id: '$job', count: { $sum: 1 } } },
   ]);
   const cmap = new Map(counts.map((c) => [String(c._id), c.count]));
   const data = jobs.map((j) => ({ ...j.toObject(), candidateCount: cmap.get(String(j._id)) || 0 }));
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: 'Jobs fetched', data });
 });
 
@@ -210,10 +213,13 @@ export const updateJob = asyncHandler(async (req, res) => {
 
 // GET /api/recruitment/candidates?job=<id>&stage=
 export const listCandidates = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const filter = { companyId: req.companyId };
   if (req.query.job) filter.job = req.query.job;
   if (req.query.stage) filter.currentStage = req.query.stage;
+  // DB Logic - DB logics
   const candidates = await Candidate.find(filter).populate('job', 'title').sort('-createdAt');
+  // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: 'Candidates fetched', data: candidates });
 });
 

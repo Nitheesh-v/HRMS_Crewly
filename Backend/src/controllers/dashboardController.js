@@ -25,6 +25,7 @@ const fmtTime = (d) =>
 
 // ── 🙋 EMPLOYEE overview ────────────────────────────────────────────────────
 const employeeOverview = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const me = req.user._id;
   const companyId = req.companyId;
 
@@ -35,6 +36,7 @@ const employeeOverview = asyncHandler(async (req, res) => {
 
   // Attendance — one record = one attended day (LATE/HALF_DAY still attended);
   // absent = working days elapsed with NO record (matches getMonthlyReport logic)
+  // DB Logic - DB logics
   const [monthRecords, todayRecord] = await Promise.all([
     Attendance.find({ user: me, date: { $regex: `^${monthKey}` } }).lean(),
     Attendance.findOne({ user: me, date: todayStr }).lean(),
@@ -94,6 +96,7 @@ const employeeOverview = asyncHandler(async (req, res) => {
     .limit(4)
     .lean();
 
+  // Data to frontend - response to frontend
   ApiResponse.success(res, {
     message: 'My dashboard',
     data: {
@@ -119,9 +122,11 @@ const employeeOverview = asyncHandler(async (req, res) => {
 
 // ── 👥 MANAGER / TEAM-LEAD overview (Phase 10) ──────────────────────────────
 const managerOverview = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const companyId = req.companyId;
   const todayStr = todayString();
 
+  // DB Logic - DB logics
   const ids = await getScopedUserIds(req); // null → whole company (Admin/HR)
   const baseUserFilter = ids ? { _id: { $in: ids } } : {};
 
@@ -151,6 +156,7 @@ const managerOverview = asyncHandler(async (req, res) => {
   const now = new Date();
   const overdue = openTasks.filter((t) => t.dueDate && new Date(t.dueDate) < now).length;
 
+  // Data to frontend - response to frontend
   ApiResponse.success(res, {
     message: 'Team dashboard',
     data: {

@@ -79,7 +79,9 @@ const safeLog = (error) => {
 
 export const getQueues = async (req, res) => {
   try {
+    // DB Logic - DB logics
     const data = await getOpsOverview();
+    // Data to frontend - response to frontend
     return ok(res, 200, data, 'Queue operations overview');
   } catch (error) {
     safeLog(error);
@@ -93,11 +95,13 @@ export const getQueues = async (req, res) => {
 
 export const getFailed = async (req, res) => {
   try {
+    // DB Logic - DB logics
     const data = await getFailedJobs({
       queueName: req.params.queueName,
       page: req.query.page,
       limit: req.query.limit,
     });
+    // Data to frontend - response to frontend
     return ok(res, 200, data, 'Failed jobs');
   } catch (error) {
     if (error instanceof OpsError) return failOps(res, error);
@@ -112,10 +116,12 @@ export const getFailed = async (req, res) => {
 
 export const getJobDetailHandler = async (req, res) => {
   try {
+    // DB Logic - DB logics
     const data = await getJobDetail({
       queueName: req.params.queueName,
       jobId: req.params.jobId,
     });
+    // Data to frontend - response to frontend
     return ok(res, 200, data, 'Job detail');
   } catch (error) {
     if (error instanceof OpsError) return failOps(res, error);
@@ -130,11 +136,13 @@ export const getJobDetailHandler = async (req, res) => {
 
 export const retryJobHandler = async (req, res) => {
   try {
+    // DB Logic - DB logics
     const data = await retryJob({
       queueName: req.params.queueName,
       jobId: req.params.jobId,
       actor: actorFrom(req),
     });
+    // Data to frontend - response to frontend
     return ok(res, 200, data, 'Job retry requested');
   } catch (error) {
     if (error instanceof OpsError) return failOps(res, error);
@@ -149,11 +157,13 @@ export const retryJobHandler = async (req, res) => {
 
 export const batchRetryHandler = async (req, res) => {
   try {
+    // DB Logic - DB logics
     const data = await retryFailedJobs({
       queueName: req.params.queueName,
       jobIds: req.body?.jobIds,
       actor: actorFrom(req),
     });
+    // Data to frontend - response to frontend
     return ok(res, 200, data, 'Batch retry completed');
   } catch (error) {
     if (error instanceof OpsError) return failOps(res, error);
@@ -168,11 +178,13 @@ export const batchRetryHandler = async (req, res) => {
 
 export const removeJobHandler = async (req, res) => {
   try {
+    // DB Logic - DB logics
     const data = await removeJob({
       queueName: req.params.queueName,
       jobId: req.params.jobId,
       actor: actorFrom(req),
     });
+    // Data to frontend - response to frontend
     return ok(res, 200, data, 'Job removed');
   } catch (error) {
     if (error instanceof OpsError) return failOps(res, error);
@@ -187,10 +199,12 @@ export const removeJobHandler = async (req, res) => {
 
 export const pauseQueueHandler = async (req, res) => {
   try {
+    // DB Logic - DB logics
     const data = await pauseQueue({
       queueName: req.params.queueName,
       actor: actorFrom(req),
     });
+    // Data to frontend - response to frontend
     return ok(res, 200, data, 'Queue paused');
   } catch (error) {
     if (error instanceof OpsError) return failOps(res, error);
@@ -201,10 +215,12 @@ export const pauseQueueHandler = async (req, res) => {
 
 export const resumeQueueHandler = async (req, res) => {
   try {
+    // DB Logic - DB logics
     const data = await resumeQueue({
       queueName: req.params.queueName,
       actor: actorFrom(req),
     });
+    // Data to frontend - response to frontend
     return ok(res, 200, data, 'Queue resumed');
   } catch (error) {
     if (error instanceof OpsError) return failOps(res, error);
@@ -219,7 +235,9 @@ export const resumeQueueHandler = async (req, res) => {
 
 export const reconcilePreviewHandler = async (req, res) => {
   try {
+    // DB Logic - DB logics
     const data = await getReconcilePreview();
+    // Data to frontend - response to frontend
     return ok(res, 200, data, 'Reconciliation preview');
   } catch (error) {
     safeLog(error);
@@ -237,12 +255,14 @@ export const reconcilePreviewHandler = async (req, res) => {
 
 export const reconcileRunHandler = async (req, res) => {
   try {
+    // Data from frontend - requests from frontend
     const { area, limit, dryRun } = req.body || {};
     const domains = req.body?.domains;
     const usesCoordinator =
       Array.isArray(domains) ||
       (domains === undefined && (area === 'all' || area === undefined));
     const data = usesCoordinator
+      // DB Logic - DB logics
       ? await reconcileBackgroundWork({
           domains: domains === undefined ? 'all' : domains,
           limit,
@@ -254,6 +274,7 @@ export const reconcileRunHandler = async (req, res) => {
           limit,
           actor: actorFrom(req),
         });
+    // Data to frontend - response to frontend
     return ok(res, 200, data, 'Reconciliation run completed');
   } catch (error) {
     if (error instanceof OpsError) return failOps(res, error);
@@ -268,7 +289,9 @@ export const reconcileRunHandler = async (req, res) => {
 
 export const getCacheStatusHandler = async (req, res) => {
   try {
+    // DB Logic - DB logics
     const data = await getCacheStatus();
+    // Data to frontend - response to frontend
     return ok(res, 200, data, 'Analytics cache status');
   } catch (error) {
     safeLog(error);
@@ -282,10 +305,12 @@ export const getCacheStatusHandler = async (req, res) => {
 
 export const invalidateCacheHandler = async (req, res) => {
   try {
+    // DB Logic - DB logics
     const data = await invalidateCompanyAnalyticsCache({
       companyId: req.body?.companyId,
       actor: actorFrom(req),
     });
+    // Data to frontend - response to frontend
     return ok(res, 200, data, 'Analytics cache invalidated for the selected company');
   } catch (error) {
     if (error instanceof OpsError) return failOps(res, error);

@@ -15,29 +15,29 @@ export const PLAN_PRICING = { TRIAL: 0, BASIC: 499, PRO: 1499, ENTERPRISE: 3999 
 
 // Company docs may store plan/status under slightly different names —
 // these two helpers read whichever exists. Easy to adjust later.
-function getPlan(company) {
+const getPlan = (company) => {
   return String(company.plan || company.subscriptionPlan || 'TRIAL').toUpperCase();
-}
-function getStatus(company) {
+};
+const getStatus = (company) => {
   return String(company.status || company.subscriptionStatus || 'ACTIVE').toUpperCase();
-}
+};
 
 // MRR rule (business formula, one place only):
 // paying = has a paid plan AND status is not expired/suspended/cancelled
-function isPaying(company) {
+const isPaying = (company) => {
   const notPaying = ['EXPIRED', 'SUSPENDED', 'CANCELLED', 'TRIAL_EXPIRED'];
   return getPlan(company) !== 'TRIAL' && !notPaying.includes(getStatus(company));
-}
-function monthlyRevenueOf(companies) {
+};
+const monthlyRevenueOf = (companies) => {
   let total = 0;
   companies.forEach((company) => {
     if (isPaying(company)) total += PLAN_PRICING[getPlan(company)] || 0;
   });
   return total;
-}
+};
 
 // GET /api/saas/overview
-export async function saasOverview(req, res) {
+export const saasOverview = async (req, res) => {
   try {
     const Company = await core.getModel('Company');
     const User = await core.getModel('User');
@@ -53,14 +53,14 @@ export async function saasOverview(req, res) {
     const companiesBeforeThisMonth = companies.filter((c) => new Date(c.createdAt) < monthStart);
 
     // group companies by a key function → [{ name, count }]
-    function groupBy(getKey) {
+    const groupBy = (getKey) => {
       const counts = {};
       companies.forEach((c) => {
         const key = getKey(c);
         counts[key] = (counts[key] || 0) + 1;
       });
       return Object.entries(counts).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
-    }
+    };
 
     // ---- MRR / ARR ----
     const mrrNow = monthlyRevenueOf(companies);
@@ -108,4 +108,4 @@ export async function saasOverview(req, res) {
   } catch (error) {
     return fail(res, 500, error.message);
   }
-}
+};

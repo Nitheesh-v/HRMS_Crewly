@@ -20,11 +20,13 @@ const SELF_EDITABLE = ['phone', 'gender', 'dateOfBirth', 'address', 'emergencyCo
 
 // ── GET my profile ──────────────────────────────────────────────────────────
 const getMyProfile = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const user = await User.findById(req.user._id)
     .populate('department', 'name')
     .populate('reportingTo', 'name designation role')
     .lean();
   if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+  // Data to frontend - response to frontend
   res.json({ success: true, data: user });
 });
 
@@ -36,7 +38,9 @@ const updateMyProfile = asyncHandler(async (req, res) => {
   });
   if (updates.gender === '') delete updates.gender;
 
+  // DB Logic - DB logics
   const user = await User.findByIdAndUpdate(
+    // Data from frontend - requests from frontend
     req.user._id,
     { $set: updates },
     { new: true, runValidators: true }
@@ -44,6 +48,7 @@ const updateMyProfile = asyncHandler(async (req, res) => {
     .populate('department', 'name')
     .populate('reportingTo', 'name designation role');
 
+  // Data to frontend - response to frontend
   res.json({ success: true, message: 'Profile updated ✅', data: user });
 });
 
@@ -58,10 +63,12 @@ const streamToCloudinary = (buffer, options) =>
 
 // ── UPLOAD avatar (cloud → inline fallback, never 500s) ────────────────────
 const uploadAvatar = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!req.file) {
     return res.status(400).json({ success: false, message: 'Attach an image as field "avatar"' });
   }
 
+  // DB Logic - DB logics
   const user = await User.findById(req.user._id);
   if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
@@ -91,6 +98,7 @@ const uploadAvatar = asyncHandler(async (req, res) => {
   }
 
   await user.save();
+  // Data to frontend - response to frontend
   res.json({
     success: true,
     message: toCloud ? 'Profile photo updated ☁️' : 'Profile photo updated (inline fallback mode)',
@@ -100,6 +108,7 @@ const uploadAvatar = asyncHandler(async (req, res) => {
 
 // ── REMOVE avatar ───────────────────────────────────────────────────────────
 const removeAvatar = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const user = await User.findById(req.user._id);
   if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
@@ -109,6 +118,7 @@ const removeAvatar = asyncHandler(async (req, res) => {
   user.avatarUrl = '';
   user.avatarPublicId = undefined;
   await user.save();
+  // Data to frontend - response to frontend
   res.json({ success: true, message: 'Profile photo removed', data: { avatarUrl: '' } });
 });
 

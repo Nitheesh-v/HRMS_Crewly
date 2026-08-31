@@ -60,6 +60,7 @@ const expandOccurrence = (m, from, to) => {
 
 // GET /api/meetings?from&to  |  ?view=history
 export const listMeetings = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   const vis = visibilityFilter(req);
 
   if (req.query.view === 'history') {
@@ -77,6 +78,7 @@ export const listMeetings = asyncHandler(async (req, res) => {
   const from = req.query.from ? new Date(req.query.from) : new Date(Date.now() - 7 * 86400000);
   const to = req.query.to ? new Date(req.query.to) : new Date(Date.now() + 45 * 86400000);
 
+  // DB Logic - DB logics
   const docs = await Meeting.find({
     $and: [
       vis,
@@ -100,11 +102,13 @@ export const listMeetings = asyncHandler(async (req, res) => {
 
   const occurrences = docs.flatMap((m) => expandOccurrence(m, from, to));
   occurrences.sort((a, b) => new Date(a.occStart) - new Date(b.occStart));
+  // Data to frontend - response to frontend
   ok(res, 200, occurrences, 'Meetings fetched');
 });
 
 // POST /api/meetings  (Admin / Manager / Team Lead only)
 export const createMeeting = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!CREATE_ROLES.includes(req.user.role)) {
     throw new ApiError(403, 'Only Company Admin, Managers and Team Leads can create meetings');
   }
@@ -129,6 +133,7 @@ export const createMeeting = asyncHandler(async (req, res) => {
   }
 
   // same-company validation (API-bypass proof)
+  // DB Logic - DB logics
   const found = await User.countDocuments({ _id: { $in: participants }, companyId: req.companyId });
   if (found !== participants.length) throw new ApiError(400, 'Every participant must belong to your company');
 
@@ -162,13 +167,16 @@ export const createMeeting = asyncHandler(async (req, res) => {
       link: '/app/meetings',
     }));
 
+  // Data to frontend - response to frontend
   ok(res, 201, meeting, 'Meeting created');
 });
 
 // PUT /api/meetings/:id  (creator or company admin)
 export const updateMeeting = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const meeting = await Meeting.findOne({ _id: req.params.id, company: req.companyId });
   if (!meeting) throw new ApiError(404, 'Meeting not found');
+  // Data from frontend - requests from frontend
   if (!canManage(req, meeting)) throw new ApiError(403, 'Only the organizer or company admin can edit this meeting');
 
   const { title, description, type, departmentId, participantIds, startAt, endAt, link, recurrence, recurrenceEnd, reminderMinutes } = req.body;
@@ -210,13 +218,16 @@ export const updateMeeting = asyncHandler(async (req, res) => {
     .filter((p) => String(p) !== String(req.user._id))
     .forEach((p) => notify(p, { title: '✏️ Meeting updated', message: `"${meeting.title}" details changed`, link: '/app/meetings' }));
 
+  // Data to frontend - response to frontend
   ok(res, 200, meeting, 'Meeting updated');
 });
 
 // PATCH /api/meetings/:id/cancel  (creator or company admin) — kept for history
 export const cancelMeeting = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const meeting = await Meeting.findOne({ _id: req.params.id, company: req.companyId });
   if (!meeting) throw new ApiError(404, 'Meeting not found');
+  // Data from frontend - requests from frontend
   if (!canManage(req, meeting)) throw new ApiError(403, 'Only the organizer or company admin can cancel this meeting');
   if (meeting.status === 'CANCELLED') throw new ApiError(400, 'Meeting is already cancelled');
 
@@ -229,15 +240,19 @@ export const cancelMeeting = asyncHandler(async (req, res) => {
     .filter((p) => String(p) !== String(req.user._id))
     .forEach((p) => notify(p, { title: '❌ Meeting cancelled', message: `"${meeting.title}"${meeting.cancelReason ? ` — ${meeting.cancelReason}` : ''}`, link: '/app/meetings' }));
 
+  // Data to frontend - response to frontend
   ok(res, 200, meeting, 'Meeting cancelled');
 });
 
 // DELETE /api/meetings/:id  (creator or company admin)
 export const deleteMeeting = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const meeting = await Meeting.findOne({ _id: req.params.id, company: req.companyId });
   if (!meeting) throw new ApiError(404, 'Meeting not found');
+  // Data from frontend - requests from frontend
   if (!canManage(req, meeting)) throw new ApiError(403, 'Only the organizer or company admin can delete this meeting');
   await meeting.deleteOne();
+  // Data to frontend - response to frontend
   ok(res, 200, { id: req.params.id }, 'Meeting deleted');
 });
 

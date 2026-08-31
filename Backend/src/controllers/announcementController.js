@@ -28,6 +28,7 @@ const notifyAnn = async (userId, payload) => {
 const POSTERS = ['COMPANY_ADMIN', 'HR_MANAGER'];
 
 const createAnnouncement = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!POSTERS.includes(req.user.role)) {
     return res.status(403).json({ success: false, message: 'Only HR or the company admin can post announcements' });
   }
@@ -35,6 +36,7 @@ const createAnnouncement = asyncHandler(async (req, res) => {
   if (!title?.trim() || !body?.trim()) {
     return res.status(400).json({ success: false, message: 'title and body are required' });
   }
+  // DB Logic - DB logics
   const ann = await Announcement.create({
     companyId: req.companyId,
     title: title.trim(),
@@ -65,26 +67,32 @@ const createAnnouncement = asyncHandler(async (req, res) => {
     .catch(() => {});
 
   const populated = await ann.populate('postedBy', 'name role');
+  // Data to frontend - response to frontend
   res.status(201).json({ success: true, message: 'Announcement posted 📢', data: populated });
 });
 
 const listAnnouncements = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const list = await Announcement.find({ companyId: req.companyId })
     .populate('postedBy', 'name role')
     .sort({ pinned: -1, createdAt: -1 })
     .limit(50)
     .lean();
+  // Data to frontend - response to frontend
   res.json({ success: true, data: list });
 });
 
 const deleteAnnouncement = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const ann = await Announcement.findOne({ _id: req.params.id, companyId: req.companyId });
   if (!ann) return res.status(404).json({ success: false, message: 'Announcement not found' });
+  // Data from frontend - requests from frontend
   const isPoster = String(ann.postedBy) === String(req.user._id);
   if (!isPoster && req.user.role !== 'COMPANY_ADMIN') {
     return res.status(403).json({ success: false, message: 'Only the poster or company admin can delete' });
   }
   await ann.deleteOne();
+  // Data to frontend - response to frontend
   res.json({ success: true, message: 'Announcement deleted', data: { id: ann._id } });
 });
 

@@ -21,7 +21,7 @@ export const addDays = (dateStr, n) => dstr(new Date(new Date(`${dateStr}T00:00:
 export const dayKey = (dateStr) => DAY_KEYS[new Date(`${dateStr}T00:00:00Z`).getUTCDay()];
 export const crossesMidnight = (startTime, endTime) => toMin(endTime) <= toMin(startTime);
 
-export function eachDate(fromStr, toStr, cap = 62) {
+export const eachDate = (fromStr, toStr, cap = 62) => {
   const out = [];
   let cur = fromStr;
   while (cur && cur <= toStr && out.length < cap) {
@@ -29,11 +29,11 @@ export function eachDate(fromStr, toStr, cap = 62) {
     cur = addDays(cur, 1);
   }
   return out;
-}
+};
 
 // ─── Punch evaluation (attendance rules service) ────────────────────────────
 // rule = Shift or WorkSchedule doc. Handles cross-midnight as ONE shift.
-export function evaluatePunch({ rule, punchIn, punchOut }) {
+export const evaluatePunch = ({ rule, punchIn, punchOut }) => {
   if (!rule) return { status: 'NO_SHIFT' };
   const inD = new Date(punchIn);
   if (Number.isNaN(inD.getTime())) return { status: 'BAD_INPUT' };
@@ -66,20 +66,20 @@ export function evaluatePunch({ rule, punchIn, punchOut }) {
     crossesMidnight: crossed,
     shiftWindow: { start: new Date(startTs).toISOString(), end: new Date(endTs).toISOString() },
   };
-}
+};
 
 // ─── lazy model loader (avoids circular imports) ────────────────────────────
 const _cache = {};
-async function model(name) {
+const model = async (name) => {
   if (!_cache[name]) {
     const m = await import(`../models/${name}.js`);
     _cache[name] = m.default || m;
   }
   return _cache[name];
-}
+};
 
 // ─── Shift resolution: EMPLOYEE override ▲ DEPARTMENT default ▲ shift doc ──
-export async function resolveShiftForUser(companyId, user, onDate = new Date()) {
+export const resolveShiftForUser = async (companyId, user, onDate = new Date()) => {
   const ShiftAssignment = await model('ShiftAssignment');
   const Shift = await model('Shift');
   const on = new Date(`${dstr(onDate)}T00:00:00Z`);
@@ -108,10 +108,10 @@ export async function resolveShiftForUser(companyId, user, onDate = new Date()) 
   }).lean();
   if (direct) return { shift: direct, schedule: null, source: 'SHIFT_DOC', assignment: null };
   return { shift: null, schedule: null, source: 'NONE', assignment: null };
-}
+};
 
 // ─── Schedule resolution: employee ▲ department ▲ branch ▲ company default ─
-export async function resolveScheduleForUser(companyId, user) {
+export const resolveScheduleForUser = async (companyId, user) => {
   const WorkSchedule = await model('WorkSchedule');
   const uid = user._id || user;
   const deptId = user.department?._id || user.department || null;
@@ -131,12 +131,12 @@ export async function resolveScheduleForUser(companyId, user) {
     (await WorkSchedule.findOne({ companyId, isActive: true, name: /general/i }).lean()) ||
     (await WorkSchedule.findOne({ companyId, isActive: true }).sort('createdAt').lean());
   return def || null;
-}
+};
 
-export async function getWorkingDaysForUser(companyId, user, schedule = undefined) {
+export const getWorkingDaysForUser = async (companyId, user, schedule = undefined) => {
   const s = schedule === undefined ? await resolveScheduleForUser(companyId, user) : schedule;
   return s?.workingDays?.length ? s.workingDays : DEFAULT_WORKING_DAYS;
-}
+};
 
 // ─── Holidays ────────────────────────────────────────────────────────────────
 const holidayScopes = (user) => {
@@ -172,7 +172,7 @@ const toDto = (h, uid, yrProj = null) => {
   };
 };
 
-export async function getHolidaysForUser(companyId, user, { from, to }) {
+export const getHolidaysForUser = async (companyId, user, { from, to }) => {
   const Holiday = await model('Holiday');
   const uid = user._id || user;
   const scopes = holidayScopes(user);
@@ -197,15 +197,15 @@ export async function getHolidaysForUser(companyId, user, { from, to }) {
   }
   out.sort((a, b) => (a.date < b.date ? -1 : 1));
   return out;
-}
+};
 
-export async function holidayOnDate(companyId, user, dateStr) {
+export const holidayOnDate = async (companyId, user, dateStr) => {
   const list = await getHolidaysForUser(companyId, user, { from: dateStr, to: dateStr });
   return list.find((h) => h.dates.includes(dateStr) && !(h.isOptional && !h.picked)) || null;
-}
+};
 
 // ─── Leave-day counting (policy-driven, NOT hard-coded weekends) ────────────
-export function countLeaveDays({ from, to, workingDays = DEFAULT_WORKING_DAYS, holidaySet = new Set(), excludeWeeklyOffs = true, excludeHolidays = true }) {
+export const countLeaveDays = ({ from, to, workingDays = DEFAULT_WORKING_DAYS, holidaySet = new Set(), excludeWeeklyOffs = true, excludeHolidays = true }) => {
   let days = 0;
   let weeklyOffs = 0;
   let holidays = 0;
@@ -217,17 +217,17 @@ export function countLeaveDays({ from, to, workingDays = DEFAULT_WORKING_DAYS, h
     days += 1;
   }
   return { days, weeklyOffs, holidays };
-}
+};
 
-export async function leaveDaysForUser(companyId, user, from, to, opts = {}) {
+export const leaveDaysForUser = async (companyId, user, from, to, opts = {}) => {
   const workingDays = await getWorkingDaysForUser(companyId, user);
   const hols = await getHolidaysForUser(companyId, user, { from, to });
   const holidaySet = new Set(hols.filter((h) => !(h.isOptional && !h.picked)).flatMap((h) => h.dates));
   return countLeaveDays({ from, to, workingDays, holidaySet, ...opts });
-}
+};
 
 // ─── Payroll input builder (payroll consumes THIS, never re-implements) ─────
-export async function buildPayrollInputs(companyId, user, year, month) {
+export const buildPayrollInputs = async (companyId, user, year, month) => {
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
   const from = `${year}-${String(month).padStart(2, '0')}-01`;
   const to = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
@@ -251,10 +251,10 @@ export async function buildPayrollInputs(companyId, user, year, month) {
     shift: shift ? { name: shift.name, type: shift.type, shiftAllowance: shift.shiftAllowance || 0, nightAllowance: shift.nightAllowance || 0, overtimeRatePerHour: shift.overtimeRatePerHour || 0 } : null,
     shiftSource: source,
   };
-}
+};
 
 // ─── Audit (best-effort, never blocks) ──────────────────────────────────────
-export async function auditSafe(entry) {
+export const auditSafe = async (entry) => {
   try {
     const AuditLog = await model('AuditLog');
        await AuditLog.create({
@@ -267,4 +267,4 @@ export async function auditSafe(entry) {
   } catch (e) {
     console.warn('[audit] skipped:', e.message);
   }
-}
+};

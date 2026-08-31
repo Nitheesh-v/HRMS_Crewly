@@ -56,7 +56,9 @@ const projectScope = async (req) => {
 
 // GET /api/projects
 export const listProjects = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const filter = await projectScope(req);
+  // Data from frontend - requests from frontend
   if (req.query.status) filter.status = req.query.status;
   if (req.query.priority) filter.priority = req.query.priority;
   if (req.query.q) filter.name = { $regex: req.query.q, $options: 'i' };
@@ -85,11 +87,13 @@ export const listProjects = asyncHandler(async (req, res) => {
     return { ...p.toObject(), taskCount: s.total, doneCount: s.done, progress: s.total ? Math.round((s.done / s.total) * 100) : 0 };
   });
 
+  // Data to frontend - response to frontend
   ok(res, 200, data, 'Projects fetched');
 });
 
 // GET /api/projects/:id
 export const getProject = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const project = await Project.findOne({ _id: req.params.id, company: req.companyId })
     .populate('manager', 'name email role avatarUrl')
     .populate('teamLeads', 'name email role avatarUrl')
@@ -97,6 +101,7 @@ export const getProject = asyncHandler(async (req, res) => {
     .populate('department', 'name');
   if (!project) throw new ApiError(404, 'Project not found');
 
+  // Data from frontend - requests from frontend
   if (!isAdmin(req)) {
     const me = String(req.user._id);
     const involved = [project.manager, ...(project.teamLeads || []), ...(project.members || [])]
@@ -125,11 +130,13 @@ export const getProject = asyncHandler(async (req, res) => {
     todo: tasks.filter((t) => t.status === 'TODO').length,
   };
 
+  // Data to frontend - response to frontend
   ok(res, 200, { project, tasks, stats, progress: total ? Math.round((done / total) * 100) : 0 }, 'Project fetched');
 });
 
 // POST /api/projects  (Admin/HR ONLY — assigns ONLY the Project Manager)
 export const createProject = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!CREATE_ROLES.includes(req.user.role)) {
     throw new ApiError(403, 'Only Company Admin or HR can create projects');
   }
@@ -137,6 +144,7 @@ export const createProject = asyncHandler(async (req, res) => {
   if (!name?.trim()) throw new ApiError(400, 'Project name is required');
 
   const managerFinal = managerId || req.user._id;
+  // DB Logic - DB logics
   const [mgr] = await getCompanyUsers(req, [managerFinal]);
   if (!mgr) throw new ApiError(400, 'Selected manager not found');
   if (String(mgr.companyId) !== String(req.companyId)) {
@@ -167,14 +175,17 @@ export const createProject = asyncHandler(async (req, res) => {
     });
   }
 
+  // Data to frontend - response to frontend
   ok(res, 201, project, 'Project created');
 });
 
 // PUT /api/projects/:id  (admin or the project's manager — manager assigns TLs + team here)
 export const updateProject = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
   const project = await Project.findOne({ _id: req.params.id, company: req.companyId });
   if (!project) throw new ApiError(404, 'Project not found');
 
+  // Data from frontend - requests from frontend
   const isManagerOfProject = String(project.manager) === String(req.user._id);
   if (!isAdmin(req) && !isManagerOfProject) {
     throw new ApiError(403, 'Only the project manager or company admin can manage this project');
@@ -253,16 +264,20 @@ export const updateProject = asyncHandler(async (req, res) => {
     .filter((m) => !prevMembers.has(String(m)) && String(m) !== String(project.manager))
     .forEach((m) => notify(m, { title: '📁 Added to project', message: `You were added to project "${project.name}"`, link: `/app/projects/${project._id}` }));
 
+  // Data to frontend - response to frontend
   ok(res, 200, project, 'Project updated');
 });
 
 // DELETE /api/projects/:id  (admin only)
 export const deleteProject = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
   if (!isAdmin(req)) throw new ApiError(403, 'Only Company Admin or HR can delete projects');
+  // DB Logic - DB logics
   const project = await Project.findOne({ _id: req.params.id, company: req.companyId });
   if (!project) throw new ApiError(404, 'Project not found');
 
   await Task.deleteMany({ project: project._id });
   await project.deleteOne();
+  // Data to frontend - response to frontend
   ok(res, 200, { id: req.params.id }, 'Project and its tasks deleted');
 });
