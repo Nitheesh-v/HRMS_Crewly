@@ -43,6 +43,14 @@ career portal.
   Convert to Employee → Secure account setup → onboarding.
   Reference: `docs/PHASE_27_RMS_ATS.md` (entity map, public APIs, token
   types, ATS weights, file security, permissions, tests).
+- Phase 29 (Payroll, 29.1+): 29.1 = **Company Payroll Setup** — the
+  tenant configuration layer (legal entity, statutory applicability,
+  payroll cycle/payment date/currency/FY, weekend-LOP-overtime policies,
+  company salary bank account) with wizard + activation + audit + tenant
+  Redis cache. Decides *what applies*, never *how much* (no calculation).
+  Reference: `docs/PHASE_29_1_COMPANY_PAYROLL_SETUP.md`. Roadmap:
+  29.2 Salary Components → 29.3 Salary Structures → 29.4 Employee Payroll
+  Profile → … → 29.14 Payroll Reports & Analytics.
 - Phase 28 (background infrastructure, 28.1–28.9): Redis foundation,
   BullMQ foundation (7 queues), email delivery queue, processing queues
   (resume/ATS/documents), scheduled one-time jobs, pre-onboarding + BGV
@@ -167,6 +175,7 @@ career portal.
   RESUME_PARSE_MAX_ATTEMPTS, RESUME_PARSE_LEASE_MS,
   RESUME_REPROCESS_COOLDOWN_MS, ATS_WEIGHT_* (required/experience/
   preferred/education/location), ATS_DEFAULT_MAX_NOTICE_PERIOD_DAYS
+- Phase 29.1: PAYROLL_SETUP_CACHE_TTL_SECONDS
 - Phase 28: REDIS_ENABLED, REDIS_URL (secret — env only),
   REDIS_CONNECT_TIMEOUT_MS, BULLMQ_PREFIX, WORKER_CONCURRENCY,
   EMAIL/RESUME/ATS/SCHEDULED/DOCUMENT/BGV_WORKER_CONCURRENCY,
@@ -195,6 +204,7 @@ npm run test:all          # 24 non-live suites, 366 hermetic tests
 npm run test:phase28      # Phase 28 suites
 npm run test:redis / test:bullmq / test:email / test:processing /
 npm run test:scheduled / test:background-jobs / test:cache / test:operations
+npm run test:payroll-setup   # Phase 29.1 — hermetic (no Mongo, no Redis)
 node --test test/<file>.test.js   # single file
 # opt-in live (dev Redis + Mongo; isolated prefixes; NEVER FLUSH):
 npm run test:bullmq:live
@@ -251,7 +261,24 @@ Frontend first (node_modules may be missing).
   phase handoff at the end.
 - Preferred closing phrase: "pit rules locked in 🏁".
 
-## 9. Current state (2026-08-29)
+## 9. Current state (2026-08-31)
+
+- Phase 29.1 closed: Company Payroll Setup (backend model/service/routes/
+  validator + 33 hermetic tests + frontend wizard & dashboard + docs).
+  One current config per company (partial unique index on `companyId` where
+  `isCurrent: true`); bank account encrypted (`FIELD_ENCRYPTION_KEY`) +
+  `select: false` + masked-only API; `SYSTEM_PERMISSION_VERSION` 14 with the
+  new `PAYROLL_SETUP_READ/_UPDATE/_ACTIVATE` permissions (ACTIVATE reserved
+  for Company Admin); cache key
+  `crewly:cache:company:<id>:payroll-setup:v1:current` via the existing
+  Phase 28.7 service; audit via `recordAudit`; activation notification via
+  the existing `notifySmart` seam (no new BullMQ queue or job name).
+- Still OPEN (dev machine): opt-in live ladders `test:ops:live` /
+  `test:bullmq:live`, and a first real `ops:load-check` run.
+- Phase 29.1 tests are hermetic — they run without MongoDB/Redis, so they are
+  green in a clean sandbox; the other 24 suites still need local MongoDB.
+
+## 9b. Previous state (2026-08-29)
 
 - Branch `arena/01a04272-hrms-crewly`, HEAD `a869ad9` (Phase 28.9),
   pushed; latest `main` = `fc34a35` (Phase 27 notes). Working tree clean.

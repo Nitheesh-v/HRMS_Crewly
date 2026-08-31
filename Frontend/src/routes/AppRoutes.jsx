@@ -48,6 +48,7 @@ import ProjectDetailPage from "../pages/projects/ProjectDetailPage.jsx";
 import TasksPage from "../pages/tasks/TasksPage.jsx";
 
 import PayrollPage from "../pages/payroll/PayrollPage.jsx";
+import PayrollSetupPage from "../pages/payroll/PayrollSetupPage.jsx";
 import MyPayslipsPage from "../pages/payroll/MyPayslipsPage.jsx";
 
 import RecruitmentPage from "../pages/recruitment/RecruitmentPage.jsx";
@@ -346,6 +347,16 @@ const AppRoutes = () => (
         element={
           <RequireRole roles={HR}>
             <PayrollPage />
+          </RequireRole>
+        }
+      />
+
+      {/* Phase 29.1 — Company Payroll Setup */}
+      <Route
+        path="payroll/setup"
+        element={
+          <RequireRole roles={HR}>
+            <PayrollSetupPage />
           </RequireRole>
         }
       />

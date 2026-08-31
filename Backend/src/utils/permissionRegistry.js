@@ -7,6 +7,7 @@ export const RESOURCES = [
   "ATTENDANCE",
   "LEAVE",
   "PAYROLL",
+  "PAYROLL_SETUP",
   "PAYSLIP",
   "RECRUITMENT",
   "RECRUITMENT_ANALYTICS",
@@ -86,6 +87,11 @@ export const DEFAULT_PERMISSIONS = [
   ...actions("LEAVE", ["READ", "CREATE", "UPDATE", "APPROVE", "REJECT"]),
 
   ...actions("PAYROLL", ["READ", "CREATE", "UPDATE", "APPROVE", "MANAGE"]),
+
+  // Phase 29.1 — Company Payroll Setup (configuration layer).
+  // ACTIVATE is deliberately separate from UPDATE: activation is a
+  // high-impact, audited transition (least privilege).
+  ...actions("PAYROLL_SETUP", ["READ", "UPDATE", "ACTIVATE"]),
 
   ...actions("RECRUITMENT", ["READ", "CREATE", "UPDATE", "DELETE", "APPROVE"]),
 
@@ -286,6 +292,11 @@ export const DEFAULT_ROLE_MATRIX = {
     "PAYROLL_UPDATE",
     "PAYROLL_APPROVE",
     "PAYROLL_MANAGE",
+
+    // HR Manager may read and edit the company payroll setup, but only a
+    // Company Admin may ACTIVATE it (§3 least privilege).
+    "PAYROLL_SETUP_READ",
+    "PAYROLL_SETUP_UPDATE",
 
     "USER_READ",
     "USER_CREATE",
