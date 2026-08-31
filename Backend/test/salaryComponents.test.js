@@ -714,3 +714,81 @@ test('routes are permission-gated and mounted under /api/payroll/components', as
   assert.match(routes, /requireFeature\('payroll'\)/);
   assert.ok(!/companyId/.test(routes.match(/router\.[a-z]+\([^)]*\)/g)?.join('') || ''), 'no companyId in paths');
 });
+
+// ── assigning company roles from the Users page ─────────────────────────────
+
+test('built-in role assignment keeps the old rules exactly', async () => {
+  const { classifyRoleAssignment } = await import('../src/utils/roleAssignmentRules.js');
+
+  // unchanged behaviour
+  assert.equal(
+    classifyRoleAssignment({ code: 'EMPLOYEE', actorRole: 'HR_MANAGER' }).allowed,
+    true,
+  );
+  assert.equal(
+    classifyRoleAssignment({ code: 'MANAGER', actorRole: 'HR_MANAGER' }).allowed,
+    false,
+    'HR Manager still cannot create a Manager',
+  );
+  assert.equal(
+    classifyRoleAssignment({ code: 'HR_MANAGER', actorRole: 'EMPLOYEE' }).allowed,
+    false,
+  );
+  assert.equal(
+    classifyRoleAssignment({ code: 'COMPANY_ADMIN', actorRole: 'COMPANY_ADMIN' }).allowed,
+    false,
+    'nobody self-serves a Company Admin',
+  );
+});
+
+test('a company role created from a template is assignable by role administrators', async () => {
+  const { classifyRoleAssignment } = await import('../src/utils/roleAssignmentRules.js');
+
+  const companyRoles = ['PAYROLL_ADMIN', 'HR_HEAD', 'PAYROLL_EXECUTIVE'];
+
+  // the whole point of the change: this used to be rejected as "Invalid role"
+  const admin = classifyRoleAssignment({
+    code: 'payroll_admin', // case- and separator-insensitive
+    companyRoleCodes: companyRoles,
+    actorRole: 'COMPANY_ADMIN',
+  });
+  assert.equal(admin.allowed, true);
+  assert.equal(admin.kind, 'COMPANY');
+
+  assert.equal(
+    classifyRoleAssignment({
+      code: 'HR_HEAD',
+      companyRoleCodes: companyRoles,
+      actorRole: 'HR_MANAGER',
+    }).allowed,
+    true,
+  );
+
+  // Managers and Team Leads are not role administrators
+  assert.equal(
+    classifyRoleAssignment({
+      code: 'HR_HEAD',
+      companyRoleCodes: companyRoles,
+      actorRole: 'MANAGER',
+    }).allowed,
+    false,
+  );
+  assert.equal(
+    classifyRoleAssignment({ code: 'HR_HEAD', companyRoleCodes: companyRoles, actorRole: 'EMPLOYEE' })
+      .allowed,
+    false,
+  );
+});
+
+test('a role that does not exist on this company is never assignable', async () => {
+  const { classifyRoleAssignment } = await import('../src/utils/roleAssignmentRules.js');
+
+  const verdict = classifyRoleAssignment({
+    code: 'PAYROLL_ADMIN',
+    companyRoleCodes: ['HR_HEAD'], // belongs to another company
+    actorRole: 'COMPANY_ADMIN',
+  });
+
+  assert.equal(verdict.allowed, false, 'tenant isolation: another company role is unknown here');
+  assert.equal(verdict.kind, 'NONE');
+});

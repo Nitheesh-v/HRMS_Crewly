@@ -48,6 +48,7 @@ import {
   Users,
   Wallet,
   Layers,
+  KeyRound,
 } from "lucide-react";
 
 const NAV_BY_ROLE = {
@@ -88,6 +89,7 @@ const NAV_BY_ROLE = {
       label: "💳 Subscription",
     },
     { to: "/app/governance", label: "🛡️ Audit & Roles" },
+    { to: "/app/roles-permissions", label: "Roles & Permissions" },
     { to: "/app/profile", label: "👤 My Profile" },
     { to: "/app/notifications", label: "🔔 Notifications" },
     { to: "/app/notification-settings", label: "⚙️ Notify Settings" },
@@ -339,7 +341,7 @@ const NAV_ICON_BY_PATH = {
     ShieldCheck,
 
   "/app/roles-permissions":
-    ShieldCheck,
+    KeyRound,
 
   "/app/profile":
     UserCircle,

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import api from '../../services/api';
 import Modal from '../../components/Modal';
 import useAuth from '../../hooks/useAuth';
+import permissionService from '../../services/permissionService.js';
 import { ROLES, CREATION_RIGHTS, ROLE_STYLES, roleLabel } from '../../utils/roles';
 
 
@@ -18,8 +19,25 @@ export default function UsersPage() {
   const { user: me } = useAuth();
   // Auth stores the user as { id, name, email, role } — no _id!
   const myId = String(me?._id || me?.id || '');
+  // Phase 29.1 company roles (HR Head, Payroll Admin, Payroll Executive, ...)
+  // created from templates. They are real roles, so they belong in the
+  // dropdown — otherwise you can create the role but never assign it here.
+  const [companyRoles, setCompanyRoles] = useState([]);
+
   const creatable = CREATION_RIGHTS[me?.role] || [];
   const manages = (role) => creatable.includes(role);
+
+  // Built-in roles keep their labels; company roles show the name the
+  // administrator typed when creating them.
+  const roleOptions = [
+    ...creatable.map((code) => ({ code, label: roleLabel(code) })),
+    ...companyRoles.map((role) => ({ code: role.code, label: role.name || role.code })),
+  ];
+  const ROLE_ASSIGNERS = [ROLES.COMPANY_ADMIN, ROLES.HR_MANAGER];
+  const canAssignCompanyRoles = ROLE_ASSIGNERS.includes(me?.role);
+  const assignable = canAssignCompanyRoles ? roleOptions : creatable.map((code) => ({ code, label: roleLabel(code) }));
+  const isKnownRole = (role) =>
+    assignable.some((option) => option.code === role) || role === me?.role;
 
   const [users, setUsers] = useState([]);
   const [options, setOptions] = useState([]);       // all users, for "Reports To" select
@@ -87,7 +105,7 @@ export default function UsersPage() {
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
   const openCreate = () => {
-    setForm({ ...EMPTY_FORM, role: creatable[creatable.length - 1] || 'EMPLOYEE' });
+    setForm({ ...EMPTY_FORM, role: assignable[assignable.length - 1]?.code || 'EMPLOYEE' });
     setModal({ open: true, mode: 'create', user: null });
   };
 
@@ -161,7 +179,9 @@ export default function UsersPage() {
   };
 
   const editingSelf = modal.user && String(modal.user._id) === myId;
-  const roleEditable = modal.mode === 'create' || (!editingSelf && manages(modal.user?.role));
+  const roleEditable =
+    modal.mode === 'create' ||
+    (!editingSelf && (manages(modal.user?.role) || (canAssignCompanyRoles && isKnownRole(modal.user?.role))));
 
   return (
     <div className="p-6 space-y-6">
@@ -191,9 +211,12 @@ export default function UsersPage() {
         />
         <select className="input" value={filters.role} onChange={(e) => { setPage(1); setFilters((f) => ({ ...f, role: e.target.value })); }}>
           <option value="">All roles</option>
-          {[ROLES.HR_MANAGER, ROLES.MANAGER, ROLES.TEAM_LEAD, ROLES.EMPLOYEE].map((r) => (
+          {[...[ROLES.HR_MANAGER, ROLES.MANAGER, ROLES.TEAM_LEAD, ROLES.EMPLOYEE].map((r) => (
             <option key={r} value={r}>{roleLabel(r)}</option>
-          ))}
+          )),
+          ...companyRoles.map((role) => (
+            <option key={role.code} value={role.code}>{role.name || roleLabel(role.code)}</option>
+          ))]}
         </select>
         <select className="input" value={filters.department} onChange={(e) => { setPage(1); setFilters((f) => ({ ...f, department: e.target.value })); }}>
           <option value="">All departments</option>
@@ -289,7 +312,7 @@ export default function UsersPage() {
                   <label className="label">Role *</label>
                   {roleEditable ? (
                     <select className="input" value={form.role} onChange={set('role')}>
-                      {creatable.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
+                      {assignable.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
                     </select>
                   ) : (
                     <input className="input opacity-60" value={roleLabel(form.role)} disabled />

@@ -16,7 +16,9 @@ import { CREATION_RIGHTS } from '../utils/constants.js';
 import { sendMail, welcomeEmail } from '../utils/mailer.js';
 import { notifyUser } from '../utils/notify.js';
 import Subscription from '../models/Subscription.js';
+import CompanyRole from '../models/CompanyRole.js';
 import { scopedUserFilter } from '../utils/scope.js';
+import { classifyRoleAssignment, normalizeRoleCode } from '../utils/roleAssignmentRules.js';
 
 
 // Payroll/statutory fields allowed through create/update
@@ -27,6 +29,26 @@ const DETAIL_FIELDS = [
 
 const canManage = (actorRole, targetRole) =>
   (CREATION_RIGHTS[actorRole] || []).includes(targetRole);
+
+// Phase 29.1 company roles (HR Head, Payroll Admin, ...) are assignable from
+// the Users page. Resolve the role inside THIS company and check the actor.
+const resolveAssignment = async ({ companyId, code, actorRole }) => {
+  const wanted = normalizeRoleCode(code);
+  const roles = await CompanyRole.find({ companyId }).select('_id code name').lean();
+  const verdict = classifyRoleAssignment({
+    code: wanted,
+    companyRoleCodes: roles.map((role) => role.code),
+    actorRole,
+  });
+
+  if (!verdict.allowed) return { verdict, role: null };
+  if (verdict.kind !== 'COMPANY') return { verdict, role: null };
+
+  return {
+    verdict,
+    role: roles.find((role) => normalizeRoleCode(role.code) === wanted) || null,
+  };
+};
 
 // '' clears a field; date fields become null, text fields become ''
 const pickDetails = (body) => {
@@ -96,7 +118,13 @@ export const createUser = asyncHandler(async (req, res) => {
   // Data from frontend - requests from frontend
   const { name, email, password, role, department, reportingTo } = req.body;
 
-  if (!canManage(req.user.role, role)) {
+  // Built-in roles keep the old rule; company roles (HR Head, Payroll Admin,
+  // ... from Phase 29.1 templates) are allowed for role administrators.
+  const assignment = canManage(req.user.role, role)
+    ? { verdict: { allowed: true, kind: 'SYSTEM' }, role: null }
+    : await resolveAssignment({ companyId: req.companyId, code: role, actorRole: req.user.role });
+
+  if (!assignment.verdict.allowed) {
     throw ApiError.forbidden(`Your role cannot create a ${role}`);
   }
 
@@ -126,6 +154,9 @@ export const createUser = asyncHandler(async (req, res) => {
   const user = await User.create({
     name, email, password, role,
     companyId: req.companyId,
+    // A company role must also be linked, otherwise permission resolution
+    // keeps treating the user as an EMPLOYEE.
+    roleRef: assignment.role?._id || null,
     department: department || null,
     reportingTo: reportingTo || null,
     ...pickDetails(req.body),
@@ -154,16 +185,39 @@ export const updateUser = asyncHandler(async (req, res) => {
 
   // Data from frontend - requests from frontend
   const isSelf = String(target._id) === String(req.user._id);
-  if (!isSelf && !canManage(req.user.role, target.role)) {
+
+  // Built-in roles keep the old rule. A user on a Phase 29.1 company role
+  // (Payroll Admin, HR Head, ...) must stay editable by role administrators,
+  // otherwise assigning such a role would lock the user record forever.
+  const mayEditTarget =
+    canManage(req.user.role, target.role) ||
+    (await resolveAssignment({
+      companyId: req.companyId,
+      code: target.role,
+      actorRole: req.user.role,
+    })).verdict.allowed;
+
+  if (!isSelf && !mayEditTarget) {
     throw ApiError.forbidden('You cannot edit this user');
   }
 
-  // Role change: never on yourself, and only into roles you may create
-  if (req.body.role && !isSelf) {
-    if (req.body.role !== target.role && !canManage(req.user.role, req.body.role)) {
-      throw ApiError.forbidden('Your role cannot assign this role');
+  // Role change: never on yourself, and only into roles you may assign.
+  // Company roles created from Phase 29.1 templates are assignable too.
+  if (req.body.role && !isSelf && req.body.role !== target.role) {
+    const assignment = canManage(req.user.role, req.body.role)
+      ? { verdict: { allowed: true, kind: 'SYSTEM' }, role: null }
+      : await resolveAssignment({
+          companyId: req.companyId,
+          code: req.body.role,
+          actorRole: req.user.role,
+        });
+
+    if (!assignment.verdict.allowed) {
+      throw ApiError.forbidden(assignment.verdict.reason || 'Your role cannot assign this role');
     }
+
     target.role = req.body.role;
+    target.roleRef = assignment.role?._id || null;
   }
 
   if (req.body.name !== undefined) target.name = req.body.name;
