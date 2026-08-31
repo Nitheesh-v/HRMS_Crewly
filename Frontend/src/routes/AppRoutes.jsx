@@ -49,6 +49,7 @@ import TasksPage from "../pages/tasks/TasksPage.jsx";
 
 import PayrollPage from "../pages/payroll/PayrollPage.jsx";
 import PayrollSetupPage from "../pages/payroll/PayrollSetupPage.jsx";
+import SalaryComponentsPage from "../pages/payroll/SalaryComponentsPage.jsx";
 import MyPayslipsPage from "../pages/payroll/MyPayslipsPage.jsx";
 
 import RecruitmentPage from "../pages/recruitment/RecruitmentPage.jsx";
@@ -351,15 +352,14 @@ const AppRoutes = () => (
         }
       />
 
-      {/* Phase 29.1 — Company Payroll Setup */}
-      <Route
-        path="payroll/setup"
-        element={
-          <RequireRole roles={HR}>
-            <PayrollSetupPage />
-          </RequireRole>
-        }
-      />
+      {/* Phase 29.1 — Company Payroll Setup.
+          Access follows PERMISSIONS (PAYROLL_SETUP_*), not the Company Admin
+          role: the page shows its own permission message and the backend
+          enforces the same rule. A role-name gate here would lock out every
+          delegated payroll role the company creates. */}
+      <Route path="payroll/setup" element={<PayrollSetupPage />} />
+      {/* Phase 29.2 — Salary Components (permission-gated inside the page) */}
+      <Route path="payroll/components" element={<SalaryComponentsPage />} />
 
       <Route
         path="payslips"

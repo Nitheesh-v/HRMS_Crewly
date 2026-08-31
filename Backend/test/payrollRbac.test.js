@@ -155,9 +155,11 @@ test('every payroll permission is gated by the payroll subscription feature', as
   }
 });
 
-test('permission version was bumped for the extended catalogue', async () => {
+test('permission version is at least the current payroll baseline', async () => {
   const source = await readFile(new URL('../src/utils/permissionService.js', import.meta.url), 'utf8');
-  assert.match(source, /SYSTEM_PERMISSION_VERSION\s*=\s*15/);
+  const version = Number(source.match(/SYSTEM_PERMISSION_VERSION\s*=\s*(\d+)/)?.[1]);
+  // 14 = 29.1 payroll setup, 15 = 29.1 RBAC update, 16 = 29.2 components.
+  assert.ok(version >= 15, `expected migration version >= 15, got ${version}`);
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

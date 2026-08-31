@@ -14,6 +14,7 @@ import projectRoutes from "./projectRoutes.js";
 import taskRoutes from "./taskRoutes.js";
 import payrollRoutes from "./payrollRoutes.js";
 import payrollSetupRoutes from "./payrollSetupRoutes.js";
+import salaryComponentRoutes from "./salaryComponentRoutes.js";
 import recruitmentRoutes from "./recruitmentRoutes.js";
 import exitRoutes from "./exitRoutes.js";
 import billingRoutes from "./billingRoutes.js";
@@ -115,6 +116,7 @@ router.use("/payroll", payrollRoutes);
 
 // Phase 29.1 — Company Payroll Setup (wizard + settings dashboard)
 router.use("/payroll/setup", payrollSetupRoutes);
+router.use("/payroll/components", salaryComponentRoutes);
 
 router.use("/recruitment", recruitmentRoutes);
 

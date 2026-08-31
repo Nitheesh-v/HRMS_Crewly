@@ -47,6 +47,7 @@ import {
   UserCircle,
   Users,
   Wallet,
+  Layers,
 } from "lucide-react";
 
 const NAV_BY_ROLE = {
@@ -63,7 +64,6 @@ const NAV_BY_ROLE = {
     { to: "/app/leaves", label: "🌴 My Leaves" },
     { to: "/app/leaves/approvals", label: "✅ Leave Management" },
     { to: "/app/payroll", label: "💰 Payroll" },
-    { to: "/app/payroll/setup", label: "⚙ Payroll Setup" },
     { to: "/app/payslips", label: "🧾 My Payslips" },
     { to: "/app/holidays", label: "🎉 Holidays" },
     { to: "/app/shifts", label: "🔀 Shifts" },
@@ -108,7 +108,6 @@ const NAV_BY_ROLE = {
     { to: "/app/leaves", label: "🌴 My Leaves" },
     { to: "/app/leaves/approvals", label: "✅ Leave Management" },
     { to: "/app/payroll", label: "💰 Payroll" },
-    { to: "/app/payroll/setup", label: "⚙ Payroll Setup" },
     { to: "/app/payslips", label: "🧾 My Payslips" },
     { to: "/app/holidays", label: "🎉 Holidays" },
     { to: "/app/shifts", label: "🔀 Shifts" },
@@ -260,6 +259,9 @@ const NAV_ICON_BY_PATH = {
 
   "/app/payroll":
     Wallet,
+
+  "/app/payroll/components":
+    Layers,
 
   "/app/payslips":
     ReceiptText,
@@ -428,7 +430,7 @@ const getNavIcon = (item) =>
 
 const AppLayout = () => {
   const { user, secureLogout } = useAuth();
-  const { hasPermission } = usePermission();
+  const { hasPermission, hasAnyPermission } = usePermission();
   const dispatch = useDispatch();
   const [loggingOut, setLoggingOut] = useState(false);
   const navigate = useNavigate();
@@ -551,8 +553,26 @@ const AppLayout = () => {
       : []),
   ];
 
+  // Phase 29.1 / 29.2 — payroll navigation follows PERMISSIONS, not role
+  // names. A Payroll Admin, HR Head or Finance Manager created as a company
+  // role sees these entries because of the permission it holds, which is the
+  // whole point of "Company Admin controls who receives payroll permissions".
+  const payrollMenu = [
+    ...(hasAnyPermission(['PAYROLL_SETUP_READ', 'PAYROLL_SETUP_UPDATE', 'PAYROLL_SETUP_ACTIVATE'])
+      ? [{ to: '/app/payroll/setup', label: 'Payroll Setup' }]
+      : []),
+    ...(hasAnyPermission([
+      'SALARY_COMPONENT_READ',
+      'SALARY_COMPONENT_MANAGE',
+      'SALARY_COMPONENT_ACTIVATE',
+    ])
+      ? [{ to: '/app/payroll/components', label: 'Salary Components' }]
+      : []),
+  ];
+
   const menu = [
     ...baseMenu,
+    ...payrollMenu,
     ...recruitmentDashboardMenu,
     ...candidateMenu,
     ...offerMenu,

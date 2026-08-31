@@ -301,6 +301,17 @@ Frontend first (node_modules may be missing).
   the last 4 digits and PAN/UAN/ESI are written as [REDACTED].
   SYSTEM_PERMISSION_VERSION is 15. Only PAYROLL_SETUP_* is enforced today;
   the rest of the catalogue is declared for the later payroll phases.
+- Phase 29.2 = Salary Components: pure rules in
+  services/payroll/salaryComponentRules.js, tenant model
+  models/SalaryComponent.js (unique {companyId, code}, company-first indexes),
+  injectable service (cache + audit + model injected so tests stay hermetic),
+  permissions SALARY_COMPONENT_{READ,MANAGE,ACTIVATE} (SYSTEM_PERMISSION_VERSION
+  is 16), Redis fail-open cache 'payroll-components', versioning that writes a
+  NEW version when a component has history, deactivation instead of deletion,
+  controlled formula operation list (no eval), and defaults that follow the
+  29.1 statutory config (PF off => no PF component).
+  Payroll nav + /app/payroll/setup and /app/payroll/components are
+  PERMISSION-driven, not gated on the COMPANY_ADMIN/HR_MANAGER role names.
 - Phase 29.1 closed: Company Payroll Setup (backend model/service/routes/
   validator + 33 hermetic tests + frontend wizard & dashboard + docs).
   One current config per company (partial unique index on `companyId` where
