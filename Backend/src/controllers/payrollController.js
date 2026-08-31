@@ -11,6 +11,7 @@
 // ─────────────────────────────────────────────────────────────
 import Payroll from '../models/Payroll.js';
 import { notifySmart } from '../utils/notifyPref.js';
+import { canReadPayslip } from '../services/payroll/payrollAccessService.js';
 import SalaryStructure from '../models/SalaryStructure.js';
 import User from '../models/User.js';
 import Attendance from '../models/Attendance.js';
@@ -18,10 +19,8 @@ import Leave from '../models/Leave.js';
 import ApiError from '../utils/ApiError.js';
 import ApiResponse from '../utils/ApiResponse.js';
 import asyncHandler from '../utils/asyncHandler.js';
-import { ROLES } from '../utils/constants.js';
 import { streamPayslipPdf, MONTH_FULL } from '../utils/payslipPdf.js';
 
-const HR = [ROLES.COMPANY_ADMIN, ROLES.HR_MANAGER];
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const LEAVE_QUOTA = { CASUAL: 12, SICK: 6, EARNED: 12 }; // mirrors LEAVE_TYPES
 
@@ -202,8 +201,16 @@ export const downloadPayslip = asyncHandler(async (req, res) => {
     .populate({ path: 'user', select: '-password', populate: { path: 'department', select: 'name' } });
   if (!payroll) throw ApiError.notFound('Payroll record not found');
 
-  const isOwner = String(payroll.user._id) === String(req.user._id);
-  if (!isOwner && !HR.includes(req.user.role)) {
+  // Phase 29.1 RBAC update — tenant → role → permission → scope.
+  // Self-service, the legacy HR allow-list and delegated payroll roles
+  // (HR Head / Payroll Admin / Finance …) are all honoured; nothing that
+  // worked before this update stops working.
+  const allowed = await canReadPayslip({
+    actor: req.user,
+    subject: { _id: payroll.user._id, companyId: req.companyId, department: payroll.user.department },
+  });
+
+  if (!allowed) {
     throw ApiError.forbidden('You can only view your own payslip');
   }
 

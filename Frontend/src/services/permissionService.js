@@ -27,6 +27,11 @@ const permissionService = {
       .get(`/roles/${roleId}`)
       .then(unwrap),
 
+  roleTemplates: () =>
+    api
+      .get('/roles/templates')
+      .then(unwrap),
+
   createRole: (body) =>
     api
       .post('/roles', body)

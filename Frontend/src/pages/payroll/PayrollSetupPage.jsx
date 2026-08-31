@@ -98,7 +98,11 @@ const statusBadgeClass = (status) => {
 };
 
 const PayrollSetupPage = () => {
-  const { loading: permsLoading, hasPermission } = usePermission();
+  const {
+    loading: permsLoading,
+    hasPermission,
+    hasAnyPermission,
+  } = usePermission();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -112,10 +116,18 @@ const PayrollSetupPage = () => {
   const [confirmActivate, setConfirmActivate] = useState(false);
   const [suspendReason, setSuspendReason] = useState('');
   const [confirmSuspend, setConfirmSuspend] = useState(false);
+  const [accessDenied, setAccessDenied] = useState(false);
 
+  const canView = hasAnyPermission([
+    'PAYROLL_SETUP_READ',
+    'PAYROLL_SETUP_UPDATE',
+    'PAYROLL_SETUP_ACTIVATE',
+  ]);
   const canUpdate = hasPermission('PAYROLL_SETUP_UPDATE');
   const canActivate = hasPermission('PAYROLL_SETUP_ACTIVATE');
   const canEdit = canUpdate && !permsLoading;
+  // §8 — authorization is decided by permission, never by role name.
+  const noAccess = !permsLoading && !canView;
 
   const saveTimer = useRef(null);
 
@@ -169,7 +181,12 @@ const PayrollSetupPage = () => {
       setDirty(false);
       setError('');
     } catch (err) {
-      setError(err.message || 'Unable to load payroll setup');
+      if (err?.status === 403 || err?.code === 'PERMISSION_DENIED') {
+        setAccessDenied(true);
+        setError('');
+      } else {
+        setError(err.message || 'Unable to load payroll setup');
+      }
     } finally {
       setLoading(false);
     }
@@ -304,6 +321,23 @@ const PayrollSetupPage = () => {
   // Render
   // ─────────────────────────────────────────────────────────────
 
+  // §8 — unauthorized users get a clear message and no payroll data.
+  // The backend enforces the same rule; hiding buttons is not the control.
+  if (noAccess || accessDenied) {
+    return (
+      <div className="space-y-5">
+        <h1 className="text-2xl font-bold">Payroll Setup</h1>
+        <div className="card space-y-2">
+          <h2 className="text-lg font-semibold">Payroll access required</h2>
+          <p className="text-sm text-crewly-dim">
+            You don&apos;t have permission to manage payroll settings. Contact your
+            Company Admin or Payroll Administrator.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return <div className="card text-crewly-dim">Loading payroll setup…</div>;
   }
@@ -356,7 +390,8 @@ const PayrollSetupPage = () => {
             </button>
           ) : (
             <p className="text-sm text-crewly-dim">
-              You do not have permission to configure payroll. Contact your Company Admin.
+              You don&apos;t have permission to manage payroll settings. Contact your
+              Company Admin or Payroll Administrator.
             </p>
           )}
         </div>

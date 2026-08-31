@@ -14,6 +14,99 @@ Foundation / configuration layer of the Payroll module.
 
 ---
 
+## RBAC update — payroll is run by HR / Payroll / Finance, not by the Company Admin
+
+> Added after the first release of 29.1. Payroll setup behaviour is unchanged;
+> what changed is **who may hold payroll permissions and how their data reach
+> is limited**.
+
+### What already existed (reused, not replaced)
+
+| Piece | Where |
+|---|---|
+| `RESOURCE_ACTION` permission registry | `utils/permissionRegistry.js` |
+| Per-company roles (system + custom) | `models/CompanyRole.js` |
+| Permission resolution + plan gating | `utils/permissionService.js` |
+| Role/permission admin API + audit | `controllers/rolePermissionController.js` |
+| Reporting line / team subtree | `User.reportingTo` + `utils/orgHelpers.js` |
+| Tenant isolation | `req.companyId` + `tenantContext` |
+
+### What was added
+
+1. **Granular payroll permission catalogue** (39 permissions, 10 resources):
+   Setup · Salary Components · Salary Structures · Employee Salary · Salary
+   Revision · Payroll Run · Payment · Payslips · Statutory · Reports.
+   New action verbs registered: `ACTIVATE, PREPARE, EXECUTE, RECALCULATE,
+   REVIEW, LOCK, REOPEN, ASSIGN, GENERATE, CONFIRM, RELEASE, RERELEASE,
+   MARK_PAID`. `SYSTEM_PERMISSION_VERSION` **14 → 15**; all new resources map
+   to the `payroll` subscription feature.
+   **Only `PAYROLL_SETUP_READ / _UPDATE / _ACTIVATE` are enforced today** —
+   the rest are declared so companies can configure roles now; each later
+   phase just adds `requirePermission(...)` to its routes.
+
+2. **Role templates (opt-in, never seeded)** — `utils/roleTemplates.js`:
+   `HR_HEAD`, `HR_EXECUTIVE`, `PAYROLL_ADMIN`, `PAYROLL_EXECUTIVE`,
+   `FINANCE_MANAGER`, `FINANCE_EXECUTIVE`. Each is a permission preset with a
+   default scope. Nothing is created for a company until an admin picks one in
+   **Roles & Permissions → ＋ Template**, which produces an ordinary
+   per-company role (`isSystemRole: false`) that stays fully editable.
+   Separation of duties is enforced inside the presets: no preset both
+   **executes** and **approves** a payroll run. `FINANCE_MANAGER` deliberately
+   concentrates approval + payment and **declares that exception** with a
+   reason, so the UI can warn instead of hiding it.
+
+3. **Organizational scope** — `utils/payrollScope.js` (pure):
+   `SELF · TEAM · DEPARTMENT · ASSIGNED_DEPARTMENTS · COMPANY`.
+   Resolution order: per-permission override → role-level default → role-key
+   default → `SELF` (least privilege). Team reach reuses the existing
+   `orgHelpers.getSubtreeIds` reporting subtree. `canAccessSubject()` refuses
+   cross-tenant access first, before scope is even considered.
+   Scope overrides are stored on `CompanyRole.payrollScope` and
+   `CompanyRole.permissionScopes`.
+
+4. **Enforced today where an employee is the subject** —
+   `services/payroll/payrollAccessService.js` applies
+   **tenant → role → permission → scope** to payslip access. It is additive:
+   the legacy Company Admin / HR Manager allow-list still works, so no
+   existing user loses access.
+
+5. **Audit** — `utils/payrollPermissionAudit.js` writes
+   `Payroll permission granted` / `Payroll permission revoked` rows with the
+   previous and new permission state, the role, the actor and the tenant —
+   on top of the existing `ROLE_PERMISSIONS_UPDATED` row. Nothing is written
+   when no payroll permission changed. Auditing never blocks role admin.
+
+### Default payroll posture
+
+| Role | Payroll Setup | Run / prepare | Approve | Payment | Payslips | Scope |
+|---|:--:|:--:|:--:|:--:|:--:|:--:|
+| Company Admin | ✅ all | ✅ | ✅ | ✅ | ✅ | COMPANY |
+| HR Manager | read + edit | ✅ | ❌ | ❌ | ❌ | COMPANY |
+| HR Head *(template)* | read | review | ✅ | ❌ | — | COMPANY |
+| HR Executive *(template)* | — | prepare | ❌ | ❌ | — | ASSIGNED_DEPARTMENTS |
+| Payroll Admin *(template)* | read + edit | ✅ run/lock | ❌ | generate file | ✅ release | COMPANY |
+| Payroll Executive *(template)* | — | ✅ run | ❌ | ❌ | generate | COMPANY |
+| Finance Manager *(template)* | — | review | ✅ | ✅ confirm + mark paid | — | COMPANY |
+| Finance Executive *(template)* | — | read | ❌ | read/download | — | COMPANY |
+| Manager / Team Lead | ❌ | ❌ | ❌ | ❌ | ❌ | TEAM (no payroll perms) |
+| Employee | ❌ | ❌ | ❌ | ❌ | own only | SELF |
+
+The Company Admin keeps every payroll permission **by default** — but payroll
+operations no longer *depend* on that role: any of the above can be delegated.
+
+### Notes / limits
+
+- Creating a **custom role** requires the `advancedRbac` plan feature
+  (Enterprise). Editing permissions of an existing role works on every plan,
+  so a Company Admin can grant `PAYROLL_SETUP_ACTIVATE` to **HR Manager**
+  without any plan upgrade.
+- Manager / Team Lead scope is `TEAM`, but they hold no payroll permissions by
+  default; grant one and the team scope applies automatically.
+- Nothing in this update implements salary components, structures, payroll
+  runs, payslip generation, bank files or statutory calculations.
+
+---
+
 ## Purpose
 
 Every Crewly company must configure its payroll environment before payroll can
@@ -234,6 +327,11 @@ existing atomic `$addToSet` migration (custom permissions preserved).
 | Manager / Team Lead / Employee | — | — | — |
 | Super Admin | platform only, no tenant bypass | | |
 
+These routes check **permissions, not role names** — grant
+`PAYROLL_SETUP_ACTIVATE` to any role (or create a Payroll Admin role from a
+template) and that role can activate. See the **RBAC update** section at the
+top of this document for the full payroll permission model.
+
 Payroll setup is additionally gated by the `payroll` subscription feature
 (`requireFeature('payroll')` + the `PAYROLL_SETUP → payroll` plan mapping).
 The free plan has `payroll: false`.
@@ -327,8 +425,14 @@ History is readable through the existing `/api/audit` surface
 
 ## Testing
 
-`npm run test:payroll-setup` → **33 hermetic tests** (no MongoDB, no Redis,
-no network). Also included in `npm run test:all`.
+```
+npm run test:payroll        # both payroll suites (hermetic)
+npm run test:payroll-setup  # 33 tests — company payroll setup
+npm run test:payroll-rbac   # 22 tests — permissions, templates, scope, audit
+```
+
+**55 hermetic tests** (no MongoDB, no Redis, no network). Both are included in
+`npm run test:all`.
 
 Coverage: PAN/TAN/GST/CIN/IFSC/account/currency/prefix validation · conditional
 statutory requirements · cycle/payment/FY/weekend/LOP/overtime policies ·

@@ -874,9 +874,12 @@ test('payroll setup permissions exist and are assigned by least privilege', () =
   }
 });
 
-test('the permission migration version was bumped for the new permissions', async () => {
+test('the permission migration version is at least the Phase 29.1 baseline', async () => {
   const source = await readFile(new URL('../src/utils/permissionService.js', import.meta.url), 'utf8');
-  assert.match(source, /SYSTEM_PERMISSION_VERSION\s*=\s*14/);
+  const version = Number(source.match(/SYSTEM_PERMISSION_VERSION\s*=\s*(\d+)/)?.[1]);
+  // 14 = Phase 29.1 payroll setup permissions,
+  // 15 = Phase 29.1 RBAC update (granular payroll catalogue).
+  assert.ok(version >= 14, `expected migration version >= 14, got ${version}`);
 });
 
 test('payroll setup is gated behind the payroll subscription feature', async () => {

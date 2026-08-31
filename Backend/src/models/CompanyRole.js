@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 
+import { PAYROLL_SCOPE_LIST } from '../utils/payrollScope.js';
+
 export const SYSTEM_COMPANY_ROLES = [
   'COMPANY_ADMIN',
   'HR_MANAGER',
@@ -42,6 +44,31 @@ const companyRoleSchema = new mongoose.Schema(
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Permission',
+      },
+    ],
+
+    // Phase 29.1 RBAC update — organizational scope.
+    // `payrollScope` is the role's default data reach for payroll
+    // (empty = derive from the role key). `permissionScopes` narrows or
+    // widens that per permission, e.g. EMPLOYEE_SALARY_READ → OWN TEAM.
+    payrollScope: {
+      type: String,
+      enum: ['', ...PAYROLL_SCOPE_LIST],
+      default: '',
+    },
+    permissionScopes: [
+      {
+        _id: false,
+        permission: {
+          type: String,
+          trim: true,
+          uppercase: true,
+        },
+        scope: {
+          type: String,
+          enum: PAYROLL_SCOPE_LIST,
+          default: 'COMPANY',
+        },
       },
     ],
 

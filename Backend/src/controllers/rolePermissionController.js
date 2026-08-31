@@ -16,6 +16,13 @@ import {
 import {
   hasFeature,
 } from '../utils/subscriptionEngine.js';
+import {
+  findRoleTemplate,
+  serializeRoleTemplates,
+} from '../utils/roleTemplates.js';
+import {
+  payrollPermissionChangeAudit,
+} from '../utils/payrollPermissionAudit.js';
 
 const ok = (res, status, data, message) =>
   res.status(status).json({
@@ -253,6 +260,30 @@ export const listRoles = async (req, res) => {
 // Custom roles require Advanced RBAC entitlement.
 // ============================================================
 
+// ============================================================
+// GET /api/roles/templates
+// Phase 29.1 RBAC update — role templates a Company Admin may create.
+// Templates are DATA, never seeded: the company opts in explicitly.
+// ============================================================
+
+export const getRoleTemplates = async (req, res) => {
+  try {
+    return ok(
+      res,
+      200,
+      {
+        templates: serializeRoleTemplates(),
+        note:
+          'Templates are optional. Creating one produces an ordinary ' +
+          'company role that can be edited and assigned like any custom role.',
+      },
+      'Role templates'
+    );
+  } catch (error) {
+    return fail(res, 500, error.message);
+  }
+};
+
 export const createRole = async (req, res) => {
   try {
     const advancedRbac =
@@ -303,10 +334,17 @@ export const createRole = async (req, res) => {
       );
     }
 
+    // A template pre-fills the permission set; explicit permissions in the
+    // body are merged on top so the admin can still adjust before saving.
+    const template = findRoleTemplate(req.body.template);
+    const templatePermissions = template ? template.permissions : [];
+    const requested = [
+      ...(Array.isArray(req.body.permissions) ? req.body.permissions : []),
+      ...templatePermissions,
+    ];
+
     const permissions =
-      await resolvePermissions(
-        req.body.permissions || []
-      );
+      await resolvePermissions(requested);
 
     const unavailable =
       await validatePlanPermissions(
@@ -347,9 +385,25 @@ export const createRole = async (req, res) => {
 
         isSystemRole: false,
         isActive: true,
+        payrollScope: template
+          ? template.defaultScope
+          : '',
         createdBy:
           req.user._id,
       });
+
+    // Payroll permission grant/revoke is audited in payroll terms too,
+    // not only as a generic role change.
+    await payrollPermissionChangeAudit({
+      audit,
+      req,
+      targetId: role._id,
+      previousPermissions: [],
+      nextPermissions: permissions.map(
+        (permission) => permission.name
+      ),
+      roleName: role.name,
+    });
 
     invalidatePermissionCache({
       companyId:
@@ -840,6 +894,23 @@ export const updateRolePermissions = async (
             (permission) =>
               permission.name
           ),
+      },
+    });
+
+    // Payroll-specific audit: which payroll permissions were granted or
+    // revoked, on which role, by whom (§11).
+    await payrollPermissionChangeAudit({
+      audit,
+      req,
+      targetId: updatedRole._id,
+      previousPermissions: previous.permissions,
+      nextPermissions: permissions.map(
+        (permission) => permission.name
+      ),
+      roleName: updatedRole.name,
+      extraMetadata: {
+        roleCode: updatedRole.code,
+        isSystemRole: Boolean(updatedRole.isSystemRole),
       },
     });
 

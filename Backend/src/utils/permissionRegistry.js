@@ -8,6 +8,14 @@ export const RESOURCES = [
   "LEAVE",
   "PAYROLL",
   "PAYROLL_SETUP",
+  "SALARY_COMPONENT",
+  "SALARY_STRUCTURE",
+  "EMPLOYEE_SALARY",
+  "SALARY_REVISION",
+  "PAYROLL_RUN",
+  "PAYROLL_PAYMENT",
+  "PAYROLL_STATUTORY",
+  "PAYROLL_REPORT",
   "PAYSLIP",
   "RECRUITMENT",
   "RECRUITMENT_ANALYTICS",
@@ -57,6 +65,23 @@ export const ACTIONS = [
   "VERIFY",
   "READY",
   "CONVERT",
+
+  // Phase 29.1 — payroll setup activation (high-impact, audited)
+  "ACTIVATE",
+
+  // Phase 29.1 RBAC update — payroll operations verbs
+  "PREPARE",
+  "EXECUTE",
+  "RECALCULATE",
+  "REVIEW",
+  "LOCK",
+  "REOPEN",
+  "ASSIGN",
+  "GENERATE",
+  "CONFIRM",
+  "RELEASE",
+  "RERELEASE",
+  "MARK_PAID",
 ];
 
 const actions = (resource, actionList, scope = "ALL") =>
@@ -92,6 +117,43 @@ export const DEFAULT_PERMISSIONS = [
   // ACTIVATE is deliberately separate from UPDATE: activation is a
   // high-impact, audited transition (least privilege).
   ...actions("PAYROLL_SETUP", ["READ", "UPDATE", "ACTIVATE"]),
+
+  // ── Phase 29.1 RBAC update — payroll permission catalogue ────────
+  // Declared now so companies can configure HR / Payroll / Finance roles
+  // today; the later payroll phases only add requirePermission(...) to
+  // their routes. NOTHING below is enforced until its phase ships — see
+  // docs/PHASE_29_1_COMPANY_PAYROLL_SETUP.md §RBAC.
+
+  // Salary configuration (phase 33.2 / 33.3 / 33.4)
+  ...actions("SALARY_COMPONENT", ["READ", "MANAGE"]),
+  ...actions("SALARY_STRUCTURE", ["READ", "MANAGE", "ASSIGN"]),
+  ...actions("EMPLOYEE_SALARY", ["READ", "MANAGE"]),
+  ...actions("SALARY_REVISION", ["APPROVE"]),
+
+  // Payroll processing (phase 33.6 / 33.7)
+  ...actions("PAYROLL_RUN", [
+    "READ",
+    "PREPARE",
+    "EXECUTE",
+    "RECALCULATE",
+    "REVIEW",
+    "LOCK",
+    "REOPEN",
+    "APPROVE",
+    "REJECT",
+  ]),
+
+  // Payment (phase 33.9)
+  ...actions("PAYROLL_PAYMENT", ["GENERATE", "READ", "CONFIRM", "MARK_PAID"]),
+
+  // Payslips (phase 33.10) — PAYSLIP_READ_SELF already exists below
+  ...actions("PAYSLIP", ["GENERATE", "RELEASE", "RERELEASE", "READ"]),
+
+  // Statutory compliance (phase 33.11)
+  ...actions("PAYROLL_STATUTORY", ["MANAGE", "READ", "GENERATE"]),
+
+  // Payroll reports (phase 33.14)
+  ...actions("PAYROLL_REPORT", ["READ", "EXPORT"]),
 
   ...actions("RECRUITMENT", ["READ", "CREATE", "UPDATE", "DELETE", "APPROVE"]),
 
@@ -297,6 +359,23 @@ export const DEFAULT_ROLE_MATRIX = {
     // Company Admin may ACTIVATE it (§3 least privilege).
     "PAYROLL_SETUP_READ",
     "PAYROLL_SETUP_UPDATE",
+
+    // Payroll operations (Phase 29.1 RBAC update). HR runs the cycle but
+    // must NOT approve it, confirm payment or release payslips — those are
+    // separate duties held by HR Head / Finance (separation of duties).
+    "PAYROLL_RUN_READ",
+    "PAYROLL_RUN_PREPARE",
+    "PAYROLL_RUN_EXECUTE",
+    "PAYROLL_RUN_RECALCULATE",
+    "PAYROLL_RUN_REVIEW",
+    "SALARY_COMPONENT_READ",
+    "SALARY_STRUCTURE_READ",
+    "SALARY_STRUCTURE_MANAGE",
+    "SALARY_STRUCTURE_ASSIGN",
+    "EMPLOYEE_SALARY_READ",
+    "EMPLOYEE_SALARY_MANAGE",
+    "PAYROLL_REPORT_READ",
+    "PAYROLL_STATUTORY_READ",
 
     "USER_READ",
     "USER_CREATE",

@@ -39,6 +39,17 @@ router.get(
   controller.listPermissions
 );
 
+// Phase 29.1 RBAC update — payroll role templates (data, never seeded).
+// Declared before /roles/:roleId so "templates" is not parsed as an id.
+router.get(
+  '/roles/templates',
+  ...secured,
+  requirePermission(
+    'SETTINGS_READ'
+  ),
+  controller.getRoleTemplates
+);
+
 // Company roles.
 router.get(
   '/roles',

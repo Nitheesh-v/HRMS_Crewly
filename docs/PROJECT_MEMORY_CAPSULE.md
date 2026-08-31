@@ -263,6 +263,15 @@ Frontend first (node_modules may be missing).
 
 ## 9. Current state (2026-08-31)
 
+- Phase 29.1 = Company Payroll Setup + an RBAC update on top of it: 39
+  granular payroll permissions (10 resources), opt-in role templates
+  (HR_HEAD / HR_EXECUTIVE / PAYROLL_ADMIN / PAYROLL_EXECUTIVE /
+  FINANCE_MANAGER / FINANCE_EXECUTIVE — DATA ONLY, never seeded), org scope
+  SELF|TEAM|DEPARTMENT|ASSIGNED_DEPARTMENTS|COMPANY (utils/payrollScope.js,
+  team reach reuses orgHelpers.getSubtreeIds), payroll permission grant/revoke
+  audit, and tenant→role→permission→scope enforced on payslip access.
+  SYSTEM_PERMISSION_VERSION is 15. Only PAYROLL_SETUP_* is enforced today;
+  the rest of the catalogue is declared for the later payroll phases.
 - Phase 29.1 closed: Company Payroll Setup (backend model/service/routes/
   validator + 33 hermetic tests + frontend wizard & dashboard + docs).
   One current config per company (partial unique index on `companyId` where

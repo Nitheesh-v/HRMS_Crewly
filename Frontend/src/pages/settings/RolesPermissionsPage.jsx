@@ -33,6 +33,8 @@ const RolesPermissionsPage = () => {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [templates, setTemplates] = useState([]);
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
 
   const selectedRole = useMemo(
     () => roles.find((role) => role._id === selectedRoleId) || null,
@@ -115,7 +117,17 @@ const RolesPermissionsPage = () => {
   useEffect(() => {
     load();
     loadUsers();
+    loadTemplates();
   }, []);
+
+  const loadTemplates = async () => {
+    try {
+      const data = await permissionService.roleTemplates();
+      setTemplates(data?.templates || []);
+    } catch {
+      setTemplates([]);
+    }
+  };
 
   const togglePermission = (permissionId) => {
     setSelectedPermissions((current) =>
@@ -177,6 +189,34 @@ const RolesPermissionsPage = () => {
       selectRole(role);
     } catch (error) {
       setMessage(error?.message || "Could not create role");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Phase 29.1 RBAC update — create a role from a payroll role template.
+  // Templates are opt-in: nothing is seeded into the company until an
+  // administrator picks one here.
+  const createRoleFromTemplate = async (template) => {
+    setBusy(true);
+    setMessage("");
+
+    try {
+      const role = await permissionService.createRole({
+        name: template.name,
+        description: template.description,
+        template: template.key,
+        permissions: template.permissions,
+      });
+
+      setTemplatePickerOpen(false);
+      setMessage(
+        `${template.name} role created — review its permissions and assign users.`,
+      );
+      await load();
+      selectRole(role);
+    } catch (error) {
+      setMessage(error?.message || "Could not create role from template");
     } finally {
       setBusy(false);
     }
@@ -357,14 +397,24 @@ const RolesPermissionsPage = () => {
               <h2 className="font-semibold">Roles</h2>
 
               <Can permission="SETTINGS_MANAGE">
-                <button
-                  type="button"
-                  onClick={createRole}
-                  disabled={busy}
-                  className="text-sm text-indigo-300"
-                >
-                  ＋ Create
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTemplatePickerOpen(true)}
+                    disabled={busy}
+                    className="text-sm text-indigo-300"
+                  >
+                    ＋ Template
+                  </button>
+                  <button
+                    type="button"
+                    onClick={createRole}
+                    disabled={busy}
+                    className="text-sm text-indigo-300"
+                  >
+                    ＋ Blank
+                  </button>
+                </div>
               </Can>
             </div>
 
@@ -654,6 +704,83 @@ const RolesPermissionsPage = () => {
               </>
             )}
           </section>
+        </div>
+      )}
+
+      {/* Phase 29.1 RBAC update — payroll role templates (opt-in, never seeded) */}
+      {templatePickerOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+          onClick={() => setTemplatePickerOpen(false)}
+        >
+          <div
+            className={`${panel} max-h-[92vh] w-full max-w-2xl overflow-y-auto`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold">Create role from template</h2>
+                <p className="mt-1 text-xs text-slate-400">
+                  Payroll is controlled by permissions, not by the Company Admin role.
+                  Pick a template to delegate payroll work to HR, Payroll or Finance —
+                  you can edit every permission afterwards.
+                </p>
+              </div>
+              <button
+                onClick={() => setTemplatePickerOpen(false)}
+                className="text-slate-400 hover:text-slate-100"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              {templates.map((template) => (
+                <button
+                  key={template.key}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => createRoleFromTemplate(template)}
+                  className="rounded-lg border border-slate-700 bg-slate-950 p-4 text-left transition hover:border-indigo-500 disabled:opacity-50"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-slate-100">{template.name}</span>
+                    <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] uppercase text-slate-300">
+                      {String(template.defaultScope || "").replace(/_/g, " ")}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-400">{template.description}</p>
+                  <p className="mt-2 text-[11px] text-slate-500">
+                    {template.permissions.length} permissions
+                    {template.separationException
+                      ? " · concentrates approval + payment duties"
+                      : " · separation of duties built in"}
+                  </p>
+                </button>
+              ))}
+
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setTemplatePickerOpen(false);
+                  createRole();
+                }}
+                className="rounded-lg border border-dashed border-slate-700 bg-slate-950 p-4 text-left transition hover:border-indigo-500"
+              >
+                <span className="font-semibold text-slate-100">Blank role</span>
+                <p className="mt-1 text-xs text-slate-400">
+                  Start with no permissions and pick exactly what this role needs.
+                </p>
+              </button>
+            </div>
+
+            {templates.length === 0 && (
+              <p className="mt-3 text-xs text-slate-400">
+                No templates available on your current subscription plan.
+              </p>
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -59,7 +59,7 @@ export const ensurePermissions = async () => {
 
 // Increment only when new default permissions are introduced.
 // Existing system roles are migrated once per version.
-const SYSTEM_PERMISSION_VERSION = 14;
+const SYSTEM_PERMISSION_VERSION = 15;
 export const ensureCompanyRoles = async (companyId, createdBy = null) => {
   const permissions = await ensurePermissions();
 
@@ -195,6 +195,17 @@ const subscriptionFeatureFor = (permission) => {
   const mapping = {
     PAYROLL: "payroll",
     PAYROLL_SETUP: "payroll",
+    // Phase 29.1 RBAC update — every payroll-family permission is gated
+    // by the same `payroll` subscription feature.
+    SALARY_COMPONENT: "payroll",
+    SALARY_STRUCTURE: "payroll",
+    EMPLOYEE_SALARY: "payroll",
+    SALARY_REVISION: "payroll",
+    PAYROLL_RUN: "payroll",
+    PAYROLL_PAYMENT: "payroll",
+    PAYROLL_STATUTORY: "payroll",
+    PAYROLL_REPORT: "payroll",
+    PAYSLIP: "payroll",
     RECRUITMENT: "recruitment",
     RECRUITMENT_ANALYTICS: "recruitment",
     BACKGROUND_VERIFICATION: "recruitment",
