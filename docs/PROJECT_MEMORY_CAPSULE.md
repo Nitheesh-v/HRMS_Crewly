@@ -56,7 +56,11 @@ career portal.
   (`npm run test:salary-structures`).
   29.4 is closed: `docs/PHASE_29_4_EMPLOYEE_PAYROLL_PROFILE.md` +
   `docs/PHASE_29_4_TESTING_CHECKLIST.md`; 24 hermetic tests
-  (`npm run test:employee-payroll`), 252/252 on the payroll ladder.
+  (`npm run test:employee-payroll`).
+  29.5 is closed: `docs/PHASE_29_5_VARIABLE_PAY_MONTHLY_INPUTS.md` +
+  `docs/PHASE_29_5_TESTING_CHECKLIST.md`; 26 hermetic tests
+  (`npm run test:monthly-inputs`), 278/278 on the payroll + foundation
+  ladder. Next: 29.6 Payroll Engine.
 - Phase 28 (background infrastructure, 28.1–28.9): Redis foundation,
   BullMQ foundation (7 queues), email delivery queue, processing queues
   (resume/ATS/documents), scheduled one-time jobs, pre-onboarding + BGV
@@ -293,7 +297,35 @@ Frontend first (node_modules may be missing).
   `.prototype`, `Object.assign` or `.indexOf()` where modern syntax exists.
 - Preferred closing phrase: "pit rules locked in 🏁".
 
-## 9. Current state (2026-08-31)
+- Phase 29.5 = Variable Pay & Monthly Payroll Inputs: pure rules in
+  services/payroll/monthlyInputRules.js, tenant models
+  models/PayrollPeriod.js (unique {companyId, month}) and
+  models/EmployeeMonthlyInput.js (unique {companyId, month, employeeId},
+  read-only `auto` sub-document + HR-owned `entries`), injectable service
+  (models/cache/audit/notify), routes at /api/payroll/inputs, and
+  middlewares/payrollInputScope.js which layers the 29.1 payroll scope over
+  every read (resolvePayrollVisibility returns null = whole company, otherwise
+  the manager's subtree plus self; out-of-scope single reads are refused with
+  403 PAYROLL_ACCESS_DENIED). Permissions
+  PAYROLL_INPUT_{READ,MANAGE,LOCK} (SYSTEM_PERMISSION_VERSION is 19):
+  COMPANY_ADMIN all three, HR_MANAGER READ+MANAGE but NOT LOCK (§20),
+  MANAGER READ only, TEAM_LEAD/EMPLOYEE nothing. Status is DERIVED, never
+  stored (locked -> LOCKED, issues -> ERROR, else READY); locking runs
+  validation first and refuses while any employee has an error; reopen is the
+  only way out of LOCKED and is audited. §11 import is a PURE synchronous CSV
+  parser with a 5,000-row cap (no BullMQ, no xlsx dependency — the template is
+  generated in the browser), preview-then-confirm, and every bulk action writes
+  one audit row per employee. §14 LOP = attendance absence with
+  lopSource 'ATTENDANCE' until the Leave module owns a LOP leave type, at which
+  point it becomes 'LEAVE' with no migration. Redis namespace 'payroll-inputs'
+  (TTL PAYROLL_INPUT_CACHE_TTL_SECONDS). UI at /app/payroll/inputs: month
+  dashboard + §25 KPI cards, input table, employee input drawer
+  (§13 auto figures read-only + variable pay), bulk import, bulk actions,
+  validation report, lock/reopen. Fence honoured: no payroll calculation, no
+  net salary, no PF/ESI/TDS/PT, no payslip, no bank file, no approval, no final
+  settlement — that is 29.6.
+
+## 9. Current state (2026-09-01)
 
 - Phase 29.1 = Company Payroll Setup + an RBAC update on top of it: 39
   granular payroll permissions (10 resources), opt-in role templates
@@ -305,12 +337,12 @@ Frontend first (node_modules may be missing).
   utils/payrollActionAudit.js holds the §11 sensitive-action audit hooks
   (salary changed … payslips released) for 29.2+; bank numbers are masked to
   the last 4 digits and PAN/UAN/ESI are written as [REDACTED].
-  SYSTEM_PERMISSION_VERSION is 18 (29.4 added EMPLOYEE_SALARY_READ_SELF).
+  SYSTEM_PERMISSION_VERSION is 19 (29.5 added PAYROLL_INPUT_READ/_MANAGE/
+  _LOCK).
   PAYROLL_SETUP_*, SALARY_COMPONENT_*, SALARY_STRUCTURE_* and
   EMPLOYEE_SALARY_* are enforced;
   the rest of the catalogue is declared for the later payroll phases.
-  Permission totals: 199 in the catalogue, COMPANY_ADMIN 198, HR_MANAGER 132,
-  TEAM_LEAD 58, MANAGER 53, EMPLOYEE 52.
+  Permission totals: 202 in the catalogue (29.5 added three).
 - Phase 29.2 = Salary Components: pure rules in
   services/payroll/salaryComponentRules.js, tenant model
   models/SalaryComponent.js (unique {companyId, code}, company-first indexes),

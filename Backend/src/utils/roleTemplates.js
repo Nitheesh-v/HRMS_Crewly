@@ -121,6 +121,11 @@ export const ROLE_TEMPLATES = Object.freeze([
       // profiles; the employee keeps read-only access to their own.
       'EMPLOYEE_SALARY_READ',
       'EMPLOYEE_SALARY_MANAGE',
+      // Phase 29.5 §4 — the Payroll Admin owns the monthly input workspace,
+      // including locking and reopening the month.
+      'PAYROLL_INPUT_READ',
+      'PAYROLL_INPUT_MANAGE',
+      'PAYROLL_INPUT_LOCK',
       'PAYROLL_PAYMENT_READ',
       'PAYROLL_PAYMENT_GENERATE',
       'PAYSLIP_READ',

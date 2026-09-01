@@ -17,6 +17,7 @@ import payrollSetupRoutes from "./payrollSetupRoutes.js";
 import salaryComponentRoutes from "./salaryComponentRoutes.js";
 import salaryStructureRoutes from "./salaryStructureRoutes.js";
 import employeePayrollRoutes from "./employeePayrollRoutes.js";
+import monthlyInputRoutes from "./monthlyInputRoutes.js";
 import recruitmentRoutes from "./recruitmentRoutes.js";
 import exitRoutes from "./exitRoutes.js";
 import billingRoutes from "./billingRoutes.js";
@@ -121,6 +122,7 @@ router.use("/payroll/setup", payrollSetupRoutes);
 router.use("/payroll/components", salaryComponentRoutes);
 router.use("/payroll/salary-structures", salaryStructureRoutes);
 router.use("/payroll/employees", employeePayrollRoutes);
+router.use("/payroll/inputs", monthlyInputRoutes);
 
 router.use("/recruitment", recruitmentRoutes);
 

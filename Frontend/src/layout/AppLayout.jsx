@@ -328,6 +328,11 @@ const AppLayout = () => {
     ])
       ? [{ to: '/app/payroll/structures', label: 'Salary Structures' }]
       : []),
+    // Phase 29.5 — Monthly Payroll Inputs, first in the payroll menu: it is
+    // the screen HR opens every month before the engine runs.
+    ...(hasAnyPermission(['PAYROLL_INPUT_READ', 'PAYROLL_INPUT_MANAGE', 'PAYROLL_INPUT_LOCK'])
+      ? [{ to: '/app/payroll/inputs', label: 'Monthly Inputs' }]
+      : []),
   ];
 
   const menu = [

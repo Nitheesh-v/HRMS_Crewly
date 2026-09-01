@@ -67,6 +67,7 @@ const NAV_ICON_BY_PATH = {
   "/app/payroll/setup": Settings,
   "/app/payroll/components": Layers,
   "/app/payroll/structures": LayoutList,
+  "/app/payroll/inputs": CalendarClock,
   "/app/payslips": ReceiptText,
   "/app/holidays": PartyPopper,
   "/app/shifts": Shuffle,

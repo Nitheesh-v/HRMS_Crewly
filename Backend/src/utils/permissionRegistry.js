@@ -131,6 +131,11 @@ export const DEFAULT_PERMISSIONS = [
   // PAYROLL_SETUP_ACTIVATE / SALARY_COMPONENT_ACTIVATE already are.
   ...actions("SALARY_STRUCTURE", ["READ", "MANAGE", "ACTIVATE", "ASSIGN"]),
   ...actions("EMPLOYEE_SALARY", ["READ", "MANAGE"]),
+
+  // Phase 29.5 — monthly payroll inputs: preparing the month, and LOCKing it.
+  // LOCK is separate from MANAGE because §20 lets only Company Admin / Payroll
+  // Admin freeze or reopen a month, while HR may still collect and edit.
+  ...actions("PAYROLL_INPUT", ["READ", "MANAGE", "LOCK"]),
   // Phase 29.4 — an employee may read their OWN payroll profile and nothing
   // else. It is deliberately NOT part of SELF_SERVICE_PERMISSIONS, because
   // that list is granted to Manager / Team Lead too and §4 gives them no
@@ -383,6 +388,9 @@ export const DEFAULT_ROLE_MATRIX = {
     "SALARY_STRUCTURE_ASSIGN",
     "EMPLOYEE_SALARY_READ",
     "EMPLOYEE_SALARY_MANAGE",
+    // Phase 29.5 §4 — HR collects and edits inputs; locking stays admin-only.
+    "PAYROLL_INPUT_READ",
+    "PAYROLL_INPUT_MANAGE",
     "PAYROLL_REPORT_READ",
     "PAYROLL_STATUTORY_READ",
 
@@ -483,6 +491,8 @@ export const DEFAULT_ROLE_MATRIX = {
   MANAGER: permissions(
     ...SELF_SERVICE_PERMISSIONS,
     "EMPLOYEE_READ_TEAM",
+    // Phase 29.5 §4 — view own team's monthly inputs only (TEAM scope).
+    "PAYROLL_INPUT_READ",
     "ATTENDANCE_READ",
     "LEAVE_READ",
     "LEAVE_APPROVE",

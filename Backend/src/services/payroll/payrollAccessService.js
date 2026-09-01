@@ -77,6 +77,42 @@ export const canReadEmployeePayroll = async ({
   return canAccessSubject({ actor, subject, scope });
 };
 
+// Which employee ids an actor may SEE for a payroll permission.
+// `null` means "the whole company" — every caller still filters by companyId,
+// so a scope can only ever narrow, never widen.
+export const resolvePayrollVisibility = async ({
+  actor,
+  permission = 'EMPLOYEE_SALARY_READ',
+  roleLookup = null,
+  subtreeResolver = defaultSubtreeResolver,
+} = {}) => {
+  if (!actor?.companyId) return { scope: PAYROLL_SCOPES.SELF, allowedEmployeeIds: [] };
+
+  const role = await loadRole(actor, roleLookup);
+  const scope = resolvePayrollScope({
+    roleCode: actor.role,
+    permission,
+    permissionScopes: role?.permissionScopes || [],
+    customRoleDefaultScope: role?.payrollScope || null,
+  });
+
+  if (scope === PAYROLL_SCOPES.COMPANY) {
+    return { scope, allowedEmployeeIds: null };
+  }
+
+  if (scope === PAYROLL_SCOPES.TEAM) {
+    const teamIds = (await subtreeResolver(actor.companyId, actor._id)) || [];
+    return {
+      scope,
+      allowedEmployeeIds: [...new Set([...teamIds.map(String), String(actor._id)])],
+    };
+  }
+
+  // ASSIGNED_DEPARTMENTS and SELF both narrow to the actor's own rows here;
+  // list endpoints that need department expansion can extend this later.
+  return { scope, allowedEmployeeIds: [String(actor._id)] };
+};
+
 // Payslip-specific entry: a payslip is an employee payroll record.
 export const canReadPayslip = (args) =>
   canReadEmployeePayroll({ ...args, permission: args?.permission || 'PAYSLIP_READ' });
