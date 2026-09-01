@@ -223,3 +223,339 @@ export const streamPayslipPdf = ({ payroll, employee, company, leaveBalance }, r
 
   doc.end();
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PHASE 29.9 — SNAPSHOT-DRIVEN PAYSLIP PDF (§8)
+//
+//  Built from the frozen 29.9 snapshot, NOT from live payroll data: every
+//  figure on the page is a copy of what the 29.6 engine produced and 29.8
+//  confirmed as paid. Regenerating (§22) re-renders the SAME snapshot, so a
+//  new logo or address can never move a rupee.
+//
+//  The legacy streamPayslipPdf() above is untouched — it serves the
+//  pre-29.9 Payroll records.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const M = { left: 40, top: 44, right: 40 };
+const PAGE_WIDTH = 595.28; // A4 points
+const CONTENT_WIDTH = PAGE_WIDTH - M.left - M.right;
+
+const initialsOf = (name) =>
+  String(name || 'C')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join('')
+    .toUpperCase();
+
+const rupees = (value) => `Rs ${inr(value)}`;
+
+const ensureSpace = (doc, y, needed) => {
+  if (y + needed <= 780) return y;
+  doc.addPage();
+  return M.top;
+};
+
+// A two-column key/value grid (employee details, payment info).
+// Each entry is one printed ROW: [leftLabel, leftValue, rightLabel, rightValue].
+const detailGrid = (doc, rows, startY) => {
+  let y = startY;
+  const columnWidth = (CONTENT_WIDTH - 24) / 2;
+  const xr = M.left + columnWidth + 24;
+
+  rows.forEach(([leftLabel, leftValue, rightLabel, rightValue]) => {
+    doc.font('Helvetica').fontSize(7.2).fillColor(C.label).text(String(leftLabel), M.left, y);
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(8.4)
+      .fillColor(C.ink)
+      .text(String(leftValue || '—'), M.left, y + 9.5, {
+        width: columnWidth - 6,
+        height: 12,
+        ellipsis: true,
+        lineBreak: false,
+      });
+
+    if (rightLabel) {
+      doc.font('Helvetica').fontSize(7.2).fillColor(C.label).text(String(rightLabel), xr, y);
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(8.4)
+        .fillColor(C.ink)
+        .text(String(rightValue || '—'), xr, y + 9.5, {
+          width: columnWidth - 6,
+          height: 12,
+          ellipsis: true,
+          lineBreak: false,
+        });
+    }
+    y += 30;
+  });
+
+  return y + 6;
+};
+
+// §9 / §10 — one component per line, never merged, with a total row.
+const moneyTable = (doc, { title, subtitle, rows, totalLabel, total, accent, startY, columns = 1 }) => {
+  let y = ensureSpace(doc, startY, 60 + (rows.length || 1) * 16);
+  diamond(doc, M.left + 2.6, y + 3.6, 2.6, accent);
+  doc.font('Helvetica-Bold').fontSize(9.2).fillColor(C.ink).text(title, M.left + 12, y);
+  doc.font('Helvetica').fontSize(6.8).fillColor(C.label).text(subtitle, M.left + 12, y + 12);
+
+  y += 28;
+  doc.font('Helvetica-Bold').fontSize(7.6).fillColor(C.label).text('Component', M.left, y);
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(7.6)
+    .fillColor(C.label)
+    .text('Amount', M.left, y, { width: CONTENT_WIDTH, align: 'right' });
+  y += 10;
+  doc.save().moveTo(M.left, y).lineTo(M.left + CONTENT_WIDTH, y).lineWidth(0.7).stroke('#d7dce5').restore();
+  y += 6;
+
+  if (!rows.length) {
+    doc.font('Helvetica').fontSize(7.8).fillColor(C.label).text('No components recorded', M.left, y + 2);
+    y += 18;
+  }
+
+  rows.forEach((row, index) => {
+    y = ensureSpace(doc, y, 20);
+    if (index % 2 === 0) {
+      doc.save().rect(M.left, y - 2, CONTENT_WIDTH, 15).fill('#f7f9fc').restore();
+    }
+    doc.font('Helvetica').fontSize(8.2).fillColor(C.subtle).text(String(row.name || ''), M.left + 4, y + 2);
+    doc
+      .font('Helvetica')
+      .fontSize(8.2)
+      .fillColor(C.ink)
+      .text(rupees(row.amount), M.left, y + 2, { width: CONTENT_WIDTH - 4, align: 'right' });
+    y += 16;
+  });
+
+  y = ensureSpace(doc, y, 26);
+  doc.save().moveTo(M.left, y).lineTo(M.left + CONTENT_WIDTH, y).lineWidth(0.7).stroke('#d7dce5').restore();
+  y += 5;
+  doc.font('Helvetica-Bold').fontSize(8.6).fillColor(C.ink).text(totalLabel, M.left + 4, y + 1);
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(8.6)
+    .fillColor(C.ink)
+    .text(rupees(total), M.left, y + 1, { width: CONTENT_WIDTH - 4, align: 'right' });
+  return y + 26;
+};
+
+/**
+ * Render a payslip snapshot to a PDF buffer.
+ *
+ * @param {object} snapshot  the frozen 29.9 snapshot (see payslipRules)
+ * @returns {Promise<Buffer>}
+ */
+export const buildPayslipPdf = (snapshot = {}) =>
+  new Promise((resolve, reject) => {
+    try {
+      const company = snapshot.company || {};
+      const employee = snapshot.employee || {};
+      const payroll = snapshot.payroll || {};
+      const salary = snapshot.salary || {};
+      const attendance = snapshot.attendance || {};
+      const payment = snapshot.payment || null;
+
+      const chunks = [];
+      const doc = new PDFDocument({
+        size: 'A4',
+        margin: M.top,
+        info: {
+          Title: `Payslip ${payroll.monthLabel || payroll.month || ''} - ${employee.name || ''}`,
+          Author: company.name || 'Crewly HRMS',
+          Subject: `Payslip ${payroll.payslipNumber || ''}`,
+        },
+      });
+      doc.on('data', (chunk) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      // ── 1. header (§8) ──────────────────────────────────────────────────
+      doc.save().roundedRect(M.left, M.top, 34, 30, 6).fill(C.navy).restore();
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(12)
+        .fillColor('#ffffff')
+        .text(initialsOf(company.name), M.left, M.top, { width: 34, height: 30, align: 'center', valign: 'center' });
+
+      doc.font('Helvetica-Bold').fontSize(11).fillColor(C.navy).text(String(company.name || 'Company').toUpperCase(), M.left + 42, M.top - 2, { width: 330 });
+      doc
+        .font('Helvetica')
+        .fontSize(7)
+        .fillColor('#4b5563')
+        .text(String(company.address || 'Address not set'), M.left + 42, M.top + 14, { width: 330 });
+      doc
+        .font('Helvetica')
+        .fontSize(6.6)
+        .fillColor(C.label)
+        .text([company.pan ? `PAN: ${company.pan}` : '', company.tan ? `TAN: ${company.tan}` : ''].filter(Boolean).join('   '), M.left + 42, M.top + 24, { width: 330 });
+
+      doc.font('Helvetica-Bold').fontSize(11).fillColor(C.ink).text(`Payslip — ${payroll.monthLabel || payroll.month || ''}`, M.left, M.top + 2, { width: CONTENT_WIDTH, align: 'right' });
+      doc
+        .font('Helvetica')
+        .fontSize(7)
+        .fillColor(C.label)
+        .text(`Cycle: ${String(payroll.cycle || 'MONTHLY')}`, M.left, M.top + 18, { width: CONTENT_WIDTH, align: 'right' });
+      doc
+        .font('Helvetica')
+        .fontSize(7)
+        .fillColor(C.label)
+        .text(`Payslip No: ${payroll.payslipNumber || '—'}`, M.left, M.top + 28, { width: CONTENT_WIDTH, align: 'right' });
+
+      let y = M.top + 40;
+      doc.save().moveTo(M.left, y).lineTo(M.left + CONTENT_WIDTH, y).lineWidth(1).stroke(C.divider).restore();
+
+      // ── 2. employee details (§8) ────────────────────────────────────────
+      y += 12;
+      y = detailGrid(
+        doc,
+        [
+          ['Employee ID', employee.employeeCode || employee.employeeId, 'Name', employee.name],
+          ['Department', employee.department, 'Designation', employee.designation],
+          ['Date of Joining', fmtDate(employee.joiningDate), 'UAN', employee.uan],
+          ['PAN', employee.pan, 'Bank', employee.bankName],
+          // §13 / §26 — masked, always.
+          ['Account Number', employee.accountNumberMasked, 'Payment Mode', payment?.method || 'Bank Transfer'],
+        ],
+        y,
+      );
+
+      // ── 3. attendance summary (§12) ─────────────────────────────────────
+      y = ensureSpace(doc, y, 60);
+      const boxWidth = CONTENT_WIDTH / 5;
+      [
+        ['Working Days', attendance.workingDays],
+        ['Present Days', attendance.presentDays],
+        ['Paid Days', attendance.paidDays],
+        ['LOP', attendance.lopDays],
+        ['OT Hours', attendance.overtimeHours],
+      ].forEach(([label, value], index) => {
+        const x = M.left + index * boxWidth;
+        doc.save().roundedRect(x + 2, y, boxWidth - 6, 34, 5).fill('#f2f5fa').restore();
+        doc.font('Helvetica').fontSize(6.8).fillColor(C.label).text(String(label), x + 8, y + 6);
+        doc.font('Helvetica-Bold').fontSize(10).fillColor(C.ink).text(String(value ?? '—'), x + 8, y + 16);
+      });
+      y += 48;
+
+      // ── 4. earnings (§9) ────────────────────────────────────────────────
+      y = moneyTable(doc, {
+        title: 'Earnings',
+        subtitle: 'Every earning component, shown separately',
+        rows: [...(snapshot.earnings || []), ...(snapshot.variableEarnings || [])],
+        totalLabel: 'Total Earnings',
+        total: salary.totalEarnings,
+        accent: C.green,
+        startY: y,
+      });
+
+      if ((snapshot.reimbursements || []).length) {
+        y = moneyTable(doc, {
+          title: 'Reimbursements',
+          subtitle: 'Claimed and approved outside the salary structure',
+          rows: snapshot.reimbursements,
+          totalLabel: 'Total Reimbursements',
+          total: salary.totalReimbursements,
+          accent: C.green,
+          startY: y,
+        });
+      }
+
+      // ── 5. deductions (§10) ─────────────────────────────────────────────
+      y = moneyTable(doc, {
+        title: 'Deductions',
+        subtitle: 'Why money was deducted from your salary',
+        rows: snapshot.deductions || [],
+        totalLabel: 'Total Deductions',
+        total: salary.totalDeductions,
+        accent: C.orange,
+        startY: y,
+      });
+
+      // ── 6. employer contributions (§11) ─────────────────────────────────
+      y = ensureSpace(doc, y, 70);
+      doc.save().roundedRect(M.left, y, CONTENT_WIDTH, 44, 6).fill('#eef2fb').restore();
+      diamond(doc, M.left + 8, y + 12, 2.6, C.navy);
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(C.navy).text('Company Contributions', M.left + 18, y + 8);
+      doc
+        .font('Helvetica')
+        .fontSize(6.8)
+        .fillColor(C.subtle)
+        .text('Paid by the employer on top of your salary — these do NOT reduce your Net Pay.', M.left + 18, y + 20, {
+          width: CONTENT_WIDTH - 36,
+        });
+      const contributions = snapshot.employerContributions || [];
+      if (contributions.length) {
+        doc
+          .font('Helvetica')
+          .fontSize(7.4)
+          .fillColor(C.subtle)
+          .text(contributions.map((row) => `${row.name}: ${rupees(row.amount)}`).join('   ·   '), M.left + 18, y + 30, {
+            width: CONTENT_WIDTH - 36,
+          });
+      }
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(7.6)
+        .fillColor(C.navy)
+        .text(rupees(salary.totalEmployerContributions), M.left, y + 30, { width: CONTENT_WIDTH - 8, align: 'right' });
+      y += 58;
+
+      // ── 7. salary summary (§8) ──────────────────────────────────────────
+      y = ensureSpace(doc, y, 66);
+      doc.save().roundedRect(M.left, y, CONTENT_WIDTH, 52, 6).fill('#f7f9fc').restore();
+      doc.font('Helvetica').fontSize(7.4).fillColor(C.label).text('Gross Salary', M.left + 12, y + 8);
+      doc.font('Helvetica-Bold').fontSize(10).fillColor(C.ink).text(rupees(salary.grossSalary), M.left + 12, y + 18);
+      doc.font('Helvetica').fontSize(7.4).fillColor(C.label).text('Total Deductions', M.left + 200, y + 8);
+      doc.font('Helvetica-Bold').fontSize(10).fillColor(C.ink).text(`- ${rupees(salary.totalDeductions)}`, M.left + 200, y + 18);
+      doc.save().roundedRect(M.left + CONTENT_WIDTH - 190, y + 6, 178, 40, 5).fill(C.greenBg).restore();
+      doc.font('Helvetica-Bold').fontSize(7.6).fillColor('#0f7a4a').text('Net Salary', M.left + CONTENT_WIDTH - 178, y + 12);
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(14)
+        .fillColor('#0f7a4a')
+        .text(rupees(salary.netSalary), M.left + CONTENT_WIDTH - 178, y + 24);
+      y += 62;
+
+      // ── 8. payment information (§13) ────────────────────────────────────
+      y = ensureSpace(doc, y, 60);
+      y = detailGrid(
+        doc,
+        [
+          ['Payment Date', fmtDate(payment?.paymentDate || payroll.paymentDate), 'Payment Mode', payment?.method || 'Bank Transfer'],
+          ['Bank', payment?.bankName || employee.bankName, 'Account Number', payment?.accountNumberMasked || employee.accountNumberMasked],
+          ['Payment Reference', payment?.reference, 'Payslip Number', payroll.payslipNumber],
+        ],
+        y,
+      );
+
+      // ── 9. footer (§8) ──────────────────────────────────────────────────
+      const footerY = 792;
+      doc.save().moveTo(M.left, footerY - 10).lineTo(M.left + CONTENT_WIDTH, footerY - 10).lineWidth(0.6).stroke('#d7dce5').restore();
+      doc
+        .font('Helvetica')
+        .fontSize(6.4)
+        .fillColor(C.label)
+        .text(`Payslip ${payroll.payslipNumber || ''}   ·   Generated ${fmtDate(snapshot.generatedAt)}`, M.left, footerY, {
+          width: CONTENT_WIDTH / 2,
+        });
+      doc
+        .font('Helvetica')
+        .fontSize(6.4)
+        .fillColor(C.label)
+        .text('System generated — no signature required', M.left, footerY, {
+          width: CONTENT_WIDTH,
+          align: 'right',
+        });
+
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+
+export default { streamPayslipPdf, buildPayslipPdf };

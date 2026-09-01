@@ -398,6 +398,9 @@ export const DEFAULT_ROLE_MATRIX = {
     // failed) but must never create a batch, generate a bank file or confirm
     // a payment: those are finance duties.
     "PAYROLL_PAYMENT_READ",
+    // Phase 29.9 §4 — HR may view and download employee payslips, but must
+    // not generate or release them: that is the Payroll Admin's duty.
+    "PAYSLIP_READ",
 
     "USER_READ",
     "USER_CREATE",

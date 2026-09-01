@@ -24,6 +24,12 @@ import { validatePayrollPaymentFilePayload } from '../services/payroll/payrollPa
 import payrollEngineService from '../services/payroll/payrollEngineService.js';
 import payrollReviewService from '../services/payroll/payrollReviewService.js';
 import payrollPaymentService from '../services/payroll/payrollPaymentService.js';
+import payslipService from '../services/payroll/payslipService.js';
+import {
+  validatePayslipGeneratePayload,
+  validatePayslipZipPayload,
+  validatePayslipEmailPayload,
+} from '../services/payroll/payslipDispatcher.js';
 
 const reportProgress = async (job, progress) => {
   try {
@@ -132,10 +138,88 @@ export const payrollPaymentFileProcessor = async (job) => {
   return { processed: true, skipped: false, fileId };
 };
 
+// PAYSLIP_GENERATE (29.9 §17) — renders every payslip of a month. The payload
+// is references only: the month's paid employees, their snapshots and their
+// bank masks are all re-read from Mongo here, so a stale or tampered payload
+// cannot move a rupee or leak a number.
+export const payslipGenerateProcessor = async (job) => {
+  const { valid, errors, value } = validatePayslipGeneratePayload(job?.data);
+  if (!valid) {
+    logger.warn(`[Payroll] payslip generate job rejected: ${errors.join(', ')}`);
+    return { processed: false, skipped: true, reason: errors.join(', ') };
+  }
+
+  const { companyId, month, actorId } = value;
+
+  const result = await payslipService.runGeneration({
+    companyId,
+    month,
+    actor: actorId ? { _id: actorId } : null,
+    onProgress: (progress) => reportProgress(job, progress),
+  });
+
+  logger.info(
+    `[Payroll] payslips generated (company=${companyId}, month=${month}, created=${result.created}, updated=${result.updated}, failed=${result.failed})`,
+  );
+
+  return { processed: true, skipped: false, ...result };
+};
+
+// PAYSLIP_ZIP (29.9 §18) — department or company archive.
+export const payslipZipProcessor = async (job) => {
+  const { valid, errors, value } = validatePayslipZipPayload(job?.data);
+  if (!valid) {
+    logger.warn(`[Payroll] payslip zip job rejected: ${errors.join(', ')}`);
+    return { processed: false, skipped: true, reason: errors.join(', ') };
+  }
+
+  const { companyId, fileId } = value;
+
+  const result = await payslipService.runBulkZip({
+    companyId,
+    fileId,
+    onProgress: (progress) => reportProgress(job, progress),
+  });
+
+  logger.info(
+    `[Payroll] payslip archive ready (file=${fileId}, files=${result.files ?? 0}, bytes=${result.sizeBytes ?? 0})`,
+  );
+
+  return { processed: true, skipped: false, ...result };
+};
+
+// PAYSLIP_EMAIL (29.9 §19 / §24) — bulk delivery with the PDF attached. The
+// PDF bytes are produced HERE, inside the worker, never in the payload.
+export const payslipEmailProcessor = async (job) => {
+  const { valid, errors, value } = validatePayslipEmailPayload(job?.data);
+  if (!valid) {
+    logger.warn(`[Payroll] payslip email job rejected: ${errors.join(', ')}`);
+    return { processed: false, skipped: true, reason: errors.join(', ') };
+  }
+
+  const { companyId, month, employeeIds } = value;
+
+  const result = await payslipService.runEmailMonth({
+    companyId,
+    month,
+    employeeIds: employeeIds?.length ? employeeIds : null,
+    onProgress: (progress) => reportProgress(job, progress),
+  });
+
+  logger.info(
+    `[Payroll] payslip emails processed (company=${companyId}, month=${month}, sent=${result.sent}, failed=${result.failed})`,
+  );
+
+  return { processed: true, skipped: false, ...result };
+};
+
 export const registerPayrollProcessors = ({ registerProcessor }) => {
   registerProcessor(JOB_NAMES.PAYROLL_RUN, payrollRunProcessor);
   registerProcessor(JOB_NAMES.PAYROLL_EXPORT, payrollExportProcessor);
   registerProcessor(JOB_NAMES.PAYROLL_PAYMENT_FILE, payrollPaymentFileProcessor);
+  registerProcessor(JOB_NAMES.PAYSLIP_GENERATE, payslipGenerateProcessor);
+  registerProcessor(JOB_NAMES.PAYSLIP_ZIP, payslipZipProcessor);
+  registerProcessor(JOB_NAMES.PAYSLIP_EMAIL, payslipEmailProcessor);
 };
 
 export default registerPayrollProcessors;

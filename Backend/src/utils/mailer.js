@@ -26,7 +26,19 @@ export const sendMail = async ({
   html = "",
   text = "",
   sensitive = false,
+  attachments = [],
 }) => {
+  // Phase 29.9 — payslip delivery attaches a PDF. Nodemailer accepts buffers
+  // directly; the caller passes { filename, content, contentType }.
+  const safeAttachments = Array.isArray(attachments)
+    ? attachments
+        .filter((item) => item && item.filename && item.content)
+        .map((item) => ({
+          filename: String(item.filename),
+          content: item.content,
+          contentType: item.contentType || "application/pdf",
+        }))
+    : [];
   try {
     if (!transporter) {
       const runtimeMode = process.env.NODE_ENV || 'development';
@@ -42,7 +54,13 @@ export const sendMail = async ({
       logger.info(
         sensitive
           ? `📧 [MOCK EMAIL] sensitive message queued | ${subject}`
-          : `📧 [MOCK EMAIL] → ${to} | ${subject}`,
+          : `📧 [MOCK EMAIL] → ${to} | ${subject}${
+              safeAttachments.length
+                ? ` | attachments: ${safeAttachments
+                    .map((item) => `${item.filename} (${item.content.length} bytes)`)
+                    .join(", ")}`
+                : ""
+            }`,
       );
 
       if (
@@ -71,6 +89,8 @@ export const sendMail = async ({
 
       text:
         text || undefined,
+
+      attachments: safeAttachments.length ? safeAttachments : undefined,
     });
 
     return { delivered: true, mode: 'SMTP', error: '' };

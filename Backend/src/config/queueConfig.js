@@ -55,6 +55,12 @@ export const JOB_NAMES = {
   // 29.7: payroll review export generation (same queue, own job name).
   PAYROLL_EXPORT: 'payroll-export',
   PAYROLL_PAYMENT_FILE: 'payroll-payment-file',
+  // 29.9: payslip generation, bulk ZIP download and bulk email. Same queue,
+  // own job names — the worker rebuilds everything from Mongo, so the payload
+  // carries references only.
+  PAYSLIP_GENERATE: 'payslip-generate',
+  PAYSLIP_ZIP: 'payslip-zip',
+  PAYSLIP_EMAIL: 'payslip-email',
   // 28.4: processing jobs (resume parsing + ATS matching). One job name
   // per stage — reprocess/recovery reuse the same job with a fresh
   // deterministic job id (version-aware), not extra job names.

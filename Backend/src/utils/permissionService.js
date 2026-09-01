@@ -59,7 +59,9 @@ export const ensurePermissions = async () => {
 
 // Increment only when new default permissions are introduced.
 // Existing system roles are migrated once per version.
-const SYSTEM_PERMISSION_VERSION = 22;
+//   21 → 22 : 29.8 gave HR_MANAGER PAYROLL_PAYMENT_READ
+//   22 → 23 : 29.9 gave HR_MANAGER and FINANCE_MANAGER PAYSLIP_READ
+const SYSTEM_PERMISSION_VERSION = 23;
 export const ensureCompanyRoles = async (companyId, createdBy = null) => {
   const permissions = await ensurePermissions();
 

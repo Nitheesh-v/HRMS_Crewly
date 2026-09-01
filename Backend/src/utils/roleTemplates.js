@@ -189,6 +189,9 @@ export const ROLE_TEMPLATES = Object.freeze([
       'PAYROLL_PAYMENT_GENERATE',
       'PAYROLL_PAYMENT_CONFIRM',
       'PAYROLL_PAYMENT_MARK_PAID',
+      // Phase 29.9 §4 — Finance VIEW ONLY: no generation, no release, no
+      // re-release. Those stay with the Payroll Admin.
+      'PAYSLIP_READ',
       'PAYROLL_REPORT_READ',
       'PAYROLL_REPORT_EXPORT',
       'PAYROLL_STATUTORY_READ',
@@ -205,6 +208,8 @@ export const ROLE_TEMPLATES = Object.freeze([
       'PAYROLL_RUN_READ',
       'SALARY_COMPONENT_READ',
       'PAYROLL_PAYMENT_READ',
+      // Phase 29.9 §4 — Finance is VIEW ONLY on payslips.
+      'PAYSLIP_READ',
       'PAYROLL_REPORT_READ',
     ],
   },
