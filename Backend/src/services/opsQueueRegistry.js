@@ -24,6 +24,7 @@ import {
   SCHEDULED_JOB_NAMES,
   DOCUMENT_JOB_NAMES,
   BGV_JOB_NAMES,
+  PAYROLL_JOB_NAMES,
 } from '../config/queueConfig.js';
 
 const SYSTEM_JOB_NAMES = Object.freeze([
@@ -78,6 +79,11 @@ export const OPS_QUEUES = Object.freeze([
     name: QUEUE_NAMES.BGV,
     purpose: 'Background verification (provider check/poll/result)',
     jobNames: BGV_JOB_NAMES,
+  },
+  {
+    name: QUEUE_NAMES.PAYROLL,
+    purpose: 'Payroll calculation runs (29.6 — progress-tracked)',
+    jobNames: PAYROLL_JOB_NAMES,
   },
 ]);
 

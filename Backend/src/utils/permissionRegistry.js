@@ -379,7 +379,8 @@ export const DEFAULT_ROLE_MATRIX = {
     "PAYROLL_RUN_READ",
     "PAYROLL_RUN_PREPARE",
     "PAYROLL_RUN_EXECUTE",
-    "PAYROLL_RUN_RECALCULATE",
+    // Phase 29.6 §21 — recalculation belongs to the Payroll Admin and the
+    // Company Admin. HR runs the month; only they may rewrite a snapshot.
     "PAYROLL_RUN_REVIEW",
     "SALARY_COMPONENT_READ",
     "SALARY_COMPONENT_MANAGE",

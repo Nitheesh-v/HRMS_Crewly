@@ -333,6 +333,16 @@ const AppLayout = () => {
     ...(hasAnyPermission(['PAYROLL_INPUT_READ', 'PAYROLL_INPUT_MANAGE', 'PAYROLL_INPUT_LOCK'])
       ? [{ to: '/app/payroll/inputs', label: 'Monthly Inputs' }]
       : []),
+    // Phase 29.6 — Run Payroll, for whoever holds a payroll-run permission
+    // (Company Admin, Payroll Admin, HR Manager, Finance read-only).
+    ...(hasAnyPermission([
+      'PAYROLL_RUN_READ',
+      'PAYROLL_RUN_PREPARE',
+      'PAYROLL_RUN_EXECUTE',
+      'PAYROLL_RUN_RECALCULATE',
+    ])
+      ? [{ to: '/app/payroll/run', label: 'Run Payroll' }]
+      : []),
   ];
 
   const menu = [

@@ -184,7 +184,6 @@ test('HR Manager can run payroll but cannot approve it or move money', () => {
     'PAYROLL_RUN_READ',
     'PAYROLL_RUN_PREPARE',
     'PAYROLL_RUN_EXECUTE',
-    'PAYROLL_RUN_RECALCULATE',
     'PAYROLL_RUN_REVIEW',
     'SALARY_STRUCTURE_MANAGE',
     'EMPLOYEE_SALARY_MANAGE',
@@ -198,6 +197,9 @@ test('HR Manager can run payroll but cannot approve it or move money', () => {
     'PAYROLL_PAYMENT_MARK_PAID',
     'PAYSLIP_RELEASE',
     'PAYROLL_SETUP_ACTIVATE',
+    // Phase 29.6 §21 — recalculation rewrites a payroll snapshot, so it is
+    // reserved for the Payroll Admin and the Company Admin. HR runs the month.
+    'PAYROLL_RUN_RECALCULATE',
   ]) {
     assert.equal(hr.includes(name), false, `HR Manager must not hold ${name} by default`);
   }

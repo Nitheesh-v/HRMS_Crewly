@@ -59,8 +59,11 @@ career portal.
   (`npm run test:employee-payroll`).
   29.5 is closed: `docs/PHASE_29_5_VARIABLE_PAY_MONTHLY_INPUTS.md` +
   `docs/PHASE_29_5_TESTING_CHECKLIST.md`; 32 hermetic tests
-  (`npm run test:monthly-inputs`), 284/284 on the payroll + foundation
-  ladder. Next: 29.6 Payroll Engine.
+  (`npm run test:monthly-inputs`).
+  29.6 is closed: `docs/PHASE_29_6_PAYROLL_ENGINE.md` +
+  `docs/PHASE_29_6_TESTING_CHECKLIST.md`; 27 hermetic tests
+  (`npm run test:payroll-engine`), 311/311 on the payroll + foundation
+  ladder. Next: 29.7 Payroll Review & Approval.
 - Phase 28 (background infrastructure, 28.1–28.9): Redis foundation,
   BullMQ foundation (7 queues), email delivery queue, processing queues
   (resume/ATS/documents), scheduled one-time jobs, pre-onboarding + BGV
@@ -327,6 +330,27 @@ Frontend first (node_modules may be missing).
   or rejected inline (§16), and HR notes live on the employee month (§10).
   Fence honoured: no payroll calculation, no net salary, no PF/ESI/TDS/PT, no
   payslip, no bank file, no approval, no final settlement — that is 29.6.
+
+- Phase 29.6 = Payroll Calculation Engine: pure rules in
+  services/payroll/payrollEngineRules.js (payable days, LOP, OT, PF with the
+  15,000 ceiling and the EPS/EPF employer split, ESI with the 21,000 ceiling,
+  state professional-tax slabs, annualised regime-aware TDS with 87A and cess,
+  gratuity 4.81%), models models/PayrollRun.js (control record: status,
+  progress, summary, cycle copy, runCount) and models/PayrollResult.js (the
+  IMMUTABLE snapshot, unique {companyId, month, employeeId, version} with
+  isCurrent). Routes at /api/payroll/runs. BullMQ IS used here (unlike 29.5):
+  reserved QUEUE_NAMES.PAYROLL + JOB_NAMES.PAYROLL_RUN, deterministic job id
+  payroll-run-<companyId>-<month>-<runId>, one attempt, references-only payload
+  revalidated by src/workers/payrollProcessor.js, live progress via
+  job.updateProgress + the run document; the same loop runs INLINE when Redis
+  is off because the API runs without Redis (28.1). Permissions are the ones
+  29.1 already declared — PAYROLL_RUN_READ/_EXECUTE/_RECALCULATE
+  (SYSTEM_PERMISSION_VERSION is 20; HR_MANAGER loses RECALCULATE per §21).
+  Snapshots are versioned: recalculation writes v(n+1) and never touches v(n).
+  Cache namespace 'payroll-run'. UI at /app/payroll/run: pre-checks, §23 KPI
+  cards, §27 progress tracker, results table, §24 employee breakdown drawer,
+  §22 error report. Fence honoured: no approval, no lock approval, no bank
+  file, no payment, no payslip, no finance approval, no final settlement.
 
 ## 9. Current state (2026-09-01)
 

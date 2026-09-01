@@ -23,6 +23,9 @@ export const QUEUE_NAMES = {
   SCHEDULED: 'scheduled',
   DOCUMENTS: 'documents',
   BGV: 'bgv',
+  // Phase 29.6 — payroll calculation engine (thousands of employees:
+  // this is the workload that genuinely needs a background queue).
+  PAYROLL: 'payroll',
   ANALYTICS: 'analytics',
 };
 
@@ -47,6 +50,8 @@ export const JOB_NAMES = {
   // and BGV HR reminder (reference-based, no candidate PII in payload).
   EMAIL_PREONBOARDING_REMINDER: 'email-preonboarding-reminder',
   EMAIL_BGV_REMINDER: 'email-bgv-reminder',
+  // 29.6: payroll calculation run (background, progress-tracked).
+  PAYROLL_RUN: 'payroll-run',
   // 28.4: processing jobs (resume parsing + ATS matching). One job name
   // per stage — reprocess/recovery reuse the same job with a fresh
   // deterministic job id (version-aware), not extra job names.
@@ -86,6 +91,9 @@ export const SCHEDULED_JOB_NAMES = Object.freeze([
   JOB_NAMES.PREONBOARDING_REMINDER,
   JOB_NAMES.BGV_REMINDER,
 ]);
+
+// 29.6 payroll job names (the payroll queue).
+export const PAYROLL_JOB_NAMES = Object.freeze([JOB_NAMES.PAYROLL_RUN]);
 
 // 28.6 document + BGV job names (their own reserved queues).
 export const DOCUMENT_JOB_NAMES = Object.freeze([JOB_NAMES.DOCUMENT_PROCESS]);
@@ -184,6 +192,23 @@ export const SCHEDULED_JOB_OPTIONS = Object.freeze({
   backoff: { type: 'exponential', delay: 2000 },
   removeOnComplete: { count: 100 },
   removeOnFail: { count: 500 },
+});
+
+// 29.6 payroll jobs: a run is long (hundreds to thousands of
+// employees) and must not be duplicated. ONE attempt (a partial run
+// is recoverable by re-running; duplicate runs would double-write
+// snapshots), no automatic retry, and the job id is deterministic per
+// run so BullMQ itself de-duplicates (28.4 discipline).
+export const PAYROLL_JOB_OPTIONS = Object.freeze({
+  attempts: 1,
+  removeOnComplete: { count: 100 },
+  removeOnFail: { count: 500 },
+});
+
+export const getPayrollJobOptions = () => ({
+  attempts: PAYROLL_JOB_OPTIONS.attempts,
+  removeOnComplete: { ...PAYROLL_JOB_OPTIONS.removeOnComplete },
+  removeOnFail: { ...PAYROLL_JOB_OPTIONS.removeOnFail },
 });
 
 export const getScheduledJobOptions = () => ({
@@ -353,6 +378,22 @@ export const parseDocumentWorkerConcurrency = (source = process.env) => {
 // limits may require tuning (no tenant throttling yet).
 export const DEFAULT_BGV_WORKER_CONCURRENCY = 2;
 const MAX_BGV_WORKER_CONCURRENCY = 8;
+
+// 29.6 payroll worker: payroll calculation is CPU-light but
+// Mongo-heavy; a low default keeps one run from starving the API's
+// own queries. One run at a time per worker slot by design.
+export const DEFAULT_PAYROLL_WORKER_CONCURRENCY = 2;
+const MAX_PAYROLL_WORKER_CONCURRENCY = 8;
+
+export const parsePayrollWorkerConcurrency = (source = process.env) => {
+  const raw = source?.PAYROLL_WORKER_CONCURRENCY;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_PAYROLL_WORKER_CONCURRENCY;
+  return Math.min(
+    MAX_PAYROLL_WORKER_CONCURRENCY,
+    Math.max(1, Math.trunc(parsed)),
+  );
+};
 
 export const parseBgvWorkerConcurrency = (source = process.env) => {
   const parsed = Number(source.BGV_WORKER_CONCURRENCY);

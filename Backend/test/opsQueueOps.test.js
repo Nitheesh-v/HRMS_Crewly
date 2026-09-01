@@ -245,13 +245,15 @@ describe('worker bootstrap link guard', () => {
 // ---------------------------------------------------------------
 
 describe('ops queue registry', () => {
-  test('allowlist contains exactly the 7 implemented queues', () => {
+  // 28.2 → 29.6: eight queues. Phase 29.6 added `payroll` (a worker is
+  // registered for it and the engine dispatches into it), so it belongs here.
+  test('allowlist contains exactly the 8 implemented queues', () => {
     const names = OPS_QUEUES.map((q) => q.name);
     assert.deepEqual(
       [...names].sort(),
-      ['ats', 'bgv', 'documents', 'email', 'resume', 'scheduled', 'system'].sort()
+      ['ats', 'bgv', 'documents', 'email', 'payroll', 'resume', 'scheduled', 'system'].sort()
     );
-    assert.equal(OPS_QUEUE_ALLOWLIST.size, 7);
+    assert.equal(OPS_QUEUE_ALLOWLIST.size, 8);
   });
 
   test('excludes the reserved-but-unimplemented analytics queue', () => {
@@ -602,7 +604,7 @@ describe('ops overview', () => {
     assert.equal(out.queues, 'unavailable');
   });
 
-  test('happy path: workers + all 7 queues with counts', async () => {
+  test('happy path: workers + all 8 queues with counts', async () => {
     const redis = makeFakeRedis();
     // Seed one online worker heartbeat.
     const workerId = 'worker-11111111-2222-3333-4444-555555555555';
@@ -623,7 +625,7 @@ describe('ops overview', () => {
     assert.equal(out.workers.online, 1);
     assert.equal(out.workers.workers[0].status, 'ONLINE');
     assert.equal(Array.isArray(out.queues), true);
-    assert.equal(out.queues.length, 7);
+    assert.equal(out.queues.length, 8);
     const first = out.queues[0];
     assert.equal(first.counts.waiting, 2);
     assert.equal(first.counts.active, 1);
