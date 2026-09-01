@@ -49,6 +49,8 @@ const financialYearOf = (month, fyStartMonth = 4) => {
 
 const MyPayslipsPortalPage = () => {
   const [rows, setRows] = useState([]);
+  // §23 — the latest payslip is cached on its own and opens the page.
+  const [recent, setRecent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [banner, setBanner] = useState(null);
@@ -63,7 +65,8 @@ const MyPayslipsPortalPage = () => {
   const load = useCallback(async () => {
     try {
       const data = await payslipService.mine();
-      setRows(data || []);
+      setRows(data?.payslips || []);
+      setRecent(data?.recent || null);
       setError('');
     } catch (requestError) {
       setError(requestError?.message || 'Unable to load your payslips');
@@ -144,6 +147,36 @@ const MyPayslipsPortalPage = () => {
           Your salary history. Payslips appear here once your salary for the month has been paid.
         </p>
       </div>
+
+      {recent ? (
+        <div className="card flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-crewly-dim">Latest payslip</p>
+            <p className="mt-1 text-lg font-semibold">{recent.monthLabel || recent.month}</p>
+            <p className="text-sm text-crewly-dim">
+              Net {formatMoney(recent.net)} · Paid{' '}
+              {formatDate(recent.paymentDate) !== '—' ? formatDate(recent.paymentDate) : 'on record'}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {statusBadge(recent.status, recent.statusLabel)}
+            <button
+              className="btn-secondary"
+              disabled={downloadingId === recent._id}
+              onClick={() => openPayslip(recent)}
+            >
+              <FileText size={15} /> View
+            </button>
+            <button
+              className="btn-primary"
+              disabled={downloadingId === recent._id}
+              onClick={() => download(recent)}
+            >
+              <Download size={15} /> Download PDF
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {banner ? (
         <div className="card border-l-4 border-red-500 text-sm text-red-200">{banner.text}</div>

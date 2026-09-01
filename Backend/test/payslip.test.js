@@ -501,8 +501,14 @@ test('generation copies the snapshot, renders a PDF and notifies the employee', 
   assert.equal(String(row.source.paymentBatchId), String(BATCH));
 
   // §20 — each employee is notified; this is the message 29.8 held back.
-  assert.equal(harness.notifications.length, 2);
+  const employeeNotes = harness.notifications.filter((note) => note.type === 'PAYSLIP_AVAILABLE');
+  assert.equal(employeeNotes.length, 2);
   assert.equal(harness.notifications[0].type, 'PAYSLIP_AVAILABLE');
+  // §17 — and the person who pressed the button gets the summary.
+  const summary = harness.notifications.find((note) => note.type === 'PAYSLIPS_GENERATED');
+  assert.ok(summary, 'the requester is told how the run went');
+  assert.equal(summary.userId, actor._id);
+  assert.equal(summary.payload.count, 2);
   assert.match(harness.notifications[0].payload?.message || notificationCopy('PAYSLIP_AVAILABLE', { month: MONTH }), /payslip/i);
 
   // §25 — one audit row per payslip.
@@ -961,4 +967,122 @@ test('the legacy payslip route and renderer still exist, untouched by 29.9', asy
     false,
     '29.9 must not shadow or replace the legacy payslip route',
   );
+});
+
+// ── 14. audit fixes: logo, register, recent payslip, attendance cycle ───────
+
+test('§6 / §8 — the company logo is drawn when it resolves, and never blocks', async () => {
+  const { resolveCompanyLogo, clearCompanyLogoCache } = await import('../src/utils/companyLogo.js');
+
+  // No logo, or a non-image URL: nothing to fetch, nothing to draw.
+  assert.equal(await resolveCompanyLogo(''), null);
+  assert.equal(await resolveCompanyLogo('not-a-url'), null);
+  assert.equal(await resolveCompanyLogo('/relative/logo.png'), null);
+
+  // A data URL is inline — no network at all.
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  const inline = await resolveCompanyLogo(`data:image/png;base64,${png.toString('base64')}`);
+  assert.ok(inline, 'a data URL resolves without a network call');
+  assert.equal(inline.contentType, 'image/png');
+  assert.equal(Buffer.compare(inline.buffer, png), 0);
+
+  // An unreachable host must fail open, not throw — a payslip never waits.
+  clearCompanyLogoCache();
+  const unreachable = await resolveCompanyLogo('https://127.0.0.1:9/logo.png');
+  assert.equal(unreachable, null);
+
+  // And the PDF itself renders either way.
+  const { buildPayslipPdf } = await import('../src/utils/payslipPdf.js');
+  const snapshot = buildPayslipSnapshot({
+    company: { name: 'Crewly Technologies', address: 'MG Road', logoUrl: 'https://example.test/logo.png' },
+    setup: { payrollPolicy: { frequency: 'MONTHLY' } },
+    employee: goodEmployee(EMPLOYEE_1, 'EMP001', 'Asha Rao'),
+    profile: goodProfile(EMPLOYEE_1),
+    result: goodResult(EMPLOYEE_1, 'EMP001', 'Asha Rao', 74450),
+    payment: paidPayment(EMPLOYEE_1, 'EMP001', 'Asha Rao'),
+    month: MONTH,
+    payslipNumber: 'PS-2026-08-000245',
+  });
+
+  const withLogo = await buildPayslipPdf(snapshot, { logo: { buffer: png, contentType: 'image/png' } });
+  const withoutLogo = await buildPayslipPdf(snapshot);
+  assert.equal(withLogo.slice(0, 5).toString(), '%PDF-');
+  assert.equal(withoutLogo.slice(0, 5).toString(), '%PDF-');
+  assert.notEqual(withLogo.length, withoutLogo.length, 'the logo is actually embedded');
+});
+
+test('§4 — the payroll register is a CSV with one row per payslip, masked', async () => {
+  const harness = makeHarness();
+  await harness.service.generateForMonth({ companyId: COMPANY, month: MONTH, actor, queue: false });
+
+  const register = await harness.service.getRegister({ companyId: COMPANY, month: MONTH });
+
+  assert.equal(register.count, 2);
+  assert.equal(register.filename, 'payroll-register-2026-08.csv');
+
+  const lines = register.content.split('\r\n');
+  assert.equal(lines.length, 3, 'a header plus one row per payslip');
+  assert.match(lines[0], /Payslip Number/);
+  assert.match(lines[0], /Account Number \(Masked\)/);
+  assert.match(lines[0], /Company Contributions/);
+
+  const serialized = register.content;
+  assert.ok(serialized.includes('XXXX4589'), 'the masked account is shown');
+  assert.equal(
+    serialized.includes('123456789012'),
+    false,
+    'the register is a finance report, not a bank file — never the full number',
+  );
+  assert.ok(serialized.includes('Asha Rao'));
+  assert.ok(serialized.includes('74,450') || serialized.includes('74450'));
+});
+
+test('§23 — the recent payslip is cached on its own key', async () => {
+  const harness = makeHarness();
+  await harness.service.generateForMonth({ companyId: COMPANY, month: MONTH, actor, queue: false });
+
+  const before = harness.cacheCalls.getOrSet;
+  const recent = await harness.service.getMyRecentPayslip({ companyId: COMPANY, employeeId: EMPLOYEE_1 });
+
+  assert.ok(recent, 'the employee has a latest payslip');
+  assert.equal(recent.month, MONTH);
+  assert.equal(recent.net, 74450);
+  assert.equal(harness.cacheCalls.getOrSet, before + 1);
+  assert.match(harness.cacheCalls.lastOptions.loader.constructor.name, /Function|AsyncFunction/);
+
+  // The history read uses a DIFFERENT key, so the two never collide.
+  const list = await harness.service.getMyPayslips({ companyId: COMPANY, employeeId: EMPLOYEE_1 });
+  assert.equal(list.length, 1);
+  assert.equal(harness.cacheCalls.getOrSet, before + 2);
+});
+
+test('§12 — the PDF attendance block leads with the payroll cycle', async () => {
+  const { buildPayslipPdf } = await import('../src/utils/payslipPdf.js');
+  const { PDFParse } = await import('pdf-parse');
+
+  const snapshot = buildPayslipSnapshot({
+    company: { name: 'Crewly Technologies', address: 'MG Road' },
+    setup: { payrollPolicy: { frequency: 'MONTHLY' } },
+    employee: goodEmployee(EMPLOYEE_1, 'EMP001', 'Asha Rao'),
+    profile: goodProfile(EMPLOYEE_1),
+    result: goodResult(EMPLOYEE_1, 'EMP001', 'Asha Rao', 74450),
+    payment: paidPayment(EMPLOYEE_1, 'EMP001', 'Asha Rao'),
+    month: MONTH,
+    payslipNumber: 'PS-2026-08-000245',
+  });
+
+  const pdf = await buildPayslipPdf(snapshot);
+  const parser = new PDFParse({ data: new Uint8Array(pdf) });
+  const text = (await parser.getText()).text || '';
+  await parser.destroy?.();
+
+  // §12 — the attendance summary names the payroll cycle it belongs to.
+  assert.match(text, /Attendance summary — payroll cycle: MONTHLY/);
+  // §8 / §13 — header, masked account and the no-signature footer.
+  assert.match(text, /Payslip — August 2026/);
+  assert.ok(text.includes('XXXX4589'));
+  assert.match(text, /no signature required/);
 });

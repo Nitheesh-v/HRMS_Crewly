@@ -14,9 +14,9 @@ import { buildTenantCacheKey, deleteCache, noteCacheInvalidation } from '../redi
 export const PAYSLIP_CACHE_NAMESPACE = 'payroll-payslips';
 export const PAYSLIP_CACHE_VERSION = 1;
 
-// One suffix per cached read: the employee portal list and the admin month
-// dashboard.
-export const PAYSLIP_CACHE_SUFFIXES = ['employee', 'dashboard'];
+// One suffix per cached read: the employee portal list, the employee's most
+// recent payslip (§23) and the admin month dashboard.
+export const PAYSLIP_CACHE_SUFFIXES = ['employee', 'recent', 'dashboard'];
 
 export const payslipCacheKey = (companyId, month = '', employeeId = '', suffix = 'dashboard') =>
   buildTenantCacheKey({

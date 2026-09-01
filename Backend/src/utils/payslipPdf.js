@@ -351,7 +351,7 @@ const moneyTable = (doc, { title, subtitle, rows, totalLabel, total, accent, sta
  * @param {object} snapshot  the frozen 29.9 snapshot (see payslipRules)
  * @returns {Promise<Buffer>}
  */
-export const buildPayslipPdf = (snapshot = {}) =>
+export const buildPayslipPdf = (snapshot = {}, options = {}) =>
   new Promise((resolve, reject) => {
     try {
       const company = snapshot.company || {};
@@ -376,12 +376,28 @@ export const buildPayslipPdf = (snapshot = {}) =>
       doc.on('error', reject);
 
       // ── 1. header (§8) ──────────────────────────────────────────────────
-      doc.save().roundedRect(M.left, M.top, 34, 30, 6).fill(C.navy).restore();
-      doc
-        .font('Helvetica-Bold')
-        .fontSize(12)
-        .fillColor('#ffffff')
-        .text(initialsOf(company.name), M.left, M.top, { width: 34, height: 30, align: 'center', valign: 'center' });
+      // §8 asks for the company LOGO. The snapshot stores the URL; the bytes
+      // are resolved by the caller (utils/companyLogo.js) and passed in, so a
+      // payslip never blocks on the network. No logo → the initials badge.
+      const logo = options?.logo && Buffer.isBuffer(options.logo.buffer) ? options.logo.buffer : null;
+      let logoDrawn = false;
+      if (logo && logo.length) {
+        try {
+          doc.image(logo, M.left, M.top, { fit: [34, 30], align: 'center', valign: 'center' });
+          logoDrawn = true;
+        } catch {
+          logoDrawn = false; // unsupported or corrupt image → badge
+        }
+      }
+
+      if (!logoDrawn) {
+        doc.save().roundedRect(M.left, M.top, 34, 30, 6).fill(C.navy).restore();
+        doc
+          .font('Helvetica-Bold')
+          .fontSize(12)
+          .fillColor('#ffffff')
+          .text(initialsOf(company.name), M.left, M.top, { width: 34, height: 30, align: 'center', valign: 'center' });
+      }
 
       doc.font('Helvetica-Bold').fontSize(11).fillColor(C.navy).text(String(company.name || 'Company').toUpperCase(), M.left + 42, M.top - 2, { width: 330 });
       doc
@@ -426,7 +442,13 @@ export const buildPayslipPdf = (snapshot = {}) =>
       );
 
       // ── 3. attendance summary (§12) ─────────────────────────────────────
+      // §12 lists the payroll cycle as part of this block, so it leads the
+      // strip. The figures are COPIES from the snapshot — attendance is never
+      // recalculated here.
       y = ensureSpace(doc, y, 60);
+      doc.font('Helvetica').fontSize(7).fillColor(C.label)
+        .text(`Attendance summary — payroll cycle: ${String(payroll.cycle || 'MONTHLY')}`, M.left, y);
+      y += 12;
       const boxWidth = CONTENT_WIDTH / 5;
       [
         ['Working Days', attendance.workingDays],

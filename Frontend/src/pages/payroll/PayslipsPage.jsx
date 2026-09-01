@@ -9,6 +9,7 @@ import {
   Loader2,
   Mail,
   RefreshCcw,
+  ScrollText,
   Search,
   Send,
   Wallet,
@@ -299,6 +300,24 @@ const PayslipsPage = () => {
           </button>
           <button className="btn-secondary" disabled={busy || !canRelease} onClick={handleEmailMonth}>
             <Mail size={15} /> Email month
+          </button>
+          {/* §4 — the Company Admin's payroll register */}
+          <button
+            className="btn-secondary"
+            disabled={busy || rows.length === 0}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                const blob = await payslipService.register(month);
+                saveBlob(blob, `payroll-register-${month}.csv`);
+              } catch (error) {
+                flash('error', error?.message || 'Unable to download the register');
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <ScrollText size={15} /> Register
           </button>
         </div>
       </div>

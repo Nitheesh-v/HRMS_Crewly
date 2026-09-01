@@ -37,6 +37,10 @@ const payslipService = {
   // §19 / §24 — email the whole month.
   emailMonth: (month) => api.post('/payroll/payslips/email', { month }),
 
+  // §4 — the Company Admin's payroll register (CSV).
+  register: (month = '') =>
+    api.get('/payroll/payslips/register', { params: { month: month || undefined }, responseType: 'blob' }),
+
   // §18 — bulk download: department ZIP or company ZIP.
   requestBulkDownload: ({ month, scope = 'COMPANY', departmentId = null }) =>
     api.post('/payroll/payslips/bulk-download', { month, scope, departmentId }),

@@ -53,6 +53,18 @@ The same three corrections as 29.5–29.8, plus three new ones.
 | Email (§19) | The existing `utils/mailer.js` `sendMail()` gains an optional `attachments` argument | "Do not build another email system" |
 | Legacy payslips | `/api/payroll/:id/payslip` and `models/Payroll.js` untouched; a hermetic test guards them | The 29.3 precedent |
 
+### Audit pass — four gaps closed against the re-pasted spec
+
+| § | Gap | Fix |
+|---|---|---|
+| §6 / §8 | The snapshot stored `logoUrl` but the PDF always drew the initials badge | `utils/companyLogo.js` resolves the bytes (3 s timeout, 2 MB cap, images only, 10-minute cache) and `buildPayslipPdf(snapshot, { logo })` embeds them; no logo, slow host or bad content still draws the badge |
+| §4 | "Download payroll register" for the Company Admin was never built | `GET /api/payroll/payslips/register` — a CSV with one row per payslip (gross, earnings, deductions, employer contributions, attendance, masked account, reference, status), written with the same dependency-free CSV builder as the bank file |
+| §23 | "Recent Payslip" was not cached | A third cache suffix (`recent`) plus `getMyRecentPayslip()`; the employee portal opens on a "Latest payslip" card |
+| §12 | The attendance summary did not show the payroll cycle | The block now leads with `Attendance summary — payroll cycle: MONTHLY`, in the PDF and on screen |
+
+Also wired: the requester now receives a `PAYSLIPS_GENERATED` summary when an
+inline generation finishes (the constant existed but nothing sent it).
+
 ### A gap this phase found and fixed: the payroll queue had no worker
 
 `registerPayrollProcessors()` existed since 29.6 but **nothing ever called
@@ -113,10 +125,11 @@ service computes a `valuesUnchanged` fingerprint and the UI surfaces it.
 | `src/workers/payrollProcessor.js` | `payslipGenerateProcessor`, `payslipZipProcessor`, `payslipEmailProcessor` |
 | `src/workers/index.js` | Now starts the payroll worker (see §1) |
 
-### Route table — 14 routes at `/api/payroll/payslips`
+### Route table — 15 routes at `/api/payroll/payslips`
 
 | Method | Path | Permission | Section |
 |---|---|---|---|
+| GET | `/register` | `PAYSLIP_READ` | §4 |
 | GET | `/mine` | `PAYSLIP_READ_SELF` | §14 |
 | GET | `/mine/:payslipId` | `PAYSLIP_READ_SELF` | §16, §25 |
 | GET | `/mine/:payslipId/pdf` | `PAYSLIP_READ_SELF` | §16 |
@@ -146,7 +159,8 @@ caller could tamper with simply is not part of the request.
    cycle, payslip number
 2. **Employee details** — code, name, department, designation, joining date,
    UAN, PAN, bank, **masked** account, payment mode
-3. **Attendance** — working days, present days, paid days, LOP, OT hours
+3. **Attendance** — led by the payroll cycle, then working days, present
+   days, paid days, LOP, OT hours (§12)
 4. **Earnings** — every component separately, then Total Earnings (§9)
 5. **Reimbursements** — only when present
 6. **Deductions** — every component separately, then Total Deductions (§10)
@@ -157,9 +171,13 @@ caller could tamper with simply is not part of the request.
 10. **Footer** — payslip number, generated date, "System generated — no
     signature required"
 
-The company logo is drawn as an initials badge (as the legacy slip does)
-rather than fetched over the network inside a render, so generation stays
-hermetic and offline-safe.
+**Company logo (§6 / §8).** The snapshot stores the URL; the bytes are
+resolved by `utils/companyLogo.js` at render time and passed in as an option,
+so the PDF module stays a pure function of its inputs. The resolver is
+fail-open (timeout/cap/type checks), caches for ten minutes — a bulk run of
+5,000 payslips fetches the logo once — and never touches the network when the
+company has no logo. Without a logo the header falls back to the initials
+badge, exactly as the legacy slip does.
 
 ---
 

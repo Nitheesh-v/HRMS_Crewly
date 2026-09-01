@@ -168,20 +168,25 @@ const PayslipDocument = ({ snapshot, onDownload, downloading = false }) => {
           <Field label="Payment Mode" value={payment?.method || 'Bank Transfer'} />
         </div>
 
-        {/* §12 — attendance */}
-        <div className="grid grid-cols-5 gap-2">
+        {/* §12 — attendance (copies from the snapshot, never recalculated) */}
+        <div>
+          <p className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">
+            Attendance summary — payroll cycle: {payroll.cycle || 'MONTHLY'}
+          </p>
+          <div className="grid grid-cols-5 gap-2">
           {[
-            ['Working Days', attendance.workingDays],
-            ['Present Days', attendance.presentDays],
-            ['Paid Days', attendance.paidDays],
-            ['LOP', attendance.lopDays],
-            ['OT Hours', attendance.overtimeHours],
-          ].map(([label, value]) => (
-            <div key={label} className="rounded-lg bg-slate-50 p-2 text-center">
-              <p className="text-[10px] uppercase text-slate-500">{label}</p>
-              <p className="text-sm font-semibold">{value ?? '—'}</p>
-            </div>
-          ))}
+              ['Working Days', attendance.workingDays],
+              ['Present Days', attendance.presentDays],
+              ['Paid Days', attendance.paidDays],
+              ['LOP', attendance.lopDays],
+              ['OT Hours', attendance.overtimeHours],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-lg bg-slate-50 p-2 text-center">
+                <p className="text-[10px] uppercase text-slate-500">{label}</p>
+                <p className="text-sm font-semibold">{value ?? '—'}</p>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* §9 / §10 — earnings and deductions, never merged */}

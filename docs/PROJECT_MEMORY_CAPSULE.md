@@ -78,8 +78,14 @@ career portal.
   money — the company's finance team uploads the file to their own bank.
   29.9 is closed: `docs/PHASE_29_9_PAYSLIPS.md` +
   `docs/PHASE_29_9_TESTING_CHECKLIST.md`; 28 hermetic tests
-  (`npm run test:payslip`), 298/298 on the payroll ladder, 664/664 on
-  `test:all`. It also fixed a live cross-phase defect:
+  (`npm run test:payslip`), 302/302 on the payroll ladder, 668/668 on
+  `test:all`. An audit pass against the re-pasted spec then closed four
+  gaps: §6/§8 the company logo is now resolved and embedded
+  (utils/companyLogo.js — 3s timeout, 2 MB cap, 10-minute cache, badge
+  fallback) instead of only being stored; §4 the Company Admin's
+  "Download payroll register" now exists at GET /register (CSV, masked
+  accounts); §23 the "Recent Payslip" read is cached under its own suffix;
+  and §12 the attendance block leads with the payroll cycle. It also fixed a live cross-phase defect:
   `registerPayrollProcessors()` existed since 29.6 but NOTHING ever called
   it, so the payroll queue had no consumer and every 29.6/29.7/29.8 job
   silently ran through the API's inline fallback. `src/workers/index.js`

@@ -66,6 +66,24 @@ export const listPayslips = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, { message: 'Payslips fetched', data });
 });
 
+// §4 — the Company Admin's payroll register: one CSV row per payslip.
+export const downloadRegister = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const { month = '' } = req.query;
+
+  // DB Logic - DB logics
+  const data = await payslipService.getRegister({
+    companyId: req.companyId,
+    month,
+    allowedEmployeeIds: scopeOf(req),
+  });
+
+  // Data to frontend - response to frontend
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${data.filename}"`);
+  return res.send(data.content);
+});
+
 // §17 — bulk generation. Queued when the worker is up, inline otherwise.
 export const generatePayslips = asyncHandler(async (req, res) => {
   // Data from frontend - requests from frontend
@@ -234,10 +252,17 @@ export const getMyPayslips = asyncHandler(async (req, res) => {
   const employeeId = req.user._id;
 
   // DB Logic - DB logics
-  const data = await payslipService.getMyPayslips({ companyId: req.companyId, employeeId });
+  const [payslips, recent] = await Promise.all([
+    payslipService.getMyPayslips({ companyId: req.companyId, employeeId }),
+    // §23 — the portal's opening card, cached on its own.
+    payslipService.getMyRecentPayslip({ companyId: req.companyId, employeeId }),
+  ]);
 
   // Data to frontend - response to frontend
-  return ApiResponse.success(res, { message: 'Payslips fetched', data });
+  return ApiResponse.success(res, {
+    message: 'Payslips fetched',
+    data: { payslips, recent },
+  });
 });
 
 export const getMyPayslip = asyncHandler(async (req, res) => {

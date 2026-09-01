@@ -36,7 +36,13 @@ import {
   isPaidForPayslip,
   generationGateError,
   canTransitionPayslip,
+  registerRows,
+  REGISTER_HEADERS,
+  registerFilename,
 } from './payslipRules.js';
+// The dependency-free CSV writer 29.8 wrote for the bank file — reused for
+// the payroll register instead of adding a package.
+import { toCsv } from './payrollPaymentRules.js';
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -197,6 +203,18 @@ export const makePayslipService = ({
     const { value } = await readThrough(key, async () => {
       const rows = await loadRows({ companyId, employeeId });
       return sortPayslips(rows).map((row) => toPayslipCardView(row));
+    });
+    return value;
+  };
+
+  // §23 — "Recent Payslip": the portal's opening card. Cached separately
+  // because it is read on every visit while the full history is only read
+  // when the employee scrolls back.
+  const getMyRecentPayslip = async ({ companyId, employeeId } = {}) => {
+    const key = buildKey({ companyId, employeeId, suffix: 'recent' });
+    const { value } = await readThrough(key, async () => {
+      const rows = sortPayslips(await loadRows({ companyId, employeeId }));
+      return rows.length ? toPayslipCardView(rows[0]) : null;
     });
     return value;
   };
@@ -505,6 +523,20 @@ export const makePayslipService = ({
 
     await invalidate(companyId, month, touchedEmployees);
 
+    // §17 — the person who pressed the button hears how it went. Only the
+    // inline path knows the answer; a queued run reports through the worker.
+    if (actor?._id) {
+      try {
+        await notify({
+          userId: actor._id,
+          type: NOTIFICATION_TYPES.PAYSLIPS_GENERATED,
+          payload: { month, count: created + updated, failed },
+        });
+      } catch {
+        /* never block on a notification */
+      }
+    }
+
     return {
       month,
       total: context.payments.length,
@@ -547,6 +579,18 @@ export const makePayslipService = ({
 
     const result = await runGeneration({ companyId, month, actor, req });
     return { queued: false, jobId: null, ...result };
+  };
+
+  // §4 — "Download payroll register": one CSV row per payslip of the month.
+  const getRegister = async ({ companyId, month = '', allowedEmployeeIds = null } = {}) => {
+    const rows = await loadRows({ companyId, month, allowedEmployeeIds });
+    const ordered = sortPayslips(rows);
+    return {
+      month: month || '',
+      filename: registerFilename({ month }),
+      content: toCsv(REGISTER_HEADERS, registerRows({ rows: ordered })),
+      count: ordered.length,
+    };
   };
 
   // ── §22 — regenerate ─────────────────────────────────────────────────────
@@ -982,10 +1026,12 @@ export const makePayslipService = ({
     getDashboard,
     listPayslips,
     getMyPayslips,
+    getMyRecentPayslip,
     getPayslip,
     getPayslipView,
     markViewed,
     listBulkFiles,
+    getRegister,
     // generation
     generateForMonth,
     runGeneration,
@@ -1026,6 +1072,7 @@ import { recordAudit } from '../../utils/securityauditService.js';
 import notifySmart from '../../utils/notifyPref.js';
 import { sendMail } from '../../utils/mailer.js';
 import { buildPayslipPdf } from '../../utils/payslipPdf.js';
+import { resolveCompanyLogo } from '../../utils/companyLogo.js';
 import { buildZip } from '../../utils/minimalZip.js';
 import { createHash } from 'node:crypto';
 
@@ -1079,7 +1126,11 @@ const defaultService = makePayslipService({
   dispatchZip: dispatchPayslipZip,
   dispatchEmail: dispatchPayslipEmail,
 
-  renderPdf: buildPayslipPdf,
+  // §8 — the header shows the company logo. The bytes are resolved here (and
+  // cached), never inside the PDF module, so a render stays a pure function
+  // of its inputs and a bulk run fetches each logo once.
+  renderPdf: async (snapshot) =>
+    buildPayslipPdf(snapshot, { logo: await resolveCompanyLogo(snapshot?.company?.logoUrl) }),
   buildZip,
   hash: (value) =>
     createHash('sha256')

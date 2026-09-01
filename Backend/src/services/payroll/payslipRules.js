@@ -332,6 +332,82 @@ export const bulkZipFilename = ({ month = '', scope = 'COMPANY', departmentName 
     ? `payslips-${month || 'month'}-${safeName(departmentName)}.zip`
     : `payslips-${month || 'month'}.zip`;
 
+// ── §4 — the payroll register ──────────────────────────────────────────────
+//
+// The Company Admin's "Download payroll register": one row per payslip with
+// the figures finance needs for the month. Built as CSV with the same
+// dependency-free writer as the bank file — no new npm package.
+
+export const REGISTER_HEADERS = [
+  'Payslip Number',
+  'Month',
+  'Employee Code',
+  'Employee Name',
+  'Department',
+  'Designation',
+  'Gross Salary',
+  'Total Earnings',
+  'Total Deductions',
+  'Total Reimbursements',
+  'Net Salary',
+  'Company Contributions',
+  'Working Days',
+  'Paid Days',
+  'LOP',
+  'OT Hours',
+  'Bank Name',
+  'Account Number (Masked)',
+  'Payment Date',
+  'Payment Reference',
+  'Status',
+  'Downloads',
+  'Emailed At',
+];
+
+const csvDate = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toISOString().slice(0, 10);
+};
+
+export const registerRows = ({ rows = [] } = {}) =>
+  (rows || []).map((row) => {
+    const snapshot = row.snapshot || {};
+    const salary = snapshot.salary || {};
+    const attendance = snapshot.attendance || {};
+    const payment = snapshot.payment || {};
+    const employee = snapshot.employee || {};
+    return [
+      row.payslipNumber || '',
+      row.month || '',
+      employee.employeeCode || '',
+      employee.name || '',
+      employee.department || '',
+      employee.designation || '',
+      money(salary.grossSalary),
+      money(salary.totalEarnings),
+      money(salary.totalDeductions),
+      money(salary.totalReimbursements),
+      money(salary.netSalary),
+      money(salary.totalEmployerContributions),
+      attendance.workingDays ?? '',
+      attendance.paidDays ?? '',
+      attendance.lopDays ?? '',
+      attendance.overtimeHours ?? '',
+      payment.bankName || employee.bankName || '',
+      // §13 / §26 — masked. The register is a finance report, not a bank file.
+      payment.accountNumberMasked || employee.accountNumberMasked || '',
+      csvDate(payment.paymentDate || snapshot.payroll?.paymentDate),
+      payment.reference || '',
+      row.status || '',
+      row.downloadCount || 0,
+      csvDate(row.emailedAt),
+    ];
+  });
+
+export const registerFilename = ({ month = '' } = {}) => `payroll-register-${month || 'all'}.csv`;
+
 // ── §19 — email copy ───────────────────────────────────────────────────────
 
 export const payslipEmailCopy = ({ month = '', employeeName = '', companyName = '' } = {}) => ({

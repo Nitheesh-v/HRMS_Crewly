@@ -23,6 +23,7 @@ import payslipScope from '../middlewares/payslipScope.js';
 
 import {
   downloadBulkFile,
+  downloadRegister,
   downloadMyPayslip,
   downloadPayslip,
   emailMonthPayslips,
@@ -85,6 +86,9 @@ router.get('/dashboard', ...readAccess, payslipListQueryValidator, getPayslipDas
 
 // §27.3 — the payslip list, filterable by month / year / FY / search (§15).
 router.get('/', ...readAccess, payslipListQueryValidator, listPayslips);
+
+// §4 — payroll register (CSV download), before /:payslipId so the path wins.
+router.get('/register', ...readAccess, payslipListQueryValidator, downloadRegister);
 
 // §17 — generate every payslip for a month (queued for large companies).
 router.post('/generate', ...writeAccess('PAYSLIP_GENERATE'), generatePayslipsValidator, generatePayslips);

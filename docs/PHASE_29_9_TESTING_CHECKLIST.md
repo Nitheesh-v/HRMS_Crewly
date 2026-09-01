@@ -33,6 +33,20 @@ Windows PowerShell commands throughout.
 | Another email system (§19) | The existing mailer, extended with attachments |
 | — | Legacy `/api/payroll/:id/payslip` and `/app/payslips` left untouched, guarded by a test |
 
+## Audit pass — four gaps closed
+
+Re-reading the shipped module against the spec found four things that were
+advertised but not delivered:
+
+| § | Gap | Fix |
+|---|---|---|
+| §6 / §8 | Logo stored, never drawn | Resolved at render time and embedded; fail-open, cached, badge fallback |
+| §4 | "Download payroll register" | `GET /register` CSV download, plus a **Register** button |
+| §23 | "Recent Payslip" cache | `recent` cache suffix + `getMyRecentPayslip()` + a "Latest payslip" card |
+| §12 | Cycle missing from the attendance block | Now leads the block, in the PDF and on screen |
+
+Plus: the requester gets a `PAYSLIPS_GENERATED` summary after an inline run.
+
 ## Also fixed along the way
 
 The payroll queue had **no consumer**. `registerPayrollProcessors()` was
@@ -72,6 +86,12 @@ Hermetic ladder (no MongoDB, no Redis, no BullMQ, no SMTP, no PDF renderer).
   department, and a queued archive cannot be downloaded early
 - §15 filters by month, year, financial year and search
 - §23 both reads go through the cache and every change invalidates it
+- §6/§8 the logo is embedded when it resolves, and generation still works
+  when the host is unreachable
+- §4 the register is a CSV with one row per payslip and never contains a full
+  account number
+- §23 the recent payslip is cached on its own key
+- §12 the PDF attendance block leads with the payroll cycle
 - §25 all five audited actions are recorded
 - the legacy payslip route and renderer still exist, untouched
 
