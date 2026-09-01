@@ -1,56 +1,16 @@
-import { Outlet, NavLink, useNavigate } from "react-router-dom";
+import { Outlet, useNavigate } from "react-router-dom";
 import useAuth from "../hooks/useAuth.jsx";
 import usePermission from "../hooks/usePermission.js";
 
 import { ROLES } from "../utils/roles.js";
 import NotificationBell from "../components/NotificationBell";
 import SubscriptionStatusBanner from "../components/SubscriptionStatusBanner.jsx";
+import SidebarNav from "./SidebarNav.jsx";
 import { useEffect, useState } from "react";
 import { useDispatch } from "react-redux";
 import { fetchMyPermissions } from "../redux/slices/PermissionSlices.js";
 
-import {
-  BarChart3,
-  Bell,
-  BellRing,
-  Building2,
-  CalendarClock,
-  CalendarDays,
-  CalendarOff,
-  CalendarRange,
-  CheckCircle2,
-  ClipboardList,
-  Clock,
-  CreditCard,
-  DoorOpen,
-  FileText,
-  Files,
-  FolderOpen,
-  GitBranch,
-  LayoutDashboard,
-  LayoutList,
-  LifeBuoy,
-  ListTodo,
-  LockKeyhole,
-  Megaphone,
-  MessageCircle,
-  Monitor,
-  Network,
-  PartyPopper,
-  ReceiptText,
-  ScrollText,
-  Settings,
-  ShieldCheck,
-  Shuffle,
-  Sparkles,
-  Target,
-  Timer,
-  UserCircle,
-  Users,
-  Wallet,
-  Layers,
-  KeyRound,
-} from "lucide-react";
+
 
 const NAV_BY_ROLE = {
   [ROLES.COMPANY_ADMIN]: [
@@ -226,214 +186,6 @@ const NAV_BY_ROLE = {
 };
 
 
-const NAV_ICON_BY_PATH = {
-  "/app":
-    LayoutDashboard,
-
-  "/app/meetings":
-    CalendarDays,
-
-  "/app/org-chart":
-    Network,
-
-  "/app/users":
-    Users,
-
-  "/app/departments":
-    Building2,
-
-  "/app/analytics":
-    BarChart3,
-
-  "/app/reports":
-    FileText,
-
-  "/app/attendance":
-    Clock,
-
-  "/app/attendance/report":
-    BarChart3,
-
-  "/app/leaves":
-    CalendarOff,
-
-  "/app/leaves/approvals":
-    CheckCircle2,
-
-  "/app/payroll":
-    Wallet,
-
-  "/app/payroll/components":
-    Layers,
-
-  "/app/payroll/structures":
-    LayoutList,
-
-  "/app/payslips":
-    ReceiptText,
-
-  "/app/holidays":
-    PartyPopper,
-
-  "/app/shifts":
-    Shuffle,
-
-  "/app/schedules":
-    CalendarRange,
-
-  "/app/announcements":
-    Megaphone,
-
-  "/app/documents":
-    FileText,
-
-  "/app/employee-files":
-    Files,
-
-  "/app/lifecycle":
-    GitBranch,
-
-  "/app/performance":
-    Target,
-
-  "/app/expenses":
-    Wallet,
-
-  "/app/assets":
-    Monitor,
-
-  "/app/projects":
-    FolderOpen,
-
-  "/app/tasks":
-    ListTodo,
-
-  "/app/recruitment":
-    ClipboardList,
-
-  "/app/recruitment/requisitions":
-    ClipboardList,
-
-  "/app/recruitment/candidates":
-    Users,
-
-  "/app/recruitment/interviews":
-    CalendarClock,
-
-  "/app/recruitment/my-interviews":
-    CalendarClock,
-
-  "/app/recruitment/pre-onboarding":
-    ClipboardList,
-
-  "/app/support":
-    LifeBuoy,
-
-  "/app/exit":
-    DoorOpen,
-
-  "/app/company":
-    Settings,
-
-  "/app/billing":
-    CreditCard,
-
-  "/app/subscription":
-    CreditCard,
-
-  "/app/governance":
-    ShieldCheck,
-
-  "/app/roles-permissions":
-    KeyRound,
-
-  "/app/profile":
-    UserCircle,
-
-  "/app/notifications":
-    Bell,
-
-  "/app/notification-settings":
-    BellRing,
-
-  "/app/security/sessions":
-    LockKeyhole,
-
-  "/app/security":
-    ShieldCheck,
-
-  "/app/audit-logs":
-    ScrollText,
-
-  "/app/security/settings":
-    Settings,
-};
-
-/*
- * Removes the existing emoji prefix from labels.
- * Example: "🏠 Dashboard" becomes "Dashboard".
- */
-const cleanNavLabel = (label = "") =>
-  String(label)
-    .replace(
-      /^[^A-Za-z0-9]+/,
-      "",
-    )
-    .trim();
-
-const getSoonIcon = (label = "") => {
-  const cleanLabel =
-    cleanNavLabel(label);
-
-  if (
-    cleanLabel.includes(
-      "Celebrations",
-    )
-  ) {
-    return PartyPopper;
-  }
-
-  if (
-    cleanLabel.includes(
-      "Chat",
-    )
-  ) {
-    return MessageCircle;
-  }
-
-  if (
-    cleanLabel.includes(
-      "Time Tracking",
-    )
-  ) {
-    return Timer;
-  }
-
-  if (
-    cleanLabel.includes(
-      "Daily Reports",
-    )
-  ) {
-    return BarChart3;
-  }
-
-  if (
-    cleanLabel.includes(
-      "Employee Records",
-    )
-  ) {
-    return Files;
-  }
-
-  return Sparkles;
-};
-
-const getNavIcon = (item) =>
-  NAV_ICON_BY_PATH[
-    item.to
-  ] ||
-  getSoonIcon(item.label);
-
 const AppLayout = () => {
   const { user, secureLogout } = useAuth();
   const { hasPermission, hasAnyPermission } = usePermission();
@@ -457,13 +209,6 @@ const AppLayout = () => {
       replace: true,
     });
   };
-  const linkClass = ({ isActive }) =>
-  `flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm transition ${
-      isActive
-        ? "bg-crewly-green/10 text-crewly-green"
-        : "text-crewly-dim hover:bg-crewly-bg hover:text-crewly-text"
-    }`;
-
   const baseMenu = NAV_BY_ROLE[user?.role] || NAV_BY_ROLE[ROLES.EMPLOYEE];
 
   const securityMenu = [
@@ -599,73 +344,7 @@ const AppLayout = () => {
 
   return (
     <div className="flex min-h-screen">
-      <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col border-r border-crewly-border bg-crewly-card px-4 py-5">
-        <div className="text-lg font-extrabold tracking-wide text-crewly-green">
-          Crewly <span className="text-crewly-orange">HRMS</span>
-        </div>
-
-        <nav className="mt-5 flex-1 space-y-0.5 overflow-y-auto pr-1">
-    {menu.map((item) => {
-  const Icon =
-    getNavIcon(item);
-
-  const label =
-    cleanNavLabel(
-      item.label,
-    );
-
-  const key =
-    `${item.to || "soon"}-${label}`;
-
-  if (item.soon) {
-    return (
-      <span
-        key={key}
-        title="Coming in an upcoming phase"
-        className="flex cursor-not-allowed items-center gap-3 rounded-lg px-4 py-2.5 text-sm text-crewly-dim/40"
-      >
-        <Icon
-          aria-hidden="true"
-          className="h-[17px] w-[17px] shrink-0"
-          strokeWidth={1.8}
-        />
-
-        <span className="min-w-0 flex-1">
-          {label}
-        </span>
-
-        <span className="text-[10px]">
-          soon
-        </span>
-      </span>
-    );
-  }
-
-  return (
-    <NavLink
-      key={key}
-      to={item.to}
-      end={item.end}
-      className={linkClass}
-    >
-      <Icon
-        aria-hidden="true"
-        className="h-[17px] w-[17px] shrink-0"
-        strokeWidth={1.8}
-      />
-
-      <span className="min-w-0 flex-1">
-        {label}
-      </span>
-    </NavLink>
-  );
-})}
-        </nav>
-
-        <p className="pt-3 text-[11px] text-crewly-dim/60">
-          Crewly HRMS · Phase 27
-        </p>
-      </aside>
+      <SidebarNav menu={menu} />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-crewly-border bg-crewly-card px-7 py-3">

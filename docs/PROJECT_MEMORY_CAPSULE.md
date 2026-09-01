@@ -318,6 +318,13 @@ Frontend first (node_modules may be missing).
   29.1 statutory config (PF off => no PF component).
   Payroll nav + /app/payroll/setup and /app/payroll/components are
   PERMISSION-driven, not gated on the COMPANY_ADMIN/HR_MANAGER role names.
+- Navigation rework (2026-09-01): the flat 35-row sidebar became
+  layout/SidebarNav.jsx — every page now belongs to a GROUP (Home, People,
+  Time & Leave, Payroll, Recruitment, Work, Insights, Me are pinned;
+  Finance + Administration sit behind "More"), one group open at a time,
+  the group owning the current page opens itself, a search box filters all
+  pages, and a collapse toggle (w-60 <-> w-16 icon rail) is remembered in
+  localStorage. AppLayout keeps header/main and only builds the menu.
 - Phase 29.3 = Salary Structures: pure rules in
   services/payroll/salaryStructureRules.js, tenant model
   models/SalaryStructureTemplate.js (unique {companyId, code}, company-first
