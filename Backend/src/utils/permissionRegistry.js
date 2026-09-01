@@ -126,7 +126,10 @@ export const DEFAULT_PERMISSIONS = [
 
   // Salary configuration (phase 33.2 / 33.3 / 33.4)
   ...actions("SALARY_COMPONENT", ["READ", "MANAGE", "ACTIVATE"]),
-  ...actions("SALARY_STRUCTURE", ["READ", "MANAGE", "ASSIGN"]),
+  // ACTIVATE (Phase 29.3 §14) is deliberately separate from MANAGE: building
+  // a structure and switching it on are different duties, exactly as
+  // PAYROLL_SETUP_ACTIVATE / SALARY_COMPONENT_ACTIVATE already are.
+  ...actions("SALARY_STRUCTURE", ["READ", "MANAGE", "ACTIVATE", "ASSIGN"]),
   ...actions("EMPLOYEE_SALARY", ["READ", "MANAGE"]),
   ...actions("SALARY_REVISION", ["APPROVE"]),
 

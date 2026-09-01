@@ -111,7 +111,12 @@ export const ROLE_TEMPLATES = Object.freeze([
       'SALARY_COMPONENT_READ',
       'SALARY_COMPONENT_MANAGE',
       'SALARY_COMPONENT_ACTIVATE',
+      // Phase 29.3 §4 — for the salary structure the Payroll Admin is treated
+      // like the Company Admin: build, edit, clone AND activate.
       'SALARY_STRUCTURE_READ',
+      'SALARY_STRUCTURE_MANAGE',
+      'SALARY_STRUCTURE_ACTIVATE',
+      'SALARY_STRUCTURE_ASSIGN',
       'EMPLOYEE_SALARY_READ',
       'PAYROLL_PAYMENT_READ',
       'PAYROLL_PAYMENT_GENERATE',

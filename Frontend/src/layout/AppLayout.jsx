@@ -28,6 +28,7 @@ import {
   FolderOpen,
   GitBranch,
   LayoutDashboard,
+  LayoutList,
   LifeBuoy,
   ListTodo,
   LockKeyhole,
@@ -264,6 +265,9 @@ const NAV_ICON_BY_PATH = {
 
   "/app/payroll/components":
     Layers,
+
+  "/app/payroll/structures":
+    LayoutList,
 
   "/app/payslips":
     ReceiptText,
@@ -569,6 +573,15 @@ const AppLayout = () => {
       'SALARY_COMPONENT_ACTIVATE',
     ])
       ? [{ to: '/app/payroll/components', label: 'Salary Components' }]
+      : []),
+    // Phase 29.3 — same discipline: the entry appears for whoever holds a
+    // structure permission, whichever company role carries it.
+    ...(hasAnyPermission([
+      'SALARY_STRUCTURE_READ',
+      'SALARY_STRUCTURE_MANAGE',
+      'SALARY_STRUCTURE_ACTIVATE',
+    ])
+      ? [{ to: '/app/payroll/structures', label: 'Salary Structures' }]
       : []),
   ];
 

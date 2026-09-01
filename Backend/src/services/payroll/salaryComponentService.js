@@ -91,6 +91,9 @@ const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$
 export const makeSalaryComponentService = ({
   SalaryComponentModel,
   PayrollSetupModel = null,
+  // Phase 29.3 — how many CURRENT salary structures reference a component.
+  // Injected (not imported) so this module stays hermetic and testable.
+  structureUsage = null,
   cache = {},
   audit = async () => null,
 } = {}) => {
@@ -169,8 +172,15 @@ export const makeSalaryComponentService = ({
   };
 
   // §22 / §49 — where is this component used?
-  // 29.3 (structures) does not exist yet, so usage is honestly zero. The
-  // shape is already what the UI consumes, and the 29.3 model will fill it.
+  const countStructures = async (companyId, componentCode) => {
+    if (typeof structureUsage !== 'function' || !componentCode) return 0;
+    try {
+      return Number(await structureUsage({ companyId, componentCode })) || 0;
+    } catch {
+      return 0;
+    }
+  };
+
   const getUsage = async ({ companyId, componentId }) => {
     const component = await SalaryComponentModel.findOne({ _id: componentId, companyId })
       .select('_id code version')
@@ -179,7 +189,9 @@ export const makeSalaryComponentService = ({
     if (!component) return null;
 
     return {
-      structures: 0,
+      // Live count from Phase 29.3 — structures are the first consumer of a
+      // component, so a component inside a structure is history-protected.
+      structures: await countStructures(companyId, component.code),
       activeAssignments: 0,
       payrollRuns: 0,
       hasProcessedPayroll: false,
@@ -446,6 +458,7 @@ export const makeSalaryComponentService = ({
 // Tests use `makeSalaryComponentService` with fakes; the app uses this.
 import SalaryComponent from '../../models/SalaryComponent.js';
 import PayrollSetup from '../../models/PayrollSetup.js';
+import salaryStructureService from './salaryStructureService.js';
 import { recordAudit } from '../../utils/securityauditService.js';
 import {
   buildTenantCacheKey,
@@ -457,6 +470,9 @@ import {
 const salaryComponentService = makeSalaryComponentService({
   SalaryComponentModel: SalaryComponent,
   PayrollSetupModel: PayrollSetup,
+  // 29.3 structures are the first real consumer of a component.
+  structureUsage: ({ companyId, componentCode }) =>
+    salaryStructureService.countStructuresUsingComponent({ companyId, componentCode }),
   cache: {
     buildKey: buildTenantCacheKey,
     getOrSet: getOrSetCache,

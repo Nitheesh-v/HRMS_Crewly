@@ -51,6 +51,9 @@ career portal.
   Reference: `docs/PHASE_29_1_COMPANY_PAYROLL_SETUP.md`. Roadmap:
   29.2 Salary Components → 29.3 Salary Structures → 29.4 Employee Payroll
   Profile → … → 29.14 Payroll Reports & Analytics.
+  29.3 is closed: `docs/PHASE_29_3_SALARY_STRUCTURES.md` +
+  `docs/PHASE_29_3_TESTING_CHECKLIST.md`; 34 hermetic tests
+  (`npm run test:salary-structures`), 225/225 on the payroll ladder.
 - Phase 28 (background infrastructure, 28.1–28.9): Redis foundation,
   BullMQ foundation (7 queues), email delivery queue, processing queues
   (resume/ATS/documents), scheduled one-time jobs, pre-onboarding + BGV
@@ -299,8 +302,11 @@ Frontend first (node_modules may be missing).
   utils/payrollActionAudit.js holds the §11 sensitive-action audit hooks
   (salary changed … payslips released) for 29.2+; bank numbers are masked to
   the last 4 digits and PAN/UAN/ESI are written as [REDACTED].
-  SYSTEM_PERMISSION_VERSION is 15. Only PAYROLL_SETUP_* is enforced today;
+  SYSTEM_PERMISSION_VERSION is 17 (29.3 added SALARY_STRUCTURE_ACTIVATE).
+  PAYROLL_SETUP_*, SALARY_COMPONENT_* and SALARY_STRUCTURE_* are enforced;
   the rest of the catalogue is declared for the later payroll phases.
+  Permission totals: 198 in the catalogue, COMPANY_ADMIN 198, HR_MANAGER 132,
+  TEAM_LEAD 58, MANAGER 53, EMPLOYEE 51.
 - Phase 29.2 = Salary Components: pure rules in
   services/payroll/salaryComponentRules.js, tenant model
   models/SalaryComponent.js (unique {companyId, code}, company-first indexes),
@@ -312,6 +318,23 @@ Frontend first (node_modules may be missing).
   29.1 statutory config (PF off => no PF component).
   Payroll nav + /app/payroll/setup and /app/payroll/components are
   PERMISSION-driven, not gated on the COMPANY_ADMIN/HR_MANAGER role names.
+- Phase 29.3 = Salary Structures: pure rules in
+  services/payroll/salaryStructureRules.js, tenant model
+  models/SalaryStructureTemplate.js (unique {companyId, code}, company-first
+  indexes). It is deliberately NOT models/SalaryStructure.js: that file is the
+  LEGACY per-employee monthly salary row (user/basic/hra/allowances/pfPercent/
+  professionalTax) used by PayrollPage + payrollController, and 29.3 must not
+  break it. The 29.3 API therefore lives at /api/payroll/salary-structures and
+  leaves the legacy /api/payroll/structures alone (a hermetic test guards it).
+  injectable service (cache + audit + models injected), permissions
+  SALARY_STRUCTURE_{READ,MANAGE,ACTIVATE} (SYSTEM_PERMISSION_VERSION is 17;
+  HR_MANAGER gets READ+MANAGE but NOT ACTIVATE, the PAYROLL_ADMIN template
+  gets all three), Redis fail-open cache 'payroll-structures', versioning that
+  writes a NEW version when a structure with history is reconfigured, clone as
+  a fresh DRAFT v1, and an unstored §9 preview (never the payroll engine).
+  salaryComponentService.getUsage() now counts the structures that reference a
+  component (injected `structureUsage`), which closes the 29.2 -> 29.3 loop.
+  Frontend: /app/payroll/structures + permission-driven sidebar entry.
 - Phase 29.1 closed: Company Payroll Setup (backend model/service/routes/
   validator + 33 hermetic tests + frontend wizard & dashboard + docs).
   One current config per company (partial unique index on `companyId` where
