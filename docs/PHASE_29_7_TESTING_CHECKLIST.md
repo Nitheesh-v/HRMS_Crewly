@@ -16,14 +16,16 @@ Windows PowerShell commands throughout.
 | API | 16 routes at `/api/payroll/review` |
 | Queue | Reuses the 29.6 `payroll` queue with a `payroll-export` job; worker rebuilds the report from Mongo and falls back inline when Redis is off |
 | Permissions | Reused `PAYROLL_RUN_READ` / `_PREPARE` / `_REVIEW` / `_LOCK` / `_REOPEN` / `_APPROVE` / `_REJECT`; **`PAYROLL_RUN_REJECT` added to `FINANCE_MANAGER`**; `SYSTEM_PERMISSION_VERSION = 21` |
-| UI | `/app/payroll/review` — KPI cards, checklist, Employees / Errors / Differences / Remarks / Reports tabs, lock · submit · approve · reject · reopen, employee breakdown drawer, CSV export |
+| Notifications | §22 — addressed by **permission**, not role name: submit reaches the approvers, approve/reject reaches payroll, reopen reaches HR; the actor is never notified of their own action |
+| Cache sharing | `services/payroll/payrollReviewCache.js` — one key shape; the 29.6 engine drops the review dashboard on every recalculation (§20) |
+| UI | `/app/payroll/review` — the seven §7 KPI cards, checklist, Employees / Errors / Differences / Remarks / Reports tabs, lock · submit · approve · reject · reopen, employee breakdown drawer, CSV export, the §16 summary report table |
 
 ## Brief corrections applied
 
 | The brief said | What was built |
 |---|---|
 | Gate on role names (Company Admin / Payroll Admin / HR Manager / Finance Manager) | Gate on **permissions** + `requireFeature('payroll')` + the 29.1 payroll scope |
-| "Monthly inputs become read-only" on lock | Lock sets the 29.5 `PayrollPeriod` to `SENT_TO_PAYROLL`; reopen returns it to `LOCKED` — one state machine, not two |
+| "Monthly inputs become read-only" on lock | Lock sets the 29.5 `PayrollPeriod` to `SENT_TO_PAYROLL`; reopen returns it to **`COLLECTING_INPUTS`**, the only state where 29.5 accepts input writes — one state machine, not two |
 | Excel / XLSX reports | **CSV** (same decision as 29.5's import template): no new npm dependency |
 | Cache key `payroll:review:{companyId}:{month}` | `buildTenantCacheKey({ namespace: 'payroll-review', version: 1, segments: [month, …] })` |
 | — | BullMQ export **is** implemented on the existing queue; inline fallback only when Redis is off, and the UI says which path ran |
@@ -34,17 +36,28 @@ Windows PowerShell commands throughout.
 
 ```powershell
 cd Backend
-npm run test:payroll-review   # 23 tests  (new, hermetic)
-npm run test:payroll          # 29.1 → 29.7   → 230
+npm run test:payroll-review   # 29 tests  (new, hermetic)
+npm run test:payroll-engine   # 29 tests
+npm run test:payroll          # 29.1 → 29.7   → 238
 npm run test:phase28          # redis + bullmq + queues + cache → 242
 npm run test:payroll-rbac     # permission matrix → 27
+npm run test:all              # 604
 ```
 
-Hermetic ladder (no MongoDB, no Redis, no BullMQ): **498 green**.
+Hermetic ladder (no MongoDB, no Redis, no BullMQ): **604 green**.
 
 - the cache seam is called with the house contract
   (`{ ttlSeconds, version, loader }`, never positional args) — the bug that
   would have made every 29.6 dashboard read throw `loader is not a function`
+- §22 notifications: fanned out by permission, the actor excluded, the
+  rejection reason carried, and a throwing notifier never rolls back the
+  approval
+- §18 export actions: `EXPORT_ERROR_LIST` and `DOWNLOAD_PAYROLL_SUMMARY`
+  return a report, touch no review row, and still work when the month is
+  locked
+- §20: one cache key shape shared with the engine, and a recalculation
+  invalidates the review dashboard
+- §23: a remark is audited with its author and their role
 - the transition table, including that `CALCULATED` cannot jump straight to
   `LOCKED`, and that `LOCKED` / `PENDING_FINANCE_APPROVAL` / `APPROVED` are
   read-only

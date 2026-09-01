@@ -32,11 +32,12 @@ const {
   summaryReport,
   validateEmployeeForReview,
 } = rules;
-const { makePayrollReviewService } = serviceFactory;
+const { makePayrollReviewService, CACHE_NAMESPACE, CACHE_VERSION } = serviceFactory;
 const { DEFAULT_PERMISSIONS, DEFAULT_ROLE_MATRIX } = registry;
 const { ROLE_TEMPLATES } = templates;
 const { JOB_NAMES, PAYROLL_JOB_NAMES } = queueConfig;
 const { validatePayrollExportPayload } = dispatcherModule;
+const { reviewCacheKey } = await import('../src/services/payroll/payrollReviewCache.js');
 
 const MONTH = '2026-08';
 // ObjectId-shaped: the dispatcher payload validator rejects anything else.
@@ -207,10 +208,11 @@ const makeHarness = ({ results = null, profiles = null, employees = null } = {})
 
   const auditRows = [];
   const notifications = [];
+  const audiences = [];
   const cacheCalls = { del: 0, getOrSet: 0, lastOptions: null, cachedValue: null };
   const dispatched = [];
 
-  const service = makePayrollReviewService({
+  const deps = {
     PayrollReviewModel: ReviewModel,
     PayrollResultModel: ResultModel,
     PayrollRunModel: RunModel,
@@ -246,14 +248,21 @@ const makeHarness = ({ results = null, profiles = null, employees = null } = {})
     },
     audit: async (row) => auditRows.push(row),
     notify: async (row) => notifications.push(row),
+    audience: async ({ permissions }) => {
+      audiences.push(permissions);
+      return [FINANCE_USER, HR_USER];
+    },
     dispatch: async (payload) => {
       dispatched.push(payload);
       return { queued: false };
     },
-  });
+  };
+
+  const service = makePayrollReviewService(deps);
 
   return {
     service,
+    deps,
     ReviewModel,
     ResultModel,
     ExportModel,
@@ -261,10 +270,16 @@ const makeHarness = ({ results = null, profiles = null, employees = null } = {})
     ProfileModel,
     auditRows,
     notifications,
+    audiences,
     cacheCalls,
     dispatched,
   };
 };
+
+// Two recipients that the fake audience resolver always returns: whoever the
+// company delegated the duty to, whoever that is.
+const FINANCE_USER = '64b7f9c2e4b0a1b2c3d4e577';
+const HR_USER = '64b7f9c2e4b0a1b2c3d4e588';
 
 const actor = { _id: '64b7f9c2e4b0a1b2c3d4e5f6', name: 'Payroll Admin', role: 'PAYROLL_ADMIN' };
 
@@ -473,6 +488,112 @@ test('the dashboard reads through the tenant cache (§20)', async () => {
   assert.equal(state.kpis.totalEmployees, 2);
 });
 
+test('workflow notifications reach the people who can act, by permission (§22)', async () => {
+  const { service, notifications, audiences } = makeHarness();
+
+  for (const item of CHECKLIST_ITEMS) {
+    if (item.key === 'ERROR_COUNT_ZERO') continue;
+    await service.setChecklist({ companyId: COMPANY, month: MONTH, item: item.key, value: true, actor });
+  }
+  await service.lock({ companyId: COMPANY, month: MONTH, actor });
+  await service.submitForApproval({ companyId: COMPANY, month: MONTH, actor });
+  await service.approve({ companyId: COMPANY, month: MONTH, actor });
+
+  // One fan-out per transition: lock, submit, approve.
+  assert.equal(audiences.length, 3);
+  // "Notify finance" means notify whoever can approve — never a role name.
+  assert.ok(audiences[1].includes('PAYROLL_RUN_APPROVE'));
+  assert.deepEqual(audiences[1], ['PAYROLL_RUN_APPROVE']);
+
+  // Every recipient gets their own message, and the actor is not notified
+  // of their own action.
+  assert.equal(notifications.length, 6);
+  assert.ok(notifications.every((row) => row.userId !== String(actor._id)));
+  assert.ok(notifications.some((row) => row.userId === FINANCE_USER));
+  assert.ok(notifications.some((row) => row.userId === HR_USER));
+  assert.ok(notifications.some((row) => row.type === 'PAYROLL_APPROVED'));
+  assert.ok(notifications.every((row) => row.companyId === COMPANY));
+});
+
+test('a rejection notifies payroll with the reason attached (§14 / §22)', async () => {
+  const { service, notifications } = makeHarness();
+
+  for (const item of CHECKLIST_ITEMS) {
+    if (item.key === 'ERROR_COUNT_ZERO') continue;
+    await service.setChecklist({ companyId: COMPANY, month: MONTH, item: item.key, value: true, actor });
+  }
+  await service.lock({ companyId: COMPANY, month: MONTH, actor });
+  await service.submitForApproval({ companyId: COMPANY, month: MONTH, actor });
+  notifications.length = 0;
+
+  await service.reject({ companyId: COMPANY, month: MONTH, reason: 'Bonus needs a receipt', actor });
+
+  assert.ok(notifications.some((row) => row.type === 'PAYROLL_REJECTED'));
+  assert.ok(notifications.every((row) => row.payload.reason === 'Bonus needs a receipt'));
+});
+
+test('a notification that fails never rolls back the approval (§22)', async () => {
+  const exploding = makeHarness();
+  exploding.service = serviceFactory.makePayrollReviewService({
+    ...exploding.deps,
+    notify: async () => {
+      throw new Error('notification service down');
+    },
+  });
+
+  for (const item of CHECKLIST_ITEMS) {
+    if (item.key === 'ERROR_COUNT_ZERO') continue;
+    await exploding.service.setChecklist({ companyId: COMPANY, month: MONTH, item: item.key, value: true, actor });
+  }
+  const locked = await exploding.service.lock({ companyId: COMPANY, month: MONTH, actor });
+  assert.equal(locked.review.status, 'LOCKED');
+});
+
+test('the two export bulk actions hand back a report and touch no row (§18)', async () => {
+  const { service } = makeHarness();
+  const before = await service.getReview({ companyId: COMPANY, month: MONTH, actor });
+
+  const outcome = await service.bulkAction({
+    companyId: COMPANY,
+    month: MONTH,
+    action: 'EXPORT_ERROR_LIST',
+    employeeIds: [],
+    actor,
+  });
+
+  assert.equal(outcome.touched.length, 0);
+  assert.ok(outcome.content.startsWith('employeeCode,employeeName'));
+  assert.equal(outcome.action, 'EXPORT_ERROR_LIST');
+
+  // The report still works on a locked month — reading frozen numbers is fine.
+  for (const item of CHECKLIST_ITEMS) {
+    if (item.key === 'ERROR_COUNT_ZERO') continue;
+    await service.setChecklist({ companyId: COMPANY, month: MONTH, item: item.key, value: true, actor });
+  }
+  await service.lock({ companyId: COMPANY, month: MONTH, actor });
+
+  const summary = await service.bulkAction({
+    companyId: COMPANY,
+    month: MONTH,
+    action: 'DOWNLOAD_PAYROLL_SUMMARY',
+    employeeIds: [],
+    actor,
+  });
+  assert.ok(summary.content.startsWith('employeeCode,employeeName,basic'));
+  assert.equal(summary.review.employeeReviews.length, before.review.employeeReviews.length);
+});
+
+test('one cache key shape is shared with the 29.6 engine (§20)', () => {
+  assert.equal(CACHE_NAMESPACE, 'payroll-review');
+  assert.equal(CACHE_VERSION, 1);
+  assert.equal(
+    reviewCacheKey(COMPANY, MONTH),
+    `crewly:cache:company:${COMPANY}:payroll-review:v1:${MONTH}:dashboard`,
+  );
+  // A bad tenant id or month yields no key, never a cross-tenant one.
+  assert.equal(reviewCacheKey('not-an-id', MONTH), null);
+});
+
 test('a review is created on first read and starts at CALCULATED', async () => {
   const { service, ReviewModel } = makeHarness();
 
@@ -531,7 +652,10 @@ test('locking freezes the monthly inputs, reopening unfreezes them (§12 / §13)
   assert.equal(PeriodModel.rows[0].status, 'SENT_TO_PAYROLL');
 
   await service.reopen({ companyId: COMPANY, month: MONTH, reason: 'Bonus needs a correction', actor });
-  assert.equal(PeriodModel.rows[0].status, 'LOCKED');
+  // COLLECTING_INPUTS is the 29.5 state where inputs are writable again —
+  // LOCKED and SENT_TO_PAYROLL both refuse writes, so anything else would
+  // leave HR with a "reopened" month they still cannot edit.
+  assert.equal(PeriodModel.rows[0].status, 'COLLECTING_INPUTS');
 });
 
 test('reopen without a reason is refused, with a reason it is audited (§13)', async () => {
@@ -615,6 +739,26 @@ test('a rejection needs a reason and stops the approval path (§14)', async () =
     () => service.approve({ companyId: COMPANY, month: MONTH, actor }),
     (error) => error.statusCode === 400,
   );
+});
+
+test('a remark is audited with the author and their role (§15 / §23)', async () => {
+  const { service, auditRows } = makeHarness();
+
+  await service.addRemark({
+    companyId: COMPANY,
+    month: MONTH,
+    actor: { _id: FINANCE_USER, name: 'Finance Manager', role: 'FINANCE_MANAGER' },
+    message: 'Bonus needs a receipt before payment',
+    channel: 'FINANCE',
+    req: { user: { _id: FINANCE_USER, name: 'Finance Manager', role: 'FINANCE_MANAGER' } },
+  });
+
+  const row = auditRows.find((entry) => entry.action === 'PAYROLL_REMARK_ADDED');
+  assert.ok(row, 'remarks must be audited');
+  // The request reaches the audit writer, so the row carries user and role.
+  assert.equal(String(row.req.user._id), FINANCE_USER);
+  assert.equal(row.req.user.role, 'FINANCE_MANAGER');
+  assert.equal(row.companyId, COMPANY);
 });
 
 test('remarks are append-only and keep their author, role and date (§15)', async () => {

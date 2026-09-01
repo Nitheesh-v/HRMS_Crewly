@@ -271,6 +271,7 @@ const makeHarness = ({ employees = null, profiles = null, inputs = null, setup =
   const auditRows = [];
   const notifications = [];
   const cacheCalls = { del: 0, getOrSet: 0, lastOptions: null };
+  const reviewInvalidations = [];
   const dispatched = [];
 
   const service = makePayrollEngineService({
@@ -307,6 +308,10 @@ const makeHarness = ({ employees = null, profiles = null, inputs = null, setup =
       dispatched.push(payload);
       return { queued: false };
     },
+    invalidateReview: async (companyId, month) => {
+      reviewInvalidations.push({ companyId, month });
+      return 1;
+    },
   });
 
   return {
@@ -319,6 +324,7 @@ const makeHarness = ({ employees = null, profiles = null, inputs = null, setup =
     notifications,
     cacheCalls,
     dispatched,
+    reviewInvalidations,
   };
 };
 
@@ -723,6 +729,18 @@ test('the summary cache is read with the house contract, not positional args', a
   // The unwrapped value reaches the caller, not the { value, cache } envelope.
   assert.equal(summary.calculated, 2);
   assert.ok(summary.grossPayroll > 0);
+});
+
+test('a recalculation drops the 29.7 review dashboard cache (§20)', async () => {
+  const { service, reviewInvalidations } = makeHarness();
+  await service.startRun({ companyId: COMPANY, month: MONTH, actor });
+
+  await service.recalculate({ companyId: COMPANY, month: MONTH, actor });
+
+  assert.ok(
+    reviewInvalidations.some((row) => row.companyId === COMPANY && row.month === MONTH),
+    'recalculated figures must never sit behind a stale review dashboard',
+  );
 });
 
 test('results can be narrowed to a payroll scope, never widened (§3 / §30)', async () => {

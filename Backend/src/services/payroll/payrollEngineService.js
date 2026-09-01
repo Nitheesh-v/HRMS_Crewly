@@ -29,6 +29,8 @@ import {
 } from './payrollEngineRules.js';
 import { computeStructurePreview } from './salaryStructureRules.js';
 import { financialYearOf, isValidMonth, monthBounds } from './monthlyInputRules.js';
+// §20 (29.7) — the engine drops the review dashboard when figures change.
+import { invalidateReviewCache } from './payrollReviewCache.js';
 
 export const CACHE_NAMESPACE = 'payroll-run';
 export const CACHE_VERSION = 1;
@@ -65,6 +67,9 @@ export const makePayrollEngineService = ({
   audit = async () => null,
   notify = async () => null,
   dispatch = async () => ({ queued: false }),
+  // §20 (29.7) — dropping the review dashboard is injected so the engine
+  // suite can prove a recalculation invalidates it.
+  invalidateReview = invalidateReviewCache,
   ttlSeconds = getPayrollRunCacheTtlSeconds(),
 } = {}) => {
   const buildCacheKey = (companyId, month, suffix = 'summary') => {
@@ -79,6 +84,10 @@ export const makePayrollEngineService = ({
   };
 
   const invalidate = async (companyId, month) => {
+    // §20 (29.7) — a recalculation changes every review figure, so the review
+    // dashboard must not keep serving the previous snapshot.
+    await Promise.resolve(invalidateReview(companyId, month)).catch(() => 0);
+
     if (typeof cache.del !== 'function') return false;
     const keys = ['summary', 'results', 'errors']
       .map((suffix) => buildCacheKey(companyId, month, suffix))

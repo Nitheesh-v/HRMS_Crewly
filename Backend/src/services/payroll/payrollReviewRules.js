@@ -192,6 +192,36 @@ export const summaryReport = ({ results = [] } = {}) => {
   };
 };
 
+// ── notification audience (§22) ────────────────────────────────────────────
+//
+// Notifications are addressed by PERMISSION, not by role name: whoever the
+// company delegates the duty to receives the message. "Notify Finance" means
+// "notify everyone who can approve payroll", so a custom Finance Executive
+// role or a delegated approver is included automatically.
+export const NOTIFICATION_AUDIENCE = {
+  PAYROLL_LOCKED: ['PAYROLL_RUN_APPROVE', 'PAYROLL_RUN_REVIEW'],
+  PAYROLL_PENDING_APPROVAL: ['PAYROLL_RUN_APPROVE'],
+  PAYROLL_APPROVED: ['PAYROLL_RUN_PREPARE', 'PAYROLL_RUN_LOCK'],
+  PAYROLL_REJECTED: ['PAYROLL_RUN_PREPARE', 'PAYROLL_RUN_LOCK'],
+  PAYROLL_REOPENED: ['PAYROLL_RUN_PREPARE', 'PAYROLL_RUN_REVIEW'],
+};
+
+export const NOTIFICATION_COPY = {
+  PAYROLL_LOCKED: 'Payroll locked, awaiting finance review',
+  PAYROLL_PENDING_APPROVAL: 'Payroll submitted for finance approval',
+  PAYROLL_APPROVED: 'Payroll approved',
+  PAYROLL_REJECTED: 'Payroll rejected',
+  PAYROLL_REOPENED: 'Payroll reopened',
+};
+
+export const notificationCopy = (type, { month = '', reason = '' } = {}) => {
+  const base = NOTIFICATION_COPY[type] || 'Payroll review update';
+  const suffix = String(type) === 'PAYROLL_REJECTED' && reason ? ` — ${reason}` : '';
+  return `${base}${month ? ` · ${month}` : ''}${suffix}`;
+};
+
+export const audiencePermissions = (type) => NOTIFICATION_AUDIENCE[type] || [];
+
 // ── difference report (§17) ────────────────────────────────────────────────
 //
 // Never hide a revision: compare the same employee's snapshot lines across two
@@ -413,6 +443,10 @@ export const buildExport = (reportKey, { results = [], errorRows = [] } = {}) =>
 
 export default {
   REVIEW_STATUSES,
+  NOTIFICATION_AUDIENCE,
+  NOTIFICATION_COPY,
+  notificationCopy,
+  audiencePermissions,
   REVIEW_TRANSITIONS,
   CHECKLIST_ITEMS,
   BULK_REVIEW_ACTIONS,

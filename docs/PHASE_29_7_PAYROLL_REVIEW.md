@@ -36,7 +36,7 @@ architecture is the authority.**
 | § | Spec said | Built instead | Why |
 |---|---|---|---|
 | §4 | Role names — *Company Admin / Payroll Admin / HR Manager / Finance Manager* | The payroll-run permissions the 29.1 catalogue already declared: `PAYROLL_RUN_READ` / `_PREPARE` / `_REVIEW` / `_LOCK` / `_REOPEN` / `_APPROVE` / `_REJECT`, plus `requireFeature('payroll')` and the 29.1 payroll scope | The platform has never gated on role names. Envoy-like delegated payroll roles (`PAYROLL_ADMIN`, `FINANCE_MANAGER` templates) would be locked out by a role-name gate. **One permission was genuinely missing and was added (see §2).** |
-| §12 | "Monthly inputs become read-only" on lock | Locking sets the 29.5 `PayrollPeriod` to `SENT_TO_PAYROLL`; reopening returns it to `LOCKED` | Reuses the 29.5 state machine instead of inventing a second, parallel lock flag that could drift out of sync. |
+| §12 / §13 | "Monthly inputs become read-only" on lock; "payroll editable" after reopen | Locking sets the 29.5 `PayrollPeriod` to `SENT_TO_PAYROLL`; an authorized reopen returns it to **`COLLECTING_INPUTS`** | Reuses the 29.5 state machine instead of inventing a second, parallel lock flag. `COLLECTING_INPUTS` is the only writable state — 29.5 refuses input writes in both `LOCKED` *and* `SENT_TO_PAYROLL`, so any other target would leave HR with a "reopened" month they still could not edit. |
 | §19 | Excel / XLSX reports | **CSV** through pure builders | Matches 29.5's CSV template decision: no new npm dependency, and the files open in Excel anyway. |
 | §20 | Cache key `payroll:review:{companyId}:{month}` | `buildTenantCacheKey({ namespace: 'payroll-review', version: 1, segments: [month, suffix] })` | Phase 28.7 helper is the single convention. |
 | §21 | BullMQ for background reports | **Implemented for real** on the existing `payroll` queue (`payroll-export`), with a synchronous inline path when Redis is off | Same discipline as 29.6: the queue is real, the degraded mode is declared in the response (`meta.queued`) and the UI says so. No new queue was added. |
@@ -139,7 +139,7 @@ The checklist box "Error count is zero" is **derived** — the UI shows it as
 | File | Role |
 |---|---|
 | `src/services/payrollReviewService.js` | One call per endpoint, no company id in the browser. |
-| `src/pages/payroll/ReviewPayrollPage.jsx` | Month + status badge, six KPI cards, the checklist, a five-tab workspace (Employees / Errors / Differences / Remarks / Reports), the workflow action bar, and the employee breakdown drawer. |
+| `src/pages/payroll/ReviewPayrollPage.jsx` | Month + status badge, the seven §7 KPI cards, the checklist, a five-tab workspace (Employees / Errors / Differences / Remarks / Reports), the workflow action bar, and the employee breakdown drawer. |
 | `src/routes/AppRoutes.jsx` | `payroll/review` → `ReviewPayrollPage`. |
 | `src/layout/AppLayout.jsx` | "Review Payroll" appears for whoever holds any payroll-run permission — never by role name. |
 | `src/layout/SidebarNav.jsx` | Icon + payroll group membership (the group already folds `/app/payroll/*`). |
@@ -167,20 +167,38 @@ the report is being generated in the background.
   `PAYROLL_REVIEW_CACHE_TTL_SECONDS` (default 300s, clamped 10–3600). The
   **employee list is never cached** — it is the big object. Every workflow
   action invalidates the key.
+* **A recalculation invalidates the review cache too.** The key shape lives in
+  one module (`services/payroll/payrollReviewCache.js`) that both the review
+  service and the 29.6 engine import, so the engine drops the dashboard
+  whenever it writes new figures (§20: invalidate after recalculation).
+  Without it, a 300-second cache could show finance numbers HR had already
+  replaced — exactly the §17 "never hide a revision" hazard.
 * Export content is capped (4 MiB) so a queue payload or Mongo document cannot
   grow without bound.
 * Every transition writes an audit record (previous status → new status, with
-  the reason) and fires a notification through the existing seam.
+  the reason) and notifies the people who can act next.
+* **Notifications are addressed by permission, not by role name (§22).**
+  `payrollReviewRules.NOTIFICATION_AUDIENCE` maps each event to the
+  permissions of the people who should hear about it — "notify finance" means
+  "notify everyone holding `PAYROLL_RUN_APPROVE`". The resolver
+  (`resolveAudience`) walks Permission → CompanyRole → User, so a delegated
+  approver or a custom Finance Executive role is included automatically. The
+  actor is filtered out, so you are never notified of your own action, and a
+  notification failure never rolls back an approval.
+  Per-user ALLOW overrides are honoured for authorization but are not
+  enumerated here — fan-out is best-effort by design.
 
 ---
 
 ## 7. Tests
 
 ```
-node --test test/payrollReview.test.js   →  22 tests,  22 pass  (new, hermetic)
-npm run test:payroll                     → 229 tests, 229 pass  (207 + 22)
+node --test test/payrollReview.test.js   →  29 tests,  29 pass  (new, hermetic)
+node --test test/payrollEngine.test.js   →  29 tests,  29 pass  (29.6 + 2 new)
+npm run test:payroll                     → 238 tests, 238 pass
 npm run test:phase28                     → 242 tests, 242 pass
 npm run test:payroll-rbac                →  27 tests,  27 pass
+npm run test:all                         → 604 tests, 604 pass
 ```
 
 `test:payroll-review` was added to `package.json` and to `test:payroll`
@@ -194,6 +212,15 @@ approve/reject (including every refusal path), append-only remarks, bulk
 actions proving no salary value changes, queue dispatch with a references-only
 payload, worker rebuild from Mongo, scope narrowing, and the §4 permission
 matrix.
+- §22: notifications are fanned out by permission (submit reaches the
+  approvers), the actor is not notified of their own action, a rejection
+  carries its reason, and a notification that throws never rolls back the
+  approval.
+- §18: `EXPORT_ERROR_LIST` and `DOWNLOAD_PAYROLL_SUMMARY` return a report and
+  touch no review row, and still work on a locked month.
+- §20: one cache key shape is shared with the engine, and a recalculation
+  invalidates the review dashboard.
+- §23: a remark is audited with the author and their role.
 
 ---
 
@@ -226,8 +253,8 @@ locked down with a regression test in each suite: the fake cache now asserts
 that `getOrSet` receives `{ ttlSeconds, version, loader }` and the caller gets
 the unwrapped value.
 
-New tallies: **payroll engine 28**, **payroll review 23**,
-**`test:all` 597/597**.
+New tallies: **payroll engine 29**, **payroll review 29**,
+**`test:all` 604/604**.
 
 ---
 

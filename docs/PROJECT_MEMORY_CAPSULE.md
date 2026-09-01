@@ -66,7 +66,8 @@ career portal.
   ladder.
   29.7 is closed: `docs/PHASE_29_7_PAYROLL_REVIEW.md` +
   `docs/PHASE_29_7_TESTING_CHECKLIST.md`; 22 hermetic tests
-  (`npm run test:payroll-review`), 230/230 on the payroll ladder. It also
+  (`npm run test:payroll-review`), 238/238 on the payroll ladder and 604/604
+  on `test:all`. It also
   fixed a live 29.6 defect: `getRunSummary` called the cache seam with
   positional args, so `GET /api/payroll/runs/:month` threw `loader is not a
   function`; both services now share a `readThrough` helper.
@@ -378,7 +379,17 @@ Frontend first (node_modules may be missing).
   29.7 added PAYROLL_RUN_REJECT to the FINANCE_MANAGER template, because a
   finance manager who can approve must be able to reject with a reason).
   §12 lock reuses the 29.5 PayrollPeriod state machine (LOCKED →
-  SENT_TO_PAYROLL, and back to LOCKED on reopen) instead of a parallel flag.
+  SENT_TO_PAYROLL; an authorized reopen → COLLECTING_INPUTS, the only 29.5
+  state that accepts input writes) instead of a parallel flag. §22
+  notifications are addressed by PERMISSION, not role name:
+  NOTIFICATION_AUDIENCE maps each event to permissions and resolveAudience
+  walks Permission → CompanyRole → User, so "notify finance" reaches whoever
+  can approve; the actor is excluded and a throwing notifier never rolls back
+  an approval. §20 cache keys live in
+  services/payroll/payrollReviewCache.js, shared with the engine so a 29.6
+  recalculation drops the review dashboard. §18 EXPORT_ERROR_LIST and
+  DOWNLOAD_PAYROLL_SUMMARY are bulk actions that return a report, touch no
+  review row, and are the only bulk actions allowed on a locked month.
   Cache namespace 'payroll-review', version 1 — the employee list is never
   cached. UI at /app/payroll/review: KPI cards, checklist, tabs (employees,
   errors, differences, remarks, reports), employee breakdown drawer, CSV

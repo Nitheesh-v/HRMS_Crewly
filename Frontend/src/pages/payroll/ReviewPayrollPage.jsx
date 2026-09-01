@@ -307,10 +307,28 @@ const ReviewPayrollPage = () => {
   const handleChecklist = (item, value) =>
     run(() => payrollReviewService.setChecklist(month, item, value));
 
+  const REPORT_ACTIONS = ['EXPORT_ERROR_LIST', 'DOWNLOAD_PAYROLL_SUMMARY'];
+
   const handleBulk = (action) => {
-    if (!selected.length) return;
-    setSelected([]);
-    return run(() => payrollReviewService.bulk(month, action, selected));
+    const isReport = REPORT_ACTIONS.includes(action);
+    if (!isReport && !selected.length) return;
+
+    const employeeIds = selected;
+    if (!isReport) setSelected([]);
+
+    return run(async () => {
+      const response = await payrollReviewService.bulk(month, action, employeeIds);
+      // With meta present api.js returns the whole body, so the CSV reaches us
+      // in meta.content when the worker is not running.
+      const content = response?.meta?.content || response?.data?.content || '';
+      if (isReport && content) {
+        downloadCsv(
+          content,
+          `crewly-${action === 'EXPORT_ERROR_LIST' ? 'error-list' : 'salary-summary'}-${month}.csv`,
+        );
+      }
+      return response;
+    });
   };
 
   const handleExport = async (reportKey) => {
@@ -425,20 +443,13 @@ const ReviewPayrollPage = () => {
         </div>
       ) : null}
 
-      {/* §7 — KPI cards */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      {/* §7 — the seven KPI cards */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         <KpiCard
           icon={Users}
           label="Total employees"
           value={formatNumber(kpis.totalEmployees)}
           hint={formatMonth(month)}
-        />
-        <KpiCard
-          icon={AlertTriangle}
-          label="Employees with errors"
-          value={formatNumber(kpis.employeesWithErrors)}
-          tone={kpis.employeesWithErrors > 0 ? 'bad' : 'good'}
-          hint={`${formatNumber(errorSummary.critical || 0)} critical · ${formatNumber(errorSummary.warnings || 0)} warnings`}
         />
         <KpiCard
           icon={Wallet}
@@ -450,7 +461,15 @@ const ReviewPayrollPage = () => {
           icon={Coins}
           label="Net payroll"
           value={formatMoney(kpis.netPayroll)}
-          hint={`${formatMoney(kpis.totalDeductions)} deducted`}
+          tone="good"
+          hint="What reaches the bank in 29.8"
+        />
+        <KpiCard
+          icon={ThumbsDown}
+          label="Total deductions"
+          value={formatMoney(kpis.totalDeductions)}
+          tone="bad"
+          hint="PF, ESI, PT, TDS, LOP, loans"
         />
         <KpiCard
           icon={Building2}
@@ -459,11 +478,22 @@ const ReviewPayrollPage = () => {
           hint="Does not reduce net salary"
         />
         <KpiCard
-          icon={ClipboardCheck}
-          label="Checklist"
-          value={`${formatNumber(checklistProgress.done)}/${formatNumber(checklistProgress.total)}`}
-          tone={checklistProgress.percent === 100 ? 'good' : 'warn'}
-          hint={readOnly ? 'Locked' : 'Tick every box to lock payroll'}
+          icon={AlertTriangle}
+          label="Employees with errors"
+          value={formatNumber(kpis.employeesWithErrors)}
+          tone={kpis.employeesWithErrors > 0 ? 'bad' : 'good'}
+          hint={`${formatNumber(errorSummary.critical || 0)} critical · ${formatNumber(errorSummary.warnings || 0)} warnings`}
+        />
+        <KpiCard
+          icon={ShieldCheck}
+          label="Ready for approval"
+          value={kpis.readyForApproval ? 'Yes' : 'No'}
+          tone={kpis.readyForApproval ? 'good' : 'warn'}
+          hint={
+            kpis.readyForApproval
+              ? 'No errors — finance can approve'
+              : 'Resolve the errors below first'
+          }
         />
       </div>
 
@@ -662,6 +692,22 @@ const ReviewPayrollPage = () => {
               >
                 <ClipboardCheck size={15} /> Verify PAN
               </button>
+              {/* §18 — reports are bulk actions too; they need no selection
+                  and stay available once the month is locked. */}
+              <button
+                className="btn-secondary"
+                disabled={busy}
+                onClick={() => handleBulk('EXPORT_ERROR_LIST')}
+              >
+                <AlertTriangle size={15} /> Export error list
+              </button>
+              <button
+                className="btn-secondary"
+                disabled={busy}
+                onClick={() => handleBulk('DOWNLOAD_PAYROLL_SUMMARY')}
+              >
+                <Download size={15} /> Download payroll summary
+              </button>
             </div>
           </div>
 
@@ -678,25 +724,26 @@ const ReviewPayrollPage = () => {
                     />
                   </th>
                   <th className="px-3 py-2">Employee</th>
+                  <th className="px-3 py-2">Department</th>
                   <th className="px-3 py-2">Gross</th>
-                  <th className="px-3 py-2">Variable</th>
+                  <th className="px-3 py-2">Bonus</th>
                   <th className="px-3 py-2">Deductions</th>
                   <th className="px-3 py-2">Net pay</th>
-                  <th className="px-3 py-2">Errors</th>
-                  <th className="px-3 py-2">Review</th>
+                  <th className="px-3 py-2">LOP</th>
+                  <th className="px-3 py-2">Status</th>
                   <th className="px-3 py-2 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={9} className="px-3 py-10 text-center text-crewly-dim">
+                    <td colSpan={10} className="px-3 py-10 text-center text-crewly-dim">
                       <Loader2 className="mx-auto animate-spin" size={18} /> Loading payroll review…
                     </td>
                   </tr>
                 ) : visible.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-3 py-10 text-center text-crewly-dim">
+                    <td colSpan={10} className="px-3 py-10 text-center text-crewly-dim">
                       No payroll results for {formatMonth(month)} yet. Calculate the month in{' '}
                       <Link className="text-indigo-300 hover:underline" to="/app/payroll/run">
                         Run Payroll
@@ -720,10 +767,10 @@ const ReviewPayrollPage = () => {
                         </td>
                         <td className="px-3 py-2">
                           <p className="font-medium">{row.employeeName}</p>
-                          <p className="text-xs text-crewly-dim">
-                            {row.employeeCode}
-                            {row.departmentName ? ` · ${row.departmentName}` : ''}
-                          </p>
+                          <p className="text-xs text-crewly-dim">{row.employeeCode}</p>
+                        </td>
+                        <td className="px-3 py-2 text-xs text-crewly-dim">
+                          {row.departmentName || '—'}
                         </td>
                         <td className="px-3 py-2">{formatMoney(row.totals?.gross)}</td>
                         <td className="px-3 py-2">
@@ -737,24 +784,25 @@ const ReviewPayrollPage = () => {
                         <td className="px-3 py-2">{formatMoney(row.totals?.totalDeductions)}</td>
                         <td className="px-3 py-2 font-semibold">{formatMoney(row.totals?.netPay)}</td>
                         <td className="px-3 py-2">
-                          {errors.length === 0 ? (
-                            <span className="text-xs text-crewly-dim">none</span>
-                          ) : (
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-[11px] ${
-                                critical.length
-                                  ? 'bg-red-500/15 text-red-300'
-                                  : 'bg-amber-500/15 text-amber-300'
-                              }`}
-                            >
-                              {errors.length} issue{errors.length > 1 ? 's' : ''}
+                          {formatNumber(row.attendance?.lopDays)}
+                          {row.attendance?.otHours ? (
+                            <span className="ml-1 text-xs text-crewly-dim">
+                              · {formatNumber(row.attendance.otHours)}h OT
                             </span>
-                          )}
+                          ) : null}
                         </td>
                         <td className="px-3 py-2">
-                          {row.review?.state === 'REVIEWED' ? (
+                          {critical.length ? (
+                            <span className="rounded-full bg-red-500/15 px-2.5 py-0.5 text-[11px] text-red-300">
+                              error
+                            </span>
+                          ) : errors.length ? (
+                            <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[11px] text-amber-300">
+                              warning
+                            </span>
+                          ) : row.review?.state === 'REVIEWED' ? (
                             <span className="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] text-emerald-300">
-                              reviewed
+                              ready
                             </span>
                           ) : (
                             <span className="rounded-full bg-slate-500/15 px-2.5 py-0.5 text-[11px] text-slate-300">
@@ -1012,12 +1060,34 @@ const ReviewPayrollPage = () => {
             ))}
           </div>
 
-          <p className="text-xs text-crewly-dim">
-            Summary for {formatMonth(month)}: {formatNumber(summary.totalEmployees)} employees ·{' '}
-            {formatMoney(summary.grossPayroll)} gross · {formatMoney(summary.totalDeductions)}{' '}
-            deductions · {formatMoney(summary.employerCost)} employer contribution. Payroll cost{' '}
-            {formatMoney(summary.payrollCost)}.
-          </p>
+          <section>
+            <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-crewly-dim">
+              Payroll summary report · {formatMonth(month)}
+            </h3>
+            <table className="w-full text-left text-sm">
+              <tbody>
+                {[
+                  ['Total employees', formatNumber(summary.totalEmployees)],
+                  ['Gross payroll', formatMoney(summary.grossPayroll)],
+                  ['Total earnings', formatMoney(summary.totalEarnings)],
+                  ['Total reimbursements', formatMoney(summary.totalReimbursements)],
+                  ['Total deductions', formatMoney(summary.totalDeductions)],
+                  ['Employer contribution', formatMoney(summary.employerContribution)],
+                  ['Net payroll', formatMoney(summary.netPayroll)],
+                  ['Payroll cost', formatMoney(summary.payrollCost)],
+                ].map(([label, value]) => (
+                  <tr key={label} className="border-t border-white/5">
+                    <td className="px-2 py-1.5">{label}</td>
+                    <td className="px-2 py-1.5 text-right font-semibold">{value}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="mt-2 text-xs text-crewly-dim">
+              This is the final review before salary payment. Figures come from the calculated
+              snapshot, so they match the register and every export above.
+            </p>
+          </section>
         </div>
       ) : null}
 
@@ -1154,7 +1224,12 @@ const EmployeeReviewDrawer = ({ month, employeeId, readOnly, busy, onClose, onSa
         <p className="text-sm text-crewly-dim">No payroll snapshot found for this employee and month.</p>
       ) : (
         <div className="space-y-5">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {/* §9 — salary summary: CTC, gross, net */}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+            <div className="rounded-lg bg-white/5 p-3">
+              <p className="text-[11px] uppercase text-crewly-dim">CTC</p>
+              <p className="text-sm font-semibold">{formatMoney(totals.ctc)}</p>
+            </div>
             <div className="rounded-lg bg-white/5 p-3">
               <p className="text-[11px] uppercase text-crewly-dim">Gross salary</p>
               <p className="text-sm font-semibold">{formatMoney(totals.gross)}</p>

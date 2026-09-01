@@ -174,6 +174,7 @@ export const addPayrollRemark = asyncHandler(async (req, res) => {
     actor: req.user,
     message,
     channel,
+    req,
   });
 
   // Data to frontend - response to frontend
@@ -220,7 +221,15 @@ export const runPayrollReviewBulkAction = asyncHandler(async (req, res) => {
   });
 
   // Data to frontend - response to frontend
-  return ApiResponse.success(res, { message: 'Review action applied', data: result });
+  // §18 — the two export actions come back with the report itself; the rest
+  // come back with the employees they touched.
+  const isExport = ['EXPORT_ERROR_LIST', 'DOWNLOAD_PAYROLL_SUMMARY'].includes(result.action);
+
+  return ApiResponse.success(res, {
+    message: isExport ? 'Report generated' : 'Review action applied',
+    data: result,
+    meta: isExport ? { queued: result.queued, content: result.queued ? '' : result.content } : null,
+  });
 });
 
 // §12 — lock payroll.

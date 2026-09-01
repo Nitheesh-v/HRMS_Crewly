@@ -24,6 +24,8 @@ import {
   CHECKLIST_ITEMS,
   EXPORT_REPORTS,
   PER_EMPLOYEE_REVIEW_FLAGS,
+  audiencePermissions,
+  notificationCopy,
   buildExport,
   canTransition,
   checklistComplete,
@@ -39,9 +41,12 @@ import {
   validateEmployeeForReview,
 } from './payrollReviewRules.js';
 import { isValidMonth } from './monthlyInputRules.js';
+import { REVIEW_CACHE_NAMESPACE, REVIEW_CACHE_VERSION } from './payrollReviewCache.js';
 
-export const CACHE_NAMESPACE = 'payroll-review';
-export const CACHE_VERSION = 1;
+// The namespace and version live in payrollReviewCache.js so the 29.6 engine
+// can invalidate the same keys when it recalculates (§20).
+export const CACHE_NAMESPACE = REVIEW_CACHE_NAMESPACE;
+export const CACHE_VERSION = REVIEW_CACHE_VERSION;
 
 const MIN_CACHE_TTL_SECONDS = 10;
 const MAX_CACHE_TTL_SECONDS = 3600;
@@ -70,6 +75,10 @@ export const makePayrollReviewService = ({
   cache = {},
   audit = async () => null,
   notify = async () => null,
+  // §22 — who receives a workflow notification, resolved by permission so a
+  // delegated approver is included. Returns user ids; the actor is filtered
+  // out by the caller.
+  audience = async () => [],
   dispatch = async () => ({ queued: false }),
   buildExportNow = null,
   ttlSeconds = getPayrollReviewCacheTtlSeconds(),
@@ -106,12 +115,33 @@ export const makePayrollReviewService = ({
     }
   };
 
-  const notifySmart = async (payload) => {
+  // §22 — notifications are addressed by permission, not by role name, and
+  // are best-effort: a failed notification never rolls back an approval.
+  const notifyAudience = async ({ companyId, type, payload = {}, actorId = null }) => {
+    const permissions = audiencePermissions(type);
+    if (!permissions.length) return 0;
+
+    let recipients = [];
     try {
-      await notify(payload);
+      recipients = (await audience({ companyId, permissions })) || [];
     } catch {
-      // Notifications are best-effort.
+      return 0;
     }
+
+    const unique = [...new Set(recipients.map((id) => String(id)))].filter(
+      (id) => id && String(actorId || '') !== id,
+    );
+
+    let sent = 0;
+    for (const userId of unique) {
+      try {
+        await notify({ companyId, userId, type, payload });
+        sent += 1;
+      } catch {
+        // One bad recipient must not stop the others.
+      }
+    }
+    return sent;
   };
 
   // ── reads ────────────────────────────────────────────────────────────────
@@ -366,8 +396,16 @@ export const makePayrollReviewService = ({
       review.lockedAt = null;
       review.lockedBy = null;
       // §13 — reopening returns the monthly inputs to editable in 29.5.
+      // COLLECTING_INPUTS is the editable state (29.5 refuses writes in both
+      // LOCKED and SENT_TO_PAYROLL), and it is the same target 29.5's own
+      // authorized reopen uses. We write it directly because 29.5's period
+      // table deliberately has no exit from SENT_TO_PAYROLL — that exit IS
+      // this authorized reopen.
       if (PayrollPeriodModel) {
-        await PayrollPeriodModel.updateOne({ companyId, month }, { $set: { status: 'LOCKED' } });
+        await PayrollPeriodModel.updateOne(
+          { companyId, month },
+          { $set: { status: 'COLLECTING_INPUTS' } },
+        );
       }
     }
 
@@ -387,6 +425,7 @@ export const makePayrollReviewService = ({
         channel: to === 'REJECTED' ? 'FINANCE' : 'SYSTEM',
         statusAtTime: to,
         skipInvalidate: true,
+        req,
       });
     }
 
@@ -401,7 +440,12 @@ export const makePayrollReviewService = ({
     });
 
     if (notification) {
-      await notifySmart({ companyId, type: notification, payload: { month, status: to } });
+      await notifyAudience({
+        companyId,
+        type: notification,
+        payload: { month, status: to, reason: reason || '' },
+        actorId: actor?._id || null,
+      });
     }
 
     return getReview({ companyId, month, actor, allowedEmployeeIds });
@@ -568,6 +612,7 @@ export const makePayrollReviewService = ({
     channel = 'HR',
     statusAtTime = '',
     skipInvalidate = false,
+    req = null,
   }) => {
     const text = String(message || '').trim();
     if (!text) throw ApiError.badRequest('Write something before saving the remark');
@@ -590,6 +635,7 @@ export const makePayrollReviewService = ({
     if (!skipInvalidate) await invalidate(companyId, month);
 
     await writeAudit({
+      req,
       action: 'PAYROLL_REMARK_ADDED',
       companyId,
       resource: 'PayrollReview',
@@ -667,6 +713,33 @@ export const makePayrollReviewService = ({
       throw ApiError.badRequest('This payroll is locked. Reopen it before running review actions.');
     }
 
+    // §18 — these two do not touch a review row at all: they hand back a
+    // report. They are also the only bulk actions allowed on a locked month,
+    // because reading the numbers is fine while they are frozen.
+    if (action === 'EXPORT_ERROR_LIST' || action === 'DOWNLOAD_PAYROLL_SUMMARY') {
+      const reportKey = action === 'EXPORT_ERROR_LIST' ? 'ERROR_LIST' : 'SALARY_SUMMARY';
+      const outcome = await createExport({ companyId, month, reportKey, actor, allowedEmployeeIds });
+
+      await writeAudit({
+        req,
+        action: 'PAYROLL_EXPORT_REQUESTED',
+        companyId,
+        resource: 'PayrollReview',
+        resourceId: review._id,
+        previousValue: null,
+        newValue: { reportKey, via: 'BULK_ACTION', queued: outcome.queued },
+      });
+
+      return {
+        ...(await getReview({ companyId, month, actor, allowedEmployeeIds })),
+        action,
+        touched: [],
+        export: outcome.export || null,
+        content: outcome.content || '',
+        queued: Boolean(outcome.queued),
+      };
+    }
+
     const scope = Array.isArray(allowedEmployeeIds)
       ? employeeIds.filter((id) => allowedEmployeeIds.some((allowed) => String(allowed) === String(id)))
       : employeeIds;
@@ -722,7 +795,7 @@ export const makePayrollReviewService = ({
       newValue: { action, employees: touched.length },
     });
 
-    return { ...(await getReview({ companyId, month, actor, allowedEmployeeIds })), touched };
+    return { ...(await getReview({ companyId, month, actor, allowedEmployeeIds })), action, touched };
   };
 
   // ── exports (§19 / §21) ──────────────────────────────────────────────────
@@ -872,6 +945,8 @@ import PayrollResult from '../../models/PayrollResult.js';
 import PayrollReview from '../../models/PayrollReview.js';
 import PayrollRun from '../../models/PayrollRun.js';
 import User from '../../models/User.js';
+import CompanyRole from '../../models/CompanyRole.js';
+import Permission from '../../models/Permission.js';
 import {
   buildTenantCacheKey,
   deleteCache,
@@ -881,6 +956,37 @@ import {
 import { recordAudit } from '../../utils/securityauditService.js';
 import notifySmart from '../../utils/notifyPref.js';
 import { dispatchPayrollExport } from './payrollExportDispatcher.js';
+
+// §22 — resolve a notification audience by PERMISSION, not by role name.
+// Company roles hold the permission list, so this is two indexed reads plus
+// one user lookup; per-user ALLOW overrides are honoured for authorization
+// but are not enumerated here — fan-out is best-effort by design.
+const resolveAudience = async ({ companyId, permissions = [] }) => {
+  const names = (permissions || []).filter((name) => typeof name === 'string');
+  if (!companyId || !names.length) return [];
+
+  const permissionDocs = await Permission.find({ name: { $in: names } }).select('_id').lean();
+  if (!permissionDocs.length) return [];
+
+  const roles = await CompanyRole.find({
+    companyId,
+    isActive: true,
+    permissions: { $in: permissionDocs.map((doc) => doc._id) },
+  })
+    .select('code systemRoleKey')
+    .lean();
+
+  const roleKeys = [
+    ...new Set(roles.map((role) => role.systemRoleKey || role.code).filter(Boolean)),
+  ];
+  if (!roleKeys.length) return [];
+
+  const users = await User.find({ companyId, status: 'ACTIVE', role: { $in: roleKeys } })
+    .select('_id')
+    .lean();
+
+  return users.map((user) => user._id);
+};
 
 const defaultService = makePayrollReviewService({
   PayrollReviewModel: PayrollReview,
@@ -901,16 +1007,18 @@ const defaultService = makePayrollReviewService({
     },
   },
   audit: recordAudit,
-  notify: ({ companyId, type, payload }) =>
-    notifySmart(companyId, {
-      title: 'Payroll review update',
-      message: `${payload?.month || ''} · ${String(type || '')
-        .replace(/^PAYROLL_/, '')
-        .replace(/_/g, ' ')
-        .toLowerCase()}`,
+  // §22 — one notification per recipient. The recipient is a real user id
+  // resolved from the permission, so the message actually reaches the people
+  // who can act on it (finance on submit, payroll/HR on approve or reject).
+  notify: ({ userId, type, payload = {} }) =>
+    notifySmart(userId, {
+      title: 'Payroll review',
+      message: notificationCopy(type, payload),
+      link: `/app/payroll/review?month=${payload?.month || ''}`,
       category: 'PAYROLL',
-      metadata: { type, ...(payload || {}) },
+      metadata: { type, ...payload },
     }),
+  audience: resolveAudience,
   dispatch: dispatchPayrollExport,
 });
 
