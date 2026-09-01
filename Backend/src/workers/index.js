@@ -55,6 +55,7 @@ import {
   parseATSWorkerConcurrency,
   parseScheduledWorkerConcurrency,
   parseDocumentWorkerConcurrency,
+  parsePayrollWorkerConcurrency,
   parseBgvWorkerConcurrency,
   redactConnectionSecrets,
   EMAIL_JOB_NAMES,
@@ -67,6 +68,7 @@ import { registerATSProcessors } from './atsProcessor.js';
 import { registerScheduledProcessors } from './scheduledProcessor.js';
 import { registerDocumentProcessors } from './documentProcessor.js';
 import { registerBgvProcessors } from './bgvProcessor.js';
+import { registerPayrollProcessors } from './payrollProcessor.js';
 import { markEmailDelivery } from '../services/emailDeliveryService.js';
 import {
   recoverPendingResumeProcessing,
@@ -215,12 +217,14 @@ const startWorker = async () => {
   const scheduledConcurrency = parseScheduledWorkerConcurrency();
   const documentConcurrency = parseDocumentWorkerConcurrency();
   const bgvConcurrency = parseBgvWorkerConcurrency();
+  const payrollConcurrency = parsePayrollWorkerConcurrency();
 
   logger.info(
     `[Worker] Starting workers (prefix=${prefix}, system concurrency=${concurrency}, ` +
       `email concurrency=${emailConcurrency}, resume concurrency=${resumeConcurrency}, ` +
       `ats concurrency=${atsConcurrency}, scheduled concurrency=${scheduledConcurrency}, ` +
-      `documents concurrency=${documentConcurrency}, bgv concurrency=${bgvConcurrency})`
+      `documents concurrency=${documentConcurrency}, bgv concurrency=${bgvConcurrency}, ` +
+      `payroll concurrency=${payrollConcurrency})`
   );
 
   // Register the 28.3 email + 28.4 processing + 28.5 scheduled +
@@ -231,6 +235,11 @@ const startWorker = async () => {
   registerScheduledProcessors({ registerProcessor });
   registerDocumentProcessors({ registerProcessor });
   registerBgvProcessors({ registerProcessor });
+  // 29.6 → 29.9 payroll processors: run, review export, bank file,
+  // payslip generation, payslip ZIP and payslip email. Registered here
+  // because the payroll queue needs a real consumer — without this the
+  // API silently fell back to its inline path for every one of them.
+  registerPayrollProcessors({ registerProcessor });
 
   // One dedicated connection per worker (never the API's client).
   const createWorkerConnection = (connectionName) =>
@@ -319,6 +328,19 @@ const startWorker = async () => {
     });
     workers.push(bgvWorker);
     attachEventHandlers(bgvWorker, 'bgv worker');
+
+    // 29.6+ payroll queue: payroll runs, review exports, bank transfer
+    // files and payslip jobs. PDF rendering is CPU-bound, so it keeps a
+    // modest concurrency of its own.
+    const payrollConnection = createWorkerConnection('crewly-worker-payroll');
+    connections.push(payrollConnection);
+    const payrollWorker = new Worker(QUEUE_NAMES.PAYROLL, dispatchJob, {
+      connection: payrollConnection,
+      prefix,
+      concurrency: payrollConcurrency,
+    });
+    workers.push(payrollWorker);
+    attachEventHandlers(payrollWorker, 'payroll worker');
   } catch (error) {
     logger.error(`[Worker] Startup failed: ${safeErrorText(error)}`);
     for (const connection of connections) {

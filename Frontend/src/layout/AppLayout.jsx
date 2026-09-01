@@ -368,6 +368,21 @@ const AppLayout = () => {
     ])
       ? [{ to: '/app/payroll/salary-payment', label: 'Salary Payment' }]
       : []),
+    // Phase 29.9 — Payslips, the step after payment: generate, preview,
+    // email and bulk-download the official salary documents (§27).
+    ...(hasAnyPermission([
+      'PAYSLIP_READ',
+      'PAYSLIP_GENERATE',
+      'PAYSLIP_RELEASE',
+      'PAYSLIP_RERELEASE',
+    ])
+      ? [{ to: '/app/payroll/payslips', label: 'Payslips' }]
+      : []),
+    // §14 — the employee's own salary portal. Distinct from the legacy
+    // "My Payslips" entry, which still serves pre-29.9 payroll records.
+    ...(hasAnyPermission(['PAYSLIP_READ_SELF'])
+      ? [{ to: '/app/payroll/my-payslips', label: 'My Payroll' }]
+      : []),
   ];
 
   const menu = [

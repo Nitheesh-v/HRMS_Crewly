@@ -56,6 +56,8 @@ import MonthlyInputsPage from "../pages/payroll/MonthlyInputsPage.jsx";
 import RunPayrollPage from "../pages/payroll/RunPayrollPage.jsx";
 import ReviewPayrollPage from "../pages/payroll/ReviewPayrollPage.jsx";
 import SalaryPaymentPage from "../pages/payroll/SalaryPaymentPage.jsx";
+import PayslipsPage from "../pages/payroll/PayslipsPage.jsx";
+import MyPayslipsPortalPage from "../pages/payroll/MyPayslipsPortalPage.jsx";
 import EmployeePayrollDetailPage from "../pages/payroll/EmployeePayrollDetailPage.jsx";
 import MyPayslipsPage from "../pages/payroll/MyPayslipsPage.jsx";
 
@@ -376,6 +378,9 @@ const AppRoutes = () => (
       <Route path="payroll/review" element={<ReviewPayrollPage />} />
       {/* Phase 29.8 — Salary Payment: prepare the bank transfer file. */}
       <Route path="payroll/salary-payment" element={<SalaryPaymentPage />} />
+      {/* Phase 29.9 — Payslips: admin workspace + employee salary portal. */}
+      <Route path="payroll/payslips" element={<PayslipsPage />} />
+      <Route path="payroll/my-payslips" element={<MyPayslipsPortalPage />} />
       <Route path="payroll/employees" element={<EmployeePayrollPage />} />
       <Route path="payroll/employees/:employeeId" element={<EmployeePayrollDetailPage />} />
 
