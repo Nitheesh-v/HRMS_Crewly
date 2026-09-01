@@ -63,7 +63,14 @@ career portal.
   29.6 is closed: `docs/PHASE_29_6_PAYROLL_ENGINE.md` +
   `docs/PHASE_29_6_TESTING_CHECKLIST.md`; 27 hermetic tests
   (`npm run test:payroll-engine`), 311/311 on the payroll + foundation
-  ladder. Next: 29.7 Payroll Review & Approval.
+  ladder.
+  29.7 is closed: `docs/PHASE_29_7_PAYROLL_REVIEW.md` +
+  `docs/PHASE_29_7_TESTING_CHECKLIST.md`; 22 hermetic tests
+  (`npm run test:payroll-review`), 230/230 on the payroll ladder. It also
+  fixed a live 29.6 defect: `getRunSummary` called the cache seam with
+  positional args, so `GET /api/payroll/runs/:month` threw `loader is not a
+  function`; both services now share a `readThrough` helper.
+  Next: 29.8 Bank Transfer File & Salary Payment Preparation.
 - Phase 28 (background infrastructure, 28.1–28.9): Redis foundation,
   BullMQ foundation (7 queues), email delivery queue, processing queues
   (resume/ATS/documents), scheduled one-time jobs, pre-onboarding + BGV
@@ -351,6 +358,33 @@ Frontend first (node_modules may be missing).
   cards, §27 progress tracker, results table, §24 employee breakdown drawer,
   §22 error report. Fence honoured: no approval, no lock approval, no bank
   file, no payment, no payslip, no finance approval, no final settlement.
+
+- Phase 29.7 = Payroll Review & Approval: pure rules in
+  services/payroll/payrollReviewRules.js (REVIEW_STATUSES CALCULATED →
+  UNDER_REVIEW → LOCKED → PENDING_FINANCE_APPROVAL → APPROVED/REJECTED →
+  REOPENED, the transition table, the 6-box review checklist, the §10 error
+  catalogue with CRITICAL/WARNING severities, KPIs, summary report,
+  diffResults and the CSV builders), models models/PayrollReview.js (one per
+  company+month: status, checklist, employeeReviews[], append-only remarks[]
+  with author/role/channel/statusAtTime, lock/submit/approve/reject/reopen
+  stamps + reasons, lockCount) and models/PayrollExport.js (status
+  QUEUED|PROCESSING|READY|FAILED + CSV content, capped at 4 MiB). Routes at
+  /api/payroll/review (16). BullMQ reuses QUEUE_NAMES.PAYROLL with the new
+  JOB_NAMES.PAYROLL_EXPORT job and the deterministic job id
+  payroll-export-<exportId>; the worker rebuilds the report from Mongo rather
+  than trusting the payload, and the same build runs INLINE when Redis is off.
+  Permissions are the ones 29.1 already declared — PAYROLL_RUN_READ/_PREPARE/
+  _REVIEW/_LOCK/_REOPEN/_APPROVE/_REJECT (SYSTEM_PERMISSION_VERSION is 21:
+  29.7 added PAYROLL_RUN_REJECT to the FINANCE_MANAGER template, because a
+  finance manager who can approve must be able to reject with a reason).
+  §12 lock reuses the 29.5 PayrollPeriod state machine (LOCKED →
+  SENT_TO_PAYROLL, and back to LOCKED on reopen) instead of a parallel flag.
+  Cache namespace 'payroll-review', version 1 — the employee list is never
+  cached. UI at /app/payroll/review: KPI cards, checklist, tabs (employees,
+  errors, differences, remarks, reports), employee breakdown drawer, CSV
+  export. Fence honoured: no payment, no bank file, no payslip, no email, no
+  settlement, and no calculation — every figure is read from the 29.6
+  snapshot.
 
 ## 9. Current state (2026-09-01)
 

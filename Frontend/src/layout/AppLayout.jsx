@@ -343,6 +343,20 @@ const AppLayout = () => {
     ])
       ? [{ to: '/app/payroll/run', label: 'Run Payroll' }]
       : []),
+    // Phase 29.7 — Review Payroll, right after the run: review, lock and
+    // approve. Permission-driven like every other payroll entry, so a
+    // delegated payroll role sees it without touching the role list.
+    ...(hasAnyPermission([
+      'PAYROLL_RUN_READ',
+      'PAYROLL_RUN_PREPARE',
+      'PAYROLL_RUN_REVIEW',
+      'PAYROLL_RUN_LOCK',
+      'PAYROLL_RUN_REOPEN',
+      'PAYROLL_RUN_APPROVE',
+      'PAYROLL_RUN_REJECT',
+    ])
+      ? [{ to: '/app/payroll/review', label: 'Review Payroll' }]
+      : []),
   ];
 
   const menu = [

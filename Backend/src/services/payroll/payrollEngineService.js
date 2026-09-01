@@ -151,21 +151,28 @@ export const makePayrollEngineService = ({
   };
 
   // §23 — the dashboard reads through the cache, the run writes it.
+  // §23 — read-through cache with the house contract:
+  // getOrSet(key, { ttlSeconds, version, loader }) → { value, cache }.
+  const readThrough = async (key, loader) => {
+    if (!key || typeof cache.getOrSet !== 'function') {
+      return { value: await loader(), cache: 'BYPASS' };
+    }
+    try {
+      return await cache.getOrSet(key, { ttlSeconds, version: CACHE_VERSION, loader });
+    } catch {
+      return { value: await loader(), cache: 'BYPASS' };
+    }
+  };
+
   const getRunSummary = async ({ companyId, month }) => {
     const key = buildCacheKey(companyId, month, 'summary');
-    if (!key || typeof cache.getOrSet !== 'function') {
-      const run = await getRun({ companyId, month });
-      const results = await listResults({ companyId, month });
-      return { run, summary: run?.summary || summarizeRun(results), cached: false };
-    }
-
-    const value = await cache.getOrSet(key, ttlSeconds, async () => {
+    const { value, cache: outcome } = await readThrough(key, async () => {
       const run = await PayrollRunModel.findOne({ companyId, month }).lean();
       const results = await PayrollResultModel.find({ companyId, month, isCurrent: true }).lean();
       return { run, summary: run?.summary || summarizeRun(results) };
     });
 
-    return { ...(value || {}), cached: true };
+    return { ...(value || {}), cached: outcome !== 'BYPASS' };
   };
 
   // ── the calculation itself ───────────────────────────────────────────────

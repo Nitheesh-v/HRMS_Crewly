@@ -270,7 +270,7 @@ const makeHarness = ({ employees = null, profiles = null, inputs = null, setup =
 
   const auditRows = [];
   const notifications = [];
-  const cacheCalls = { del: 0 };
+  const cacheCalls = { del: 0, getOrSet: 0, lastOptions: null };
   const dispatched = [];
 
   const service = makePayrollEngineService({
@@ -289,6 +289,16 @@ const makeHarness = ({ employees = null, profiles = null, inputs = null, setup =
       del: async () => {
         cacheCalls.del += 1;
         return true;
+      },
+      // The real redisCacheService contract: getOrSet(key, { ttlSeconds,
+      // version, loader }) → { value, cache }. A positional call would throw
+      // "loader is not a function", so this fake asserts the shape.
+      getOrSet: async (key, options = {}) => {
+        cacheCalls.getOrSet += 1;
+        cacheCalls.lastOptions = options;
+        assert.equal(typeof options.loader, 'function');
+        assert.equal(typeof options.ttlSeconds, 'number');
+        return { value: await options.loader(), cache: 'MISS' };
       },
     },
     audit: async (row) => auditRows.push(row),
@@ -697,6 +707,20 @@ test('the dashboard summary is served from the cache seam (§25)', async () => {
   await service.startRun({ companyId: COMPANY, month: MONTH, actor });
 
   const { summary } = await service.getRunSummary({ companyId: COMPANY, month: MONTH });
+  assert.equal(summary.calculated, 2);
+  assert.ok(summary.grossPayroll > 0);
+});
+
+test('the summary cache is read with the house contract, not positional args', async () => {
+  const { service, cacheCalls } = makeHarness();
+  await service.startRun({ companyId: COMPANY, month: MONTH, actor });
+
+  const { summary } = await service.getRunSummary({ companyId: COMPANY, month: MONTH });
+
+  assert.equal(cacheCalls.getOrSet, 1);
+  assert.equal(typeof cacheCalls.lastOptions.loader, 'function');
+  assert.equal(cacheCalls.lastOptions.version, 1);
+  // The unwrapped value reaches the caller, not the { value, cache } envelope.
   assert.equal(summary.calculated, 2);
   assert.ok(summary.grossPayroll > 0);
 });

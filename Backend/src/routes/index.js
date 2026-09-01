@@ -19,6 +19,7 @@ import salaryStructureRoutes from "./salaryStructureRoutes.js";
 import employeePayrollRoutes from "./employeePayrollRoutes.js";
 import monthlyInputRoutes from "./monthlyInputRoutes.js";
 import payrollEngineRoutes from "./payrollEngineRoutes.js";
+import payrollReviewRoutes from "./payrollReviewRoutes.js";
 import recruitmentRoutes from "./recruitmentRoutes.js";
 import exitRoutes from "./exitRoutes.js";
 import billingRoutes from "./billingRoutes.js";
@@ -126,6 +127,8 @@ router.use("/payroll/employees", employeePayrollRoutes);
 router.use("/payroll/inputs", monthlyInputRoutes);
 // Phase 29.6 — Payroll Calculation Engine.
 router.use("/payroll/runs", payrollEngineRoutes);
+// Phase 29.7 — Payroll Review & Approval.
+router.use("/payroll/review", payrollReviewRoutes);
 
 router.use("/recruitment", recruitmentRoutes);
 

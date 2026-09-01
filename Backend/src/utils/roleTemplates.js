@@ -180,6 +180,10 @@ export const ROLE_TEMPLATES = Object.freeze([
       'PAYROLL_RUN_READ',
       'PAYROLL_RUN_REVIEW',
       'PAYROLL_RUN_APPROVE',
+      // Phase 29.7 §14 — approval is a two-sided decision. A finance manager
+      // who can approve must also be able to reject with a reason; otherwise
+      // the only way to say no is to walk away and leave payroll stuck.
+      'PAYROLL_RUN_REJECT',
       'SALARY_COMPONENT_READ',
       'PAYROLL_PAYMENT_READ',
       'PAYROLL_PAYMENT_GENERATE',

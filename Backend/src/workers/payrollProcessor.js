@@ -19,7 +19,9 @@
 import logger from '../config/logger.js';
 import { JOB_NAMES } from '../config/queueConfig.js';
 import { validatePayrollRunPayload } from '../services/payroll/payrollRunDispatcher.js';
+import { validatePayrollExportPayload } from '../services/payroll/payrollExportDispatcher.js';
 import payrollEngineService from '../services/payroll/payrollEngineService.js';
+import payrollReviewService from '../services/payroll/payrollReviewService.js';
 
 const reportProgress = async (job, progress) => {
   try {
@@ -76,8 +78,35 @@ export const payrollRunProcessor = async (job) => {
   };
 };
 
+// PAYROLL_EXPORT (29.7 §19 / §21) — builds a review report from the 29.6
+// snapshots. It never recalculates anything: the report is a read of stored
+// results. The payload is revalidated and the report is rebuilt from Mongo.
+export const payrollExportProcessor = async (job) => {
+  const { valid, reason, value } = validatePayrollExportPayload(job?.data);
+  if (!valid) {
+    logger.warn(`[Payroll] export job rejected: ${reason}`);
+    return { processed: false, skipped: true, reason };
+  }
+
+  const { companyId, month, exportId, reportKey } = value;
+
+  const built = await payrollReviewService.processExport({
+    companyId,
+    month,
+    exportId,
+    reportKey,
+  });
+
+  logger.info(
+    `[Payroll] export ready (report=${reportKey}, rows=${built.rowCount ?? 0})`,
+  );
+
+  return { processed: true, skipped: false, rows: built.rowCount || 0 };
+};
+
 export const registerPayrollProcessors = ({ registerProcessor }) => {
   registerProcessor(JOB_NAMES.PAYROLL_RUN, payrollRunProcessor);
+  registerProcessor(JOB_NAMES.PAYROLL_EXPORT, payrollExportProcessor);
 };
 
 export default registerPayrollProcessors;

@@ -54,6 +54,7 @@ import SalaryStructuresPage from "../pages/payroll/SalaryStructuresPage.jsx";
 import EmployeePayrollPage from "../pages/payroll/EmployeePayrollPage.jsx";
 import MonthlyInputsPage from "../pages/payroll/MonthlyInputsPage.jsx";
 import RunPayrollPage from "../pages/payroll/RunPayrollPage.jsx";
+import ReviewPayrollPage from "../pages/payroll/ReviewPayrollPage.jsx";
 import EmployeePayrollDetailPage from "../pages/payroll/EmployeePayrollDetailPage.jsx";
 import MyPayslipsPage from "../pages/payroll/MyPayslipsPage.jsx";
 
@@ -370,6 +371,8 @@ const AppRoutes = () => (
       <Route path="payroll/inputs" element={<MonthlyInputsPage />} />
       {/* Phase 29.6 — Payroll Calculation Engine (permission-gated inside the page) */}
       <Route path="payroll/run" element={<RunPayrollPage />} />
+      {/* Phase 29.7 — Payroll Review & Approval (permission-gated inside the page) */}
+      <Route path="payroll/review" element={<ReviewPayrollPage />} />
       <Route path="payroll/employees" element={<EmployeePayrollPage />} />
       <Route path="payroll/employees/:employeeId" element={<EmployeePayrollDetailPage />} />
 
