@@ -13,7 +13,7 @@ Windows PowerShell commands throughout.
 | Rules | Pure module: §21 statuses + transitions, §7 payslip numbers, the §6 snapshot builder, §15 filters, §27 counters, §18 file names, §19/§20 copy |
 | Models | `Payslip` (one per company + employee + month; the PDF is stored with it) and `PayslipFile` (bulk archives with progress) |
 | Service | dashboard, list, mine, detail, viewed, generate, run (worker), regenerate, download, email one, email month, bulk download request/run/download — all dependency-injected |
-| API | 14 routes at `/api/payroll/payslips`, including the `/mine/*` employee portal |
+| API | 15 routes at `/api/payroll/payslips`, including the `/mine/*` employee portal and `/register` |
 | PDF | The existing PDFKit module extended with a snapshot-driven `buildPayslipPdf()`; the legacy `streamPayslipPdf()` untouched |
 | Queue | `payslip-generate` / `payslip-zip` / `payslip-email` on the existing `payroll` queue — and **the payroll worker itself, which had never been started** |
 | Permissions | The 29.1 `PAYSLIP_*` catalogue; `HR_MANAGER`, `FINANCE_MANAGER` and `FINANCE_EXECUTIVE` gain `PAYSLIP_READ`; `SYSTEM_PERMISSION_VERSION = 23` |
@@ -163,6 +163,23 @@ npm run dev
 2. With SMTP unset, the backend logs a MOCK email including the attachment
    name and size — nothing is really sent.
 3. **Email month** sends the whole month in the background.
+
+## E2. Look at the artefacts without a database
+
+```powershell
+cd Backend
+npm run payslip:preview
+```
+
+Writes `Backend/.preview/`:
+
+- `payslip-PS-2026-08-000001.pdf` — the real PDFKit render, every §8 section
+- `payroll-register-2026-08.csv`  — the §4 register
+- `payslips-2026-08.zip`          — the §18 company archive
+
+No MongoDB, no Redis, no SMTP. Three employees are seeded; one of them has a
+FAILED transfer on purpose, and the run reports that she gets no payslip.
+This is how the PDF layout gets reviewed — unit tests cannot judge it.
 
 ## F. Bulk download (§18)
 

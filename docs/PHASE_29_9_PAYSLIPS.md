@@ -121,9 +121,10 @@ service computes a `valuesUnchanged` fingerprint and the UI surfaces it.
 | `src/models/PayslipFile.js` | Bulk archive artefacts: status, progress, processed/total, binary |
 | `src/utils/payslipPdf.js` | Existing PDFKit module, **extended** with `buildPayslipPdf(snapshot)`; the legacy `streamPayslipPdf()` is untouched |
 | `src/utils/minimalZip.js` | The 29.8 ZIP writer, extracted and shared |
-| `src/controllers/payslipController.js`, `src/routes/payslipRoutes.js`, `src/validators/payslipValidator.js`, `src/middlewares/payslipScope.js` | Thin controller, 14 routes, server-side validation, 29.1 scope |
+| `src/controllers/payslipController.js`, `src/routes/payslipRoutes.js`, `src/validators/payslipValidator.js`, `src/middlewares/payslipScope.js` | Thin controller, 15 routes, server-side validation, 29.1 scope |
 | `src/workers/payrollProcessor.js` | `payslipGenerateProcessor`, `payslipZipProcessor`, `payslipEmailProcessor` |
 | `src/workers/index.js` | Now starts the payroll worker (see §1) |
+| `scripts/payslipPreview.js` | `npm run payslip:preview` — real PDF / register CSV / ZIP with no database |
 
 ### Route table — 15 routes at `/api/payroll/payslips`
 

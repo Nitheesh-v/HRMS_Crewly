@@ -134,6 +134,10 @@ export const buildPayslipSnapshot = ({
   const bank = profile.bank || {};
   const totals = result.totals || {};
   const attendance = result.attendance || {};
+  // §6 — the payment date lives on the 29.8 payment row as `paidAt`
+  // (paidAt is stamped when finance confirms; paymentDate is only present
+  // when a caller supplies one). Take whichever exists.
+  const paymentDate = payment?.paymentDate || payment?.paidAt || null;
   const earnings = lines(result.earnings);
   const variableEarnings = lines(result.variableEarnings);
   const reimbursements = lines(result.reimbursements);
@@ -179,7 +183,7 @@ export const buildPayslipSnapshot = ({
       month,
       monthLabel: monthLabel(month),
       cycle: setup.payrollPolicy?.frequency || result.cycle || 'MONTHLY',
-      paymentDate: payment?.paymentDate || null,
+      paymentDate,
       payslipNumber,
     },
 
@@ -211,7 +215,7 @@ export const buildPayslipSnapshot = ({
     // ── payment (§13) ──────────────────────────────────────────────────────
     payment: payment
       ? {
-          paymentDate: payment.paymentDate || null,
+          paymentDate,
           method: payment.method || 'BANK_TRANSFER',
           bankName: payment.bank?.bankName || '',
           accountNumberMasked: payment.bank?.accountNumberMasked || '',

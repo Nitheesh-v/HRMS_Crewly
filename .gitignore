@@ -27,3 +27,5 @@ Thumbs.db
 
 # VS Code
 .vscode/
+# Phase 29.9 — locally generated preview artifacts (npm run payslip:preview)
+Backend/.preview/

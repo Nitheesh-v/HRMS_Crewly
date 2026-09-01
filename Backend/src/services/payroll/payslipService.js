@@ -345,7 +345,8 @@ export const makePayslipService = ({
     month,
     actor,
     generatedAt,
-    sequenceOffset,
+    baseSequence = 1,
+    sequenceOffset = 0,
   }) => {
     const existing = await PayslipModel.findOne({ companyId, employeeId: payment.employeeId, month }).lean();
 
@@ -355,7 +356,10 @@ export const makePayslipService = ({
       return { row: existing, created: false };
     }
 
-    const sequence = await nextSequence(companyId, sequenceOffset);
+    // §7 — one base sequence per run plus how many this run has already
+    // created, so the numbers are consecutive (1, 2, 3) rather than
+    // doubling the running count with the array index (1, 3, 5).
+    const sequence = baseSequence + sequenceOffset;
     const payslipNumber = buildPayslipNumber({ month, sequence });
 
     const snapshot = buildPayslipSnapshot({
@@ -444,6 +448,8 @@ export const makePayslipService = ({
     const context = await loadGenerationContext({ companyId, month });
     const generatedAt = new Date();
 
+    // §7 — allocate the run's starting sequence ONCE.
+    const baseSequence = await nextSequence(companyId);
     let created = 0;
     let updated = 0;
     let failed = 0;
@@ -484,7 +490,8 @@ export const makePayslipService = ({
           month,
           actor,
           generatedAt,
-          sequenceOffset: index,
+          baseSequence,
+          sequenceOffset: created,
         });
 
         await renderInto({ row, generatedAt });

@@ -85,7 +85,13 @@ career portal.
   fallback) instead of only being stored; §4 the Company Admin's
   "Download payroll register" now exists at GET /register (CSV, masked
   accounts); §23 the "Recent Payslip" read is cached under its own suffix;
-  and §12 the attendance block leads with the payroll cycle. It also fixed a live cross-phase defect:
+  and §12 the attendance block leads with the payroll cycle.
+  `npm run payslip:preview` (Backend/scripts/payslipPreview.js) renders a real
+  PDF, register CSV and company ZIP with NO database, which is how the §8
+  layout is reviewed — and it immediately caught two real defects: the
+  payment date was read from `paymentDate` when 29.8 stamps `paidAt` (every
+  real payslip would have printed "—"), and payslip numbers skipped (1, 3, 5)
+  because the sequence added both the running count and the array index. It also fixed a live cross-phase defect:
   `registerPayrollProcessors()` existed since 29.6 but NOTHING ever called
   it, so the payroll queue had no consumer and every 29.6/29.7/29.8 job
   silently ran through the API's inline fallback. `src/workers/index.js`
@@ -464,7 +470,7 @@ Frontend first (node_modules may be missing).
   month} and {companyId, payslipNumber}; the rendered PDF is stored WITH the
   record so history stays downloadable, `select: false` so list reads never
   pay for it) and models/PayslipFile.js (bulk archives with status + live
-  progress). 14 routes at /api/payroll/payslips, including the /mine/*
+  progress). 15 routes at /api/payroll/payslips, including the /mine/*
   employee portal where NO employee id is accepted at all — the controller
   reads req.user._id, which is the strongest form of the §26 rule. PDF: the
   existing utils/payslipPdf.js (PDFKit, already a dependency) is EXTENDED

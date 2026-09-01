@@ -1086,3 +1086,52 @@ test('§12 — the PDF attendance block leads with the payroll cycle', async () 
   assert.ok(text.includes('XXXX4589'));
   assert.match(text, /no signature required/);
 });
+
+// ── 15. defects the preview generator exposed ──────────────────────────────
+
+test('§6 / §13 — the payment date comes from the 29.8 paidAt stamp', () => {
+  // 29.8 stamps `paidAt` when finance confirms; it has no `paymentDate`
+  // field. Reading the wrong key printed "—" on every real payslip.
+  const snapshot = buildPayslipSnapshot({
+    company: {},
+    setup: {},
+    employee: goodEmployee(EMPLOYEE_1, 'EMP001', 'Asha Rao'),
+    profile: goodProfile(EMPLOYEE_1),
+    result: goodResult(EMPLOYEE_1, 'EMP001', 'Asha Rao', 74450),
+    payment: {
+      ...paidPayment(EMPLOYEE_1, 'EMP001', 'Asha Rao'),
+      paidAt: new Date('2026-08-31T10:00:00Z'),
+    },
+    month: MONTH,
+  });
+
+  assert.equal(new Date(snapshot.payment.paymentDate).toISOString(), '2026-08-31T10:00:00.000Z');
+  assert.equal(new Date(snapshot.payroll.paymentDate).toISOString(), '2026-08-31T10:00:00.000Z');
+
+  // An explicit paymentDate still wins when a caller supplies one.
+  const explicit = buildPayslipSnapshot({
+    company: {},
+    setup: {},
+    employee: goodEmployee(EMPLOYEE_1, 'EMP001', 'Asha Rao'),
+    profile: goodProfile(EMPLOYEE_1),
+    result: goodResult(EMPLOYEE_1, 'EMP001', 'Asha Rao', 74450),
+    payment: {
+      ...paidPayment(EMPLOYEE_1, 'EMP001', 'Asha Rao'),
+      paymentDate: new Date('2026-09-01T00:00:00Z'),
+      paidAt: new Date('2026-08-31T10:00:00Z'),
+    },
+    month: MONTH,
+  });
+  assert.equal(new Date(explicit.payment.paymentDate).toISOString(), '2026-09-01T00:00:00.000Z');
+});
+
+test('§7 — payslip numbers are consecutive, not spaced by the array index', async () => {
+  const harness = makeHarness();
+  await harness.service.generateForMonth({ companyId: COMPANY, month: MONTH, actor, queue: false });
+
+  const sequences = harness.PayslipModel.rows.map((row) => row.sequence).sort((a, b) => a - b);
+  assert.deepEqual(sequences, [1, 2], 'one sequence per payslip, no gaps');
+
+  const numbers = harness.PayslipModel.rows.map((row) => row.payslipNumber).sort();
+  assert.deepEqual(numbers, ['PS-2026-08-000001', 'PS-2026-08-000002']);
+});
