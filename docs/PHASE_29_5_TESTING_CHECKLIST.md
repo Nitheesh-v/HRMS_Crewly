@@ -34,18 +34,28 @@ Windows PowerShell commands throughout.
 
 ```powershell
 cd Backend
-npm run test:monthly-inputs   # 26 tests
-npm run test:payroll          # 29.1 + RBAC + 29.2 + 29.3 + 29.4 + 29.5  → 174
+npm run test:monthly-inputs   # 32 tests
+npm run test:payroll          # 29.1 + RBAC + 29.2 + 29.3 + 29.4 + 29.5  → 180
 node --test test/redisFoundation.test.js test/bullmqFoundation.test.js test/opsQueueOps.test.js   # 104
 ```
 
-Full hermetic ladder (no MongoDB, no Redis, no network): **278/278 green**.
+Full hermetic ladder (no MongoDB, no Redis, no network): **284/284 green**.
 
 - period auto-creation, month format, tenant scoping on every query
 - illegal period transitions return 400; reopen is the only way out of LOCKED
 - automatic import: present / absent / half-day / late / LOP / overtime / night
   and weekend shifts, holidays
-- LOP source is `ATTENDANCE` until a LOP leave type appears, then `LEAVE`
+- LOP source is `ATTENDANCE` until a LOP leave type appears, then `LEAVE`, and
+  the leave record ids are kept so the UI can point at them
+- leave is split by type (casual / sick / earned / other); only approved leave
+  counts
+- the OT policy is stored as a 29.1 preview (basis + multiplier) and no amount
+  is ever produced
+- claims: entering one stamps the actor as approver, a pending claim has none,
+  a rejected claim stays visible but leaves the totals
+- HR notes are saved on the employee month and audited
+- bulk imports keep `source: 'BULK_IMPORT'` so "remove imported entries" only
+  removes those
 - entries: add, edit, remove, duplicate detection, amount > 0, reason required,
   claim date must sit inside the month
 - status derivation: locked → LOCKED, issues → ERROR, otherwise READY
@@ -98,6 +108,14 @@ $headers = @{ Authorization = "Bearer $($login.data.token)"; "Content-Type" = "a
 5. The eight KPI cards show employees, ready, pending, errors, variable
    earnings, reimbursements, deductions and LOP days.
 
+## 1b. Period strip and columns (§6 / §9)
+
+1. The strip under the header shows **month, financial year, cycle (1–31) and
+   working days** — all copied from Payroll Setup, never retyped.
+2. The table columns are exactly §9: employee, **department**, **working days**,
+   **LOP** (with `attendance` or `leave` in brackets), **OT hours**, bonus,
+   reimbursement, deduction, status, actions.
+
 ## 2. Employee input drawer (§13)
 
 1. **Open drawer** on any employee.
@@ -111,6 +129,15 @@ $headers = @{ Authorization = "Bearer $($login.data.token)"; "Content-Type" = "a
 6. Edit the bonus to 6000, then remove it → the table and KPIs follow.
 7. Fixing attendance and re-importing **replaces** the auto figures; manual
    entries survive.
+8. The automatic strip also shows the **paid-leave split** (casual / sick /
+   earned / other) and the **OT policy preview** (`hourly × 2`, or "overtime not
+   enabled in Payroll Setup"). No OT amount is shown anywhere (§15 / §26).
+9. Entries are grouped as §10 asks — variable earnings, reimbursements,
+   deductions, adjustments — each with its own subtotal.
+10. Reimbursements have **Approve** / **Reject** inline. Reject one → the row is
+    struck through and the reimbursement total drops by that amount.
+11. **Remarks (HR notes)**: type a note, **Save notes** → it persists and an
+    audit row is written.
 
 ## 3. Bulk import (§11)
 
@@ -185,7 +212,10 @@ Every write has a row; bulk operations write one per employee.
 
 | Behaviour | Why |
 |---|---|
-| Absent days equal LOP days | §14 — the Leave module has no LOP type yet; the moment it does, `lopSource` flips to `LEAVE` |
+| Absent days equal LOP days | §14 — the Leave module has no LOP type yet; the moment it does, `lopSource` flips to `LEAVE` and `lopLeaveIds` lists the records |
+| A pending reimbursement counts towards the total | §16 — rejected claims are excluded; pending ones stay visible and are counted so HR sees them before locking |
+| The OT rate is shown but never multiplied by anything | §15 asks for a rate preview, §26 forbids the calculation |
+| The import is CSV, not xlsx | No new npm dependency; Excel opens and exports CSV in one click |
 | Imported figures cannot be edited in the drawer | §13 — attendance/leave is the source of truth; re-import to correct |
 | Variable pay never changes the salary structure | §16 — reimbursements are monthly claims, not components |
 | Status is not stored | It is derived from issues and the lock flag, so it can never go stale |

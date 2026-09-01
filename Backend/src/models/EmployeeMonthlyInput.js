@@ -32,6 +32,7 @@ const entrySchema = new Schema(
     // §16 — a rejected claim never reaches payroll.
     claimStatus: { type: String, enum: CLAIM_STATUSES, default: 'APPROVED' },
     approvedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    approvedAt: { type: Date, default: null },
     source: { type: String, enum: ENTRY_SOURCES, default: 'MANUAL' },
   },
   { _id: false, timestamps: false },
@@ -46,10 +47,38 @@ const autoSchema = new Schema(
     lateMarks: { type: Number, default: 0 },
     halfDays: { type: Number, default: 0 },
     paidLeaveDays: { type: Number, default: 0 },
+    // §7 — where the paid days came from (casual / sick / earned / other).
+    leaveBreakdown: {
+      type: new Schema(
+        {
+          CASUAL: { type: Number, default: 0 },
+          SICK: { type: Number, default: 0 },
+          EARNED: { type: Number, default: 0 },
+          OTHER: { type: Number, default: 0 },
+        },
+        { _id: false },
+      ),
+      default: () => ({}),
+    },
     lopDays: { type: Number, default: 0 },
+    lopHours: { type: Number, default: 0 }, // §14 — future hourly LOP
     lopSource: { type: String, default: 'ATTENDANCE' },
+    // §14 — the leave records behind the LOP days, so the UI can point at them.
+    lopLeaveIds: { type: [String], default: [] },
     otMinutes: { type: Number, default: 0 },
     otHours: { type: Number, default: 0 },
+    // §15 — a READ of 29.1 shown as a preview. No amount is ever stored here.
+    otPolicy: {
+      type: new Schema(
+        {
+          enabled: { type: Boolean, default: false },
+          basis: { type: String, default: 'HOURLY' },
+          multiplier: { type: Number, default: 1 },
+        },
+        { _id: false },
+      ),
+      default: () => ({}),
+    },
     nightShiftCount: { type: Number, default: 0 },
     weekendShiftCount: { type: Number, default: 0 },
     holidayShiftCount: { type: Number, default: 0 },

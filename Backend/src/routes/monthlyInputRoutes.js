@@ -38,6 +38,7 @@ import {
   previewMonthlyImport,
   removeMonthlyInputEntry,
   runBulkAction,
+  updateMonthlyInputRemarks,
   setMonthlyInputStatus,
   updateMonthlyInputEntry,
   validateMonthlyInputs,
@@ -50,6 +51,7 @@ import {
   monthlyInputEntryIdValidator,
   monthlyInputEntryPatchValidator,
   monthlyInputEntryValidator,
+  monthlyInputRemarksValidator,
   monthlyInputListValidator,
   monthQueryValidator,
   periodStatusValidator,
@@ -128,6 +130,14 @@ router.delete(
   ...writeAccess,
   monthlyInputEntryIdValidator,
   removeMonthlyInputEntry,
+);
+
+// §10 — HR notes for the employee month, saved from inside the drawer.
+router.patch(
+  '/employee/:employeeId/remarks',
+  ...writeAccess,
+  monthlyInputRemarksValidator,
+  updateMonthlyInputRemarks,
 );
 
 export default router;

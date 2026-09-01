@@ -132,13 +132,17 @@ NOT_STARTED → ATTENDANCE_IMPORTED → COLLECTING_INPUTS → VALIDATED → LOCK
   companyId, month, employeeId,
   auto: {                       // imported, READ ONLY
     workingDays, presentDays, lateMarks, halfDays, absentDays,
-    paidLeaveDays, lopDays, lopSource,
-    otMinutes, otHours, nightShiftCount, weekendShiftCount, holidayShiftCount
+    paidLeaveDays, leaveBreakdown: { CASUAL, SICK, EARNED, OTHER },
+    lopDays, lopHours, lopSource, lopLeaveIds,
+    otMinutes, otHours, otPolicy: { enabled, basis, multiplier },
+    nightShiftCount, weekendShiftCount, holidayShiftCount
   },
   entries: [                    // HR's variable pay
-    { entryId, type, amount, reason, remarks, claimStatus, claimDate,
-      approvedBy, approvedAt, source: 'MANUAL' | 'IMPORT', createdAt, updatedAt }
+    { entryId, type, amount, reason, remarks, effectiveMonth, claimDate,
+      claimStatus, approvedBy, approvedAt,
+      source: 'MANUAL' | 'BULK_IMPORT' | 'BULK_ACTION' }
   ],
+  remarks: '...',               // §10 HR notes, audited
   issues: [...],                // recomputed on every read, never trusted
   status: 'PENDING' | 'READY' | 'ERROR' | 'LOCKED',
   lockedAt
@@ -159,6 +163,30 @@ never hard-codes it.
 Reimbursements (§16) are monthly claims, **never** salary components: they do
 not touch the structure, they carry a `claimStatus`, and rejected claims are
 excluded from totals while remaining visible in the drawer.
+
+### Automatic inputs in detail (§7 / §14 / §15)
+
+- **Leave** is split by type (`CASUAL` / `SICK` / `EARNED` / `OTHER`) beside the
+  paid total, so the drawer shows where the days came from. Only `APPROVED`
+  leave counts.
+- **LOP** keeps the leave record ids behind it (`lopLeaveIds`) when the Leave
+  module owns a LOP type; otherwise the figure is attendance absence and
+  `lopSource` says `'ATTENDANCE'`. HR cannot edit either — the source module
+  owns the number.
+- **Overtime** stores `otHours` plus a **preview** of the 29.1 policy
+  (`basis`, `multiplier`). No amount is ever produced in 29.5 — §15 asks for a
+  rate preview, §26 forbids the calculation.
+- **Shifts** count night, weekend and holiday shifts using the company's own
+  Shift master (`NIGHT` type, a night allowance, or a start time after the end
+  time) and the 29.1 weekend policy.
+
+### Claims and approvals (§16 / §17)
+
+Every reimbursement carries `claimStatus` (`PENDING` / `APPROVED` / `REJECTED`),
+`claimDate`, `approvedBy` and `approvedAt`. HR entering a claim **is** the
+approval, so the actor is stamped; a pending claim stays visible with no
+approver, and rejected claims never enter the totals. Claims can be approved or
+rejected inline from the drawer.
 
 ---
 
@@ -219,6 +247,7 @@ employee** (`PAYROLL_INPUT_BULK_ACTION`) and invalidates the month cache.
 | POST | `/api/payroll/inputs/bulk/confirm` | MANAGE | Store rows |
 | POST | `/api/payroll/inputs/bulk/action` | MANAGE | Bulk action |
 | POST | `/api/payroll/inputs/validate` | MANAGE/LOCK | §19 report |
+| PATCH | `/api/payroll/inputs/employee/:employeeId/remarks` | MANAGE | §10 HR notes |
 | POST | `/api/payroll/inputs/status` | MANAGE/LOCK | §20 lock / reopen |
 
 Audit actions emitted: `PAYROLL_PERIOD_CREATED`, `PAYROLL_INPUTS_IMPORTED`,
@@ -229,6 +258,15 @@ Audit actions emitted: `PAYROLL_PERIOD_CREATED`, `PAYROLL_INPUTS_IMPORTED`,
 `PAYROLL_INPUTS_REOPENED`.
 
 ---
+
+### §9 table / §25 KPIs
+
+The table is the column list of §9 — employee, department, working days, LOP
+(with its source), OT hours, bonus, reimbursement, deduction, status, actions —
+and the KPI strip is the §25 list: total employees, ready employees, pending
+validation, locked status, total bonus, total reimbursements, total deductions,
+plus LOP days. A period strip above them shows the month, financial year,
+payroll cycle and working days copied from 29.1 (§6).
 
 ## 9. Tenant isolation & RBAC
 
@@ -246,11 +284,13 @@ Audit actions emitted: `PAYROLL_PERIOD_CREATED`, `PAYROLL_INPUTS_IMPORTED`,
 ## 10. Tests
 
 ```
-node --test test/monthlyInputs.test.js   → 26 tests, 26 pass
-npm run test:payroll                     → 174 tests, 174 pass
+node --test test/monthlyInputs.test.js   → 32 tests, 32 pass
+npm run test:payroll                     → 180 tests, 180 pass
 node --test test/redisFoundation.test.js test/bullmqFoundation.test.js test/opsQueueOps.test.js
                                          → 104 tests, 104 pass
 ```
+
+284/284 green, hermetic (no MongoDB, no Redis, no network).
 
 ## 11. What 29.6 gets
 

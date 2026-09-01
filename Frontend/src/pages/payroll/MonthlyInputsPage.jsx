@@ -19,6 +19,7 @@ import {
 
 import Modal from '../../components/Modal.jsx';
 import usePermission from '../../hooks/usePermission.js';
+import departmentService from '../../services/departmentService.js';
 import monthlyInputService, { downloadImportTemplate } from '../../services/monthlyInputService.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -63,6 +64,15 @@ const formatMonth = (month) => {
     year: 'numeric',
   });
   return label;
+};
+
+// §6 — Indian financial year, 1 April to 31 March (display only; the backend
+// stores the authoritative value on the period).
+const financialYearOf = (month) => {
+  if (!/^\d{4}-\d{2}$/.test(String(month || ''))) return '—';
+  const [year, part] = String(month).split('-').map(Number);
+  const startYear = part >= 4 ? year : year - 1;
+  return `FY ${startYear}-${String((startYear + 1) % 100).padStart(2, '0')}`;
 };
 
 const periodBadge = (status) => {
@@ -133,6 +143,7 @@ const MonthlyInputsPage = () => {
   const [entryTypes, setEntryTypes] = useState([]);
   const [bulkActions, setBulkActions] = useState([]);
 
+  const [departments, setDepartments] = useState([]);
   const [filters, setFilters] = useState({ search: '', status: 'ALL' });
   const [selected, setSelected] = useState([]);
   const [drawerEmployeeId, setDrawerEmployeeId] = useState(null);
@@ -140,6 +151,12 @@ const MonthlyInputsPage = () => {
   const [reportOpen, setReportOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [confirmLock, setConfirmLock] = useState(false);
+
+  const departmentName = (id) => {
+    if (!id) return '';
+    const found = departments.find((row) => String(row._id || row.id) === String(id));
+    return found?.name || '';
+  };
 
   const flash = useCallback((type, text) => {
     setBanner({ type, text });
@@ -168,6 +185,16 @@ const MonthlyInputsPage = () => {
     if (!permsLoading && canRead) load();
     if (!permsLoading && !canRead) setLoading(false);
   }, [permsLoading, canRead, load]);
+
+  // §9 — the table shows the department name; the master is tiny and cached
+  // by the browser, so it is fetched once.
+  useEffect(() => {
+    if (!permsLoading || !canRead) return;
+    departmentService
+      .getAll()
+      .then((response) => setDepartments(response?.data || []))
+      .catch(() => setDepartments([]));
+  }, [permsLoading, canRead]);
 
   const locked = ['LOCKED', 'SENT_TO_PAYROLL'].includes(period?.status);
 
@@ -298,50 +325,82 @@ const MonthlyInputsPage = () => {
         </div>
       ) : null}
 
+      {/* §6 — the payroll month at a glance: cycle and FY come from 29.1 */}
+      <div className="card flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+        <span>
+          <span className="text-crewly-dim">Month </span>
+          <span className="font-semibold">{formatMonth(month)}</span>
+        </span>
+        <span>
+          <span className="text-crewly-dim">Financial year </span>
+          <span className="font-semibold">{period?.financialYear || financialYearOf(month)}</span>
+        </span>
+        <span>
+          <span className="text-crewly-dim">Cycle </span>
+          <span className="font-semibold">
+            {period?.cycleStart && period?.cycleEnd
+              ? `${period.cycleStart} – ${period.cycleEnd}`
+              : 'from Payroll Setup'}
+          </span>
+        </span>
+        <span>
+          <span className="text-crewly-dim">Working days </span>
+          <span className="font-semibold">{formatNumber(period?.workingDays)}</span>
+        </span>
+        <span className="ml-auto flex items-center gap-2">
+          {periodBadge(period?.status || 'DRAFT')}
+          {period?.lockedAt ? (
+            <span className="text-xs text-crewly-dim">
+              locked {formatDate(period.lockedAt)}
+            </span>
+          ) : null}
+        </span>
+      </div>
+
       {/* §25 — KPI cards */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
           icon={Users}
-          label="Employees"
+          label="Total employees"
           value={formatNumber(summary.employees)}
           hint={`${formatMonth(month)}`}
         />
         <KpiCard
           icon={CheckCircle2}
-          label="Ready"
+          label="Ready employees"
           value={formatNumber(summary.ready)}
           tone="good"
-          hint="Inputs complete"
-        />
-        <KpiCard
-          icon={RefreshCw}
-          label="Pending"
-          value={formatNumber(summary.pending)}
-          tone="warn"
-          hint="Still being collected"
+          hint="Validated and complete"
         />
         <KpiCard
           icon={AlertTriangle}
-          label="Errors"
-          value={formatNumber(summary.error)}
-          tone="bad"
-          hint="Must be fixed before lock"
+          label="Pending validation"
+          value={formatNumber(summary.pending)}
+          tone={summary.error > 0 ? 'bad' : 'warn'}
+          hint={`${formatNumber(summary.error)} with errors`}
+        />
+        <KpiCard
+          icon={Lock}
+          label="Locked status"
+          value={locked ? 'Locked' : 'Open'}
+          tone={locked ? 'warn' : 'good'}
+          hint={`${formatNumber(summary.locked)} employee(s) frozen`}
         />
         <KpiCard
           icon={Wallet}
-          label="Variable earnings"
+          label="Total bonus"
           value={formatMoney(summary.totalBonus)}
           hint="Bonus, incentive, commission"
         />
         <KpiCard
           icon={Upload}
-          label="Reimbursements"
+          label="Total reimbursements"
           value={formatMoney(summary.totalReimbursement)}
-          hint="Claims not rejected"
+          hint={`${formatNumber(summary.claimsPending)} claim(s) awaiting approval`}
         />
         <KpiCard
           icon={Download}
-          label="Deductions"
+          label="Total deductions"
           value={formatMoney(summary.totalDeduction)}
           hint="Recoveries and fines"
         />
@@ -366,6 +425,7 @@ const MonthlyInputsPage = () => {
         </button>
         <button className="btn-secondary" onClick={() => setReportOpen(true)}>
           <ShieldCheck size={15} /> Validation report
+          {summary.error > 0 ? ` (${summary.error})` : ''}
         </button>
         <button className="btn-secondary" onClick={handleValidate} disabled={saving}>
           Validate month
@@ -419,10 +479,11 @@ const MonthlyInputsPage = () => {
                 />
               </th>
               <th className="px-3 py-2">Employee</th>
-              <th className="px-3 py-2">Present</th>
-              <th className="px-3 py-2">Absent / LOP</th>
-              <th className="px-3 py-2">Leave</th>
-              <th className="px-3 py-2">Variable</th>
+              <th className="px-3 py-2">Department</th>
+              <th className="px-3 py-2">Working days</th>
+              <th className="px-3 py-2">LOP</th>
+              <th className="px-3 py-2">OT hours</th>
+              <th className="px-3 py-2">Bonus</th>
               <th className="px-3 py-2">Reimbursement</th>
               <th className="px-3 py-2">Deduction</th>
               <th className="px-3 py-2">Status</th>
@@ -432,13 +493,13 @@ const MonthlyInputsPage = () => {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={10} className="px-3 py-10 text-center text-crewly-dim">
+                <td colSpan={11} className="px-3 py-10 text-center text-crewly-dim">
                   <Loader2 className="mx-auto animate-spin" size={18} /> Loading month…
                 </td>
               </tr>
             ) : visible.length === 0 ? (
               <tr>
-                <td colSpan={10} className="px-3 py-10 text-center text-crewly-dim">
+                <td colSpan={11} className="px-3 py-10 text-center text-crewly-dim">
                   No employee inputs for {formatMonth(month)}. Import attendance and leave to build
                   the month.
                 </td>
@@ -460,14 +521,19 @@ const MonthlyInputsPage = () => {
                       {row.designation ? ` · ${row.designation}` : ''}
                     </p>
                   </td>
-                  <td className="px-3 py-2">{formatNumber(row.auto?.presentDays)}</td>
+                  <td className="px-3 py-2 text-xs">
+                    {departmentName(row.departmentId) || '—'}
+                  </td>
                   <td className="px-3 py-2">
-                    {formatNumber(row.auto?.absentDays)}
+                    {formatNumber(row.auto?.workingDays || period?.workingDays)}
+                  </td>
+                  <td className="px-3 py-2">
+                    {formatNumber(row.auto?.lopDays)}
                     <span className="ml-1 text-xs text-crewly-dim">
-                      / {formatNumber(row.auto?.lopDays)} LOP
+                      ({row.auto?.lopSource === 'LEAVE' ? 'leave' : 'attendance'})
                     </span>
                   </td>
-                  <td className="px-3 py-2">{formatNumber(row.auto?.paidLeaveDays)}</td>
+                  <td className="px-3 py-2">{formatNumber(row.auto?.otHours)}</td>
                   <td className="px-3 py-2">{formatMoney(row.totals?.bonus)}</td>
                   <td className="px-3 py-2">{formatMoney(row.totals?.reimbursement)}</td>
                   <td className="px-3 py-2">{formatMoney(row.totals?.deduction)}</td>
@@ -594,6 +660,7 @@ const emptyEntry = {
   reason: '',
   remarks: '',
   claimDate: '',
+  claimStatus: 'APPROVED',
 };
 
 const EmployeeDrawer = ({ employeeId, month, entryTypes, locked, canManage, onClose, onChanged, flash }) => {
@@ -603,11 +670,14 @@ const EmployeeDrawer = ({ employeeId, month, entryTypes, locked, canManage, onCl
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
 
+  const [notes, setNotes] = useState('');
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const response = await monthlyInputService.get(employeeId, month);
       setData(response?.data || null);
+      setNotes(response?.data?.remarks || '');
     } catch (error) {
       flash('error', error?.message || 'Unable to open employee input');
     } finally {
@@ -634,6 +704,7 @@ const EmployeeDrawer = ({ employeeId, month, entryTypes, locked, canManage, onCl
         reason: form.reason,
         remarks: form.remarks,
         claimDate: form.claimDate || undefined,
+        claimStatus: form.claimStatus || 'APPROVED',
       };
       if (editingId) await monthlyInputService.updateEntry(employeeId, editingId, payload);
       else await monthlyInputService.addEntry(employeeId, payload);
@@ -663,9 +734,52 @@ const EmployeeDrawer = ({ employeeId, month, entryTypes, locked, canManage, onCl
     }
   };
 
+  // §16 / §17 — approving or rejecting a claim is a first-class edit.
+  const setClaimStatus = async (entryId, claimStatus) => {
+    setSaving(true);
+    try {
+      await monthlyInputService.updateEntry(employeeId, entryId, { month, claimStatus });
+      await load();
+      onChanged();
+      flash('success', claimStatus === 'APPROVED' ? 'Claim approved' : `Claim ${claimStatus.toLowerCase()}`);
+    } catch (error) {
+      flash('error', error?.message || 'Unable to update the claim');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // §10 — HR notes, saved without leaving the drawer.
+  const saveNotes = async () => {
+    setSaving(true);
+    try {
+      await monthlyInputService.saveRemarks(employeeId, { month, remarks: notes });
+      await load();
+      onChanged();
+      flash('success', 'Notes saved');
+    } catch (error) {
+      flash('error', error?.message || 'Unable to save notes');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const auto = data?.auto || {};
   const entries = data?.entries || [];
   const labelOf = (type) => entryTypes.find((item) => item.value === type)?.label || type;
+  const categoryOf = (type) => entryTypes.find((item) => item.value === type)?.category || 'ADJUSTMENT';
+
+  // §10 / §13 — the drawer groups entries the way the spec lists them.
+  const GROUPS = [
+    { key: 'EARNINGS', title: 'Variable earnings', categories: ['BONUS', 'INCENTIVE', 'COMMISSION', 'OVERTIME'] },
+    { key: 'REIMBURSEMENT', title: 'Reimbursements', categories: ['REIMBURSEMENT'] },
+    { key: 'DEDUCTION', title: 'Deductions', categories: ['DEDUCTION', 'RECOVERY'] },
+    { key: 'ADJUSTMENT', title: 'Adjustments', categories: ['ADJUSTMENT'] },
+  ];
+  const grouped = GROUPS.map((group) => ({
+    ...group,
+    rows: entries.filter((entry) => group.categories.includes(categoryOf(entry.type))),
+  })).filter((group) => group.rows.length > 0);
 
   return (
     <Modal title={`Payroll inputs · ${data?.employeeName || 'Employee'}`} onClose={onClose} wide>
@@ -700,82 +814,163 @@ const EmployeeDrawer = ({ employeeId, month, entryTypes, locked, canManage, onCl
                 </div>
               ))}
             </div>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-crewly-dim">
+              <span>
+                Paid leave split: casual {formatNumber(auto.leaveBreakdown?.CASUAL)}, sick{' '}
+                {formatNumber(auto.leaveBreakdown?.SICK)}, earned{' '}
+                {formatNumber(auto.leaveBreakdown?.EARNED)}, other{' '}
+                {formatNumber(auto.leaveBreakdown?.OTHER)}
+              </span>
+              {/* §15 — the OT rate is a preview read of 29.1. No amount here. */}
+              <span>
+                OT policy:{' '}
+                {auto.otPolicy?.enabled
+                  ? `${auto.otPolicy.basis?.toLowerCase() || 'hourly'} × ${formatNumber(auto.otPolicy.multiplier || 1)}`
+                  : 'overtime not enabled in Payroll Setup'}
+              </span>
+              {auto.lopLeaveIds?.length ? (
+                <span>{auto.lopLeaveIds.length} LOP leave record(s) behind these days</span>
+              ) : null}
+            </div>
             <p className="mt-2 text-[11px] text-crewly-dim">
               Imported figures can&apos;t be edited here — correct the attendance or leave record, then
-              re-import the month.{auto.lopSource ? ` LOP source: ${auto.lopSource}.` : ''}
+              re-import the month. LOP source:{' '}
+              {auto.lopSource === 'LEAVE' ? 'Leave module' : 'attendance absence'}.
             </p>
           </section>
 
-          {/* §13.2 — variable pay */}
+          {/* §10 / §13 — grouped the way the spec lists them, with subtotals */}
+          {grouped.length === 0 ? (
+            <section>
+              <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-crewly-dim">
+                Variable pay, reimbursements &amp; deductions
+              </h3>
+              <p className="rounded-lg bg-white/5 p-3 text-sm text-crewly-dim">
+                No variable entries for {formatMonth(month)}.
+              </p>
+            </section>
+          ) : (
+            grouped.map((group) => (
+              <section key={group.key}>
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-crewly-dim">
+                    {group.title}
+                  </h3>
+                  <span className="text-sm font-semibold">
+                    {formatMoney(group.rows.reduce((sum, entry) => sum + Number(entry.amount || 0), 0))}
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead className="text-xs uppercase tracking-wide text-crewly-dim">
+                      <tr>
+                        <th className="px-2 py-1">Type</th>
+                        <th className="px-2 py-1">Amount</th>
+                        <th className="px-2 py-1">Reason</th>
+                        <th className="px-2 py-1">Claim</th>
+                        <th className="px-2 py-1">Approved by</th>
+                        <th className="px-2 py-1">Source</th>
+                        <th className="px-2 py-1 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.rows.map((entry) => (
+                        <tr
+                          key={entry.entryId}
+                          className={`border-t border-white/5 ${
+                            entry.claimStatus === 'REJECTED' ? 'opacity-60 line-through' : ''
+                          }`}
+                        >
+                          <td className="px-2 py-1">{labelOf(entry.type)}</td>
+                          <td className="px-2 py-1">{formatMoney(entry.amount)}</td>
+                          <td className="px-2 py-1">{entry.reason || '—'}</td>
+                          <td className="px-2 py-1 text-xs">
+                            {entry.claimStatus || '—'}
+                            {entry.claimDate ? ` · ${formatDate(entry.claimDate)}` : ''}
+                          </td>
+                          <td className="px-2 py-1 text-xs">
+                            {entry.approvedBy ? String(entry.approvedBy).slice(-6) : '—'}
+                          </td>
+                          <td className="px-2 py-1 text-xs">{entry.source || 'MANUAL'}</td>
+                          <td className="px-2 py-1 text-right">
+                            {locked ? (
+                              <span className="text-xs text-crewly-dim">locked</span>
+                            ) : (
+                              <div className="flex justify-end gap-2">
+                                {categoryOf(entry.type) === 'REIMBURSEMENT' ? (
+                                  <>
+                                    {entry.claimStatus !== 'APPROVED' ? (
+                                      <button
+                                        className="text-xs text-emerald-300 hover:underline"
+                                        onClick={() => setClaimStatus(entry.entryId, 'APPROVED')}
+                                      >
+                                        Approve
+                                      </button>
+                                    ) : null}
+                                    {entry.claimStatus !== 'REJECTED' ? (
+                                      <button
+                                        className="text-xs text-amber-300 hover:underline"
+                                        onClick={() => setClaimStatus(entry.entryId, 'REJECTED')}
+                                      >
+                                        Reject
+                                      </button>
+                                    ) : null}
+                                  </>
+                                ) : null}
+                                <button
+                                  className="text-xs text-indigo-300 hover:underline"
+                                  onClick={() => {
+                                    setEditingId(entry.entryId);
+                                    setForm({
+                                      type: entry.type,
+                                      amount: entry.amount,
+                                      reason: entry.reason || '',
+                                      remarks: entry.remarks || '',
+                                      claimDate: entry.claimDate
+                                        ? String(entry.claimDate).slice(0, 10)
+                                        : '',
+                                    });
+                                  }}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  className="text-xs text-red-300 hover:underline"
+                                  onClick={() => removeEntry(entry.entryId)}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            ))
+          )}
+
+          {/* §10 — remarks */}
           <section>
             <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-crewly-dim">
-              Variable pay, reimbursements &amp; deductions
+              Remarks (HR notes)
             </h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="text-xs uppercase tracking-wide text-crewly-dim">
-                  <tr>
-                    <th className="px-2 py-1">Type</th>
-                    <th className="px-2 py-1">Amount</th>
-                    <th className="px-2 py-1">Reason</th>
-                    <th className="px-2 py-1">Claim</th>
-                    <th className="px-2 py-1">Source</th>
-                    <th className="px-2 py-1 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {entries.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="px-2 py-4 text-center text-crewly-dim">
-                        No variable entries for {formatMonth(month)}.
-                      </td>
-                    </tr>
-                  ) : (
-                    entries.map((entry) => (
-                      <tr key={entry.entryId} className="border-t border-white/5">
-                        <td className="px-2 py-1">{labelOf(entry.type)}</td>
-                        <td className="px-2 py-1">{formatMoney(entry.amount)}</td>
-                        <td className="px-2 py-1">{entry.reason || '—'}</td>
-                        <td className="px-2 py-1 text-xs">
-                          {entry.claimStatus || '—'}
-                          {entry.claimDate ? ` · ${formatDate(entry.claimDate)}` : ''}
-                        </td>
-                        <td className="px-2 py-1 text-xs">{entry.source || 'MANUAL'}</td>
-                        <td className="px-2 py-1 text-right">
-                          {locked ? (
-                            <span className="text-xs text-crewly-dim">locked</span>
-                          ) : (
-                            <div className="flex justify-end gap-2">
-                              <button
-                                className="text-xs text-indigo-300 hover:underline"
-                                onClick={() => {
-                                  setEditingId(entry.entryId);
-                                  setForm({
-                                    type: entry.type,
-                                    amount: entry.amount,
-                                    reason: entry.reason || '',
-                                    remarks: entry.remarks || '',
-                                    claimDate: entry.claimDate ? String(entry.claimDate).slice(0, 10) : '',
-                                  });
-                                }}
-                              >
-                                Edit
-                              </button>
-                              <button
-                                className="text-xs text-red-300 hover:underline"
-                                onClick={() => removeEntry(entry.entryId)}
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <textarea
+              className="input h-20"
+              placeholder="Notes for this employee this month — visible in the audit trail"
+              value={notes}
+              disabled={locked}
+              onChange={(event) => setNotes(event.target.value)}
+            />
+            {!locked && canManage ? (
+              <div className="mt-2 flex justify-end">
+                <button className="btn-secondary" disabled={saving} onClick={saveNotes}>
+                  Save notes
+                </button>
+              </div>
+            ) : null}
           </section>
 
           {!locked && canManage ? (
@@ -812,6 +1007,19 @@ const EmployeeDrawer = ({ employeeId, month, entryTypes, locked, canManage, onCl
                 value={form.claimDate}
                 onChange={(event) => setForm({ ...form, claimDate: event.target.value })}
               />
+              {/* §16 — a claim can be entered as pending; someone still has to
+                  approve it before the month is handed to the engine. */}
+              {categoryOf(form.type) === 'REIMBURSEMENT' ? (
+                <select
+                  className="input"
+                  value={form.claimStatus}
+                  onChange={(event) => setForm({ ...form, claimStatus: event.target.value })}
+                >
+                  <option value="APPROVED">Approved</option>
+                  <option value="PENDING">Pending approval</option>
+                  <option value="REJECTED">Rejected</option>
+                </select>
+              ) : null}
               <button className="btn-primary" disabled={saving}>
                 {editingId ? 'Update entry' : 'Add entry'}
               </button>

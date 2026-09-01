@@ -235,6 +235,7 @@ export const normalizeEntry = (input = {}, index = 0) => {
     remarks: clean(raw.remarks, 300),
     claimStatus: CLAIM_STATUSES.includes(claimStatus) ? claimStatus : 'APPROVED',
     approvedBy: raw.approvedBy || null,
+    approvedAt: raw.approvedAt || null,
     source: ENTRY_SOURCES.includes(raw.source) ? raw.source : 'MANUAL',
     createdAt: raw.createdAt || null,
   };
@@ -458,6 +459,7 @@ export const summarizeMonth = (inputs = []) => {
     totalDeduction: 0,
     totalLopDays: 0,
     totalOtHours: 0,
+    claimsPending: 0,
   };
 
   (inputs || []).forEach((row) => {
@@ -470,6 +472,11 @@ export const summarizeMonth = (inputs = []) => {
     summary.totalDeduction += totals.deduction;
     summary.totalLopDays += Number(row.auto?.lopDays || 0);
     summary.totalOtHours += Number(row.auto?.otHours || 0);
+    // §16 — a claim that is still PENDING is visible but flagged, so HR can
+    // approve it before the month is handed to the engine.
+    summary.claimsPending += (row.entries || []).filter(
+      (entry) => CATEGORY_OF(entry.type) === 'REIMBURSEMENT' && (entry.claimStatus || 'APPROVED') === 'PENDING',
+    ).length;
   });
 
   summary.totalBonus = Math.round(summary.totalBonus * 100) / 100;
@@ -496,6 +503,9 @@ export const computeAutomaticSummary = ({
   leaves = [],
   holidays = [],
   lopLeaveType = null,
+  // §15 — the OT policy is a READ of 29.1, shown as a preview. No amount is
+  // ever produced here: the engine (29.6) owns that arithmetic.
+  overtimePolicy = null,
 } = {}) => {
   const summary = {
     workingDays: Number(workingDays) || 0,
@@ -504,10 +514,20 @@ export const computeAutomaticSummary = ({
     halfDays: 0,
     absentDays: 0,
     paidLeaveDays: 0,
+    // §7 — the leave split (casual / sick / earned / other) is kept beside the
+    // paid total so the drawer can show where the days came from.
+    leaveBreakdown: { CASUAL: 0, SICK: 0, EARNED: 0, OTHER: 0 },
     lopDays: 0,
+    lopHours: 0, // future: hourly LOP, §14
     lopSource: 'ATTENDANCE',
+    lopLeaveIds: [], // §14 — the leave records behind the LOP days
     otMinutes: 0,
     otHours: 0,
+    otPolicy: {
+      enabled: Boolean(overtimePolicy?.enabled),
+      basis: overtimePolicy?.basis || 'HOURLY',
+      multiplier: Number(overtimePolicy?.multiplier) || 1,
+    },
     nightShiftCount: 0,
     weekendShiftCount: 0,
     holidayShiftCount: 0,
@@ -525,14 +545,20 @@ export const computeAutomaticSummary = ({
   });
 
   // §14 — LOP lives in the Leave module as soon as it owns a LOP type; until
-  // then the single source of truth is attendance absence.
+  // then the single source of truth is attendance absence. Either way we keep
+  // the leave record ids so the UI can point at the source (§14).
   (leaves || []).forEach((leave) => {
     if (lopLeaveType && leave.type === lopLeaveType) {
       summary.lopDays += Number(leave.days) || 0;
       summary.lopSource = 'LEAVE';
+      if (leave._id) summary.lopLeaveIds.push(String(leave._id));
       return;
     }
-    if (leave.status === 'APPROVED') summary.paidLeaveDays += Number(leave.days) || 0;
+    if (leave.status === 'APPROVED') {
+      summary.paidLeaveDays += Number(leave.days) || 0;
+      const bucket = summary.leaveBreakdown[leave.type] === undefined ? 'OTHER' : leave.type;
+      summary.leaveBreakdown[bucket] += Number(leave.days) || 0;
+    }
   });
 
   const counted = summary.presentDays + summary.halfDays * 0.5;

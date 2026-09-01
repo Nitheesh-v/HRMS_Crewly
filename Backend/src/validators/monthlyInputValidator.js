@@ -104,6 +104,14 @@ export const importConfirmValidator = [
   validate,
 ];
 
+// §10 — HR notes saved from the drawer.
+export const monthlyInputRemarksValidator = [
+  param('employeeId').isMongoId().withMessage('Invalid employee'),
+  body('month').matches(MONTH).withMessage('Payroll month must look like 2026-08'),
+  body('remarks').optional().isString().trim().isLength({ max: 500 }),
+  validate,
+];
+
 export const periodStatusValidator = [
   body('month').matches(MONTH).withMessage('Payroll month must look like 2026-08'),
   body('status').isIn(PERIOD_STATUSES).withMessage('Invalid payroll month status'),

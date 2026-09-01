@@ -223,6 +223,11 @@ export const makeMonthlyInputService = ({
       attendance: shifts,
       leaves: leavesInMonth,
       holidays: holidayRows || [],
+      // §14 — the LOP leave type is a READ of 29.1; while it is absent the
+      // summary falls back to attendance absence (lopSource 'ATTENDANCE').
+      lopLeaveType: setup?.lopPolicy?.leaveType || null,
+      // §15 — OT policy snapshot for the preview only; no amount is computed.
+      overtimePolicy: setup?.overtimePolicy || null,
     });
   };
 
@@ -445,6 +450,21 @@ export const makeMonthlyInputService = ({
     return { input, period };
   };
 
+  // §16 / §17 — a reimbursement or bonus carries its approval. HR entering it
+  // IS the approval, so the actor becomes approvedBy; a rejected claim keeps
+  // the actor too, because someone must own the rejection.
+  const stampApproval = (entry, actor) => {
+    const next = { ...entry };
+    if (next.claimStatus === 'APPROVED' || next.claimStatus === 'REJECTED') {
+      next.approvedBy = actor?._id || null;
+      next.approvedAt = new Date();
+    } else {
+      next.approvedBy = null;
+      next.approvedAt = null;
+    }
+    return next;
+  };
+
   const addEntry = async ({ companyId, month, employeeId, entry, actor, req }) => {
     const { input } = await loadForWrite({ companyId, month, employeeId, actor, req });
     const candidate = normalizeEntry({ ...entry, effectiveMonth: month }, input.entries.length);
@@ -453,7 +473,7 @@ export const makeMonthlyInputService = ({
     if (errors.length) throw ApiError.badRequest(errors[0].message, errors);
 
     const previous = auditSnapshot(input);
-    input.entries.push(candidate);
+    input.entries.push(stampApproval(candidate, actor));
     input.updatedBy = actor?._id || null;
     await input.save();
 
@@ -494,7 +514,7 @@ export const makeMonthlyInputService = ({
     });
     if (errors.length) throw ApiError.badRequest(errors[0].message, errors);
 
-    input.entries[index] = merged;
+    input.entries[index] = stampApproval(merged, actor);
     input.updatedBy = actor?._id || null;
     await input.save();
 
@@ -531,6 +551,29 @@ export const makeMonthlyInputService = ({
       resourceId: input._id,
       previousValue: { removed: entryId },
       newValue: auditSnapshot(input),
+    });
+
+    return input;
+  };
+
+  // §10 — HR notes for the month, saved from inside the drawer.
+  const updateRemarks = async ({ companyId, month, employeeId, remarks, actor, req }) => {
+    const { input } = await loadForWrite({ companyId, month, employeeId, actor, req });
+    const previous = auditSnapshot(input);
+
+    input.remarks = String(remarks == null ? '' : remarks).trim().slice(0, 500);
+    input.updatedBy = actor?._id || null;
+    await input.save();
+
+    await invalidate(companyId, month);
+    await writeAudit({
+      req,
+      action: 'PAYROLL_INPUT_EDITED',
+      companyId,
+      resource: 'EmployeeMonthlyInput',
+      resourceId: input._id,
+      previousValue: previous,
+      newValue: { ...auditSnapshot(input), remarks: input.remarks },
     });
 
     return input;
@@ -578,7 +621,7 @@ export const makeMonthlyInputService = ({
         const errors = validateEntry(entry, { month, existing: row.entries });
         if (errors.length) continue;
 
-        row.entries.push(entry);
+        row.entries.push(stampApproval(entry, actor));
         touched += 1;
       }
 
@@ -675,7 +718,7 @@ export const makeMonthlyInputService = ({
       const errors = validateEntry(entry, { month, existing: input.entries });
       if (errors.length) continue;
 
-      input.entries.push(entry);
+      input.entries.push(stampApproval(entry, actor));
       input.updatedBy = actor?._id || null;
       await input.save();
       created += 1;
@@ -809,6 +852,7 @@ export const makeMonthlyInputService = ({
     addEntry,
     updateEntry,
     removeEntry,
+    updateRemarks,
     bulkAction,
     previewImport,
     confirmImport,

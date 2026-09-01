@@ -58,8 +58,8 @@ career portal.
   `docs/PHASE_29_4_TESTING_CHECKLIST.md`; 24 hermetic tests
   (`npm run test:employee-payroll`).
   29.5 is closed: `docs/PHASE_29_5_VARIABLE_PAY_MONTHLY_INPUTS.md` +
-  `docs/PHASE_29_5_TESTING_CHECKLIST.md`; 26 hermetic tests
-  (`npm run test:monthly-inputs`), 278/278 on the payroll + foundation
+  `docs/PHASE_29_5_TESTING_CHECKLIST.md`; 32 hermetic tests
+  (`npm run test:monthly-inputs`), 284/284 on the payroll + foundation
   ladder. Next: 29.6 Payroll Engine.
 - Phase 28 (background infrastructure, 28.1–28.9): Redis foundation,
   BullMQ foundation (7 queues), email delivery queue, processing queues
@@ -321,9 +321,12 @@ Frontend first (node_modules may be missing).
   (TTL PAYROLL_INPUT_CACHE_TTL_SECONDS). UI at /app/payroll/inputs: month
   dashboard + §25 KPI cards, input table, employee input drawer
   (§13 auto figures read-only + variable pay), bulk import, bulk actions,
-  validation report, lock/reopen. Fence honoured: no payroll calculation, no
-  net salary, no PF/ESI/TDS/PT, no payslip, no bank file, no approval, no final
-  settlement — that is 29.6.
+  validation report, lock/reopen. Leave is split by type, LOP keeps the leave
+  record ids behind it, the OT policy is stored as a 29.1 RATE PREVIEW (no
+  amount), claims carry claimStatus + approvedBy/approvedAt and can be approved
+  or rejected inline (§16), and HR notes live on the employee month (§10).
+  Fence honoured: no payroll calculation, no net salary, no PF/ESI/TDS/PT, no
+  payslip, no bank file, no approval, no final settlement — that is 29.6.
 
 ## 9. Current state (2026-09-01)
 

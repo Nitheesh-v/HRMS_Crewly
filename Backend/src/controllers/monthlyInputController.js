@@ -49,6 +49,26 @@ export const listMonthlyInputs = asyncHandler(async (req, res) => {
 });
 
 // §7 / §14 / §15 — pull attendance, leave and shift figures in.
+// §10 — HR notes for one employee month, saved without leaving the drawer.
+export const updateMonthlyInputRemarks = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const { employeeId } = req.params;
+  const { month, remarks } = req.body;
+
+  // DB Logic - DB logics
+  const input = await monthlyInputService.updateRemarks({
+    companyId: req.companyId,
+    month,
+    employeeId,
+    remarks,
+    actor: req.user,
+    req,
+  });
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, { message: 'Notes saved', data: input });
+});
+
 export const importMonthlyInputs = asyncHandler(async (req, res) => {
   // Data from frontend - requests from frontend
   const { month } = req.body;

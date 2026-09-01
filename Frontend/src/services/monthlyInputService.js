@@ -20,6 +20,10 @@ const monthlyInputService = {
   updateEntry: (employeeId, entryId, payload) =>
     api.patch(`/payroll/inputs/employee/${employeeId}/entries/${entryId}`, payload),
 
+  // §10 — HR notes saved from inside the drawer.
+  saveRemarks: (employeeId, payload) =>
+    api.patch(`/payroll/inputs/employee/${employeeId}/remarks`, payload),
+
   removeEntry: (employeeId, entryId, month) =>
     api.delete(`/payroll/inputs/employee/${employeeId}/entries/${entryId}`, {
       params: { month },

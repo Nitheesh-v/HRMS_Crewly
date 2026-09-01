@@ -746,6 +746,163 @@ test('29.5 backend sources are ESM, tenant-scoped and role-name free', async () 
   }
 });
 
+// ── 9. spec gaps closed on the second pass (§7 / §10 / §14 / §15 / §16) ────
+
+test('leave is broken down by type, and LOP keeps the leave records behind it (§7 / §14)', () => {
+  const auto = computeAutomaticSummary({
+    month: MONTH,
+    workingDays: 22,
+    attendance: [],
+    leaves: [
+      { _id: 'leave-1', type: 'CASUAL', days: 2, status: 'APPROVED', startDate: '2026-08-10' },
+      { _id: 'leave-2', type: 'SICK', days: 1, status: 'APPROVED', startDate: '2026-08-12' },
+      { _id: 'leave-3', type: 'EARNED', days: 3, status: 'APPROVED', startDate: '2026-08-17' },
+      { _id: 'leave-4', type: 'SICK', days: 4, status: 'PENDING', startDate: '2026-08-20' },
+    ],
+  });
+
+  assert.equal(auto.paidLeaveDays, 6);
+  assert.equal(auto.leaveBreakdown.CASUAL, 2);
+  assert.equal(auto.leaveBreakdown.SICK, 1); // the PENDING one is not paid
+  assert.equal(auto.leaveBreakdown.EARNED, 3);
+
+  const withLop = computeAutomaticSummary({
+    month: MONTH,
+    workingDays: 22,
+    attendance: [],
+    leaves: [{ _id: 'leave-9', type: 'LOP', days: 3, status: 'APPROVED', startDate: '2026-08-10' }],
+    lopLeaveType: 'LOP',
+  });
+  assert.equal(withLop.lopSource, 'LEAVE');
+  assert.deepEqual(withLop.lopLeaveIds, ['leave-9']);
+  assert.equal(withLop.paidLeaveDays, 0);
+});
+
+test('the overtime policy is a preview read of 29.1 — never an amount (§15)', () => {
+  const auto = computeAutomaticSummary({
+    month: MONTH,
+    workingDays: 22,
+    attendance: [{ date: '2026-08-03', status: 'PRESENT', overtimeMinutes: 180 }],
+    leaves: [],
+    overtimePolicy: { enabled: true, basis: 'HOURLY', multiplier: 2 },
+  });
+
+  assert.equal(auto.otHours, 3);
+  assert.deepEqual(auto.otPolicy, { enabled: true, basis: 'HOURLY', multiplier: 2 });
+  // §26 — no amount is ever produced here.
+  assert.equal(auto.otAmount, undefined);
+  assert.equal(auto.otPay, undefined);
+});
+
+test('claims carry their approver, and a rejected claim never reaches payroll (§16 / §17)', async () => {
+  const { service } = makeHarness();
+  await service.importAutomatic({ companyId: 'company-a', month: MONTH, actor });
+
+  const approved = await service.addEntry({
+    companyId: 'company-a',
+    month: MONTH,
+    employeeId: 'employee-1',
+    entry: { type: 'REIMBURSEMENT_TRAVEL', amount: 1200, reason: 'Client visit' },
+    actor,
+  });
+  assert.equal(approved.entries[0].claimStatus, 'APPROVED');
+  assert.equal(String(approved.entries[0].approvedBy), 'hr-1');
+  assert.ok(approved.entries[0].approvedAt instanceof Date);
+
+  const pending = await service.addEntry({
+    companyId: 'company-a',
+    month: MONTH,
+    employeeId: 'employee-1',
+    entry: {
+      type: 'REIMBURSEMENT_FOOD',
+      amount: 400,
+      reason: 'Team dinner',
+      claimStatus: 'PENDING',
+    },
+    actor,
+  });
+  const pendingEntry = pending.entries.find((row) => row.type === 'REIMBURSEMENT_FOOD');
+  assert.equal(pendingEntry.claimStatus, 'PENDING');
+  assert.equal(pendingEntry.approvedBy, null);
+
+  // §16 — only approved claims flow into payroll: rejected ones are excluded
+  // from the totals while staying visible in the drawer.
+  const rejected = await service.addEntry({
+    companyId: 'company-a',
+    month: MONTH,
+    employeeId: 'employee-1',
+    entry: {
+      type: 'REIMBURSEMENT_MEDICAL',
+      amount: 900,
+      reason: 'Not covered',
+      claimStatus: 'REJECTED',
+    },
+    actor,
+  });
+  const totals = entryTotals(rejected.entries);
+  assert.equal(totals.reimbursement, 1600); // 1200 approved + 400 pending, not 900
+  assert.equal(rejected.entries.length, 3);
+});
+
+test('pending claims are counted in the month summary (§16 / §25)', () => {
+  const summary = summarizeMonth([
+    {
+      issues: [],
+      entries: [
+        { type: 'REIMBURSEMENT_TRAVEL', amount: 100, claimStatus: 'PENDING' },
+        { type: 'REIMBURSEMENT_FOOD', amount: 50, claimStatus: 'APPROVED' },
+        { type: 'REIMBURSEMENT_FUEL', amount: 70, claimStatus: 'REJECTED' },
+      ],
+    },
+  ]);
+
+  assert.equal(summary.claimsPending, 1);
+  assert.equal(summary.totalReimbursement, 150);
+});
+
+test('HR notes are saved on the employee month and audited (§10)', async () => {
+  const { service, auditRows } = makeHarness();
+  await service.importAutomatic({ companyId: 'company-a', month: MONTH, actor });
+
+  const input = await service.updateRemarks({
+    companyId: 'company-a',
+    month: MONTH,
+    employeeId: 'employee-1',
+    remarks: 'Bonus approved by finance on 28 Aug',
+    actor,
+  });
+
+  assert.equal(input.remarks, 'Bonus approved by finance on 28 Aug');
+  assert.equal(auditRows.at(-1).action, 'PAYROLL_INPUT_EDITED');
+  assert.equal(auditRows.at(-1).newValue.remarks, 'Bonus approved by finance on 28 Aug');
+});
+
+test('imported rows keep their source so bulk actions can remove only those (§12)', async () => {
+  const { service, InputModel } = makeHarness();
+  await service.importAutomatic({ companyId: 'company-a', month: MONTH, actor });
+
+  const preview = await service.previewImport({
+    companyId: 'company-a',
+    month: MONTH,
+    content: 'employeeCode,type,amount,reason\nEMP001,BONUS_FESTIVAL,3000,Diwali',
+  });
+  assert.equal(preview.accepted.length, 1);
+
+  await service.confirmImport({ companyId: 'company-a', month: MONTH, rows: preview.accepted, actor });
+
+  const row = InputModel.rows.find((item) => String(item.employeeId) === 'employee-1');
+  assert.equal(row.entries[0].source, 'BULK_IMPORT');
+
+  await service.bulkAction({
+    companyId: 'company-a',
+    month: MONTH,
+    action: 'REMOVE_IMPORTED_ENTRIES',
+    employeeIds: ['employee-1'],
+    actor,
+  });
+  assert.equal(row.entries.length, 0);
+});
+
 test('entry types stay inside the documented catalogue', () => {
   assert.ok(ENTRY_TYPES.includes('BONUS_FESTIVAL'));
   assert.ok(ENTRY_TYPES.includes('REIMBURSEMENT_TRAVEL'));
