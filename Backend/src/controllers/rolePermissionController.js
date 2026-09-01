@@ -23,6 +23,34 @@ import {
 import {
   payrollPermissionChangeAudit,
 } from '../utils/payrollPermissionAudit.js';
+import {
+  planRoleDeactivation,
+} from '../utils/roleAssignmentRules.js';
+
+// ── role membership ────────────────────────────────────────────────────────
+// A user "holds" a role through `roleRef` (permissionService resolves
+// permissions from it first), so membership is counted on roleRef and only
+// ACTIVE users count — an inactive user must not block housekeeping.
+const roleMemberCounts = async (companyId) => {
+  const rows = await User.aggregate([
+    {
+      $match: {
+        companyId: new mongoose.Types.ObjectId(String(companyId)),
+        roleRef: { $ne: null },
+        status: 'ACTIVE',
+      },
+    },
+    { $group: { _id: '$roleRef', count: { $sum: 1 } } },
+  ]);
+
+  return new Map(rows.map((row) => [String(row._id), row.count]));
+};
+
+const membersOfRole = async (companyId, roleId, limit = 10) =>
+  User.find({ companyId, roleRef: roleId, status: 'ACTIVE' })
+    .select('name email')
+    .limit(limit)
+    .lean();
 
 const ok = (res, status, data, message) =>
   res.status(status).json({
@@ -249,11 +277,19 @@ export const listRoles = async (req, res) => {
         })
         .lean();
 
+    // How many active users hold each role — the UI needs this to explain
+    // why a role can or cannot be deactivated.
+    const counts = await roleMemberCounts(req.companyId);
+    const withCounts = roles.map((role) => ({
+      ...role,
+      memberCount: counts.get(String(role._id)) || 0,
+    }));
+
     return ok(
       // Data to frontend - response to frontend
       res,
       200,
-      roles,
+      withCounts,
       'Company roles'
     );
   } catch (error) {
@@ -470,11 +506,20 @@ export const getRole = async (req, res) => {
       );
     }
 
+    const [memberCount, members] = await Promise.all([
+      User.countDocuments({
+        companyId: req.companyId,
+        roleRef: role._id,
+        status: 'ACTIVE',
+      }),
+      membersOfRole(req.companyId, role._id),
+    ]);
+
     return ok(
       // Data to frontend - response to frontend
       res,
       200,
-      role,
+      { ...role.toObject(), memberCount, members },
       'Role'
     );
   } catch (error) {
@@ -724,6 +769,14 @@ export const deactivateRole = async (req, res) => {
       );
     }
 
+    // Data from frontend - requests from frontend
+    // { reassignTo: 'EMPLOYEE' } moves the remaining members out and then
+    // deactivates the role in one audited step.
+    const requestedTarget =
+      req.body && typeof req.body === 'object'
+        ? req.body.reassignTo
+        : '';
+
     const assignedUsers =
       await User.countDocuments({
         companyId:
@@ -736,14 +789,101 @@ export const deactivateRole = async (req, res) => {
       });
 
     if (assignedUsers > 0) {
-      return fail(
-        res,
-        409,
-        'Reassign users before deactivating this role',
-        {
-          assignedUsers,
-        }
+      const destinationRoles =
+        await CompanyRole.find({
+          companyId: req.companyId,
+          isActive: true,
+        })
+          .select('code')
+          .lean();
+      const destinations = destinationRoles.map((entry) => entry.code);
+
+      const plan = planRoleDeactivation({
+        roleCode: role.code,
+        memberCount: assignedUsers,
+        reassignTo: requestedTarget,
+        companyRoleCodes: destinations,
+        actorRole: req.user.role,
+      });
+
+      if (plan.action !== 'REASSIGN_AND_DEACTIVATE') {
+        const preview = await membersOfRole(req.companyId, role._id, 5);
+
+        return fail(
+          res,
+          409,
+          plan.reason,
+          {
+            assignedUsers,
+            members: preview.map((member) => ({
+              id: member._id,
+              name: member.name,
+              email: member.email,
+            })),
+            // What this admin is allowed to move them to.
+            reassignOptions: destinations
+              .map(normalizeRoleCode)
+              .filter((code) => code && code !== normalizeRoleCode(role.code)),
+          }
+        );
+      }
+
+      // Move the members first: `role` and `roleRef` are always written
+      // together, because permissionService resolves through roleRef first.
+      const members = await User.find({
+        companyId: req.companyId,
+        roleRef: role._id,
+        status: 'ACTIVE',
+      }).select('_id name email role roleRef');
+
+      const targetRole =
+        plan.target.kind === 'COMPANY'
+          ? destinationRoles.find(
+              (entry) => normalizeRoleCode(entry.code) === plan.target.code,
+            ) || null
+          : null;
+
+      if (plan.target.kind === 'COMPANY' && !targetRole) {
+        return fail(
+          res,
+          409,
+          'That destination role is no longer available'
+        );
+      }
+
+      await Promise.all(
+        members.map(async (member) => {
+          member.role = plan.target.code;
+          member.roleRef =
+            plan.target.kind === 'COMPANY' ? targetRole?._id || null : null;
+          await member.save();
+        })
       );
+
+      invalidatePermissionCache({ companyId: req.companyId });
+
+      await audit({
+        req,
+        action:
+          'ROLE_MEMBERS_REASSIGNED',
+
+        targetType: 'CompanyRole',
+
+        targetId: role._id,
+
+        previousState: {
+          from: role.code,
+          members: members.map((member) => ({
+            id: member._id,
+            name: member.name,
+          })),
+        },
+
+        newState: {
+          to: plan.target.code,
+          count: members.length,
+        },
+      });
     }
 
     const previous =
@@ -937,10 +1077,18 @@ export const updateRolePermissions = async (
     });
 
     // Data to frontend - response to frontend
+    // memberCount rides along so the UI keeps showing how many people hold
+    // the role without a second round trip.
+    const memberCount = await User.countDocuments({
+      companyId: req.companyId,
+      roleRef: updatedRole._id,
+      status: 'ACTIVE',
+    });
+
     return ok(
       res,
       200,
-      updatedRole,
+      { ...updatedRole.toObject(), memberCount },
       'Role permissions updated'
     );
   } catch (error) {

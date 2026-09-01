@@ -73,3 +73,67 @@ export const classifyRoleAssignment = ({
     reason: allowed ? '' : 'Your role cannot assign this role',
   };
 };
+
+// ── deactivating a role that still has members ─────────────────────────────
+//
+// A custom role cannot simply be switched off while people hold it: their
+// permissions resolve through `roleRef`, so they would be stranded on an
+// inactive role. The company has two honest choices: move the members to
+// another role first, or ask for the move and the deactivation in one step.
+//
+// Pure — the caller supplies what it read from the database.
+export const planRoleDeactivation = ({
+  roleCode = '',
+  memberCount = 0,
+  reassignTo = '',
+  companyRoleCodes = [],
+  actorRole = '',
+  creationRights = CREATION_RIGHTS,
+} = {}) => {
+  const count = Number(memberCount) || 0;
+  if (count <= 0) return { action: 'DEACTIVATE', memberCount: 0 };
+
+  const target = normalizeRoleCode(reassignTo);
+  if (!target) {
+    return {
+      action: 'BLOCK',
+      memberCount: count,
+      reason: `${count} user(s) still hold this role. Move them to another role first, or reassign them while deactivating.`,
+    };
+  }
+
+  // Reassigning into the role being deleted would be a no-op.
+  if (target === normalizeRoleCode(roleCode)) {
+    return {
+      action: 'BLOCK',
+      memberCount: count,
+      reason: 'Choose a different role to move these users to.',
+    };
+  }
+
+  // The role being deleted must not be offered as a destination either.
+  const destinations = (companyRoleCodes || [])
+    .map(normalizeRoleCode)
+    .filter((code) => code && code !== normalizeRoleCode(roleCode));
+
+  const verdict = classifyRoleAssignment({
+    code: target,
+    companyRoleCodes: destinations,
+    actorRole,
+    creationRights,
+  });
+
+  if (!verdict.allowed) {
+    return {
+      action: 'BLOCK',
+      memberCount: count,
+      reason: verdict.reason || 'You cannot move these users to that role',
+    };
+  }
+
+  return {
+    action: 'REASSIGN_AND_DEACTIVATE',
+    memberCount: count,
+    target: { code: target, kind: verdict.kind },
+  };
+};

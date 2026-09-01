@@ -241,21 +241,74 @@ const RolesPermissionsPage = () => {
     }
   };
 
-  const deactivateRole = async () => {
+  // A role people still hold cannot simply be switched off: their
+  // permissions resolve through it. Offer to move them out in one step
+  // instead of dead-ending on a 409.
+  const deactivateRole = async (reassignTo = "") => {
     if (!selectedRole || selectedRole.isSystemRole) return;
 
-    const confirmed = window.confirm(`Deactivate ${selectedRole.name}?`);
+    const members = Number(selectedRole.memberCount || 0);
+
+    if (members > 0 && !reassignTo) {
+      const target = window.prompt(
+        `${members} user(s) still hold ${selectedRole.name}.\n` +
+          `Move them to which role, then deactivate? (default: EMPLOYEE)`,
+        "EMPLOYEE"
+      );
+
+      if (target === null) return;
+
+      const code = String(target || "").trim() || "EMPLOYEE";
+
+      const okToMove = window.confirm(
+        `Move ${members} user(s) to ${code} and deactivate ${selectedRole.name}?`
+      );
+
+      if (!okToMove) return;
+
+      return deactivateRole(code);
+    }
+
+    const confirmed = window.confirm(
+      members > 0
+        ? `Move ${members} user(s) to ${reassignTo} and deactivate ${selectedRole.name}?`
+        : `Deactivate ${selectedRole.name}?`
+    );
 
     if (!confirmed) return;
 
     try {
-      await permissionService.deactivateRole(selectedRole._id);
+      const payload = reassignTo ? { reassignTo } : {};
 
-      setMessage("Role deactivated");
+      await permissionService.deactivateRole(selectedRole._id, payload);
+
+      setMessage(
+        members > 0
+          ? `Role deactivated — ${members} user(s) moved to ${reassignTo}`
+          : "Role deactivated"
+      );
+
       setSelectedRoleId("");
       await load();
     } catch (error) {
-      setMessage(error?.message || "Could not deactivate role");
+      const details = error?.data?.data || error?.data || {};
+      const who = Array.isArray(details.members) ? details.members : [];
+
+      const names = who
+        .slice(0, 3)
+        .map((member) => member.name || member.email)
+        .filter(Boolean)
+        .join(", ");
+
+      setMessage(
+        [
+          error?.message || "Could not deactivate role",
+          details.assignedUsers ? ` (${details.assignedUsers} user(s)${names ? `: ${names}${details.assignedUsers > 3 ? "…" : ""}` : ""})` : "",
+          Array.isArray(details.reassignOptions) && details.reassignOptions.length
+            ? ` Move them first: Users → edit user → Role (options: ${details.reassignOptions.join(", ")})`
+            : "",
+        ].join("")
+      );
     }
   };
 
@@ -454,6 +507,14 @@ const RolesPermissionsPage = () => {
 
                       <p className="text-sm text-slate-400">
                         {selectedRole.description}
+                      </p>
+
+                      <p className="mt-1 text-xs text-slate-500">
+                        {Number(selectedRole.memberCount || 0)} user(s) hold
+                        this role
+                        {Number(selectedRole.memberCount || 0) > 0
+                          ? " — they are moved to another role before it can be deactivated"
+                          : ""}
                       </p>
                     </div>
 

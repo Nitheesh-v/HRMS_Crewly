@@ -792,3 +792,73 @@ test('a role that does not exist on this company is never assignable', async () 
   assert.equal(verdict.allowed, false, 'tenant isolation: another company role is unknown here');
   assert.equal(verdict.kind, 'NONE');
 });
+
+// ── deactivating a role that still has members ─────────────────────────────
+// A role people still hold must not be switched off silently: permissions
+// resolve through roleRef, so the members have to move first.
+
+test('an empty role deactivates, a role with members is blocked with an actionable reason', async () => {
+  const { planRoleDeactivation } = await import('../src/utils/roleAssignmentRules.js');
+
+  const empty = planRoleDeactivation({ roleCode: 'PAYROLL_ADMIN', memberCount: 0 });
+  assert.equal(empty.action, 'DEACTIVATE');
+
+  const busy = planRoleDeactivation({
+    roleCode: 'PAYROLL_ADMIN',
+    memberCount: 3,
+    actorRole: 'COMPANY_ADMIN',
+  });
+  assert.equal(busy.action, 'BLOCK');
+  assert.equal(busy.memberCount, 3);
+  assert.match(busy.reason, /3 user\(s\)/);
+});
+
+test('reassignTo moves the members and then deactivates, but only to a role the actor may assign', async () => {
+  const { planRoleDeactivation } = await import('../src/utils/roleAssignmentRules.js');
+
+  const toEmployee = planRoleDeactivation({
+    roleCode: 'PAYROLL_ADMIN',
+    memberCount: 2,
+    reassignTo: 'EMPLOYEE',
+    actorRole: 'COMPANY_ADMIN',
+    companyRoleCodes: ['HR_HEAD', 'PAYROLL_ADMIN'],
+  });
+  assert.equal(toEmployee.action, 'REASSIGN_AND_DEACTIVATE');
+  assert.deepEqual(toEmployee.target, { code: 'EMPLOYEE', kind: 'SYSTEM' });
+
+  // Another company role is allowed as a destination too.
+  const toHrHead = planRoleDeactivation({
+    roleCode: 'PAYROLL_ADMIN',
+    memberCount: 2,
+    reassignTo: 'hr-head',
+    actorRole: 'COMPANY_ADMIN',
+    companyRoleCodes: ['HR_HEAD', 'PAYROLL_ADMIN'],
+  });
+  assert.equal(toHrHead.action, 'REASSIGN_AND_DEACTIVATE');
+  assert.deepEqual(toHrHead.target, { code: 'HR_HEAD', kind: 'COMPANY' });
+
+  // HR Manager may create an Employee but not a Company Admin.
+  const tooPrivileged = planRoleDeactivation({
+    roleCode: 'PAYROLL_ADMIN',
+    memberCount: 2,
+    reassignTo: 'COMPANY_ADMIN',
+    actorRole: 'HR_MANAGER',
+    companyRoleCodes: ['HR_HEAD'],
+  });
+  assert.equal(tooPrivileged.action, 'BLOCK');
+});
+
+test('users can never be reassigned into the role that is being deleted', async () => {
+  const { planRoleDeactivation } = await import('../src/utils/roleAssignmentRules.js');
+
+  const plan = planRoleDeactivation({
+    roleCode: 'PAYROLL_ADMIN',
+    memberCount: 4,
+    reassignTo: 'payroll admin', // same role, different spelling
+    actorRole: 'COMPANY_ADMIN',
+    companyRoleCodes: ['HR_HEAD', 'PAYROLL_ADMIN'],
+  });
+
+  assert.equal(plan.action, 'BLOCK');
+  assert.match(plan.reason, /different role/i);
+});

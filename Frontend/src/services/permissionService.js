@@ -56,9 +56,11 @@ const permissionService = {
       )
       .then(unwrap),
 
-  deactivateRole: (roleId) =>
+  // `payload` may carry { reassignTo: 'EMPLOYEE' } — the backend moves the
+  // remaining members to that role before deactivating this one.
+  deactivateRole: (roleId, payload = {}) =>
     api
-      .delete(`/roles/${roleId}`)
+      .delete(`/roles/${roleId}`, { data: payload })
       .then(unwrap),
 
   saveRolePermissions: (
