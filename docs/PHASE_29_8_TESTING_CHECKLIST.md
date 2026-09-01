@@ -63,6 +63,9 @@ Hermetic ladder (no MongoDB, no Redis, no BullMQ).
 - §13/§14/§15/§16 confirm, fail, retry, and **never pay the same employee
   twice** — references stay unique across the original batch and the retry
 - cancel and reopen
+- §18/§22 the batch audit read is tenant-scoped and limited to the batch, its
+  payment rows and its files; the actor, action and status change are mapped
+  back out of the audit log, and a foreign company's batch is never read
 - §21 notifications addressed by permission, skipping the actor, never
   blocking on a failure
 - §3 narrowed scope
@@ -181,7 +184,11 @@ Sign in as a Company Admin (or the finance template user) and open
 
 ## I. Audit
 
-1. Every action above writes one of `PAYMENT_BATCH_CREATED`,
+1. Open a batch → **Audit** tab → every action appears newest first, with the
+   actor, the role, and `from → to` for status changes.
+2. Search the audit by action or actor name; the box filters whichever table
+   is open (employees, failures, downloads, audit).
+3. Every action above writes one of `PAYMENT_BATCH_CREATED`,
    `PAYMENT_FILE_GENERATED`, `PAYMENT_FILE_DOWNLOADED`,
    `PAYMENT_EMPLOYEE_PAID`, `PAYMENT_EMPLOYEE_FAILED`, `PAYMENT_CONFIRMED`,
    `PAYMENT_FAILED`, `PAYMENT_RETRY_CREATED`, `PAYMENT_BATCH_REOPENED` or

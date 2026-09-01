@@ -20,6 +20,7 @@ import {
   downloadPaymentFile,
   generatePaymentFile,
   getPaymentBatch,
+  getPaymentBatchAudit,
   getPaymentDashboard,
   listPaymentBatches,
   markBatchPaid,
@@ -148,6 +149,14 @@ router.post(
   ...confirmAccess,
   payrollPaymentBatchIdParamValidator,
   reopenPaymentBatch,
+);
+
+// §18 / §22 — every recorded action on this batch.
+router.get(
+  '/:batchId/audit',
+  ...readAccess,
+  payrollPaymentBatchIdParamValidator,
+  getPaymentBatchAudit,
 );
 
 // §18 — batch detail. Declared last so the specific paths above win.

@@ -76,6 +76,10 @@ export const makePayrollPaymentService = ({
   dispatch = async () => ({ queued: false }),
   decrypt = () => '',
   hash = () => '',
+  // §18 / §22 — READ side of the audit trail. Write goes through `audit`;
+  // this one is a seam too, so the batch history can be tested without a
+  // live AuditLog collection.
+  readAudit = async () => [],
   ttlSeconds = getPayrollPaymentCacheTtlSeconds(),
 } = {}) => {
   const buildCacheKey = (companyId, month, suffix = 'dashboard') => {
@@ -238,6 +242,57 @@ export const makePayrollPaymentService = ({
         queued: Boolean(file.queued),
       })),
     };
+  };
+
+  // ── §18 / §22 — the batch's audit trail ──────────────────────────────────
+  //
+  // Everything that happened to THIS batch: its status changes, every employee
+  // outcome and every file event. The audit log already stores company, actor
+  // and previous/new value; this only has to collect the ids that belong to
+  // the batch — the batch itself, its payment rows and its files — and read
+  // them back newest first.
+
+  const toAuditEntry = (row = {}) => {
+    const previous = row.previousValue || null;
+    const next = row.newValue || null;
+    return {
+      at: row.at || row.createdAt || null,
+      action: row.action || '',
+      actorName: row.actorName || '',
+      actorRole: row.actorRole || '',
+      resource: row.resource || row.targetType || '',
+      from: row.from !== undefined ? row.from : previous ? previous.status || null : null,
+      to: row.to !== undefined ? row.to : next ? next.status || null : null,
+      reason:
+        row.reason !== undefined
+          ? row.reason
+          : next && next.reason !== undefined
+            ? next.reason || null
+            : null,
+    };
+  };
+
+  const getBatchAudit = async ({ companyId, batchId, limit = 200 } = {}) => {
+    const batch = await PayrollPaymentBatchModel.findOne({ _id: batchId, companyId }).lean();
+    if (!batch) throw ApiError.notFound('Payment batch not found');
+
+    const paymentRows = await PayrollPaymentModel.find({ companyId, batchId: batch._id })
+      .select('_id')
+      .lean();
+    const fileRows = PayrollPaymentFileModel
+      ? await PayrollPaymentFileModel.find({ companyId, batchId: batch._id }).select('_id').lean()
+      : [];
+
+    // §3 — the ids come from tenant-scoped reads, so another company's batch
+    // can never pull its own history into ours.
+    const targetIds = [
+      batch._id,
+      ...(paymentRows || []).map((row) => row._id),
+      ...(fileRows || []).map((row) => row._id),
+    ];
+
+    const rows = await readAudit({ companyId, targetIds, limit });
+    return (rows || []).map(toAuditEntry);
   };
 
   const listBatches = async ({ companyId, month = '', allowedEmployeeIds = null }) => {
@@ -1130,6 +1185,7 @@ export const makePayrollPaymentService = ({
     getDashboard,
     listBatches,
     getBatch,
+    getBatchAudit,
     validateBatch,
     createBatch,
     generateFile,
@@ -1147,6 +1203,7 @@ export const makePayrollPaymentService = ({
 import PayrollPaymentBatch from '../../models/PayrollPaymentBatch.js';
 import PayrollPayment from '../../models/PayrollPayment.js';
 import PayrollPaymentFile from '../../models/PayrollPaymentFile.js';
+import AuditLog from '../../models/AuditLog.js';
 import PayrollResult from '../../models/PayrollResult.js';
 import PayrollReview from '../../models/PayrollReview.js';
 import PayrollSetup from '../../models/PayrollSetup.js';
@@ -1225,6 +1282,13 @@ const defaultService = makePayrollPaymentService({
       metadata: { type, ...payload },
     }),
   audience: resolveAudience,
+  // §18 — the batch detail page shows every recorded action for the batch,
+  // its payment rows and its generated files, newest first.
+  readAudit: async ({ companyId, targetIds = [], limit = 200 } = {}) =>
+    AuditLog.find({ companyId, targetId: { $in: targetIds } })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean(),
   dispatch: dispatchPayrollPaymentFile,
   decrypt: decryptSensitiveValue,
   hash: (value) =>

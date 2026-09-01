@@ -46,6 +46,7 @@ const EMPLOYEE_1 = '64b7f9c2e4b0a1b2c3d4e501';
 const EMPLOYEE_2 = '64b7f9c2e4b0a1b2c3d4e502';
 const EMPLOYEE_3 = '64b7f9c2e4b0a1b2c3d4e503';
 const DEPARTMENT = '64b7f9c2e4b0a1b2c3d4e599';
+const OTHER_COMPANY = '64b7f9c2e4b0a1b2c3d4e999';
 
 // Two recipients the fake audience resolver always returns.
 const FINANCE_USER = '64b7f9c2e4b0a1b2c3d4e577';
@@ -223,6 +224,7 @@ const makeHarness = ({
   );
 
   const auditRows = [];
+  const auditReads = [];
   const notifications = [];
   const audiences = [];
   const dispatched = [];
@@ -258,6 +260,31 @@ const makeHarness = ({
       },
     },
     audit: async (row) => auditRows.push(row),
+    // §18 — canned audit history so the read path can be asserted without a
+    // live AuditLog collection. Raw rows on purpose: the service normalises.
+    readAudit: async (query) => {
+      auditReads.push(query);
+      return [
+        {
+          createdAt: '2026-08-30T09:00:00Z',
+          action: 'PAYMENT_CONFIRMED',
+          actorName: 'Finance Manager',
+          actorRole: 'FINANCE_MANAGER',
+          targetType: 'PayrollPaymentBatch',
+          previousValue: { status: 'DOWNLOADED' },
+          newValue: { status: 'PAID', reason: null },
+        },
+        {
+          createdAt: '2026-08-29T18:30:00Z',
+          action: 'PAYMENT_FILE_DOWNLOADED',
+          actorName: 'Finance Manager',
+          actorRole: 'FINANCE_MANAGER',
+          targetType: 'PayrollPaymentFile',
+          previousValue: { downloadCount: 0 },
+          newValue: { downloadCount: 1, format: 'CSV' },
+        },
+      ];
+    },
     notify: notifyImpl || (async (row) => notifications.push(row)),
     audience: async ({ permissions }) => {
       audiences.push(permissions);
@@ -283,6 +310,7 @@ const makeHarness = ({
     ReviewModel,
     ProfileModel,
     auditRows,
+    auditReads,
     notifications,
     audiences,
     dispatched,
@@ -960,4 +988,69 @@ test('the service exposes no payment action without the batch (§3)', async () =
     () => service.getBatch({ companyId: COMPANY, batchId: '64b7f9c2e4b0a1b2c3d4e5ff' }),
     (error) => error.statusCode === 404,
   );
+});
+
+// ── 30. batch audit trail (§18 / §22) ──────────────────────────────────────
+
+test('the batch audit is scoped to the batch, its payments and its files', async () => {
+  const harness = makeHarness();
+  const detail = await buildBatchWithFile(harness);
+
+  const rows = await harness.service.getBatchAudit({
+    companyId: COMPANY,
+    batchId: detail.batch._id,
+  });
+
+  // The read is tenant-scoped and limited to ids the batch owns — never a
+  // blind company-wide scan (§3 / §18).
+  const query = harness.auditReads.at(-1);
+  assert.equal(String(query.companyId), String(COMPANY));
+  assert.equal(String(query.targetIds[0]), String(detail.batch._id));
+  for (const payment of detail.payments) {
+    assert.ok(
+      query.targetIds.some((id) => String(id) === String(payment._id)),
+      'every payment row of the batch is part of the audit query',
+    );
+  }
+  for (const file of detail.files) {
+    assert.ok(
+      query.targetIds.some((id) => String(id) === String(file._id)),
+      'every generated file of the batch is part of the audit query',
+    );
+  }
+  assert.equal(query.targetIds.length, 1 + detail.payments.length + detail.files.length);
+});
+
+test('the batch audit carries actor, action and the status change (§22)', async () => {
+  const harness = makeHarness();
+  const detail = await buildBatchWithFile(harness);
+
+  const rows = await harness.service.getBatchAudit({
+    companyId: COMPANY,
+    batchId: detail.batch._id,
+  });
+
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].action, 'PAYMENT_CONFIRMED');
+  assert.equal(rows[0].actorName, 'Finance Manager');
+  assert.equal(rows[0].from, 'DOWNLOADED');
+  assert.equal(rows[0].to, 'PAID');
+  assert.equal(rows[0].at, '2026-08-30T09:00:00Z');
+  // A download is not a status change, so from/to stay empty rather than
+  // being invented from the download count.
+  assert.equal(rows[1].action, 'PAYMENT_FILE_DOWNLOADED');
+  assert.equal(rows[1].from, null);
+  assert.equal(rows[1].to, null);
+});
+
+test('another company cannot read a batch audit trail (§3)', async () => {
+  const harness = makeHarness();
+  const detail = await buildBatchWithFile(harness);
+  const readsBefore = harness.auditReads.length;
+
+  await assert.rejects(
+    () => harness.service.getBatchAudit({ companyId: OTHER_COMPANY, batchId: detail.batch._id }),
+    (error) => error.statusCode === 404,
+  );
+  assert.equal(harness.auditReads.length, readsBefore, 'no audit read is issued for a foreign batch');
 });

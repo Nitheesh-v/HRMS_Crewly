@@ -49,6 +49,22 @@ export const listPaymentBatches = asyncHandler(async (req, res) => {
 });
 
 // §18 — one batch: summary, employees, failures and download history.
+// §18 / §22 — the audit trail of one batch: every status change, employee
+// outcome and file event, newest first.
+export const getPaymentBatchAudit = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const { batchId } = req.params;
+
+  // DB Logic - DB logics
+  const data = await payrollPaymentService.getBatchAudit({
+    companyId: req.companyId,
+    batchId,
+  });
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, { message: 'Payment batch audit fetched', data });
+});
+
 export const getPaymentBatch = asyncHandler(async (req, res) => {
   // Data from frontend - requests from frontend
   const { batchId } = req.params;

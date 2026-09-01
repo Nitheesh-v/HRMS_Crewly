@@ -16,6 +16,10 @@ const payrollPaymentService = {
   // §18 — one batch: summary, employees, failures, download history.
   batch: (batchId) => api.get(`/payroll/payments/${batchId}`),
 
+  // §18 / §22 — the batch's audit trail: every status change, employee
+  // outcome and file event, newest first.
+  batchAudit: (batchId) => api.get(`/payroll/payments/${batchId}/audit`),
+
   // §7 — bank validation report for a batch.
   validate: (batchId) => api.get(`/payroll/payments/${batchId}/validate`),
 
