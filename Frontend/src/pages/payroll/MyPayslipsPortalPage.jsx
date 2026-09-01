@@ -5,6 +5,7 @@ import { AlertTriangle, Download, FileText, Loader2, Search } from 'lucide-react
 import Modal from '../../components/Modal.jsx';
 import PayslipDocument, { downloadPayslipFile } from './PayslipDocument.jsx';
 import payslipService from '../../services/payslipService.js';
+import statutoryService from '../../services/statutoryService.js';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Phase 29.9 — Employee Salary Portal (§14 / §15 / §16)
@@ -47,6 +48,14 @@ const financialYearOf = (month, fyStartMonth = 4) => {
   return `${start}-${String((start + 1) % 100).padStart(2, '0')}`;
 };
 
+// §17 — one read-only statutory field.
+const Field = ({ label, value }) => (
+  <div>
+    <dt className="text-xs uppercase tracking-wide text-crewly-dim">{label}</dt>
+    <dd className="mt-0.5 text-sm font-medium">{value || '—'}</dd>
+  </div>
+);
+
 const MyPayslipsPortalPage = () => {
   const [rows, setRows] = useState([]);
   // §23 — the latest payslip is cached on its own and opens the page.
@@ -61,6 +70,8 @@ const MyPayslipsPortalPage = () => {
 
   const [viewing, setViewing] = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
+  // Phase 29.10 §17 — the employee's own statutory IDs, read-only.
+  const [statutory, setStatutory] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -73,6 +84,11 @@ const MyPayslipsPortalPage = () => {
     } finally {
       setLoading(false);
     }
+    // The statutory card is a bonus read, never a reason to fail the page.
+    statutoryService
+      .mine()
+      .then((data) => setStatutory(data || null))
+      .catch(() => setStatutory(null));
   }, []);
 
   useEffect(() => {
@@ -183,6 +199,36 @@ const MyPayslipsPortalPage = () => {
       ) : null}
       {error ? (
         <div className="card border-l-4 border-red-500 text-sm text-red-200">{error}</div>
+      ) : null}
+
+      {/* §17 — statutory details, read-only (§17: employees cannot modify
+          statutory IDs). */}
+      {statutory ? (
+        <div className="card space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold">Statutory details</h2>
+            <span className="text-[11px] text-crewly-dim">
+              Read-only · corrections go through your HR or Payroll Admin
+            </span>
+          </div>
+          <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Field label="PAN" value={statutory.pan} />
+            <Field label="UAN" value={statutory.uan} />
+            <Field label="ESI Number" value={statutory.esiNumber} />
+            <Field label="PF Member" value={statutory.pfMember ? 'Yes' : 'No'} />
+            <Field label="Professional Tax State" value={statutory.ptState} />
+            <Field label="Tax Regime" value={statutory.taxRegime} />
+            <Field label="Gratuity Eligible" value={statutory.gratuityEligible ? 'Yes' : 'No'} />
+            <Field label="TDS Applicable" value={statutory.tdsApplicable ? 'Yes' : 'No'} />
+          </dl>
+          {statutory.current ? (
+            <p className="text-xs text-crewly-dim">
+              Deducted for {statutory.current.monthLabel}: PF {formatMoney(statutory.current.pf)} ·
+              ESI {formatMoney(statutory.current.esi)} · PT {formatMoney(statutory.current.pt)} · TDS{' '}
+              {formatMoney(statutory.current.tds)} · LWF {formatMoney(statutory.current.lwf)}
+            </p>
+          ) : null}
+        </div>
       ) : null}
 
       {/* §15 — filters */}

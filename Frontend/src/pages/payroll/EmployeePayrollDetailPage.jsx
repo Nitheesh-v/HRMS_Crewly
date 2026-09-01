@@ -5,6 +5,7 @@ import Modal from '../../components/Modal.jsx';
 import usePermission from '../../hooks/usePermission.js';
 import employeePayrollService from '../../services/employeePayrollService.js';
 import salaryStructureService from '../../services/salaryStructureService.js';
+import statutoryService from '../../services/statutoryService.js';
 
 // ── display mirrors of the backend rules (the server always decides) ────────
 
@@ -106,6 +107,10 @@ const EmployeePayrollDetailPage = () => {
   const [form, setForm] = useState(emptyForm);
   const [structures, setStructures] = useState([]);
   const [preview, setPreview] = useState(null);
+  // Phase 29.10 §17 — the employee's statutory IDs plus what was actually
+  // deducted for them this month, read straight off the payroll snapshot.
+  const [statutory, setStatutory] = useState(null);
+  const [statutoryMonth, setStatutoryMonth] = useState(new Date().toISOString().slice(0, 7));
 
   const canManage = hasPermission('EMPLOYEE_SALARY_MANAGE');
   const canView = hasAnyPermission([
@@ -118,6 +123,24 @@ const EmployeePayrollDetailPage = () => {
     setBanner({ type, text });
     setTimeout(() => setBanner(null), 5000);
   };
+
+  // §17 — a bonus read: a missing statutory snapshot must never hide the
+  // payroll profile itself.
+  useEffect(() => {
+    if (!employeeId) return undefined;
+    let active = true;
+    statutoryService
+      .employee(employeeId, statutoryMonth)
+      .then((data) => {
+        if (active) setStatutory(data || null);
+      })
+      .catch(() => {
+        if (active) setStatutory(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [employeeId, statutoryMonth]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -462,6 +485,57 @@ const EmployeePayrollDetailPage = () => {
               <div className="text-xs uppercase tracking-wide text-crewly-dim">Gratuity</div>
               <div>{profile.statutory?.gratuityEligible ? 'Eligible' : 'Not eligible'}</div>
             </div>
+            <div>
+              <div className="text-xs uppercase tracking-wide text-crewly-dim">
+                Professional Tax State
+              </div>
+              <div>{statutory?.ptState || '—'}</div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wide text-crewly-dim">Tax Regime</div>
+              <div>{statutory?.taxRegime === 'OLD' ? 'Old Regime' : 'New Regime'}</div>
+            </div>
+          </div>
+        )}
+
+        {/* §17 — what the payroll actually deducted, read from the snapshot. */}
+        {tab === 'statutory' && (
+          <div className="mt-4 rounded-lg border border-white/5 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs uppercase tracking-wide text-crewly-dim">
+                Deducted this month
+                {statutory?.current ? ` · ${statutory.current.monthLabel}` : ''}
+              </p>
+              <input
+                type="month"
+                className="input w-auto"
+                value={statutoryMonth}
+                onChange={(event) => setStatutoryMonth(event.target.value)}
+                aria-label="Payroll month"
+              />
+            </div>
+            {statutory?.current ? (
+              <dl className="mt-2 grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                {[
+                  ['PF', statutory.current.pf],
+                  ['ESI', statutory.current.esi],
+                  ['Professional Tax', statutory.current.pt],
+                  ['TDS', statutory.current.tds],
+                  ['LWF', statutory.current.lwf],
+                ].map(([label, value]) => (
+                  <div key={label}>
+                    <dt className="text-xs text-crewly-dim">{label}</dt>
+                    <dd className="text-sm font-medium">
+                      Rs {Number(value || 0).toLocaleString('en-IN')}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              <p className="mt-2 text-xs text-crewly-dim">
+                No paid payroll for this employee in this month yet.
+              </p>
+            )}
           </div>
         )}
 

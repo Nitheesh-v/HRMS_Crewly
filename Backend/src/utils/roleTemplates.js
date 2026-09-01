@@ -135,6 +135,9 @@ export const ROLE_TEMPLATES = Object.freeze([
       'PAYROLL_STATUTORY_MANAGE',
       'PAYROLL_STATUTORY_READ',
       'PAYROLL_STATUTORY_GENERATE',
+      // Phase 29.10 §4 — the Payroll Admin generates the statutory reports.
+      // Filing stays with Finance: the person who produces a return is not
+      // the person who attests that it was submitted.
       'PAYROLL_REPORT_READ',
       'PAYROLL_REPORT_EXPORT',
     ],
@@ -194,7 +197,10 @@ export const ROLE_TEMPLATES = Object.freeze([
       'PAYSLIP_READ',
       'PAYROLL_REPORT_READ',
       'PAYROLL_REPORT_EXPORT',
+      // Phase 29.10 §4 — Finance reviews, exports and updates the filing
+      // status. Generating the report stays with the Payroll Admin.
       'PAYROLL_STATUTORY_READ',
+      'PAYROLL_STATUTORY_FILING',
     ],
   },
   {

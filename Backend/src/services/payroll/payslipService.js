@@ -294,7 +294,7 @@ export const makePayslipService = ({
 
     const [results, profiles, employees] = await Promise.all([
       PayrollResultModel.find({ companyId, month, isCurrent: true, employeeId: { $in: employeeIds } }).lean(),
-      EmployeePayrollProfileModel.find({ companyId, userId: { $in: employeeIds } })
+      EmployeePayrollProfileModel.find({ companyId, employeeId: { $in: employeeIds }, isCurrent: true })
         // §9 / §23 — the full account number is encrypted and never selected
         // into a payslip; only the masked copy is read.
         .select('+bank.accountNumberMasked')
@@ -313,7 +313,7 @@ export const makePayslipService = ({
     );
 
     const resultByEmployee = new Map((results || []).map((row) => [String(row.employeeId), row]));
-    const profileByEmployee = new Map((profiles || []).map((row) => [String(row.userId), row]));
+    const profileByEmployee = new Map((profiles || []).map((row) => [String(row.employeeId), row]));
     const employeeById = new Map((employees || []).map((row) => [String(row._id), row]));
 
     return {

@@ -58,6 +58,7 @@ import ReviewPayrollPage from "../pages/payroll/ReviewPayrollPage.jsx";
 import SalaryPaymentPage from "../pages/payroll/SalaryPaymentPage.jsx";
 import PayslipsPage from "../pages/payroll/PayslipsPage.jsx";
 import MyPayslipsPortalPage from "../pages/payroll/MyPayslipsPortalPage.jsx";
+import StatutoryCompliancePage from "../pages/payroll/StatutoryCompliancePage.jsx";
 import EmployeePayrollDetailPage from "../pages/payroll/EmployeePayrollDetailPage.jsx";
 import MyPayslipsPage from "../pages/payroll/MyPayslipsPage.jsx";
 
@@ -381,6 +382,7 @@ const AppRoutes = () => (
       {/* Phase 29.9 — Payslips: admin workspace + employee salary portal. */}
       <Route path="payroll/payslips" element={<PayslipsPage />} />
       <Route path="payroll/my-payslips" element={<MyPayslipsPortalPage />} />
+      <Route path="payroll/statutory" element={<StatutoryCompliancePage />} />
       <Route path="payroll/employees" element={<EmployeePayrollPage />} />
       <Route path="payroll/employees/:employeeId" element={<EmployeePayrollDetailPage />} />
 

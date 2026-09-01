@@ -76,6 +76,17 @@ career portal.
   (`npm run test:payroll-payment`). It builds
   the bank transfer file and records payment confirmation, but NEVER moves
   money — the company's finance team uploads the file to their own bank.
+  29.10 is closed: `docs/PHASE_29_10_STATUTORY_COMPLIANCE.md` +
+  `docs/PHASE_29_10_TESTING_CHECKLIST.md`; 35 hermetic tests
+  (`npm run test:statutory`), 339/339 on the payroll ladder, 705/705 on
+  `test:all`. `npm run statutory:preview`
+  (Backend/scripts/statutoryPreview.js) renders 22 real artefacts with NO
+  database — and, like its 29.9 predecessor, it immediately caught two defects
+  that all 35 unit tests passed over: employer EPF of Rs 550.50 printed as
+  "Rs 551" (paise dropped on a return finance reconciles to the rupee), and a
+  12-digit UAN wrapping onto a second line in the PDF. It also fixed a live
+  29.9 defect: `payslipService` queried EmployeePayrollProfile by `userId`
+  instead of `employeeId`, so EVERY payslip's UAN and PAN were blank.
   29.9 is closed: `docs/PHASE_29_9_PAYSLIPS.md` +
   `docs/PHASE_29_9_TESTING_CHECKLIST.md`; 28 hermetic tests
   (`npm run test:payslip`), 302/302 on the payroll ladder, 668/668 on
@@ -96,7 +107,8 @@ career portal.
   it, so the payroll queue had no consumer and every 29.6/29.7/29.8 job
   silently ran through the API's inline fallback. `src/workers/index.js`
   now starts the payroll worker with its own connection.
-  Next: 29.10 Statutory Compliance & Government Reports.
+  Next: 29.10 Statutory Compliance & Government Reports (DONE — see above).
+  29.11 next: Loans, Advances & Employee Recovery Management.
 - Phase 28 (background infrastructure, 28.1–28.9): Redis foundation,
   BullMQ foundation (7 queues), email delivery queue, processing queues
   (resume/ATS/documents), scheduled one-time jobs, pre-onboarding + BGV
@@ -497,6 +509,37 @@ Frontend first (node_modules may be missing).
   the STORED snapshot, never new payroll data. Fence honoured: no Form 16,
   no tax declaration, no PF/ESI filing, no government portals, no settlement
   payslip, no loan statements, and no calculation.
+
+- Phase 29.10 = Statutory Compliance & Government Reports: pure rules in
+  services/payroll/statutoryRules.js (§14 filing lifecycle DRAFT → REVIEWED →
+  READY → FILED → REOPENED with FILED → READY refused, §19 FILING_DUE_RULES as
+  DATA — PF/ESI/LWF 15th, TDS 7th, PT 20th of the following month, Gratuity
+  31 Mar — §18 FY maths honouring a company FY start month, §7-§12 row
+  builders, the one roll-up, §16 the consolidated compliance summary, §15
+  export tables and §18 annualisation). models/StatutoryReport.js (unique
+  {companyId, month, type}; it holds STATUS, filing reference and who attested
+  what — NEVER a figure), models/StatutoryExport.js (queued files, binary is
+  select:false) and models/ComplianceCalendarTask.js (derived dueDate, never
+  client-supplied). 16 routes at /api/payroll/statutory. THE LAW: figures are
+  never stored, the workflow is — every rupee is re-derived from the immutable
+  29.6 PayrollResult snapshot on every read, so a payroll recalculation cannot
+  leave a stale statutory number; and if a FILED return's figures move, it is
+  REOPENED rather than silently left "Filed". Exports reuse 29.8's
+  dependency-free CSV/XLSX writers (no new npm package) and add
+  utils/statutoryPdf.js (draws only, shares the payslip PDF's design language).
+  BullMQ reuses QUEUE_NAMES.PAYROLL with statutory-generate / statutory-export
+  / compliance-reminder jobs, references-only payloads (rows, summary, pan, uan
+  and every rupee key are rejected outright). Permissions: the three 29.1
+  already declared PLUS one new verb PAYROLL_STATUTORY_FILING, so Payroll
+  Admin generates while Finance files (SYSTEM_PERMISSION_VERSION is 24:
+  HR_MANAGER is READ only, Employee has nothing). Cache namespace
+  'payroll-compliance', version 1, seven suffixes so a month-scoped change also
+  drops the cross-month keys. UI: ONE sidebar entry Payroll → Statutory
+  Compliance with NINE tabs (§5, standing "small sidebar" rule), plus a
+  read-only §17 statutory card on the employee's own My Payroll page and on the
+  HR-side employee payroll profile. Fence honoured: no EPFO/ESIC/income-tax
+  portal, no automatic government filing, no digital signature, no Form 16, no
+  Form 24Q upload — the PDF states in print that it is not a filed return.
 
 ## 9. Current state (2026-09-01)
 

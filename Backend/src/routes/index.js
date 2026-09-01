@@ -22,6 +22,7 @@ import payrollEngineRoutes from "./payrollEngineRoutes.js";
 import payrollReviewRoutes from "./payrollReviewRoutes.js";
 import payrollPaymentRoutes from "./payrollPaymentRoutes.js";
 import payslipRoutes from "./payslipRoutes.js";
+import statutoryRoutes from "./statutoryRoutes.js";
 import recruitmentRoutes from "./recruitmentRoutes.js";
 import exitRoutes from "./exitRoutes.js";
 import billingRoutes from "./billingRoutes.js";
@@ -133,6 +134,7 @@ router.use("/payroll/runs", payrollEngineRoutes);
 router.use("/payroll/review", payrollReviewRoutes);
 router.use("/payroll/payments", payrollPaymentRoutes);
   router.use("/payroll/payslips", payslipRoutes);
+  router.use("/payroll/statutory", statutoryRoutes);
 
 router.use("/recruitment", recruitmentRoutes);
 

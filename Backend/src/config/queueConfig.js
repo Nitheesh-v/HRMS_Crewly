@@ -61,6 +61,13 @@ export const JOB_NAMES = {
   PAYSLIP_GENERATE: 'payslip-generate',
   PAYSLIP_ZIP: 'payslip-zip',
   PAYSLIP_EMAIL: 'payslip-email',
+  // 29.10: statutory compliance — monthly report generation, large/annual
+  // export files and filing reminders. Same queue, own job names; the worker
+  // rebuilds every figure from the 29.6 snapshots, so the payload carries
+  // references only.
+  STATUTORY_GENERATE: 'statutory-generate',
+  STATUTORY_EXPORT: 'statutory-export',
+  COMPLIANCE_REMINDER: 'compliance-reminder',
   // 28.4: processing jobs (resume parsing + ATS matching). One job name
   // per stage — reprocess/recovery reuse the same job with a fresh
   // deterministic job id (version-aware), not extra job names.
@@ -106,6 +113,14 @@ export const PAYROLL_JOB_NAMES = Object.freeze([
   JOB_NAMES.PAYROLL_RUN,
   JOB_NAMES.PAYROLL_EXPORT,
   JOB_NAMES.PAYROLL_PAYMENT_FILE,
+  // 29.9 payslips
+  JOB_NAMES.PAYSLIP_GENERATE,
+  JOB_NAMES.PAYSLIP_ZIP,
+  JOB_NAMES.PAYSLIP_EMAIL,
+  // 29.10 statutory compliance
+  JOB_NAMES.STATUTORY_GENERATE,
+  JOB_NAMES.STATUTORY_EXPORT,
+  JOB_NAMES.COMPLIANCE_REMINDER,
 ]);
 
 // 28.6 document + BGV job names (their own reserved queues).

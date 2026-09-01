@@ -378,6 +378,16 @@ const AppLayout = () => {
     ])
       ? [{ to: '/app/payroll/payslips', label: 'Payslips' }]
       : []),
+    // Phase 29.10 — Statutory Compliance, the step after payslips: prepare
+    // PF / ESI / PT / TDS / LWF returns and track their filing (§5).
+    ...(hasAnyPermission([
+      'PAYROLL_STATUTORY_READ',
+      'PAYROLL_STATUTORY_GENERATE',
+      'PAYROLL_STATUTORY_MANAGE',
+      'PAYROLL_STATUTORY_FILING',
+    ])
+      ? [{ to: '/app/payroll/statutory', label: 'Statutory Compliance' }]
+      : []),
     // §14 — the employee's own salary portal. Distinct from the legacy
     // "My Payslips" entry, which still serves pre-29.9 payroll records.
     ...(hasAnyPermission(['PAYSLIP_READ_SELF'])

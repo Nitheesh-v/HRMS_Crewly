@@ -25,11 +25,17 @@ import payrollEngineService from '../services/payroll/payrollEngineService.js';
 import payrollReviewService from '../services/payroll/payrollReviewService.js';
 import payrollPaymentService from '../services/payroll/payrollPaymentService.js';
 import payslipService from '../services/payroll/payslipService.js';
+import statutoryService from '../services/payroll/statutoryService.js';
 import {
   validatePayslipGeneratePayload,
   validatePayslipZipPayload,
   validatePayslipEmailPayload,
 } from '../services/payroll/payslipDispatcher.js';
+import {
+  validateStatutoryGeneratePayload,
+  validateStatutoryExportPayload,
+  validateComplianceReminderPayload,
+} from '../services/payroll/statutoryDispatcher.js';
 
 const reportProgress = async (job, progress) => {
   try {
@@ -213,6 +219,81 @@ export const payslipEmailProcessor = async (job) => {
   return { processed: true, skipped: false, ...result };
 };
 
+// STATUTORY_GENERATE (29.10 §6 / §21) — builds every applicable report for a
+// month from the 29.6 snapshots. The payload is references only, so nothing
+// about a salary figure travels through Redis.
+export const statutoryGenerateProcessor = async (job) => {
+  const { valid, errors, value } = validateStatutoryGeneratePayload(job?.data);
+  if (!valid) {
+    logger.warn(`[Payroll] statutory generate job rejected: ${errors.join(', ')}`);
+    return { processed: false, skipped: true, reason: errors.join(', ') };
+  }
+
+  const { companyId, month, actorId } = value;
+
+  const result = await statutoryService.runGeneration({
+    companyId,
+    month,
+    actor: actorId ? { _id: actorId } : null,
+    onProgress: (progress) => reportProgress(job, progress),
+  });
+
+  logger.info(
+    `[Payroll] statutory reports generated (company=${companyId}, month=${month}, generated=${result.generated}, reopened=${result.reopened})`,
+  );
+
+  return { processed: true, skipped: false, ...result };
+};
+
+// STATUTORY_EXPORT (29.10 §15 / §18 / §21) — annual reports, large Excel
+// files and PDF summaries. The bytes are produced HERE, inside the worker,
+// never in the payload.
+export const statutoryExportProcessor = async (job) => {
+  const { valid, errors, value } = validateStatutoryExportPayload(job?.data);
+  if (!valid) {
+    logger.warn(`[Payroll] statutory export job rejected: ${errors.join(', ')}`);
+    return { processed: false, skipped: true, reason: errors.join(', ') };
+  }
+
+  const { companyId, exportId } = value;
+
+  const result = await statutoryService.runExport({
+    companyId,
+    exportId,
+    onProgress: (progress) => reportProgress(job, progress),
+  });
+
+  logger.info(
+    `[Payroll] statutory export ready (export=${exportId}, rows=${result.rows ?? 0}, bytes=${result.sizeBytes ?? 0})`,
+  );
+
+  return { processed: true, skipped: false, ...result };
+};
+
+// COMPLIANCE_REMINDER (29.10 §19 / §22) — tells Finance what is due or
+// overdue. It reads the calendar and the filing statuses; it changes nothing.
+export const complianceReminderProcessor = async (job) => {
+  const { valid, errors, value } = validateComplianceReminderPayload(job?.data);
+  if (!valid) {
+    logger.warn(`[Payroll] compliance reminder job rejected: ${errors.join(', ')}`);
+    return { processed: false, skipped: true, reason: errors.join(', ') };
+  }
+
+  const { companyId, month, actorId } = value;
+
+  const result = await statutoryService.sendReminders({
+    companyId,
+    month: month || '',
+    actor: actorId ? { _id: actorId } : null,
+  });
+
+  logger.info(
+    `[Payroll] compliance reminders sent (company=${companyId}, month=${month || 'all'}, sent=${result.sent})`,
+  );
+
+  return { processed: true, skipped: false, ...result };
+};
+
 export const registerPayrollProcessors = ({ registerProcessor }) => {
   registerProcessor(JOB_NAMES.PAYROLL_RUN, payrollRunProcessor);
   registerProcessor(JOB_NAMES.PAYROLL_EXPORT, payrollExportProcessor);
@@ -220,6 +301,9 @@ export const registerPayrollProcessors = ({ registerProcessor }) => {
   registerProcessor(JOB_NAMES.PAYSLIP_GENERATE, payslipGenerateProcessor);
   registerProcessor(JOB_NAMES.PAYSLIP_ZIP, payslipZipProcessor);
   registerProcessor(JOB_NAMES.PAYSLIP_EMAIL, payslipEmailProcessor);
+  registerProcessor(JOB_NAMES.STATUTORY_GENERATE, statutoryGenerateProcessor);
+  registerProcessor(JOB_NAMES.STATUTORY_EXPORT, statutoryExportProcessor);
+  registerProcessor(JOB_NAMES.COMPLIANCE_REMINDER, complianceReminderProcessor);
 };
 
 export default registerPayrollProcessors;

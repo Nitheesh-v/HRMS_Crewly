@@ -82,6 +82,10 @@ export const ACTIONS = [
   "RELEASE",
   "RERELEASE",
   "MARK_PAID",
+
+  // Phase 29.10 — filing a statutory return on the government portal is a
+  // separate duty from producing the report that is filed.
+  "FILING",
 ];
 
 const actions = (resource, actionList, scope = "ALL") =>
@@ -162,8 +166,11 @@ export const DEFAULT_PERMISSIONS = [
   // Payslips (phase 33.10) — PAYSLIP_READ_SELF already exists below
   ...actions("PAYSLIP", ["GENERATE", "RELEASE", "RERELEASE", "READ"]),
 
-  // Statutory compliance (phase 33.11)
-  ...actions("PAYROLL_STATUTORY", ["MANAGE", "READ", "GENERATE"]),
+  // Statutory compliance (phase 29.10 — this phase).
+  // GENERATE = produce the report; FILING = move it through
+  // Draft / Reviewed / Ready / Filed / Reopened. Finance files, so finance
+  // needs FILING without needing GENERATE (separation of duties, §4).
+  ...actions("PAYROLL_STATUTORY", ["MANAGE", "READ", "GENERATE", "FILING"]),
 
   // Payroll reports (phase 33.14)
   ...actions("PAYROLL_REPORT", ["READ", "EXPORT"]),
