@@ -357,6 +357,17 @@ const AppLayout = () => {
     ])
       ? [{ to: '/app/payroll/review', label: 'Review Payroll' }]
       : []),
+    // Phase 29.8 — Salary Payment, the last step of the month: turn an
+    // approved payroll into a bank transfer file. Permission-driven, so
+    // whoever holds a payment permission sees the entry (§4 / §24).
+    ...(hasAnyPermission([
+      'PAYROLL_PAYMENT_READ',
+      'PAYROLL_PAYMENT_GENERATE',
+      'PAYROLL_PAYMENT_CONFIRM',
+      'PAYROLL_PAYMENT_MARK_PAID',
+    ])
+      ? [{ to: '/app/payroll/salary-payment', label: 'Salary Payment' }]
+      : []),
   ];
 
   const menu = [

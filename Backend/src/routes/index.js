@@ -20,6 +20,7 @@ import employeePayrollRoutes from "./employeePayrollRoutes.js";
 import monthlyInputRoutes from "./monthlyInputRoutes.js";
 import payrollEngineRoutes from "./payrollEngineRoutes.js";
 import payrollReviewRoutes from "./payrollReviewRoutes.js";
+import payrollPaymentRoutes from "./payrollPaymentRoutes.js";
 import recruitmentRoutes from "./recruitmentRoutes.js";
 import exitRoutes from "./exitRoutes.js";
 import billingRoutes from "./billingRoutes.js";
@@ -129,6 +130,7 @@ router.use("/payroll/inputs", monthlyInputRoutes);
 router.use("/payroll/runs", payrollEngineRoutes);
 // Phase 29.7 — Payroll Review & Approval.
 router.use("/payroll/review", payrollReviewRoutes);
+router.use("/payroll/payments", payrollPaymentRoutes);
 
 router.use("/recruitment", recruitmentRoutes);
 

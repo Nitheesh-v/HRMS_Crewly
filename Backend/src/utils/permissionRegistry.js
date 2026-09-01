@@ -394,6 +394,10 @@ export const DEFAULT_ROLE_MATRIX = {
     "PAYROLL_INPUT_MANAGE",
     "PAYROLL_REPORT_READ",
     "PAYROLL_STATUTORY_READ",
+    // Phase 29.8 §4 — HR may SEE payment status (who has been paid, what
+    // failed) but must never create a batch, generate a bank file or confirm
+    // a payment: those are finance duties.
+    "PAYROLL_PAYMENT_READ",
 
     "USER_READ",
     "USER_CREATE",

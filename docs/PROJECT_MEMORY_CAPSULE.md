@@ -71,7 +71,12 @@ career portal.
   fixed a live 29.6 defect: `getRunSummary` called the cache seam with
   positional args, so `GET /api/payroll/runs/:month` threw `loader is not a
   function`; both services now share a `readThrough` helper.
-  Next: 29.8 Bank Transfer File & Salary Payment Preparation.
+  29.8 is closed: `docs/PHASE_29_8_BANK_FILE_PAYMENT.md` +
+  `docs/PHASE_29_8_TESTING_CHECKLIST.md`; 29 hermetic tests
+  (`npm run test:payroll-payment`), 267/267 on the payroll ladder. It builds
+  the bank transfer file and records payment confirmation, but NEVER moves
+  money — the company's finance team uploads the file to their own bank.
+  Next: 29.9 Payslip Generation & Employee Salary Portal.
 - Phase 28 (background infrastructure, 28.1–28.9): Redis foundation,
   BullMQ foundation (7 queues), email delivery queue, processing queues
   (resume/ATS/documents), scheduled one-time jobs, pre-onboarding + BGV
@@ -396,6 +401,44 @@ Frontend first (node_modules may be missing).
   export. Fence honoured: no payment, no bank file, no payslip, no email, no
   settlement, and no calculation — every figure is read from the 29.6
   snapshot.
+
+- Phase 29.8 = Bank Transfer File & Salary Payment Preparation: pure rules in
+  services/payroll/payrollPaymentRules.js (9 payment statuses DRAFT → READY →
+  FILE_GENERATED → DOWNLOADED → PROCESSING → PAID/PARTIALLY_PAID/FAILED →
+  CANCELLED with the transition table, IFSC validation, bank-detail
+  validation, batch numbers SAL-<YYYY-MM>-<seq>, payment references
+  <PREFIX>-<YYYY-MM>-<seq>, the 5 failure reasons, batch summary, the §17 KPIs
+  and the file builders). models/PayrollPaymentBatch.js (parent, unique
+  {companyId, batchNumber}, attempt, retryOf, snapshot summary),
+  models/PayrollPayment.js (one row per employee, unique
+  {companyId, paymentReference}, the ENCRYPTED bank blob is snapshotted into
+  the row so history cannot be rewritten by a later profile edit) and
+  models/PayrollPaymentFile.js (append-only generation history: content CSV /
+  binary XLSX, checksum, rowCount, downloadCount, lastDownloadedAt, jobId).
+  Routes at /api/payroll/payments (12). BullMQ reuses QUEUE_NAMES.PAYROLL with
+  JOB_NAMES.PAYROLL_PAYMENT_FILE and a references-only payload that the worker
+  rebuilds from Mongo; the same build runs INLINE when Redis is off.
+  Permissions are the ones 29.1 already declared — PAYROLL_PAYMENT_READ/
+  _GENERATE/_CONFIRM/_MARK_PAID (SYSTEM_PERMISSION_VERSION is 22: 29.8 gave
+  HR_MANAGER PAYROLL_PAYMENT_READ, because §4 grants HR view-only access to
+  payment status). XLSX is produced by a dependency-free OOXML/ZIP writer in
+  the rules module — no new npm package, following the 29.5/29.7 precedent.
+  SECURITY: full account numbers exist ONLY in the encrypted blob and inside
+  the generated file; every API response and every table shows
+  accountNumberMasked, the dispatcher rejects any queue payload carrying
+  account numbers or file content, and buildFileContent is the single decrypt
+  site. §26 defect the tests caught: a batch could be marked PAID with no bank
+  file behind it, so assertFileGenerated() now refuses confirmation from
+  DRAFT/READY, and READY deliberately reaches no payment outcome. §15/§16
+  no-double-pay: a retry batch unions the PAID ids across EVERY batch of the
+  month and issues fresh references. Cache namespace 'payroll-payment',
+  version 1. UI at /app/payroll/salary-payment: §17 KPI cards, batch list,
+  batch detail with employees/failures/validation/downloads tabs, CSV+XLSX
+  generation, mark all paid, mark failed with a reason, retry, cancel, reopen.
+  Fence honoured: no bank API, no UPI/NEFT/RTGS integration, no payslip, no
+  email payslip, no auto reconciliation, no final settlement, no employee
+  notification, and no calculation — every figure comes from the approved
+  29.6 snapshot.
 
 ## 9. Current state (2026-09-01)
 

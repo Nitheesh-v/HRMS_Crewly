@@ -20,8 +20,10 @@ import logger from '../config/logger.js';
 import { JOB_NAMES } from '../config/queueConfig.js';
 import { validatePayrollRunPayload } from '../services/payroll/payrollRunDispatcher.js';
 import { validatePayrollExportPayload } from '../services/payroll/payrollExportDispatcher.js';
+import { validatePayrollPaymentFilePayload } from '../services/payroll/payrollPaymentDispatcher.js';
 import payrollEngineService from '../services/payroll/payrollEngineService.js';
 import payrollReviewService from '../services/payroll/payrollReviewService.js';
+import payrollPaymentService from '../services/payroll/payrollPaymentService.js';
 
 const reportProgress = async (job, progress) => {
   try {
@@ -104,9 +106,36 @@ export const payrollExportProcessor = async (job) => {
   return { processed: true, skipped: false, rows: built.rowCount || 0 };
 };
 
+// PAYROLL_PAYMENT_FILE (29.8 §20) — renders the bank transfer file from the
+// payment rows. The payload is references only, so the file is rebuilt from
+// Mongo here; the account numbers never travel through the queue.
+export const payrollPaymentFileProcessor = async (job) => {
+  const { valid, errors, value } = validatePayrollPaymentFilePayload(job?.data);
+  if (!valid) {
+    logger.warn(`[Payroll] payment file job rejected: ${errors.join(', ')}`);
+    return { processed: false, skipped: true, reason: errors.join(', ') };
+  }
+
+  const { companyId, batchId, fileId, format } = value;
+
+  await payrollPaymentService.processFile({
+    companyId,
+    batchId,
+    fileId,
+    format,
+  });
+
+  logger.info(
+    `[Payroll] payment file ready (batch=${batchId}, format=${format}, file=${fileId})`,
+  );
+
+  return { processed: true, skipped: false, fileId };
+};
+
 export const registerPayrollProcessors = ({ registerProcessor }) => {
   registerProcessor(JOB_NAMES.PAYROLL_RUN, payrollRunProcessor);
   registerProcessor(JOB_NAMES.PAYROLL_EXPORT, payrollExportProcessor);
+  registerProcessor(JOB_NAMES.PAYROLL_PAYMENT_FILE, payrollPaymentFileProcessor);
 };
 
 export default registerPayrollProcessors;
