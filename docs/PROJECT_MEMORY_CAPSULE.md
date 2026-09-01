@@ -72,11 +72,19 @@ career portal.
   positional args, so `GET /api/payroll/runs/:month` threw `loader is not a
   function`; both services now share a `readThrough` helper.
   29.8 is closed: `docs/PHASE_29_8_BANK_FILE_PAYMENT.md` +
-  `docs/PHASE_29_8_TESTING_CHECKLIST.md`; 29 hermetic tests
-  (`npm run test:payroll-payment`), 267/267 on the payroll ladder. It builds
+  `docs/PHASE_29_8_TESTING_CHECKLIST.md`; 32 hermetic tests
+  (`npm run test:payroll-payment`). It builds
   the bank transfer file and records payment confirmation, but NEVER moves
   money — the company's finance team uploads the file to their own bank.
-  Next: 29.9 Payslip Generation & Employee Salary Portal.
+  29.9 is closed: `docs/PHASE_29_9_PAYSLIPS.md` +
+  `docs/PHASE_29_9_TESTING_CHECKLIST.md`; 28 hermetic tests
+  (`npm run test:payslip`), 298/298 on the payroll ladder, 664/664 on
+  `test:all`. It also fixed a live cross-phase defect:
+  `registerPayrollProcessors()` existed since 29.6 but NOTHING ever called
+  it, so the payroll queue had no consumer and every 29.6/29.7/29.8 job
+  silently ran through the API's inline fallback. `src/workers/index.js`
+  now starts the payroll worker with its own connection.
+  Next: 29.10 Statutory Compliance & Government Reports.
 - Phase 28 (background infrastructure, 28.1–28.9): Redis foundation,
   BullMQ foundation (7 queues), email delivery queue, processing queues
   (resume/ATS/documents), scheduled one-time jobs, pre-onboarding + BGV
@@ -439,6 +447,44 @@ Frontend first (node_modules may be missing).
   email payslip, no auto reconciliation, no final settlement, no employee
   notification, and no calculation — every figure comes from the approved
   29.6 snapshot.
+
+- Phase 29.9 = Payslip Generation & Employee Salary Portal: pure rules in
+  services/payroll/payslipRules.js (§21 statuses PENDING → GENERATED →
+  EMAILED/DOWNLOADED → FAILED, payslip numbers PS-<YYYY>-<MM>-<nnnnnn> on a
+  company-wide sequence that is never reused, the §6 snapshot builder, the
+  values fingerprint regeneration is checked against, §15 filters by
+  month/year/FY/search, §27 counters, §18 file names, §19 email copy and §20
+  notification copy). models/Payslip.js (unique {companyId, employeeId,
+  month} and {companyId, payslipNumber}; the rendered PDF is stored WITH the
+  record so history stays downloadable, `select: false` so list reads never
+  pay for it) and models/PayslipFile.js (bulk archives with status + live
+  progress). 14 routes at /api/payroll/payslips, including the /mine/*
+  employee portal where NO employee id is accepted at all — the controller
+  reads req.user._id, which is the strongest form of the §26 rule. PDF: the
+  existing utils/payslipPdf.js (PDFKit, already a dependency) is EXTENDED
+  with a snapshot-driven buildPayslipPdf() covering every §8 section; the
+  legacy streamPayslipPdf() and models/Payroll.js are untouched (29.3
+  precedent — a hermetic test guards them). ZIP: the 29.8 writer was
+  extracted to utils/minimalZip.js and shared, so bulk download adds no npm
+  package. BullMQ reuses QUEUE_NAMES.PAYROLL with payslip-generate /
+  payslip-zip / payslip-email jobs, references-only payloads (salary, bank,
+  pdf, binary and attachments keys are rejected outright), worker rebuild,
+  inline fallback. §19 email extends the existing utils/mailer.js sendMail()
+  with an optional attachments argument — no new email system. Permissions
+  are the ones 29.1 already declared — PAYSLIP_READ/_GENERATE/_RELEASE/
+  _RERELEASE plus PAYSLIP_READ_SELF (SYSTEM_PERMISSION_VERSION is 23: 29.9
+  gave HR_MANAGER and both finance templates PAYSLIP_READ, because §4 makes
+  them viewers). Cache namespace 'payroll-payslips', version 1, invalidated
+  on generate, regenerate, email and every status change. UI:
+  /app/payroll/payslips (dashboard, generate, list, preview, email,
+  regenerate, bulk download) and /app/payroll/my-payslips (employee history,
+  filters, preview, download, print), sharing one on-screen payslip
+  component. THE LAW: a payslip is generated only for employees whose 29.8
+  payment row is PAID, so a partially paid month payslips the 142 who were
+  paid instead of blocking on the 3 who failed; and regeneration re-renders
+  the STORED snapshot, never new payroll data. Fence honoured: no Form 16,
+  no tax declaration, no PF/ESI filing, no government portals, no settlement
+  payslip, no loan statements, and no calculation.
 
 ## 9. Current state (2026-09-01)
 
