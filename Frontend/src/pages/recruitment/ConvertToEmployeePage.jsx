@@ -154,6 +154,23 @@ const ConvertToEmployeePage = () => {
               </div>
             ))}
           </dl>
+          {/* Phase 29.4 §19 / §26 — the offer already seeded a DRAFT payroll
+              profile (name, email, department, designation, joining date and
+              offered CTC). HR only completes structure, bank, statutory IDs
+              and tax regime. */}
+          {employee?.id || employee?._id ? (
+            <p className="mt-4 rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
+              A draft payroll profile was created from the offer. Complete the salary structure, bank
+              details, statutory IDs and tax regime to make this employee payroll-ready.{' '}
+              <button
+                type="button"
+                className="text-indigo-300 hover:underline"
+                onClick={() => navigate(`/app/payroll/employees/${employee.id || employee._id}`)}
+              >
+                Open payroll profile
+              </button>
+            </p>
+          ) : null}
           <div className="mt-6 flex flex-wrap gap-2">
             <button
               type="button"

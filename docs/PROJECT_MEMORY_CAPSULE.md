@@ -53,7 +53,10 @@ career portal.
   Profile → … → 29.14 Payroll Reports & Analytics.
   29.3 is closed: `docs/PHASE_29_3_SALARY_STRUCTURES.md` +
   `docs/PHASE_29_3_TESTING_CHECKLIST.md`; 34 hermetic tests
-  (`npm run test:salary-structures`), 225/225 on the payroll ladder.
+  (`npm run test:salary-structures`).
+  29.4 is closed: `docs/PHASE_29_4_EMPLOYEE_PAYROLL_PROFILE.md` +
+  `docs/PHASE_29_4_TESTING_CHECKLIST.md`; 24 hermetic tests
+  (`npm run test:employee-payroll`), 252/252 on the payroll ladder.
 - Phase 28 (background infrastructure, 28.1–28.9): Redis foundation,
   BullMQ foundation (7 queues), email delivery queue, processing queues
   (resume/ATS/documents), scheduled one-time jobs, pre-onboarding + BGV
@@ -302,11 +305,12 @@ Frontend first (node_modules may be missing).
   utils/payrollActionAudit.js holds the §11 sensitive-action audit hooks
   (salary changed … payslips released) for 29.2+; bank numbers are masked to
   the last 4 digits and PAN/UAN/ESI are written as [REDACTED].
-  SYSTEM_PERMISSION_VERSION is 17 (29.3 added SALARY_STRUCTURE_ACTIVATE).
-  PAYROLL_SETUP_*, SALARY_COMPONENT_* and SALARY_STRUCTURE_* are enforced;
+  SYSTEM_PERMISSION_VERSION is 18 (29.4 added EMPLOYEE_SALARY_READ_SELF).
+  PAYROLL_SETUP_*, SALARY_COMPONENT_*, SALARY_STRUCTURE_* and
+  EMPLOYEE_SALARY_* are enforced;
   the rest of the catalogue is declared for the later payroll phases.
-  Permission totals: 198 in the catalogue, COMPANY_ADMIN 198, HR_MANAGER 132,
-  TEAM_LEAD 58, MANAGER 53, EMPLOYEE 51.
+  Permission totals: 199 in the catalogue, COMPANY_ADMIN 198, HR_MANAGER 132,
+  TEAM_LEAD 58, MANAGER 53, EMPLOYEE 52.
 - Phase 29.2 = Salary Components: pure rules in
   services/payroll/salaryComponentRules.js, tenant model
   models/SalaryComponent.js (unique {companyId, code}, company-first indexes),
@@ -318,6 +322,25 @@ Frontend first (node_modules may be missing).
   29.1 statutory config (PF off => no PF component).
   Payroll nav + /app/payroll/setup and /app/payroll/components are
   PERMISSION-driven, not gated on the COMPANY_ADMIN/HR_MANAGER role names.
+- Phase 29.4 = Employee Payroll Profile: pure rules in
+  services/payroll/employeePayrollRules.js, tenant model
+  models/EmployeePayrollProfile.js (one CURRENT profile per employee via a
+  partial unique index, company-first indexes), injectable service
+  (models/cache/audit/notify), routes at /api/payroll/employees, and
+  middlewares/payrollProfileAccess.js which layers tenant -> self -> permission
+  -> payroll scope on top of payrollAccessService (29.1). Permissions
+  EMPLOYEE_SALARY_{READ,MANAGE} (already in the 29.1 catalogue) plus the new
+  EMPLOYEE_SALARY_READ_SELF (SYSTEM_PERMISSION_VERSION is 18); MANAGER and
+  TEAM_LEAD deliberately get nothing, EMPLOYEE gets READ_SELF only, and it is
+  NOT in SELF_SERVICE_PERMISSIONS because that list leaks to Manager/Team Lead.
+  Bank account reuses 29.1 fieldEncryption (select:false + masked mirror),
+  statutory applicability is READ from 29.1 PayrollSetup.statutory, the §9
+  breakup reuses the 29.3 preview (never the engine), CTC is validated as
+  12 x (gross + employer cost), salary changes write a NEW version, and
+  candidateConversionService seeds a DRAFT profile from the offered CTC
+  (best-effort + idempotent). Redis namespace 'payroll-employee'; no new queue.
+  Frontend: /app/payroll/employees + /app/payroll/employees/:employeeId
+  (Overview/Bank/Statutory/Tax/Salary History tabs).
 - Navigation rework (2026-09-01): the flat 35-row sidebar became
   layout/SidebarNav.jsx — every page now belongs to a GROUP (Home, People,
   Time & Leave, Payroll, Recruitment, Work, Insights, Me are pinned;

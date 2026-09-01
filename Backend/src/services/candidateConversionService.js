@@ -28,6 +28,7 @@ import {
 } from './accountSetupService.js';
 import { evaluateBgvForConversion } from './backgroundVerificationService.js';
 import { bumpRecruitmentAnalyticsGeneration } from './analyticsCacheInvalidation.js';
+import employeePayrollService from './payroll/employeePayrollService.js';
 
 const isObjectId = (value) => mongoose.isValidObjectId(value);
 
@@ -870,6 +871,42 @@ export const convertCandidateToEmployee = async ({
     },
     { returnDocument: 'after' }
   );
+
+  // ── Phase 29.4 §19 — create the employee payroll profile from the offer.
+  // HR then only completes structure, bank, statutory IDs and tax regime.
+  // Strictly best-effort: onboarding must never fail because of payroll.
+  let payrollProfile = null;
+  try {
+    payrollProfile = await employeePayrollService.createFromOffer({
+      companyId,
+      employeeId: user._id,
+      offer: {
+        compensationSnapshot: offer.compensationSnapshot,
+        designation: mapped.designation,
+        dateOfJoining: mapped.dateOfJoining,
+      },
+      actor,
+      req: requestContext,
+    });
+  } catch (error) {
+    payrollProfile = null;
+  }
+
+  if (payrollProfile) {
+    await timeline({
+      companyId,
+      candidate: candidate._id,
+      job: candidate.job,
+      action: 'PAYROLL_PROFILE_CREATED',
+      actorId: actor.id,
+      metadata: {
+        employeeId: user._id,
+        payrollProfileId: payrollProfile._id,
+        annualCtc: payrollProfile.annualCtc,
+        payrollStatus: payrollProfile.payrollStatus,
+      },
+    });
+  }
 
   await timeline({
     companyId,

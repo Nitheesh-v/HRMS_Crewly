@@ -51,6 +51,8 @@ import PayrollPage from "../pages/payroll/PayrollPage.jsx";
 import PayrollSetupPage from "../pages/payroll/PayrollSetupPage.jsx";
 import SalaryComponentsPage from "../pages/payroll/SalaryComponentsPage.jsx";
 import SalaryStructuresPage from "../pages/payroll/SalaryStructuresPage.jsx";
+import EmployeePayrollPage from "../pages/payroll/EmployeePayrollPage.jsx";
+import EmployeePayrollDetailPage from "../pages/payroll/EmployeePayrollDetailPage.jsx";
 import MyPayslipsPage from "../pages/payroll/MyPayslipsPage.jsx";
 
 import RecruitmentPage from "../pages/recruitment/RecruitmentPage.jsx";
@@ -362,6 +364,8 @@ const AppRoutes = () => (
       {/* Phase 29.2 — Salary Components (permission-gated inside the page) */}
       <Route path="payroll/components" element={<SalaryComponentsPage />} />
       <Route path="payroll/structures" element={<SalaryStructuresPage />} />
+      <Route path="payroll/employees" element={<EmployeePayrollPage />} />
+      <Route path="payroll/employees/:employeeId" element={<EmployeePayrollDetailPage />} />
 
       <Route
         path="payslips"

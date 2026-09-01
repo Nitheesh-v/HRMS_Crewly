@@ -131,6 +131,11 @@ export const DEFAULT_PERMISSIONS = [
   // PAYROLL_SETUP_ACTIVATE / SALARY_COMPONENT_ACTIVATE already are.
   ...actions("SALARY_STRUCTURE", ["READ", "MANAGE", "ACTIVATE", "ASSIGN"]),
   ...actions("EMPLOYEE_SALARY", ["READ", "MANAGE"]),
+  // Phase 29.4 — an employee may read their OWN payroll profile and nothing
+  // else. It is deliberately NOT part of SELF_SERVICE_PERMISSIONS, because
+  // that list is granted to Manager / Team Lead too and §4 gives them no
+  // salary access at all.
+  ...actions("EMPLOYEE_SALARY", ["READ"], "SELF"),
   ...actions("SALARY_REVISION", ["APPROVE"]),
 
   // Payroll processing (phase 33.6 / 33.7)
@@ -556,6 +561,9 @@ export const DEFAULT_ROLE_MATRIX = {
     "SHIFT_READ",
 
     "PAYSLIP_READ_SELF",
+
+    // Phase 29.4 §4 / §24 — own payroll profile, read-only.
+    "EMPLOYEE_SALARY_READ_SELF",
 
     "DOCUMENT_READ_SELF",
 

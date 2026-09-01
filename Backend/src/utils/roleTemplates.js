@@ -117,7 +117,10 @@ export const ROLE_TEMPLATES = Object.freeze([
       'SALARY_STRUCTURE_MANAGE',
       'SALARY_STRUCTURE_ACTIVATE',
       'SALARY_STRUCTURE_ASSIGN',
+      // Phase 29.4 §4 — the Payroll Admin creates, edits and revises payroll
+      // profiles; the employee keeps read-only access to their own.
       'EMPLOYEE_SALARY_READ',
+      'EMPLOYEE_SALARY_MANAGE',
       'PAYROLL_PAYMENT_READ',
       'PAYROLL_PAYMENT_GENERATE',
       'PAYSLIP_READ',

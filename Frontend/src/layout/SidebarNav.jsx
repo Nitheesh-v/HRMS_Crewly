@@ -161,7 +161,9 @@ const NAV_GROUPS = [
     id: "payroll",
     label: "Payroll",
     icon: Wallet,
-    paths: ["/app/payslips"],
+    // Pinned pages first: Payroll, Employee Payroll, Payslips, then the 29.1
+    // configuration screens.
+    paths: ["/app/payroll", "/app/payroll/employees", "/app/payslips"],
     prefixes: ["/app/payroll"],
   },
 
