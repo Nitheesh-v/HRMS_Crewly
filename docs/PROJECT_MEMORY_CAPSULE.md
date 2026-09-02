@@ -50,7 +50,10 @@ career portal.
   Redis cache. Decides *what applies*, never *how much* (no calculation).
   Reference: `docs/PHASE_29_1_COMPANY_PAYROLL_SETUP.md`. Roadmap:
   29.2 Salary Components → 29.3 Salary Structures → 29.4 Employee Payroll
-  Profile → … → 29.14 Payroll Reports & Analytics.
+  Profile → … → 29.12 Payroll Analytics & Reports → 29.13 Analytics
+  extensions (both closed; the brief for 29.13 was pasted with its own
+  numbering, which is one ahead of the repo's). 29.11 became Final
+  Settlement (F&F) rather than Loans & Advances — see the note below.
   29.3 is closed: `docs/PHASE_29_3_SALARY_STRUCTURES.md` +
   `docs/PHASE_29_3_TESTING_CHECKLIST.md`; 34 hermetic tests
   (`npm run test:salary-structures`).
@@ -108,7 +111,22 @@ career portal.
   silently ran through the API's inline fallback. `src/workers/index.js`
   now starts the payroll worker with its own connection.
   Next: 29.10 Statutory Compliance & Government Reports (DONE — see above).
-  29.11 next: Loans, Advances & Employee Recovery Management.
+  29.11 is closed as **Final Settlement (F&F)**: `docs/PHASE_29_11_FINAL_SETTLEMENT.md`
+  + testing checklist.
+  29.12 is closed as **Payroll Analytics, Reports & Financial Dashboard**:
+  `docs/PHASE_29_12_PAYROLL_ANALYTICS.md` + testing checklist; 43 hermetic
+  tests, `npm run analytics:preview` renders 36 real artefacts with no
+  database.
+  29.13 is closed as **Analytics extensions** (six new reports, period
+  presets, server-side paging, salary history, editable salary bands, Super
+  Admin platform metrics, audit-on-read, export expiry, aggregation fast
+  path): `docs/PHASE_29_13_ANALYTICS_EXTENSIONS.md` + testing checklist;
+  63 analytics tests + 6 platform tests, 807/807 on `test:all`.
+  Loans, Advances & Employee Recovery Management was the roadmap item here
+  and has been **deliberately reversed**: "there is no loan process in this
+  payroll, we can add it in future". Consequence, not a bug — 29.11 F&F has
+  `ADVANCE_SALARY` / `LOAN_EMI` recovery lines with no ledger behind them,
+  typed by hand until a future module exists.
 - Phase 28 (background infrastructure, 28.1–28.9): Redis foundation,
   BullMQ foundation (7 queues), email delivery queue, processing queues
   (resume/ATS/documents), scheduled one-time jobs, pre-onboarding + BGV
