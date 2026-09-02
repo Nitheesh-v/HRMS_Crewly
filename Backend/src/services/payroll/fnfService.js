@@ -1674,6 +1674,7 @@ import { createHash } from 'node:crypto';
 import { LEAVE_TYPES } from '../../utils/constants.js';
 
 import { invalidateFnfCache, fnfCacheKey } from './fnfCache.js';
+import { invalidateAnalyticsCache } from './analyticsCache.js';
 import { dispatchFnfStatement, dispatchFnfRegister } from './fnfDispatcher.js';
 import { getOrSetCache } from '../redisCacheService.js';
 
@@ -1724,7 +1725,13 @@ const defaultService = makeFnfService({
   cache: {
     buildKey: fnfCacheKey,
     getOrSet: getOrSetCache,
-    invalidate: invalidateFnfCache,
+    invalidate: (companyId, month) =>
+      Promise.all([
+        invalidateFnfCache(companyId, month),
+        // §21 (29.12) — the analytics dashboards read the same
+        // snapshots, so they go stale with this cache.
+        invalidateAnalyticsCache(companyId, month).catch(() => 0),
+      ]).then(() => 0),
   },
 
   audit: recordAudit,

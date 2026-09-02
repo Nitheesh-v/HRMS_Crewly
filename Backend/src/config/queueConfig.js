@@ -73,6 +73,13 @@ export const JOB_NAMES = {
   // the payload carries references only.
   FNF_STATEMENT: 'fnf-statement',
   FNF_REGISTER: 'fnf-register',
+  // 29.12: payroll analytics — large report exports, scheduled reports and
+  // the executive dashboard refresh. Same queue, own job names; the worker
+  // rebuilds every figure from the 29.6 snapshots, so the payload carries
+  // references only.
+  ANALYTICS_EXPORT: 'analytics-export',
+  ANALYTICS_SCHEDULE: 'analytics-schedule',
+  ANALYTICS_REFRESH: 'analytics-refresh',
   // 28.4: processing jobs (resume parsing + ATS matching). One job name
   // per stage — reprocess/recovery reuse the same job with a fresh
   // deterministic job id (version-aware), not extra job names.
@@ -129,6 +136,10 @@ export const PAYROLL_JOB_NAMES = Object.freeze([
   // 29.11 final settlement
   JOB_NAMES.FNF_STATEMENT,
   JOB_NAMES.FNF_REGISTER,
+  // 29.12 payroll analytics
+  JOB_NAMES.ANALYTICS_EXPORT,
+  JOB_NAMES.ANALYTICS_SCHEDULE,
+  JOB_NAMES.ANALYTICS_REFRESH,
 ]);
 
 // 28.6 document + BGV job names (their own reserved queues).

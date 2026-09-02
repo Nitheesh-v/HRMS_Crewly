@@ -42,6 +42,7 @@ import {
 } from './payrollReviewRules.js';
 import { isValidMonth } from './monthlyInputRules.js';
 import { REVIEW_CACHE_NAMESPACE, REVIEW_CACHE_VERSION } from './payrollReviewCache.js';
+import { invalidateAnalyticsCache } from './analyticsCache.js';
 
 // The namespace and version live in payrollReviewCache.js so the 29.6 engine
 // can invalidate the same keys when it recalculates (§20).
@@ -80,6 +81,9 @@ export const makePayrollReviewService = ({
   // out by the caller.
   audience = async () => [],
   dispatch = async () => ({ queued: false }),
+  // §21 (29.12) — injected so the review suite can prove a completion
+  // invalidates the analytics dashboards too.
+  invalidateAnalytics = invalidateAnalyticsCache,
   buildExportNow = null,
   ttlSeconds = getPayrollReviewCacheTtlSeconds(),
 } = {}) => {
@@ -94,6 +98,10 @@ export const makePayrollReviewService = ({
   };
 
   const invalidate = async (companyId, month) => {
+    // §21 (29.12) — approving or completing a run changes every dashboard
+    // figure, so the analytics cache goes with the review cache.
+    await Promise.resolve(invalidateAnalytics(companyId, month)).catch(() => 0);
+
     if (typeof cache.del !== 'function') return false;
     const keys = ['dashboard', 'errors', 'differences']
       .map((suffix) => buildCacheKey(companyId, month, suffix))

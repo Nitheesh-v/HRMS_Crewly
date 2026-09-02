@@ -27,6 +27,7 @@ import payrollPaymentService from '../services/payroll/payrollPaymentService.js'
 import payslipService from '../services/payroll/payslipService.js';
 import statutoryService from '../services/payroll/statutoryService.js';
 import fnfService from '../services/payroll/fnfService.js';
+import analyticsService from '../services/payroll/analyticsService.js';
 import {
   validatePayslipGeneratePayload,
   validatePayslipZipPayload,
@@ -41,6 +42,11 @@ import {
   validateFnfStatementPayload,
   validateFnfRegisterPayload,
 } from '../services/payroll/fnfDispatcher.js';
+import {
+  validateAnalyticsExportPayload,
+  validateAnalyticsSchedulePayload,
+  validateAnalyticsRefreshPayload,
+} from '../services/payroll/analyticsDispatcher.js';
 
 const reportProgress = async (job, progress) => {
   try {
@@ -350,6 +356,83 @@ export const fnfRegisterProcessor = async (job) => {
   return { processed: true, skipped: false, ...result };
 };
 
+
+// ANALYTICS_EXPORT (29.12 §19 / §22) — a large report file. The rows are
+// aggregated HERE, inside the worker, from MongoDB; the payload carried only
+// the report key, the filters and the file id.
+export const analyticsExportProcessor = async (job) => {
+  const { valid, errors, value } = validateAnalyticsExportPayload(job?.data);
+  if (!valid) {
+    logger.warn(`[Analytics] export job rejected: ${errors.join(', ')}`);
+    return { processed: false, skipped: true, reason: errors.join(', ') };
+  }
+
+  const { companyId, fileId, actorId } = value;
+
+  const result = await analyticsService.runExport({
+    companyId,
+    fileId,
+    actor: actorId ? { _id: actorId } : null,
+    onProgress: (progress) => reportProgress(job, progress),
+  });
+
+  logger.info(
+    `[Analytics] export ready (file=${fileId}, rows=${result.rows ?? 0}, bytes=${result.sizeBytes ?? 0})`,
+  );
+
+  return { processed: true, skipped: false, ...result };
+};
+
+// ANALYTICS_SCHEDULE (29.12 §20) — one scheduled report, fired by BullMQ's
+// native delay. The schedule lives in MongoDB, so a Redis restart cannot
+// silently stop a CFO's monthly report: runDueSchedules() re-arms it.
+export const analyticsScheduleProcessor = async (job) => {
+  const { valid, errors, value } = validateAnalyticsSchedulePayload(job?.data);
+  if (!valid) {
+    logger.warn(`[Analytics] schedule job rejected: ${errors.join(', ')}`);
+    return { processed: false, skipped: true, reason: errors.join(', ') };
+  }
+
+  const { companyId, scheduleId, actorId } = value;
+
+  const result = await analyticsService.runSchedule({
+    companyId,
+    scheduleId,
+    actor: actorId ? { _id: actorId } : null,
+    onProgress: (progress) => reportProgress(job, progress),
+  });
+
+  logger.info(
+    `[Analytics] schedule executed (schedule=${scheduleId}, file=${result.fileId || 'skipped'})`,
+  );
+
+  return { processed: true, skipped: false, ...result };
+};
+
+// ANALYTICS_REFRESH (29.12 §22) — warm the executive dashboard cache.
+export const analyticsRefreshProcessor = async (job) => {
+  const { valid, errors, value } = validateAnalyticsRefreshPayload(job?.data);
+  if (!valid) {
+    logger.warn(`[Analytics] refresh job rejected: ${errors.join(', ')}`);
+    return { processed: false, skipped: true, reason: errors.join(', ') };
+  }
+
+  const { companyId, month, actorId } = value;
+
+  const result = await analyticsService.runRefresh({
+    companyId,
+    month: month || '',
+    actor: actorId ? { _id: actorId } : null,
+    onProgress: (progress) => reportProgress(job, progress),
+  });
+
+  logger.info(
+    `[Analytics] executive dashboard refreshed (company=${companyId}, month=${result.month || 'all'})`,
+  );
+
+  return { processed: true, skipped: false, ...result };
+};
+
 export const registerPayrollProcessors = ({ registerProcessor }) => {
   registerProcessor(JOB_NAMES.PAYROLL_RUN, payrollRunProcessor);
   registerProcessor(JOB_NAMES.PAYROLL_EXPORT, payrollExportProcessor);
@@ -362,6 +445,9 @@ export const registerPayrollProcessors = ({ registerProcessor }) => {
   registerProcessor(JOB_NAMES.COMPLIANCE_REMINDER, complianceReminderProcessor);
   registerProcessor(JOB_NAMES.FNF_STATEMENT, fnfStatementProcessor);
   registerProcessor(JOB_NAMES.FNF_REGISTER, fnfRegisterProcessor);
+  registerProcessor(JOB_NAMES.ANALYTICS_EXPORT, analyticsExportProcessor);
+  registerProcessor(JOB_NAMES.ANALYTICS_SCHEDULE, analyticsScheduleProcessor);
+  registerProcessor(JOB_NAMES.ANALYTICS_REFRESH, analyticsRefreshProcessor);
 };
 
 export default registerPayrollProcessors;

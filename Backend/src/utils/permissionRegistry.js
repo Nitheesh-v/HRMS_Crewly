@@ -181,6 +181,12 @@ export const DEFAULT_PERMISSIONS = [
   // Payroll reports (phase 33.14)
   ...actions("PAYROLL_REPORT", ["READ", "EXPORT"]),
 
+  // Payroll analytics & reports (phase 29.12). READ/EXPORT already exist from
+  // 29.8 and are reused for the general reports; the two new verbs are the
+  // ones the brief reserves: FINANCIAL gates the money-only CTC report (§16)
+  // and SCHEDULE gates standing instructions (§20 — Company Admin + Finance).
+  ...actions("PAYROLL_ANALYTICS", ["FINANCIAL", "SCHEDULE"]),
+
   ...actions("RECRUITMENT", ["READ", "CREATE", "UPDATE", "DELETE", "APPROVE"]),
 
   ...actions("RECRUITMENT_ANALYTICS", ["READ"]),

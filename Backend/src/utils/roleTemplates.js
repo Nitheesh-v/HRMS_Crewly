@@ -75,6 +75,10 @@ export const ROLE_TEMPLATES = Object.freeze([
       'SALARY_REVISION_APPROVE',
       'PAYROLL_REPORT_READ',
       'PAYROLL_STATUTORY_READ',
+      // Phase 29.12 §4 — HR reads the salary distribution, department and
+      // headcount reports. NOT the money-only CTC report, and NOT schedules:
+      // §16 reserves the CTC analytics for Finance and §20 reserves
+      // scheduling for Company Admin and Finance.
       // Phase 29.11 §4 — HR reviews the settlement.
       'FINAL_SETTLEMENT_READ',
       'FINAL_SETTLEMENT_REVIEW',
@@ -215,6 +219,11 @@ export const ROLE_TEMPLATES = Object.freeze([
       'FINAL_SETTLEMENT_READ',
       'FINAL_SETTLEMENT_APPROVE',
       'FINAL_SETTLEMENT_PAY',
+      // Phase 29.12 §4 — Finance owns payroll cost, department expense and
+      // the statutory reports, and it is one of the two roles allowed to
+      // leave a standing instruction for a report (§20).
+      'PAYROLL_ANALYTICS_FINANCIAL',
+      'PAYROLL_ANALYTICS_SCHEDULE',
     ],
   },
   {

@@ -1521,6 +1521,7 @@ import { resolveCompanyLogo } from '../../utils/companyLogo.js';
 import { createHash } from 'node:crypto';
 
 import { invalidateStatutoryCache, statutoryCacheKey } from './statutoryCache.js';
+import { invalidateAnalyticsCache } from './analyticsCache.js';
 import {
   dispatchStatutoryGenerate,
   dispatchStatutoryExport,
@@ -1574,7 +1575,13 @@ const defaultService = makeStatutoryService({
   cache: {
     buildKey: statutoryCacheKey,
     getOrSet: getOrSetCache,
-    invalidate: invalidateStatutoryCache,
+    invalidate: (companyId, month) =>
+      Promise.all([
+        invalidateStatutoryCache(companyId, month),
+        // §21 (29.12) — the analytics dashboards read the same
+        // snapshots, so they go stale with this cache.
+        invalidateAnalyticsCache(companyId, month).catch(() => 0),
+      ]).then(() => 0),
   },
 
   audit: recordAudit,

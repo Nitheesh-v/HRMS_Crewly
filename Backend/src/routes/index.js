@@ -24,6 +24,7 @@ import payrollPaymentRoutes from "./payrollPaymentRoutes.js";
 import payslipRoutes from "./payslipRoutes.js";
 import statutoryRoutes from "./statutoryRoutes.js";
 import fnfRoutes from "./fnfRoutes.js";
+import analyticsRoutes from "./analyticsRoutes.js";
 import recruitmentRoutes from "./recruitmentRoutes.js";
 import exitRoutes from "./exitRoutes.js";
 import billingRoutes from "./billingRoutes.js";
@@ -34,7 +35,7 @@ import selfServiceRoutes from "./selfServiceRoutes.js";
 import meetingRoutes from "./meetingRoutes.js";
 import notificationPrefRoutes from "./notificationPrefRoutes.js";
 import scheduleRoutes from "./scheduleRoutes.js";
-import analyticsRoutes from "./analyticsRoutes.js";
+import payrollAnalyticsRoutes from "./analyticsRoutes.js";
 import superAdminRoutes from "./superAdminRoutes.js";
 import rolePermissionRoutes from "./rolePermissionRoutes.js";
 import auditRoutes from "./auditRoutes.js";
@@ -138,6 +139,9 @@ router.use("/payroll/payments", payrollPaymentRoutes);
   router.use("/payroll/statutory", statutoryRoutes);
   // Phase 29.11 — Final Settlement (F&F).
   router.use("/payroll/fnf", fnfRoutes);
+  // 29.12 — payroll analytics. The recruitment analytics router already
+  // owns the plain `analyticsRoutes` name, so this one is namespaced.
+  router.use("/payroll/analytics", payrollAnalyticsRoutes);
 
 router.use("/recruitment", recruitmentRoutes);
 

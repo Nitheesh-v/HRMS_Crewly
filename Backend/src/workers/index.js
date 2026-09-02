@@ -386,6 +386,23 @@ const startWorker = async () => {
   const registrySize = jobRegistry.size;
   logger.info(`[Worker] Workers online (prefix=${prefix}, registered jobs=${registrySize})`);
 
+  // --- 29.12 §20 re-arm scheduled payroll reports --------------------
+  // BullMQ's delayed jobs survive a Redis restart, but a schedule whose delay
+  // already elapsed while no worker was running does NOT come back by itself.
+  // The schedule's nextRunAt lives in MongoDB precisely for this: on startup
+  // we sweep anything that is due, run it, and re-arm it. Best-effort — a
+  // failure here logs and moves on rather than taking the worker down.
+  try {
+    const { default: analyticsService } = await import('../services/payroll/analyticsService.js');
+    const due = await analyticsService.runDueSchedules();
+    if (Array.isArray(due) && due.length) {
+      const failed = due.filter((entry) => entry && entry.ok === false).length;
+      logger.info(`[Worker] Scheduled payroll reports caught up (due=${due.length}, failed=${failed})`);
+    }
+  } catch (error) {
+    logger.warn(`[Worker] Scheduled report sweep skipped: ${error?.message || error}`);
+  }
+
   // --- 28.8 ops heartbeat ------------------------------------------
   // One ephemeral Redis key tells the Super Admin "Background
   // Operations" page this worker process is alive (ONLINE /
