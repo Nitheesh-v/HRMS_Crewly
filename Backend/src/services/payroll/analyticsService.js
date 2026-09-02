@@ -840,7 +840,7 @@ export const makeAnalyticsService = ({
 
     await writeAudit({
       req,
-      action: ANALYTICS_AUDIT_ACTIONS.SCHEDULE_UPDATED,
+      action: ANALYTICS_AUDIT_ACTIONS.SALARY_BANDS_UPDATED,
       companyId,
       actor,
       reportKey: 'SALARY_BANDS',

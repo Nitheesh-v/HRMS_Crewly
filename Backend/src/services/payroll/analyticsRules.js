@@ -386,6 +386,10 @@ export const ANALYTICS_AUDIT_ACTIONS = Object.freeze({
   SCHEDULE_UPDATED: 'Scheduled report updated',
   SCHEDULE_DELETED: 'Scheduled report deleted',
   SCHEDULE_EXECUTED: 'Scheduled report executed',
+  // Not a schedule: the company changed the salary bands its distribution is
+  // cut by. An audit line that names the wrong thing is worse than no line —
+  // someone reading it will go looking for a schedule nobody touched.
+  SALARY_BANDS_UPDATED: 'Payroll salary bands updated',
   DASHBOARD_REFRESHED: 'Executive dashboard refreshed',
 });
 

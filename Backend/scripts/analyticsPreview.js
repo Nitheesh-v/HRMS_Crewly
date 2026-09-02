@@ -611,6 +611,14 @@ const line = (label, value) => console.log(`  ${label.padEnd(34)} ${value}`);
 const heading = (text) => console.log(`\n${text}\n${'-'.repeat(text.length)}`);
 const inr = (value) =>
   `Rs ${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+// Dates arrive as Date objects, not ISO strings — `String(date).slice(0, 10)`
+// would print "Wed Apr 01" and drop the year, which is the only thing that
+// distinguishes one version of a salary from the next.
+const isoDay = (value) => {
+  if (!value) return '—';
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toISOString().slice(0, 10);
+};
 
 // pdf-parse v2: `new PDFParse({ data })`, not the v1 callback signature.
 const extractPdfText = async (buffer) => {
@@ -758,7 +766,14 @@ const main = async () => {
   line('Variance direction', variance.direction);
   (variance.rows || [])
     .filter((row) => row.key === 'GROSS' || row.key === 'NET' || row.key === 'TOTAL_COST' || row.key === 'HEADCOUNT')
-    .forEach((row) => line(`  ${row.label}`, `${inr(row.previous)} → ${inr(row.current)} (${row.direction})`));
+    .forEach((row) => {
+      // Employees Paid is a NUMBER of people. Printing it as rupees is how a
+      // headcount turns into a salary in someone's head.
+      const show = row.key === 'HEADCOUNT'
+        ? (value) => String(Number(value || 0))
+        : inr;
+      line(`  ${row.label}`, `${show(row.previous)} → ${show(row.current)} (${row.direction})`);
+    });
 
   // ── 29.13 §22 — the register pages and searches
   heading('§22  Register paging and search');
@@ -778,7 +793,7 @@ const main = async () => {
   line('Months on record', `${history.months.length} (${history.summary.firstMonth} → ${history.summary.lastMonth})`);
   line('Average gross', inr(history.summary.averageGross));
   (history.versions || []).forEach((version) =>
-    line(`  Version ${version.version}${version.isCurrent ? ' (current)' : ''}`, `${version.structureName} · ${inr(version.annualCtc)} CTC from ${String(version.effectiveFrom || '').slice(0, 10)}`),
+    line(`  Version ${version.version}${version.isCurrent ? ' (current)' : ''}`, `${version.structureName} · ${inr(version.annualCtc)} CTC from ${isoDay(version.effectiveFrom)}`),
   );
   const outOfScope = await service
     .getEmployeeHistory({ companyId: COMPANY, employeeId: oid(3), allowedEmployeeIds: [oid(2)] })

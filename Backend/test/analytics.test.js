@@ -1901,6 +1901,35 @@ test('§32 reading a report, downloading a file and opening a salary history are
   });
 });
 
+test('§8/§24 changing the salary bands is audited as a bands change, not a schedule change', async () => {
+  const harness = threeEmployees();
+  const seen = harness.state.audits;
+
+  await harness.service.updateSalaryBands({
+    companyId: COMPANY,
+    salaryBands: [
+      { key: 'junior', label: 'Under 60k', min: 0, max: 60000 },
+      { key: 'senior', label: '60k and above', min: 60000, max: null },
+    ],
+    actor: { _id: E1, name: 'Finance' },
+  });
+
+  const actions = seen.map((entry) => entry.action);
+  assert.ok(
+    actions.includes(ANALYTICS_AUDIT_ACTIONS.SALARY_BANDS_UPDATED),
+    `expected a salary-bands audit line, saw: ${actions.join(', ')}`,
+  );
+  // The line used to say "Scheduled report updated", which sends whoever is
+  // reading the trail looking for a schedule nobody touched.
+  assert.ok(!actions.includes(ANALYTICS_AUDIT_ACTIONS.SCHEDULE_UPDATED));
+
+  const entry = seen.find((item) => item.action === ANALYTICS_AUDIT_ACTIONS.SALARY_BANDS_UPDATED);
+  assert.equal(entry.resourceId, 'SALARY_BANDS');
+  assert.equal(entry.actorName, 'Finance');
+  // §32 discipline: the band NAMES travel, never the salaries inside them.
+  assert.deepEqual(entry.metadata.bands, ['Under 60k', '60k and above']);
+});
+
 // ── §38 — export expiry ────────────────────────────────────────────────────
 
 test('§38 a generated file expires, and a download is refused once it has', async () => {
