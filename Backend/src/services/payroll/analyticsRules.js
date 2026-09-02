@@ -588,6 +588,9 @@ export const summariseRows = ({ rows = [] } = {}) => {
     // Salary" and "Net Salary Paid" has to say which one it is averaging.
     averageSalary: paidEmployees ? money(gross / paidEmployees) : 0,
     averageCtc: paidEmployees ? money(sum((row) => row.ctc) / paidEmployees) : 0,
+    // §22 — the other gross. The register prints both, and a page that shows
+    // one of them has to be able to total the other.
+    fixedGross: sum((row) => row.fixedGross),
     // §12 / §13 — variable pay and overtime, for the bonus and OT reports.
     bonusTotal: sum((row) => row.bonus),
     variableTotal: sum((row) => row.variableEarnings),

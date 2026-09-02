@@ -178,3 +178,55 @@ export const useMonthSwitcher = (availableMonths = []) => {
   }, [availableMonths, month]);
   return { month, setMonth, months };
 };
+
+// ── 29.13 §4 — period presets ──────────────────────────────────────────────
+//
+// The window a report covers. A month is no longer the only answer: a CFO
+// asking "what did payroll cost us this year?" should not have to read twelve
+// screens. The keys are the backend's own, so a preset means the same thing
+// in the URL as it does in the service.
+
+export const PERIOD_PRESETS = [
+  { key: 'CURRENT_MONTH', label: 'Current month' },
+  { key: 'PREVIOUS_MONTH', label: 'Previous month' },
+  { key: 'LAST_3_MONTHS', label: 'Last 3 months' },
+  { key: 'LAST_6_MONTHS', label: 'Last 6 months' },
+  { key: 'LAST_12_MONTHS', label: 'Last 12 months' },
+  { key: 'CURRENT_FY', label: 'Current financial year' },
+  { key: 'PREVIOUS_FY', label: 'Previous financial year' },
+  { key: 'CUSTOM', label: 'Custom range…' },
+];
+
+export const CUSTOM_PERIOD = 'CUSTOM';
+
+// The words for a window the server resolved, so a page never has to guess
+// what "LAST_3_MONTHS" means to a reader.
+export const periodLabel = (period = {}) => {
+  if (!period) return '';
+  if (period.label) return period.label;
+  const preset = PERIOD_PRESETS.find((entry) => entry.key === period.preset);
+  return preset ? preset.label : '';
+};
+
+// §5 — the trend direction, as a word and a colour. A dashboard that only
+// says "up 3%" leaves the reader to decide whether that is good.
+export const DIRECTION_TONES = {
+  INCREASING: 'text-amber-300',
+  DECREASING: 'text-emerald-300',
+  STABLE: 'text-crewly-dim',
+};
+
+export const directionWord = (direction = '') =>
+  String(direction || '').charAt(0) + String(direction || '').slice(1).toLowerCase();
+
+// ── 29.13 §8 — salary bands ────────────────────────────────────────────────
+
+// What a band looks like before it is edited. The last band's ceiling is left
+// open: the top band has to catch everyone, whatever they earn.
+export const blankBand = (index = 0) => ({ key: `band-${index}`, label: '', min: 0, max: index === 0 ? 50000 : null });
+
+export const bandRangeLabel = (band = {}) => {
+  const min = Number(band.min || 0);
+  if (band.max === null || band.max === undefined || band.max === '') return `${money(min)} and above`;
+  return `${money(min)} – ${money(Number(band.max))}`;
+};

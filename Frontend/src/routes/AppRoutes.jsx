@@ -68,6 +68,13 @@ import PayrollTrendsPage from "../pages/payroll/analytics/PayrollTrendsPage.jsx"
 import BonusReportPage from "../pages/payroll/analytics/BonusReportPage.jsx";
 import OvertimeReportPage from "../pages/payroll/analytics/OvertimeReportPage.jsx";
 import StatutorySummaryPage from "../pages/payroll/analytics/StatutorySummaryPage.jsx";
+import EarningsReportPage from "../pages/payroll/analytics/EarningsReportPage.jsx";
+import DeductionsReportPage from "../pages/payroll/analytics/DeductionsReportPage.jsx";
+import EmployerContributionPage from "../pages/payroll/analytics/EmployerContributionPage.jsx";
+import ReimbursementReportPage from "../pages/payroll/analytics/ReimbursementReportPage.jsx";
+import FnfAnalyticsPage from "../pages/payroll/analytics/FnfAnalyticsPage.jsx";
+import PayrollVariancePage from "../pages/payroll/analytics/PayrollVariancePage.jsx";
+import SalaryHistoryPage from "../pages/payroll/analytics/SalaryHistoryPage.jsx";
 import PayrollRegisterPage from "../pages/payroll/analytics/PayrollRegisterPage.jsx";
 import ScheduledReportsPage from "../pages/payroll/analytics/ScheduledReportsPage.jsx";
 import FinalSettlementPage from "../pages/payroll/FinalSettlementPage.jsx";
@@ -410,6 +417,15 @@ const AppRoutes = () => (
       <Route path="payroll/analytics/bonus" element={<BonusReportPage />} />
       <Route path="payroll/analytics/overtime" element={<OvertimeReportPage />} />
       <Route path="payroll/analytics/statutory" element={<StatutorySummaryPage />} />
+      {/* 29.13 — the six reports added in this phase (§11, §12, §13, §18, §20,
+          §21) and the employee salary history (§23). */}
+      <Route path="payroll/analytics/earnings" element={<EarningsReportPage />} />
+      <Route path="payroll/analytics/deductions" element={<DeductionsReportPage />} />
+      <Route path="payroll/analytics/employer" element={<EmployerContributionPage />} />
+      <Route path="payroll/analytics/reimbursement" element={<ReimbursementReportPage />} />
+      <Route path="payroll/analytics/fnf" element={<FnfAnalyticsPage />} />
+      <Route path="payroll/analytics/variance" element={<PayrollVariancePage />} />
+      <Route path="payroll/analytics/salary-history/:employeeId" element={<SalaryHistoryPage />} />
       <Route path="payroll/analytics/register" element={<PayrollRegisterPage />} />
       <Route path="payroll/analytics/scheduled" element={<ScheduledReportsPage />} />
       <Route path="payroll/employees" element={<EmployeePayrollPage />} />

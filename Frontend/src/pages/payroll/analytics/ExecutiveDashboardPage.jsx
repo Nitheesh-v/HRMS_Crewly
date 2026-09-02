@@ -4,11 +4,16 @@ import {
   BarChart3,
   Building2,
   CalendarRange,
+  Coins,
   FileSpreadsheet,
+  GitCompareArrows,
   Landmark,
   LineChart,
   PieChart,
+  Receipt,
   RefreshCcw,
+  Scissors,
+  UserMinus,
   Users,
   Wallet,
 } from 'lucide-react';
@@ -24,6 +29,7 @@ import {
   ExportMenu,
   KpiCard,
   PageHeader,
+  PeriodSelect,
   SectionCard,
 } from './analyticsShared.jsx';
 import {
@@ -48,9 +54,15 @@ const LINKS = [
   { to: '/app/payroll/analytics/department', label: 'Department Analytics', icon: Building2 },
   { to: '/app/payroll/analytics/salary-distribution', label: 'Salary Distribution', icon: PieChart },
   { to: '/app/payroll/analytics/trends', label: 'Payroll Trends', icon: LineChart },
+  { to: '/app/payroll/analytics/earnings', label: 'Earnings Analytics', icon: Coins },
+  { to: '/app/payroll/analytics/deductions', label: 'Deduction Analytics', icon: Scissors },
+  { to: '/app/payroll/analytics/employer', label: 'Employer Contribution', icon: Landmark },
   { to: '/app/payroll/analytics/bonus', label: 'Bonus Report', icon: Wallet },
   { to: '/app/payroll/analytics/overtime', label: 'Overtime Report', icon: CalendarRange },
+  { to: '/app/payroll/analytics/reimbursement', label: 'Reimbursements', icon: Receipt },
   { to: '/app/payroll/analytics/statutory', label: 'Statutory Summary', icon: Landmark },
+  { to: '/app/payroll/analytics/fnf', label: 'F&F Analytics', icon: UserMinus },
+  { to: '/app/payroll/analytics/variance', label: 'Payroll Variance', icon: GitCompareArrows },
   { to: '/app/payroll/analytics/register', label: 'Payroll Register', icon: FileSpreadsheet },
   { to: '/app/payroll/analytics/scheduled', label: 'Scheduled Reports', icon: CalendarRange },
 ];
@@ -68,6 +80,11 @@ const ExecutiveDashboardPage = () => {
   const canSeeFinancial = hasPermission('PAYROLL_ANALYTICS_FINANCIAL');
 
   const [month, setMonth] = useState(currentMonth());
+  // §4 — a period preset, or a custom range. "What did payroll cost us this
+  // year?" should not need twelve clicks.
+  const [preset, setPreset] = useState('CURRENT_MONTH');
+  const [fromMonth, setFromMonth] = useState(currentMonth());
+  const [toMonth, setToMonth] = useState(currentMonth());
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [denied, setDenied] = useState(false);
@@ -77,7 +94,7 @@ const ExecutiveDashboardPage = () => {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await payrollAnalyticsService.dashboard(month);
+      const data = await payrollAnalyticsService.dashboard({ month, preset, fromMonth, toMonth });
       setDashboard(data || null);
       setDenied(false);
     } catch (error) {
@@ -86,7 +103,7 @@ const ExecutiveDashboardPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [month]);
+  }, [month, preset, fromMonth, toMonth]);
 
   useEffect(() => {
     if (permsLoading || !canRead) return;
@@ -136,18 +153,33 @@ const ExecutiveDashboardPage = () => {
       <PageHeader
         icon={BarChart3}
         title="Executive Dashboard"
-        subtitle="Payroll cost, headcount and statutory position at a glance"
+        subtitle={
+          dashboard?.period?.label
+            ? `Payroll cost, headcount and statutory position · ${dashboard.period.label}`
+            : 'Payroll cost, headcount and statutory position at a glance'
+        }
         actions={
           <>
-            <select
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm text-crewly-text"
-              value={month}
-              onChange={(event) => setMonth(event.target.value)}
-            >
-              {(months.length ? months : [month]).map((value) => (
-                <option key={value} value={value}>{monthLabel(value)}</option>
-              ))}
-            </select>
+            <PeriodSelect
+              preset={preset}
+              onPresetChange={setPreset}
+              fromMonth={fromMonth}
+              toMonth={toMonth}
+              onFromMonthChange={setFromMonth}
+              onToMonthChange={setToMonth}
+              months={months}
+            />
+            {preset === 'CURRENT_MONTH' || preset === 'PREVIOUS_MONTH' ? (
+              <select
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm text-crewly-text"
+                value={month}
+                onChange={(event) => setMonth(event.target.value)}
+              >
+                {(months.length ? months : [month]).map((value) => (
+                  <option key={value} value={value}>{monthLabel(value)}</option>
+                ))}
+              </select>
+            ) : null}
             <button
               type="button"
               onClick={refresh}
@@ -196,6 +228,20 @@ const ExecutiveDashboardPage = () => {
               hint={kpis.highestDepartmentCost?.department || '—'}
             />
             <KpiCard icon={Landmark} label="Total Statutory Liability" value={money(kpis.totalStatutoryLiability)} />
+
+            {/* 29.13 §3 — the rest of the card set: what was deducted, and the
+                three variable costs management asks about first. */}
+            <KpiCard icon={Scissors} label="Employee Deductions" value={money(kpis.employeeDeductions)} hint={`${percent(Number(summary.grossSalary) ? (Number(kpis.employeeDeductions) / Number(summary.grossSalary)) * 100 : 0)} of gross`} />
+            <KpiCard icon={CalendarRange} label="Overtime Cost" value={money(kpis.overtimeCost)} hint={`${count(kpis.overtimeHours)} hour(s) worked`} tone="warn" />
+            <KpiCard icon={Wallet} label="Bonus" value={money(kpis.bonusTotal)} />
+            <KpiCard icon={Receipt} label="Reimbursements" value={money(kpis.reimbursements)} />
+            <KpiCard
+              icon={CalendarRange}
+              label="LOP Deduction"
+              value={money(kpis.lopDeduction)}
+              hint={`${count(kpis.lopDays)} day(s) of loss of pay`}
+              tone={Number(kpis.lopDeduction) ? 'warn' : 'default'}
+            />
           </div>
 
           {/* §6 — the overview figures */}
@@ -246,6 +292,37 @@ const ExecutiveDashboardPage = () => {
               </dl>
             </SectionCard>
           </div>
+
+          {/* 29.13 §9 — the cost did not just move; it moved for a reason. */}
+          {dashboard?.movement ? (
+            <SectionCard
+              className="mt-4"
+              title="Why the cost moved"
+              subtitle="§9 — the change split into people and pay"
+            >
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3 lg:grid-cols-6">
+                {[
+                  ['Joiners', count(dashboard.movement.joiners)],
+                  ['Leavers', count(dashboard.movement.leavers)],
+                  ['Stayers', count(dashboard.movement.stayers)],
+                  ['Headcount effect', money(dashboard.movement.headcountEffect)],
+                  ['Like-for-like effect', money(dashboard.movement.likeForLikeEffect)],
+                  ['Fixed / variable', `${money(dashboard.movement.fixedEffect)} / ${money(dashboard.movement.variableEffect)}`],
+                ].map(([label, value]) => (
+                  <div key={label}>
+                    <dt className="text-[11px] uppercase tracking-wide text-crewly-dim">{label}</dt>
+                    <dd className="mt-0.5 font-medium text-crewly-text">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+              <p className="mt-3 border-t border-white/5 pt-2 text-xs text-crewly-dim">
+                Headcount effect is the money that came and went with people; like-for-like is what
+                changed for the people who were there both periods. The two add up to the movement in
+                total payroll cost
+                {dashboard.movement.reconciled ? '' : ' — and they do NOT add up here, so check the payroll runs before quoting either'}.
+              </p>
+            </SectionCard>
+          ) : null}
 
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
             {/* §7 — the department split, topped by cost */}

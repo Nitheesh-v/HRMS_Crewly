@@ -14,7 +14,7 @@ import {
 import usePermission from '../../../hooks/usePermission.js';
 import payrollAnalyticsService, { saveBlob } from '../../../services/payrollAnalyticsService.js';
 
-import { monthLabel } from './analyticsShared.js';
+import { PERIOD_PRESETS, monthLabel } from './analyticsShared.js';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Phase 29.12 — the components the ten analytics pages share.
@@ -316,6 +316,120 @@ export const PageHeader = ({ icon: Icon, title, subtitle, actions = null }) => (
     </div>
     <div className="flex flex-wrap items-center gap-2">{actions}</div>
   </header>
+);
+
+// ── 29.13 §4 — the period switcher ─────────────────────────────────────────
+//
+// One control for "which months is this?": a preset, or a custom range. The
+// custom range is two month pickers, because "April 2026 to March 2027" is a
+// financial year to an Indian finance team and nobody should have to count.
+export const PeriodSelect = ({
+  preset,
+  onPresetChange,
+  fromMonth = '',
+  toMonth = '',
+  onFromMonthChange,
+  onToMonthChange,
+  months = [],
+}) => {
+  const options = months.length ? months : [fromMonth, toMonth].filter(Boolean);
+  const custom = preset === 'CUSTOM';
+
+  return (
+    <div className="flex flex-wrap items-end gap-2">
+      <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
+        Period
+        <select
+          className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+          value={preset}
+          onChange={(event) => onPresetChange(event.target.value)}
+        >
+          {PERIOD_PRESETS.map((entry) => (
+            <option key={entry.key} value={entry.key}>{entry.label}</option>
+          ))}
+        </select>
+      </label>
+
+      {custom ? (
+        <>
+          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
+            From
+            <input
+              type="month"
+              value={fromMonth}
+              onChange={(event) => onFromMonthChange(event.target.value)}
+              className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
+            To
+            <input
+              type="month"
+              value={toMonth}
+              onChange={(event) => onToMonthChange(event.target.value)}
+              className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+            />
+          </label>
+        </>
+      ) : null}
+
+      {custom && !options.length ? (
+        <p className="pb-1.5 text-xs text-crewly-dim">Type the two months — empty is fine.</p>
+      ) : null}
+    </div>
+  );
+};
+
+// ── 29.13 §22 — the register pages and searches ────────────────────────────
+//
+// Five thousand employees is a spreadsheet, not a web page: the server slices
+// it and this walks the slices. The total beside the buttons stays the WHOLE
+// period, so paging never looks like the payroll shrank.
+export const Pagination = ({ pagination, onPageChange }) => {
+  if (!pagination || !pagination.pages || pagination.pages <= 1) return null;
+  const { page = 1, pages = 1, total = 0 } = pagination;
+
+  return (
+    <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/5 pt-3 text-xs text-crewly-dim">
+      <span>
+        {Number(total).toLocaleString('en-IN')} row(s) · page {page} of {pages}
+      </span>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          disabled={page <= 1}
+          onClick={() => onPageChange(page - 1)}
+          className="rounded-md border border-white/10 px-2 py-1 disabled:opacity-40"
+        >
+          Previous
+        </button>
+        <button
+          type="button"
+          disabled={page >= pages}
+          onClick={() => onPageChange(page + 1)}
+          className="rounded-md border border-white/10 px-2 py-1 disabled:opacity-40"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// Searching matches PEOPLE — code, name, department, designation. The server
+// refuses to search amounts, and the placeholder says so, because the obvious
+// thing to type into a payroll search box is a salary.
+export const SearchBox = ({ value, onChange, placeholder = 'Search by employee, code, department…' }) => (
+  <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
+    Search
+    <input
+      type="search"
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      placeholder={placeholder}
+      className="w-56 rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+    />
+  </label>
 );
 
 // §25 — a report the server refused. The server is the gate; this only makes

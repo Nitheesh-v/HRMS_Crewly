@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download, FileSpreadsheet, Loader2, RefreshCcw } from 'lucide-react';
+import { Download, FileSpreadsheet, History, Loader2, RefreshCcw } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 import usePermission from '../../../hooks/usePermission.js';
 import payrollAnalyticsService, { saveBlob } from '../../../services/payrollAnalyticsService.js';
@@ -13,6 +14,8 @@ import {
   FilterBar,
   KpiCard,
   PageHeader,
+  Pagination,
+  SearchBox,
   SectionCard,
 } from './analyticsShared.jsx';
 import {
@@ -33,6 +36,16 @@ import {
 //
 // Large registers are generated in the background (§19 / §22), so the page
 // also lists the files it has produced.
+//
+// 29.13 §22 — the register pages and searches ON THE SERVER. Five thousand
+// employees is a spreadsheet, not a web page; the totals beside the pager stay
+// the whole period, so paging never looks like the payroll shrank.
+//
+// 29.13 §22 — the columns Finance asked for: basic, employer cost and payroll
+// status, alongside the ones that were already here. The second money column
+// is the STRUCTURE gross — the PF/ESI wage base — because analytics' "gross"
+// is already total earnings, and printing the same number twice would be a
+// lie of omission.
 // ───────────────────────────────────────────────────────────────────────────
 
 const PAYMENT_STYLES = {
@@ -74,12 +87,23 @@ const PayrollRegisterPage = () => {
   const [departmentId, setDepartmentId] = useState('');
   const [status, setStatus] = useState('');
   const [designation, setDesignation] = useState('');
+  // §24 — two more filters that have backing data. Pay group, location and
+  // cost centre were asked for too, but no collection carries them, so they
+  // are not offered: a filter that always returns nothing is worse than no
+  // filter.
+  const [employmentStatus, setEmploymentStatus] = useState('');
+  const [structureId, setStructureId] = useState('');
+  // §22 — paging and search live in the query, not in the browser: the server
+  // returns one page, and the count stays the whole period.
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const PAGE_SIZE = 25;
   const [banner, setBanner] = useState(null);
   const [files, setFiles] = useState([]);
   const [filesLoading, setFilesLoading] = useState(false);
   const [downloading, setDownloading] = useState('');
 
-  const filters = { month, departmentId, status, designation };
+  const filters = { month, departmentId, status, designation, employmentStatus, structureId, page, limit: PAGE_SIZE, search };
   const { report, loading, denied, error, reload } = useReport({
     reportKey: 'REGISTER',
     filters,
@@ -88,6 +112,7 @@ const PayrollRegisterPage = () => {
 
   const rows = useMemo(() => report?.rows || [], [report]);
   const summary = report?.summary || {};
+  const pagination = report?.pagination || null;
 
   // The designation list is whatever this company actually used, so the filter
   // never offers an option that returns nothing.
@@ -95,6 +120,23 @@ const PayrollRegisterPage = () => {
     () => [...new Set(rows.map((row) => row.designation).filter(Boolean))].sort(),
     [rows],
   );
+
+  // The salary structures on this page's rows. A filter offering a structure
+  // nobody is on would be a filter that always answers "nothing".
+  const structures = useMemo(() => {
+    const seen = new Map();
+    rows.forEach((row) => {
+      if (row.structureId && !seen.has(row.structureId)) {
+        seen.set(row.structureId, row.structureName || 'Salary structure');
+      }
+    });
+    return [...seen.entries()].map(([value, label]) => ({ value, label }));
+  }, [rows]);
+
+  // Typing in the search box or changing a filter must go back to page one:
+  // staying on page seven of a two-page result is a bug that looks like data
+  // loss.
+  useEffect(() => { setPage(1); }, [search, month, departmentId, status, designation, employmentStatus, structureId]);
 
   const loadFiles = useCallback(async () => {
     if (!canExport) return;
@@ -164,6 +206,37 @@ const PayrollRegisterPage = () => {
         status={status}
         onStatusChange={setStatus}
       >
+        <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
+          Employment
+          <select
+            className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+            value={employmentStatus}
+            onChange={(event) => setEmploymentStatus(event.target.value)}
+          >
+            <option value="">Everyone</option>
+            <option value="ACTIVE">Active</option>
+            <option value="INACTIVE">Inactive</option>
+          </select>
+        </label>
+
+        {structures.length ? (
+          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
+            Salary structure
+            <select
+              className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+              value={structureId}
+              onChange={(event) => setStructureId(event.target.value)}
+            >
+              <option value="">All structures</option>
+              {structures.map((structure) => (
+                <option key={structure.value} value={structure.value}>{structure.label}</option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
+        <SearchBox value={search} onChange={setSearch} />
+
         <button
           type="button"
           onClick={() => { reload(); loadFiles(); }}
@@ -180,7 +253,11 @@ const PayrollRegisterPage = () => {
       {!loading && report ? (
         <>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <KpiCard label="Employees" value={count(rows.length)} />
+            <KpiCard
+              label="Employees"
+              value={count(pagination?.total ?? rows.length)}
+              hint={pagination?.pages > 1 ? `showing ${count(rows.length)} on this page` : ''}
+            />
             <KpiCard label="Gross" value={money(summary.grossSalary)} />
             <KpiCard label="Deductions" value={money(summary.deductionsTotal)} />
             <KpiCard label="Net paid" value={money(summary.netSalary)} />
@@ -197,30 +274,57 @@ const PayrollRegisterPage = () => {
                 ) },
                 { key: 'department', label: 'Department' },
                 { key: 'designation', label: 'Designation' },
+                { key: 'month', label: 'Period', render: (row) => monthLabel(row.month) },
+                { key: 'basic', label: 'Basic', align: 'right', render: (row) => money(row.basic) },
                 { key: 'gross', label: 'Gross', align: 'right', render: (row) => money(row.gross) },
+                { key: 'fixedGross', label: 'Structure gross', align: 'right', render: (row) => money(row.fixedGross) },
                 { key: 'totalDeductions', label: 'Deductions', align: 'right', render: (row) => money(row.totalDeductions) },
                 { key: 'net', label: 'Net', align: 'right', render: (row) => money(row.net) },
                 { key: 'employerCost', label: 'Employer cost', align: 'right', render: (row) => money(row.employerCost) },
                 { key: 'paidAt', label: 'Payment date' },
-                { key: 'paymentStatus', label: 'Status', render: (row) => statusBadge(row.paymentStatus) },
+                { key: 'paymentStatus', label: 'Payment', render: (row) => statusBadge(row.paymentStatus) },
+                { key: 'payrollStatus', label: 'Payroll', render: (row) => statusBadge(row.payrollStatus) },
+                {
+                  key: 'history',
+                  label: '',
+                  align: 'right',
+                  render: (row) => (
+                    <Link
+                      to={`/app/payroll/analytics/salary-history/${row.employeeId}`}
+                      className="flex items-center gap-1 text-xs text-sky-300 hover:underline"
+                      title="Salary history"
+                    >
+                      <History size={12} />
+                      History
+                    </Link>
+                  ),
+                },
               ]}
               rows={rows}
               footer={[
-                { value: 'Total', strong: true },
+                { value: 'Whole period', strong: true },
+                { value: '' },
                 { value: '' },
                 { value: '' },
                 { value: money(summary.grossSalary), align: 'right', strong: true },
+                { value: money(summary.fixedGross ?? 0), align: 'right', strong: true },
                 { value: money(summary.deductionsTotal), align: 'right', strong: true },
                 { value: money(summary.netSalary), align: 'right', strong: true },
                 { value: money(summary.employerContribution), align: 'right', strong: true },
                 { value: '' },
                 { value: '' },
+                { value: '' },
+                { value: '' },
               ]}
-              empty="No payroll records for this month"
+              empty={search ? 'Nobody matches that search' : 'No payroll records for this month'}
             />
+            <Pagination pagination={pagination} onPageChange={setPage} />
             <p className="mt-3 border-t border-white/5 pt-2 text-xs text-crewly-dim">
               Payment date and status come from the salary payment records. An employee whose transfer
-              failed and was retried appears once, with the successful payment (§17).
+              failed and was retried appears once, with the successful payment (§17). &ldquo;Gross&rdquo;
+              is total earnings — structure plus variable pay plus overtime — while &ldquo;structure
+              gross&rdquo; is the PF and ESI wage base. The footer totals the whole period, not just
+              this page.
             </p>
           </SectionCard>
 

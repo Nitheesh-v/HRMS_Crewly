@@ -228,6 +228,9 @@ export const makeAnalyticsService = ({
     _id: id,
     employees: { $addToSet: '$employeeId' },
     gross: { $sum: { $ifNull: ['$totals.totalEarnings', '$totals.gross'] } },
+    // The structure figure, so the aggregation path can total the register's
+    // second money column the same way the row path does.
+    fixedGross: { $sum: { $ifNull: ['$totals.gross', 0] } },
     net: { $sum: { $ifNull: ['$totals.netPay', 0] } },
     earningsTotal: { $sum: { $ifNull: ['$totals.totalEarnings', 0] } },
     deductions: { $sum: { $ifNull: ['$totals.totalDeductions', 0] } },
@@ -280,6 +283,7 @@ export const makeAnalyticsService = ({
     return {
       employeesPaid: paidEmployees,
       grossSalary: gross,
+      fixedGross: money(row.fixedGross),
       netSalary: money(row.net),
       earningsTotal: money(row.earningsTotal),
       deductionsTotal: money(row.deductions),
