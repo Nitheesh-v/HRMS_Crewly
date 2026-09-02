@@ -27,7 +27,7 @@ import { fileURLToPath } from 'node:url';
 import { makeAnalyticsService } from '../src/services/payroll/analyticsService.js';
 import { makePlatformAnalyticsService } from '../src/services/payroll/platformAnalyticsService.js';
 import { REPORT_KEYS, REPORT_LABELS } from '../src/services/payroll/analyticsRules.js';
-import { filterSegmentOf } from '../src/services/payroll/analyticsCache.js';
+import { filterSegmentOf, scopeSegmentOf } from '../src/services/payroll/analyticsCache.js';
 // The preview's fake models answer REAL aggregation pipelines, using the same
 // evaluator the tests use. If it were stubbed, the 29.13 fast path would fall
 // back to loading rows and the preview would silently stop exercising the code
@@ -528,8 +528,8 @@ state.profiles.rows.push(
 );
 
 const cache = {
-  buildKey: ({ companyId, month = '', suffix = 'dashboard', period = '', filters = null }) =>
-    `k:${companyId}:${month || 'all'}:${suffix}:${period || '-'}:${filterSegmentOf(filters)}`,
+  buildKey: ({ companyId, month = '', suffix = 'dashboard', period = '', filters = null, scope = null }) =>
+    `k:${companyId}:${month || 'all'}:${suffix}:${period || '-'}:${filterSegmentOf(filters)}:${scopeSegmentOf(scope)}`,
   getOrSet: async (key, { loader }) => {
     if (state.cache.has(key)) return { value: state.cache.get(key), cache: 'HIT' };
     const value = await loader();

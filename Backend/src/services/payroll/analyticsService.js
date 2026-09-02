@@ -115,8 +115,16 @@ export const makeAnalyticsService = ({
   const buildKey = ({ companyId, month = '', suffix = 'dashboard', period = '', filters = null } = {}) =>
     cache.buildKey ? cache.buildKey({ companyId, month, suffix, period, filters }) : null;
 
-  const readThrough = async (key, loader) => {
-    if (!key || !cache.getOrSet) return { value: await loader(), cache: 'BYPASS' };
+  /**
+   * `skipCache` exists for scoped reads (§25). A manager who may see twelve
+   * employees and an admin who may see everyone must never share an entry,
+   * and — more to the point — a scoped entry cannot be invalidated, because
+   * `invalidateAnalyticsCache` names keys, not patterns. So a scoped read
+   * goes to MongoDB and stops there. That is the cheap case anyway: the
+   * whole point of a scope is that it is a small slice of the company.
+   */
+  const readThrough = async (key, loader, { skipCache = false } = {}) => {
+    if (skipCache || !key || !cache.getOrSet) return { value: await loader(), cache: 'BYPASS' };
     return cache.getOrSet(key, { loader, ttlSeconds });
   };
 
@@ -454,9 +462,12 @@ export const makeAnalyticsService = ({
       // entry: "last 12 months" must not be served from "current month".
       period: preset ? `${preset}:${fromMonth}:${toMonth}` : '',
       filters,
+      scope: allowedEmployeeIds,
     });
 
-    const { value } = await readThrough(key, async () => {
+    const { value } = await readThrough(
+      key,
+      async () => {
       const anchor = MONTH_PATTERN.test(String(month || '')) ? month : await latestMonth({ companyId });
       const window = preset && isPeriodPreset(preset)
         ? resolvePeriod({ preset, month: anchor, fromMonth, toMonth })
@@ -486,6 +497,7 @@ export const makeAnalyticsService = ({
       const headcount = await buildHeadcount({
         companyId,
         month: months[months.length - 1] || '',
+        allowedEmployeeIds,
         summary: numbers.summary,
         previousSummary: previousNumbers.summary,
         filters: { ...filters, fromMonth: window.fromMonth, toMonth: window.toMonth },
@@ -528,7 +540,12 @@ export const makeAnalyticsService = ({
         source: numbers.path,
         generatedAt: new Date(),
       };
-    });
+      },
+      // §25 — a scoped read is never written to a shared entry (see
+      // readThrough), so a manager's restricted numbers can never be served
+      // to an admin, nor an admin's full company to a manager.
+      { skipCache: Array.isArray(allowedEmployeeIds) },
+    );
 
     return value;
   };
@@ -599,6 +616,7 @@ export const makeAnalyticsService = ({
     summary = null,
     previousSummary = null,
     filters = null,
+    allowedEmployeeIds = null,
   }) => {
     const [active, joined, exited] = await Promise.all([
       countActive({ companyId }),
@@ -606,17 +624,28 @@ export const makeAnalyticsService = ({
       countExited({ companyId, month }),
     ]);
 
-    const key = buildKey({ companyId, month, suffix: 'headcount', filters });
-    const { value } = await readThrough(key, async () =>
-      headcountMetrics({
-        rows,
-        summary,
-        previousSummary,
-        activeEmployees: active,
-        joined,
-        exited,
-        previousRows,
-      }),
+    const key = buildKey({
+      companyId,
+      month,
+      suffix: 'headcount',
+      filters,
+      scope: allowedEmployeeIds,
+    });
+    // Same rule as the dashboard: the metrics are computed from already-scoped
+    // rows, so a scoped answer must not land in a shared entry.
+    const { value } = await readThrough(
+      key,
+      async () =>
+        headcountMetrics({
+          rows,
+          summary,
+          previousSummary,
+          activeEmployees: active,
+          joined,
+          exited,
+          previousRows,
+        }),
+      { skipCache: Array.isArray(allowedEmployeeIds) },
     );
     return value;
   };
@@ -718,6 +747,7 @@ export const makeAnalyticsService = ({
       ? await buildHeadcount({
         companyId,
         month: targetMonth,
+        allowedEmployeeIds,
         rows,
         previousRows,
         filters: { ...filters, fromMonth: scopeMonths[0], toMonth: targetMonth },

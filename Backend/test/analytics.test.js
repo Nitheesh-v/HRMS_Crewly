@@ -56,7 +56,7 @@ import {
   trendRows,
 } from '../src/services/payroll/analyticsRules.js';
 import { makeAnalyticsService } from '../src/services/payroll/analyticsService.js';
-import { filterSegmentOf } from '../src/services/payroll/analyticsCache.js';
+import { filterSegmentOf, scopeSegmentOf } from '../src/services/payroll/analyticsCache.js';
 import { matches, pathValue, runPipeline } from './helpers/fakeAggregate.js';
 // (salaryBandRows, bandOf, SALARY_BANDS and resolvePeriod are imported in the
 // rules block above; only what that block does not already pull in is added.)
@@ -343,8 +343,8 @@ const buildHarness = ({
 
   const cache = {
     store: new Map(),
-    buildKey: ({ companyId: id, month = '', suffix = 'dashboard', period = '', filters = null }) =>
-      `k:${id}:${month || 'all'}:${suffix}:${period || '-'}:${filterSegmentOf(filters)}`,
+    buildKey: ({ companyId: id, month = '', suffix = 'dashboard', period = '', filters = null, scope = null }) =>
+      `k:${id}:${month || 'all'}:${suffix}:${period || '-'}:${filterSegmentOf(filters)}:${scopeSegmentOf(scope)}`,
     async getOrSet(key, { loader }) {
       if (this.store.has(key)) return { value: this.store.get(key), cache: 'HIT' };
       const value = await loader();
@@ -1424,7 +1424,7 @@ test('§21 a filtered dashboard does not overwrite the unfiltered one', async ()
   assert.equal(again.kpis.employeesPaid, 3, 'the unfiltered dashboard survived the filtered read');
 
   const keys = [...harness.cache.store.keys()];
-  assert.ok(keys.some((key) => key.endsWith(':departmentId=' + DEPT_ENG)), 'the filter is in the key');
+  assert.ok(keys.some((key) => key.endsWith(':departmentId-' + DEPT_ENG + ':-')), 'the filter is in the key');
   assert.ok(keys.some((key) => key.endsWith(':-')), 'and the unfiltered read has its own');
 });
 
@@ -1928,6 +1928,61 @@ test('§8/§24 changing the salary bands is audited as a bands change, not a sch
   assert.equal(entry.actorName, 'Finance');
   // §32 discipline: the band NAMES travel, never the salaries inside them.
   assert.deepEqual(entry.metadata.bands, ['Under 60k', '60k and above']);
+});
+
+// ── §21 / §25 — the cache must not serve one reader's answer to another ─────
+
+test('§25 a scoped dashboard is never served to an unscoped reader', async () => {
+  // Two harnesses, two cache stores: proves the scope is applied at all.
+  const scopedOnly = threeEmployees();
+  const everyone = threeEmployees();
+  const scopedFirst = await scopedOnly.service.getDashboard({
+    companyId: COMPANY, month: MONTH, allowedEmployeeIds: [E1, E2],
+  });
+  const unscopedFirst = await everyone.service.getDashboard({ companyId: COMPANY, month: MONTH });
+  assert.ok(
+    unscopedFirst.summary.employeesPaid > scopedFirst.summary.employeesPaid,
+    'the scope has to change the answer, or this test proves nothing',
+  );
+
+  // ONE harness — one cache store. Admin first, manager second: if the two
+  // share a cache entry, the manager is handed the whole company.
+  const shared = threeEmployees();
+  const admin = await shared.service.getDashboard({ companyId: COMPANY, month: MONTH });
+  const manager = await shared.service.getDashboard({
+    companyId: COMPANY, month: MONTH, allowedEmployeeIds: [E1, E2],
+  });
+  assert.equal(
+    manager.summary.employeesPaid,
+    scopedFirst.summary.employeesPaid,
+    'the scoped reader must get the scoped answer, not the cached unscoped one',
+  );
+  assert.ok(
+    admin.summary.employeesPaid > manager.summary.employeesPaid,
+    'and the admin must still see everyone',
+  );
+});
+
+test('§21 a filtered read still gets a cache key — filters must not silently bypass the cache', async () => {
+  // `key=value|key=value` is two characters the key builder rejects, which
+  // used to make EVERY filtered read build a null key and skip the cache with
+  // nothing logged.
+  const key = filterSegmentOf({ departmentId: String(DEPT_ENG), status: 'PAID' });
+  assert.ok(key && key !== '-', `expected a usable filter segment, got ${key}`);
+  assert.ok(!/[=|]/.test(key), `the segment must survive safeSegment: ${key}`);
+
+  const built = await import('../src/services/payroll/analyticsCache.js');
+  const full = built.analyticsCacheKey(COMPANY, MONTH, 'dashboard', '', { departmentId: String(DEPT_ENG), status: 'PAID' });
+  assert.ok(full, 'a filtered dashboard read must produce a cache key');
+  assert.ok(full.includes(key), `the key must carry the filter: ${full}`);
+
+  // A long/unsafe value is hashed, not dropped.
+  const long = filterSegmentOf({ search: 'a'.repeat(200) });
+  assert.ok(long.length <= 49, `unbounded filters must be hashed: ${long}`);
+
+  // And two different scopes never collide.
+  assert.notEqual(scopeSegmentOf([E1, E2]), scopeSegmentOf([E1]));
+  assert.equal(scopeSegmentOf(null), '-');
 });
 
 // ── §38 — export expiry ────────────────────────────────────────────────────

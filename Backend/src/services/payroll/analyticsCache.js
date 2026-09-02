@@ -9,6 +9,8 @@
 //  MongoDB remains the source of truth; this is a fail-open read. A dead Redis
 //  must never stop a CFO from opening the payroll dashboard.
 // ═══════════════════════════════════════════════════════════════════════════
+import { createHash } from 'node:crypto';
+
 import { buildTenantCacheKey, deleteCache, noteCacheInvalidation } from '../redisCacheService.js';
 
 export const ANALYTICS_CACHE_NAMESPACE = 'payroll-analytics';
@@ -26,21 +28,62 @@ export const ANALYTICS_CACHE_SUFFIXES = ['dashboard', 'department', 'trend', 'he
  * readable on purpose: a human debugging Redis should be able to tell which
  * slice of the company a key covers.
  */
+/**
+ * A cache segment has to survive `safeSegment`, which rejects anything over
+ * 64 characters *and* anything outside [A-Za-z0-9_-:.]. A filter value is
+ * whatever the caller sent — an employee name, a search string, an ObjectId —
+ * so it is sanitised first, then hashed when it would be too long to read.
+ *
+ * The old version joined filters as `key=value|key=value`. That is two
+ * characters `safeSegment` rejects, so EVERY filtered read built a null key
+ * and silently bypassed the cache — no error, no log, just no caching.
+ */
+const digest = (text) => createHash('sha1').update(String(text)).digest('hex').slice(0, 16);
+const readable = (text) => String(text ?? '').replace(/[^A-Za-z0-9_\-:.]/g, '.');
+
+const SEGMENT_LIMIT = 48;
+
+const segment = (text) => {
+  const value = readable(text);
+  if (!value) return '-';
+  return value.length > SEGMENT_LIMIT ? `h${digest(value)}` : value;
+};
+
 export const filterSegmentOf = (filters = null) => {
   if (!filters || typeof filters !== 'object') return '-';
   const parts = Object.entries(filters)
     .filter(([, value]) => value !== undefined && value !== null && String(value) !== '')
-    .map(([key, value]) => `${key}=${String(value)}`)
+    .map(([key, value]) => `${readable(key)}-${readable(value)}`)
     .sort();
-  return parts.length ? parts.join('|') : '-';
+  return segment(parts.join('_'));
 };
 
-export const analyticsCacheKey = (companyId, month = '', suffix = 'dashboard', period = '', filters = null) =>
+/**
+ * §25 — WHOM the answer was built for is part of the answer.
+ *
+ * A manager scoped to twelve employees and a company admin ask for the same
+ * month and get different numbers; both must not share a cache entry, or
+ * whichever called first serves the other. The ids themselves are hashed —
+ * they are only needed to tell one scope from another.
+ */
+export const scopeSegmentOf = (allowedEmployeeIds = null) => {
+  if (!Array.isArray(allowedEmployeeIds) || !allowedEmployeeIds.length) return '-';
+  return `s${digest(allowedEmployeeIds.map(String).sort().join(','))}`;
+};
+
+export const analyticsCacheKey = (
+  companyId,
+  month = '',
+  suffix = 'dashboard',
+  period = '',
+  filters = null,
+  scope = null,
+) =>
   buildTenantCacheKey({
     companyId,
     namespace: ANALYTICS_CACHE_NAMESPACE,
     version: ANALYTICS_CACHE_VERSION,
-    segments: [month || 'all', suffix, period || '-', filterSegmentOf(filters)],
+    segments: [month || 'all', suffix, period || '-', filterSegmentOf(filters), scopeSegmentOf(scope)],
   });
 
 /**
