@@ -43,6 +43,14 @@ router.patch("/auth/2fa", auth.setTwoFactor);
 router.get("/dashboard", permit("dashboard:read"), dashboard.dashboard);
 router.get("/dashboard/charts", permit("dashboard:read"), dashboard.charts);
 
+// 29.13 §2 — platform-wide payroll adoption and processing metrics.
+// Counts only: no customer payroll figure and no employee name.
+router.get(
+  "/dashboard/payroll-analytics",
+  permit("dashboard:read"),
+  dashboard.payrollAnalytics,
+);
+
 router.get(
   "/search",
   permit(

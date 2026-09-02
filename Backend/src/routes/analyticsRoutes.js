@@ -29,22 +29,28 @@ import {
   deleteSchedule,
   downloadFile,
   exportReport,
+  getAnalyticsSettings,
   getDashboard,
+  getEmployeeHistory,
+  getMySalaryHistory,
   getReport,
   listFiles,
   listSchedules,
   refreshDashboard,
   requestExport,
+  updateSalaryBands,
   updateSchedule,
 } from '../controllers/analyticsController.js';
 
 import {
   analyticsDashboardValidator,
+  analyticsEmployeeIdParamValidator,
   analyticsExportBodyValidator,
   analyticsExportQueryValidator,
   analyticsFileIdParamValidator,
   analyticsFilesQueryValidator,
   analyticsReportQueryValidator,
+  analyticsSalaryBandsValidator,
   analyticsScheduleIdParamValidator,
   createScheduleValidator,
   refreshDashboardValidator,
@@ -86,6 +92,26 @@ const scheduleAccess = [
   analyticsScope,
 ];
 
+// §8 — editing the salary bands is payroll configuration, not a report read:
+// it changes what every future distribution report says. It rides the same
+// verb as scheduling, which is already "configure analytics", rather than
+// minting a new permission for one field.
+const configureAccess = [
+  checkWriteAccess,
+  requirePermission('PAYROLL_ANALYTICS_SCHEDULE'),
+  requireFeature('payroll'),
+  analyticsScope,
+];
+
+// §23 — an employee's salary history is the READ of a person's salary, which
+// EMPLOYEE_SALARY_READ already covers; no new permission, no v26 → v27
+// migration. The analytics verb is the other way in.
+const salaryHistoryAccess = [
+  requireAnyPermission(['PAYROLL_REPORT_READ', 'EMPLOYEE_SALARY_READ']),
+  requireFeature('payroll'),
+  analyticsScope,
+];
+
 // ── §5 / §6 — the executive dashboard ──────────────────────────────────────
 router.get('/dashboard', ...readAccess, analyticsDashboardValidator, getDashboard);
 
@@ -95,6 +121,17 @@ router.post('/refresh', ...refreshAccess, refreshDashboardValidator, refreshDash
 // ── §19 — generated files ──────────────────────────────────────────────────
 router.get('/files', ...readAccess, analyticsFilesQueryValidator, listFiles);
 router.get('/files/:fileId', ...readAccess, analyticsFileIdParamValidator, downloadFile);
+
+// ── §23 — salary history ───────────────────────────────────────────────────
+// `/mine` is declared before `/:employeeId` so "mine" can never be read as
+// an id. It is gated by nothing but being logged in: an employee reading
+// their own history is the one thing §2 allows them here.
+router.get('/employee-history/mine', requireFeature('payroll'), getMySalaryHistory);
+router.get('/employee-history/:employeeId', ...salaryHistoryAccess, analyticsEmployeeIdParamValidator, getEmployeeHistory);
+
+// ── §8 — the company's own salary bands ────────────────────────────────────
+router.get('/settings', ...readAccess, getAnalyticsSettings);
+router.patch('/settings/bands', ...configureAccess, analyticsSalaryBandsValidator, updateSalaryBands);
 
 // ── §20 — scheduled reports ────────────────────────────────────────────────
 router.get('/schedules', ...scheduleAccess, listSchedules);

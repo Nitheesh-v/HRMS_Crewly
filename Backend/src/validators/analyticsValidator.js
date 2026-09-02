@@ -22,6 +22,7 @@ import mongoose from 'mongoose';
 import ApiError from '../utils/ApiError.js';
 
 import {
+  PERIOD_PRESETS,
   REPORT_KEYS,
   SCHEDULE_FREQUENCIES,
   TREND_PERIODS,
@@ -43,6 +44,18 @@ const FY = /^\d{4}-\d{2}$/;
 const monthRule = (field) =>
   field.optional({ nullable: true }).matches(MONTH).withMessage('month must look like 2026-08');
 
+// §4 — a period preset, and the two ends of a custom range. The range is
+// validated as two months and interpreted as a window by the rules; a
+// backwards range resolves to nothing rather than throwing.
+const periodRules = (source) => [
+  source('preset')
+    .optional({ nullable: true, checkFalsy: true })
+    .isIn(PERIOD_PRESETS)
+    .withMessage(`preset must be one of ${PERIOD_PRESETS.join(', ')}`),
+  monthRule(source('fromMonth')),
+  monthRule(source('toMonth')),
+];
+
 const objectIdRule = (field, label) => field.custom(isObjectId).withMessage(`${label} is invalid`);
 
 const optionalObjectIdRule = (field, label) =>
@@ -52,6 +65,16 @@ const optionalObjectIdRule = (field, label) =>
 
 const reportQueryRules = [
   monthRule(query('month')),
+  ...periodRules(query),
+  query('employmentStatus')
+    .optional({ nullable: true, checkFalsy: true })
+    .isIn(['ACTIVE', 'INACTIVE'])
+    .withMessage('employmentStatus must be ACTIVE or INACTIVE'),
+  optionalObjectIdRule(query('structureId'), 'structureId'),
+  // §22 — paging and the register's search box.
+  query('page').optional({ nullable: true, checkFalsy: true }).isInt({ min: 1, max: 100000 }).withMessage('page must be a positive number'),
+  query('limit').optional({ nullable: true, checkFalsy: true }).isInt({ min: 0, max: 500 }).withMessage('limit must be between 0 and 500'),
+  query('search').optional({ nullable: true }).isString().trim().isLength({ max: 80 }).withMessage('search is too long'),
   query('period')
     .optional({ nullable: true })
     .isIn(TREND_PERIODS)
@@ -71,7 +94,22 @@ const reportQueryRules = [
 
 // ── routes ─────────────────────────────────────────────────────────────────
 
-export const analyticsDashboardValidator = [monthRule(query('month')), validate];
+export const analyticsDashboardValidator = [monthRule(query('month')), ...periodRules(query), validate];
+
+// §23 — one employee's salary history. The id is a route parameter, and the
+// scope check that decides whether the actor may see that person lives in the
+// service, where it cannot be bypassed by a different route.
+export const analyticsEmployeeIdParamValidator = [objectIdRule(param('employeeId'), 'employeeId'), validate];
+
+// §8 — the company's own salary bands.
+export const analyticsSalaryBandsValidator = [
+  body('salaryBands').isArray({ min: 2, max: 12 }).withMessage('salaryBands must be a list of at least two bands'),
+  body('salaryBands.*.label').isString().trim().isLength({ min: 1, max: 60 }).withMessage('every band needs a name'),
+  body('salaryBands.*.min').isNumeric().withMessage('every band needs a numeric lower limit'),
+  // The top band's ceiling may be left open; every other band needs one.
+  body('salaryBands.*.max').optional({ nullable: true }).isNumeric().withMessage('an upper limit must be a number'),
+  validate,
+];
 
 export const analyticsReportKeyValidator = [
   param('reportKey')
@@ -105,6 +143,7 @@ export const analyticsExportBodyValidator = [
   body('format').optional({ nullable: true }).isIn(['CSV', 'XLSX', 'PDF']).withMessage('format must be CSV, XLSX or PDF'),
   monthRule(body('month')),
   body('period').optional({ nullable: true }).isIn(TREND_PERIODS).withMessage(`period must be one of ${TREND_PERIODS.join(', ')}`),
+  ...periodRules(body),
   body('financialYear').optional({ nullable: true, checkFalsy: true }).matches(FY).withMessage('financialYear must look like 2026-27'),
   optionalObjectIdRule(body('departmentId'), 'departmentId'),
   body('designation').optional({ nullable: true }).isString().trim().isLength({ max: 80 }),
@@ -154,6 +193,8 @@ export const refreshDashboardValidator = [monthRule(body('month')), validate];
 
 export default {
   analyticsDashboardValidator,
+  analyticsEmployeeIdParamValidator,
+  analyticsSalaryBandsValidator,
   analyticsReportKeyValidator,
   analyticsReportQueryValidator,
   analyticsExportQueryValidator,

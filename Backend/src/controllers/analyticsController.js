@@ -29,11 +29,16 @@ const financialAccess = async (req) => {
 // ── §5 / §6 — the executive dashboard ──────────────────────────────────────
 
 export const getDashboard = asyncHandler(async (req, res) => {
-  const { month = '' } = req.query;
+  // §4 — a preset, or a custom range, or a single month. All three are
+  // accepted; the rules decide which window they name.
+  const { month = '', preset = '', fromMonth = '', toMonth = '' } = req.query;
 
   const data = await analyticsService.getDashboard({
     companyId: req.companyId,
     month,
+    preset,
+    fromMonth,
+    toMonth,
     allowedEmployeeIds: scopeOf(req),
   });
 
@@ -47,11 +52,19 @@ export const getReport = asyncHandler(async (req, res) => {
   const {
     month = '',
     period = 'MONTHLY',
+    preset = '',
+    fromMonth = '',
+    toMonth = '',
     financialYear = '',
     departmentId = '',
     designation = '',
     employeeId = '',
     status = '',
+    employmentStatus = '',
+    structureId = '',
+    page = 0,
+    limit = 0,
+    search = '',
   } = req.query;
 
   const data = await analyticsService.getReport({
@@ -59,13 +72,23 @@ export const getReport = asyncHandler(async (req, res) => {
     reportKey,
     month,
     period,
+    preset,
+    fromMonth,
+    toMonth,
     financialYear,
     departmentId,
     designation,
     employeeId,
     status,
+    employmentStatus,
+    structureId,
+    page,
+    limit,
+    search,
     allowedEmployeeIds: scopeOf(req),
     canSeeFinancial: await financialAccess(req),
+    actor: req.user,
+    req,
   });
 
   return ApiResponse.success(res, { message: 'Payroll report', data });
@@ -79,6 +102,9 @@ export const exportReport = asyncHandler(async (req, res) => {
     format = 'CSV',
     month = '',
     period = 'MONTHLY',
+    preset = '',
+    fromMonth = '',
+    toMonth = '',
     financialYear = '',
     departmentId = '',
     designation = '',
@@ -90,7 +116,7 @@ export const exportReport = asyncHandler(async (req, res) => {
     companyId: req.companyId,
     reportKey,
     format: String(format).toUpperCase(),
-    filters: { month, period, financialYear, departmentId, designation, employeeId, status },
+    filters: { month, period, preset, fromMonth, toMonth, financialYear, departmentId, designation, employeeId, status },
     actor: req.user,
     req,
     allowedEmployeeIds: scopeOf(req),
@@ -116,6 +142,9 @@ export const requestExport = asyncHandler(async (req, res) => {
     format = 'XLSX',
     month = '',
     period = 'MONTHLY',
+    preset = '',
+    fromMonth = '',
+    toMonth = '',
     financialYear = '',
     departmentId = '',
     designation = '',
@@ -127,7 +156,7 @@ export const requestExport = asyncHandler(async (req, res) => {
     companyId: req.companyId,
     reportKey,
     format: String(format).toUpperCase(),
-    filters: { month, period, financialYear, departmentId, designation, employeeId, status },
+    filters: { month, period, preset, fromMonth, toMonth, financialYear, departmentId, designation, employeeId, status },
     actor: req.user,
     req,
     allowedEmployeeIds: scopeOf(req),
@@ -162,6 +191,54 @@ export const downloadFile = asyncHandler(async (req, res) => {
   res.setHeader('Content-Type', contentType);
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   return res.status(200).send(content);
+});
+
+// ── §23 — one employee's salary history ────────────────────────────────────
+
+export const getEmployeeHistory = asyncHandler(async (req, res) => {
+  const { employeeId } = req.params;
+  const data = await analyticsService.getEmployeeHistory({
+    companyId: req.companyId,
+    employeeId,
+    allowedEmployeeIds: scopeOf(req),
+    actor: req.user,
+    req,
+  });
+
+  return ApiResponse.success(res, { message: 'Employee salary history', data });
+});
+
+// §2 / §23 — an employee sees their OWN history and nobody else's. The scope
+// is the actor's own id, so there is no way to widen it from the browser.
+export const getMySalaryHistory = asyncHandler(async (req, res) => {
+  const data = await analyticsService.getEmployeeHistory({
+    companyId: req.companyId,
+    employeeId: String(req.user?._id || ''),
+    allowedEmployeeIds: [String(req.user?._id || '')],
+    actor: req.user,
+    req,
+  });
+
+  return ApiResponse.success(res, { message: 'Your salary history', data });
+});
+
+// ── §8 — the company's own salary bands ────────────────────────────────────
+
+export const getAnalyticsSettings = asyncHandler(async (req, res) => {
+  const data = await analyticsService.getAnalyticsSettings({ companyId: req.companyId });
+  return ApiResponse.success(res, { message: 'Analytics settings', data });
+});
+
+export const updateSalaryBands = asyncHandler(async (req, res) => {
+  const { salaryBands = [] } = req.body || {};
+  const data = await analyticsService.updateSalaryBands({
+    companyId: req.companyId,
+    salaryBands,
+    actor: req.user,
+    req,
+  });
+
+  return ApiResponse.success(res, { message: 'Salary bands saved', data });
 });
 
 // ── §20 — scheduled reports ────────────────────────────────────────────────
@@ -224,6 +301,10 @@ export const refreshDashboard = asyncHandler(async (req, res) => {
 export default {
   getDashboard,
   getReport,
+  getEmployeeHistory,
+  getMySalaryHistory,
+  getAnalyticsSettings,
+  updateSalaryBands,
   exportReport,
   requestExport,
   listFiles,

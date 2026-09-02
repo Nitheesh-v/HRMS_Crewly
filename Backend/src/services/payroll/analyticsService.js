@@ -1740,6 +1740,8 @@ import Department from '../../models/Department.js';
 import Company from '../../models/Company.js';
 import ScheduledReport from '../../models/ScheduledReport.js';
 import AnalyticsReportFile from '../../models/AnalyticsReportFile.js';
+import PayrollAnalyticsSetting from '../../models/PayrollAnalyticsSetting.js';
+import EmployeePayrollProfile from '../../models/EmployeePayrollProfile.js';
 
 import { recordAudit } from '../../utils/securityauditService.js';
 import { hasPermission } from '../../utils/permissionService.js';
@@ -1785,6 +1787,8 @@ const defaultService = makeAnalyticsService({
   DepartmentModel: Department,
   ScheduledReportModel: ScheduledReport,
   AnalyticsReportFileModel: AnalyticsReportFile,
+  AnalyticsSettingModel: PayrollAnalyticsSetting,
+  EmployeePayrollProfileModel: EmployeePayrollProfile,
   CompanyModel: Company,
 
   cache: {

@@ -403,6 +403,27 @@ const startWorker = async () => {
     logger.warn(`[Worker] Scheduled report sweep skipped: ${error?.message || error}`);
   }
 
+  // --- 29.13 §38 expiry sweep --------------------------------------------
+  // "Do not keep temporary sensitive payroll files forever." A generated
+  // file is born with a deadline; when it passes, the bytes go. The startup
+  // sweep catches files that expired while no worker was running (the same
+  // reason §20's schedules are re-armed here), and the hourly timer keeps up
+  // with files generated while the worker is up. The timer is unref'd so a
+  // housekeeping interval can never hold the process open.
+  const runFileSweep = async () => {
+    try {
+      const { default: analyticsService } = await import('../services/payroll/analyticsService.js');
+      const expired = await analyticsService.expireFiles({});
+      if (expired) logger.info(`[Worker] Expired payroll report files (count=${expired})`);
+    } catch (error) {
+      logger.warn(`[Worker] Report expiry sweep skipped: ${safeErrorText(error)}`);
+    }
+  };
+
+  await runFileSweep();
+  const fileSweepTimer = setInterval(() => void runFileSweep(), 60 * 60 * 1000);
+  fileSweepTimer.unref?.();
+
   // --- 28.8 ops heartbeat ------------------------------------------
   // One ephemeral Redis key tells the Super Admin "Background
   // Operations" page this worker process is alive (ONLINE /

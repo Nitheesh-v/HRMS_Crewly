@@ -9,6 +9,7 @@ import AdminSession from "../models/AdminSession.js";
 import SupportTicket from "../models/SupportTicket.js";
 import Document from "../models/Document.js";
 import { ensureDefaultPlans } from "../utils/platformPlans.js";
+import platformAnalyticsService from "../services/payroll/platformAnalyticsService.js";
 
 const ok = (res, status, data, message) =>
   res.status(status).json({
@@ -794,6 +795,28 @@ export const charts = async (req, res) => {
       },
       "Platform charts",
     );
+  } catch (error) {
+    return fail(res, 500, error.message);
+  }
+};
+
+// ============================================================
+// GET /api/super-admin/dashboard/payroll-analytics
+//
+// 29.13 §2 — Crewly's own payroll numbers: how much of the platform uses
+// payroll, how much is being processed, and how the jobs behind it are
+// doing.
+//
+// Deliberately NOT here: any rupee of any customer's payroll, and any
+// employee name. The service counts; it never totals. A super administrator
+// needs to know the module is used and healthy — not what anyone is paid.
+// ============================================================
+
+export const payrollAnalytics = async (req, res) => {
+  try {
+    const data = await platformAnalyticsService.getPlatformMetrics({});
+
+    return ok(res, 200, data, "Payroll platform analytics");
   } catch (error) {
     return fail(res, 500, error.message);
   }
