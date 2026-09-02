@@ -805,10 +805,17 @@ test('§17 the register carries the payment date, and a retried payment does not
 
   const table = registerRows({ rows });
   assert.deepEqual(table[0].slice(0, 3), ['CRE-001', 'Meera Iyer', 'Engineering']);
-  // Column 8 is the payment date, column 9 the status (§17's column list).
-  assert.equal(REGISTER_HEADERS.length, 10);
-  assert.equal(table[0][8], '2026-09-05');
-  assert.equal(table[0][9], 'PAID');
+  // §22 — the register's columns are addressed by NAME, never by position:
+  // adding a column once silently shifted the payment date into the net-pay
+  // column of every exported spreadsheet.
+  const column = (label) => table[0][REGISTER_HEADERS.indexOf(label)];
+  assert.equal(REGISTER_HEADERS.length, 13);
+  assert.equal(column('Payroll Period'), MONTH);
+  assert.equal(column('Gross'), 62000);
+  assert.equal(column('Net Salary'), 54000);
+  assert.equal(column('Employer Cost'), 7500);
+  assert.equal(column('Payment Status'), 'PAID');
+  assert.equal(column('Payroll Status'), 'CALCULATED');
 });
 
 // ── §18 — filters ──────────────────────────────────────────────────────────

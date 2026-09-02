@@ -26,6 +26,8 @@ import {
   monthLabel,
   summariseStatutoryRows,
 } from './statutoryRules.js';
+import { statutoryKindOf } from './payrollEngineRules.js';
+import { ENTRY_TYPE_LABELS } from './monthlyInputRules.js';
 
 // ── §5 / §6 / §26 — the report catalogue ───────────────────────────────────
 
@@ -42,6 +44,13 @@ export const REPORT_KEYS = [
   'STATUTORY',
   'CTC',
   'REGISTER',
+  // ── 29.13 ────────────────────────────────────────────────────────────────
+  'EARNINGS',
+  'DEDUCTIONS',
+  'EMPLOYER',
+  'REIMBURSEMENT',
+  'FNF',
+  'VARIANCE',
 ];
 
 export const REPORT_LABELS = Object.freeze({
@@ -57,6 +66,13 @@ export const REPORT_LABELS = Object.freeze({
   STATUTORY: 'Statutory Liability',
   CTC: 'Cost to Company',
   REGISTER: 'Payroll Register',
+  // ── 29.13 ──
+  EARNINGS: 'Earnings Analytics',
+  DEDUCTIONS: 'Deduction Analytics',
+  EMPLOYER: 'Employer Contribution',
+  REIMBURSEMENT: 'Reimbursement Analytics',
+  FNF: 'F&F Settlements',
+  VARIANCE: 'Payroll Variance',
 });
 
 // §16 — the CTC report is the one the brief reserves for Finance.
@@ -64,21 +80,64 @@ export const FINANCE_ONLY_REPORTS = Object.freeze(['CTC']);
 
 export const isReportKey = (value) => REPORT_KEYS.includes(String(value || '').toUpperCase());
 
-// ── §10 — salary bands are DATA, never a switch in a component ─────────────
+// ── §10 / §8 — salary bands are DATA, never a switch in a component ─────────
 
 export const SALARY_BANDS = Object.freeze([
   { key: 'BAND_0_25K', label: 'Up to Rs 25,000', min: 0, max: 25000 },
   { key: 'BAND_25_50K', label: 'Rs 25,001 - 50,000', min: 25000, max: 50000 },
   { key: 'BAND_50_75K', label: 'Rs 50,001 - 75,000', min: 50000, max: 75000 },
   { key: 'BAND_75_1L', label: 'Rs 75,001 - 1,00,000', min: 75000, max: 100000 },
-  { key: 'BAND_ABOVE_1L', label: 'Above Rs 1,00,000', min: 100000, max: Number.POSITIVE_INFINITY },
+  // `max: null` means open-ended. Infinity would be the obvious value, but it
+  // survives neither JSON nor a round-trip back from the browser, and the top
+  // band is the one a company is most likely to edit.
+  { key: 'BAND_ABOVE_1L', label: 'Above Rs 1,00,000', min: 100000, max: null },
 ]);
 
-export const bandOf = (amount = 0) => {
+/**
+ * §8 — a company may define its own bands ("Up to 30k", "30-60k", …).
+ *
+ * Stored per company, so the normaliser has to be defensive about what comes
+ * back out of the database: bands are sorted, overlapped or inverted ranges
+ * are dropped, and the LAST band is forced open-ended so a salary can never
+ * fall off the end of the distribution. Anything unreadable falls back to the
+ * default five rather than rendering an empty chart.
+ */
+export const normaliseSalaryBands = (bands = null) => {
+  const list = Array.isArray(bands) ? bands : [];
+  const cleaned = list
+    .map((band, index) => ({
+      key: String(band?.key || `BAND_${index}`).trim() || `BAND_${index}`,
+      label: String(band?.label || '').trim(),
+      min: Number.isFinite(Number(band?.min)) ? Math.max(0, Number(band.min)) : null,
+      max: Number.isFinite(Number(band?.max)) ? Number(band.max) : null,
+    }))
+    .filter((band) => band.label && band.min !== null && band.max !== null && band.max > band.min)
+    .sort((a, b) => a.min - b.min);
+
+  if (cleaned.length < 2) return [...SALARY_BANDS];
+
+  // Drop a band that starts before the previous one ends: overlapping bands
+  // would count one employee twice, which is worse than dropping a band.
+  const nonOverlapping = cleaned.filter((band, index) => index === 0 || band.min >= cleaned[index - 1].max);
+  const usable = nonOverlapping.length >= 2 ? nonOverlapping : cleaned;
+
+  return usable.map((band, index) => ({
+    key: band.key,
+    label: band.label,
+    min: band.min,
+    // The top band has no ceiling: a 12-lakh salary must still be counted.
+    max: index === usable.length - 1 ? null : band.max,
+  }));
+};
+
+const ceilingOf = (band = {}) => (band.max === null || band.max === undefined ? Number.POSITIVE_INFINITY : Number(band.max));
+
+export const bandOf = (amount = 0, bands = null) => {
   const value = Number(amount) || 0;
+  const list = Array.isArray(bands) && bands.length ? bands : SALARY_BANDS;
   // The last band is open-ended, so `find` would miss a negative or an
   // enormous figure: fall back to the last band rather than dropping a row.
-  return SALARY_BANDS.find((band) => value >= band.min && value < band.max) || SALARY_BANDS[SALARY_BANDS.length - 1];
+  return list.find((band) => value >= num(band.min) && value < ceilingOf(band)) || list[list.length - 1];
 };
 
 // ── §11 — trend granularity ────────────────────────────────────────────────
@@ -114,6 +173,104 @@ export const periodLabelOf = (key = '', period = 'MONTHLY') => {
     return `Q${String(quarter || '').replace('Q', '')} ${year}`;
   }
   return monthLabel(value);
+};
+
+// ── §4 — payroll period presets ────────────────────────────────────────────
+
+const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+export const PERIOD_PRESETS = [
+  'CURRENT_MONTH',
+  'PREVIOUS_MONTH',
+  'LAST_3_MONTHS',
+  'LAST_6_MONTHS',
+  'LAST_12_MONTHS',
+  'CURRENT_FY',
+  'PREVIOUS_FY',
+  'CUSTOM',
+];
+
+export const PERIOD_PRESET_LABELS = Object.freeze({
+  CURRENT_MONTH: 'Current month',
+  PREVIOUS_MONTH: 'Previous month',
+  LAST_3_MONTHS: 'Last 3 months',
+  LAST_6_MONTHS: 'Last 6 months',
+  LAST_12_MONTHS: 'Last 12 months',
+  CURRENT_FY: 'Current financial year',
+  PREVIOUS_FY: 'Previous financial year',
+  CUSTOM: 'Custom range',
+});
+
+export const isPeriodPreset = (value) => PERIOD_PRESETS.includes(String(value || '').toUpperCase());
+
+export const shiftMonthOf = (month = '', delta = 0) => {
+  if (!MONTH_RE.test(String(month || ''))) return '';
+  const [year, part] = String(month).split('-').map(Number);
+  const index = year * 12 + (part - 1) + Number(delta || 0);
+  return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}`;
+};
+
+/** Inclusive list of months from `from` to `to`, oldest first. */
+export const monthRange = (from = '', to = '') => {
+  if (!MONTH_RE.test(String(from || '')) || !MONTH_RE.test(String(to || ''))) return [];
+  if (String(to) < String(from)) return [];
+  const span =
+    (Number(String(to).slice(0, 4)) * 12 + Number(String(to).slice(5))) -
+    (Number(String(from).slice(0, 4)) * 12 + Number(String(from).slice(5)));
+  const months = [];
+  for (let offset = 0; offset <= span; offset += 1) months.push(shiftMonthOf(from, offset));
+  return months;
+};
+
+/**
+ * §4 — turns a preset into the months it covers.
+ *
+ * The window is resolved here, in the rules, because every report, the
+ * dashboard and every export have to agree on what "last quarter" means.
+ * An unknown preset falls back to the current month rather than to the whole
+ * database.
+ */
+export const resolvePeriod = ({
+  preset = 'CURRENT_MONTH',
+  month = '',
+  fromMonth = '',
+  toMonth = '',
+  now = null,
+} = {}) => {
+  const key = isPeriodPreset(preset) ? String(preset).toUpperCase() : 'CURRENT_MONTH';
+  const today = now instanceof Date && !Number.isNaN(now.getTime()) ? now : new Date();
+  const anchor = MONTH_RE.test(String(month || '')) ? String(month) : `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, '0')}`;
+
+  const build = (months, from, to) => ({
+    preset: key,
+    label: key === 'CUSTOM'
+      ? `${monthLabel(from)} to ${monthLabel(to)}`
+      : PERIOD_PRESET_LABELS[key],
+    months,
+    fromMonth: from,
+    toMonth: to,
+  });
+
+  if (key === 'PREVIOUS_MONTH') {
+    const target = shiftMonthOf(anchor, -1);
+    return build([target], target, target);
+  }
+  if (key === 'LAST_3_MONTHS') return build(recentMonths(anchor, 3), shiftMonthOf(anchor, -2), anchor);
+  if (key === 'LAST_6_MONTHS') return build(recentMonths(anchor, 6), shiftMonthOf(anchor, -5), anchor);
+  if (key === 'LAST_12_MONTHS') return build(recentMonths(anchor, 12), shiftMonthOf(anchor, -11), anchor);
+  if (key === 'CURRENT_FY') {
+    const months = financialYearMonths(anchor, 4);
+    return build(months, months[0] || '', months[months.length - 1] || '');
+  }
+  if (key === 'PREVIOUS_FY') {
+    const months = financialYearMonths(shiftMonthOf(anchor, -12), 4);
+    return build(months, months[0] || '', months[months.length - 1] || '');
+  }
+  if (key === 'CUSTOM') {
+    const months = monthRange(fromMonth, toMonth);
+    return build(months, months[0] || '', months[months.length - 1] || '');
+  }
+  return build([anchor], anchor, anchor);
 };
 
 // ── §20 — schedule frequencies ─────────────────────────────────────────────
@@ -258,12 +415,43 @@ export const buildAnalyticsRow = ({
 
     // §17 — the register needs to know whether the money actually moved.
     paymentStatus: payment?.status || 'NOT_IN_BATCH',
+    // §22 — and whether the payroll itself calculated. The reader only ever
+    // returns CALCULATED snapshots, so this is the reader's contract showing
+    // through, not a per-employee state.
+    payrollStatus: result.status || '',
     paidAt: payment?.paidAt || null,
     paymentReference: payment?.paymentReference || '',
 
     hasStatutory: Boolean(statutory),
+
+    // §11 / §12 / §18 — the line-level breakdown the component reports group
+    // by. The codes come from 29.2 (structure components), 29.5 (variable pay
+    // and reimbursements) and 29.6 (statutory), so a component a company adds
+    // next year shows up in these reports without this file changing.
+    lines: {
+      earnings: normaliseLines(result.earnings),
+      variableEarnings: normaliseLines(result.variableEarnings),
+      reimbursements: normaliseLines(result.reimbursements),
+      deductions: normaliseLines(result.deductions),
+      employerContributions: normaliseLines(result.employerContributions),
+    },
   };
 };
+
+/**
+ * One payroll line, normalised. The three producers disagree about the field
+ * name for the code — 29.6 writes `code`, 29.5 writes `type`, a structure
+ * preview writes `componentCode` — so this is the one place that reconciles
+ * them.
+ */
+const normaliseLines = (lines = []) =>
+  (Array.isArray(lines) ? lines : []).map((line) => ({
+    code: String(line?.code || line?.type || line?.componentCode || '').trim().toUpperCase() || 'OTHER',
+    name: line?.name || line?.label || '',
+    amount: num(line?.amount),
+    source: line?.source || '',
+    claimStatus: line?.claimStatus || '',
+  }));
 
 // §12 — which variable-earning entry types are bonus and incentive pay.
 //
@@ -430,8 +618,9 @@ export const designationRows = ({ rows = [] } = {}) =>
 
 // ── §10 — salary distribution ──────────────────────────────────────────────
 
-export const salaryBandRows = ({ rows = [] } = {}) => {
-  const seeded = SALARY_BANDS.map((band) => ({
+export const salaryBandRows = ({ rows = [], bands = null } = {}) => {
+  const list = Array.isArray(bands) && bands.length ? bands : SALARY_BANDS;
+  const seeded = list.map((band) => ({
     key: band.key,
     label: band.label,
     employees: 0,
@@ -441,7 +630,7 @@ export const salaryBandRows = ({ rows = [] } = {}) => {
   const index = new Map(seeded.map((row) => [row.key, row]));
 
   (Array.isArray(rows) ? rows : []).forEach((row) => {
-    const band = bandOf(row.gross);
+    const band = bandOf(row.gross, list);
     const target = index.get(band.key);
     if (!target) return;
     target.employees += 1;
@@ -754,6 +943,566 @@ export const ctcRows = ({ rows = [] } = {}) => {
   };
 };
 
+// ══ 29.13 — earnings, deductions, employer, reimbursements, F&F, variance ════
+
+const distinctEmployees = (rows = []) =>
+  new Set((Array.isArray(rows) ? rows : []).map((row) => String(row.employeeId || '')).filter(Boolean)).size;
+
+// ── §11 — earnings by component ────────────────────────────────────────────
+
+const EARNINGS_CATEGORY_LABELS = Object.freeze({
+  FIXED: 'Fixed earnings',
+  VARIABLE: 'Variable earnings',
+  OVERTIME: 'Overtime',
+  REIMBURSEMENT: 'Reimbursements',
+});
+
+/**
+ * §11 — earnings grouped by the component that produced them.
+ *
+ * The codes are whatever 29.2 / 29.5 / 29.6 stored, so a company that adds a
+ * component next year sees it here without this file changing — the brief's
+ * "do not hard-code only Basic/HRA/etc" is a property of reading the lines,
+ * not of a longer list of names.
+ */
+export const earningsRows = ({ rows = [] } = {}) => {
+  const list = Array.isArray(rows) ? rows : [];
+  const buckets = new Map();
+
+  const add = ({ key, label, category, kind, amount, employeeId }) => {
+    if (!num(amount)) return;
+    const bucket = buckets.get(key) || {
+      key, label, category, kind, employees: new Set(), amount: 0,
+    };
+    bucket.amount = money(bucket.amount + num(amount));
+    if (employeeId) bucket.employees.add(String(employeeId));
+    buckets.set(key, bucket);
+  };
+
+  list.forEach((row) => {
+    (row.lines?.earnings || []).forEach((line) =>
+      add({
+        key: `FIXED:${line.code}`,
+        label: line.name || humanise(line.code),
+        category: 'FIXED',
+        kind: line.code,
+        amount: line.amount,
+        employeeId: row.employeeId,
+      }));
+
+    (row.lines?.variableEarnings || []).forEach((line) => {
+      // §12 — the same vocabulary the bonus report uses, so the two reports
+      // cannot disagree about what counts as a bonus.
+      const kind = line.code === 'INCENTIVE'
+        ? 'INCENTIVE'
+        : line.code === 'COMMISSION_SALES'
+          ? 'COMMISSION'
+          : isBonusEntry(line.code)
+            ? 'BONUS'
+            : 'OTHER_VARIABLE';
+      add({
+        key: `VARIABLE:${line.code}`,
+        label: ENTRY_TYPE_LABELS[line.code] || line.name || humanise(line.code),
+        category: 'VARIABLE',
+        kind,
+        amount: line.amount,
+        employeeId: row.employeeId,
+      });
+    });
+
+    (row.lines?.reimbursements || []).forEach((line) =>
+      add({
+        key: `REIMBURSEMENT:${line.code}`,
+        label: ENTRY_TYPE_LABELS[line.code] || line.name || humanise(line.code),
+        category: 'REIMBURSEMENT',
+        kind: line.code,
+        amount: line.amount,
+        employeeId: row.employeeId,
+      }));
+
+    // Overtime is priced by the engine and stored as a total, not as a line,
+    // so it is reported as its own bucket rather than being left out.
+    add({
+      key: 'OVERTIME:OVERTIME',
+      label: 'Overtime',
+      category: 'OVERTIME',
+      kind: 'OVERTIME',
+      amount: row.overtime,
+      employeeId: row.employeeId,
+    });
+  });
+
+  const rowsOut = [...buckets.values()]
+    .map((bucket) => ({
+      key: bucket.key,
+      label: bucket.label,
+      category: bucket.category,
+      categoryLabel: EARNINGS_CATEGORY_LABELS[bucket.category] || bucket.category,
+      kind: bucket.kind,
+      employees: bucket.employees.size,
+      amount: bucket.amount,
+    }))
+    .sort((a, b) => num(b.amount) - num(a.amount));
+
+  const byCategory = (category) =>
+    money(rowsOut.filter((row) => row.category === category).reduce((total, row) => total + num(row.amount), 0));
+  const byKind = (kinds = []) =>
+    money(rowsOut.filter((row) => kinds.includes(row.kind)).reduce((total, row) => total + num(row.amount), 0));
+
+  const grossPayroll = money(list.reduce((total, row) => total + num(row.gross), 0));
+  const fixed = byCategory('FIXED');
+  const variable = byCategory('VARIABLE');
+  const overtime = byCategory('OVERTIME');
+  const reimbursements = byCategory('REIMBURSEMENT');
+
+  return {
+    rows: rowsOut,
+    totals: {
+      grossPayroll,
+      fixedEarnings: fixed,
+      variableEarnings: variable,
+      bonus: byKind(['BONUS']),
+      incentive: byKind(['INCENTIVE']),
+      commission: byKind(['COMMISSION']),
+      otherVariable: byKind(['OTHER_VARIABLE']),
+      overtime,
+      reimbursements,
+      total: money(fixed + variable + overtime + reimbursements),
+      // The buckets must add up to the earnings the company paid. If they do
+      // not, the report says so instead of printing a total nobody can tie.
+      reconciled: money(fixed + variable + overtime) === grossPayroll,
+    },
+  };
+};
+
+// ── §12 / §13 — deductions and employer contributions ──────────────────────
+
+const DEDUCTION_KIND_LABELS = Object.freeze({
+  PF: 'Provident Fund',
+  ESI: 'ESI',
+  PT: 'Professional Tax',
+  TDS: 'TDS',
+  LWF: 'Labour Welfare Fund',
+  LOP: 'Loss of Pay',
+  GRATUITY: 'Gratuity',
+  OTHER: 'Other Deductions',
+});
+
+/**
+ * 29.6 already owns the code→statutory-kind mapping (a component called
+ * "Provident Fund" and one called EPF are the same thing to the engine), so
+ * the deduction report reuses it rather than restating it here.
+ */
+const deductionKindOf = (line = {}) => {
+  if (String(line.code || '').toUpperCase() === 'LOP') return 'LOP';
+  return statutoryKindOf(line.code, line.name) || 'OTHER';
+};
+
+export const deductionRows = ({ rows = [] } = {}) => {
+  const list = Array.isArray(rows) ? rows : [];
+  const byKind = new Map();
+  const byCode = new Map();
+
+  const bump = (map, key, label, amount, employeeId, extra = {}) => {
+    const bucket = map.get(key) || { key, label, employees: new Set(), amount: 0, ...extra };
+    bucket.amount = money(bucket.amount + num(amount));
+    if (employeeId) bucket.employees.add(String(employeeId));
+    map.set(key, bucket);
+  };
+
+  list.forEach((row) => {
+    (row.lines?.deductions || []).forEach((line) => {
+      if (!num(line.amount)) return;
+      const kind = deductionKindOf(line);
+      bump(byKind, kind, DEDUCTION_KIND_LABELS[kind] || kind, line.amount, row.employeeId);
+      bump(byCode, line.code, line.name || humanise(line.code), line.amount, row.employeeId, { kind });
+    });
+  });
+
+  const grossPayroll = money(list.reduce((total, row) => total + num(row.gross), 0));
+  const totalDeductions = money([...byKind.values()].reduce((total, bucket) => total + num(bucket.amount), 0));
+  const percent = (amount) => (grossPayroll ? money((num(amount) / grossPayroll) * 100) : 0);
+
+  const finish = (bucket) => ({ ...bucket, employees: bucket.employees.size, percentOfGross: percent(bucket.amount) });
+
+  return {
+    rows: [...byKind.values()].map(finish).sort((a, b) => num(b.amount) - num(a.amount)),
+    components: [...byCode.values()].map(finish).sort((a, b) => num(b.amount) - num(a.amount)),
+    totals: {
+      totalDeductions,
+      // Reported from the snapshot's own total, not from the lines: a company
+      // that stores a deduction without a line would otherwise be understated.
+      snapshotTotal: money(list.reduce((total, row) => total + num(row.totalDeductions), 0)),
+      statutoryTotal: money(
+        [...byKind.entries()]
+          .filter(([key]) => ['PF', 'ESI', 'PT', 'TDS', 'LWF'].includes(key))
+          .reduce((total, [, bucket]) => total + num(bucket.amount), 0),
+      ),
+      lopTotal: num(byKind.get('LOP')?.amount || 0),
+      otherTotal: num(byKind.get('OTHER')?.amount || 0),
+      grossPayroll,
+      percentOfGross: percent(totalDeductions),
+    },
+  };
+};
+
+export const employerContributionRows = ({ rows = [] } = {}) => {
+  const list = Array.isArray(rows) ? rows : [];
+  const buckets = new Map();
+
+  list.forEach((row) => {
+    (row.lines?.employerContributions || []).forEach((line) => {
+      if (!num(line.amount)) return;
+      const kind = statutoryKindOf(line.code, line.name) || 'OTHER';
+      const key = kind === 'GRATUITY' ? 'GRATUITY' : kind;
+      const bucket = buckets.get(key) || {
+        key,
+        label: key === 'OTHER' ? 'Other Employer Contributions' : DEDUCTION_KIND_LABELS[key] || key,
+        employees: new Set(),
+        amount: 0,
+      };
+      bucket.amount = money(bucket.amount + num(line.amount));
+      bucket.employees.add(String(row.employeeId));
+      buckets.set(key, bucket);
+    });
+  });
+
+  const total = money([...buckets.values()].reduce((sum, bucket) => sum + num(bucket.amount), 0));
+  const snapshotTotal = money(list.reduce((sum, row) => sum + num(row.employerCost), 0));
+
+  return {
+    rows: [...buckets.values()]
+      .map((bucket) => ({ ...bucket, employees: bucket.employees.size }))
+      .sort((a, b) => num(b.amount) - num(a.amount)),
+    total,
+    // The lines and the engine's own total must agree. When a company's
+    // structure contributes something without a line, the difference is shown
+    // rather than hidden inside "other".
+    snapshotTotal,
+    unclassified: money(snapshotTotal - total),
+    byDepartment: groupRows(
+      list,
+      (row) => row.department || 'Unassigned',
+      (key) => ({ department: key, employees: 0, employerCost: 0 }),
+      (acc, row) => ({
+        department: acc.department,
+        employees: acc.employees + 1,
+        employerCost: money(acc.employerCost + num(row.employerCost)),
+      }),
+    ).sort((a, b) => num(b.employerCost) - num(a.employerCost)),
+  };
+};
+
+// ── §18 — reimbursements ───────────────────────────────────────────────────
+
+export const reimbursementRows = ({ rows = [] } = {}) => {
+  const list = Array.isArray(rows) ? rows : [];
+  const withClaims = list.filter((row) => num(row.reimbursements) > 0 || (row.lines?.reimbursements || []).length);
+
+  const byCategory = new Map();
+  withClaims.forEach((row) => {
+    (row.lines?.reimbursements || []).forEach((line) => {
+      if (!num(line.amount)) return;
+      const bucket = byCategory.get(line.code) || {
+        key: line.code,
+        label: ENTRY_TYPE_LABELS[line.code] || line.name || humanise(line.code),
+        employees: new Set(),
+        amount: 0,
+      };
+      bucket.amount = money(bucket.amount + num(line.amount));
+      bucket.employees.add(String(row.employeeId));
+      byCategory.set(line.code, bucket);
+    });
+  });
+
+  const total = money(withClaims.reduce((sum, row) => sum + num(row.reimbursements), 0));
+  const categories = [...byCategory.values()].map((bucket) => ({
+    key: bucket.key,
+    label: bucket.label,
+    employees: bucket.employees.size,
+    amount: bucket.amount,
+    sharePercent: total ? money((num(bucket.amount) / total) * 100) : 0,
+  })).sort((a, b) => num(b.amount) - num(a.amount));
+
+  return {
+    total,
+    employees: distinctEmployees(withClaims),
+    categories,
+    byDepartment: groupRows(
+      withClaims,
+      (row) => row.department || 'Unassigned',
+      (key) => ({ department: key, employees: 0, reimbursements: 0 }),
+      (acc, row) => ({
+        department: acc.department,
+        employees: acc.employees + 1,
+        reimbursements: money(acc.reimbursements + num(row.reimbursements)),
+      }),
+    ).sort((a, b) => num(b.reimbursements) - num(a.reimbursements)),
+    byMonth: groupRows(
+      withClaims,
+      (row) => row.month || '',
+      (key) => ({ month: key, label: monthLabel(key), employees: 0, reimbursements: 0 }),
+      (acc, row) => ({
+        month: acc.month,
+        label: acc.label,
+        employees: acc.employees + 1,
+        reimbursements: money(acc.reimbursements + num(row.reimbursements)),
+      }),
+    ).sort((a, b) => String(a.month).localeCompare(String(b.month))),
+    rows: withClaims
+      .map((row) => ({
+        employeeId: row.employeeId,
+        employeeCode: row.employeeCode,
+        employeeName: row.employeeName,
+        department: row.department,
+        designation: row.designation,
+        month: row.month,
+        reimbursements: num(row.reimbursements),
+        categories: (row.lines?.reimbursements || [])
+          .filter((line) => num(line.amount))
+          .map((line) => ({ code: line.code, label: ENTRY_TYPE_LABELS[line.code] || line.name, amount: num(line.amount) })),
+      }))
+      .sort((a, b) => num(b.reimbursements) - num(a.reimbursements)),
+  };
+};
+
+// ── §20 — F&F settlements ──────────────────────────────────────────────────
+
+const settlementAmount = (row = {}, path = '') => {
+  const value = String(path).split('.').reduce((node, key) => (node == null ? undefined : node[key]), row);
+  return num(value);
+};
+
+/**
+ * §20 — F&F analytics, read from the FINALISED settlement records.
+ *
+ * Nothing here recalculates a settlement: 29.11 owns that arithmetic and its
+ * result is the only number that was ever paid. A draft is reported as a
+ * draft, never as money.
+ */
+export const fnfRows = ({ settlements = [] } = {}) => {
+  const list = Array.isArray(settlements) ? settlements : [];
+
+  const rowsOut = list.map((row) => {
+    const items = Array.isArray(row?.recoveries?.items) ? row.recoveries.items : [];
+    const otherRecoveries = money(items.reduce((total, item) => total + num(item?.amount), 0));
+    return {
+      settlementNumber: row?.settlementNumber || '',
+      employeeId: String(row?.exit?.employeeId || ''),
+      employeeName: row?.employeeName || '',
+      month: row?.month || '',
+      status: row?.status || '',
+      lastWorkingDate: row?.exit?.lastWorkingDate || '',
+      netSettlement: num(row?.totals?.netSettlement),
+      pendingSalary: settlementAmount(row, 'earnings.pendingSalary.amount'),
+      leaveEncashment: settlementAmount(row, 'earnings.leaveEncashment.amount'),
+      noticeRecovery: settlementAmount(row, 'recoveries.notice.amount'),
+      otherRecoveries,
+      paidAt: row?.payment?.paidAt || '',
+    };
+  }).sort((a, b) => String(b.month).localeCompare(String(a.month)));
+
+  const sum = (pick) => money(rowsOut.reduce((total, row) => total + num(pick(row)), 0));
+  const CLOSED_STATUSES = ['PAID', 'CLOSED'];
+
+  const byStatus = groupRows(
+    rowsOut,
+    (row) => row.status || 'DRAFT',
+    (key) => ({ status: key, count: 0, netSettlement: 0 }),
+    (acc, row) => ({
+      status: acc.status,
+      count: acc.count + 1,
+      netSettlement: money(acc.netSettlement + num(row.netSettlement)),
+    }),
+  ).sort((a, b) => b.count - a.count);
+
+  const pending = rowsOut.filter((row) => !CLOSED_STATUSES.includes(String(row.status).toUpperCase()));
+
+  return {
+    count: rowsOut.length,
+    byStatus,
+    pending: { count: pending.length, netSettlement: money(pending.reduce((total, row) => total + num(row.netSettlement), 0)) },
+    completed: {
+      count: rowsOut.length - pending.length,
+      netSettlement: money(
+        rowsOut.filter((row) => CLOSED_STATUSES.includes(String(row.status).toUpperCase()))
+          .reduce((total, row) => total + num(row.netSettlement), 0),
+      ),
+    },
+    totals: {
+      netSettlement: sum((row) => row.netSettlement),
+      pendingSalary: sum((row) => row.pendingSalary),
+      leaveEncashment: sum((row) => row.leaveEncashment),
+      noticeRecovery: sum((row) => row.noticeRecovery),
+      otherRecoveries: sum((row) => row.otherRecoveries),
+      recoveriesTotal: money(
+        sum((row) => row.noticeRecovery) + sum((row) => row.otherRecoveries),
+      ),
+    },
+    byMonth: groupRows(
+      rowsOut,
+      (row) => row.month || 'Unassigned',
+      (key) => ({
+        month: key, label: monthLabel(key), count: 0,
+        netSettlement: 0, leaveEncashment: 0, noticeRecovery: 0, otherRecoveries: 0,
+      }),
+      (acc, row) => ({
+        month: acc.month,
+        label: acc.label,
+        count: acc.count + 1,
+        netSettlement: money(acc.netSettlement + num(row.netSettlement)),
+        leaveEncashment: money(acc.leaveEncashment + num(row.leaveEncashment)),
+        noticeRecovery: money(acc.noticeRecovery + num(row.noticeRecovery)),
+        otherRecoveries: money(acc.otherRecoveries + num(row.otherRecoveries)),
+      }),
+    ).sort((a, b) => String(a.month).localeCompare(String(b.month))),
+    rows: rowsOut,
+  };
+};
+
+// ── §21 — payroll variance ─────────────────────────────────────────────────
+
+/** Under half a percent the trend is called stable: rounding, not a movement. */
+export const STABLE_THRESHOLD_PERCENT = 0.5;
+
+export const directionOf = (difference = 0, changePercent = 0) => {
+  if (Math.abs(Number(changePercent) || 0) < STABLE_THRESHOLD_PERCENT) return 'STABLE';
+  return num(difference) > 0 ? 'INCREASING' : 'DECREASING';
+};
+
+const varianceLine = ({ key, label, previous = 0, current = 0 }) => {
+  const before = num(previous);
+  const after = num(current);
+  const difference = money(after - before);
+  const changePercent = before ? money(((after - before) / before) * 100) : after ? 100 : 0;
+  return {
+    key,
+    label,
+    previous: money(before),
+    current: money(after),
+    difference,
+    changePercent,
+    direction: directionOf(difference, changePercent),
+  };
+};
+
+/**
+ * §21 — current period against the previous one, line by line.
+ *
+ * "The system should identify the numerical difference" — the difference and
+ * the percentage are computed, never inferred from a chart. No prediction is
+ * made here and none is implied: this is arithmetic on two closed periods.
+ */
+export const varianceRows = ({ rows = [], previousRows = [] } = {}) => {
+  const now = summariseRows({ rows });
+  const before = summariseRows({ rows: previousRows });
+  const statutoryNow = statutoryLiability({ rows });
+  const statutoryBefore = statutoryLiability({ rows: previousRows });
+
+  const lines = [
+    varianceLine({ key: 'HEADCOUNT', label: 'Employees Paid', previous: before.employeesPaid, current: now.employeesPaid }),
+    varianceLine({ key: 'GROSS', label: 'Gross Payroll', previous: before.grossSalary, current: now.grossSalary }),
+    varianceLine({ key: 'NET', label: 'Net Payroll', previous: before.netSalary, current: now.netSalary }),
+    varianceLine({ key: 'DEDUCTIONS', label: 'Employee Deductions', previous: before.deductionsTotal, current: now.deductionsTotal }),
+    varianceLine({ key: 'EMPLOYER', label: 'Employer Cost', previous: before.employerContribution, current: now.employerContribution }),
+    varianceLine({ key: 'TOTAL_COST', label: 'Total Payroll Cost', previous: before.totalPayrollCost, current: now.totalPayrollCost }),
+    varianceLine({ key: 'AVERAGE_SALARY', label: 'Average Salary', previous: before.averageSalary, current: now.averageSalary }),
+    varianceLine({ key: 'BONUS', label: 'Bonus', previous: before.bonusTotal, current: now.bonusTotal }),
+    varianceLine({ key: 'VARIABLE', label: 'Variable Pay', previous: before.variableTotal, current: now.variableTotal }),
+    varianceLine({ key: 'OVERTIME', label: 'Overtime Cost', previous: before.overtimeTotal, current: now.overtimeTotal }),
+    varianceLine({ key: 'OVERTIME_HOURS', label: 'Overtime Hours', previous: before.overtimeHours, current: now.overtimeHours }),
+    varianceLine({ key: 'REIMBURSEMENTS', label: 'Reimbursements', previous: before.reimbursements, current: now.reimbursements }),
+    varianceLine({ key: 'LOP_DAYS', label: 'LOP Days', previous: before.lopDays, current: now.lopDays }),
+    varianceLine({
+      key: 'STATUTORY',
+      label: 'Statutory Liability',
+      previous: statutoryBefore.totals?.totalLiability ?? 0,
+      current: statutoryNow.totals?.totalLiability ?? 0,
+    }),
+  ];
+
+  return {
+    rows: lines,
+    current: { ...now, statutoryLiability: statutoryNow.totals?.totalLiability ?? 0 },
+    previous: { ...before, statutoryLiability: statutoryBefore.totals?.totalLiability ?? 0 },
+    // §5 — the headline direction, off the same numbers the cards show.
+    direction: directionOf(
+      money(num(now.totalPayrollCost) - num(before.totalPayrollCost)),
+      num(before.totalPayrollCost)
+        ? money(((num(now.totalPayrollCost) - num(before.totalPayrollCost)) / num(before.totalPayrollCost)) * 100)
+        : 0,
+    ),
+  };
+};
+
+/**
+ * §9 — WHY the payroll cost moved.
+ *
+ * A single "cost is up 8%" tells a CFO nothing they can act on. The change is
+ * split three ways, and the three parts add up to the whole exactly:
+ *
+ *   headcount    what the joiners cost, less what the leavers cost
+ *   likeForLike  what the people who were here both months cost more/less
+ *   variable     the part of like-for-like that is bonus, OT, reimbursements
+ *                and other variable pay rather than fixed salary
+ */
+export const costMovement = ({ rows = [], previousRows = [] } = {}) => {
+  const current = new Map((Array.isArray(rows) ? rows : []).map((row) => [String(row.employeeId), row]));
+  const previous = new Map((Array.isArray(previousRows) ? previousRows : []).map((row) => [String(row.employeeId), row]));
+
+  const ids = [...new Set([...current.keys(), ...previous.keys()])];
+  let joiners = 0;
+  let leavers = 0;
+  let stayers = 0;
+  let headcountEffect = 0;
+  let likeForLikeEffect = 0;
+  let fixedEffect = 0;
+  let variableEffect = 0;
+
+  const variableOf = (row) =>
+    num(row?.variableEarnings) + num(row?.overtime) + num(row?.reimbursements);
+
+  ids.forEach((id) => {
+    const now = current.get(id) || null;
+    const before = previous.get(id) || null;
+
+    if (now && !before) {
+      joiners += 1;
+      headcountEffect += num(now.gross);
+      return;
+    }
+    if (!now && before) {
+      leavers += 1;
+      headcountEffect -= num(before.gross);
+      return;
+    }
+    stayers += 1;
+    const delta = num(now.gross) - num(before.gross);
+    likeForLikeEffect += delta;
+    const variableDelta = variableOf(now) - variableOf(before);
+    variableEffect += variableDelta;
+    fixedEffect += delta - variableDelta;
+  });
+
+  const total = money(headcountEffect + likeForLikeEffect);
+
+  return {
+    joiners,
+    leavers,
+    stayers,
+    total,
+    headcountEffect: money(headcountEffect),
+    likeForLikeEffect: money(likeForLikeEffect),
+    fixedEffect: money(fixedEffect),
+    variableEffect: money(variableEffect),
+    // The decomposition is only trustworthy if it adds up — say so, so a
+    // reader never has to take the split on faith.
+    reconciled: total === money(
+      num(summariseRows({ rows }).grossSalary) - num(summariseRows({ rows: previousRows }).grossSalary),
+    ),
+  };
+};
+
 // ── §17 — the payroll register ─────────────────────────────────────────────
 
 export const REGISTER_HEADERS = [
@@ -761,12 +1510,15 @@ export const REGISTER_HEADERS = [
   'Employee Name',
   'Department',
   'Designation',
+  'Payroll Period',
+  'Basic',
   'Gross',
-  'Deductions',
-  'Net',
+  'Total Earnings',
+  'Total Deductions',
   'Employer Cost',
-  'Payment Date',
-  'Status',
+  'Net Salary',
+  'Payment Status',
+  'Payroll Status',
 ];
 
 export const registerRows = ({ rows = [] } = {}) =>
@@ -778,14 +1530,18 @@ export const registerRows = ({ rows = [] } = {}) =>
       row.employeeName || '',
       row.department || '',
       row.designation || '',
+      row.month || '',
+      money(row.basic),
       money(row.gross),
+      money(row.totalEarnings),
       money(row.totalDeductions),
-      money(row.net),
       money(row.employerCost),
-      // String(date) renders "Sat Sep 05 ..." — the register needs the
-      // calendar date, so format it rather than stringify it.
-      row.paidAt ? new Date(row.paidAt).toISOString().slice(0, 10) : '',
+      money(row.net),
       row.paymentStatus || 'NOT_IN_BATCH',
+      // Every row in the register is a CALCULATED snapshot — 29.12 reads no
+      // other kind — so this column is a statement about the register's own
+      // scope rather than a per-row fact.
+      row.payrollStatus || 'CALCULATED',
     ]);
 
 // ── export tables for every report (§19) ───────────────────────────────────
@@ -899,6 +1655,64 @@ export const reportTable = ({ reportKey = '', payload = {} } = {}) => {
       };
     case 'REGISTER':
       return { headers: REGISTER_HEADERS, rows: registerRows({ rows: payload.rows || [] }) };
+    // ── 29.13 ─────────────────────────────────────────────────────────────
+    case 'EARNINGS': {
+      const total = num(payload.totals?.total);
+      return {
+        headers: ['Component', 'Category', 'Employees', 'Amount', 'Share %'],
+        rows: (payload.rows || []).map((row) => [
+          row.label, row.categoryLabel, row.employees, money(row.amount),
+          total ? money((num(row.amount) / total) * 100) : 0,
+        ]),
+      };
+    }
+    case 'DEDUCTIONS':
+      return {
+        headers: ['Deduction', 'Employees', 'Amount', '% of Gross'],
+        rows: (payload.rows || []).map((row) => [
+          row.label, row.employees, money(row.amount), row.percentOfGross,
+        ]),
+      };
+    case 'EMPLOYER':
+      return {
+        headers: ['Contribution', 'Employees', 'Amount'],
+        rows: [
+          ...(payload.rows || []).map((row) => [row.label, row.employees, money(row.amount)]),
+          // The unclassified remainder is printed, not folded into "other":
+          // a company whose structure contributes more than its lines must be
+          // able to see that on the face of the report.
+          ...(num(payload.unclassified)
+            ? [['Unclassified employer cost', '', money(payload.unclassified)]]
+            : []),
+          ['Total Employer Contribution', '', money(payload.snapshotTotal)],
+        ],
+      };
+    case 'REIMBURSEMENT':
+      return {
+        headers: ['Category', 'Employees', 'Amount', 'Share %'],
+        rows: (payload.categories || []).map((row) => [
+          row.label, row.employees, money(row.amount), row.sharePercent,
+        ]),
+      };
+    case 'FNF':
+      return {
+        headers: ['Settlement', 'Month', 'Last Working Day', 'Net Settlement', 'Leave Encashment', 'Notice Recovery', 'Other Recoveries', 'Status'],
+        rows: (payload.rows || []).map((row) => [
+          row.settlementNumber, row.month, row.lastWorkingDate,
+          money(row.netSettlement), money(row.leaveEncashment),
+          money(row.noticeRecovery), money(row.otherRecoveries), row.status,
+        ]),
+      };
+    case 'VARIANCE':
+      return {
+        headers: ['Metric', 'Previous', 'Current', 'Difference', 'Change %', 'Direction'],
+        rows: (payload.rows || []).map((row) => [
+          row.label, money(row.previous), money(row.current),
+          money(row.difference), row.changePercent,
+          // A direction word, not an arrow nobody can search for.
+          String(row.direction || '').toLowerCase(),
+        ]),
+      };
     case 'HEADCOUNT':
       return {
         headers: ['Metric', 'Value'],
