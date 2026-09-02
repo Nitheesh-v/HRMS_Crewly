@@ -16,12 +16,17 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import ApiError from '../../utils/ApiError.js';
+import { roundMoney as money } from './analyticsRules.js';
+
+const num = (value) => Number(value) || 0;
 
 import {
   ANALYTICS_AUDIT_ACTIONS,
   FINANCE_ONLY_REPORTS,
   REPORT_KEYS,
   REPORT_LABELS,
+  BONUS_ENTRY_PATTERN,
+  PERIOD_PRESET_LABELS,
   REGISTER_HEADERS,
   SALARY_BANDS,
   SCHEDULE_FREQUENCIES,
@@ -30,26 +35,38 @@ import {
   applyFilters,
   bonusRows,
   buildAnalyticsRow,
+  costMovement,
   ctcRows,
+  deductionRows,
   departmentRows,
   designationRows,
+  earningsRows,
+  employerContributionRows,
   financialYearMonths,
+  fnfRows,
   headcountMetrics,
+  isPeriodPreset,
   isReportKey,
   isScheduleFrequency,
   isTrendPeriod,
   leaveImpactRows,
+  monthRange,
   nextRunAt,
+  normaliseSalaryBands,
   overtimeByDepartment,
   overtimeRows,
   recentMonths,
   registerRows,
+  reimbursementRows,
   reportFilename,
   reportTable,
+  resolvePeriod,
   salaryBandRows,
+  shiftMonthOf,
   statutoryLiability,
   summariseRows,
   trendSeries,
+  varianceRows,
 } from './analyticsRules.js';
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -63,7 +80,13 @@ export const makeAnalyticsService = ({
   DepartmentModel = null,
   ScheduledReportModel = null,
   AnalyticsReportFileModel = null,
+  AnalyticsSettingModel = null,
+  EmployeePayrollProfileModel = null,
   CompanyModel = null,
+
+  // §38 — how long a generated payroll file lives before the sweeper drops
+  // its bytes. A salary spreadsheet is not an archive.
+  fileTtlHours = 24,
 
   cache = {},
   audit = async () => null,
@@ -171,50 +194,350 @@ export const makeAnalyticsService = ({
     });
   };
 
+  // ── §29 / §44 — the aggregation fast path ────────────────────────────────
+
+  /**
+   * The filter every aggregation starts from.
+   *
+   * Snapshot-only filters (month, department, designation, employee) are
+   * pushed into MongoDB; only a PAYMENT-status filter needs the payment join,
+   * and a read that asks for one falls back to the row path.
+   */
+  const snapshotMatch = ({ companyId, months = [], allowedEmployeeIds = null, filters = {} } = {}) => {
+    const match = { companyId, isCurrent: true, status: 'CALCULATED' };
+    if (months.length) match.month = { $in: months };
+    if (Array.isArray(allowedEmployeeIds)) match.employeeId = { $in: allowedEmployeeIds };
+    if (filters.departmentId) match.departmentId = filters.departmentId;
+    if (filters.designation) match.designation = filters.designation;
+    if (filters.employeeId) match.employeeId = filters.employeeId;
+    return match;
+  };
+
+  const runAggregate = async (pipeline = []) => {
+    if (typeof PayrollResultModel?.aggregate !== 'function') return null;
+    return PayrollResultModel.aggregate(pipeline).catch(() => null);
+  };
+
+  const hasRowFilters = (filters = {}) =>
+    Boolean(String(filters.status || '').trim());
+
+  /** One accumulator set, shared by every pipeline, so they cannot drift. */
+  const snapshotGroup = (id = null) => ({
+    _id: id,
+    employees: { $addToSet: '$employeeId' },
+    gross: { $sum: { $ifNull: ['$totals.totalEarnings', '$totals.gross'] } },
+    net: { $sum: { $ifNull: ['$totals.netPay', 0] } },
+    earningsTotal: { $sum: { $ifNull: ['$totals.totalEarnings', 0] } },
+    deductions: { $sum: { $ifNull: ['$totals.totalDeductions', 0] } },
+    employerCost: { $sum: { $ifNull: ['$totals.employerCost', 0] } },
+    ctc: { $sum: { $ifNull: ['$totals.ctc', 0] } },
+    overtime: { $sum: { $ifNull: ['$totals.overtime', 0] } },
+    variableEarnings: { $sum: { $ifNull: ['$totals.variableEarnings', 0] } },
+    reimbursements: { $sum: { $ifNull: ['$totals.reimbursements', 0] } },
+    otHours: { $sum: { $ifNull: ['$attendance.otHours', 0] } },
+    lopDays: { $sum: { $ifNull: ['$attendance.lopDays', 0] } },
+    paidLeaveDays: { $sum: { $ifNull: ['$attendance.paidLeaveDays', 0] } },
+    // §14 — the same daily-rate derivation the row path uses. It is written
+    // twice (once here, once in leaveImpactRows) because MongoDB has to do
+    // the arithmetic to keep a large window out of Node, and a test asserts
+    // the two agree.
+    lopDeduction: {
+      $sum: {
+        $cond: [
+          { $gt: [{ $ifNull: ['$attendance.workingDays', 0] }, 0] },
+          {
+            $multiply: [
+              { $divide: [{ $ifNull: ['$totals.gross', 0] }, '$attendance.workingDays'] },
+              { $ifNull: ['$attendance.lopDays', 0] },
+            ],
+          },
+          0,
+        ],
+      },
+    },
+    pfEmployee: { $sum: { $ifNull: ['$statutory.pf.employee', 0] } },
+    pfEmployer: { $sum: { $ifNull: ['$statutory.pf.employer', 0] } },
+    esiEmployee: { $sum: { $ifNull: ['$statutory.esi.employee', 0] } },
+    esiEmployer: { $sum: { $ifNull: ['$statutory.esi.employer', 0] } },
+    pt: { $sum: { $ifNull: ['$statutory.professionalTax.amount', 0] } },
+    tds: { $sum: { $ifNull: ['$statutory.tds.monthly', 0] } },
+    lwfEmployee: { $sum: { $ifNull: ['$statutory.lwf.employee', 0] } },
+    lwfEmployer: { $sum: { $ifNull: ['$statutory.lwf.employer', 0] } },
+    gratuity: { $sum: { $ifNull: ['$statutory.gratuity.amount', 0] } },
+  });
+
+  const employeeIdsOf = (row = {}) =>
+    new Set((Array.isArray(row?.employees) ? row.employees : []).filter(Boolean).map(String));
+
+  /** The roll-up, in exactly the shape `summariseRows` produces. */
+  const summaryFromAggregate = (row = {}, bonus = 0) => {
+    const paidEmployees = employeeIdsOf(row).size;
+    const gross = money(row.gross);
+    const employerCost = money(row.employerCost);
+    const ctc = money(row.ctc);
+    return {
+      employeesPaid: paidEmployees,
+      grossSalary: gross,
+      netSalary: money(row.net),
+      earningsTotal: money(row.earningsTotal),
+      deductionsTotal: money(row.deductions),
+      employerContribution: employerCost,
+      ctc,
+      totalPayrollCost: money(gross + employerCost),
+      averageSalary: paidEmployees ? money(gross / paidEmployees) : 0,
+      averageCtc: paidEmployees ? money(ctc / paidEmployees) : 0,
+      bonusTotal: money(bonus),
+      variableTotal: money(row.variableEarnings),
+      overtimeTotal: money(row.overtime),
+      overtimeHours: money(row.otHours),
+      reimbursements: money(row.reimbursements),
+      lopDays: money(row.lopDays),
+      paidLeaveDays: money(row.paidLeaveDays),
+      lopDeduction: money(row.lopDeduction),
+    };
+  };
+
+  const statutoryFromAggregate = (row = {}) => {
+    const buckets = [
+      { key: 'PF', label: 'Provident Fund', employee: money(row.pfEmployee), employer: money(row.pfEmployer) },
+      { key: 'ESI', label: 'ESI', employee: money(row.esiEmployee), employer: money(row.esiEmployer) },
+      { key: 'PT', label: 'Professional Tax', employee: money(row.pt), employer: 0 },
+      { key: 'TDS', label: 'TDS', employee: money(row.tds), employer: 0 },
+      { key: 'LWF', label: 'Labour Welfare Fund', employee: money(row.lwfEmployee), employer: money(row.lwfEmployer) },
+    ].map((bucket) => ({ ...bucket, total: money(num(bucket.employee) + num(bucket.employer)) }));
+
+    const employer = money(buckets.reduce((total, bucket) => total + num(bucket.employer), 0));
+    const employee = money(buckets.reduce((total, bucket) => total + num(bucket.employee), 0));
+    const gratuity = money(row.gratuity);
+
+    return {
+      buckets,
+      totals: {
+        employee,
+        employer,
+        totalLiability: money(employee + employer),
+        gratuityProvision: gratuity,
+        gratuityAnnualised: money(gratuity * 12),
+        // The per-state and per-department splits are built from row data;
+        // an aggregation-only read does not carry them.
+        byState: [],
+        byDepartment: [],
+      },
+    };
+  };
+
+  /**
+   * §12 — the bonus total, without loading the snapshots.
+   *
+   * The type pattern is imported from analyticsRules rather than restated, so
+   * the pipeline and the row builder cannot disagree about what a bonus is.
+   */
+  const aggregateBonus = async (scope) => {
+    const rows = await runAggregate([
+      { $match: snapshotMatch(scope) },
+      { $unwind: '$variableEarnings' },
+      { $match: { 'variableEarnings.type': { $regex: BONUS_ENTRY_PATTERN.source } } },
+      { $group: { _id: null, bonus: { $sum: { $ifNull: ['$variableEarnings.amount', 0] } } } },
+    ]);
+    return money(rows?.[0]?.bonus);
+  };
+
+  /** §7 — the department table, grouped in MongoDB and named afterwards. */
+  const aggregateDepartments = async (scope) => {
+    const rows = await runAggregate([
+      { $match: snapshotMatch(scope) },
+      {
+        $group: {
+          ...snapshotGroup({ $ifNull: ['$departmentId', ''] }),
+          bonus: { $sum: { $ifNull: ['$totals.variableEarnings', 0] } },
+        },
+      },
+    ]);
+    if (!Array.isArray(rows)) return null;
+
+    const names = await loadDepartments({ companyId: scope.companyId });
+    return (rows || [])
+      .map((row) => ({
+        department: names.get(String(row._id)) || 'Unassigned',
+        employees: employeeIdsOf(row).size,
+        gross: money(row.gross),
+        net: money(row.net),
+        employerCost: money(row.employerCost),
+        ctc: money(row.ctc),
+        bonus: money(row.bonus),
+        overtime: money(row.overtime),
+        otHours: money(row.otHours),
+        lopDays: money(row.lopDays),
+        totalCost: money(money(row.gross) + money(row.employerCost)),
+      }))
+      .map((row) => ({ ...row, averageSalary: row.employees ? money(row.gross / row.employees) : 0 }))
+      .sort((a, b) => num(b.totalCost) - num(a.totalCost));
+  };
+
+  /** §9 — one row per employee, for the cost-movement decomposition. */
+  const aggregateByEmployee = async (scope) => {
+    const rows = await runAggregate([
+      { $match: snapshotMatch(scope) },
+      {
+        $group: {
+          _id: '$employeeId',
+          gross: { $sum: { $ifNull: ['$totals.totalEarnings', '$totals.gross'] } },
+          variableEarnings: { $sum: { $ifNull: ['$totals.variableEarnings', 0] } },
+          overtime: { $sum: { $ifNull: ['$totals.overtime', 0] } },
+          reimbursements: { $sum: { $ifNull: ['$totals.reimbursements', 0] } },
+        },
+      },
+    ]);
+    return (rows || []).map((row) => ({
+      employeeId: String(row._id || ''),
+      gross: money(row.gross),
+      variableEarnings: money(row.variableEarnings),
+      overtime: money(row.overtime),
+      reimbursements: money(row.reimbursements),
+    }));
+  };
+
+  /**
+   * The dashboard's numbers, by the cheapest honest route.
+   *
+   * A payment-status filter is the one thing MongoDB cannot answer from the
+   * snapshot alone (status lives on PayrollPayment), so that read — and any
+   * read where the model has no aggregation support — still loads rows. Both
+   * paths are asserted to agree, in the tests, on the same data.
+   */
+  const dashboardNumbers = async ({ companyId, months = [], allowedEmployeeIds = null, filters = {} } = {}) => {
+    const scope = { companyId, months, allowedEmployeeIds, filters };
+
+    if (!hasRowFilters(filters)) {
+      // `await` before indexing: `null` (no aggregation support, or a failed
+      // pipeline) is not destructurable, and a dashboard must never fail
+      // closed — it falls back to the row path instead.
+      const grouped = await runAggregate([{ $match: snapshotMatch(scope) }, { $group: snapshotGroup(null) }]);
+      const totals = Array.isArray(grouped) ? grouped[0] : null;
+      if (totals) {
+        const [bonus, departments] = await Promise.all([
+          aggregateBonus(scope),
+          aggregateDepartments(scope),
+        ]);
+        return {
+          summary: summaryFromAggregate(totals, bonus),
+          statutory: statutoryFromAggregate(totals),
+          departments: departments || [],
+          path: 'AGGREGATION',
+        };
+      }
+    }
+
+    const rows = applyFilters({ rows: await loadRows({ companyId, months, allowedEmployeeIds }), ...filters });
+    return {
+      summary: summariseRows({ rows }),
+      statutory: statutoryLiability({ rows }),
+      departments: departmentRows({ rows }),
+      path: 'ROWS',
+    };
+  };
+
   // ── §5 / §6 — the executive dashboard ────────────────────────────────────
 
-  const getDashboard = async ({ companyId, month = '', filters = {}, allowedEmployeeIds = null } = {}) => {
-    const key = buildKey({ companyId, month, suffix: 'dashboard', filters });
+  const getDashboard = async ({ companyId, month = '', preset = '', fromMonth = '', toMonth = '', filters = {}, allowedEmployeeIds = null } = {}) => {
+    const key = buildKey({
+      companyId,
+      month,
+      suffix: 'dashboard',
+      // §4 — a preset names a different window, so it is a different cache
+      // entry: "last 12 months" must not be served from "current month".
+      period: preset ? `${preset}:${fromMonth}:${toMonth}` : '',
+      filters,
+    });
+
     const { value } = await readThrough(key, async () => {
-      const currentMonth = MONTH_PATTERN.test(String(month || ''))
-        ? month
-        : await latestMonth({ companyId });
+      const anchor = MONTH_PATTERN.test(String(month || '')) ? month : await latestMonth({ companyId });
+      const window = preset && isPeriodPreset(preset)
+        ? resolvePeriod({ preset, month: anchor, fromMonth, toMonth })
+        : {
+          preset: 'CURRENT_MONTH',
+          label: PERIOD_PRESET_LABELS.CURRENT_MONTH,
+          months: anchor ? [anchor] : [],
+          fromMonth: anchor,
+          toMonth: anchor,
+        };
 
-      const months = currentMonth ? [currentMonth] : [];
-      const rows = applyFilters({ rows: await loadRows({ companyId, months, allowedEmployeeIds }), ...filters });
+      const months = window.months;
+      const previousMonths = previousWindow(months);
+      const scope = { companyId, allowedEmployeeIds, filters };
 
-      const previousMonth = currentMonth ? previousMonthOf(currentMonth) : '';
-      const previousRows = previousMonth
-        ? applyFilters({ rows: await loadRows({ companyId, months: [previousMonth], allowedEmployeeIds }), ...filters })
-        : [];
+      const numbers = await dashboardNumbers({ ...scope, months });
+      const previousNumbers = previousMonths.length
+        ? await dashboardNumbers({ ...scope, months: previousMonths })
+        : { summary: summariseRows({ rows: [] }), statutory: null, departments: [], path: 'EMPTY' };
 
-      const settlements = await loadSettlements({ companyId, month: currentMonth });
+      const [settlements, currentByEmployee, previousByEmployee] = await Promise.all([
+        loadSettlements({ companyId, months }),
+        aggregateByEmployee({ ...scope, months }),
+        previousMonths.length ? aggregateByEmployee({ ...scope, months: previousMonths }) : Promise.resolve([]),
+      ]);
+
+      const headcount = await buildHeadcount({
+        companyId,
+        month: months[months.length - 1] || '',
+        summary: numbers.summary,
+        previousSummary: previousNumbers.summary,
+        filters: { ...filters, fromMonth: window.fromMonth, toMonth: window.toMonth },
+      });
 
       return {
-        month: currentMonth,
-        monthLabel: currentMonth || '',
-        previousMonth,
+        month: months[months.length - 1] || '',
+        monthLabel: months[months.length - 1] || '',
+        months,
+        // §4 — the window travels with the answer, so the page can say what
+        // it is showing instead of leaving the reader to infer it.
+        period: {
+          preset: window.preset,
+          label: window.label,
+          fromMonth: window.fromMonth,
+          toMonth: window.toMonth,
+        },
+        previousMonths,
+        previousMonth: previousMonths[previousMonths.length - 1] || '',
         kpis: analyticsKpis({
-          rows,
+          summary: numbers.summary,
+          previous: previousNumbers.summary,
+          statutory: numbers.statutory,
+          departments: numbers.departments,
           settlements,
-          previous: summariseRows({ rows: previousRows }),
         }),
-        summary: summariseRows({ rows }),
-        previousSummary: summariseRows({ rows: previousRows }),
-        departments: departmentRows({ rows }).slice(0, 8),
-        topDepartment: departmentRows({ rows })[0] || null,
-        statutory: statutoryLiability({ rows }),
-        headcount: await buildHeadcount({ companyId, month: currentMonth, rows, previousRows }),
+        summary: numbers.summary,
+        previousSummary: previousNumbers.summary,
+        departments: numbers.departments.slice(0, 8),
+        topDepartment: numbers.departments[0] || null,
+        statutory: numbers.statutory,
+        headcount,
+        // §9 — why the cost moved, not only that it did.
+        movement: costMovement({ rows: currentByEmployee, previousRows: previousByEmployee }),
         settlements: settlements.length,
         // §6 — "Payroll Accuracy": the share of snapshots that calculated
         // cleanly. Warnings do not make a payroll wrong; errors do.
-        accuracy: await payrollAccuracy({ companyId, month: currentMonth }),
-        availableMonths: recentMonths(currentMonth || currentMonthFallback(), 12),
+        accuracy: await payrollAccuracy({ companyId, month: months[months.length - 1] || '' }),
+        availableMonths: recentMonths(months[months.length - 1] || currentMonthFallback(), 12),
+        source: numbers.path,
         generatedAt: new Date(),
       };
     });
 
     return value;
+  };
+
+  /**
+   * §4 / §21 — the window immediately before this one, of the same length.
+   * "Previous month" for a month, "the year before" for a financial year:
+   * comparing a quarter to the single month preceding it would be nonsense.
+   */
+  const previousWindow = (months = []) => {
+    if (!months.length) return [];
+    if (months.length === 1) return [shiftMonthOf(months[0], -1)];
+    const end = shiftMonthOf(months[0], -1);
+    const start = shiftMonthOf(end, -(months.length - 1));
+    return monthRange(start, end);
   };
 
   const latestMonth = async ({ companyId }) => {
@@ -230,19 +553,18 @@ export const makeAnalyticsService = ({
 
   const currentMonthFallback = () => new Date().toISOString().slice(0, 7);
 
-  const previousMonthOf = (month = '') => {
-    if (!MONTH_PATTERN.test(String(month || ''))) return '';
-    const [year, part] = String(month).split('-').map(Number);
-    const index = year * 12 + (part - 1) - 1;
-    return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}`;
-  };
+  // One implementation of month arithmetic, in the rules, so the dashboard
+  // window, the cache key and the reports cannot disagree about it.
+  const previousMonthOf = (month = '') => shiftMonthOf(month, -1);
 
-  const loadSettlements = async ({ companyId, month = '' }) => {
+  const loadSettlements = async ({ companyId, month = '', months = [] }) => {
     if (!FinalSettlementModel) return [];
     const filter = { companyId };
-    if (MONTH_PATTERN.test(String(month || ''))) filter.month = month;
+    const list = (months || []).filter((value) => MONTH_PATTERN.test(String(value || '')));
+    if (list.length > 1) filter.month = { $in: list };
+    else if (MONTH_PATTERN.test(String(month || ''))) filter.month = month;
     return FinalSettlementModel.find(filter)
-      .select('settlementNumber month status totals')
+      .select('settlementNumber month status totals exit recoveries earnings payment calculatedAt closedAt')
       .lean()
       .catch(() => []);
   };
@@ -263,7 +585,15 @@ export const makeAnalyticsService = ({
 
   // ── §9 — headcount ───────────────────────────────────────────────────────
 
-  const buildHeadcount = async ({ companyId, month = '', rows = [], previousRows = [], filters = null }) => {
+  const buildHeadcount = async ({
+    companyId,
+    month = '',
+    rows = [],
+    previousRows = [],
+    summary = null,
+    previousSummary = null,
+    filters = null,
+  }) => {
     const [active, joined, exited] = await Promise.all([
       countActive({ companyId }),
       countJoined({ companyId, month }),
@@ -272,7 +602,15 @@ export const makeAnalyticsService = ({
 
     const key = buildKey({ companyId, month, suffix: 'headcount', filters });
     const { value } = await readThrough(key, async () =>
-      headcountMetrics({ rows, activeEmployees: active, joined, exited, previousRows }),
+      headcountMetrics({
+        rows,
+        summary,
+        previousSummary,
+        activeEmployees: active,
+        joined,
+        exited,
+        previousRows,
+      }),
     );
     return value;
   };

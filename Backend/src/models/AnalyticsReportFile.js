@@ -37,7 +37,10 @@ const analyticsReportFileSchema = new Schema(
     rowCount: { type: Number, default: 0 },
     status: {
       type: String,
-      enum: ['QUEUED', 'PROCESSING', 'READY', 'FAILED'],
+      // §38 — EXPIRED is a real state, not a missing file: a payroll
+      // spreadsheet that has been sitting in the database for three weeks is
+      // a liability, and the UI has to be able to say so rather than spin.
+      enum: ['QUEUED', 'PROCESSING', 'READY', 'FAILED', 'EXPIRED'],
       default: 'QUEUED',
       index: true,
     },
@@ -65,6 +68,10 @@ const analyticsReportFileSchema = new Schema(
     downloadCount: { type: Number, default: 0 },
     lastDownloadedAt: { type: Date, default: null },
     completedAt: { type: Date, default: null },
+    // §38 — "Do not keep temporary sensitive payroll files forever." Set when
+    // the file is built; the sweeper drops the bytes and flips the status.
+    expiresAt: { type: Date, default: null, index: true },
+    expiredAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
@@ -72,6 +79,8 @@ const analyticsReportFileSchema = new Schema(
 analyticsReportFileSchema.index({ companyId: 1, createdAt: -1 });
 analyticsReportFileSchema.index({ companyId: 1, reportKey: 1, month: 1 });
 analyticsReportFileSchema.index({ companyId: 1, scheduledReportId: 1 });
+// The sweeper's query: ready files whose time has come.
+analyticsReportFileSchema.index({ status: 1, expiresAt: 1 });
 
 const AnalyticsReportFile =
   mongoose.models.AnalyticsReportFile ||

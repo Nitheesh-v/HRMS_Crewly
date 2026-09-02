@@ -460,10 +460,21 @@ const normaliseLines = (lines = []) =>
 // BONUS_SPOT, BONUS_JOINING, INCENTIVE, COMMISSION_SALES), not invented here.
 // Matching on a prefix rather than a fixed list means a bonus type added later
 // is counted as bonus without anyone remembering to update this file.
+/**
+ * §12 — the pattern that decides whether a variable-earning line is bonus or
+ * incentive pay.
+ *
+ * It is a single exported constant because TWO readers use it: the row
+ * builder, and the MongoDB aggregation that sums a large window without
+ * loading it. If the rule were written twice the two would eventually
+ * disagree about the same rupee.
+ */
+export const BONUS_ENTRY_PATTERN = /^(BONUS_.+|INCENTIVE|COMMISSION_SALES)$/;
+
 export const isBonusEntry = (type = '') => {
   const key = String(type || '').trim().toUpperCase();
   if (!key) return false;
-  return key.startsWith('BONUS_') || key === 'INCENTIVE' || key === 'COMMISSION_SALES';
+  return BONUS_ENTRY_PATTERN.test(key);
 };
 
 const sumLines = (lines = [], predicate = null) =>
@@ -487,7 +498,13 @@ export const summariseRows = ({ rows = [] } = {}) => {
   const list = Array.isArray(rows) ? rows : [];
 
   const sum = (pick) => money(list.reduce((total, row) => total + num(pick(row)), 0));
-  const paidEmployees = list.length;
+  // §5 — a headcount, not a count of employee-months. Over a twelve-month
+  // window one employee is ONE employee, however many months they were paid;
+  // counting rows would report twelve times the company. Rows with no
+  // employee identity at all (a synthetic series in a test) fall back to the
+  // row count rather than collapsing to zero.
+  const identities = new Set(list.map((row) => String(row.employeeId || '')).filter(Boolean));
+  const paidEmployees = identities.size || list.length;
   const gross = sum((row) => row.gross);
   const net = sum((row) => row.net);
 
@@ -521,11 +538,21 @@ export const summariseRows = ({ rows = [] } = {}) => {
 
 // ── §5 — the executive KPI cards ───────────────────────────────────────────
 
-export const analyticsKpis = ({ rows = [], settlements = [], previous = null } = {}) => {
-  const summary = summariseRows({ rows });
-  const statutory = statutoryLiability({ rows });
+export const analyticsKpis = ({
+  rows = [],
+  // §29 — the aggregation path hands in a roll-up it computed in MongoDB, and
+  // the row path hands in nothing. Either way the cards below are the same
+  // numbers, which is the only property that matters.
+  summary: providedSummary = null,
+  statutory: providedStatutory = null,
+  departments: providedDepartments = null,
+  settlements = [],
+  previous = null,
+} = {}) => {
+  const summary = providedSummary || summariseRows({ rows });
+  const statutory = providedStatutory || statutoryLiability({ rows });
 
-  const byCost = departmentRows({ rows });
+  const byCost = providedDepartments || departmentRows({ rows });
   const highest = byCost.reduce(
     (best, row) => (num(row.totalCost) > num(best?.totalCost) ? row : best),
     byCost[0] || null,
@@ -545,6 +572,17 @@ export const analyticsKpis = ({ rows = [], settlements = [], previous = null } =
       : { department: '', cost: 0 },
     totalStatutoryLiability: statutory.totals?.totalLiability ?? 0,
     statutory: statutory.totals,
+    // §3 — the rest of the card set: what was deducted, and the three
+    // variable costs management asks about most.
+    employeeDeductions: summary.deductionsTotal,
+    overtimeCost: summary.overtimeTotal,
+    overtimeHours: summary.overtimeHours,
+    bonusTotal: summary.bonusTotal,
+    reimbursements: summary.reimbursements,
+    // §14 — the rupee cost of lost days. Derived, like the leave report: the
+    // snapshot stores the days, not the money.
+    lopDays: summary.lopDays,
+    lopDeduction: money(summary.lopDeduction),
     // §6 — the settlement count and the month-on-month move.
     finalSettlements: (settlements || []).length,
     settlementAmount: money((settlements || []).reduce((total, row) => total + num(row?.totals?.netSettlement), 0)),
@@ -655,13 +693,17 @@ export const salaryBandRows = ({ rows = [], bands = null } = {}) => {
  */
 export const headcountMetrics = ({
   rows = [],
+  // §29 — the aggregation path supplies the roll-up it computed in MongoDB;
+  // the row path supplies rows and lets this function do the arithmetic.
+  summary = null,
+  previousSummary = null,
   activeEmployees = 0,
   joined = 0,
   exited = 0,
   previousRows = [],
 } = {}) => {
-  const now = summariseRows({ rows });
-  const before = summariseRows({ rows: previousRows });
+  const now = summary || summariseRows({ rows });
+  const before = previousSummary || summariseRows({ rows: previousRows });
   const costNow = num(now.totalPayrollCost);
   const costBefore = num(before.totalPayrollCost);
 

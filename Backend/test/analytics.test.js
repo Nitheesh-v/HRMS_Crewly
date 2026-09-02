@@ -57,6 +57,9 @@ import {
 } from '../src/services/payroll/analyticsRules.js';
 import { makeAnalyticsService } from '../src/services/payroll/analyticsService.js';
 import { filterSegmentOf } from '../src/services/payroll/analyticsCache.js';
+// (salaryBandRows, bandOf, SALARY_BANDS and resolvePeriod are imported in the
+// rules block above; only what that block does not already pull in is added.)
+import { normaliseSalaryBands, resolvePeriod } from '../src/services/payroll/analyticsRules.js';
 import {
   validateAnalyticsExportPayload,
   validateAnalyticsSchedulePayload,
@@ -107,6 +110,128 @@ const matches = (row, filter = {}) =>
     if (condition instanceof Date) return String(value) === String(condition);
     return String(value) === String(condition);
   });
+
+// ── a MongoDB-shaped aggregation evaluator ─────────────────────────────────
+//
+// The 29.13 fast path computes the dashboard in MongoDB instead of loading
+// every snapshot into Node. A fake that simply ANSWERED the pipeline would
+// test nothing: an unsupported operator would throw, the service would fall
+// back to the row path, and the tests would stay green while the aggregation
+// was quietly never used. So the fake genuinely EVALUATES the pipeline, and
+// a test asserts the dashboard reports `source: 'AGGREGATION'`.
+
+const aggregatePath = (doc, path) =>
+  String(path).replace(/^\$/, '').split('.').reduce((node, key) => (node == null ? undefined : node[key]), doc);
+
+const evalExpr = (doc, expr, vars = {}) => {
+  if (expr === null || expr === undefined) return undefined;
+  if (typeof expr === 'string') {
+    if (expr.startsWith('$$')) return vars[expr.slice(2)];
+    if (expr.startsWith('$')) return aggregatePath(doc, expr);
+    return expr;
+  }
+  if (typeof expr === 'number' || typeof expr === 'boolean') return expr;
+  if (Array.isArray(expr)) return expr.map((item) => evalExpr(doc, item, vars));
+
+  const [[operator, argument]] = Object.entries(expr);
+  switch (operator) {
+    case '$ifNull': {
+      const [candidate, fallback] = evalExpr(doc, argument, vars);
+      return candidate === undefined || candidate === null ? fallback : candidate;
+    }
+    case '$cond': {
+      const [test, whenTrue, whenFalse] = argument;
+      return evalExpr(doc, test, vars) ? evalExpr(doc, whenTrue, vars) : evalExpr(doc, whenFalse, vars);
+    }
+    case '$gt': {
+      const [left, right] = evalExpr(doc, argument, vars);
+      return Number(left) > Number(right);
+    }
+    case '$divide': {
+      const [left, right] = evalExpr(doc, argument, vars);
+      return Number(right) === 0 ? null : Number(left) / Number(right);
+    }
+    case '$multiply': {
+      const [left, right] = evalExpr(doc, argument, vars);
+      return Number(left) * Number(right);
+    }
+    case '$add': {
+      const [left, right] = evalExpr(doc, argument, vars);
+      return Number(left) + Number(right);
+    }
+    default:
+      throw new Error(`fake aggregate: unsupported operator ${operator}`);
+  }
+};
+
+const aggregateMatches = (doc, filter = {}) =>
+  Object.entries(filter).every(([key, condition]) => {
+    const value = aggregatePath(doc, key);
+    if (condition && typeof condition === 'object' && !(condition instanceof Date) && !Array.isArray(condition)) {
+      if (condition.$regex) return new RegExp(condition.$regex).test(String(value || ''));
+      if (condition.$in) return condition.$in.some((item) => String(item) === String(value));
+      return String(value) === String(condition);
+    }
+    return String(value) === String(condition);
+  });
+
+const runPipeline = (rows, pipeline = []) => {
+  let docs = (rows || []).map((row) => ({ ...row }));
+
+  (pipeline || []).forEach((stage) => {
+    const [[operator, argument]] = Object.entries(stage);
+
+    if (operator === '$match') {
+      docs = docs.filter((doc) => aggregateMatches(doc, argument));
+      return;
+    }
+    if (operator === '$unwind') {
+      const path = String(argument || '').replace(/^\$/, '');
+      docs = docs.flatMap((doc) => {
+        const value = path.split('.').reduce((node, key) => (node == null ? undefined : node[key]), doc);
+        if (Array.isArray(value)) return value.map((item) => ({ ...doc, [path]: item }));
+        return value === undefined ? [] : [doc];
+      });
+      return;
+    }
+    if (operator === '$group') {
+      const groups = new Map();
+      docs.forEach((doc) => {
+        const identity = argument._id === null ? null : evalExpr(doc, argument._id);
+        const key = JSON.stringify(identity);
+        if (!groups.has(key)) groups.set(key, { identity, docs: [] });
+        groups.get(key).docs.push(doc);
+      });
+
+      docs = [...groups.values()].map(({ identity, docs: members }) => {
+        const out = { _id: identity };
+        Object.entries(argument).forEach(([field, spec]) => {
+          if (field === '_id') return;
+          const [[accumulator, expression]] = Object.entries(spec);
+          if (accumulator === '$sum') {
+            out[field] = members.reduce((total, doc) => total + (Number(evalExpr(doc, expression)) || 0), 0);
+            return;
+          }
+          if (accumulator === '$addToSet') {
+            const set = new Set();
+            members.forEach((doc) => {
+              const value = evalExpr(doc, expression);
+              if (value !== undefined && value !== null) set.add(value);
+            });
+            out[field] = [...set];
+            return;
+          }
+          throw new Error(`fake aggregate: unsupported accumulator ${accumulator}`);
+        });
+        return out;
+      });
+      return;
+    }
+    throw new Error(`fake aggregate: unsupported stage ${operator}`);
+  });
+
+  return docs;
+};
 
 const applyUpdate = (row, update = {}) => {
   Object.entries(update.$set || {}).forEach(([key, value]) => {
@@ -190,6 +315,7 @@ const makeFakeModel = (defaults = {}) => {
       return { lean, select: () => ({ lean }) };
     },
     countDocuments: async (filter = {}) => rows.filter((row) => matches(row, filter)).length,
+    aggregate: async (pipeline = []) => runPipeline(rows, pipeline),
     async create(doc) {
       counter += 1;
       const row = {
@@ -350,7 +476,15 @@ const buildHarness = ({
   };
 
   employees.forEach((row) => state.users.rows.push(row));
-  results.forEach((row) => state.results.rows.push(row));
+  // 29.6 stamps the employee's department onto the snapshot
+  // (payrollEngineRules: departmentId = employee.department). A fixture that
+  // left it null would make every department report read "Unassigned" — and
+  // would hide the fact that the aggregation path groups by it.
+  const departmentOf = new Map(employees.map((row) => [String(row._id), row.department]));
+  results.forEach((row) => {
+    if (!row.departmentId) row.departmentId = departmentOf.get(String(row.employeeId)) || null;
+    state.results.rows.push(row);
+  });
   payments.forEach((row) => state.payments.rows.push(row));
   settlements.forEach((row) => state.settlements.rows.push(row));
   resignations.forEach((row) => state.resignations.rows.push(row));
@@ -1442,4 +1576,145 @@ test('§21 a filtered dashboard does not overwrite the unfiltered one', async ()
   const keys = [...harness.cache.store.keys()];
   assert.ok(keys.some((key) => key.endsWith(':departmentId=' + DEPT_ENG)), 'the filter is in the key');
   assert.ok(keys.some((key) => key.endsWith(':-')), 'and the unfiltered read has its own');
+});
+
+// ── §29 / §44 — the aggregation fast path (29.13) ──────────────────────────
+
+test('§29 the dashboard is computed in MongoDB, and the row path agrees', async () => {
+  const harness = threeEmployees();
+
+  const aggregated = await harness.service.getDashboard({ companyId: COMPANY, month: MONTH });
+  // If the pipeline ever fails, the service falls back to loading rows — which
+  // is correct behaviour but would silently stop the fast path from being
+  // exercised. Asserting the source is what catches that.
+  assert.equal(aggregated.source, 'AGGREGATION');
+
+  // A payment-status filter lives on PayrollPayment, not on the snapshot, so
+  // that read has to take the row path.
+  const byRows = await harness.service.getDashboard({
+    companyId: COMPANY,
+    month: MONTH,
+    filters: { status: 'PAID' },
+  });
+  assert.equal(byRows.source, 'ROWS');
+
+  // Same data, two routes, identical answers. This is the whole reason the
+  // fast path is safe to ship.
+  assert.equal(byRows.summary.employeesPaid, 3);
+  assert.equal(aggregated.summary.grossSalary, byRows.summary.grossSalary);
+  assert.equal(aggregated.summary.netSalary, byRows.summary.netSalary);
+  assert.equal(aggregated.summary.employerContribution, byRows.summary.employerContribution);
+  assert.equal(aggregated.summary.totalPayrollCost, byRows.summary.totalPayrollCost);
+  assert.equal(aggregated.summary.bonusTotal, byRows.summary.bonusTotal);
+  assert.equal(aggregated.kpis.totalStatutoryLiability, byRows.kpis.totalStatutoryLiability);
+  assert.deepEqual(
+    aggregated.departments.map((row) => row.department),
+    byRows.departments.map((row) => row.department),
+    'the department split is the same either way',
+  );
+});
+
+test('§29 a twelve-month window counts people, not employee-months', async () => {
+  const harness = threeEmployees();
+  // The same three people, paid every month for a year.
+  harness.state.results.rows.push(
+    ...threeMonthsOf(['2026-05', '2026-06', '2026-07']),
+  );
+
+  const year = await harness.service.getDashboard({ companyId: COMPANY, month: MONTH, preset: 'LAST_12_MONTHS' });
+
+  assert.equal(year.months.length, 12);
+  // The defect this guards against: a headcount card that summed rows would
+  // report 36 employees for a company of three.
+  assert.equal(year.kpis.employeesPaid, 3);
+  assert.equal(year.summary.employeesPaid, 3);
+  // …and the window before it is the twelve months BEFORE this one.
+  assert.equal(year.previousMonths.length, 12);
+  assert.equal(year.previousMonths[11], '2025-08');
+});
+
+// Three more months of the same three employees, for the window tests.
+const threeMonthsOf = (months = []) =>
+  months.flatMap((month) => [
+    result(E1, month, { gross: 62000, basic: 31000 }),
+    result(E2, month, { gross: 40000, basic: 20000 }),
+    result(E3, month, { gross: 120000, basic: 60000 }),
+  ]);
+
+// ── §4 — period presets ────────────────────────────────────────────────────
+
+test('§4 every preset resolves to the months it names', () => {
+  const now = new Date('2026-08-15T00:00:00Z');
+
+  assert.deepEqual(resolvePeriod({ preset: 'CURRENT_MONTH', month: MONTH, now }).months, [MONTH]);
+  assert.deepEqual(resolvePeriod({ preset: 'PREVIOUS_MONTH', month: MONTH, now }).months, [PREVIOUS]);
+  assert.deepEqual(resolvePeriod({ preset: 'LAST_3_MONTHS', month: MONTH, now }).months, ['2026-06', '2026-07', '2026-08']);
+  assert.equal(resolvePeriod({ preset: 'LAST_6_MONTHS', month: MONTH, now }).months.length, 6);
+  assert.equal(resolvePeriod({ preset: 'LAST_12_MONTHS', month: MONTH, now }).months.length, 12);
+
+  // §4 — the example in the brief: April 2026 → March 2027.
+  const fy = resolvePeriod({ preset: 'CURRENT_FY', month: MONTH, now });
+  assert.equal(fy.fromMonth, '2026-04');
+  assert.equal(fy.toMonth, '2027-03');
+  assert.equal(fy.months.length, 12);
+
+  const previousFy = resolvePeriod({ preset: 'PREVIOUS_FY', month: MONTH, now });
+  assert.equal(previousFy.fromMonth, '2025-04');
+  assert.equal(previousFy.toMonth, '2026-03');
+
+  const custom = resolvePeriod({ preset: 'CUSTOM', fromMonth: '2026-04', toMonth: '2027-03', now });
+  assert.equal(custom.months.length, 12);
+  assert.equal(custom.months[0], '2026-04');
+  assert.equal(custom.months[11], '2027-03');
+  // A backwards range is not a range.
+  assert.deepEqual(resolvePeriod({ preset: 'CUSTOM', fromMonth: '2027-03', toMonth: '2026-04', now }).months, []);
+});
+
+test('§4 a preset window is its own cache entry', async () => {
+  const harness = threeEmployees();
+  harness.state.results.rows.push(...threeMonthsOf(['2026-05', '2026-06', '2026-07']));
+
+  const month = await harness.service.getDashboard({ companyId: COMPANY, month: MONTH });
+  const year = await harness.service.getDashboard({ companyId: COMPANY, month: MONTH, preset: 'LAST_12_MONTHS' });
+
+  assert.equal(month.summary.grossSalary, 222000);
+  assert.equal(year.summary.grossSalary, 222000 * 4, 'four months of the same three people');
+  // …and reading one must not poison the other.
+  const again = await harness.service.getDashboard({ companyId: COMPANY, month: MONTH });
+  assert.equal(again.summary.grossSalary, 222000);
+});
+
+// ── §8 — configurable salary bands ─────────────────────────────────────────
+
+test('§8 a company can define its own salary bands', () => {
+  const bands = normaliseSalaryBands([
+    { key: 'a', label: 'Up to 30k', min: 0, max: 30000 },
+    { key: 'b', label: '30k - 60k', min: 30000, max: 60000 },
+    { key: 'c', label: 'Above 60k', min: 60000, max: 90000 },
+  ]);
+
+  assert.equal(bands.length, 3);
+  // The top band is open-ended whatever the company typed: a 12-lakh salary
+  // must still land somewhere.
+  assert.equal(bands[2].max, null);
+  assert.equal(bandOf(15000, bands).key, 'a');
+  assert.equal(bandOf(62000, bands).key, 'c');
+  assert.equal(bandOf(90000000, bands).key, 'c');
+
+  const rows = salaryBandRows({
+    rows: [{ gross: 62000, net: 54000 }, { gross: 25000, net: 20000 }],
+    bands,
+  });
+  assert.deepEqual(rows.map((row) => `${row.label}:${row.employees}`), ['Up to 30k:1', '30k - 60k:0', 'Above 60k:1']);
+
+  // Junk falls back to the defaults rather than rendering an empty chart.
+  assert.equal(normaliseSalaryBands('nonsense').length, SALARY_BANDS.length);
+  assert.equal(normaliseSalaryBands([{ label: 'only one', min: 0, max: 10 }]).length, SALARY_BANDS.length);
+  // An overlapping band would count one employee twice, so it is dropped.
+  const overlapping = normaliseSalaryBands([
+    { key: 'a', label: '0-50', min: 0, max: 50000 },
+    { key: 'b', label: '10-60', min: 10000, max: 60000 },
+    { key: 'c', label: '60+', min: 60000, max: 90000 },
+  ]);
+  assert.deepEqual(overlapping.map((band) => band.key), ['a', 'c']);
 });
