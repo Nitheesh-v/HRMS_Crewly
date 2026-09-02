@@ -258,7 +258,7 @@ everything from Mongo.
 
 ---
 
-## 8. Tests — 42 hermetic (`npm run test:analytics`)
+## 8. Tests — 43 hermetic (`npm run test:analytics`)
 
 No MongoDB, no Redis, no BullMQ. Fake models, a fake cache, and fake
 audit / notify / dispatch seams.
@@ -274,7 +274,7 @@ Finance-only gate, the bonus entry-type vocabulary, the headcount report's HR
 counts, a multi-page PDF register, and §21 — that a filtered dashboard read is
 a *different cache entry* from the unfiltered one.
 
-`npm run test:all` → **786 pass / 0 fail**.
+`npm run test:all` → **787 pass / 0 fail**.
 
 ---
 
@@ -319,7 +319,11 @@ real PDF renderer — found one that no preview with six employees ever would:
    `Mon Aug 03` fell outside a window starting `Sat Aug 01` — "Mon" sorts
    before "Sat". Fixed, and the §9 test now asserts the join and exit counts
    so it cannot go quiet again.
-8. the executive dashboard printed `Net salary paid Rs 4,07,376` *above*
+8. the overview export printed its summary keys verbatim — `averageCtc`,
+   `employeesPaid`, `lopDays` — in a file meant for a finance team. Labels
+   are now a table, with a `humanise` fallback so a metric added later can
+   never leak its camelCase name into a spreadsheet.
+9. the executive dashboard printed `Net salary paid Rs 4,07,376` *above*
    `Gross salary Rs 3,57,000`. Analytics averaged and summed `totals.gross`,
    the structure earnings, while the net it printed came from `totals.netPay`,
    which includes overtime and variable pay. Every other module (29.6's

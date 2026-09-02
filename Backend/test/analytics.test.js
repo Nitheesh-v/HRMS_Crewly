@@ -539,6 +539,23 @@ test('§5 gross pay is never less than net pay, even with overtime and variable 
   assert.equal(leave.rows[0].dailyRate, Math.round((60000 / 31) * 100) / 100);
 });
 
+test('§6 the overview export reads like a report, not like JavaScript', async () => {
+  const harness = threeEmployees();
+  const report = await harness.service.getReport({ companyId: COMPANY, reportKey: 'OVERVIEW', month: MONTH });
+  const table = reportTable({ reportKey: 'OVERVIEW', payload: report });
+
+  const labels = table.rows.map(([label]) => String(label));
+  // No camelCase ever reaches the spreadsheet: `averageCtc` in a file a CFO
+  // opens is a bug, not a style choice.
+  const camelCased = labels.filter((label) => /[a-z][A-Z]/.test(label));
+  assert.deepEqual(camelCased, []);
+  assert.ok(labels.includes('Gross Salary'));
+  assert.ok(labels.includes('Employees Paid'));
+  // And the numbers are untouched by the relabelling.
+  const gross = table.rows.find(([label]) => label === 'Gross Salary');
+  assert.equal(gross[1], 222000);
+});
+
 test('§5 the dashboard is cached, and a payroll change drops the cache', async () => {
   const harness = threeEmployees();
 

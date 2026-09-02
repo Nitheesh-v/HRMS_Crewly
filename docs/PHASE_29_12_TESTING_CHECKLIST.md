@@ -1,6 +1,6 @@
 # Phase 29.12 — Payroll Analytics: manual testing checklist
 
-Automated: `npm run test:analytics` (42 tests), `npm run test:all` (786 tests),
+Automated: `npm run test:analytics` (43 tests), `npm run test:all` (787 tests),
 `npm run analytics:preview` (36 artefacts). This checklist is what a human
 still has to look at — the things a unit test cannot see.
 

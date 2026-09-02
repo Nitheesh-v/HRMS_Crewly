@@ -790,6 +790,40 @@ export const registerRows = ({ rows = [] } = {}) =>
 
 // ── export tables for every report (§19) ───────────────────────────────────
 
+/**
+ * §6 — the overview summary's keys, in the order they read best, as the words
+ * they should be printed as. `humanise` covers any key added later, so a new
+ * metric can never leak its camelCase name into a spreadsheet again.
+ */
+const OVERVIEW_LABELS = {
+  employeesPaid: 'Employees Paid',
+  grossSalary: 'Gross Salary',
+  netSalary: 'Net Salary Paid',
+  earningsTotal: 'Total Earnings',
+  deductionsTotal: 'Total Deductions',
+  employerContribution: 'Employer Contribution',
+  ctc: 'Total CTC',
+  totalPayrollCost: 'Total Payroll Cost',
+  averageSalary: 'Average Salary',
+  averageCtc: 'Average CTC',
+  bonusTotal: 'Total Bonus',
+  variableTotal: 'Total Variable Pay',
+  overtimeTotal: 'Overtime Cost',
+  overtimeHours: 'Overtime Hours',
+  reimbursements: 'Reimbursements',
+  lopDays: 'Loss of Pay Days',
+  paidLeaveDays: 'Paid Leave Days',
+  finalSettlements: 'Final Settlements',
+  payrollAccuracy: 'Payroll Accuracy %',
+  statutoryLiability: 'Total Statutory Liability',
+  totalStatutoryLiability: 'Total Statutory Liability',
+};
+
+const humanise = (key = '') =>
+  String(key)
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/^./, (character) => character.toUpperCase());
+
 export const reportTable = ({ reportKey = '', payload = {} } = {}) => {
   const key = String(reportKey || '').toUpperCase();
 
@@ -885,7 +919,13 @@ export const reportTable = ({ reportKey = '', payload = {} } = {}) => {
     default:
       return {
         headers: ['Metric', 'Value'],
-        rows: Object.entries(payload.summary || {}).map(([label, value]) => [label, value]),
+        // §6 — the overview is a two-column metric table, and its labels have
+        // to read like a report rather than like JavaScript: a file that says
+        // `averageCtc,93930.6` is not finished work.
+        rows: Object.entries(payload.summary || {}).map(([key, value]) => [
+          OVERVIEW_LABELS[key] || humanise(key),
+          value,
+        ]),
       };
   }
 };
