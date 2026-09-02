@@ -393,6 +393,23 @@ const AppLayout = () => {
     ...(hasAnyPermission(['PAYSLIP_READ_SELF'])
       ? [{ to: '/app/payroll/my-payslips', label: 'My Payroll' }]
       : []),
+    // Phase 29.11 — Final Settlement, the last step of the payroll lifecycle:
+    // calculate the F&F, review it, approve it, pay it, archive it (§25).
+    ...(hasAnyPermission([
+      'FINAL_SETTLEMENT_READ',
+      'FINAL_SETTLEMENT_CALCULATE',
+      'FINAL_SETTLEMENT_REVIEW',
+      'FINAL_SETTLEMENT_APPROVE',
+      'FINAL_SETTLEMENT_PAY',
+      'FINAL_SETTLEMENT_CLOSE',
+      'FINAL_SETTLEMENT_REOPEN',
+    ])
+      ? [{ to: '/app/payroll/final-settlement', label: 'Final Settlement' }]
+      : []),
+    // §18 — the employee's own settlement.
+    ...(hasAnyPermission(['FINAL_SETTLEMENT_READ_SELF'])
+      ? [{ to: '/app/payroll/my-final-settlement', label: 'My Final Settlement' }]
+      : []),
   ];
 
   const menu = [

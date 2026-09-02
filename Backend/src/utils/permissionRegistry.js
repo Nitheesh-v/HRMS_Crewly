@@ -17,6 +17,7 @@ export const RESOURCES = [
   "PAYROLL_STATUTORY",
   "PAYROLL_REPORT",
   "PAYSLIP",
+  "FINAL_SETTLEMENT",
   "RECRUITMENT",
   "RECRUITMENT_ANALYTICS",
   "BACKGROUND_VERIFICATION",
@@ -166,6 +167,11 @@ export const DEFAULT_PERMISSIONS = [
   // Payslips (phase 33.10) — PAYSLIP_READ_SELF already exists below
   ...actions("PAYSLIP", ["GENERATE", "RELEASE", "RERELEASE", "READ"]),
 
+  // Final settlement / F&F (phase 29.11 — this phase). One verb per duty:
+  // the person who calculates a settlement is not the person who approves
+  // its payment, and neither of them closes it.
+  ...actions("FINAL_SETTLEMENT", ["READ", "CALCULATE", "REVIEW", "APPROVE", "PAY", "CLOSE", "REOPEN"]),
+
   // Statutory compliance (phase 29.10 — this phase).
   // GENERATE = produce the report; FILING = move it through
   // Draft / Reviewed / Ready / Filed / Reopened. Finance files, so finance
@@ -289,6 +295,8 @@ export const DEFAULT_PERMISSIONS = [
 
   ...actions("PAYSLIP", ["READ"], "SELF"),
 
+  ...actions("FINAL_SETTLEMENT", ["READ"], "SELF"),
+
   ...actions("DOCUMENT", ["READ"], "SELF"),
 
   ...actions("TASK", ["READ", "UPDATE"], "SELF"),
@@ -321,6 +329,9 @@ const SELF_SERVICE_PERMISSIONS = [
   "LEAVE_UPDATE_SELF",
 
   "PAYSLIP_READ_SELF",
+
+  // Phase 29.11 §18 — an employee reads their OWN final settlement.
+  "FINAL_SETTLEMENT_READ_SELF",
 
   "DOCUMENT_READ_SELF",
   "DOCUMENT_CREATE_SELF",
@@ -401,6 +412,10 @@ export const DEFAULT_ROLE_MATRIX = {
     "PAYROLL_INPUT_MANAGE",
     "PAYROLL_REPORT_READ",
     "PAYROLL_STATUTORY_READ",
+    // Phase 29.11 §4 — HR verifies the exit (last working day, attendance,
+    // leave, assets) and reviews the settlement. HR never approves a payment.
+    "FINAL_SETTLEMENT_READ",
+    "FINAL_SETTLEMENT_REVIEW",
     // Phase 29.8 §4 — HR may SEE payment status (who has been paid, what
     // failed) but must never create a batch, generate a bank file or confirm
     // a payment: those are finance duties.

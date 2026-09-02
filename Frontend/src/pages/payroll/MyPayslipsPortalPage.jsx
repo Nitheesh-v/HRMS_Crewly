@@ -1,11 +1,13 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Download, FileText, Loader2, Search } from 'lucide-react';
+import { AlertTriangle, Download, FileText, Loader2, Search, Wallet } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 import Modal from '../../components/Modal.jsx';
 import PayslipDocument, { downloadPayslipFile } from './PayslipDocument.jsx';
 import payslipService from '../../services/payslipService.js';
 import statutoryService from '../../services/statutoryService.js';
+import fnfService from '../../services/fnfService.js';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Phase 29.9 — Employee Salary Portal (§14 / §15 / §16)
@@ -72,6 +74,8 @@ const MyPayslipsPortalPage = () => {
   const [downloadingId, setDownloadingId] = useState(null);
   // Phase 29.10 §17 — the employee's own statutory IDs, read-only.
   const [statutory, setStatutory] = useState(null);
+  // Phase 29.11 §18 — the employee's own final settlement, if there is one.
+  const [settlement, setSettlement] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -89,6 +93,11 @@ const MyPayslipsPortalPage = () => {
       .mine()
       .then((data) => setStatutory(data || null))
       .catch(() => setStatutory(null));
+    // Phase 29.11 §18 — a leaving employee sees their F&F here too.
+    fnfService
+      .mine()
+      .then((data) => setSettlement(data || null))
+      .catch(() => setSettlement(null));
   }, []);
 
   useEffect(() => {
@@ -228,6 +237,26 @@ const MyPayslipsPortalPage = () => {
               {formatMoney(statutory.current.tds)} · LWF {formatMoney(statutory.current.lwf)}
             </p>
           ) : null}
+        </div>
+      ) : null}
+
+      {/* Phase 29.11 §18 — the employee's own settlement, read-only. The
+          figures live on the dedicated page; this is only a pointer. */}
+      {settlement ? (
+        <div className="card flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold">Final Settlement</h2>
+            <p className="mt-0.5 text-xs text-crewly-dim">
+              {settlement.settlementNumber} · {settlement.statusLabel} · net{' '}
+              {formatMoney(settlement.totals?.netSettlement)}
+            </p>
+          </div>
+          <Link
+            to="/app/payroll/my-final-settlement"
+            className="btn-primary flex items-center gap-2 text-sm"
+          >
+            <Wallet size={15} /> View settlement
+          </Link>
         </div>
       ) : null}
 

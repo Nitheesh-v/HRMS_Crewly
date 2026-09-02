@@ -26,6 +26,7 @@ import payrollReviewService from '../services/payroll/payrollReviewService.js';
 import payrollPaymentService from '../services/payroll/payrollPaymentService.js';
 import payslipService from '../services/payroll/payslipService.js';
 import statutoryService from '../services/payroll/statutoryService.js';
+import fnfService from '../services/payroll/fnfService.js';
 import {
   validatePayslipGeneratePayload,
   validatePayslipZipPayload,
@@ -36,6 +37,10 @@ import {
   validateStatutoryExportPayload,
   validateComplianceReminderPayload,
 } from '../services/payroll/statutoryDispatcher.js';
+import {
+  validateFnfStatementPayload,
+  validateFnfRegisterPayload,
+} from '../services/payroll/fnfDispatcher.js';
 
 const reportProgress = async (job, progress) => {
   try {
@@ -294,6 +299,57 @@ export const complianceReminderProcessor = async (job) => {
   return { processed: true, skipped: false, ...result };
 };
 
+// FNF_STATEMENT (29.11 §17 / §21) — the F&F statement PDF for one settlement.
+// The bytes are produced HERE, inside the worker, never in the payload.
+export const fnfStatementProcessor = async (job) => {
+  const { valid, errors, value } = validateFnfStatementPayload(job?.data);
+  if (!valid) {
+    logger.warn(`[Payroll] F&F statement job rejected: ${errors.join(', ')}`);
+    return { processed: false, skipped: true, reason: errors.join(', ') };
+  }
+
+  const { companyId, settlementId, actorId, fileId } = value;
+
+  const result = await fnfService.runStatement({
+    companyId,
+    settlementId,
+    actor: actorId ? { _id: actorId } : null,
+    onProgress: (progress) => reportProgress(job, progress),
+  });
+
+  logger.info(
+    `[Payroll] F&F statement ready (settlement=${settlementId}, file=${fileId || result.fileId}, bytes=${result.sizeBytes ?? 0})`,
+  );
+
+  return { processed: true, skipped: false, ...result };
+};
+
+// FNF_REGISTER (29.11 §21) — the bulk settlement register (CSV / XLSX).
+export const fnfRegisterProcessor = async (job) => {
+  const { valid, errors, value } = validateFnfRegisterPayload(job?.data);
+  if (!valid) {
+    logger.warn(`[Payroll] F&F register job rejected: ${errors.join(', ')}`);
+    return { processed: false, skipped: true, reason: errors.join(', ') };
+  }
+
+  const { companyId, fileId, month, format, actorId } = value;
+
+  const result = await fnfService.runRegister({
+    companyId,
+    fileId,
+    month: month || '',
+    format,
+    actor: actorId ? { _id: actorId } : null,
+    onProgress: (progress) => reportProgress(job, progress),
+  });
+
+  logger.info(
+    `[Payroll] F&F register ready (file=${fileId}, rows=${result.rows ?? 0}, bytes=${result.sizeBytes ?? 0})`,
+  );
+
+  return { processed: true, skipped: false, ...result };
+};
+
 export const registerPayrollProcessors = ({ registerProcessor }) => {
   registerProcessor(JOB_NAMES.PAYROLL_RUN, payrollRunProcessor);
   registerProcessor(JOB_NAMES.PAYROLL_EXPORT, payrollExportProcessor);
@@ -304,6 +360,8 @@ export const registerPayrollProcessors = ({ registerProcessor }) => {
   registerProcessor(JOB_NAMES.STATUTORY_GENERATE, statutoryGenerateProcessor);
   registerProcessor(JOB_NAMES.STATUTORY_EXPORT, statutoryExportProcessor);
   registerProcessor(JOB_NAMES.COMPLIANCE_REMINDER, complianceReminderProcessor);
+  registerProcessor(JOB_NAMES.FNF_STATEMENT, fnfStatementProcessor);
+  registerProcessor(JOB_NAMES.FNF_REGISTER, fnfRegisterProcessor);
 };
 
 export default registerPayrollProcessors;

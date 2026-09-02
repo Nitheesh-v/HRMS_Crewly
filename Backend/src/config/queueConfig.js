@@ -68,6 +68,11 @@ export const JOB_NAMES = {
   STATUTORY_GENERATE: 'statutory-generate',
   STATUTORY_EXPORT: 'statutory-export',
   COMPLIANCE_REMINDER: 'compliance-reminder',
+  // 29.11: final settlement — the F&F statement PDF and the bulk settlement
+  // register. Same queue, own job names; the worker rebuilds from MongoDB, so
+  // the payload carries references only.
+  FNF_STATEMENT: 'fnf-statement',
+  FNF_REGISTER: 'fnf-register',
   // 28.4: processing jobs (resume parsing + ATS matching). One job name
   // per stage — reprocess/recovery reuse the same job with a fresh
   // deterministic job id (version-aware), not extra job names.
@@ -121,6 +126,9 @@ export const PAYROLL_JOB_NAMES = Object.freeze([
   JOB_NAMES.STATUTORY_GENERATE,
   JOB_NAMES.STATUTORY_EXPORT,
   JOB_NAMES.COMPLIANCE_REMINDER,
+  // 29.11 final settlement
+  JOB_NAMES.FNF_STATEMENT,
+  JOB_NAMES.FNF_REGISTER,
 ]);
 
 // 28.6 document + BGV job names (their own reserved queues).

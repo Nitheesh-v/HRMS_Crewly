@@ -59,6 +59,8 @@ import SalaryPaymentPage from "../pages/payroll/SalaryPaymentPage.jsx";
 import PayslipsPage from "../pages/payroll/PayslipsPage.jsx";
 import MyPayslipsPortalPage from "../pages/payroll/MyPayslipsPortalPage.jsx";
 import StatutoryCompliancePage from "../pages/payroll/StatutoryCompliancePage.jsx";
+import FinalSettlementPage from "../pages/payroll/FinalSettlementPage.jsx";
+import MyFinalSettlementPage from "../pages/payroll/MyFinalSettlementPage.jsx";
 import EmployeePayrollDetailPage from "../pages/payroll/EmployeePayrollDetailPage.jsx";
 import MyPayslipsPage from "../pages/payroll/MyPayslipsPage.jsx";
 
@@ -383,6 +385,9 @@ const AppRoutes = () => (
       <Route path="payroll/payslips" element={<PayslipsPage />} />
       <Route path="payroll/my-payslips" element={<MyPayslipsPortalPage />} />
       <Route path="payroll/statutory" element={<StatutoryCompliancePage />} />
+      {/* Phase 29.11 — Final Settlement (F&F): HR/Finance workspace + employee portal. */}
+      <Route path="payroll/final-settlement" element={<FinalSettlementPage />} />
+      <Route path="payroll/my-final-settlement" element={<MyFinalSettlementPage />} />
       <Route path="payroll/employees" element={<EmployeePayrollPage />} />
       <Route path="payroll/employees/:employeeId" element={<EmployeePayrollDetailPage />} />
 

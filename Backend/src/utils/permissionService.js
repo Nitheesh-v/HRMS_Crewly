@@ -63,7 +63,7 @@ export const ensurePermissions = async () => {
 //   22 → 23 : 29.9 gave HR_MANAGER and FINANCE_MANAGER PAYSLIP_READ
 //   23 → 24 : 29.10 added PAYROLL_STATUTORY_FILING and gave
 //             PAYROLL_ADMIN / FINANCE_MANAGER the statutory duties
-const SYSTEM_PERMISSION_VERSION = 24;
+const SYSTEM_PERMISSION_VERSION = 25;
 export const ensureCompanyRoles = async (companyId, createdBy = null) => {
   const permissions = await ensurePermissions();
 

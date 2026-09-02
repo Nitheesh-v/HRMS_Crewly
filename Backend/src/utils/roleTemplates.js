@@ -75,6 +75,9 @@ export const ROLE_TEMPLATES = Object.freeze([
       'SALARY_REVISION_APPROVE',
       'PAYROLL_REPORT_READ',
       'PAYROLL_STATUTORY_READ',
+      // Phase 29.11 §4 — HR reviews the settlement.
+      'FINAL_SETTLEMENT_READ',
+      'FINAL_SETTLEMENT_REVIEW',
     ],
   },
   {
@@ -140,6 +143,12 @@ export const ROLE_TEMPLATES = Object.freeze([
       // the person who attests that it was submitted.
       'PAYROLL_REPORT_READ',
       'PAYROLL_REPORT_EXPORT',
+      // Phase 29.11 §4 — the Payroll Admin calculates the settlement, edits
+      // the payable and recovery items and generates the statement. Approving
+      // and paying it stays with Finance (separation of duties).
+      'FINAL_SETTLEMENT_READ',
+      'FINAL_SETTLEMENT_CALCULATE',
+      'FINAL_SETTLEMENT_REVIEW',
     ],
   },
   {
@@ -201,6 +210,11 @@ export const ROLE_TEMPLATES = Object.freeze([
       // status. Generating the report stays with the Payroll Admin.
       'PAYROLL_STATUTORY_READ',
       'PAYROLL_STATUTORY_FILING',
+      // Phase 29.11 §4 — Finance approves the settlement and marks it paid.
+      // Finance does not calculate it and does not close it.
+      'FINAL_SETTLEMENT_READ',
+      'FINAL_SETTLEMENT_APPROVE',
+      'FINAL_SETTLEMENT_PAY',
     ],
   },
   {
@@ -217,6 +231,10 @@ export const ROLE_TEMPLATES = Object.freeze([
       // Phase 29.9 §4 — Finance is VIEW ONLY on payslips.
       'PAYSLIP_READ',
       'PAYROLL_REPORT_READ',
+      // Phase 29.11 §4 — the Finance Executive follows a settlement through
+      // the workflow and pays it, but never calculates it and never closes
+      // it: those are the Payroll Admin's and the Company Admin's duties.
+      'FINAL_SETTLEMENT_READ',
     ],
   },
 ]);

@@ -23,6 +23,7 @@ import payrollReviewRoutes from "./payrollReviewRoutes.js";
 import payrollPaymentRoutes from "./payrollPaymentRoutes.js";
 import payslipRoutes from "./payslipRoutes.js";
 import statutoryRoutes from "./statutoryRoutes.js";
+import fnfRoutes from "./fnfRoutes.js";
 import recruitmentRoutes from "./recruitmentRoutes.js";
 import exitRoutes from "./exitRoutes.js";
 import billingRoutes from "./billingRoutes.js";
@@ -135,6 +136,8 @@ router.use("/payroll/review", payrollReviewRoutes);
 router.use("/payroll/payments", payrollPaymentRoutes);
   router.use("/payroll/payslips", payslipRoutes);
   router.use("/payroll/statutory", statutoryRoutes);
+  // Phase 29.11 — Final Settlement (F&F).
+  router.use("/payroll/fnf", fnfRoutes);
 
 router.use("/recruitment", recruitmentRoutes);
 
