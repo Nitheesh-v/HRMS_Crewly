@@ -103,6 +103,7 @@ export const FNF_AUDIT_ACTIONS = Object.freeze({
   SETTLEMENT_HR_REVIEWED: 'Final settlement HR reviewed',
   SETTLEMENT_FINANCE_APPROVED: 'Final settlement approved by Finance',
   SETTLEMENT_FINANCE_REJECTED: 'Final settlement rejected by Finance',
+  SETTLEMENT_RECOVERY_ADDED: 'Final settlement recovery added by Finance',
   SETTLEMENT_PAID: 'Final settlement marked paid',
   SETTLEMENT_CLOSED: 'Final settlement closed',
   SETTLEMENT_REOPENED: 'Final settlement reopened',
@@ -115,6 +116,7 @@ export const NOTIFICATION_TYPES = Object.freeze({
   HR_REVIEWED: 'FNF_HR_REVIEWED',
   FINANCE_APPROVED: 'FNF_FINANCE_APPROVED',
   FINANCE_REJECTED: 'FNF_FINANCE_REJECTED',
+  RECOVERY_ADDED: 'FNF_RECOVERY_ADDED',
   SETTLEMENT_PAID: 'FNF_SETTLEMENT_PAID',
   SETTLEMENT_CLOSED: 'FNF_SETTLEMENT_CLOSED',
 });
@@ -129,6 +131,8 @@ export const notificationCopy = (type, payload = {}) => {
       return `Finance approved ${who}'s final settlement${amount}. It is ready for payment.`;
     case NOTIFICATION_TYPES.FINANCE_REJECTED:
       return `Finance rejected ${who}'s final settlement.${payload.remarks ? ` Reason: ${payload.remarks}` : ''}`;
+    case NOTIFICATION_TYPES.RECOVERY_ADDED:
+      return `Finance added a recovery to ${who}'s final settlement${amount}. It is awaiting your review.`;
     case NOTIFICATION_TYPES.SETTLEMENT_PAID:
       return `Your final settlement${amount} has been paid. Download the F&F statement from My Payroll.`;
     case NOTIFICATION_TYPES.SETTLEMENT_CLOSED:
@@ -416,11 +420,20 @@ export const computePayableDays = ({
   return Math.max(0, Math.min(cap, upto - lop));
 };
 
-export const computePendingSalary = ({ monthlyGross = 0, workingDays = 0, payableDays = 0 } = {}) => {
+export const computePendingSalary = ({
+  monthlyGross = 0,
+  workingDays = 0,
+  payableDays = 0,
+  lopDays = 0,
+} = {}) => {
   const rate = dailyRate({ monthlyGross, workingDays });
   return {
     dailyRate: rate,
     payableDays,
+    // §5 — the attendance the calculation used is frozen with the figure that
+    // came out of it. Without it the statement reads "16 payable days of 31"
+    // with no way to see that two of them were loss of pay.
+    lopDays: Math.max(0, Number(lopDays) || 0),
     amount: money(rate * (Number(payableDays) || 0)),
   };
 };

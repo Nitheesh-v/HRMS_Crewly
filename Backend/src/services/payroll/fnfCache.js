@@ -14,9 +14,12 @@ import { buildTenantCacheKey, deleteCache, noteCacheInvalidation } from '../redi
 export const FNF_CACHE_NAMESPACE = 'payroll-fnf';
 export const FNF_CACHE_VERSION = 1;
 
-// One suffix per cached read: the HR dashboard, the employee's own settlement
-// status (§20) and the pending approval counts the nav badge reads.
-export const FNF_CACHE_SUFFIXES = ['dashboard', 'employee', 'approvals'];
+// One suffix per cached read: the HR dashboard and the employee's own
+// settlement status (§20). The pending-approval counts §20 asks for are the
+// dashboard's `hrReview` / `financeApproval` KPIs, so they ride in the
+// dashboard entry and are dropped by the same invalidation — a third key
+// nothing reads would be dead weight.
+export const FNF_CACHE_SUFFIXES = ['dashboard', 'employee'];
 
 export const fnfCacheKey = (companyId, month = '', suffix = 'dashboard', period = '') =>
   buildTenantCacheKey({

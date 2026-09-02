@@ -49,6 +49,9 @@ const earningsSchema = new Schema(
       monthlyGross: { type: Number, default: 0 },
       workingDays: { type: Number, default: 0 },
       payableDays: { type: Number, default: 0 },
+      // §5 — the loss-of-pay days the calculation used, frozen with the
+      // figure that came out of them so the statement can explain itself.
+      lopDays: { type: Number, default: 0 },
       dailyRate: { type: Number, default: 0 },
       amount: { type: Number, default: 0 },
     },

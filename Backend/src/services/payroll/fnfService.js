@@ -325,7 +325,7 @@ export const makeFnfService = ({
       : 0;
 
     const payableDays = computePayableDays({ month, workingDays, lastWorkingDate, lopDays });
-    const pendingSalary = computePendingSalary({ monthlyGross, workingDays, payableDays });
+    const pendingSalary = computePendingSalary({ monthlyGross, workingDays, payableDays, lopDays });
     const rate = pendingSalary.dailyRate;
 
     // §8 — leave encashment from the unused EARNED balance.
@@ -394,6 +394,10 @@ export const makeFnfService = ({
           monthlyGross: money(monthlyGross),
           workingDays,
           payableDays,
+          // §5 — the attendance the calculation used travels with the figure
+          // it produced, so the statement can explain 16 payable days out of
+          // 31 instead of leaving HR to account for the missing two.
+          lopDays: pendingSalary.lopDays,
           dailyRate: rate,
           amount: pendingSalary.amount,
         },
@@ -775,6 +779,87 @@ export const makeFnfService = ({
   };
 
   // ── §12 — notice decision ────────────────────────────────────────────────
+
+  // ── §13 — Finance adds a recovery ─────────────────────────────────────────
+  //
+  // An unreturned laptop is a fact discovered at clearance time, which is
+  // Finance's stage, not the Payroll Admin's. So Finance may ADD A RECOVERY
+  // while the settlement is with them — and nothing else: no payable (that
+  // would be the company paying money out on Finance's word alone), no
+  // recalculation, no status change. Every other edit still belongs to
+  // FINAL_SETTLEMENT_CALCULATE.
+  //
+  // The salary figures are deliberately NOT re-derived here. Adding a
+  // recovery must not quietly move the pending salary under the employee.
+
+  const addRecovery = async ({
+    companyId,
+    settlementId,
+    item = null,
+    actor = null,
+    req = null,
+    allowedEmployeeIds = null,
+  } = {}) => {
+    const row = await FinalSettlementModel.findOne(withScope(companyId, { _id: settlementId }, allowedEmployeeIds));
+    if (!row) throw ApiError.notFound('Final settlement not found');
+    if (isSettlementLocked(row.status)) throw ApiError.badRequest('A closed settlement cannot be edited');
+    if (String(row.status) !== 'HR_REVIEWED') {
+      throw ApiError.badRequest('Finance can only add a recovery while the settlement is with Finance');
+    }
+
+    // §9 — amount and reason are mandatory, and the approver is the person
+    // adding it. The same validator the Payroll Admin's item editor uses.
+    const errors = validateRecoveryItem(item);
+    if (errors.length) throw ApiError.badRequest(errors[0]);
+
+    const entry = normaliseRecovery(item, actor);
+    row.recoveries = {
+      ...(row.recoveries || {}),
+      items: [...(row.recoveries?.items || []), entry],
+    };
+    row.totals = settlementTotals({
+      pendingSalary: row.earnings?.pendingSalary?.amount || 0,
+      additionalPayables: row.earnings?.additional || [],
+      leaveEncashment: row.earnings?.leaveEncashment?.amount || 0,
+      noticeRecovery: row.recoveries?.notice?.amount || 0,
+      recoveries: row.recoveries?.items || [],
+    });
+
+    await row.save();
+    await writeAudit({
+      req,
+      action: FNF_AUDIT_ACTIONS.SETTLEMENT_RECOVERY_ADDED,
+      companyId,
+      employeeId: row.employeeId,
+      month: row.month,
+      previousStatus: row.status,
+      newStatus: row.status,
+      remarks: `Recovery added: ${entry.label} — ${entry.reason}`,
+      payload: {
+        settlementId: row._id,
+        settlementNumber: row.settlementNumber,
+        type: entry.type,
+        amount: entry.amount,
+      },
+    });
+
+    // The Payroll Admin owns the figures: they hear about it.
+    await notifyPermission({
+      companyId,
+      permission: 'FINAL_SETTLEMENT_CALCULATE',
+      type: NOTIFICATION_TYPES.RECOVERY_ADDED,
+      excludeUserId: actor?._id || null,
+      payload: {
+        employeeName: row.exit?.employeeName || '',
+        settlementNumber: row.settlementNumber,
+        netSettlement: row.totals?.netSettlement || 0,
+      },
+    }).catch(() => null);
+
+    await invalidate(companyId, row.month, [row.employeeId]);
+
+    return getSettlement({ companyId, settlementId: row._id });
+  };
 
   const setNoticeDecision = async ({
     companyId,
@@ -1542,6 +1627,7 @@ export const makeFnfService = ({
     updateItems,
     setNoticeDecision,
     hrReview,
+    addRecovery,
     financeDecision,
     markPaid,
     closeSettlement,

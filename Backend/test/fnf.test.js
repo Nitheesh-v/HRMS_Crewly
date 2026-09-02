@@ -27,6 +27,7 @@ import {
   FNF_RULES,
   NOTICE_DECISION_LABELS,
   PAYABLE_TYPE_LABELS,
+  FNF_AUDIT_ACTIONS,
   RECOVERY_TYPE_LABELS,
   SETTLEMENT_STATUSES,
   SETTLEMENT_TRANSITIONS,
@@ -817,6 +818,157 @@ test('§15 Finance approval stays closed until every checklist item is ticked', 
   const note = harness.state.notifications.find((entry) => entry.type === 'FNF_HR_REVIEWED');
   assert.ok(note);
   assert.equal(note.permission, 'FINAL_SETTLEMENT_APPROVE');
+});
+
+// ── §13 — Finance adds a recovery (audit pass) ─────────────────────────────
+
+test('§13 Finance records a recovery for an unreturned asset at their own stage', async () => {
+  const harness = fullHarness();
+  const created = await harness.service.createSettlement({
+    companyId: COMPANY, employeeId: E1, resignationId: oid(80), actor: payrollActor,
+  });
+  await harness.service.recalculate({ companyId: COMPANY, settlementId: created.settlementId, actor: payrollActor });
+
+  // Before HR review Finance has no business touching it.
+  await assert.rejects(
+    () => harness.service.addRecovery({
+      companyId: COMPANY,
+      settlementId: created.settlementId,
+      item: { type: 'ASSET', amount: 40000, reason: 'Laptop not returned' },
+      actor: financeActor,
+    }),
+    /with Finance/i,
+  );
+
+  await harness.service.hrReview({
+    companyId: COMPANY, settlementId: created.settlementId, checklist: fullChecklist(), complete: true, actor: hrActor,
+  });
+
+  const before = await harness.service.getSettlement({ companyId: COMPANY, settlementId: created.settlementId });
+
+  // §9 — the same rules the Payroll Admin's editor obeys.
+  await assert.rejects(
+    () => harness.service.addRecovery({
+      companyId: COMPANY, settlementId: created.settlementId,
+      item: { type: 'ASSET', amount: 0, reason: 'Laptop not returned' }, actor: financeActor,
+    }),
+    /amount/i,
+  );
+  await assert.rejects(
+    () => harness.service.addRecovery({
+      companyId: COMPANY, settlementId: created.settlementId,
+      item: { type: 'ASSET', amount: 40000, reason: '  ' }, actor: financeActor,
+    }),
+    /reason/i,
+  );
+  // §13 — Finance may add a recovery, never a payable: the type catalogue is
+  // the recovery catalogue, so a bonus type cannot even be expressed here.
+  await assert.rejects(
+    () => harness.service.addRecovery({
+      companyId: COMPANY, settlementId: created.settlementId,
+      item: { type: 'PERFORMANCE_BONUS', amount: 40000, reason: 'Being generous' }, actor: financeActor,
+    }),
+    /type/i,
+  );
+
+  const after = await harness.service.addRecovery({
+    companyId: COMPANY,
+    settlementId: created.settlementId,
+    item: { type: 'ASSET', amount: 40000, reason: 'Laptop not returned' },
+    actor: financeActor,
+  });
+
+  // The recovery lands, and the net moves by exactly that amount.
+  assert.equal(after.recoveries.items.length, 1);
+  assert.equal(after.recoveries.items[0].amount, 40000);
+  assert.equal(after.recoveries.items[0].approvedByName, financeActor.name);
+  assert.equal(after.totals.netSettlement, money(before.totals.netSettlement - 40000));
+
+  // §13 — the salary figures are NOT re-derived: pending salary is untouched.
+  assert.equal(after.earnings.pendingSalary.amount, before.earnings.pendingSalary.amount);
+
+  // The settlement stays where Finance left it, and the Payroll Admin is told.
+  assert.equal(after.status, 'HR_REVIEWED');
+  assert.ok(harness.state.notifications.some((entry) => entry.type === 'FNF_RECOVERY_ADDED'));
+  assert.ok(harness.state.audits.some((entry) => entry.action === FNF_AUDIT_ACTIONS.SETTLEMENT_RECOVERY_ADDED));
+
+  // §14 — once closed, even Finance cannot add anything.
+  await harness.service.financeDecision({
+    companyId: COMPANY, settlementId: created.settlementId, action: 'APPROVE', actor: financeActor,
+  });
+  await harness.service.markPaid({
+    companyId: COMPANY, settlementId: created.settlementId, paidAt: '2026-09-01', actor: financeActor,
+  });
+  await harness.service.closeSettlement({ companyId: COMPANY, settlementId: created.settlementId, actor: hrActor });
+  await assert.rejects(
+    () => harness.service.addRecovery({
+      companyId: COMPANY, settlementId: created.settlementId,
+      item: { type: 'ASSET', amount: 1, reason: 'Too late' }, actor: financeActor,
+    }),
+    /closed/i,
+  );
+});
+
+// ── §5 / §7 — attendance is frozen with the figure it produced ─────────────
+
+test('§5 the loss-of-pay days behind the payable days are stored, not lost', async () => {
+  // Two LOP days already taken in the settlement month.
+  const harness = fullHarness({ results: [result(E1, { lopDays: 2 })] });
+  const created = await harness.service.createSettlement({
+    companyId: COMPANY, employeeId: E1, resignationId: oid(80), actor: payrollActor,
+  });
+  const settled = await harness.service.recalculate({
+    companyId: COMPANY, settlementId: created.settlementId, actor: payrollActor,
+  });
+
+  // LWD 18 Aug, 31 working days, 2 LOP → 16 payable days, not 18.
+  assert.equal(settled.earnings.pendingSalary.lopDays, 2);
+  assert.equal(settled.earnings.pendingSalary.payableDays, 16);
+  assert.equal(settled.earnings.pendingSalary.amount, 32000);
+
+  // The figure survives a reload: the attendance is frozen into the record,
+  // so a later edit to the month cannot quietly move a settled number.
+  const reloaded = await harness.service.getSettlement({ companyId: COMPANY, settlementId: created.settlementId });
+  assert.equal(reloaded.earnings.pendingSalary.lopDays, 2);
+
+  // And the PDF says so, rather than leaving HR to explain 16 out of 31.
+  const text = await extractPdfText(
+    await buildFnfStatementPdf({
+      settlement: reloaded, employee: reloaded.employee, company: { name: 'Crewly' },
+    }),
+  );
+  assert.match(text, /loss of pay/i);
+  assert.match(text, /16 payable day/);
+});
+
+// ── §24 — the HTTP layer must actually load (audit pass) ────────────────────
+
+test('§24 the settlement routes, controller and validators all load', async () => {
+  // A validator chain only COLLECTS errors — nothing enforces them until
+  // something calls validationResult. This file once shipped without that
+  // half, which left every 29.11 route unvalidated and would have crashed
+  // the server on import. Loading the modules proves it cannot happen again.
+  const [{ default: routes }, controller, validators] = await Promise.all([
+    import('../src/routes/fnfRoutes.js'),
+    import('../src/controllers/fnfController.js'),
+    import('../src/validators/fnfValidator.js'),
+  ]);
+
+  assert.equal(typeof routes, 'function');
+  assert.equal(typeof controller.addRecovery, 'function');
+  assert.ok(Array.isArray(validators.addRecoveryValidator));
+
+  // Every exported chain ends with the middleware that reads the errors.
+  Object.entries(validators).forEach(([name, chain]) => {
+    assert.ok(Array.isArray(chain), `${name} should be a validator chain`);
+    assert.equal(typeof chain[chain.length - 1], 'function', `${name} must end with a result handler`);
+  });
+
+  // §13 — the recovery route exists and accepts a recovery type only.
+  const recoveryRoute = routes.stack.find(
+    (layer) => layer.route?.path === '/:settlementId/recoveries' && layer.route?.methods?.post,
+  );
+  assert.ok(recoveryRoute, 'POST /:settlementId/recoveries should be registered');
 });
 
 // ── §16 — Finance ──────────────────────────────────────────────────────────

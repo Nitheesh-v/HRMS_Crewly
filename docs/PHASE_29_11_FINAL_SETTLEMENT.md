@@ -1,7 +1,7 @@
 # Phase 29.11 — Final Settlement (F&F), Resignation Recovery & Exit Payroll
 
 **Status:** complete · **Branch:** `arena/01a05672-hrms-crewly`
-**Tests:** 36 hermetic (`npm run test:fnf`) · **Full suite:** 741/741 (`npm run test:all`)
+**Tests:** 39 hermetic (`npm run test:fnf`) · **Full suite:** 744/744 (`npm run test:all`)
 **Frontend:** `vite build` clean.
 **Preview:** `npm run fnf:preview` — 7 checks, all passing.
 
@@ -68,6 +68,70 @@ fact. Re-deriving it is an explicit, audited act (recalculate), never a side
 effect of someone else's edit. The fields remain non-editable — Crewly copies
 them, HR does not.
 
+---
+
+## 1b. Audit pass — what the re-pasted spec exposed
+
+The spec was re-read against the finished code. Four gaps, one of them
+ship-blocking.
+
+### The ship-blocker: the validators were decoration
+
+Every 29.11 validator chain collected errors and then **threw them away** — the
+file never called `validationResult`. An express-validator chain does nothing
+until something reads its result, so a malformed month, a non-ObjectId
+settlement id or an out-of-catalogue recovery type sailed straight through to
+the service (§24: "Server-side Validation"). Worse, a stray reference in the
+file meant **the backend would not have booted** once `fnfRoutes.js` imported
+it.
+
+All 741 unit tests passed regardless, because they exercise services, never the
+HTTP layer. Fixed by adding the missing `validate` middleware and appending it
+to all 13 chains, plus a test that loads the routes, the controller and every
+validator and asserts each chain terminates in a result handler.
+
+**The same defect was in 29.8 (payments), 29.9 (payslips) and 29.10
+(statutory)** — 29.5 and 29.7 had it right. All four files now enforce their
+own rules. This is the single most valuable thing this audit found.
+
+### §5 / §7 — attendance is now frozen *visibly*
+
+Loss-of-pay days reduced the payable days, but the settlement never recorded
+them, so a statement could read "16 payable days of 31" with no way to see that
+two were LOP. The attendance the calculation used (working days, LOP, payable
+days) is now stored with the figure it produced and printed on the statement.
+
+### §13 — Finance can now record the recovery it is told to record
+
+§13 says "if assets are not returned, Finance may add recovery amounts", but
+Finance holds `APPROVE`/`PAY` and the item editor was gated on `CALCULATE`.
+Finance therefore had to reject the settlement and wait for someone else to fix
+it — four steps and two extra people for a routine event.
+
+Finance may now add a **recovery** while the settlement is with them
+(`HR_REVIEWED`), via `POST /:settlementId/recoveries`. Deliberately narrow:
+a recovery only — never a payable — and the salary figures are **not**
+re-derived, so adding ₹40,000 for a laptop cannot quietly move the pending
+salary. Separately audited, and the Payroll Admin is notified.
+
+### §20 — one cache suffix was dead
+
+`FNF_CACHE_SUFFIXES` declared an `approvals` key nothing read. The
+pending-approval counts §20 asks for are the dashboard's `hrReview` /
+`financeApproval` KPIs, so they ride in the dashboard entry and are dropped by
+the same invalidation. The third key is gone rather than left as decoration.
+
+### Deliberate deviations, restated
+
+| § | Spec | Kept as built, because |
+|---|---|---|
+| 21 | BullMQ for "Notifications" and "Audit Events" | PDF and reports are queued. Notifications are a single indexed insert; audit entries **must not** be lost when a worker is down, so both stay synchronous. |
+| 25 | Six admin pages | Four tabs under one sidebar entry (standing constraint: full features, small sidebar). §25's six concerns are all present. |
+| 13 | Asset status Returned / Pending / Damaged | The existing Asset module only knows `AVAILABLE` / `ASSIGNED` and clears `currentHolder` on return. Anything still held at calculation time is reported **PENDING**; "Damaged" is not a state the module can express, and Crewly does not manage assets here. |
+| 1 | "Unpaid Deductions" | Mapped onto the recoveries section (§9) — notice, asset, cafeteria, advance salary, other. |
+| 7 | Statutory deductions on the final period | Not applied. §11 defines the settlement as earnings − recoveries, and the regular payroll run for the exit month (29.6/29.10) already remits PF/ESI/TDS/PT for it. Deducting them twice would silently change the net, so it is left to the payroll run rather than guessed here. |
+
+
 ### A defect the tests could not see
 
 `fnfDispatcher` originally validated `payload.format` through `normaliseFormat`,
@@ -95,7 +159,7 @@ allowed set.
 | `scripts/fnfPreview.js` | 621 | `npm run fnf:preview` — real artefacts, no database. |
 | `test/fnf.test.js` | 1278 | 36 hermetic tests. |
 
-### Route table — 21 routes at `/api/payroll/fnf`
+### Route table — 22 routes at `/api/payroll/fnf`
 
 | Method | Path | Gate | § |
 |---|---|---|---|
@@ -113,6 +177,7 @@ allowed set.
 | PATCH | `/:settlementId/items` | `FINAL_SETTLEMENT_CALCULATE` | 9, 10 |
 | PATCH | `/:settlementId/notice` | `FINAL_SETTLEMENT_CALCULATE` | 12 |
 | POST | `/:settlementId/hr-review` | `FINAL_SETTLEMENT_REVIEW` | 15 |
+| POST | `/:settlementId/recoveries` | `FINAL_SETTLEMENT_APPROVE` | 9, 13 |
 | POST | `/:settlementId/finance` | `FINAL_SETTLEMENT_APPROVE` | 16 |
 | POST | `/:settlementId/pay` | `FINAL_SETTLEMENT_PAY` | 5 |
 | POST | `/:settlementId/statement` | `FINAL_SETTLEMENT_CALCULATE` | 17, 21 |
@@ -133,6 +198,7 @@ form of tenant isolation there is.
 |---|---|---|---|
 | `DRAFT` | `CALCULATED` | `FINAL_SETTLEMENT_CALCULATE` | exit record present |
 | `CALCULATED` | `HR_REVIEWED` | `FINAL_SETTLEMENT_REVIEW` | **checklist complete** (§15) |
+| `HR_REVIEWED` | *(stays)* | `FINAL_SETTLEMENT_APPROVE` | §13 recovery for an unreturned asset — salary not re-derived |
 | `HR_REVIEWED` | `FINANCE_APPROVED` | `FINAL_SETTLEMENT_APPROVE` | — |
 | `FINANCE_APPROVED` | `PAID` | `FINAL_SETTLEMENT_PAY` | — |
 | `FINANCE_APPROVED` | `CALCULATED` | `FINAL_SETTLEMENT_APPROVE` | **remarks required** (§16) |
@@ -203,7 +269,10 @@ resignation exists, and it asks for the date rather than pretending one.
   not calculate, and neither closes. `SEPARATION_OF_DUTIES_RULES` is asserted.
 - **Queue payloads** — references only; `FORBIDDEN_KEYS` rejects a payload
   carrying `rows`, `totals`, `amount`, `netSettlement`…
-- **Audit (§23)** — ten actions, each recording previous status, new status,
+- **Server-side validation (§24)** — every chain in `fnfValidator.js` ends in a
+  `validationResult` handler; a malformed request is a 400, not a silent
+  pass-through. A test loads the whole HTTP layer and asserts it.
+- **Audit (§23)** — eleven actions, each recording previous status, new status,
   actor and remarks: created, calculated, recalculated, HR reviewed, finance
   approved, finance rejected, paid, closed, reopened, statement downloaded.
 - **Cache (§20)** — invalidated on calculate, HR review, finance decision,
@@ -215,7 +284,7 @@ resignation exists, and it asks for the date rather than pretending one.
 
 ---
 
-## 6. Tests — 36 hermetic
+## 6. Tests — 39 hermetic
 
 `npm run test:fnf` (also in `test:payroll` and `test:all`).
 
@@ -230,7 +299,12 @@ six KPIs; search and department filters; the employee projection's exact key
 set (and that it leaks nothing); `canDownload` only after payment; cache
 invalidation on every status change; queue payload rejection; a real PDF's
 rendered text; the register row shape; the audit trail's twenty entries; the
-payment notification; and **cross-tenant denial**.
+payment notification; **Finance's §13 recovery** (right stage only, amount and
+reason enforced, payable types rejected, salary figures untouched, closed
+settlements refused); the frozen loss-of-pay days surviving a reload and
+appearing on the PDF; that the routes, controller and validators all load and
+**every validator chain ends in a result handler**; and **cross-tenant
+denial**.
 
 ---
 

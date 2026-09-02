@@ -35,6 +35,7 @@ import {
   exportRegister,
   financeDecision,
   getDashboard,
+  addRecovery,
   getMySettlement,
   getSettlement,
   hrReview,
@@ -49,6 +50,7 @@ import {
 } from '../controllers/fnfController.js';
 
 import {
+  addRecoveryValidator,
   createSettlementValidator,
   financeDecisionValidator,
   fnfExportQueryValidator,
@@ -147,6 +149,17 @@ router.post(
   settlementIdParamValidator,
   hrReviewValidator,
   hrReview,
+);
+
+// §13 — Finance records a recovery for an asset that was not returned. Gated
+// on APPROVE, because it is Finance's stage; the payload allows a recovery and
+// nothing else (§9: amount + reason, and the actor is the approver).
+router.post(
+  '/:settlementId/recoveries',
+  ...writeAccess('FINAL_SETTLEMENT_APPROVE'),
+  settlementIdParamValidator,
+  addRecoveryValidator,
+  addRecovery,
 );
 
 // §16 — Finance approval / rejection.

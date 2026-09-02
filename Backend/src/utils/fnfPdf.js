@@ -320,7 +320,7 @@ export const buildFnfStatementPdf = ({ company = {}, employee = {}, settlement =
       const pending = earnings?.pendingSalary || {};
       earningRows.push({
         label: 'Pending Salary',
-        detail: `${pending?.payableDays ?? 0} payable day(s) x ${rupees(pending?.dailyRate || 0)} (of ${pending?.workingDays ?? 0} working days)`,
+        detail: `${pending?.payableDays ?? 0} payable day(s) x ${rupees(pending?.dailyRate || 0)} (of ${pending?.workingDays ?? 0} working days${Number(pending?.lopDays) > 0 ? `, ${pending.lopDays} loss of pay` : ''})`,
         amount: pending?.amount || 0,
       });
 

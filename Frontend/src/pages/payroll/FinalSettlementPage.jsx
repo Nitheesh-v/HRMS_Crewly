@@ -223,6 +223,9 @@ const FinalSettlementPage = () => {
   // §9 / §10 — adding a payable or a recovery by hand.
   const [itemDraft, setItemDraft] = useState({ kind: 'RECOVERY', type: 'ASSET', amount: '', label: '', reason: '' });
 
+  // §13 — the recovery Finance adds for an asset that was not returned.
+  const [recoveryDraft, setRecoveryDraft] = useState({ type: 'ASSET', amount: '', reason: '' });
+
   // §16 — Finance remarks; §14 — the reopen reason.
   const [remarks, setRemarks] = useState('');
   const [reopenOpen, setReopenOpen] = useState(false);
@@ -432,6 +435,28 @@ const FinalSettlementPage = () => {
       () => fnfService.hrReview({ settlementId: detail._id, checklist, complete, remarks }),
       complete ? 'Settlement sent to Finance' : 'Checklist saved',
     );
+
+  const handleAddRecovery = () => {
+    const amount = Number(recoveryDraft.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      flash('error', 'Enter an amount greater than zero');
+      return null;
+    }
+    if (String(recoveryDraft.reason || '').trim().length < 3) {
+      flash('error', 'A recovery needs a reason the employee can read');
+      return null;
+    }
+    return run(
+      () =>
+        fnfService.addRecovery({
+          settlementId: detail._id,
+          type: recoveryDraft.type,
+          amount,
+          reason: recoveryDraft.reason,
+        }),
+      'Recovery added — the salary figures were left exactly as they were',
+    ).then(() => setRecoveryDraft({ type: recoveryDraft.type, amount: '', reason: '' }));
+  };
 
   const handleFinance = (action) =>
     run(
@@ -882,6 +907,7 @@ const FinalSettlementPage = () => {
                             <span className="block text-xs text-crewly-dim">
                               {pending.payableDays ?? 0} payable day(s) × {money(pending.dailyRate)} of{' '}
                               {pending.workingDays ?? 0} working days
+                              {Number(pending.lopDays) > 0 ? `, less ${pending.lopDays} loss of pay` : ''}
                             </span>
                           </td>
                           <td className="py-2 text-right">{money(pending.amount)}</td>
@@ -1165,6 +1191,51 @@ const FinalSettlementPage = () => {
                       className="input-field w-full"
                       rows={2}
                     />
+                    {/* §13 — an unreturned laptop is discovered at clearance
+                        time, which is Finance's stage. Finance may add the
+                        recovery here — and nothing else: no payable, and the
+                        salary figures are not recalculated behind HR's back. */}
+                    {canApprove && detail.status === 'HR_REVIEWED' ? (
+                      <div className="space-y-2 border-b border-white/10 pb-3">
+                        <p className="text-xs uppercase tracking-wide text-crewly-dim">
+                          Add a recovery (§13)
+                        </p>
+                        <select
+                          value={recoveryDraft.type}
+                          onChange={(event) => setRecoveryDraft((current) => ({ ...current, type: event.target.value }))}
+                          className="input-field w-full"
+                        >
+                          {RECOVERY_TYPES.map(([value, label]) => (
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="Amount"
+                          value={recoveryDraft.amount}
+                          onChange={(event) => setRecoveryDraft((current) => ({ ...current, amount: event.target.value }))}
+                          className="input-field w-full"
+                        />
+                        <input
+                          placeholder="Reason (required)"
+                          value={recoveryDraft.reason}
+                          onChange={(event) => setRecoveryDraft((current) => ({ ...current, reason: event.target.value }))}
+                          className="input-field w-full"
+                        />
+                        <button
+                          type="button"
+                          className="btn-secondary w-full"
+                          onClick={handleAddRecovery}
+                          disabled={busy}
+                        >
+                          Add recovery
+                        </button>
+                      </div>
+                    ) : null}
                     {canApprove && detail.status === 'HR_REVIEWED' ? (
                       <div className="flex gap-2">
                         <button type="button" className="btn-primary flex-1" onClick={() => handleFinance('APPROVE')} disabled={busy}>

@@ -188,6 +188,31 @@ export const hrReview = asyncHandler(async (req, res) => {
   });
 });
 
+// ── §13 / §9 — Finance adds a recovery for an unreturned asset ──────────────
+//
+// One narrow capability, and the only edit Finance may make: money the
+// company takes BACK. A payable stays with the Payroll Admin, and the salary
+// figures are not touched here at all.
+
+export const addRecovery = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const { settlementId } = req.params;
+  const { type, amount, reason, label } = req.body;
+
+  // DB Logic - DB logics
+  const data = await fnfService.addRecovery({
+    companyId: req.companyId,
+    settlementId,
+    item: { type, amount, reason, label },
+    actor: req.user,
+    req,
+    allowedEmployeeIds: scopeOf(req),
+  });
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, { message: 'Recovery added to the settlement', data });
+});
+
 // ── §16 — Finance approval ─────────────────────────────────────────────────
 
 export const financeDecision = asyncHandler(async (req, res) => {

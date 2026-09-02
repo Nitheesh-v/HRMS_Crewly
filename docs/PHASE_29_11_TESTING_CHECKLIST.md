@@ -20,7 +20,7 @@ through this list top to bottom.
 
 ## 0. Before you start
 
-- [ ] `npm run test:all` in `Backend` reports **741 pass / 0 fail**.
+- [ ] `npm run test:all` in `Backend` reports **744 pass / 0 fail**.
 - [ ] `npm run fnf:preview` reports **All checks passed** and leaves five files
       in `Backend/.preview/fnf/`.
 - [ ] `npm run build` in `Frontend` completes with no error.
@@ -100,6 +100,10 @@ through this list top to bottom.
       showing a negative payment.
 - [ ] Asset clearance shows what the employee still holds, read from the Asset
       module. Assets are **not** editable here.
+- [ ] **Loss of pay:** with LOP days in the settlement month, the payable-days
+      line reads "…, less N loss of pay" on the page and on the PDF. The number
+      is stored with the settlement, so it does not change if the month is
+      edited later.
 - [ ] Cross-check the net against the preview generator's figure for the same
       fixture.
 
@@ -118,8 +122,21 @@ through this list top to bottom.
 
 ---
 
-## 5. Finance (§16)
+## 5. Finance (§13 / §16)
 
+- [ ] As Finance Manager on a settlement in `HR_REVIEWED`, add a recovery for an
+      unreturned laptop: type, amount, reason.
+- [ ] **Amount and reason are both enforced** — a recovery with neither is
+      refused.
+- [ ] The recovery list only offers recovery types. There is no way to add a
+      bonus or any other payable from this screen.
+- [ ] After adding it, **the pending salary is unchanged** — adding a recovery
+      must not move the salary figures.
+- [ ] The net drops by exactly the recovery amount.
+- [ ] The Payroll Admin receives a notification.
+- [ ] The audit log records the recovery with who added it and why.
+- [ ] Finance still cannot add a recovery before HR review, or after the
+      settlement is closed.
 - [ ] As Finance Manager, approve. Status becomes `FINANCE_APPROVED`.
 - [ ] Reject **without remarks** → refused.
 - [ ] Reject with remarks → status returns to **`CALCULATED`** (not HR
@@ -211,6 +228,21 @@ through this list top to bottom.
 
 ---
 
+## 12. The validator regression (do this once)
+
+The 29.8 / 29.9 / 29.10 / 29.11 validator chains collected errors and discarded
+them — nothing called `validationResult`, so malformed input reached the
+services unchecked. All four files now end every chain in a result handler.
+
+- [ ] Send a deliberately malformed request and confirm it is a **400**, e.g.
+      `GET /api/payroll/fnf/dashboard?month=not-a-month` → 400, not 200.
+- [ ] `GET /api/payroll/fnf/not-an-object-id` → 400.
+- [ ] The same on one statutory, one payslip and one payment endpoint.
+- [ ] Confirm the normal requests from the UI still succeed — validation should
+      only ever reject genuinely malformed input.
+
+---
+
 ## Sign-off
 
 | Area | Tester | Result |
@@ -223,3 +255,4 @@ through this list top to bottom.
 | Exports | | |
 | Close / reopen | | |
 | Tenant isolation & audit | | |
+| Validator regression (§12) | | |

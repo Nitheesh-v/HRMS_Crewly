@@ -42,6 +42,11 @@ const fnfService = {
   setNotice: ({ settlementId, decision, noticePeriodDays }) =>
     api.patch(`/payroll/fnf/${settlementId}/notice`, { decision, noticePeriodDays }),
 
+  // §13 — Finance records a recovery for an asset that was not returned.
+  // Finance may only add money the company takes BACK — never a payable.
+  addRecovery: ({ settlementId, type, amount, reason }) =>
+    api.post(`/payroll/fnf/${settlementId}/recoveries`, { type, amount, reason }),
+
   // ── §15 — HR review ──────────────────────────────────────────────────────
   hrReview: ({ settlementId, checklist, complete, remarks }) =>
     api.post(`/payroll/fnf/${settlementId}/hr-review`, { checklist, complete, remarks }),

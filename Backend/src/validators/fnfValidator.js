@@ -10,9 +10,11 @@
 //    · Amounts are validated for shape here; whether a recovery is ALLOWED is
 //      decided by fnfRules, not by the validator.
 // ═══════════════════════════════════════════════════════════════════════════
-import { body, param, query } from 'express-validator';
+import { body, param, query, validationResult } from 'express-validator';
 
 import mongoose from 'mongoose';
+
+import ApiError from '../utils/ApiError.js';
 
 import {
   CHECKLIST_ITEMS,
@@ -22,6 +24,22 @@ import {
   RECOVERY_TYPES,
   SETTLEMENT_STATUSES,
 } from '../services/payroll/fnfRules.js';
+
+/**
+ * §24 — the half every validator file needs and this one was missing.
+ *
+ * An express-validator chain only COLLECTS errors; nothing acts on them until
+ * something calls validationResult. Without this middleware the chains above
+ * were decoration: a malformed month, a non-ObjectId settlement id or an
+ * out-of-catalogue recovery type sailed straight through to the service.
+ */
+const validate = (req, _res, next) => {
+  const errors = validationResult(req);
+  if (errors.isEmpty()) return next();
+  const error = ApiError.badRequest(errors.array()[0]?.msg || 'Validation failed');
+  error.errors = errors.array().map((entry) => ({ field: entry.path, message: entry.msg }));
+  throw error;
+};
 
 const isObjectId = (value) => mongoose.isValidObjectId(String(value || ''));
 
@@ -42,7 +60,7 @@ const objectIdRule = (field, label) =>
 
 // ── query params ───────────────────────────────────────────────────────────
 
-export const fnfMonthQueryValidator = [monthRule(query('month'))];
+export const fnfMonthQueryValidator = [monthRule(query('month')), validate];
 
 export const fnfListQueryValidator = [
   monthRule(query('month')),
@@ -52,6 +70,7 @@ export const fnfListQueryValidator = [
     .withMessage(`status must be one of ${SETTLEMENT_STATUSES.join(', ')}`),
   query('search').optional().isString().trim().isLength({ max: 80 }),
   query('departmentId').optional().custom(isObjectId).withMessage('departmentId is invalid'),
+  validate,
 ];
 
 export const fnfExportQueryValidator = [
@@ -60,6 +79,7 @@ export const fnfExportQueryValidator = [
     .optional()
     .isIn(EXPORT_FORMATS)
     .withMessage('format must be CSV or XLSX'),
+  validate,
 ];
 
 // ── bodies ─────────────────────────────────────────────────────────────────
@@ -76,6 +96,7 @@ export const createSettlementValidator = [
     .optional()
     .isIn(NOTICE_DECISIONS)
     .withMessage(`noticeDecision must be one of ${NOTICE_DECISIONS.join(', ')}`),
+  validate,
 ];
 
 export const updateItemsValidator = [
@@ -110,6 +131,7 @@ export const updateItemsValidator = [
   body('recoveries.*.reason').optional().isString().trim().isLength({ min: 3, max: 300 })
     .withMessage('each recovery needs a reason'),
   body('recoveries.*.label').optional().isString().trim().isLength({ max: 120 }),
+  validate,
 ];
 
 export const noticeDecisionValidator = [
@@ -117,6 +139,28 @@ export const noticeDecisionValidator = [
     .isIn(NOTICE_DECISIONS)
     .withMessage(`decision must be one of ${NOTICE_DECISIONS.join(', ')}`),
   body('noticePeriodDays').optional().isInt({ min: 0, max: 365 }).withMessage('noticePeriodDays must be 0-365'),
+  validate,
+];
+
+/**
+ * §13 — one recovery added by Finance while the settlement is with them.
+ * Same shape as an item in updateItems: amount and reason are mandatory,
+ * the type must be one of the recovery catalogue, and no payable field is
+ * accepted here at all.
+ */
+export const addRecoveryValidator = [
+  param('settlementId').isMongoId().withMessage('A valid settlement id is required'),
+  body('type')
+    .isString()
+    .trim()
+    .isIn(RECOVERY_TYPES)
+    .withMessage('Choose a valid recovery type'),
+  body('amount').isFloat({ gt: 0 }).withMessage('A recovery needs an amount greater than zero'),
+  // §9 — a recovery without a reason is not a recovery, it is a deduction
+  // nobody can explain to the employee later.
+  body('reason').isString().trim().isLength({ min: 3, max: 300 }).withMessage('A recovery needs a reason'),
+  body('label').optional({ nullable: true }).isString().trim().isLength({ max: 120 }),
+  validate,
 ];
 
 export const hrReviewValidator = [
@@ -125,17 +169,20 @@ export const hrReviewValidator = [
   ...CHECKLIST_ITEMS.map((key) =>
     body(`checklist.${key}`).optional().isBoolean().withMessage(`${key} must be true or false`),
   ),
+  validate,
 ];
 
 export const financeDecisionValidator = [
   body('action').isIn(['APPROVE', 'REJECT']).withMessage('action must be APPROVE or REJECT'),
   body('remarks').optional().isString().trim().isLength({ max: 500 }),
+  validate,
 ];
 
 export const markPaidValidator = [
   dateRule(body('paidAt')),
   body('reference').optional().isString().trim().isLength({ max: 60 }),
   body('method').optional().isString().trim().isLength({ max: 40 }),
+  validate,
 ];
 
 export const reopenValidator = [
@@ -144,9 +191,10 @@ export const reopenValidator = [
     .trim()
     .isLength({ min: 3, max: 500 })
     .withMessage('a reopened settlement needs a reason'),
+  validate,
 ];
 
 // ── path params ────────────────────────────────────────────────────────────
 
-export const settlementIdParamValidator = [objectIdRule(param('settlementId'), 'settlementId')];
-export const settlementFileIdParamValidator = [objectIdRule(param('fileId'), 'fileId')];
+export const settlementIdParamValidator = [objectIdRule(param('settlementId'), 'settlementId'), validate];
+export const settlementFileIdParamValidator = [objectIdRule(param('fileId'), 'fileId'), validate];
