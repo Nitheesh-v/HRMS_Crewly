@@ -61,7 +61,9 @@ import {
   reportFilename,
   reportTable,
   resolvePeriod,
+  salaryBandIssues,
   salaryBandRows,
+  searchRows,
   shiftMonthOf,
   statutoryLiability,
   summariseRows,
@@ -661,14 +663,24 @@ export const makeAnalyticsService = ({
     reportKey = 'OVERVIEW',
     month = '',
     months = [],
+    preset = '',
+    fromMonth = '',
+    toMonth = '',
     period = 'MONTHLY',
     financialYear = '',
     departmentId = '',
     designation = '',
     employeeId = '',
     status = '',
+    employmentStatus = '',
+    structureId = '',
+    page = 0,
+    limit = 0,
+    search = '',
     canSeeFinancial = true,
     allowedEmployeeIds = null,
+    actor = null,
+    req = null,
   } = {}) => {
     const key = String(reportKey || 'OVERVIEW').toUpperCase();
     if (!isReportKey(key)) throw ApiError.badRequest(`Unknown report: ${reportKey}`);
@@ -679,51 +691,307 @@ export const makeAnalyticsService = ({
       throw ApiError.forbidden('This report is restricted to users with financial analytics access');
     }
 
-    const scopeMonths = await resolveMonths({ month, months, financialYear, reportKey: key, companyId });
+    const scopeMonths = await resolveMonths({
+      month, months, financialYear, preset, fromMonth, toMonth, reportKey: key, companyId,
+    });
+
+    const filters = { month, months: scopeMonths, departmentId, designation, employeeId, status, employmentStatus, structureId };
     const allRows = await loadRows({ companyId, months: scopeMonths, allowedEmployeeIds });
-    const rows = applyFilters({ rows: allRows, month, months: scopeMonths, departmentId, designation, employeeId, status });
+    const rows = searchRows({ rows: applyFilters({ rows: allRows, ...filters }), search });
 
-    // §9 — only the headcount report needs the HR counts, and it is the one
-    // report that must not skip them: the active/joined/exited figures live in
-    // the employee and resignation collections, not in the payroll snapshot.
     const targetMonth = month || scopeMonths[scopeMonths.length - 1] || '';
-    const reportFilters = { month: targetMonth, departmentId, designation, employeeId, status };
-    const previousTarget = targetMonth ? previousMonthOf(targetMonth) : '';
+    const previousMonths = previousWindow(scopeMonths);
+    const previousRows = previousMonths.length
+      ? applyFilters({
+        rows: await loadRows({ companyId, months: previousMonths, allowedEmployeeIds }),
+        months: previousMonths,
+        departmentId, designation, employeeId, status, employmentStatus, structureId,
+      })
+      : [];
 
-    const headcountContext =
-      key === 'HEADCOUNT' && targetMonth
-        ? await buildHeadcount({
-            companyId,
-            month: targetMonth,
-            rows,
-            filters: reportFilters,
-            previousRows: previousTarget
-              ? applyFilters({
-                  rows: await loadRows({ companyId, months: [previousTarget], allowedEmployeeIds }),
-                  months: [previousTarget],
-                  departmentId,
-                  designation,
-                  employeeId,
-                  status,
-                })
-              : [],
-          })
-        : null;
+    // Only the reports that need them pay for the extra reads.
+    const headcountContext = key === 'HEADCOUNT' && targetMonth
+      ? await buildHeadcount({
+        companyId,
+        month: targetMonth,
+        rows,
+        previousRows,
+        filters: { ...filters, fromMonth: scopeMonths[0], toMonth: targetMonth },
+      })
+      : null;
+    const settlements = key === 'FNF' ? await loadSettlements({ companyId, months: scopeMonths }) : [];
+    const bands = key === 'SALARY_BANDS' ? await loadBands({ companyId }) : null;
 
-    const payload = buildReportPayload({ reportKey: key, rows, period, months: scopeMonths, headcountContext });
+    const payload = buildReportPayload({
+      reportKey: key, rows, period, months: scopeMonths, headcountContext, previousRows, settlements, bands,
+    });
+
+    // §22 — the register is the one report that pages: five thousand rows is
+    // a spreadsheet, not a web page.
+    const paged = paginate({ rows: payload.rows, page, limit });
+
+    // §32 — reading a payroll report is an auditable act. The filters travel
+    // with it; the figures do not, so the audit trail never becomes a second
+    // copy of the payroll.
+    await writeAudit({
+      req,
+      action: ANALYTICS_AUDIT_ACTIONS.REPORT_VIEWED,
+      companyId,
+      actor,
+      reportKey: key,
+      metadata: {
+        month: targetMonth,
+        preset: preset || '',
+        departmentId: departmentId || '',
+        designation: designation || '',
+        employeeId: employeeId ? String(employeeId) : '',
+        status: status || '',
+        employmentStatus: employmentStatus || '',
+        structureId: structureId || '',
+        search: search || '',
+        rows: rows.length,
+      },
+    });
 
     return {
       reportKey: key,
       label: REPORT_LABELS[key] || key,
-      month: month || scopeMonths[scopeMonths.length - 1] || '',
+      month: targetMonth,
       months: scopeMonths,
+      previousMonths,
       period: isTrendPeriod(period) ? String(period).toUpperCase() : 'MONTHLY',
       financialYear: financialYear || '',
-      filters: { departmentId, designation, employeeId, status },
+      preset: preset || '',
+      filters: { departmentId, designation, employeeId, status, employmentStatus, structureId },
       rowCount: rows.length,
+      pagination: paged.pagination,
       summary: summariseRows({ rows }),
       ...payload,
+      ...(paged.rows ? { rows: paged.rows } : {}),
     };
+  };
+
+  /**
+   * §22 — slicing a report for the browser.
+   *
+   * Every row is still computed (totals stay true for the whole period); the
+   * page is only what gets sent. A report with no row list — the statutory
+   * summary, say — is returned untouched.
+   */
+  const paginate = ({ rows = null, page = 0, limit = 0 } = {}) => {
+    if (!Array.isArray(rows)) return { rows: null, pagination: null };
+    const total = rows.length;
+    const size = Math.max(0, Number(limit) || 0);
+    if (!size) return { rows, pagination: { page: 1, limit: 0, total, pages: 1 } };
+    const pages = Math.max(1, Math.ceil(total / size));
+    const current = Math.min(Math.max(1, Number(page) || 1), pages);
+    const start = (current - 1) * size;
+    return {
+      rows: rows.slice(start, start + size),
+      pagination: { page: current, limit: size, total, pages },
+    };
+  };
+
+  // ── §8 — the company's own salary bands ──────────────────────────────────
+
+  const loadBands = async ({ companyId }) => {
+    if (!AnalyticsSettingModel) return null;
+    const row = await AnalyticsSettingModel.findOne({ companyId }).lean().catch(() => null);
+    const bands = row?.salaryBands;
+    return Array.isArray(bands) && bands.length ? normaliseSalaryBands(bands) : null;
+  };
+
+  const getAnalyticsSettings = async ({ companyId } = {}) => {
+    const stored = AnalyticsSettingModel
+      ? await AnalyticsSettingModel.findOne({ companyId }).lean().catch(() => null)
+      : null;
+    return {
+      salaryBands: normaliseSalaryBands(stored?.salaryBands),
+      usingDefaults: !(Array.isArray(stored?.salaryBands) && stored.salaryBands.length),
+      updatedAt: stored?.updatedAt || null,
+      updatedByName: stored?.updatedByName || '',
+    };
+  };
+
+  const updateSalaryBands = async ({ companyId, salaryBands = [], actor = null, req = null } = {}) => {
+    // The editor is strict where the reader is forgiving: repairing what a
+    // user typed means they save one thing and get another.
+    const issues = salaryBandIssues(salaryBands);
+    if (issues.length) throw ApiError.badRequest(issues[0]);
+
+    const bands = normaliseSalaryBands(salaryBands);
+    if (!AnalyticsSettingModel) return { salaryBands: bands, usingDefaults: false };
+
+    await AnalyticsSettingModel.updateOne(
+      { companyId },
+      {
+        $set: {
+          salaryBands: bands,
+          updatedBy: actor?._id || null,
+          updatedByName: actor?.name || '',
+        },
+      },
+      { upsert: true },
+    ).catch(() => null);
+
+    await writeAudit({
+      req,
+      action: ANALYTICS_AUDIT_ACTIONS.SCHEDULE_UPDATED,
+      companyId,
+      actor,
+      reportKey: 'SALARY_BANDS',
+      metadata: { bands: bands.map((band) => band.label) },
+    });
+
+    await invalidate(companyId, '');
+    return { salaryBands: bands, usingDefaults: false };
+  };
+
+  // ── §23 — one employee's salary history ──────────────────────────────────
+
+  /**
+   * §23 — an employee's salary history, from two sources that must not be
+   * confused with each other: what they were actually PAID each month (the
+   * 29.6 snapshots) and what their salary was CONTRACTED to be (the versioned
+   * 29.4 profile). Neither is overwritten — history is read, never written.
+   */
+  const getEmployeeHistory = async ({
+    companyId,
+    employeeId = '',
+    allowedEmployeeIds = null,
+    actor = null,
+    req = null,
+  } = {}) => {
+    if (!employeeId) throw ApiError.badRequest('employeeId is required');
+
+    // §25 — the scope check happens again here. A manager scoped to two
+    // departments must not read a third department's salary history by
+    // guessing an employee id, however the route was reached.
+    if (Array.isArray(allowedEmployeeIds) && !allowedEmployeeIds.map(String).includes(String(employeeId))) {
+      throw ApiError.forbidden('This employee is outside your payroll scope');
+    }
+
+    const snapshotMonths = await employeeMonths({ companyId, employeeId });
+    const rows = snapshotMonths.length
+      ? applyFilters({
+        rows: await loadRows({ companyId, months: snapshotMonths, allowedEmployeeIds: [String(employeeId)] }),
+        months: snapshotMonths,
+        employeeId: String(employeeId),
+      })
+      : [];
+
+    const versions = EmployeePayrollProfileModel
+      ? await EmployeePayrollProfileModel.find({ companyId, employeeId })
+        .sort({ version: -1 })
+        .lean()
+        .catch(() => [])
+      : [];
+
+    const monthsOut = rows
+      .map((row) => ({
+        month: row.month,
+        gross: row.gross,
+        net: row.net,
+        ctc: row.ctc,
+        basic: row.basic,
+        employerCost: row.employerCost,
+        totalDeductions: row.totalDeductions,
+        variableEarnings: row.variableEarnings,
+        overtime: row.overtime,
+        reimbursements: row.reimbursements,
+        structureName: row.structureName,
+        statutory: row.statutory,
+      }))
+      .sort((a, b) => String(a.month).localeCompare(String(b.month)));
+
+    await writeAudit({
+      req,
+      action: ANALYTICS_AUDIT_ACTIONS.SALARY_HISTORY_VIEWED,
+      companyId,
+      actor,
+      reportKey: 'SALARY_HISTORY',
+      metadata: { employeeId: String(employeeId), months: monthsOut.length },
+    });
+
+    const first = monthsOut[0] || null;
+    const latest = monthsOut[monthsOut.length - 1] || null;
+
+    return {
+      employeeId: String(employeeId),
+      employee: {
+        employeeCode: rows[0]?.employeeCode || '',
+        employeeName: rows[0]?.employeeName || '',
+        department: rows[0]?.department || '',
+        designation: rows[0]?.designation || '',
+      },
+      months: monthsOut,
+      // §23 — the contracted side: the version chain, newest first.
+      versions: (versions || []).map((row) => ({
+        version: Number(row.version) || 1,
+        effectiveFrom: row.effectiveFrom || null,
+        effectiveTo: row.effectiveTo || null,
+        isCurrent: Boolean(row.isCurrent),
+        structureId: row.structureId ? String(row.structureId) : '',
+        structureName: row.structureName || '',
+        annualCtc: Number(row.annualCtc) || 0,
+        monthlyGross: Number(row.monthlyGross) || 0,
+      })),
+      summary: {
+        firstMonth: first?.month || '',
+        lastMonth: latest?.month || '',
+        months: monthsOut.length,
+        latestCtc: latest?.ctc || 0,
+        firstCtc: first?.ctc || 0,
+        ctcChange: money(num(latest?.ctc) - num(first?.ctc)),
+        averageGross: monthsOut.length
+          ? money(monthsOut.reduce((total, row) => total + num(row.gross), 0) / monthsOut.length)
+          : 0,
+      },
+    };
+  };
+
+  const employeeMonths = async ({ companyId, employeeId }) => {
+    if (!PayrollResultModel) return [];
+    const rows = await PayrollResultModel.find({
+      companyId,
+      employeeId,
+      isCurrent: true,
+      status: 'CALCULATED',
+    })
+      .select('month')
+      .lean()
+      .catch(() => []);
+    return [...new Set((rows || []).map((row) => row.month).filter(Boolean))].sort();
+  };
+
+  // ── §38 — generated files expire ─────────────────────────────────────────
+
+  /**
+   * §38 — "Do not keep temporary sensitive payroll files forever."
+   *
+   * Anything still READY past its expiry is marked EXPIRED and its bytes are
+   * dropped. Called by the sweeper job; safe to call by hand.
+   */
+  const expireFiles = async ({ now = new Date(), limit = 200 } = {}) => {
+    if (!AnalyticsReportFileModel) return 0;
+
+    const due = await AnalyticsReportFileModel.find({ status: 'READY', expiresAt: { $lte: now } })
+      .limit(limit)
+      .lean()
+      .catch(() => []);
+
+    let expired = 0;
+    for (const row of due || []) {
+      const file = await AnalyticsReportFileModel.findOne({ _id: row._id, companyId: row.companyId });
+      if (!file || file.status !== 'READY') continue;
+      file.status = 'EXPIRED';
+      file.expiredAt = now;
+      file.binary = null;
+      file.sizeBytes = 0;
+      await file.save().catch(() => null);
+      expired += 1;
+    }
+    return expired;
   };
 
   /**
@@ -735,11 +1003,24 @@ export const makeAnalyticsService = ({
     month = '',
     months = [],
     financialYear = '',
+    preset = '',
+    fromMonth = '',
+    toMonth = '',
     reportKey = '',
     companyId,
   }) => {
     if (Array.isArray(months) && months.length) {
       return months.map(String).filter((value) => MONTH_PATTERN.test(value));
+    }
+    // §4 — a preset names the window, so it wins over a bare month.
+    if (preset && isPeriodPreset(preset)) {
+      const anchor = MONTH_PATTERN.test(String(month || ''))
+        ? month
+        : financialYear
+          ? financialYearStart(financialYear)
+          : await latestMonth({ companyId });
+      const resolved = resolvePeriod({ preset, month: anchor, fromMonth, toMonth }).months;
+      if (resolved.length) return resolved;
     }
     if (financialYear) return financialYearMonths(month || financialYearStart(financialYear), 4);
     if (MONTH_PATTERN.test(String(month || ''))) {
@@ -755,14 +1036,41 @@ export const makeAnalyticsService = ({
     return /^\d{4}$/.test(start) ? `${start}-04` : '';
   };
 
-  const buildReportPayload = ({ reportKey = '', rows = [], period = 'MONTHLY', months = [], headcountContext = null } = {}) => {
+  const buildReportPayload = ({
+    reportKey = '',
+    rows = [],
+    period = 'MONTHLY',
+    months = [],
+    headcountContext = null,
+    // 29.13 — the new reports need facts the row list cannot supply: the
+    // previous window (variance), the settlement register (F&F) and the
+    // company's own salary bands (distribution).
+    previousRows = [],
+    settlements = [],
+    bands = null,
+  } = {}) => {
     switch (reportKey) {
       case 'DEPARTMENT':
         return { rows: departmentRows({ rows }) };
       case 'DESIGNATION':
         return { rows: designationRows({ rows }) };
-      case 'SALARY_BANDS':
-        return { rows: salaryBandRows({ rows }), bands: SALARY_BANDS.map((band) => band.label) };
+      case 'SALARY_BANDS': {
+        const list = bands || SALARY_BANDS;
+        return { rows: salaryBandRows({ rows, bands: list }), bands: list };
+      }
+      // ── 29.13 ───────────────────────────────────────────────────────────
+      case 'EARNINGS':
+        return earningsRows({ rows });
+      case 'DEDUCTIONS':
+        return deductionRows({ rows });
+      case 'EMPLOYER':
+        return employerContributionRows({ rows });
+      case 'REIMBURSEMENT':
+        return reimbursementRows({ rows });
+      case 'FNF':
+        return fnfRows({ settlements });
+      case 'VARIANCE':
+        return varianceRows({ rows, previousRows });
       case 'TREND': {
         const series = trendSeries({ rows, period });
         return { rows: series.rows, series, periods: TREND_PERIODS };
@@ -958,6 +1266,9 @@ export const makeAnalyticsService = ({
       file.status = 'READY';
       file.progress = 100;
       file.completedAt = new Date();
+      // §38 — the clock starts when the file exists. A payroll spreadsheet
+      // is an answer to a question, not an archive.
+      file.expiresAt = new Date(Date.now() + Math.max(1, Number(fileTtlHours) || 24) * 60 * 60 * 1000);
       await file.save();
       if (onProgress) await onProgress(100);
 
@@ -1010,6 +1321,10 @@ export const makeAnalyticsService = ({
     filename: row.filename || '',
     month: row.month || '',
     status: row.status || 'QUEUED',
+    // §38 — the page can only tell someone "this link dies at 6pm" if the
+    // API hands the deadline over.
+    expiresAt: row.expiresAt || null,
+    expiredAt: row.expiredAt || null,
     progress: row.progress || 0,
     rowCount: row.rowCount || 0,
     sizeBytes: row.sizeBytes || 0,
@@ -1024,6 +1339,7 @@ export const makeAnalyticsService = ({
   const downloadFile = async ({ companyId, fileId }) => {
     const file = await AnalyticsReportFileModel.findOne({ _id: fileId, companyId }).select('+binary');
     if (!file) throw ApiError.notFound('Report file not found');
+    if (file.status === 'EXPIRED') throw ApiError.badRequest('This report has expired — generate it again');
     if (file.status !== 'READY') throw ApiError.badRequest('This report is not ready yet');
 
     // §19 — how often a report is actually picked up. The model carries the
@@ -1380,8 +1696,14 @@ export const makeAnalyticsService = ({
     // reads
     getDashboard,
     getReport,
+    getEmployeeHistory,
     listFiles,
     listSchedules,
+    // configuration (§8)
+    getAnalyticsSettings,
+    updateSalaryBands,
+    // housekeeping (§38)
+    expireFiles,
     // exports
     exportReport,
     downloadExport,
@@ -1400,7 +1722,7 @@ export const makeAnalyticsService = ({
     // cache
     invalidate,
     // exposed for the worker / tests
-    _internals: { loadRows, buildExport, summariseRows, reportTable, previousMonthOf },
+    _internals: { loadRows, buildExport, summariseRows, reportTable, previousMonthOf, paginate, loadBands },
   };
 };
 

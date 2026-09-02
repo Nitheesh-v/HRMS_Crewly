@@ -109,17 +109,32 @@ export const normaliseSalaryBands = (bands = null) => {
       key: String(band?.key || `BAND_${index}`).trim() || `BAND_${index}`,
       label: String(band?.label || '').trim(),
       min: Number.isFinite(Number(band?.min)) ? Math.max(0, Number(band.min)) : null,
-      max: Number.isFinite(Number(band?.max)) ? Number(band.max) : null,
+      // `Number(null)` is 0, not NaN — a band whose ceiling was left open
+      // would silently become "up to zero" and be dropped. Check for the
+      // absence of a value first, then for its being a number.
+      max: band?.max === null || band?.max === undefined || band?.max === ''
+        ? null
+        : Number.isFinite(Number(band.max)) ? Number(band.max) : null,
     }))
-    .filter((band) => band.label && band.min !== null && band.max !== null && band.max > band.min)
+    // A band with no ceiling is legal — the top one always is — so it is
+    // filtered out here only if it sits below another band, which would
+    // swallow everything above it.
+    .filter((band) => band.label && band.min !== null && (band.max === null || band.max > band.min))
     .sort((a, b) => a.min - b.min);
 
-  if (cleaned.length < 2) return [...SALARY_BANDS];
+  // Only one band can be open-ended, and it has to be the top one: the
+  // editor returns the top band with `max: null`, so dropping it would
+  // silently delete what the user just typed.
+  const closed = cleaned.filter((band) => band.max !== null);
+  const open = cleaned.filter((band) => band.max === null);
+  const ordered = [...closed, ...(open.length ? [open[0]] : [])];
+
+  if (ordered.length < 2) return [...SALARY_BANDS];
 
   // Drop a band that starts before the previous one ends: overlapping bands
   // would count one employee twice, which is worse than dropping a band.
-  const nonOverlapping = cleaned.filter((band, index) => index === 0 || band.min >= cleaned[index - 1].max);
-  const usable = nonOverlapping.length >= 2 ? nonOverlapping : cleaned;
+  const nonOverlapping = ordered.filter((band, index) => index === 0 || band.min >= ordered[index - 1].max);
+  const usable = nonOverlapping.length >= 2 ? nonOverlapping : ordered;
 
   return usable.map((band, index) => ({
     key: band.key,
@@ -131,6 +146,47 @@ export const normaliseSalaryBands = (bands = null) => {
 };
 
 const ceilingOf = (band = {}) => (band.max === null || band.max === undefined ? Number.POSITIVE_INFINITY : Number(band.max));
+
+/**
+ * §8 — what is WRONG with a set of bands, as words a person can act on.
+ *
+ * The normaliser is forgiving (it repairs and falls back) because it reads
+ * whatever is in the database. The editor must not be: silently repairing
+ * what a user typed means they save one thing and get another.
+ */
+export const salaryBandIssues = (bands = []) => {
+  if (!Array.isArray(bands)) return ['salaryBands must be a list'];
+  if (bands.length < 2) return ['Give at least two salary bands'];
+
+  const issues = [];
+  const ordered = [...bands].sort((a, b) => Number(a?.min) || 0 - (Number(b?.min) || 0));
+  let highestSeen = null;
+
+  ordered.forEach((band, index) => {
+    const label = `Band ${index + 1}`;
+    if (!String(band?.label || '').trim()) issues.push(`${label} needs a name`);
+
+    const min = Number(band?.min);
+    if (!Number.isFinite(min) || min < 0) issues.push(`${label} needs a numeric lower limit`);
+
+    const max = band?.max === null || band?.max === undefined || band?.max === ''
+      ? null
+      : Number(band.max);
+    // The top band's ceiling is ignored — it is always open-ended — but a
+    // middle band without one would swallow everything above it.
+    if (index < ordered.length - 1 && (max === null || !Number.isFinite(max))) {
+      issues.push(`${label} needs an upper limit (only the last band is open-ended)`);
+    } else if (max !== null && Number.isFinite(max) && Number.isFinite(min) && max <= min) {
+      issues.push(`${label}: the upper limit must be above the lower one`);
+    }
+    if (highestSeen !== null && Number.isFinite(min) && min < highestSeen) {
+      issues.push(`${label} overlaps the band below it`);
+    }
+    if (max !== null && Number.isFinite(max)) highestSeen = max;
+  });
+
+  return issues;
+};
 
 export const bandOf = (amount = 0, bands = null) => {
   const value = Number(amount) || 0;
@@ -324,6 +380,8 @@ export const nextRunAt = ({ from = new Date(), frequency = 'MONTHLY', dayOfMonth
 export const ANALYTICS_AUDIT_ACTIONS = Object.freeze({
   REPORT_VIEWED: 'Payroll report viewed',
   REPORT_EXPORTED: 'Payroll report exported',
+  REPORT_DOWNLOADED: 'Payroll report downloaded',
+  SALARY_HISTORY_VIEWED: 'Employee salary history viewed',
   SCHEDULE_CREATED: 'Scheduled report created',
   SCHEDULE_UPDATED: 'Scheduled report updated',
   SCHEDULE_DELETED: 'Scheduled report deleted',
@@ -377,6 +435,12 @@ export const buildAnalyticsRow = ({
     departmentId: String(result.departmentId || employee?.department || ''),
     department: departmentName || employee?.departmentName || '',
     designation: result.designation || employee?.designation || '',
+    // §24 — employment status and salary structure are filters the brief
+    // asks for. The status lives on the User record (HR owns it), the
+    // structure id is stamped on the snapshot by 29.6.
+    employmentStatus: employee?.status || '',
+    structureId: String(result.structureId || ''),
+    structureName: result.structureName || '',
 
     month: result.month || '',
 
@@ -1807,6 +1871,8 @@ export const applyFilters = ({
   designation = '',
   employeeId = '',
   status = '',
+  employmentStatus = '',
+  structureId = '',
 } = {}) => {
   const wantedMonth = String(month || '');
   const wantedMonths = Array.isArray(months) && months.length ? months.map(String) : [];
@@ -1814,6 +1880,8 @@ export const applyFilters = ({
   const wantedDesignation = String(designation || '').trim().toLowerCase();
   const employee = String(employeeId || '');
   const wantedStatus = String(status || '').toUpperCase();
+  const wantedEmployment = String(employmentStatus || '').toUpperCase();
+  const wantedStructure = String(structureId || '');
 
   return (Array.isArray(rows) ? rows : []).filter((row) => {
     if (wantedMonth && String(row.month) !== wantedMonth) return false;
@@ -1822,8 +1890,25 @@ export const applyFilters = ({
     if (wantedDesignation && String(row.designation || '').trim().toLowerCase() !== wantedDesignation) return false;
     if (employee && String(row.employeeId) !== employee) return false;
     if (wantedStatus && String(row.paymentStatus || '').toUpperCase() !== wantedStatus) return false;
+    if (wantedEmployment && String(row.employmentStatus || '').toUpperCase() !== wantedEmployment) return false;
+    if (wantedStructure && String(row.structureId || '') !== wantedStructure) return false;
     return true;
   });
+};
+
+/**
+ * §22 — the register's search box. It matches the things a person types when
+ * looking for a colleague: code, name, department, designation. Deliberately
+ * NOT the amounts — searching payroll for "54000" is not a question anyone
+ * asks, and it would let someone fish for a salary by guessing.
+ */
+export const searchRows = ({ rows = [], search = '' } = {}) => {
+  const term = String(search || '').trim().toLowerCase();
+  if (!term) return Array.isArray(rows) ? rows : [];
+  return (Array.isArray(rows) ? rows : []).filter((row) =>
+    [row.employeeCode, row.employeeName, row.department, row.designation]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(term)));
 };
 
 /**

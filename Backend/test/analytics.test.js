@@ -59,7 +59,7 @@ import { makeAnalyticsService } from '../src/services/payroll/analyticsService.j
 import { filterSegmentOf } from '../src/services/payroll/analyticsCache.js';
 // (salaryBandRows, bandOf, SALARY_BANDS and resolvePeriod are imported in the
 // rules block above; only what that block does not already pull in is added.)
-import { normaliseSalaryBands, resolvePeriod } from '../src/services/payroll/analyticsRules.js';
+import { normaliseSalaryBands, resolvePeriod, roundMoney as money } from '../src/services/payroll/analyticsRules.js';
 import {
   validateAnalyticsExportPayload,
   validateAnalyticsSchedulePayload,
@@ -457,6 +457,7 @@ const buildHarness = ({
   payments = [],
   settlements = [],
   resignations = [],
+  profiles = [],
   companyId = COMPANY,
 } = {}) => {
   const state = {
@@ -464,6 +465,11 @@ const buildHarness = ({
     payments: makeFakeModel(),
     settlements: makeFakeModel(),
     resignations: makeFakeModel(),
+    // §23 — the versioned 29.4 profile, which is where a contracted salary
+    // (as opposed to a paid one) lives.
+    profiles: makeFakeModel(),
+    // §8 — the company's own salary bands.
+    settings: makeFakeModel(),
     users: makeFakeModel(),
     departments: makeFakeModel(),
     companies: makeFakeModel(),
@@ -488,6 +494,7 @@ const buildHarness = ({
   payments.forEach((row) => state.payments.rows.push(row));
   settlements.forEach((row) => state.settlements.rows.push(row));
   resignations.forEach((row) => state.resignations.rows.push(row));
+  profiles.forEach((row) => state.profiles.rows.push(row));
 
   state.departments.rows.push({ _id: DEPT_ENG, name: 'Engineering', companyId });
   state.departments.rows.push({ _id: DEPT_SALES, name: 'Sales', companyId });
@@ -521,6 +528,8 @@ const buildHarness = ({
     PayrollPaymentModel: state.payments,
     FinalSettlementModel: state.settlements,
     ResignationModel: state.resignations,
+    EmployeePayrollProfileModel: state.profiles,
+    AnalyticsSettingModel: state.settings,
     UserModel: state.users,
     DepartmentModel: state.departments,
     ScheduledReportModel: state.schedules,
@@ -1717,4 +1726,483 @@ test('§8 a company can define its own salary bands', () => {
     { key: 'c', label: '60+', min: 60000, max: 90000 },
   ]);
   assert.deepEqual(overlapping.map((band) => band.key), ['a', 'c']);
+});
+
+// ── 29.13 — a fixture with real payroll LINES ──────────────────────────────
+//
+// The shared fixture carries totals only, which is all the 29.12 reports
+// need. The earnings, deductions and employer reports read the LINE arrays
+// the engine writes, so they need a fixture that has them — with the lines
+// tying to the totals, the way a real 29.6 snapshot does.
+
+const detailedResult = (employeeId, month) => {
+  const base = result(employeeId, month, {
+    gross: 60000,
+    basic: 30000,
+    deductions: 12000,
+    overtime: 6000,
+    employerCost: 7500,
+    variable: [
+      { type: 'BONUS_PERFORMANCE', label: 'Performance Bonus', amount: 15000 },
+      { type: 'INCENTIVE', label: 'Incentive', amount: 5000 },
+    ],
+  });
+
+  return {
+    ...base,
+    structureId: oid(201),
+    structureName: 'Standard Structure',
+    earnings: [
+      { code: 'BASIC', name: 'Basic', amount: 30000, source: 'STRUCTURE' },
+      { code: 'HRA', name: 'House Rent Allowance', amount: 15000, source: 'STRUCTURE' },
+      { code: 'SPECIAL_ALLOWANCE', name: 'Special Allowance', amount: 15000, source: 'STRUCTURE' },
+    ],
+    reimbursements: [{ type: 'REIMBURSEMENT_TRAVEL', label: 'Travel', amount: 4000, claimStatus: 'APPROVED' }],
+    deductions: [
+      { code: 'PF', name: 'Provident Fund', amount: 3720, source: 'STATUTORY' },
+      { code: 'TDS', name: 'Income Tax (TDS)', amount: 4500, source: 'STATUTORY' },
+      { code: 'LOP', name: 'Loss of Pay', amount: 3000, source: 'ATTENDANCE' },
+      { code: 'DEDUCTION_FINE', name: 'Fine', amount: 780, source: 'MONTHLY_INPUT' },
+    ],
+    employerContributions: [
+      { code: 'PF_EMPLOYER', name: 'Employer PF', amount: 3720, source: 'STATUTORY' },
+      { code: 'GRATUITY', name: 'Gratuity', amount: 1443, source: 'STATUTORY' },
+      { code: 'MEDICAL', name: 'Medical Insurance', amount: 2337, source: 'STRUCTURE' },
+    ],
+    // The lines above have to agree with the totals, or the report is lying.
+    totals: { ...base.totals, reimbursements: 4000, netPay: 78000 },
+  };
+};
+
+// A 29.11 settlement, shaped the way FinalSettlement actually stores one.
+const finalSettlement = (employeeId, month, {
+  status = 'PAID',
+  netSettlement = 0,
+  pendingSalary = 0,
+  leaveEncashment = 0,
+  recoveries = 0,
+} = {}) => ({
+  _id: oid(700 + Number(String(employeeId).slice(-3))),
+  companyId: COMPANY,
+  employeeId,
+  employeeName: `Employee ${employeeId.slice(-3)}`,
+  month,
+  settlementNumber: `FNF-${month}-${employeeId.slice(-3)}`,
+  status,
+  totals: {
+    netSettlement,
+    totalEarnings: pendingSalary + leaveEncashment,
+    totalRecoveries: recoveries,
+  },
+  earnings: {
+    pendingSalary: { amount: pendingSalary },
+    leaveEncashment: { amount: leaveEncashment },
+  },
+  recoveries: { notice: { amount: 0 }, items: [{ label: 'Advance', amount: recoveries }] },
+  exit: { employeeId, lastWorkingDate: '2026-08-31' },
+  payment: status === 'PAID' ? { paidAt: new Date(`${month}-01T00:00:00Z`) } : null,
+});
+
+const detailedHarness = (extra = {}) =>
+  buildHarness({
+    employees: [
+      employee(E1, 'CRE-001', 'Meera Iyer', { department: DEPT_ENG, designation: 'Senior Engineer' }),
+      employee(E2, 'CRE-002', 'Vikram Shetty', { department: DEPT_SALES, designation: 'Sales Manager' }),
+    ],
+    results: [detailedResult(E1, MONTH), detailedResult(E2, MONTH)],
+    payments: [payment(E1, MONTH), payment(E2, MONTH)],
+    ...extra,
+  });
+
+// ── §11 — the earnings report ──────────────────────────────────────────────
+
+test('§11 the earnings report separates fixed, variable, overtime and reimbursements', async () => {
+  const harness = detailedHarness();
+  const report = await harness.service.getReport({ companyId: COMPANY, reportKey: 'EARNINGS', month: MONTH });
+
+  const components = new Map(report.rows.map((row) => [row.label, row]));
+  assert.equal(components.get('Basic').amount, 60000, 'two employees at 30,000 basic each');
+  assert.equal(components.get('House Rent Allowance').amount, 30000);
+  assert.equal(components.get('Performance Bonus').amount, 30000);
+  assert.equal(components.get('Performance Bonus').kind, 'BONUS');
+  assert.equal(components.get('Incentive').amount, 10000);
+  assert.equal(components.get('Incentive').kind, 'INCENTIVE', 'an incentive is not a bonus');
+  assert.equal(components.get('Overtime').amount, 12000);
+
+  // The whole point: every rupee is accounted for, and the report says so.
+  assert.equal(report.totals.grossPayroll, 172000, '60000 structure x 2 + 40000 variable + 12000 overtime');
+  assert.equal(report.totals.fixedEarnings, 120000);
+  assert.equal(report.totals.variableEarnings, 40000);
+  assert.equal(report.totals.bonus, 30000);
+  assert.equal(report.totals.overtime, 12000);
+  assert.equal(report.totals.reimbursements, 8000);
+  assert.equal(report.totals.total, 180000);
+  assert.equal(report.totals.reconciled, true, 'the parts add up to the whole');
+});
+
+// ── §12 — the deductions report ────────────────────────────────────────────
+
+test('§12 the deductions report splits statutory, LOP and other, and shows its own arithmetic', async () => {
+  const harness = detailedHarness();
+  const report = await harness.service.getReport({ companyId: COMPANY, reportKey: 'DEDUCTIONS', month: MONTH });
+
+  const kinds = new Map(report.rows.map((row) => [row.key, row]));
+  assert.equal(kinds.get('PF').amount, 7440);
+  assert.equal(kinds.get('TDS').amount, 9000);
+  assert.equal(kinds.get('LOP').amount, 6000);
+  assert.equal(kinds.get('OTHER').amount, 1560);
+
+  assert.equal(report.totals.totalDeductions, 24000);
+  assert.equal(report.totals.statutoryTotal, 16440, 'PF + TDS only — LOP is not a statutory remittance');
+  assert.equal(report.totals.lopTotal, 6000);
+  assert.equal(report.totals.otherTotal, 1560);
+  assert.equal(report.totals.percentOfGross, 13.95, 'as a share of gross payroll');
+  assert.equal(report.totals.snapshotTotal, 24000, 'the lines tie to what the engine actually deducted');
+
+  // §12 — the LOP figure is a real deduction, not a rounding artefact.
+  assert.equal(report.rows.find((row) => row.key === 'LOP').employees, 2);
+});
+
+// ── §13 — the employer contribution report ─────────────────────────────────
+
+test('§13 employer contributions are never confused with employee deductions', async () => {
+  const harness = detailedHarness();
+  const report = await harness.service.getReport({ companyId: COMPANY, reportKey: 'EMPLOYER', month: MONTH });
+
+  const kinds = new Map(report.rows.map((row) => [row.key, row]));
+  assert.equal(kinds.get('PF').amount, 7440);
+  assert.equal(kinds.get('GRATUITY').amount, 2886);
+  assert.equal(kinds.get('OTHER').amount, 4674, 'the medical premium, which is not a statutory remittance');
+
+  assert.equal(report.total, 15000);
+  assert.equal(report.snapshotTotal, 15000);
+  // §13 — anything the engine cannot classify is shown, not folded away.
+  assert.equal(report.unclassified, 0);
+  assert.equal(report.byDepartment.length, 2);
+});
+
+// ── §18 — the reimbursement report ─────────────────────────────────────────
+
+test('§18 the reimbursement report breaks claims down by category and by person', async () => {
+  const harness = detailedHarness();
+  const report = await harness.service.getReport({ companyId: COMPANY, reportKey: 'REIMBURSEMENT', month: MONTH });
+
+  assert.equal(report.total, 8000);
+  assert.equal(report.categories.length, 1);
+  assert.equal(report.categories[0].label, 'Travel Reimbursement');
+  assert.equal(report.categories[0].amount, 8000);
+  assert.equal(report.employees, 2, 'both people claimed');
+  assert.equal(report.byMonth.length, 1);
+});
+
+// ── §20 — F&F analytics ────────────────────────────────────────────────────
+
+test('§20 F&F analytics reads finalised settlements and never invents one', async () => {
+  const harness = buildHarness({
+    employees: [employee(E1, 'CRE-001', 'Meera Iyer', { department: DEPT_ENG })],
+    results: [],
+    settlements: [
+      // PAID and CLOSED are final; a DRAFT is a work in progress and must not
+      // be reported as money the company has spent.
+      finalSettlement(E1, '2026-08', { status: 'PAID', netSettlement: 29000, pendingSalary: 20000, leaveEncashment: 20000, recoveries: 10000 }),
+    ],
+  });
+
+  const report = await harness.service.getReport({ companyId: COMPANY, reportKey: 'FNF', month: MONTH });
+
+  assert.equal(report.count, 1);
+  assert.equal(report.completed.count, 1);
+  assert.equal(report.pending.count, 0);
+  assert.equal(report.totals.netSettlement, 29000);
+  assert.equal(report.totals.leaveEncashment, 20000);
+  assert.equal(report.rows.length, 1);
+
+  // A draft in the same window is not counted as a completed settlement.
+  const withDraft = buildHarness({
+    settlements: [
+      finalSettlement(E1, MONTH, { status: 'PAID', netSettlement: 29000 }),
+      finalSettlement(E2, MONTH, { status: 'DRAFT', netSettlement: 5000 }),
+    ],
+  });
+  const draftReport = await withDraft.service.getReport({ companyId: COMPANY, reportKey: 'FNF', month: MONTH });
+  // The draft is listed — it exists — but it counts as pending, never as
+  // money the company has already spent.
+  assert.equal(draftReport.count, 2);
+  assert.equal(draftReport.completed.count, 1);
+  assert.equal(draftReport.pending.count, 1, 'the draft is not a settlement yet');
+});
+
+// ── §21 — the payroll variance report ──────────────────────────────────────
+
+test('§21 the variance report says which way the money moved, not just by how much', async () => {
+  const harness = threeEmployees();
+  // Same three people, a month earlier, on less money.
+  harness.state.results.rows.push(...threeMonthsOf([PREVIOUS]));
+
+  const report = await harness.service.getReport({ companyId: COMPANY, reportKey: 'VARIANCE', month: MONTH });
+
+  const gross = report.rows.find((row) => row.key === 'GROSS');
+  assert.equal(gross.previous, 222000);
+  assert.equal(gross.current, 222000);
+  assert.equal(gross.difference, 0);
+  assert.equal(gross.direction, 'STABLE', 'nothing moved, and the report says so');
+
+  // Now make the current month cost more, and the direction has to follow.
+  harness.state.results.rows.forEach((row) => {
+    if (row.month === MONTH) row.totals.overtime = 5000;
+  });
+  const moved = await harness.service.getReport({ companyId: COMPANY, reportKey: 'VARIANCE', month: MONTH });
+  const overtime = moved.rows.find((row) => row.key === 'OVERTIME');
+  assert.equal(overtime.difference, 15000);
+  assert.equal(overtime.direction, 'INCREASING');
+  assert.ok(overtime.changePercent > 0);
+});
+
+// ── §22 — register paging and search ───────────────────────────────────────
+
+test('§22 the register pages on the server instead of sending every row', async () => {
+  const harness = threeEmployees();
+
+  const first = await harness.service.getReport({ companyId: COMPANY, reportKey: 'REGISTER', month: MONTH, page: 1, limit: 2 });
+  assert.equal(first.rows.length, 2);
+  assert.equal(first.pagination.total, 3, 'the total is the whole period, not the page');
+  assert.equal(first.pagination.pages, 2);
+  assert.equal(first.pagination.page, 1);
+
+  const second = await harness.service.getReport({ companyId: COMPANY, reportKey: 'REGISTER', month: MONTH, page: 2, limit: 2 });
+  assert.equal(second.rows.length, 1);
+  assert.notEqual(second.rows[0].employeeCode, first.rows[0].employeeCode, 'a different employee on page two');
+
+  // A page past the end clamps to the last page rather than returning nothing.
+  const beyond = await harness.service.getReport({ companyId: COMPANY, reportKey: 'REGISTER', month: MONTH, page: 9, limit: 2 });
+  assert.equal(beyond.pagination.page, 2);
+  assert.equal(beyond.rows.length, 1);
+
+  // §22 — searching is by person, never by amount.
+  const found = await harness.service.getReport({ companyId: COMPANY, reportKey: 'REGISTER', month: MONTH, search: 'CRE-002' });
+  assert.equal(found.rows.length, 1);
+  const byName = await harness.service.getReport({ companyId: COMPANY, reportKey: 'REGISTER', month: MONTH, search: 'meera' });
+  assert.equal(byName.rows.length, 1);
+  // Typing a salary must find nobody: payroll is not a search engine for pay.
+  const byAmount = await harness.service.getReport({ companyId: COMPANY, reportKey: 'REGISTER', month: MONTH, search: '54000' });
+  assert.equal(byAmount.rows.length, 0);
+});
+
+// ── §23 — employee salary history ──────────────────────────────────────────
+
+test('§23 salary history reads what was paid, and what was contracted', async () => {
+  const harness = threeEmployees();
+  harness.state.results.rows.push(...threeMonthsOf(['2026-06', '2026-07']));
+  harness.state.profiles.rows.push(
+    {
+      _id: oid(401), companyId: COMPANY, employeeId: E1, version: 2, isCurrent: true,
+      effectiveFrom: new Date('2026-01-01T00:00:00Z'), structureId: oid(201),
+      structureName: 'Standard Structure', annualCtc: 720000, monthlyGross: 60000,
+    },
+    {
+      _id: oid(400), companyId: COMPANY, employeeId: E1, version: 1, isCurrent: false,
+      effectiveFrom: new Date('2025-01-01T00:00:00Z'), effectiveTo: new Date('2025-12-31T00:00:00Z'),
+      structureId: oid(200), structureName: 'Legacy Structure', annualCtc: 600000, monthlyGross: 50000,
+    },
+  );
+
+  const history = await harness.service.getEmployeeHistory({ companyId: COMPANY, employeeId: E1 });
+
+  assert.equal(history.employee.employeeCode, 'CRE-001');
+  assert.equal(history.months.length, 3, 'June, July and August');
+  assert.deepEqual(history.months.map((row) => row.month), ['2026-06', '2026-07', '2026-08']);
+  assert.equal(history.summary.firstMonth, '2026-06');
+  assert.equal(history.summary.lastMonth, '2026-08');
+
+  // The contracted side: two versions, newest first, neither overwritten.
+  assert.equal(history.versions.length, 2);
+  assert.equal(history.versions[0].version, 2);
+  assert.equal(history.versions[0].isCurrent, true);
+  assert.equal(history.versions[0].annualCtc, 720000);
+  assert.equal(history.versions[1].annualCtc, 600000, 'the old version is still readable');
+
+  // §25 — a manager scoped to one employee cannot read another's history.
+  const scoped = threeEmployees();
+  await assert.rejects(
+    scoped.service.getEmployeeHistory({ companyId: COMPANY, employeeId: E2, allowedEmployeeIds: [String(E1)] }),
+    /outside your payroll scope/,
+  );
+});
+
+// ── §32 — audit on read ────────────────────────────────────────────────────
+
+test('§32 reading a report, downloading a file and opening a salary history are all audited', async () => {
+  const harness = threeEmployees();
+  const seen = harness.state.audits;
+
+  await harness.service.getReport({
+    companyId: COMPANY, reportKey: 'REGISTER', month: MONTH,
+    departmentId: String(DEPT_ENG), status: 'PAID',
+    actor: { _id: E1, name: 'HR' },
+  });
+  await harness.service.getEmployeeHistory({ companyId: COMPANY, employeeId: E2, actor: { _id: E1, name: 'HR' } });
+
+  const actions = seen.map((entry) => entry.action);
+  assert.ok(actions.includes('Payroll report viewed'));
+  assert.ok(actions.includes('Employee salary history viewed'));
+
+  const viewed = seen.find((entry) => entry.action === 'Payroll report viewed');
+  assert.equal(viewed.resourceId, 'REGISTER');
+  assert.equal(viewed.actorName, 'HR');
+  assert.equal(viewed.metadata.departmentId, String(DEPT_ENG));
+  assert.equal(viewed.metadata.status, 'PAID');
+
+  // The whole point of §32: the trail records that a report was read, never
+  // what it said. No salary figure may appear anywhere in the payload.
+  const serialised = JSON.stringify(seen);
+  ['222000', '198000', '66000', '54000', '24000'].forEach((figure) => {
+    assert.ok(!serialised.includes(figure), `the audit trail must not carry the payroll figure ${figure}`);
+  });
+});
+
+// ── §38 — export expiry ────────────────────────────────────────────────────
+
+test('§38 a generated file expires, and a download is refused once it has', async () => {
+  const harness = threeEmployees();
+  const job = await harness.service.requestExport({
+    companyId: COMPANY, reportKey: 'REGISTER', format: 'CSV', filters: { month: MONTH }, actor: { _id: E1, name: 'HR' },
+  });
+  const file = (await harness.service.listFiles({ companyId: COMPANY })).find((row) => String(row._id) === String(job.fileId));
+  assert.equal(file.status, 'READY');
+  assert.ok(file.expiresAt, 'the file is born with an expiry');
+
+  // Time passes — past the expiry, not past it by a comfortable margin.
+  const expired = await harness.service.expireFiles({ now: new Date(Date.parse(file.expiresAt) + 1000) });
+  assert.equal(expired, 1);
+
+  const after = (await harness.service.listFiles({ companyId: COMPANY })).find((row) => String(row._id) === String(job.fileId));
+  assert.equal(after.status, 'EXPIRED');
+
+  await assert.rejects(
+    harness.service.downloadFile({ companyId: COMPANY, fileId: job.fileId }),
+    /expired/,
+  );
+
+  // §38 — running the sweeper again must not re-expire what is already gone.
+  assert.equal(await harness.service.expireFiles({ now: new Date(Date.parse(file.expiresAt) + 1000) }), 0);
+});
+
+test('§38 a file that has not expired is still downloadable', async () => {
+  const harness = threeEmployees();
+  const job = await harness.service.requestExport({
+    companyId: COMPANY, reportKey: 'REGISTER', format: 'CSV', filters: { month: MONTH }, actor: { _id: E1, name: 'HR' },
+  });
+  const file = await harness.service.downloadFile({ companyId: COMPANY, fileId: job.fileId });
+  assert.equal(file.format, 'CSV');
+  assert.ok(file.content.length > 0);
+});
+
+// ── §8 — salary bands, per company ─────────────────────────────────────────
+
+test('§8 a company can save its own salary bands, and the editor refuses nonsense', async () => {
+  const harness = threeEmployees();
+
+  const before = await harness.service.getAnalyticsSettings({ companyId: COMPANY });
+  assert.equal(before.usingDefaults, true, 'a company starts on the default bands');
+  assert.equal(before.salaryBands.length, SALARY_BANDS.length);
+
+  const saved = await harness.service.updateSalaryBands({
+    companyId: COMPANY,
+    salaryBands: [
+      { label: 'Under 50k', min: 0, max: 50000 },
+      { label: '50k to 1L', min: 50000, max: 100000 },
+      { label: 'Above 1L', min: 100000, max: null },
+    ],
+    actor: { _id: E1, name: 'HR' },
+  });
+  assert.equal(saved.salaryBands.length, 3);
+  assert.equal(saved.salaryBands[2].max, null, 'the top band is open-ended');
+
+  const settings = await harness.service.getAnalyticsSettings({ companyId: COMPANY });
+  assert.equal(settings.usingDefaults, false);
+  assert.equal(settings.salaryBands.length, 3);
+
+  // The distribution report uses them.
+  const report = await harness.service.getReport({ companyId: COMPANY, reportKey: 'SALARY_BANDS', month: MONTH });
+  assert.deepEqual(
+    report.bands.map((band) => band.label),
+    ['Under 50k', '50k to 1L', 'Above 1L'],
+  );
+  // 40k, 62k and 1.2L — one in each band.
+  assert.deepEqual(report.rows.map((row) => row.employees), [1, 1, 1]);
+
+  // Overlapping bands would count one person twice.
+  await assert.rejects(
+    harness.service.updateSalaryBands({
+      companyId: COMPANY,
+      salaryBands: [
+        { label: '0 to 50', min: 0, max: 50000 },
+        { label: '40 to 90', min: 40000, max: 90000 },
+      ],
+    }),
+    /overlaps/,
+  );
+  // A middle band with no ceiling would swallow everything above it.
+  await assert.rejects(
+    harness.service.updateSalaryBands({
+      companyId: COMPANY,
+      salaryBands: [{ label: '0 to 50', min: 0, max: null }, { label: 'Above', min: 50000, max: null }],
+    }),
+    /upper limit/,
+  );
+  // One band is not a distribution.
+  await assert.rejects(
+    harness.service.updateSalaryBands({ companyId: COMPANY, salaryBands: [{ label: 'Everyone', min: 0, max: null }] }),
+    /at least two/,
+  );
+});
+
+// ── §24 — the new filters ──────────────────────────────────────────────────
+
+test('§24 employment status and salary structure are filters, not afterthoughts', async () => {
+  const harness = detailedHarness({
+    // One of the two has left the company.
+    employees: [
+      employee(E1, 'CRE-001', 'Meera Iyer', { department: DEPT_ENG, status: 'ACTIVE' }),
+      employee(E2, 'CRE-002', 'Vikram Shetty', { department: DEPT_SALES, status: 'INACTIVE' }),
+    ],
+  });
+
+  const active = await harness.service.getReport({ companyId: COMPANY, reportKey: 'REGISTER', month: MONTH, employmentStatus: 'ACTIVE' });
+  assert.equal(active.rows.length, 1);
+  assert.equal(active.rows[0].employeeCode, 'CRE-001');
+
+  const inactive = await harness.service.getReport({ companyId: COMPANY, reportKey: 'REGISTER', month: MONTH, employmentStatus: 'INACTIVE' });
+  assert.equal(inactive.rows.length, 1);
+  assert.equal(inactive.rows[0].employeeCode, 'CRE-002');
+
+  const byStructure = await harness.service.getReport({ companyId: COMPANY, reportKey: 'REGISTER', month: MONTH, structureId: String(oid(201)) });
+  assert.equal(byStructure.rows.length, 2);
+  const noStructure = await harness.service.getReport({ companyId: COMPANY, reportKey: 'REGISTER', month: MONTH, structureId: String(oid(999)) });
+  assert.equal(noStructure.rows.length, 0);
+});
+
+// ── §9 — why the cost moved ────────────────────────────────────────────────
+
+test('§9 the cost movement decomposes into headcount and like-for-like', async () => {
+  const harness = threeEmployees();
+
+  // Three people last month; this month one has left and the other two were
+  // given a raise. The totals move, but not for the same reason.
+  harness.state.results.rows.push(...threeMonthsOf([PREVIOUS]));
+
+  const dashboard = await harness.service.getDashboard({ companyId: COMPANY, month: MONTH });
+  const movement = dashboard.movement;
+
+  assert.ok(movement, 'the dashboard carries the decomposition');
+  assert.equal(movement.joiners, 0);
+  assert.equal(movement.leavers, 0);
+  assert.equal(movement.stayers, 3);
+  // Headcount effect plus like-for-like effect IS the total movement — the
+  // report must never leave a rupee unexplained.
+  assert.equal(
+    money(movement.headcountEffect + movement.likeForLikeEffect),
+    money(movement.total),
+  );
+  assert.equal(movement.reconciled, true, 'the split adds up to the change it explains');
 });
