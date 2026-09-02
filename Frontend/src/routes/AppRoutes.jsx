@@ -59,6 +59,17 @@ import SalaryPaymentPage from "../pages/payroll/SalaryPaymentPage.jsx";
 import PayslipsPage from "../pages/payroll/PayslipsPage.jsx";
 import MyPayslipsPortalPage from "../pages/payroll/MyPayslipsPortalPage.jsx";
 import StatutoryCompliancePage from "../pages/payroll/StatutoryCompliancePage.jsx";
+// Phase 29.12 — Payroll Analytics & Reports (§26 — ten pages).
+import ExecutiveDashboardPage from "../pages/payroll/analytics/ExecutiveDashboardPage.jsx";
+import PayrollOverviewPage from "../pages/payroll/analytics/PayrollOverviewPage.jsx";
+import DepartmentAnalyticsPage from "../pages/payroll/analytics/DepartmentAnalyticsPage.jsx";
+import SalaryDistributionPage from "../pages/payroll/analytics/SalaryDistributionPage.jsx";
+import PayrollTrendsPage from "../pages/payroll/analytics/PayrollTrendsPage.jsx";
+import BonusReportPage from "../pages/payroll/analytics/BonusReportPage.jsx";
+import OvertimeReportPage from "../pages/payroll/analytics/OvertimeReportPage.jsx";
+import StatutorySummaryPage from "../pages/payroll/analytics/StatutorySummaryPage.jsx";
+import PayrollRegisterPage from "../pages/payroll/analytics/PayrollRegisterPage.jsx";
+import ScheduledReportsPage from "../pages/payroll/analytics/ScheduledReportsPage.jsx";
 import FinalSettlementPage from "../pages/payroll/FinalSettlementPage.jsx";
 import MyFinalSettlementPage from "../pages/payroll/MyFinalSettlementPage.jsx";
 import EmployeePayrollDetailPage from "../pages/payroll/EmployeePayrollDetailPage.jsx";
@@ -388,6 +399,19 @@ const AppRoutes = () => (
       {/* Phase 29.11 — Final Settlement (F&F): HR/Finance workspace + employee portal. */}
       <Route path="payroll/final-settlement" element={<FinalSettlementPage />} />
       <Route path="payroll/my-final-settlement" element={<MyFinalSettlementPage />} />
+      {/* Phase 29.12 — Payroll Analytics & Reports. Each page gates itself
+          on the payroll report permissions (§4 / §25); the CTC block is
+          additionally gated on PAYROLL_ANALYTICS_FINANCIAL (§16). */}
+      <Route path="payroll/analytics" element={<ExecutiveDashboardPage />} />
+      <Route path="payroll/analytics/overview" element={<PayrollOverviewPage />} />
+      <Route path="payroll/analytics/department" element={<DepartmentAnalyticsPage />} />
+      <Route path="payroll/analytics/salary-distribution" element={<SalaryDistributionPage />} />
+      <Route path="payroll/analytics/trends" element={<PayrollTrendsPage />} />
+      <Route path="payroll/analytics/bonus" element={<BonusReportPage />} />
+      <Route path="payroll/analytics/overtime" element={<OvertimeReportPage />} />
+      <Route path="payroll/analytics/statutory" element={<StatutorySummaryPage />} />
+      <Route path="payroll/analytics/register" element={<PayrollRegisterPage />} />
+      <Route path="payroll/analytics/scheduled" element={<ScheduledReportsPage />} />
       <Route path="payroll/employees" element={<EmployeePayrollPage />} />
       <Route path="payroll/employees/:employeeId" element={<EmployeePayrollDetailPage />} />
 

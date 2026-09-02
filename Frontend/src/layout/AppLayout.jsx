@@ -410,6 +410,17 @@ const AppLayout = () => {
     ...(hasAnyPermission(['FINAL_SETTLEMENT_READ_SELF'])
       ? [{ to: '/app/payroll/my-final-settlement', label: 'My Final Settlement' }]
       : []),
+    // Phase 29.12 — Analytics & Reports, one sidebar entry: the ten reports
+    // (§26) are reached from inside the dashboard, so the payroll menu stays
+    // short. Permission-driven like every other entry.
+    ...(hasAnyPermission([
+      'PAYROLL_REPORT_READ',
+      'PAYROLL_REPORT_EXPORT',
+      'PAYROLL_ANALYTICS_FINANCIAL',
+      'PAYROLL_ANALYTICS_SCHEDULE',
+    ])
+      ? [{ to: '/app/payroll/analytics', label: 'Analytics & Reports' }]
+      : []),
   ];
 
   const menu = [
