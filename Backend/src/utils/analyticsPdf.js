@@ -62,13 +62,45 @@ const ensureSpace = (doc, y, needed) => {
   return { y: M.top, paginated: true };
 };
 
-// A number is right-aligned and grouped; a label is left-aligned. The table
-// does not know which column is which, so it asks the value itself.
+// A number is right-aligned and grouped; a label is left-aligned.
 const isNumeric = (value) => typeof value === 'number' || (typeof value === 'string' && /^-?[\d,.]+$/.test(value.trim()));
 
-const cell = (value) => {
+/**
+ * 29.13 — which columns are MONEY, and which are counts.
+ *
+ * The table used to ask the VALUE what it was, and every number became
+ * rupees: a department with three people printed "Rs 3" under Employees.
+ * It was wrong on every report that counts people, and it looked like a real
+ * figure — the worst kind of wrong.
+ *
+ * The header is the only honest signal the table has, so a column is money
+ * unless its header says otherwise. New count columns have to be named here
+ * once; the alternative — treating every number as money — is silently wrong
+ * on every report that has one.
+ */
+const COUNT_HEADERS = new Set([
+  'Employees', 'Employees Paid', 'Employees Claimed', 'Active Employees',
+  'Joined This Month', 'Exited This Month', 'Headcount', 'Count', 'Months',
+  'Overtime Hours', 'Loss of Pay Days', 'Paid Leave Days', 'LOP Days', 'Days',
+  'Hours', 'Version', 'Share %', '% of Gross', 'Change %', 'Payroll Accuracy %',
+  // The headcount report is a two-column metric/value table about people.
+  'Value',
+]);
+
+export const isMoneyColumn = (header = '') => !COUNT_HEADERS.has(String(header || '').trim());
+
+// A count is still grouped — "1,200 employees", not "1200".
+const grouped = (value) => {
+  const negative = Number(value) < 0;
+  const [whole, fraction] = Math.abs(Number(value)).toFixed(2).split('.');
+  const withCommas = Number(whole).toLocaleString('en-IN');
+  const tail = fraction && fraction !== '00' ? `.${fraction}` : '';
+  return `${negative ? '-' : ''}${withCommas}${tail}`;
+};
+
+const cell = (value, money = true) => {
   if (value === null || value === undefined) return '';
-  if (typeof value === 'number') return rupees(value);
+  if (typeof value === 'number') return money ? rupees(value) : grouped(value);
   return String(value);
 };
 
@@ -189,8 +221,9 @@ const drawTable = (doc, { headers = [], rows = [], startY }) => {
     (row || []).forEach((value, column) => {
       const width = widths[column] || 60;
       const numeric = column > 0 && isNumeric(value);
+      const money = isMoneyColumn(headers[column]);
       doc.font(numeric ? 'Helvetica-Bold' : 'Helvetica').fontSize(7).fillColor(numeric ? C.ink : C.subtle)
-        .text(cell(value), x + 4, y + 4, { width: width - 8, align: numeric ? 'right' : 'left', ellipsis: true, lineBreak: false });
+        .text(cell(value, money), x + 4, y + 4, { width: width - 8, align: numeric ? 'right' : 'left', ellipsis: true, lineBreak: false });
       x += width;
     });
 

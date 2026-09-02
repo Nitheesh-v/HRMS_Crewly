@@ -2047,3 +2047,40 @@ test('§9 the cost movement decomposes into headcount and like-for-like', async 
   );
   assert.equal(movement.reconciled, true, 'the split adds up to the change it explains');
 });
+
+// ── the PDF counts people, it does not price them ──────────────────────────
+
+test('§19 a headcount in a PDF is a number of people, not a number of rupees', async () => {
+  // Found in the 29.13 preview, not by a unit test: the table asked the VALUE
+  // what it was, and every number became money. A department of three printed
+  // "Rs 3" under Employees — wrong on every report that counts people, and
+  // shaped exactly like a real figure.
+  const pdf = await buildAnalyticsReportPdf({
+    company: { name: 'Crewly Technologies Pvt Ltd', address: 'Bengaluru' },
+    title: 'Department Payroll',
+    subtitle: 'August 2026',
+    headers: ['Department', 'Employees', 'Gross Salary'],
+    rows: [
+      ['Engineering', 3, 294833],
+      ['Sales', 2, 153200],
+    ],
+    generatedBy: 'Farah Finance',
+  });
+
+  const mod = await import('pdf-parse');
+  const PDFParse = mod.PDFParse || mod.default?.PDFParse || mod.default;
+  const parser = new PDFParse({ data: pdf });
+  const result = await parser.getText();
+  await parser.destroy?.();
+  const text = String(result?.text || '');
+
+  assert.ok(text.includes('Engineering 3 '), 'three people are three people');
+  assert.ok(!/Engineering Rs 3/.test(text), 'a headcount is not currency');
+  assert.ok(text.includes('Rs 2,94,833'), 'money is still money');
+  // The two are different kinds of number and must not be formatted alike.
+  const { isMoneyColumn } = await import('../src/utils/analyticsPdf.js');
+  assert.equal(isMoneyColumn('Employees'), false);
+  assert.equal(isMoneyColumn('Gross Salary'), true);
+  assert.equal(isMoneyColumn('Share %'), false);
+  assert.equal(isMoneyColumn('Overtime Hours'), false);
+});

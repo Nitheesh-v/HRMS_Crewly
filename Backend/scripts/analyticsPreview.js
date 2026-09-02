@@ -25,7 +25,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { makeAnalyticsService } from '../src/services/payroll/analyticsService.js';
+import { makePlatformAnalyticsService } from '../src/services/payroll/platformAnalyticsService.js';
 import { REPORT_KEYS, REPORT_LABELS } from '../src/services/payroll/analyticsRules.js';
+import { filterSegmentOf } from '../src/services/payroll/analyticsCache.js';
+// The preview's fake models answer REAL aggregation pipelines, using the same
+// evaluator the tests use. If it were stubbed, the 29.13 fast path would fall
+// back to loading rows and the preview would silently stop exercising the code
+// that actually runs in production.
+import { runPipeline } from '../test/helpers/fakeAggregate.js';
 import { buildAnalyticsReportPdf } from '../src/utils/analyticsPdf.js';
 import { buildXlsx, toCsv } from '../src/services/payroll/payrollPaymentRules.js';
 
@@ -151,6 +158,7 @@ const makeFakeModel = (defaults = {}) => {
       return { lean, select: () => ({ lean }) };
     },
     countDocuments: async (filter = {}) => rows.filter((row) => matches(row, filter)).length,
+    aggregate: async (pipeline = []) => runPipeline(rows, pipeline),
     distinct: async (field, filter = {}) => [
       ...new Set(rows.filter((row) => matches(row, filter)).map((row) => row[field])),
     ],
@@ -219,6 +227,10 @@ const PEOPLE = [
       { type: 'BONUS_PERFORMANCE', label: 'Performance Bonus', amount: 20000 },
       { type: 'BONUS_FESTIVAL', label: 'Festival Bonus', amount: 5000 },
     ],
+    claims: [
+      { type: 'REIMBURSEMENT_TRAVEL', label: 'Travel', amount: 6400 },
+      { type: 'REIMBURSEMENT_INTERNET', label: 'Internet', amount: 1200 },
+    ],
     joining: '2018-04-02',
   },
   {
@@ -248,6 +260,7 @@ const PEOPLE = [
       { type: 'COMMISSION_SALES', label: 'Sales Commission', amount: 30000 },
       { type: 'INCENTIVE', label: 'Sales Incentive', amount: 10000 },
     ],
+    claims: [{ type: 'REIMBURSEMENT_FUEL', label: 'Fuel', amount: 8500 }],
     joining: '2019-11-11',
   },
   {
@@ -280,21 +293,59 @@ const PEOPLE = [
   },
 ];
 
-// What actually leaves the salary: PF, PT, TDS, LWF and the LOP days.
-const deductionsFor = (person) => {
-  const lop = (person.gross / 30) * person.lopDays;
-  const pf = Math.min(1800, Math.round(person.basic * 0.12));
-  const pt = 200;
-  const tds = person.gross > 50000 ? Math.round(person.gross * 0.07) : 0;
-  return Math.round((pf + pt + tds + 20 + lop) * 100) / 100;
-};
+// ── a 29.6 snapshot, exactly as the engine writes one ──────────────────────
+//
+// The engine stores the LINE arrays (earnings, deductions, employer
+// contributions) and derives the totals from them — `employerCost` is the sum
+// of the employer lines, gratuity included. 29.13's earnings, deduction and
+// employer reports read those lines, so a fixture without them does not show
+// "not available": it shows zero, which looks like a real answer. The
+// fixture is a contract, and this one is rewritten to keep it.
 
-// A 29.6 snapshot, exactly as the engine writes it. Nothing here is invented
-// by analytics — §11: "Do not recalculate old payroll."
+const round2 = (value) => Math.round(Number(value || 0) * 100) / 100;
+const sumLines = (lines = []) => round2(lines.reduce((total, line) => total + Number(line.amount || 0), 0));
+
 const resultFor = (person, month) => {
-  const deductions = deductionsFor(person);
+  const pf = Math.min(1800, Math.round(person.basic * 0.12));
+  const tds = person.gross > 50000 ? Math.round(person.gross * 0.07) : 0;
+  const lop = round2((person.gross / 30) * person.lopDays);
   const overtime = person.otHours > 0 ? Math.round((person.gross / 30 / 8) * 2 * person.otHours) : 0;
-  const variable = person.variable.reduce((sum, line) => sum + line.amount, 0);
+  const gratuity = round2(person.basic * 0.0481);
+
+  const hra = Math.round(person.basic * 0.4);
+  const earnings = [
+    { code: 'BASIC', name: 'Basic', amount: person.basic, source: 'STRUCTURE' },
+    { code: 'HRA', name: 'House Rent Allowance', amount: hra, source: 'STRUCTURE' },
+    { code: 'SPECIAL_ALLOWANCE', name: 'Special Allowance', amount: person.gross - person.basic - hra, source: 'STRUCTURE' },
+  ];
+
+  const deductions = [
+    { code: 'PF', name: 'Provident Fund', amount: pf, source: 'STATUTORY' },
+    { code: 'PROFESSIONAL_TAX', name: 'Professional Tax', amount: 200, source: 'STATUTORY' },
+    { code: 'TDS', name: 'Income Tax (TDS)', amount: tds, source: 'STATUTORY' },
+    { code: 'LWF', name: 'Labour Welfare Fund', amount: 20, source: 'STATUTORY' },
+    ...(lop ? [{ code: 'LOP', name: 'Loss of Pay', amount: lop, source: 'ATTENDANCE' }] : []),
+  ];
+
+  const employerContributions = [
+    { code: 'PF_EMPLOYER', name: 'Employer PF', amount: pf, source: 'STATUTORY' },
+    { code: 'LWF_EMPLOYER', name: 'Employer LWF', amount: 40, source: 'STATUTORY' },
+    { code: 'GRATUITY', name: 'Gratuity', amount: gratuity, source: 'STATUTORY' },
+  ];
+
+  const reimbursements = (person.claims || []).map((claim) => ({
+    type: claim.type,
+    label: claim.label,
+    amount: claim.amount,
+    claimStatus: 'APPROVED',
+  }));
+
+  const variable = sumLines(person.variable);
+  const totalEarnings = round2(person.gross + overtime + variable);
+  const totalDeductions = sumLines(deductions);
+  const employerCost = sumLines(employerContributions);
+  const reimbursementTotal = sumLines(reimbursements);
+
   return {
     _id: oid(900 + Number(String(person.id).slice(-3)) + MONTHS.indexOf(month)),
     companyId: COMPANY,
@@ -302,19 +353,30 @@ const resultFor = (person, month) => {
     employeeId: person.id,
     isCurrent: true,
     status: 'CALCULATED',
+    // 29.6 stamps both of these onto the snapshot (payrollEngineRules:
+    // departmentId = employee.department). A fixture without them makes every
+    // department bucket read "Unassigned" — a real-looking wrong answer.
+    departmentId: person.department,
+    structureId: oid(201),
+    structureName: 'Standard Structure',
     totals: {
       gross: person.gross,
       basic: person.basic,
-      totalEarnings: person.gross + overtime + variable,
-      totalDeductions: deductions,
-      employerCost: Math.round(person.basic * 0.12 + 40),
-      ctc: person.gross + overtime + variable + Math.round(person.basic * 0.12 + 40),
-      netPay: Math.round((person.gross + overtime + variable - deductions) * 100) / 100,
+      totalEarnings,
+      totalDeductions,
+      employerCost,
+      ctc: round2(totalEarnings + employerCost),
+      // The engine: net = total earnings + reimbursements − deductions.
+      netPay: round2(totalEarnings + reimbursementTotal - totalDeductions),
       overtime,
       variableEarnings: variable,
-      reimbursements: 0,
+      reimbursements: reimbursementTotal,
     },
+    earnings,
     variableEarnings: person.variable,
+    reimbursements,
+    deductions,
+    employerContributions,
     attendance: {
       workingDays: 30,
       paidDays: 30 - person.lopDays,
@@ -326,26 +388,26 @@ const resultFor = (person, month) => {
       pf: {
         applicable: true,
         pfWage: 15000,
-        employee: Math.min(1800, Math.round(person.basic * 0.12)),
+        employee: pf,
         employerEpf: 550,
         employerPension: 1250,
-        employer: Math.min(1800, Math.round(person.basic * 0.12)),
+        employer: pf,
       },
       esi: { applicable: false, wage: 0, employee: 0, employer: 0, outsideCeiling: true },
       professionalTax: { applicable: true, state: 'KARNATAKA', amount: 200 },
       tds:
         person.gross > 50000
           ? {
-              applicable: true,
-              monthly: Math.round(person.gross * 0.07),
-              annualIncome: person.gross * 12,
-              taxableIncome: person.gross * 12 - 75000,
-              annualTax: Math.round(person.gross * 0.07) * 12,
-              regime: 'NEW',
-            }
+            applicable: true,
+            monthly: tds,
+            annualIncome: person.gross * 12,
+            taxableIncome: person.gross * 12 - 75000,
+            annualTax: tds * 12,
+            regime: 'NEW',
+          }
           : { applicable: false, monthly: 0, annualIncome: 0, taxableIncome: 0, annualTax: 0, regime: 'NEW' },
       lwf: { applicable: true, employee: 20, employer: 40 },
-      gratuity: { applicable: true, amount: Math.round(person.basic * 0.0481 * 100) / 100 },
+      gratuity: { applicable: true, amount: gratuity },
     },
   };
 };
@@ -357,6 +419,10 @@ const state = {
   payments: makeFakeModel(),
   settlements: makeFakeModel(),
   resignations: makeFakeModel(),
+  // 29.13 — the versioned salary profile (§23) and the company's own salary
+  // bands (§8).
+  profiles: makeFakeModel(),
+  settings: makeFakeModel(),
   users: makeFakeModel(),
   departments: makeFakeModel(),
   companies: makeFakeModel(),
@@ -429,9 +495,41 @@ state.resignations.rows.push({
   lastWorkingDate: new Date('2026-08-31T00:00:00Z'),
 });
 
+// One approved exit has been settled and paid; another is still open, so the
+// F&F report has something to show on both sides of the line.
+state.settlements.rows.push({
+  _id: oid(651),
+  companyId: COMPANY,
+  employeeId: oid(4),
+  employeeName: 'Rahul Menon',
+  month: '2026-08',
+  settlementNumber: 'FNF-2026-0001',
+  status: 'PAID',
+  totals: { netSettlement: 41250, totalEarnings: 48000, totalRecoveries: 6750 },
+  earnings: { pendingSalary: { amount: 24000 }, leaveEncashment: { amount: 24000 } },
+  recoveries: { notice: { amount: 6000 }, items: [{ label: 'Asset not returned', amount: 750 }] },
+  exit: { employeeId: oid(4), lastWorkingDate: '2026-08-31' },
+  payment: { paidAt: new Date('2026-08-31T00:00:00Z') },
+});
+
+// §23 — a salary that changed. Version 2 is current; version 1 is history and
+// must stay readable.
+state.profiles.rows.push(
+  {
+    _id: oid(661), companyId: COMPANY, employeeId: oid(2), version: 2, isCurrent: true,
+    effectiveFrom: new Date('2026-04-01T00:00:00Z'), structureId: oid(201),
+    structureName: 'Standard Structure', annualCtc: 900000, monthlyGross: 62000,
+  },
+  {
+    _id: oid(660), companyId: COMPANY, employeeId: oid(2), version: 1, isCurrent: false,
+    effectiveFrom: new Date('2024-04-01T00:00:00Z'), effectiveTo: new Date('2026-03-31T00:00:00Z'),
+    structureId: oid(200), structureName: 'Legacy Structure', annualCtc: 744000, monthlyGross: 52000,
+  },
+);
+
 const cache = {
-  buildKey: ({ companyId, month = '', suffix = 'dashboard', period = '' }) =>
-    `k:${companyId}:${month || 'all'}:${suffix}:${period || '-'}`,
+  buildKey: ({ companyId, month = '', suffix = 'dashboard', period = '', filters = null }) =>
+    `k:${companyId}:${month || 'all'}:${suffix}:${period || '-'}:${filterSegmentOf(filters)}`,
   getOrSet: async (key, { loader }) => {
     if (state.cache.has(key)) return { value: state.cache.get(key), cache: 'HIT' };
     const value = await loader();
@@ -455,6 +553,8 @@ const service = makeAnalyticsService({
   PayrollPaymentModel: state.payments,
   FinalSettlementModel: state.settlements,
   ResignationModel: state.resignations,
+  EmployeePayrollProfileModel: state.profiles,
+  AnalyticsSettingModel: state.settings,
   UserModel: state.users,
   DepartmentModel: state.departments,
   CompanyModel: state.companies,
@@ -592,6 +692,134 @@ const main = async () => {
     line(String(row.label || row.key), `${inr(row.grossPayroll)} gross · ${inr(row.netSalary)} net · ${inr(row.employerContribution)} employer`);
   });
 
+  // ── 29.13 §4 — period presets
+  heading('§4  Period presets (29.13)');
+  for (const preset of ['CURRENT_MONTH', 'PREVIOUS_MONTH', 'LAST_3_MONTHS', 'CURRENT_FY', 'LAST_12_MONTHS']) {
+    const window = await service.getDashboard({ companyId: COMPANY, month: CURRENT_MONTH, preset });
+    line(
+      preset,
+      `${window.period.label} · ${window.months.length} month(s) · ${window.kpis.employeesPaid} paid · ${inr(window.kpis.grossSalary)} gross`,
+    );
+  }
+  const custom = await service.getDashboard({
+    companyId: COMPANY,
+    preset: 'CUSTOM',
+    fromMonth: '2026-04',
+    toMonth: '2027-03',
+  });
+  line('CUSTOM 2026-04 → 2027-03', `${custom.period.label} · ${custom.months.length} month(s) · ${inr(custom.kpis.grossSalary)} gross`);
+
+  // ── 29.13 §29 — the aggregation fast path, and what it saves
+  heading('§29  Aggregation fast path vs the row loader');
+  const timed = async (label, options) => {
+    const started = performance.now();
+    const value = await service.getDashboard({ companyId: COMPANY, month: CURRENT_MONTH, ...options });
+    const elapsed = Math.round(performance.now() - started);
+    line(label, `${elapsed} ms · source ${value.source} · ${inr(value.kpis.grossSalary)} gross`);
+    return value;
+  };
+  const fast = await timed('Aggregation (MongoDB)', {});
+  const slow = await timed('Rows (payment filter)', { filters: { status: 'PAID' } });
+  line('Same answer either way', fast.kpis.grossSalary === slow.kpis.grossSalary ? 'yes' : 'NO — CHECK');
+  line('Employees are people, not rows', `${fast.kpis.employeesPaid} over ${fast.months.length} month(s)`);
+
+  // ── 29.13 §9 — why the cost moved
+  heading('§9  Why the payroll cost moved');
+  const movement = fast.movement || {};
+  line('Joiners', movement.joiners ?? 0);
+  line('Leavers', movement.leavers ?? 0);
+  line('Stayers', movement.stayers ?? 0);
+  line('Headcount effect', inr(movement.headcountEffect));
+  line('Like-for-like effect', inr(movement.likeForLikeEffect));
+  line('Adds up', movement.reconciled ? 'yes' : 'NO — CHECK');
+
+  // ── 29.13 §11 … §21 — the six new reports
+  heading('§11–§21  The reports 29.13 added');
+
+  const earnings = await service.getReport({ companyId: COMPANY, reportKey: 'EARNINGS', month: CURRENT_MONTH });
+  line('Earnings reconciled', earnings.totals.reconciled ? 'yes' : 'NO — CHECK');
+  line('  fixed / variable / overtime', `${inr(earnings.totals.fixedEarnings)} / ${inr(earnings.totals.variableEarnings)} / ${inr(earnings.totals.overtime)}`);
+  (earnings.rows || []).slice(0, 5).forEach((row) => line(`  ${row.label}`, `${inr(row.amount)} · ${row.categoryLabel}`));
+
+  const deductions = await service.getReport({ companyId: COMPANY, reportKey: 'DEDUCTIONS', month: CURRENT_MONTH });
+  line('Deductions', `${inr(deductions.totals.totalDeductions)} · ${deductions.totals.percentOfGross}% of gross`);
+  line('  statutory / LOP / other', `${inr(deductions.totals.statutoryTotal)} / ${inr(deductions.totals.lopTotal)} / ${inr(deductions.totals.otherTotal)}`);
+
+  const employer = await service.getReport({ companyId: COMPANY, reportKey: 'EMPLOYER', month: CURRENT_MONTH });
+  line('Employer contribution', `${inr(employer.total)} · unclassified ${inr(employer.unclassified)}`);
+
+  const reimbursements = await service.getReport({ companyId: COMPANY, reportKey: 'REIMBURSEMENT', month: CURRENT_MONTH });
+  line('Reimbursements', `${inr(reimbursements.total)} · ${reimbursements.employees} employee(s)`);
+
+  const fnf = await service.getReport({ companyId: COMPANY, reportKey: 'FNF', month: CURRENT_MONTH });
+  line('F&F settlements', `${fnf.count} · completed ${fnf.completed.count} · pending ${fnf.pending.count} · ${inr(fnf.totals.netSettlement)} net`);
+
+  const variance = await service.getReport({ companyId: COMPANY, reportKey: 'VARIANCE', month: CURRENT_MONTH });
+  line('Variance direction', variance.direction);
+  (variance.rows || [])
+    .filter((row) => row.key === 'GROSS' || row.key === 'NET' || row.key === 'TOTAL_COST' || row.key === 'HEADCOUNT')
+    .forEach((row) => line(`  ${row.label}`, `${inr(row.previous)} → ${inr(row.current)} (${row.direction})`));
+
+  // ── 29.13 §22 — the register pages and searches
+  heading('§22  Register paging and search');
+  const pageOne = await service.getReport({ companyId: COMPANY, reportKey: 'REGISTER', month: CURRENT_MONTH, page: 1, limit: 3 });
+  line('Page 1 of 3 per page', `${pageOne.rows.length} row(s) of ${pageOne.pagination.total} · ${pageOne.pagination.pages} page(s)`);
+  const pageTwo = await service.getReport({ companyId: COMPANY, reportKey: 'REGISTER', month: CURRENT_MONTH, page: 2, limit: 3 });
+  line('Page 2', `${pageTwo.rows.length} row(s)`);
+  const searched = await service.getReport({ companyId: COMPANY, reportKey: 'REGISTER', month: CURRENT_MONTH, search: 'meera' });
+  line('Search "meera"', `${searched.rows.length} row(s) — ${(searched.rows[0] || {}).employeeName || '—'}`);
+  const byAmount = await service.getReport({ companyId: COMPANY, reportKey: 'REGISTER', month: CURRENT_MONTH, search: '62000' });
+  line('Search "62000"', `${byAmount.rows.length} row(s) — payroll is not searchable by salary`);
+
+  // ── 29.13 §23 — one person's salary history
+  heading('§23  Employee salary history');
+  const history = await service.getEmployeeHistory({ companyId: COMPANY, employeeId: oid(2) });
+  line('Employee', `${history.employee.employeeCode} · ${history.employee.employeeName} · ${history.employee.designation}`);
+  line('Months on record', `${history.months.length} (${history.summary.firstMonth} → ${history.summary.lastMonth})`);
+  line('Average gross', inr(history.summary.averageGross));
+  (history.versions || []).forEach((version) =>
+    line(`  Version ${version.version}${version.isCurrent ? ' (current)' : ''}`, `${version.structureName} · ${inr(version.annualCtc)} CTC from ${String(version.effectiveFrom || '').slice(0, 10)}`),
+  );
+  const outOfScope = await service
+    .getEmployeeHistory({ companyId: COMPANY, employeeId: oid(3), allowedEmployeeIds: [oid(2)] })
+    .then(() => 'LEAKED')
+    .catch(() => 'blocked');
+  line('Another employee, scoped out', outOfScope);
+
+  // ── 29.13 §8 — the company's own salary bands
+  heading('§8  Configurable salary bands');
+  const saved = await service.updateSalaryBands({
+    companyId: COMPANY,
+    salaryBands: [
+      { label: 'Under 50k', min: 0, max: 50000 },
+      { label: '50k to 1 lakh', min: 50000, max: 100000 },
+      { label: 'Above 1 lakh', min: 100000, max: null },
+    ],
+    actor: { _id: oid(11), name: 'Farah Finance' },
+  });
+  line('Saved bands', saved.salaryBands.map((band) => band.label).join(' · '));
+  const distribution = await service.getReport({ companyId: COMPANY, reportKey: 'SALARY_BANDS', month: CURRENT_MONTH });
+  (distribution.rows || []).forEach((row) => line(`  ${row.label}`, `${row.employees} employee(s)`));
+
+  // ── 29.13 §38 — generated files expire
+  heading('§38  Export expiry');
+  const requested = await service.requestExport({
+    companyId: COMPANY,
+    reportKey: 'REGISTER',
+    format: 'CSV',
+    filters: { month: CURRENT_MONTH },
+    actor: { _id: oid(11), name: 'Farah Finance' },
+  });
+  const beforeExpiry = (await service.listFiles({ companyId: COMPANY })).find((row) => String(row._id) === String(requested.fileId));
+  line('Generated', `${beforeExpiry.filename} · expires ${new Date(beforeExpiry.expiresAt).toISOString()}`);
+  const expiredCount = await service.expireFiles({ now: new Date(Date.parse(beforeExpiry.expiresAt) + 1000) });
+  const afterExpiry = (await service.listFiles({ companyId: COMPANY })).find((row) => String(row._id) === String(requested.fileId));
+  line('Swept', `${expiredCount} file(s) · status now ${afterExpiry.status}`);
+  line(
+    'Download after expiry',
+    await service.downloadFile({ companyId: COMPANY, fileId: requested.fileId }).then(() => 'LEAKED').catch(() => 'refused'),
+  );
+
   // ── §20 scheduled reports
   heading('§20  Scheduled reports');
   const schedule = await service.createSchedule({
@@ -677,6 +905,36 @@ const main = async () => {
   }
   line('Files scanned as text', `${scanned} of ${written.length} (.xlsx is a ZIP — skipped)`);
   line('Unrecognised long numbers', flagged === 0 ? 'none — clean' : `${flagged} — CHECK`);
+
+  // ── 29.13 §2 — Crewly's own numbers
+  heading('§2  Platform metrics (Super Admin)');
+  // makeFakeModel() takes DEFAULTS, not rows — seeding it by argument is the
+  // kind of mistake that reads as a real answer.
+  const modelWith = (rows = []) => {
+    const model = makeFakeModel();
+    rows.forEach((row) => model.rows.push(row));
+    return model;
+  };
+  const platformService = makePlatformAnalyticsService({
+    CompanyModel: state.companies,
+    PayrollSetupModel: modelWith([{ companyId: COMPANY }]),
+    PayrollResultModel: state.results,
+    PayrollRunModel: modelWith([{ companyId: COMPANY, status: 'COMPLETED' }]),
+    AnalyticsReportFileModel: state.files,
+    ScheduledReportModel: state.schedules,
+    CandidateModel: modelWith([{ companyId: COMPANY }]),
+    AttendanceModel: modelWith([{ companyId: COMPANY }]),
+    LeaveModel: modelWith([{ companyId: COMPANY }]),
+  });
+  const platform = await platformService.getPlatformMetrics({ now: new Date('2026-08-15T00:00:00Z') });
+  line('Companies using payroll', `${platform.adoption.companiesOnPayroll} of ${platform.adoption.totalCompanies} (${platform.adoption.payrollPenetrationPercent}%)`);
+  platform.adoption.modules.forEach((module) => line(`  ${module.label}`, `${module.companies} company/companies`));
+  line('Employee-months in window', platform.processing.employeeMonthsInWindow);
+  line('Companies this month', platform.processing.companiesThisMonth);
+  (platform.processing.byMonth || []).forEach((row) => line(`  ${row.month}`, `${row.snapshots} snapshot(s) · ${row.companies} company/companies`));
+  line('Report files', `${platform.jobs.reportFiles.total} total · ${platform.jobs.reportFiles.ready || 0} ready · ${platform.jobs.reportFiles.expired || 0} expired`);
+  line('Payroll figures in the payload', platform.privacy.includesPayrollAmounts ? 'LEAKED' : 'none');
+  line('Employee names in the payload', platform.privacy.includesEmployeeIdentities ? 'LEAKED' : 'none');
 
   console.log(`\nArtefacts written to ${OUT_DIR}`);
   console.log('Open the PDFs and the XLSX files — they are the real thing.\n');

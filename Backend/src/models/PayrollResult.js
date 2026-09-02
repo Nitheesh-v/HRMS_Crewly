@@ -83,6 +83,17 @@ payrollResultSchema.index({ companyId: 1, month: 1, employeeId: 1, version: 1 },
 payrollResultSchema.index({ companyId: 1, month: 1, status: 1 });
 payrollResultSchema.index({ companyId: 1, month: 1, isCurrent: 1 });
 
+// ── 29.13 §29 / §44 ───────────────────────────────────────────────────────
+// The dashboard aggregates a WINDOW of months in MongoDB: companyId, a range
+// of months, isCurrent and status, before anything else. The month-first
+// indexes above serve a single month; this one covers the range, so a
+// twelve-month roll-up is one index scan rather than twelve.
+payrollResultSchema.index({ companyId: 1, isCurrent: 1, status: 1, month: 1 });
+// §23 — one employee's salary history: every snapshot for one person, in
+// month order, across years. Without this the query scans a company's whole
+// payroll history to find one person's.
+payrollResultSchema.index({ companyId: 1, employeeId: 1, month: 1 });
+
 const PayrollResult =
   mongoose.models.PayrollResult || mongoose.model('PayrollResult', payrollResultSchema);
 

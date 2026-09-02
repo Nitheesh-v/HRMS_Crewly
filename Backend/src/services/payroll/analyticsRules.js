@@ -1619,7 +1619,13 @@ export const REGISTER_HEADERS = [
   'Payroll Period',
   'Basic',
   'Gross',
-  'Total Earnings',
+  // §22 asked for a "Total Earnings" column next to Gross. In analytics those
+  // are the same number — `gross` is the engine's total earnings (structure +
+  // variable + overtime), which is the figure every other report here shows.
+  // Printing it twice would be a lie of omission, so the second column is the
+  // OTHER gross: the structure figure, which is the PF/ESI wage base and the
+  // number LOP is priced off. Different question, genuinely different answer.
+  'Structure Gross',
   'Total Deductions',
   'Employer Cost',
   'Net Salary',
@@ -1639,7 +1645,7 @@ export const registerRows = ({ rows = [] } = {}) =>
       row.month || '',
       money(row.basic),
       money(row.gross),
-      money(row.totalEarnings),
+      money(row.fixedGross),
       money(row.totalDeductions),
       money(row.employerCost),
       money(row.net),
