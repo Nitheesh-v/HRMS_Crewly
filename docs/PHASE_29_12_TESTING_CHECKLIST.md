@@ -1,6 +1,6 @@
 # Phase 29.12 — Payroll Analytics: manual testing checklist
 
-Automated: `npm run test:analytics` (33 tests), `npm run test:all` (777 tests),
+Automated: `npm run test:analytics` (35 tests), `npm run test:all` (777 tests),
 `npm run analytics:preview` (36 artefacts). This checklist is what a human
 still has to look at — the things a unit test cannot see.
 
@@ -141,6 +141,19 @@ the export menu behave identically.
       card.
 
 ---
+
+## 6b. Notifications (§23)
+
+- [ ] Queue a large register export. When it finishes, the requester gets an
+      in-app notification: "Payroll report ready", naming the report and the
+      format, linking to the analytics dashboard.
+- [ ] Trigger a scheduled report. Every current holder of the chosen
+      permission receives "Scheduled report generated".
+- [ ] Remove the permission from one of those users, run the schedule again,
+      and confirm they are **not** notified — the audience is resolved at run
+      time, never frozen at creation.
+- [ ] Refresh the executive dashboard from the worker. Company Admin and
+      Finance receive "Executive dashboard updated", naming the month.
 
 ## 7. Cache correctness (§21)
 

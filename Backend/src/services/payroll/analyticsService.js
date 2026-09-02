@@ -596,6 +596,22 @@ export const makeAnalyticsService = ({
         metadata: { format: file.format, fileId: String(file._id), filename: built.filename, rows: built.rows },
       });
 
+      // §23 — a large export runs in the background, so the person who asked
+      // for it has to be told when it lands instead of watching the page.
+      if (file.requestedBy) {
+        await notify({
+          userId: String(file.requestedBy),
+          payload: {
+            message: `${REPORT_LABELS[file.reportKey] || file.reportKey} (${file.format}) is ready to download.`,
+            filename: built.filename,
+            fileId: String(file._id),
+            reportKey: file.reportKey,
+            format: file.format,
+            month: file.month || '',
+          },
+        }).catch(() => null);
+      }
+
       return { fileId: String(file._id), filename: built.filename, sizeBytes: file.sizeBytes, rows: built.rows, status: 'READY' };
     } catch (error) {
       file.status = 'FAILED';
@@ -940,11 +956,17 @@ export const makeAnalyticsService = ({
     const dashboard = await getDashboard({ companyId, month });
     if (onProgress) await onProgress(100);
 
-    // §23 — "Executive Dashboard Updated → Company Admin".
+    // §23 — "Executive Dashboard Updated → Company Admin". There is no
+    // Company-Admin-only verb, so this goes to the management audience the
+    // brief actually defines: Company Admin and Finance, the two roles that
+    // hold PAYROLL_ANALYTICS_FINANCIAL.
     await notifyRoles({
       companyId,
       permission: 'PAYROLL_ANALYTICS_FINANCIAL',
-      payload: { month: dashboard.month || month || '' },
+      payload: {
+        message: `The executive payroll dashboard for ${monthLabel(dashboard.month || month)} has been refreshed.`,
+        month: dashboard.month || month || '',
+      },
     }).catch(() => 0);
 
     return { month: dashboard.month || month || '', employeesPaid: dashboard.kpis?.employeesPaid || 0 };
@@ -1017,6 +1039,7 @@ import { resolveCompanyLogo } from '../../utils/companyLogo.js';
 import { createHash } from 'node:crypto';
 
 import { invalidateAnalyticsCache, analyticsCacheKey } from './analyticsCache.js';
+import { monthLabel } from './statutoryRules.js';
 import { dispatchAnalyticsExport, dispatchAnalyticsSchedule, dispatchAnalyticsRefresh } from './analyticsDispatcher.js';
 import { buildXlsx, toCsv } from './payrollPaymentRules.js';
 import { getOrSetCache } from '../redisCacheService.js';
@@ -1031,11 +1054,12 @@ const notifyPermissionHolders = async ({ companyId, permission, payload = {} }) 
     const allowed = await hasPermission(user, permission).catch(() => false);
     if (!allowed) continue;
     await notifySmart(String(user._id), {
-      title: 'Payroll report ready',
+      // §23 — "Scheduled Report Generated → HR".
+      title: 'Scheduled report generated',
       message: `${payload.reportLabel || payload.scheduleName || 'A scheduled payroll report'} is ready to download.`,
       link: '/app/payroll/analytics',
       category: 'PAYROLL',
-      metadata: { type: 'ANALYTICS_REPORT_READY', ...payload },
+      metadata: { type: 'ANALYTICS_SCHEDULE_GENERATED', ...payload },
     }).catch(() => null);
     sent += 1;
   }
@@ -1062,8 +1086,9 @@ const defaultService = makeAnalyticsService({
   audit: recordAudit,
   notify: ({ userId, payload }) =>
     notifySmart(userId, {
-      title: 'Payroll analytics',
-      message: payload?.message || 'A payroll report is ready.',
+      // §23 — "Monthly Payroll Report Ready → Finance".
+      title: 'Payroll report ready',
+      message: payload?.message || 'A payroll report is ready to download.',
       link: '/app/payroll/analytics',
       category: 'PAYROLL',
       metadata: { type: 'ANALYTICS_REPORT_READY', ...payload },

@@ -190,6 +190,21 @@ closed, not the month that has barely started.
 
 ---
 
+### Notifications (§23)
+
+| Event | Title | Audience |
+| --- | --- | --- |
+| A queued export finishes | "Payroll report ready" | the person who asked for it |
+| A scheduled report is generated | "Scheduled report generated" | everyone who currently holds the schedule's `notifyPermission` |
+| The executive dashboard is refreshed | "Executive dashboard updated" | Company Admin and Finance |
+
+The refresh notification has a caveat worth stating: there is no
+Company-Admin-only verb, so §23's "Executive Dashboard Updated → Company
+Admin" goes to the management audience the brief actually defines — the two
+roles holding `PAYROLL_ANALYTICS_FINANCIAL`. It fires from the **worker** (a
+background refresh); an inline refresh in a deployment with no Redis is
+already on screen, so it does not notify.
+
 ## 6. Caching (§21) and background work (§22)
 
 Redis namespace `payroll-analytics` v1, suffixes `dashboard | department |
@@ -224,7 +239,7 @@ everything from Mongo.
 
 ---
 
-## 8. Tests — 33 hermetic (`npm run test:analytics`)
+## 8. Tests — 35 hermetic (`npm run test:analytics`)
 
 No MongoDB, no Redis, no BullMQ. Fake models, a fake cache, and fake
 audit / notify / dispatch seams.

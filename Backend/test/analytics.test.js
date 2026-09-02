@@ -388,7 +388,9 @@ const buildHarness = ({
 
     dispatchExport: async (payload) => {
       state.dispatched.push({ kind: 'export', payload });
-      return { queued: false };
+      // Flippable so a test can exercise the worker path: when a queue is
+      // available the service leaves the file QUEUED for the worker.
+      return { queued: Boolean(state.queueExports) };
     },
     dispatchSchedule: async (payload) => {
       state.dispatched.push({ kind: 'schedule', payload });
@@ -1121,4 +1123,49 @@ test('§19 report filenames are predictable and filesystem-safe', () => {
   assert.equal(reportFilename({ reportKey: 'DEPARTMENT', month: '2026-08', format: 'CSV' }), 'payroll-department-2026-08.csv');
   assert.equal(reportFilename({ reportKey: 'SALARY_BANDS', month: '2026-08', format: 'xlsx' }), 'payroll-salary-bands-2026-08.xlsx');
   assert.equal(reportFilename({ reportKey: 'REGISTER', period: 'MONTHLY', format: 'PDF' }), 'payroll-register-monthly.pdf');
+});
+
+// ── §23 — notifications ────────────────────────────────────────────────────
+
+test('§23 a background export tells the person who asked for it', async () => {
+  const harness = threeEmployees();
+  // A queue is available, so the export is left for the worker — the case
+  // where "it is ready" can only reach the requester as a notification.
+  harness.state.queueExports = true;
+
+  const queued = await harness.service.requestExport({
+    companyId: COMPANY,
+    reportKey: 'DEPARTMENT',
+    format: 'CSV',
+    filters: { month: MONTH },
+    actor: { _id: 'user-77', name: 'Farah Finance' },
+  });
+  assert.equal(queued.status, 'QUEUED');
+
+  const result = await harness.service.runExport({
+    companyId: COMPANY,
+    fileId: queued.fileId,
+    actor: { _id: 'user-77', name: 'Farah Finance' },
+  });
+
+  assert.equal(result.status, 'READY');
+  const toRequester = harness.state.notifications.filter((entry) => entry.userId === 'user-77');
+  // §19 — a large export runs in the background, so silence would mean the
+  // requester has to sit and watch the page.
+  assert.equal(toRequester.length, 1);
+  assert.match(toRequester[0].payload.message, /Department Payroll/);
+  assert.equal(toRequester[0].payload.format, 'CSV');
+});
+
+test('§23 a dashboard refresh tells the management audience, naming the month', async () => {
+  const harness = threeEmployees();
+
+  await harness.service.runRefresh({ companyId: COMPANY, month: MONTH });
+
+  const audience = harness.state.notifications.filter((entry) => entry.permission === 'PAYROLL_ANALYTICS_FINANCIAL');
+  // §23 — "Executive Dashboard Updated → Company Admin". There is no
+  // Company-Admin-only verb, so it goes to the management audience the brief
+  // defines: Company Admin and Finance.
+  assert.equal(audience.length, 1);
+  assert.match(audience[0].payload.message, /August 2026/);
 });

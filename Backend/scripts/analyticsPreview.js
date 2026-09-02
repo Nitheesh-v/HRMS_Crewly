@@ -595,6 +595,18 @@ const main = async () => {
   line('Re-armed for', new Date(state.schedules.rows[0].nextRunAt).toISOString().slice(0, 10));
   line('Runs so far', state.schedules.rows[0].runCount);
 
+  // ── §23 notifications
+  heading('§23  Notifications');
+  const notifySummary = new Map();
+  state.notifications.forEach((entry) => {
+    const key = entry.permission ? `permission:${entry.permission}` : `user:${entry.userId}`;
+    notifySummary.set(key, (notifySummary.get(key) || 0) + 1);
+  });
+  if (!notifySummary.size) line('Sent', 'none — a schedule that notifies nobody is silent by design');
+  [...notifySummary.entries()].forEach(([key, total]) => line(key, `${total} notification(s)`));
+  const sampleMessage = state.notifications.find((entry) => entry.payload?.message)?.payload?.message;
+  if (sampleMessage) line('Latest message', sampleMessage);
+
   // ── §24 audit trail
   heading('§24  Audit trail');
   state.audits.forEach((entry) => line(entry.action, entry.resourceId || entry.metadata?.filename || ''));
