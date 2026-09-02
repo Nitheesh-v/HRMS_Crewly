@@ -197,7 +197,19 @@ export const buildAnalyticsRow = ({
   const attendance = result.attendance || {};
   const statutory = result.statutory || {};
 
-  const gross = num(totals.gross ?? totals.grossSalary);
+  // §5 — "gross" is the month's WHOLE earnings, not just the fixed structure.
+  //
+  // The engine stores two figures and they are not the same number:
+  //   gross         = the structure earnings (what PF, ESI and LOP are
+  //                   computed on; what the payslip shows as Gross Salary)
+  //   totalEarnings = structure + variable + overtime (what the payslip shows
+  //                   as Total Earnings, and what 29.6 sums as `grossPayroll`)
+  // Reporting the narrow one beside a net that includes overtime made the
+  // executive dashboard show net pay ABOVE gross pay for any month with
+  // overtime or variable pay. The fixed figure is still carried, because §14
+  // has to price a LOP day off the same base the engine deducted it from.
+  const fixedGross = num(totals.gross ?? totals.grossSalary);
+  const gross = num(totals.totalEarnings ?? fixedGross);
   const net = num(totals.netPay ?? totals.netSalary);
   const employeeId = String(result.employeeId || employee?._id || '');
 
@@ -212,6 +224,9 @@ export const buildAnalyticsRow = ({
     month: result.month || '',
 
     gross,
+    // The structure earnings the engine based LOP, PF and ESI on. Kept
+    // because §14 prices a lost day off this base, not off the total.
+    fixedGross,
     basic: num(totals.basic),
     totalEarnings: num(totals.totalEarnings),
     totalDeductions: num(totals.totalDeductions),
@@ -220,8 +235,12 @@ export const buildAnalyticsRow = ({
     ctc: num(totals.ctc),
 
     // §12 — variable pay, broken out by what the company actually paid.
+    // Bonus is the BONUS_* / INCENTIVE / COMMISSION lines; anything else that
+    // arrived as variable pay (an adjustment, say) is shown on its own line so
+    // the columns add up to the total instead of quietly hiding it.
     variableEarnings: num(totals.variableEarnings),
-    bonus: sumLines(result.variableEarnings, ['BONUS', 'PERFORMANCE_BONUS', 'FESTIVAL_BONUS', 'INCENTIVE', 'COMMISSION']),
+    bonus: sumLines(result.variableEarnings, BONUS_LINES),
+    otherVariable: Math.max(0, money(num(totals.variableEarnings) - sumLines(result.variableEarnings, BONUS_LINES))),
     overtime: num(totals.overtime),
     reimbursements: num(totals.reimbursements),
 
@@ -246,12 +265,27 @@ export const buildAnalyticsRow = ({
   };
 };
 
-const sumLines = (lines = [], names = []) =>
+// §12 — which variable-earning entry types are bonus and incentive pay.
+//
+// Taken from the vocabulary 29.5 actually stores (monthlyInputRules
+// ENTRY_TYPE_LABELS: BONUS_PERFORMANCE, BONUS_FESTIVAL, BONUS_RETENTION,
+// BONUS_SPOT, BONUS_JOINING, INCENTIVE, COMMISSION_SALES), not invented here.
+// Matching on a prefix rather than a fixed list means a bonus type added later
+// is counted as bonus without anyone remembering to update this file.
+export const isBonusEntry = (type = '') => {
+  const key = String(type || '').trim().toUpperCase();
+  if (!key) return false;
+  return key.startsWith('BONUS_') || key === 'INCENTIVE' || key === 'COMMISSION_SALES';
+};
+
+const sumLines = (lines = [], predicate = null) =>
   money(
     (Array.isArray(lines) ? lines : [])
-      .filter((line) => names.includes(String(line?.name || line?.type || '').toUpperCase().replace(/\s+/g, '_')))
+      .filter((line) => (predicate ? predicate(line) : true))
       .reduce((total, line) => total + num(line?.amount), 0),
   );
+
+const BONUS_LINES = (line) => isBonusEntry(line?.type || line?.name);
 
 // ── the one aggregation ────────────────────────────────────────────────────
 
@@ -280,7 +314,10 @@ export const summariseRows = ({ rows = [] } = {}) => {
     // plus everything it contributes on the employee's behalf.
     ctc: sum((row) => row.ctc),
     totalPayrollCost: money(gross + sum((row) => row.employerCost)),
-    averageSalary: paidEmployees ? money(net / paidEmployees) : 0,
+    // §5 — "average salary" is the average of what the company PAID per head,
+    // not of what landed in a bank account. A card sitting between "Gross
+    // Salary" and "Net Salary Paid" has to say which one it is averaging.
+    averageSalary: paidEmployees ? money(gross / paidEmployees) : 0,
     averageCtc: paidEmployees ? money(sum((row) => row.ctc) / paidEmployees) : 0,
     // §12 / §13 — variable pay and overtime, for the bonus and OT reports.
     bonusTotal: sum((row) => row.bonus),
@@ -361,7 +398,7 @@ export const departmentRows = ({ rows = [] } = {}) =>
     .map((row) => ({
       ...row,
       totalCost: money(num(row.gross) + num(row.employerCost)),
-      averageSalary: row.employees ? money(num(row.net) / row.employees) : 0,
+      averageSalary: row.employees ? money(num(row.gross) / row.employees) : 0,
     }))
     // §7 — "Support sorting by highest payroll cost": the default order.
     .sort((a, b) => num(b.totalCost) - num(a.totalCost));
@@ -519,11 +556,15 @@ export const bonusRows = ({ rows = [] } = {}) =>
       designation: row.designation,
       month: row.month,
       bonus: num(row.bonus),
+      otherVariable: num(row.otherVariable),
       variableEarnings: num(row.variableEarnings),
       overtime: num(row.overtime),
       reimbursements: num(row.reimbursements),
       net: num(row.net),
-      totalVariable: money(num(row.bonus) + num(row.overtime) + num(row.reimbursements)),
+      // Everything beyond fixed pay: variable earnings, engine overtime and
+      // reimbursements. Bonus sits inside variable earnings, so it is not
+      // added twice.
+      totalVariable: money(num(row.variableEarnings) + num(row.overtime) + num(row.reimbursements)),
     }))
     .sort((a, b) => num(b.totalVariable) - num(a.totalVariable));
 
@@ -575,7 +616,10 @@ export const leaveImpactRows = ({ rows = [] } = {}) => {
   const list = Array.isArray(rows) ? rows : [];
 
   const perRow = list.map((row) => {
-    const dailyRate = num(row.workingDays) > 0 ? num(row.gross) / num(row.workingDays) : 0;
+    // The engine deducts LOP from the structure earnings, not from the month's
+    // total, so the daily rate has to come from the same base or §14 overstates
+    // the cost of a lost day for anyone with overtime or variable pay.
+    const dailyRate = num(row.workingDays) > 0 ? num(row.fixedGross ?? row.gross) / num(row.workingDays) : 0;
     return {
       ...row,
       dailyRate: money(dailyRate),
@@ -783,10 +827,13 @@ export const reportTable = ({ reportKey = '', payload = {} } = {}) => {
       };
     case 'BONUS':
       return {
-        headers: ['Employee Code', 'Employee Name', 'Department', 'Designation', 'Bonus', 'Variable Earnings', 'Overtime', 'Reimbursements', 'Total Variable'],
+        headers: ['Employee Code', 'Employee Name', 'Department', 'Designation', 'Bonus', 'Other Variable', 'Overtime', 'Reimbursements', 'Total Variable'],
+        // Bonus + Other Variable is the whole of the variable earnings, so the
+        // money columns add up to the total instead of quietly hiding an
+        // adjustment that was not a bonus.
         rows: (payload.rows || []).map((row) => [
           row.employeeCode, row.employeeName, row.department, row.designation,
-          money(row.bonus), money(row.variableEarnings), money(row.overtime),
+          money(row.bonus), money(row.otherVariable), money(row.overtime),
           money(row.reimbursements), money(row.totalVariable),
         ]),
       };

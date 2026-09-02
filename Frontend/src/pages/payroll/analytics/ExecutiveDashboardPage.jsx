@@ -21,6 +21,7 @@ import {
   AccessDenied,
   Banner,
   EmptyState,
+  ExportMenu,
   KpiCard,
   PageHeader,
   SectionCard,
@@ -221,7 +222,11 @@ const ExecutiveDashboardPage = () => {
             </SectionCard>
 
             {/* §9 — headcount & cost */}
-            <SectionCard title="Headcount & Cost" subtitle="§9 — joins, exits and cost per head">
+            <SectionCard
+              title="Headcount & Cost"
+              subtitle="§9 — joins, exits and cost per head"
+              actions={<ExportMenu reportKey="HEADCOUNT" filters={{ month }} onQueued={setBanner} />}
+            >
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                 {[
                   ['Active employees', count(headcount.activeEmployees)],

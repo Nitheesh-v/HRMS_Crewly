@@ -142,6 +142,25 @@ why no report can forget it.
 | `CTC` | §16 | Finance only |
 | `REGISTER` | §17 | the master record, with payment date and status |
 
+### Which "gross" the reports use
+
+The engine stores two different figures and they are not the same number:
+
+| Field | What it is | What it is used for |
+| --- | --- | --- |
+| `totals.gross` | the structure earnings | PF and ESI wage base, and the LOP daily rate |
+| `totals.totalEarnings` | structure + variable + overtime | what the payslip prints as Total Earnings, and what 29.6 sums as `grossPayroll` |
+
+Analytics reports **totalEarnings** as gross, because that is the figure the
+rest of the product calls gross payroll — reading the narrow one put "Net
+salary paid" *above* "Gross salary" on the executive dashboard for any month
+with overtime or variable pay. The structure figure is carried alongside it as
+`fixedGross`, and §14 prices a lost day off that one, because that is the base
+the engine deducted LOP from.
+
+"Average salary" is therefore an average of **gross**, not of take-home: a card
+sitting between the gross and net cards has to say which one it averages.
+
 Salary bands are **data** (`SALARY_BANDS`), not a switch in a component, and
 the top band is open-ended so no employee is ever dropped from the chart.
 
@@ -239,7 +258,7 @@ everything from Mongo.
 
 ---
 
-## 8. Tests — 35 hermetic (`npm run test:analytics`)
+## 8. Tests — 42 hermetic (`npm run test:analytics`)
 
 No MongoDB, no Redis, no BullMQ. Fake models, a fake cache, and fake
 audit / notify / dispatch seams.
@@ -250,10 +269,12 @@ buckets, bonus filtering, overtime, derived leave figures, PT/TDS having no
 employer share, CTC reconciliation, register payment de-duplication, §18
 filters, all three export formats, queued export scope, schedule arming and
 re-arming (including re-arming after a failure), cache invalidation,
-references-only payloads, the validator chains, tenant isolation and the
-Finance-only gate.
+references-only payloads, the validator chains, tenant isolation, the
+Finance-only gate, the bonus entry-type vocabulary, the headcount report's HR
+counts, a multi-page PDF register, and §21 — that a filtered dashboard read is
+a *different cache entry* from the unfiltered one.
 
-`npm run test:all` → **777 pass / 0 fail**.
+`npm run test:all` → **786 pass / 0 fail**.
 
 ---
 
@@ -269,7 +290,7 @@ and PDF. It also prints the dashboard KPIs, the trend, a scheduled-report run,
 the audit trail and two security checks (CTC without financial access, and a
 cross-tenant read).
 
-The preview generator found three defects the unit tests had passed straight
+The preview generator found four defects the unit tests had passed straight
 over:
 
 1. the register printed `Sat Sep 05` instead of the payment date
@@ -277,6 +298,36 @@ over:
    instead of tomorrow
 3. a trend over a year showed a single month, because the fake model's
    `.sort()` was a no-op — which is also a warning about trusting a fake
+4. the bonus report read `Bonus 0` next to `Variable Earnings 25,000`, because
+   it matched an invented list of entry names against the vocabulary 29.5
+   actually stores (`BONUS_PERFORMANCE`, `BONUS_FESTIVAL`, `INCENTIVE`,
+   `COMMISSION_SALES`, …)
+
+Reading the CSVs found two more, and a scratch harness — 80 rows through the
+real PDF renderer — found one that no preview with six employees ever would:
+
+5. `payroll-headcount-2026-08.csv` reported `Active Employees,0`. The
+   dashboard and the report each built §9 from a different call; only the
+   dashboard passed the HR counts, so one section had two answers. The export
+   then lost `joined` and `exited` a second time by feeding finished metrics
+   back through the metrics helper, whose *inputs* are named `joined`/`exited`
+   and whose *outputs* are `joinedThisMonth`/`exitedThisMonth`.
+6. the 80-row register PDF printed its column header on page 1 only — the
+   other two pages were a wall of numbers with no way to tell which column was
+   which.
+7. the test fake compared date ranges as **strings**, so a join on
+   `Mon Aug 03` fell outside a window starting `Sat Aug 01` — "Mon" sorts
+   before "Sat". Fixed, and the §9 test now asserts the join and exit counts
+   so it cannot go quiet again.
+8. the executive dashboard printed `Net salary paid Rs 4,07,376` *above*
+   `Gross salary Rs 3,57,000`. Analytics averaged and summed `totals.gross`,
+   the structure earnings, while the net it printed came from `totals.netPay`,
+   which includes overtime and variable pay. Every other module (29.6's
+   `grossPayroll`, 29.7's payslip) calls `totalEarnings` gross.
+
+The lesson that generalises from 3 and 7: **a fake model is a second
+implementation, and it can be wrong in ways that flatter the code under test.**
+Anything the fake answers should be checked against what MongoDB would answer.
 
 ---
 

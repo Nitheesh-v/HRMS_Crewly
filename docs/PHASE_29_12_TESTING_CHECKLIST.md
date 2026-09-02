@@ -1,6 +1,6 @@
 # Phase 29.12 — Payroll Analytics: manual testing checklist
 
-Automated: `npm run test:analytics` (35 tests), `npm run test:all` (777 tests),
+Automated: `npm run test:analytics` (42 tests), `npm run test:all` (786 tests),
 `npm run analytics:preview` (36 artefacts). This checklist is what a human
 still has to look at — the things a unit test cannot see.
 
@@ -60,6 +60,14 @@ bottom.
 - [ ] Press **Refresh**. A banner confirms either "refreshed" or "queued".
 - [ ] Compare "Total payroll cost" against **Run Payroll → Review** for the
       same month. They must match.
+- [ ] Pick a month that has overtime or variable pay. **Gross salary must be
+      bigger than net salary paid** — if net sits above gross, the totals are
+      being mixed (structure earnings against a net that includes overtime).
+- [ ] "Average salary" is gross ÷ employees paid. Sanity-check it against the
+      gross card, not against take-home.
+- [ ] Read the Headcount & Cost card: active / joined / exited are real counts
+      from the employee and exit records. In a month with no joiners and no
+      leavers all three should still show the *active* headcount, never zero.
 
 ---
 
@@ -115,6 +123,14 @@ the export menu behave identically.
       appears under "Generated files" and its **Download** button works.
 - [ ] Try an unsupported format (`?format=WORD`). The API answers **400**; it
       does not silently fall back to CSV.
+- [ ] Export the **Payroll Register** for a company big enough to run to three
+      pages. Every page repeats the column header — page 2 must not be a wall
+      of unlabelled numbers — and the footer says how many rows the register
+      holds.
+- [ ] Export **Bonus & Incentive** for a month with a festival or performance
+      bonus. The `Bonus` column is populated, and `Bonus + Other Variable +
+      Overtime + Reimbursements` equals `Total Variable`.
+- [ ] Export **Headcount & Cost**. "Active Employees" is not 0.
 
 ---
 
@@ -162,6 +178,9 @@ the export menu behave identically.
 - [ ] Reload the dashboard. The figure **changed** — the analytics cache was
       dropped with the payroll cache.
 - [ ] Repeat with a final settlement, then with a statutory update.
+- [ ] Load the dashboard unfiltered, then filter it to one department, then
+      clear the filter. The unfiltered figures are unchanged — a filtered read
+      gets its own cache entry and must not overwrite the whole-company one.
 
 ---
 

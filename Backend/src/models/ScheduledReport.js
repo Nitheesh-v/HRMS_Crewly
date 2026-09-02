@@ -51,6 +51,9 @@ const scheduledReportSchema = new Schema(
     lastRunAt: { type: Date, default: null },
     lastRunStatus: { type: String, enum: ['SUCCESS', 'FAILED', ''], default: '' },
     lastFileId: { type: Schema.Types.ObjectId, ref: 'AnalyticsReportFile', default: null },
+    // The name of the last file it produced, so the UI can download it without
+    // a second lookup.
+    lastFilename: { type: String, default: '' },
     lastError: { type: String, default: '' },
     runCount: { type: Number, default: 0 },
 

@@ -35,7 +35,7 @@ import {
 // also lists the files it has produced.
 // ───────────────────────────────────────────────────────────────────────────
 
-const STATUS_STYLES = {
+const PAYMENT_STYLES = {
   PAID: 'bg-emerald-500/15 text-emerald-300',
   PENDING: 'bg-amber-500/15 text-amber-300',
   FAILED: 'bg-red-500/15 text-red-300',
@@ -43,8 +43,23 @@ const STATUS_STYLES = {
 };
 
 const statusBadge = (status) => (
-  <span className={`rounded-full px-2 py-0.5 text-[11px] ${STATUS_STYLES[status] || STATUS_STYLES.NOT_IN_BATCH}`}>
+  <span className={`rounded-full px-2 py-0.5 text-[11px] ${PAYMENT_STYLES[status] || PAYMENT_STYLES.NOT_IN_BATCH}`}>
     {status || 'NOT_IN_BATCH'}
+  </span>
+);
+
+// A generated FILE has its own lifecycle — queued, processing, ready, failed.
+// Reusing the payment badge for it would label a ready file "PAID".
+const FILE_STYLES = {
+  READY: 'bg-emerald-500/15 text-emerald-300',
+  QUEUED: 'bg-slate-500/15 text-slate-300',
+  PROCESSING: 'bg-sky-500/15 text-sky-300',
+  FAILED: 'bg-red-500/15 text-red-300',
+};
+
+const fileBadge = (status) => (
+  <span className={`rounded-full px-2 py-0.5 text-[11px] ${FILE_STYLES[status] || FILE_STYLES.QUEUED}`}>
+    {status || 'QUEUED'}
   </span>
 );
 
@@ -224,7 +239,16 @@ const PayrollRegisterPage = () => {
                     { key: 'filename', label: 'File', strong: true },
                     { key: 'format', label: 'Format' },
                     { key: 'month', label: 'Month', render: (row) => monthLabel(row.month) },
-                    { key: 'status', label: 'Status', render: (row) => statusBadge(row.status === 'READY' ? 'PAID' : 'PENDING') },
+                    {
+                      key: 'status',
+                      label: 'Status',
+                      render: (row) => (
+                        <span>
+                          {fileBadge(row.status)}
+                          {row.error ? <span className="block text-[10px] text-red-300">{row.error}</span> : null}
+                        </span>
+                      ),
+                    },
                     { key: 'rowCount', label: 'Rows', align: 'right' },
                     { key: 'createdAt', label: 'Requested', render: (row) => formatDateTime(row.createdAt) },
                     {

@@ -56,6 +56,7 @@ import {
   trendRows,
 } from '../src/services/payroll/analyticsRules.js';
 import { makeAnalyticsService } from '../src/services/payroll/analyticsService.js';
+import { filterSegmentOf } from '../src/services/payroll/analyticsCache.js';
 import {
   validateAnalyticsExportPayload,
   validateAnalyticsSchedulePayload,
@@ -78,12 +79,29 @@ const matches = (row, filter = {}) =>
     if (condition && typeof condition === 'object' && !Array.isArray(condition) && !(condition instanceof Date)) {
       if (condition.$in) return condition.$in.some((item) => String(item) === String(value));
       if (condition.$ne !== undefined) return String(value) !== String(condition.$ne);
-      // Range operators are what the leave-balance query uses.
-      if (condition.$gte !== undefined && !(String(value) >= String(condition.$gte))) return false;
-      if (condition.$gt !== undefined && !(String(value) > String(condition.$gt))) return false;
-      if (condition.$lte !== undefined && !(String(value) <= String(condition.$lte))) return false;
-      if (condition.$lt !== undefined && !(String(value) < String(condition.$lt))) return false;
-      if ('$gte' in condition || '$gt' in condition || '$lte' in condition || '$lt' in condition) return true;
+      // Range operators are what the leave-balance query and the §9 join/exit
+      // counts use. Dates must be compared as dates: stringifying a Date gives
+      // "Mon Aug 03 …" against "Sat Aug 01 …", and "Mon" sorts before "Sat",
+      // so a lexicographic compare silently answers the wrong question.
+      const ranged = ['$gte', '$gt', '$lte', '$lt'].some((op) => condition[op] !== undefined);
+      if (ranged) {
+        const isDate = (side) => side instanceof Date;
+        if (isDate(value) || ['$gte', '$gt', '$lte', '$lt'].some((op) => isDate(condition[op]))) {
+          const when = isDate(value) ? value.getTime() : new Date(value).getTime();
+          if (Number.isNaN(when)) return false;
+          const bound = (op) => (condition[op] === undefined ? null : new Date(condition[op]).getTime());
+          if (bound('$gte') !== null && when < bound('$gte')) return false;
+          if (bound('$gt') !== null && when <= bound('$gt')) return false;
+          if (bound('$lte') !== null && when > bound('$lte')) return false;
+          if (bound('$lt') !== null && when >= bound('$lt')) return false;
+          return true;
+        }
+        if (condition.$gte !== undefined && !(String(value) >= String(condition.$gte))) return false;
+        if (condition.$gt !== undefined && !(String(value) > String(condition.$gt))) return false;
+        if (condition.$lte !== undefined && !(String(value) <= String(condition.$lte))) return false;
+        if (condition.$lt !== undefined && !(String(value) < String(condition.$lt))) return false;
+        return true;
+      }
       return String(value) === String(condition);
     }
     if (condition instanceof Date) return String(value) === String(condition);
@@ -259,13 +277,16 @@ const result = (employeeId, month, {
   isCurrent: true,
   status: 'CALCULATED',
   totals: {
+    // Mirrors payrollEngineRules: total earnings are the structure earnings
+    // plus variable pay plus overtime, net is that less deductions, and CTC is
+    // that plus the employer share. `gross` alone is the structure figure.
     gross,
     basic,
-    totalEarnings: gross + overtime,
+    totalEarnings: gross + overtime + variable.reduce((sum, line) => sum + Number(line.amount || 0), 0),
     totalDeductions: deductions,
-    netPay: gross + overtime - deductions,
+    netPay: gross + overtime + variable.reduce((sum, line) => sum + Number(line.amount || 0), 0) - deductions,
     employerCost,
-    ctc: gross + overtime + employerCost,
+    ctc: gross + overtime + employerCost + variable.reduce((sum, line) => sum + Number(line.amount || 0), 0),
     overtime,
     variableEarnings: variable.reduce((sum, line) => sum + Number(line.amount || 0), 0),
     reimbursements: 0,
@@ -340,8 +361,8 @@ const buildHarness = ({
 
   const cache = {
     store: new Map(),
-    buildKey: ({ companyId: id, month = '', suffix = 'dashboard', period = '' }) =>
-      `k:${id}:${month || 'all'}:${suffix}:${period || '-'}`,
+    buildKey: ({ companyId: id, month = '', suffix = 'dashboard', period = '', filters = null }) =>
+      `k:${id}:${month || 'all'}:${suffix}:${period || '-'}:${filterSegmentOf(filters)}`,
     async getOrSet(key, { loader }) {
       if (this.store.has(key)) return { value: this.store.get(key), cache: 'HIT' };
       const value = await loader();
@@ -481,13 +502,41 @@ test('§5 the eight KPI cards all come from one aggregation', async () => {
   assert.equal(kpis.employerContribution, 22500);
   assert.equal(kpis.totalPayrollCost, 244500);
   assert.equal(kpis.employeesPaid, 3);
-  assert.equal(kpis.averageSalary, 66000);
+  // §5 — average GROSS per head, not average take-home: 2,22,000 / 3.
+  assert.equal(kpis.averageSalary, 74000);
   // §5 — the highest-cost department is Sales (1,20,000 + 7,500).
   assert.equal(kpis.highestDepartmentCost.department, 'Sales');
   assert.equal(kpis.highestDepartmentCost.cost, 127500);
   // §5 — statutory liability: employee + employer across PF, PT, TDS, LWF.
   // Per employee: 3,720 + 200 + 4,500 + 20 employee; 3,720 + 40 employer.
   assert.equal(kpis.totalStatutoryLiability, (3720 + 200 + 4500 + 20 + 3720 + 40) * 3);
+});
+
+test('§5 gross pay is never less than net pay, even with overtime and variable pay', async () => {
+  const harness = buildHarness({
+    employees: [employee(E1, 'CRE-001', 'Meera Iyer', { department: DEPT_ENG })],
+    // A month with overtime and a bonus is where the two stored gross figures
+    // part company: structure 60,000, plus 12,000 of overtime and 20,000 of
+    // variable pay = 92,000 earned, 82,000 paid after 10,000 of deductions.
+    results: [result(E1, MONTH, {
+      gross: 60000, basic: 30000, deductions: 10000, overtime: 12000,
+      variable: [{ type: 'BONUS_PERFORMANCE', label: 'Performance Bonus', amount: 20000 }],
+    })],
+    payments: [payment(E1, MONTH)],
+  });
+
+  const { kpis } = await harness.service.getDashboard({ companyId: COMPANY, month: MONTH });
+
+  // The defect: analytics read `totals.gross` (the structure earnings) while
+  // the net it printed came from `totals.netPay`, which includes overtime and
+  // variable pay — so the executive dashboard showed net ABOVE gross.
+  assert.equal(kpis.grossSalary, 92000);
+  assert.equal(kpis.netSalaryPaid, 82000);
+  assert.ok(kpis.grossSalary >= kpis.netSalaryPaid, 'gross must not be smaller than net');
+
+  // §14 — the LOP daily rate stays on the structure base the engine used.
+  const leave = await harness.service.getReport({ companyId: COMPANY, reportKey: 'LEAVE', month: MONTH });
+  assert.equal(leave.rows[0].dailyRate, Math.round((60000 / 31) * 100) / 100);
 });
 
 test('§5 the dashboard is cached, and a payroll change drops the cache', async () => {
@@ -526,8 +575,9 @@ test('§7 department cost is grouped, sorted by cost and averaged per employee',
   assert.equal(byDepartment[1].department, 'Engineering');
   assert.equal(byDepartment[1].employees, 2);
   assert.equal(byDepartment[1].gross, 102000);
-  // The average is per employee, not per department.
-  assert.equal(byDepartment[1].averageSalary, 43000);
+  // The average is per employee, not per department — and it averages gross,
+  // the same column the row reports, not the take-home next to it.
+  assert.equal(byDepartment[1].averageSalary, 51000);
 });
 
 // ── §8 — designation analytics ─────────────────────────────────────────────
@@ -1168,4 +1218,204 @@ test('§23 a dashboard refresh tells the management audience, naming the month',
   // defines: Company Admin and Finance.
   assert.equal(audience.length, 1);
   assert.match(audience[0].payload.message, /August 2026/);
+});
+
+// ── §19 / §20 — the file list and the schedule list ────────────────────────
+
+test('§19 a download is counted, and a file that is not ready is refused', async () => {
+  const harness = threeEmployees();
+  harness.state.queueExports = true;
+
+  const queued = await harness.service.requestExport({
+    companyId: COMPANY,
+    reportKey: 'REGISTER',
+    format: 'XLSX',
+    filters: { month: MONTH },
+    actor: { _id: 'user-77', name: 'Farah Finance' },
+  });
+
+  // §19 — not ready yet, so nobody can download a half-written file.
+  await assert.rejects(() => harness.service.downloadFile({ companyId: COMPANY, fileId: queued.fileId }), /not ready/);
+
+  await harness.service.runExport({ companyId: COMPANY, fileId: queued.fileId });
+
+  const first = await harness.service.downloadFile({ companyId: COMPANY, fileId: queued.fileId });
+  assert.ok(first.content, 'the bytes come back');
+  assert.match(first.filename, /\.xlsx$/);
+
+  await harness.service.downloadFile({ companyId: COMPANY, fileId: queued.fileId });
+  const [file] = await harness.service.listFiles({ companyId: COMPANY, reportKey: 'REGISTER' });
+  assert.equal(file.downloadCount, 2, '§19 — how often a report is picked up is worth knowing');
+});
+
+test('§20 the schedule list names the department and the last file it produced', async () => {
+  const harness = threeEmployees();
+
+  const schedule = await harness.service.createSchedule({
+    companyId: COMPANY,
+    name: 'Engineering payroll',
+    reportKey: 'DEPARTMENT',
+    format: 'CSV',
+    departmentId: String(DEPT_ENG),
+    actor: { _id: oid(11), name: 'Farah Finance' },
+  });
+
+  await harness.service.runSchedule({ companyId: COMPANY, scheduleId: schedule._id });
+
+  const [row] = await harness.service.listSchedules({ companyId: COMPANY });
+  // The page says which slice of the company a schedule covers; resolving an
+  // id into a name is the server's job, not the browser's.
+  assert.equal(row.department, 'Engineering');
+  assert.equal(row.departmentId, String(DEPT_ENG));
+  assert.match(row.lastFilename, /^payroll-department-\d{4}-\d{2}\.csv$/);
+  assert.equal(row.reportLabel, 'Department Payroll');
+});
+
+// ── §19 — a printed report has to survive being printed ─────────────────────
+
+test('§19 a long report paginates with the header on every page', async () => {
+  // pdf-parse v2: `new PDFParse({ data })`, not the v1 callback signature.
+  const mod = await import('pdf-parse');
+  const PDFParse = mod.PDFParse || mod.default?.PDFParse || mod.default;
+
+  const rows = Array.from({ length: 80 }, (_, index) => ({
+    employeeId: `e${index}`,
+    employeeCode: `CRE-${String(index).padStart(3, '0')}`,
+    employeeName: `Employee ${index}`,
+    department: 'Engineering',
+    designation: 'Engineer',
+    month: MONTH,
+    gross: 62000 + index,
+    basic: 31000,
+    totalEarnings: 62000 + index,
+    totalDeductions: 8000,
+    net: 54000 + index,
+    employerCost: 7500,
+    ctc: 69500,
+    paidAt: new Date('2026-08-30T00:00:00Z'),
+    paymentStatus: 'PAID',
+  }));
+
+  const pdf = await buildAnalyticsReportPdf({
+    company: { name: 'Crewly Technologies Pvt Ltd', address: 'Bengaluru' },
+    title: 'Payroll Register',
+    subtitle: 'August 2026',
+    headers: REGISTER_HEADERS,
+    rows: registerRows({ rows }),
+    generatedBy: 'Farah Finance',
+  });
+
+  const parser = new PDFParse({ data: pdf });
+  const result = await parser.getText();
+  await parser.destroy?.();
+  const text = String(result?.text || '');
+
+  const pages = [...text.matchAll(/-- (\d+) of (\d+) --/g)].map((match) => Number(match[2]));
+  assert.ok(pages.length > 1, 'eighty rows do not fit on one page');
+  const pageCount = pages[0];
+
+  // The defect this guards against: the header was drawn only on page one, so
+  // every printed page after it was columns of numbers with no names.
+  const headers = (text.match(/Employee ID/g) || []).length;
+  assert.equal(headers, pageCount, 'every page repeats the header');
+
+  // §19 — the reader has to be able to tell they are holding all of it.
+  assert.match(text, /80 row\(s\)/);
+});
+
+// ── §12 — bonus means the BONUS_* / INCENTIVE / COMMISSION entry types ──────
+
+test('§12 the bonus report counts every bonus entry type the engine stores', async () => {
+  // The types 29.5 actually writes (monthlyInputRules ENTRY_TYPE_LABELS).
+  // A list that guessed at them — ['BONUS', 'PERFORMANCE_BONUS', …] — matches
+  // almost nothing in real data and would under-report every bonus bar one.
+  const harness = buildHarness({
+    employees: [
+      employee(E1, 'CRE-001', 'Meera Iyer'),
+      employee(E2, 'CRE-002', 'Vikram Shetty'),
+    ],
+    results: [
+      result(E1, MONTH, { variable: [
+        { type: 'BONUS_PERFORMANCE', label: 'Performance Bonus', amount: 20000 },
+        { type: 'BONUS_FESTIVAL', label: 'Festival Bonus', amount: 5000 },
+        { type: 'INCENTIVE', label: 'Incentive', amount: 3000 },
+        { type: 'COMMISSION_SALES', label: 'Sales Commission', amount: 2000 },
+      ] }),
+      // Variable pay that is NOT a bonus must not inflate the bonus column.
+      result(E2, MONTH, { variable: [{ type: 'ADJUSTMENT', label: 'Adjustment', amount: 7000 }] }),
+    ],
+    payments: [],
+  });
+
+  const bonus = await harness.service.getReport({ companyId: COMPANY, reportKey: 'BONUS', month: MONTH });
+
+  const meera = bonus.rows.find((row) => row.employeeName === 'Meera Iyer');
+  const vikram = bonus.rows.find((row) => row.employeeName === 'Vikram Shetty');
+
+  assert.equal(meera.bonus, 30000, 'all four bonus types count');
+  assert.equal(meera.otherVariable, 0);
+  // Total variable is everything beyond fixed pay, so it includes the bonus.
+  assert.equal(meera.totalVariable, 30000);
+
+  // An adjustment is variable pay but not a bonus: it must not be reported as
+  // one, and it must not disappear either — it has its own column.
+  assert.equal(vikram.bonus, 0);
+  assert.equal(vikram.otherVariable, 7000);
+  assert.equal(vikram.totalVariable, 7000);
+});
+
+// ── §9 — the headcount report carries the HR counts ────────────────────────
+
+test('§9 the headcount report reports headcount, not just payroll', async () => {
+  const harness = threeEmployees();
+  // One more person in the company than is on this month's payroll, and she
+  // joined inside the month, so §9 should count her as a join.
+  harness.state.users.rows.push(employee(oid(8), 'CRE-008', 'New Joiner', { joining: '2026-08-03' }));
+  // …and someone handed in a resignation whose last day is inside the month.
+  harness.state.resignations.rows.push({
+    _id: oid(71),
+    companyId: COMPANY,
+    employeeId: E3,
+    status: 'APPROVED',
+    lastWorkingDate: new Date('2026-08-31T00:00:00Z'),
+  });
+
+  const report = await harness.service.getReport({ companyId: COMPANY, reportKey: 'HEADCOUNT', month: MONTH });
+
+  // The defect this guards against: the report path called the metrics helper
+  // without the HR counts, so active / joined / exited all read zero while the
+  // dashboard showed them correctly. One section, two answers.
+  assert.equal(report.activeEmployees, 4);
+  assert.equal(report.employeesPaid, 3);
+  assert.equal(report.averageCostPerEmployee, Math.round(report.payrollCost / 4));
+  // The counts are not decoration: a month with a join and an exit nets to
+  // zero but is emphatically not a quiet month.
+  assert.equal(report.joinedThisMonth, 1, 'the August joiner is counted');
+  assert.equal(report.exitedThisMonth, 1, 'the August leaver is counted');
+  assert.equal(report.netHeadcountChange, 0);
+});
+
+// ── §21 — a filtered read is a different cache entry ───────────────────────
+
+test('§21 a filtered dashboard does not overwrite the unfiltered one', async () => {
+  const harness = threeEmployees();
+
+  const all = await harness.service.getDashboard({ companyId: COMPANY, month: MONTH });
+  assert.equal(all.kpis.employeesPaid, 3);
+
+  const filtered = await harness.service.getDashboard({
+    companyId: COMPANY,
+    month: MONTH,
+    filters: { departmentId: String(DEPT_ENG) },
+  });
+  assert.equal(filtered.kpis.employeesPaid, 2, 'the filter applies');
+
+  // Both are now cached under DIFFERENT keys. Before the filter segment was
+  // part of the key, whichever ran last was served to both requests.
+  const again = await harness.service.getDashboard({ companyId: COMPANY, month: MONTH });
+  assert.equal(again.kpis.employeesPaid, 3, 'the unfiltered dashboard survived the filtered read');
+
+  const keys = [...harness.cache.store.keys()];
+  assert.ok(keys.some((key) => key.endsWith(':departmentId=' + DEPT_ENG)), 'the filter is in the key');
+  assert.ok(keys.some((key) => key.endsWith(':-')), 'and the unfiltered read has its own');
 });

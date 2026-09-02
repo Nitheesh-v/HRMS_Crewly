@@ -53,10 +53,13 @@ const diamond = (doc, cx, cy, r, color) =>
     .fill(color)
     .restore();
 
+// Returns whether it turned the page. The table needs to know, because a
+// header drawn only once leaves page two as columns of numbers with nothing
+// to say what they are.
 const ensureSpace = (doc, y, needed) => {
-  if (y + needed <= 780) return y;
+  if (y + needed <= 780) return { y, paginated: false };
   doc.addPage();
-  return M.top;
+  return { y: M.top, paginated: true };
 };
 
 // A number is right-aligned and grouped; a label is left-aligned. The table
@@ -121,7 +124,8 @@ const drawSummary = (doc, { summary = {}, startY }) => {
 
   if (!entries.length) return startY;
 
-  let y = ensureSpace(doc, startY, 60);
+  const page = ensureSpace(doc, startY, 60);
+  let y = page.y;
   const columnWidth = CONTENT_WIDTH / entries.length;
 
   doc.save().roundedRect(M.left, y, CONTENT_WIDTH, 42, 6).fill(C.band).restore();
@@ -167,12 +171,15 @@ const drawTable = (doc, { headers = [], rows = [], startY }) => {
   let y = startY;
   let printed = 0;
 
-  y = ensureSpace(doc, y, 60);
+  y = ensureSpace(doc, y, 60).y;
   y = drawTableHeader(doc, { headers, widths, y });
 
   (rows || []).forEach((row, index) => {
-    y = ensureSpace(doc, y, ROW_HEIGHT + 20);
-    if (printed === 0 && index > 0) y = drawTableHeader(doc, { headers, widths, y });
+    const page = ensureSpace(doc, y, ROW_HEIGHT + 20);
+    y = page.y;
+    // Every page carries the header, not just the first: a printed register
+    // is read a page at a time, often long after it was generated.
+    if (page.paginated) y = drawTableHeader(doc, { headers, widths, y });
 
     if (index % 2 === 0) {
       doc.save().rect(M.left, y, CONTENT_WIDTH, ROW_HEIGHT).fill(C.band).restore();

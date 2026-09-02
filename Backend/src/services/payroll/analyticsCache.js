@@ -18,12 +18,29 @@ export const ANALYTICS_CACHE_VERSION = 1;
 // summary, the trend series and the headcount metrics.
 export const ANALYTICS_CACHE_SUFFIXES = ['dashboard', 'department', 'trend', 'headcount'];
 
-export const analyticsCacheKey = (companyId, month = '', suffix = 'dashboard', period = '') =>
+/**
+ * §18 — a filtered read is a different read.
+ *
+ * Without this segment the unfiltered dashboard and a department-filtered one
+ * share a key, so whichever ran last would be served to both. The segment is
+ * readable on purpose: a human debugging Redis should be able to tell which
+ * slice of the company a key covers.
+ */
+export const filterSegmentOf = (filters = null) => {
+  if (!filters || typeof filters !== 'object') return '-';
+  const parts = Object.entries(filters)
+    .filter(([, value]) => value !== undefined && value !== null && String(value) !== '')
+    .map(([key, value]) => `${key}=${String(value)}`)
+    .sort();
+  return parts.length ? parts.join('|') : '-';
+};
+
+export const analyticsCacheKey = (companyId, month = '', suffix = 'dashboard', period = '', filters = null) =>
   buildTenantCacheKey({
     companyId,
     namespace: ANALYTICS_CACHE_NAMESPACE,
     version: ANALYTICS_CACHE_VERSION,
-    segments: [month || 'all', suffix, period || '-'],
+    segments: [month || 'all', suffix, period || '-', filterSegmentOf(filters)],
   });
 
 /**
@@ -55,4 +72,4 @@ export const invalidateAnalyticsCache = async (companyId, month = '') => {
   return removed;
 };
 
-export default { analyticsCacheKey, invalidateAnalyticsCache };
+export default { analyticsCacheKey, invalidateAnalyticsCache, filterSegmentOf };

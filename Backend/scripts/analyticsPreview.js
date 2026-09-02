@@ -46,6 +46,16 @@ const matches = (row, filter = {}) =>
       !(condition instanceof Date)
     ) {
       if (condition.$in) return condition.$in.some((item) => String(item) === String(value));
+      // §9 counts joins and exits with a date RANGE. A fake that only knew
+      // equality reported zero for both, which is worse than useless in a
+      // preview: it looks like a real answer.
+      if (condition.$gte || condition.$lte) {
+        const when = value instanceof Date ? value.getTime() : new Date(value).getTime();
+        if (Number.isNaN(when)) return false;
+        if (condition.$gte && when < new Date(condition.$gte).getTime()) return false;
+        if (condition.$lte && when > new Date(condition.$lte).getTime()) return false;
+        return true;
+      }
       return String(value) === String(condition);
     }
     if (condition instanceof Date) return String(value) === String(condition);
@@ -204,7 +214,11 @@ const PEOPLE = [
     basic: 72500,
     lopDays: 0,
     otHours: 12,
-    variable: [{ label: 'Performance Bonus', amount: 25000 }],
+    // Real 29.5 entry types — the bonus report classifies on these.
+    variable: [
+      { type: 'BONUS_PERFORMANCE', label: 'Performance Bonus', amount: 20000 },
+      { type: 'BONUS_FESTIVAL', label: 'Festival Bonus', amount: 5000 },
+    ],
     joining: '2018-04-02',
   },
   {
@@ -230,7 +244,10 @@ const PEOPLE = [
     basic: 44000,
     lopDays: 1,
     otHours: 0,
-    variable: [{ label: 'Sales Incentive', amount: 40000 }],
+    variable: [
+      { type: 'COMMISSION_SALES', label: 'Sales Commission', amount: 30000 },
+      { type: 'INCENTIVE', label: 'Sales Incentive', amount: 10000 },
+    ],
     joining: '2019-11-11',
   },
   {

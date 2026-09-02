@@ -84,8 +84,11 @@ export const makeAnalyticsService = ({
 } = {}) => {
   // ── the cache read (§21) ─────────────────────────────────────────────────
 
-  const buildKey = ({ companyId, month = '', suffix = 'dashboard', period = '' } = {}) =>
-    cache.buildKey ? cache.buildKey({ companyId, month, suffix, period }) : null;
+  // `filters` is part of the key (§18): a department-filtered dashboard is a
+  // different document from the whole-company one, and the local wrapper has
+  // to forward it or the filtered read is served last month's unfiltered copy.
+  const buildKey = ({ companyId, month = '', suffix = 'dashboard', period = '', filters = null } = {}) =>
+    cache.buildKey ? cache.buildKey({ companyId, month, suffix, period, filters }) : null;
 
   const readThrough = async (key, loader) => {
     if (!key || !cache.getOrSet) return { value: await loader(), cache: 'BYPASS' };
@@ -171,7 +174,7 @@ export const makeAnalyticsService = ({
   // ── §5 / §6 — the executive dashboard ────────────────────────────────────
 
   const getDashboard = async ({ companyId, month = '', filters = {}, allowedEmployeeIds = null } = {}) => {
-    const key = buildKey({ companyId, month, suffix: 'dashboard' });
+    const key = buildKey({ companyId, month, suffix: 'dashboard', filters });
     const { value } = await readThrough(key, async () => {
       const currentMonth = MONTH_PATTERN.test(String(month || ''))
         ? month
@@ -260,14 +263,14 @@ export const makeAnalyticsService = ({
 
   // ── §9 — headcount ───────────────────────────────────────────────────────
 
-  const buildHeadcount = async ({ companyId, month = '', rows = [], previousRows = [] }) => {
+  const buildHeadcount = async ({ companyId, month = '', rows = [], previousRows = [], filters = null }) => {
     const [active, joined, exited] = await Promise.all([
       countActive({ companyId }),
       countJoined({ companyId, month }),
       countExited({ companyId, month }),
     ]);
 
-    const key = buildKey({ companyId, month, suffix: 'headcount' });
+    const key = buildKey({ companyId, month, suffix: 'headcount', filters });
     const { value } = await readThrough(key, async () =>
       headcountMetrics({ rows, activeEmployees: active, joined, exited, previousRows }),
     );
@@ -342,7 +345,34 @@ export const makeAnalyticsService = ({
     const allRows = await loadRows({ companyId, months: scopeMonths, allowedEmployeeIds });
     const rows = applyFilters({ rows: allRows, month, months: scopeMonths, departmentId, designation, employeeId, status });
 
-    const payload = buildReportPayload({ reportKey: key, rows, period, months: scopeMonths });
+    // §9 — only the headcount report needs the HR counts, and it is the one
+    // report that must not skip them: the active/joined/exited figures live in
+    // the employee and resignation collections, not in the payroll snapshot.
+    const targetMonth = month || scopeMonths[scopeMonths.length - 1] || '';
+    const reportFilters = { month: targetMonth, departmentId, designation, employeeId, status };
+    const previousTarget = targetMonth ? previousMonthOf(targetMonth) : '';
+
+    const headcountContext =
+      key === 'HEADCOUNT' && targetMonth
+        ? await buildHeadcount({
+            companyId,
+            month: targetMonth,
+            rows,
+            filters: reportFilters,
+            previousRows: previousTarget
+              ? applyFilters({
+                  rows: await loadRows({ companyId, months: [previousTarget], allowedEmployeeIds }),
+                  months: [previousTarget],
+                  departmentId,
+                  designation,
+                  employeeId,
+                  status,
+                })
+              : [],
+          })
+        : null;
+
+    const payload = buildReportPayload({ reportKey: key, rows, period, months: scopeMonths, headcountContext });
 
     return {
       reportKey: key,
@@ -387,7 +417,7 @@ export const makeAnalyticsService = ({
     return /^\d{4}$/.test(start) ? `${start}-04` : '';
   };
 
-  const buildReportPayload = ({ reportKey = '', rows = [], period = 'MONTHLY', months = [] } = {}) => {
+  const buildReportPayload = ({ reportKey = '', rows = [], period = 'MONTHLY', months = [], headcountContext = null } = {}) => {
     switch (reportKey) {
       case 'DEPARTMENT':
         return { rows: departmentRows({ rows }) };
@@ -416,7 +446,13 @@ export const makeAnalyticsService = ({
       case 'REGISTER':
         return { rows: rows.slice().sort((a, b) => String(a.employeeCode).localeCompare(String(b.employeeCode))), headers: REGISTER_HEADERS };
       case 'HEADCOUNT':
-        return headcountMetrics({ rows });
+        // The HR half of §9 — active, joined, exited — lives in the employee
+        // and resignation collections, not in the payroll snapshot, so it is
+        // resolved by the caller. Passing the finished metrics back through
+        // headcountMetrics() would drop joined and exited on the way: its
+        // inputs are called `joined`/`exited`, its outputs
+        // `joinedThisMonth`/`exitedThisMonth`.
+        return headcountContext || headcountMetrics({ rows });
       case 'OVERVIEW':
       default:
         return { rows: departmentRows({ rows }), months };
@@ -651,6 +687,13 @@ export const makeAnalyticsService = ({
     const file = await AnalyticsReportFileModel.findOne({ _id: fileId, companyId }).select('+binary');
     if (!file) throw ApiError.notFound('Report file not found');
     if (file.status !== 'READY') throw ApiError.badRequest('This report is not ready yet');
+
+    // §19 — how often a report is actually picked up. The model carries the
+    // counter, so it has to be incremented somewhere.
+    file.downloadCount = Number(file.downloadCount || 0) + 1;
+    file.lastDownloadedAt = new Date();
+    await file.save().catch(() => null);
+
     return { filename: file.filename || 'report', content: file.binary, format: file.format };
   };
 
@@ -658,10 +701,14 @@ export const makeAnalyticsService = ({
 
   const listSchedules = async ({ companyId } = {}) => {
     const rows = await ScheduledReportModel.find({ companyId }).sort({ createdAt: -1 }).lean().catch(() => []);
-    return (rows || []).map(toScheduleView);
+    // The department NAME, not just its id: the page shows which slice of the
+    // company a schedule covers, and the frontend has no business resolving
+    // ids against a collection it does not own.
+    const names = await loadDepartments({ companyId });
+    return (rows || []).map((row) => toScheduleView(row, names));
   };
 
-  const toScheduleView = (row = {}) => ({
+  const toScheduleView = (row = {}, departmentNames = null) => ({
     _id: row._id,
     name: row.name || '',
     reportKey: row.reportKey || '',
@@ -670,6 +717,7 @@ export const makeAnalyticsService = ({
     frequency: row.frequency || 'MONTHLY',
     dayOfMonth: row.dayOfMonth || 1,
     departmentId: row.departmentId ? String(row.departmentId) : '',
+    department: row.departmentId ? departmentNames?.get(String(row.departmentId)) || '' : '',
     designation: row.designation || '',
     notifyPermission: row.notifyPermission || '',
     active: Boolean(row.active),
@@ -677,6 +725,7 @@ export const makeAnalyticsService = ({
     lastRunAt: row.lastRunAt || null,
     lastRunStatus: row.lastRunStatus || '',
     lastFileId: row.lastFileId ? String(row.lastFileId) : '',
+    lastFilename: row.lastFilename || '',
     lastError: row.lastError || '',
     runCount: row.runCount || 0,
     createdByName: row.createdByName || '',
@@ -854,6 +903,7 @@ export const makeAnalyticsService = ({
       schedule.lastRunAt = new Date();
       schedule.lastRunStatus = 'SUCCESS';
       schedule.lastFileId = file._id;
+      schedule.lastFilename = built.filename || '';
       schedule.lastError = '';
       schedule.runCount = Number(schedule.runCount || 0) + 1;
       schedule.nextRunAt = nextRunAt({ from: armFrom(schedule), frequency: schedule.frequency, dayOfMonth: schedule.dayOfMonth });
