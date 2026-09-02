@@ -69,6 +69,16 @@ const exportAccess = [
   analyticsScope,
 ];
 
+// §22 — warming the executive dashboard is a cache refresh, not a standing
+// instruction, so anyone who may READ the reports may ask for it. It still
+// needs write access: a lapsed subscription should not be able to queue work.
+const refreshAccess = [
+  checkWriteAccess,
+  requireAnyPermission(['PAYROLL_REPORT_READ', 'PAYROLL_REPORT_EXPORT', 'PAYROLL_ANALYTICS_FINANCIAL']),
+  requireFeature('payroll'),
+  analyticsScope,
+];
+
 const scheduleAccess = [
   checkWriteAccess,
   requirePermission('PAYROLL_ANALYTICS_SCHEDULE'),
@@ -80,7 +90,7 @@ const scheduleAccess = [
 router.get('/dashboard', ...readAccess, analyticsDashboardValidator, getDashboard);
 
 // ── §22 — executive dashboard refresh ──────────────────────────────────────
-router.post('/refresh', ...scheduleAccess, refreshDashboardValidator, refreshDashboard);
+router.post('/refresh', ...refreshAccess, refreshDashboardValidator, refreshDashboard);
 
 // ── §19 — generated files ──────────────────────────────────────────────────
 router.get('/files', ...readAccess, analyticsFilesQueryValidator, listFiles);
