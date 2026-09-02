@@ -29,7 +29,11 @@ const bandSchema = new Schema(
 
 const payrollAnalyticsSettingSchema = new Schema(
   {
-    companyId: { type: Schema.Types.ObjectId, ref: 'Company', required: true, index: true },
+    // NOTE: no `index: true` here on purpose. The explicit unique index below
+    // already covers this field, and declaring both makes Mongoose log a
+    // "duplicate schema index" warning on every boot of the API and the
+    // worker — twice per process.
+    companyId: { type: Schema.Types.ObjectId, ref: 'Company', required: true },
 
     // §8 — the salary bands the distribution chart and report use. Empty
     // means "use the default five", which is what normaliseSalaryBands does.
