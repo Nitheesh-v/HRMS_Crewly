@@ -68,7 +68,11 @@ const createAnnouncement = asyncHandler(async (req, res) => {
 
   const populated = await ann.populate('postedBy', 'name role');
   // Data to frontend - response to frontend
-  res.status(201).json({ success: true, message: 'Announcement posted 📢', data: populated });
+  res.status(201).json(
+    { success: true, 
+      message: 'Announcement posted 📢',
+      data: populated }
+  );
 });
 
 const listAnnouncements = asyncHandler(async (req, res) => {
