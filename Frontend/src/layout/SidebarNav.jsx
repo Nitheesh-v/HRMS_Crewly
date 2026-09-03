@@ -179,7 +179,9 @@ const NAV_GROUPS = [
     label: "Recruitment",
     icon: ClipboardList,
     paths: ["/app/recruitment"],
-    prefixes: ["/app/recruitment"],
+    // Phase 30.1 — the Verifier Workbench lives at /app/bgv/* and must
+    // fold into this group (groupMenu buckets items by these prefixes).
+    prefixes: ["/app/recruitment", "/app/bgv"],
   },
 
   {
