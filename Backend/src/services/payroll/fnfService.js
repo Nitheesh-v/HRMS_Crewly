@@ -43,6 +43,10 @@ import {
   isoDate,
   monthOfDate,
   money,
+  // §22 — the copy for every settlement notification. It lives in the rules
+  // with the rest of the wording; the service had simply stopped importing
+  // it, so paying a settlement threw ReferenceError.
+  notificationCopy,
   normalisePayable,
   normaliseRecovery,
   registerFilename,

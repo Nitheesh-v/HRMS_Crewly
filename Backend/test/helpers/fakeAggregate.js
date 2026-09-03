@@ -22,6 +22,13 @@
 // was quietly never used. So the fake genuinely EVALUATES the pipeline, and
 // a test asserts the dashboard reports `source: 'AGGREGATION'`.
 
+/**
+ * A stand-in ObjectId. Every test file defines its own `oid`, which is why
+ * this helper used one without importing it — the call only crashed the day
+ * someone actually called `.create()` on a fake model.
+ */
+const fakeOid = (seed) => `64b7f9c2e4b0a1b2c3d4e${String(seed).padStart(3, '0')}`;
+
 export const aggregatePath = (doc, path) =>
   String(path).replace(/^\$/, '').split('.').reduce((node, key) => (node == null ? undefined : node[key]), doc);
 
@@ -271,7 +278,7 @@ const makeFakeModel = (defaults = {}) => {
     async create(doc) {
       counter += 1;
       const row = {
-        _id: oid(counter + 500),
+        _id: fakeOid(counter + 500),
         createdAt: new Date(),
         updatedAt: new Date(),
         ...defaults,

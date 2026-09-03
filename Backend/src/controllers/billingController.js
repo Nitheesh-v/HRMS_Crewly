@@ -25,6 +25,7 @@ import Subscription from "../models/Subscription.js";
 // import User from "../models/User.js";
 import ApiError from "../utils/ApiError.js";
 import ApiResponse from "../utils/ApiResponse.js";
+import logger from "../config/logger.js";
 import asyncHandler from "../utils/asyncHandler.js";
 // import { PLAN_CATALOG, priceFor } from "../utils/plans.js";
 import { sendMail, receiptEmail } from "../utils/mailer.js";
@@ -469,28 +470,38 @@ paymentReference:
     gatewayReference: payment.gatewayPaymentId || payment.orderId,
   });
 
-  // 📧 receipt + 🔔 notification (non-fatal)
-  sendMail({
-    to: req.user.email,
-    ...receiptEmail({
-      companyName: req.company?.name,
-planName: (await getPlan(sub.plan))?.name || sub.plan,
-      amount: payment.amount,
-      months: payment.months,
-      endDate: sub.endDate,
-      paymentId: payment.orderId,
-    }),
-  });
-  notifyUser(req.companyId, req.user._id, {
-    type: "BILLING",
-    title: `${planDef.name} plan activated 🎉`,
-    message: `₹${payment.amount.toLocaleString("en-IN")} paid · valid until ${newEnd.toLocaleDateString("en-IN")}`,
-    link: "/app/billing",
-  });
+  // 📧 receipt + 🔔 notification — genuinely non-fatal now.
+  //
+  // By this point the payment is SUCCESS, the subscription is renewed and the
+  // invoice exists. None of that can be rolled back, so a mailer hiccup must
+  // never turn a completed payment into a 500. The comment used to claim
+  // "non-fatal" while the code was anything but.
+  const planName = (await getPlan(sub.plan))?.name || sub.plan;
+  try {
+    sendMail({
+      to: req.user.email,
+      ...receiptEmail({
+        companyName: req.company?.name,
+        planName,
+        amount: payment.amount,
+        months: payment.months,
+        endDate: sub.endDate,
+        paymentId: payment.orderId,
+      }),
+    });
+    notifyUser(req.companyId, req.user._id, {
+      type: "BILLING",
+      title: `${planName} plan activated 🎉`,
+      message: `₹${payment.amount.toLocaleString("en-IN")} paid · valid until ${new Date(sub.endDate).toLocaleDateString("en-IN")}`,
+      link: "/app/billing",
+    });
+  } catch (notifyError) {
+    logger.error(`[Billing] post-payment notify failed: ${notifyError.message}`);
+  }
 
   // Data to frontend - response to frontend
   return ApiResponse.success(res, {
-    message: `${planDef.name} plan activated — full access restored 🎉`,
+    message: `${planName} plan activated — full access restored 🎉`,
    data: {
   plan: publicPlanCode(sub.plan),
   internalPlan: sub.plan,

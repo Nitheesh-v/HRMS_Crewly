@@ -1,5 +1,6 @@
 import CandidateHistory from '../models/CandidateHistory.js';
 import OfferLetter from '../models/OfferLetter.js';
+import OfferHistory from '../models/OfferHistory.js';
 import ApiError from '../utils/ApiError.js';
 import { recordAudit } from '../utils/securityauditService.js';
 import { JOB_NAMES } from '../config/queueConfig.js';
