@@ -97,6 +97,8 @@ const NAV_ICON_BY_PATH = {
   "/app/billing": CreditCard,
   "/app/subscription": CreditCard,
   "/app/governance": ShieldCheck,
+  "/app/bgv/workbench": ShieldCheck,
+  "/app/bgv/checks": ShieldCheck,
   "/app/roles-permissions": KeyRound,
   "/app/profile": UserCircle,
   "/app/notifications": Bell,

@@ -26,6 +26,7 @@ import statutoryRoutes from "./statutoryRoutes.js";
 import fnfRoutes from "./fnfRoutes.js";
 import analyticsRoutes from "./analyticsRoutes.js";
 import recruitmentRoutes from "./recruitmentRoutes.js";
+import bgvCheckRoutes from "./bgvCheckRoutes.js";
 import exitRoutes from "./exitRoutes.js";
 import billingRoutes from "./billingRoutes.js";
 import subscriptionRoutes from "./subscriptionRoutes.js";
@@ -144,6 +145,11 @@ router.use("/payroll/payments", payrollPaymentRoutes);
   router.use("/payroll/analytics", payrollAnalyticsRoutes);
 
 router.use("/recruitment", recruitmentRoutes);
+
+// Phase 30.1 — BGV check framework & Verifier Workbench.
+// /api/bgv/checks* + /api/bgv/cases/:caseId/seed-checks. The 27.15
+// HR/case family stays under /api/recruitment/background-verification*.
+router.use("/bgv", bgvCheckRoutes);
 
 router.use("/exit", exitRoutes);
 

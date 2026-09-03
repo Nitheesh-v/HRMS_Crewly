@@ -77,6 +77,45 @@ const backgroundVerificationCaseSchema = new mongoose.Schema(
       ref: 'PreOnboarding',
       default: null,
     },
+    // Phase 30.1 — verification-input snapshot taken at case start.
+    // Fed to BgvCheck entry seeding now; consumed by 30.2 (identity),
+    // 30.4 (employment emails), 30.5 (college emails), 30.6 (court
+    // jurisdictions). All values here are candidate-claimed data —
+    // verification is what changes status, never the claim.
+    addressHistory: [
+      {
+        kind: { type: String, enum: ['PERMANENT', 'CURRENT', 'PREVIOUS'], default: 'PREVIOUS' },
+        line: { type: String, default: '', maxlength: 300 },
+        city: { type: String, default: '', maxlength: 120 },
+        district: { type: String, default: '', maxlength: 120 },
+        state: { type: String, default: '', maxlength: 120 },
+        pinCode: { type: String, default: '', maxlength: 10 },
+        fromDate: { type: Date, default: null },
+        toDate: { type: Date, default: null },
+      },
+    ],
+    fatherName: { type: String, default: '', maxlength: 160 },
+    pastEmployers: [
+      {
+        orgName: { type: String, default: '', maxlength: 160 },
+        hrEmail: { type: String, default: '', maxlength: 254 },
+        hrPhone: { type: String, default: '', maxlength: 24 },
+        designation: { type: String, default: '', maxlength: 120 },
+        employeeId: { type: String, default: '', maxlength: 60 },
+        fromDate: { type: Date, default: null },
+        toDate: { type: Date, default: null },
+        salaryVisibleOk: { type: Boolean, default: false },
+      },
+    ],
+    education: [
+      {
+        institution: { type: String, default: '', maxlength: 200 },
+        university: { type: String, default: '', maxlength: 200 },
+        rollNumber: { type: String, default: '', maxlength: 80 },
+        yearOfPassing: { type: Number, default: null },
+        degree: { type: String, default: '', maxlength: 120 },
+      },
+    ],
     status: {
       type: String,
       enum: BGV_CASE_STATUSES,

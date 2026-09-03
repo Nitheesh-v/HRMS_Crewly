@@ -130,12 +130,16 @@ export const bgvCaseDetail = asyncHandler(async (req, res) => {
 export const bgvCaseStart = asyncHandler(async (req, res) => {
   // Data from frontend - requests from frontend
   const { candidateId } = req.params;
+  // Phase 30.1 — optional verification-input snapshot (additive to
+  // the 27.15 contract: an empty body behaves exactly as before).
+  const verificationInputs = req.body?.verificationInputs || null;
   // DB Logic - DB logics
   const data = await startBackgroundVerification({
     companyId: req.companyId,
     candidateRef: candidateId,
     actorId: actorId(req),
     requestContext: req,
+    verificationInputs,
   });
   // Data to frontend - response to frontend
   return ApiResponse.created(res, {

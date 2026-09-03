@@ -63,7 +63,13 @@ export const ensurePermissions = async () => {
 //   22 → 23 : 29.9 gave HR_MANAGER and FINANCE_MANAGER PAYSLIP_READ
 //   23 → 24 : 29.10 added PAYROLL_STATUTORY_FILING and gave
 //             PAYROLL_ADMIN / FINANCE_MANAGER the statutory duties
-const SYSTEM_PERMISSION_VERSION = 26;
+//   26 → 27 : 30.1 BGV check framework. The six BGV_CHECK_*/BGV_EVIDENCE
+//             permissions reach COMPANY_ADMIN via the all-company default;
+//             legacy BGV admin roles in existing tenants are migrated once
+//             by scripts/migratePhase30BgvPermissions.js ($addToSet, never
+//             lowered). HR_MANAGER gets them only through that migration,
+//             not the generic default matrix — per the 30.1 spec.
+const SYSTEM_PERMISSION_VERSION = 27;
 export const ensureCompanyRoles = async (companyId, createdBy = null) => {
   const permissions = await ensurePermissions();
 
@@ -214,6 +220,8 @@ const subscriptionFeatureFor = (permission) => {
     RECRUITMENT_ANALYTICS: "recruitment",
     BACKGROUND_VERIFICATION: "recruitment",
     BACKGROUND_VERIFICATION_SETTINGS: "recruitment",
+    BGV_CHECK: "recruitment",
+    BGV_EVIDENCE: "recruitment",
     REQUISITION: "recruitment",
     CANDIDATE: "recruitment",
     INTERVIEW: "recruitment",

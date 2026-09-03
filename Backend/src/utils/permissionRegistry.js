@@ -22,6 +22,8 @@ export const RESOURCES = [
   "RECRUITMENT_ANALYTICS",
   "BACKGROUND_VERIFICATION",
   "BACKGROUND_VERIFICATION_SETTINGS",
+  "BGV_CHECK",
+  "BGV_EVIDENCE",
   "REQUISITION",
   "CANDIDATE",
   "INTERVIEW",
@@ -194,6 +196,14 @@ export const DEFAULT_PERMISSIONS = [
   ...actions("BACKGROUND_VERIFICATION", ["READ", "CREATE", "UPDATE", "VERIFY", "MANAGE"]),
 
   ...actions("BACKGROUND_VERIFICATION_SETTINGS", ["READ", "MANAGE"]),
+
+  // Phase 30.1 — BGV check framework & Verifier Workbench. COMPANY_ADMIN
+  // receives all six through allCompanyPermissions; HR_MANAGER and legacy
+  // BGV admin roles are migrated once by scripts/migratePhase30BgvPermissions.js
+  // (never added to the generic HR_MANAGER default matrix here).
+  ...actions("BGV_CHECK", ["READ", "READ_ALL", "ASSIGN", "VERIFY", "REOPEN"]),
+
+  ...actions("BGV_EVIDENCE", ["MANAGE"]),
 
   ...actions("REQUISITION", [
     "READ",

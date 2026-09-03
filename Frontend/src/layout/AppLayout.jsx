@@ -285,6 +285,17 @@ const AppLayout = () => {
       ]
     : [];
 
+  // Phase 30.1 — internal verifier queue (own permission, so verifiers
+  // who are not BGV admins still see their workbench).
+  const bgvWorkbenchMenu = hasPermission('BGV_CHECK_READ')
+    ? [
+        {
+          to: '/app/bgv/workbench',
+          label: 'Verifier Workbench',
+        },
+      ]
+    : [];
+
   const interviewMenu = [
     ...(hasPermission('INTERVIEW_READ')
       ? [
@@ -431,6 +442,7 @@ const AppLayout = () => {
     ...offerMenu,
     ...preOnboardingMenu,
     ...bgvMenu,
+    ...bgvWorkbenchMenu,
     ...interviewMenu,
     ...securityMenu,
   ];

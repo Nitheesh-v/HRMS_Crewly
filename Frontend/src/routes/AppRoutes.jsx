@@ -87,6 +87,8 @@ import RecruitmentDashboardPage from "../pages/recruitment/RecruitmentDashboardP
 import BackgroundVerificationPage from "../pages/recruitment/BackgroundVerificationPage.jsx";
 import BackgroundVerificationDetailPage from "../pages/recruitment/BackgroundVerificationDetailPage.jsx";
 import BackgroundVerificationSettingsPage from "../pages/recruitment/BackgroundVerificationSettingsPage.jsx";
+import BgvWorkbenchPage from "../pages/bgv/WorkbenchPage.jsx";
+import BgvCheckDetailPage from "../pages/bgv/CheckDetailPage.jsx";
 import CandidateDetailPage from "../pages/recruitment/CandidateDetailPage.jsx";
 import CandidateInboxPage from "../pages/recruitment/CandidateInboxPage.jsx";
 import RequisitionApprovalsPage from "../pages/recruitment/RequisitionApprovalsPage.jsx";
@@ -596,6 +598,25 @@ const AppRoutes = () => (
         element={
           <RequirePermission permission="BACKGROUND_VERIFICATION_READ">
             <BackgroundVerificationDetailPage />
+          </RequirePermission>
+        }
+      />
+
+      {/* Phase 30.1 — BGV Verifier Workbench */}
+      <Route
+        path="bgv/workbench"
+        element={
+          <RequirePermission permission="BGV_CHECK_READ">
+            <BgvWorkbenchPage />
+          </RequirePermission>
+        }
+      />
+
+      <Route
+        path="bgv/checks/:checkId"
+        element={
+          <RequirePermission permission="BGV_CHECK_READ">
+            <BgvCheckDetailPage />
           </RequirePermission>
         }
       />
