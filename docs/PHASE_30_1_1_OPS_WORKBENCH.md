@@ -1,9 +1,9 @@
 # Phase 30.1.1 — Ops-Only BGV Verifier Workbench (platform portal)
 
-> Supersedes the ACCESS MODEL of Phase 30.1 (`PHASE_30_1_BGV_CHECK_FRAMEWORK.md`).
-> The 30.1 framework internals (BgvCheck model, status machine in
-> bgvCheckRules.js, evidence storage, SLA/aging, events, audit guards)
-> carry over UNCHANGED — only WHO operates them moved.
+Supersedes the ACCESS MODEL of Phase 30.1 (`PHASE_30_1_BGV_CHECK_FRAMEWORK.md`).
+The 30.1 framework internals (BgvCheck model, status machine in
+bgvCheckRules.js, evidence storage, SLA/aging, events, audit guards)
+carry over UNCHANGED — only WHO operates them moved.
 
 ## Why this phase exists
 

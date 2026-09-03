@@ -1,14 +1,14 @@
 # PHASE 30.1 — BGV CHECK FRAMEWORK & VERIFIER WORKBENCH
 
-> ⚠ ACCESS-MODEL UPDATE (Phase 30.1.1): BGV verification EXECUTION is
-> Crewly-platform operated — the workbench moved to the super-admin
-> portal and the tenant-side `/api/bgv/checks*` API + BGV_CHECK_*/
-> BGV_EVIDENCE_* permissions + BGV_VERIFIER template were RETIRED.
-> The framework internals documented below (model, rules, storage,
-> SLA, events, audits) remain valid. See
-> `PHASE_30_1_1_OPS_WORKBENCH.md` for the current routes, permissions
-> and the revocation migration. Sections 2–5 & 9 below describe the
-> superseded tenant-operated wiring — kept for history.
+⚠ ACCESS-MODEL UPDATE (Phase 30.1.1): BGV verification EXECUTION is
+Crewly-platform operated — the workbench moved to the super-admin
+portal and the tenant-side `/api/bgv/checks*` API + BGV_CHECK_*/
+BGV_EVIDENCE_* permissions + BGV_VERIFIER template were RETIRED.
+The framework internals documented below (model, rules, storage,
+SLA, events, audits) remain valid. See
+`PHASE_30_1_1_OPS_WORKBENCH.md` for the current routes, permissions
+and the revocation migration. Sections 2–5 & 9 below describe the
+superseded tenant-operated wiring — kept for history.
 
 Phase 30 program (in-house BGV suite): **30.1 framework (this file)** →
 30.2 Identity (DigiLocker + docs + selfie) → 30.3 external request engine →
@@ -87,9 +87,9 @@ report + HR decision → 30.8 ops analytics.
 
 ## 3. API (all under /api/bgv, JWT + tenant + subscription + recruitment feature)
 
-> 30.1.1: this family is gone — execution now lives under
-> `/api/super-admin/bgv` (platform session + bgv:* permits); `/api/bgv` retains
-> ONLY `GET /cases/:caseId/checks-summary`. The tables below are historical.
+30.1.1: this family is gone — execution now lives under
+`/api/super-admin/bgv` (platform session + bgv:* permits); `/api/bgv` retains
+ONLY `GET /cases/:caseId/checks-summary`. The tables below are historical.
 
 - `GET /checks` — filters: checkType, status (csv), assignedVerifierId,
   assignedToMe, caseId, candidateId, agingBucket (0-3|4-7|8-12|>12),
