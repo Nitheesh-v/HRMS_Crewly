@@ -12,6 +12,70 @@ import {
 import usePermission from '../../hooks/usePermission.js';
 import bgvService from '../../services/bgvService.js';
 
+// Phase 30.1.1 — "How far is Crewly?" strip. Verification is done by
+// the Crewly platform team; tenants are read-only. This section shows
+// ONLY what the API allows them to receive: check type, status and the
+// last update time. No evidence, no verifier identity (the tenant-
+// facing report is delivered in Phase 30.7).
+const BGV_OPS_LABELS = {
+  IDENTITY: 'Identity',
+  ADDRESS: 'Address',
+  EDUCATION: 'Education',
+  EMPLOYMENT: 'Employment',
+  COURT_RECORD: 'Court record',
+};
+
+const BGV_OPS_TONES = {
+  PENDING: 'border-slate-500/40 bg-slate-500/10 text-slate-300',
+  IN_PROGRESS: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
+  VERIFIED: 'border-green-500/40 bg-green-500/10 text-green-300',
+  DISCREPANCY: 'border-red-500/40 bg-red-500/10 text-red-300',
+  UTV: 'border-orange-500/40 bg-orange-500/10 text-orange-300',
+  INSUFFICIENT_DATA: 'border-purple-500/40 bg-purple-500/10 text-purple-300',
+  SKIPPED: 'border-slate-700 bg-slate-800/60 text-slate-500',
+};
+
+const CrewlyChecksSummary = ({ caseId }) => {
+  const [items, setItems] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    setItems(null);
+    bgvService
+      .getChecksSummary(caseId)
+      .then((data) => { if (alive) setItems(Array.isArray(data) ? data : []); })
+      .catch(() => { if (alive) setItems([]); });
+    return () => { alive = false; };
+  }, [caseId]);
+
+  if (!items) return null;
+
+  return (
+    <section className="mt-4 rounded-lg border border-slate-700/60 bg-slate-800/40 px-4 py-3">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+        Crewly verification progress
+      </h3>
+      {!items.length ? (
+        <p className="mt-2 text-sm text-slate-400">
+          Verification has not started yet — Crewly begins once the consent and case setup are complete.
+        </p>
+      ) : (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {items.map((item) => (
+            <span
+              key={item.checkType}
+              className={`rounded-full border px-2.5 py-1 text-xs ${BGV_OPS_TONES[item.status] || BGV_OPS_TONES.PENDING}`}
+            >
+              {BGV_OPS_LABELS[item.checkType] || item.checkType}: {item.status}
+              {item.updatedAt ? ` · ${new Date(item.updatedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}` : ''}
+            </span>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+};
+
 const BackgroundVerificationDetailPage = () => {
   const { caseId } = useParams();
   const { hasPermission } = usePermission();
@@ -374,6 +438,8 @@ const BackgroundVerificationDetailPage = () => {
           </form>
         </div>
       ) : null}
+
+      <CrewlyChecksSummary caseId={caseId} />
     </div>
   );
 };

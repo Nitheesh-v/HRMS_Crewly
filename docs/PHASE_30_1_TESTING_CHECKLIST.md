@@ -1,5 +1,10 @@
 # PHASE 30.1 — MANUAL TESTING CHECKLIST (Verifier Workbench)
 
+> 30.1.1: the workbench is now the Crewly PORTAL page (log in via
+> `/super-admin/login`, nav item “BGV Verification”); sections A–E
+> below describe the retired tenant-side wiring. Run
+> `docs/PHASE_30_1_1_OPS_WORKBENCH.md` “Manual verification” instead.
+
 Prereq: API + worker up, Redis optional (fail-open), `npm run migrate:bgv30`
 executed once per existing tenant (or rely on COMPANY_ADMIN defaults).
 

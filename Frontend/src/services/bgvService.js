@@ -76,6 +76,12 @@ const bgvService = {
         reason,
       })
     ),
+  // Phase 30.1.1 — read-only Crewly verification progress for a case:
+  // ONLY [{ checkType, status, updatedAt }] — the tenant never sees
+  // evidence, verifier names or notes (execution is platform-side).
+  getChecksSummary: async (caseId) =>
+    unwrap(await api.get(`/bgv/cases/${caseId}/checks-summary`)),
+
 };
 
 export default bgvService;

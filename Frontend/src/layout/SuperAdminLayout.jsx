@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { ShieldCheck } from "lucide-react";
 import useAuth from "../hooks/useAuth.jsx";
 import superAdminService from "../services/superAdminService.js";
 
@@ -70,6 +71,15 @@ const MENU = [
     icon: "🗂️",
     roles: ["SUPER_ADMIN", "PLATFORM_ADMIN"],
   },
+  {
+    // Phase 30.1.1 — BGV verification is executed by Crewly's ops
+    // team (BGV_TEAM verifies; SUPER_ADMIN/PLATFORM_ADMIN also assign).
+    to: "/super-admin/bgv",
+    label: "BGV Verification",
+    Lucide: ShieldCheck,
+    roles: ["SUPER_ADMIN", "PLATFORM_ADMIN", "BGV_TEAM"],
+  },
+
   {
     to: "/super-admin/audit-logs",
     label: "Audit Logs",
@@ -202,7 +212,11 @@ const SuperAdminLayout = () => {
               }`
             }
           >
-            <span>{item.icon}</span>
+            {item.Lucide ? (
+              <item.Lucide size={16} className="shrink-0" />
+            ) : (
+              <span>{item.icon}</span>
+            )}
             <span>{item.label}</span>
           </NavLink>
         ))}

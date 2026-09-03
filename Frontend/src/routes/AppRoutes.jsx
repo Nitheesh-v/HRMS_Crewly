@@ -87,8 +87,8 @@ import RecruitmentDashboardPage from "../pages/recruitment/RecruitmentDashboardP
 import BackgroundVerificationPage from "../pages/recruitment/BackgroundVerificationPage.jsx";
 import BackgroundVerificationDetailPage from "../pages/recruitment/BackgroundVerificationDetailPage.jsx";
 import BackgroundVerificationSettingsPage from "../pages/recruitment/BackgroundVerificationSettingsPage.jsx";
-import BgvWorkbenchPage from "../pages/bgv/WorkbenchPage.jsx";
-import BgvCheckDetailPage from "../pages/bgv/CheckDetailPage.jsx";
+import SuperAdminBgvWorkbenchPage from "../pages/admin/SuperAdminBgvWorkbenchPage.jsx";
+import SuperAdminBgvCheckDetailPage from "../pages/admin/SuperAdminBgvCheckDetailPage.jsx";
 import CandidateDetailPage from "../pages/recruitment/CandidateDetailPage.jsx";
 import CandidateInboxPage from "../pages/recruitment/CandidateInboxPage.jsx";
 import RequisitionApprovalsPage from "../pages/recruitment/RequisitionApprovalsPage.jsx";
@@ -602,25 +602,6 @@ const AppRoutes = () => (
         }
       />
 
-      {/* Phase 30.1 — BGV Verifier Workbench */}
-      <Route
-        path="bgv/workbench"
-        element={
-          <RequirePermission permission="BGV_CHECK_READ">
-            <BgvWorkbenchPage />
-          </RequirePermission>
-        }
-      />
-
-      <Route
-        path="bgv/checks/:checkId"
-        element={
-          <RequirePermission permission="BGV_CHECK_READ">
-            <BgvCheckDetailPage />
-          </RequirePermission>
-        }
-      />
-
       <Route
         path="recruitment/interviews"
         element={
@@ -880,6 +861,18 @@ const AppRoutes = () => (
         element={
           <SuperAdminOperationsPage mode="settings" />
         }
+      />
+
+      {/* Phase 30.1.1 — BGV verification is Crewly-operated: the
+          Verifier Workbench lives INSIDE this portal, never tenant-side. */}
+      <Route
+        path="bgv"
+        element={<SuperAdminBgvWorkbenchPage />}
+      />
+
+      <Route
+        path="bgv/checks/:checkId"
+        element={<SuperAdminBgvCheckDetailPage />}
       />
     </Route>
 

@@ -1,16 +1,19 @@
 // ============================================================
-//  PHASE 30.1 — BGV Check Detail (verifier workspace)
+//  PHASE 30.1.1 — BGV Ops Check Detail (Crewly verifier workspace)
 //
-//  Entries, evidence (upload kinds 30.1 supports), the SLA clock
-//  and the human-only status machine. Every state change asks for
-//  written justification where the backend requires it, so the
-//  dialogs mirror the same rules. No auto-decisions in the UI.
+//  Ported from the retired 30.1 tenant page — the panels are the
+//  same (entries, evidence, follow-up, the human-only status
+//  machine), the OPERATOR is not: every action runs on the
+//  platform API, the verifier picker lists Crewly users only, and
+//  a tenant-context strip names which customer's data is open.
+//  No tenant HR decision panel here (that is 30.7, tenant-side).
 // ============================================================
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
+  Building2,
   CalendarClock,
   Camera,
   Download,
@@ -24,9 +27,13 @@ import {
   UserPlus2,
   Video,
 } from 'lucide-react';
-import bgvCheckService from '../../services/bgvCheckService.js';
-import { CHECK_TYPE_LABELS, STATUS_LABELS, STATUS_TONES } from './WorkbenchPage.jsx';
-import userService from '../../services/userService.js';
+import useAuth from '../../hooks/useAuth.jsx';
+import superAdminBgvService from '../../services/superAdminBgvService.js';
+import {
+  CHECK_TYPE_LABELS,
+  STATUS_LABELS,
+  STATUS_TONES,
+} from './SuperAdminBgvWorkbenchPage.jsx';
 import Modal from '../../components/Modal.jsx';
 
 const KIND_META = {
@@ -60,8 +67,10 @@ const Field = ({ label, children }) => (
 const inputClass =
   'w-full rounded-lg border border-crewly-border bg-crewly-bg px-3 py-2 text-sm outline-none transition focus:border-crewly-green';
 
-const CheckDetailPage = () => {
+const SuperAdminBgvCheckDetailPage = () => {
   const { checkId } = useParams();
+  const { user } = useAuth();
+  const canAssign = ['SUPER_ADMIN', 'PLATFORM_ADMIN'].includes(user?.role);
   const [check, setCheck] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -69,11 +78,11 @@ const CheckDetailPage = () => {
   const [dialog, setDialog] = useState(null); // 'assign' | 'status' | 'evidence' | 'sla' | 'reopen'
   const [dialogTarget, setDialogTarget] = useState({ entryKey: null });
   const [form, setForm] = useState({});
-  const [users, setUsers] = useState([]);
+  const [verifiers, setVerifiers] = useState([]);
 
   const load = useCallback(() => {
     setLoading(true);
-    bgvCheckService
+    superAdminBgvService
       .detail(checkId)
       .then((data) => setCheck(data))
       .catch((err) => setError(err?.message || 'Could not load this check'))
@@ -89,10 +98,9 @@ const CheckDetailPage = () => {
     setDialog(name);
     if (name === 'assign') {
       try {
-        const res = await userService.getAll({ limit: 200 });
-        setUsers(res?.data || res || []);
+        setVerifiers(await superAdminBgvService.verifiers());
       } catch {
-        setUsers([]);
+        setVerifiers([]);
       }
     }
   };
@@ -112,10 +120,10 @@ const CheckDetailPage = () => {
     setNotice('');
     try {
       if (action === 'assign') {
-        await bgvCheckService.assign(check.id, form.verifierId);
+        await superAdminBgvService.assign(check.id, form.verifierId);
         setNotice('Verifier assigned.');
       } else if (action === 'status') {
-        await bgvCheckService.updateStatus(check.id, {
+        await superAdminBgvService.updateStatus(check.id, {
           entryKey: dialogTarget.entryKey || undefined,
           toStatus: form.toStatus,
           resultSummary: form.resultSummary || undefined,
@@ -123,12 +131,12 @@ const CheckDetailPage = () => {
           reason: form.reason || undefined,
           followUp: form.closedReason ? { closedReason: form.closedReason } : undefined,
         });
-        setNotice('Status updated. Every change is recorded in the audit trail.');
+        setNotice('Status updated. Every change is recorded in the audit trail as a platform action.');
       } else if (action === 'sla') {
-        await bgvCheckService.extendSla(check.id, { days: Number(form.days), reason: form.reason });
+        await superAdminBgvService.extendSla(check.id, { days: Number(form.days), reason: form.reason });
         setNotice('SLA extended once for this check.');
       } else if (action === 'reopen') {
-        await bgvCheckService.reopen(check.id, form.reason);
+        await superAdminBgvService.reopen(check.id, form.reason);
         setNotice('Check reopened for verification.');
       } else if (action === 'evidence') {
         const payload = new FormData();
@@ -141,7 +149,7 @@ const CheckDetailPage = () => {
         if (form.kind === 'FIELD_VISIT') Object.assign(meta, { geoLat: form.geoLat, geoLng: form.geoLng, geoAccuracyM: form.geoAccuracy });
         payload.append('meta', JSON.stringify(meta));
         if (form.file) payload.append('file', form.file);
-        await bgvCheckService.addEvidence(check.id, payload);
+        await superAdminBgvService.addEvidence(check.id, payload);
         setNotice('Evidence added.');
       }
       setDialog(null);
@@ -159,7 +167,7 @@ const CheckDetailPage = () => {
   const download = async (evidence) => {
     setError('');
     try {
-      await bgvCheckService.downloadEvidence(check.id, evidence.id, evidence.filename || 'evidence');
+      await superAdminBgvService.downloadEvidence(check.id, evidence.id, evidence.filename || 'evidence');
     } catch (err) {
       setError(err?.message || 'Evidence could not be downloaded');
     }
@@ -169,8 +177,8 @@ const CheckDetailPage = () => {
   if (!check) {
     return (
       <div className="space-y-4">
-        <Link to="/app/bgv/workbench" className="flex items-center gap-1.5 text-sm text-crewly-dim hover:text-crewly-text">
-          <ArrowLeft size={14} /> Workbench
+        <Link to="/super-admin/bgv" className="flex items-center gap-1.5 text-sm text-crewly-dim hover:text-crewly-text">
+          <ArrowLeft size={14} /> Verification queue
         </Link>
         <div className="rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">
           {error || 'Check not found'}
@@ -184,14 +192,22 @@ const CheckDetailPage = () => {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link to="/app/bgv/workbench" className="flex items-center gap-1.5 text-sm text-crewly-dim transition hover:text-crewly-text">
-          <ArrowLeft size={14} /> Verifier Workbench
+        <Link to="/super-admin/bgv" className="flex items-center gap-1.5 text-sm text-crewly-dim transition hover:text-crewly-text">
+          <ArrowLeft size={14} /> Verification queue
         </Link>
-        {check.caseId && (
-          <Link to={`/app/recruitment/background-verification/${check.caseId}`} className="text-sm text-crewly-dim transition hover:text-crewly-text">
-            Open the case on the BGV HR board →
-          </Link>
-        )}
+        <span className="text-xs text-crewly-dim">BGV case {check.caseId}</span>
+      </div>
+
+      {/* Tenant-context strip — whose data is on screen. */}
+      <div className="card flex flex-wrap items-center gap-3 !p-3 text-sm">
+        <Building2 size={15} className="text-crewly-dim" />
+        <span className="text-crewly-dim">Verifying for</span>
+        <Link to={`/super-admin/companies/${check.companyId}`} className="font-medium text-crewly-green transition hover:underline">
+          {check.company?.name || 'Tenant'}
+        </Link>
+        <span className="ml-auto text-xs text-crewly-dim">
+          All actions on this page are audited as Crewly platform activity.
+        </span>
       </div>
 
       {error && <div className="rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">{error}</div>}
@@ -229,9 +245,11 @@ const CheckDetailPage = () => {
           <span className="text-crewly-dim">Initiated {formatDate(check.sla?.initiatedAt)}</span>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => openDialog('assign')} className="flex items-center gap-1.5 rounded-lg border border-crewly-border px-3 py-1.5 text-sm transition hover:border-crewly-green/50">
-            <UserPlus2 size={14} /> {check.assignedVerifierId ? 'Reassign' : 'Assign verifier'}
-          </button>
+          {canAssign && (
+            <button type="button" onClick={() => openDialog('assign')} className="flex items-center gap-1.5 rounded-lg border border-crewly-border px-3 py-1.5 text-sm transition hover:border-crewly-green/50">
+              <UserPlus2 size={14} /> {check.assignedVerifierId ? 'Reassign' : 'Assign verifier'}
+            </button>
+          )}
           {!isTerminal && (
             <>
               <button type="button" onClick={() => openDialog('status')} className="rounded-lg border border-crewly-border px-3 py-1.5 text-sm transition hover:border-crewly-green/50">
@@ -244,7 +262,7 @@ const CheckDetailPage = () => {
               )}
             </>
           )}
-          {isTerminal && (
+          {isTerminal && canAssign && (
             <button type="button" onClick={() => openDialog('reopen')} className="flex items-center gap-1.5 rounded-lg border border-crewly-red/40 px-3 py-1.5 text-sm text-crewly-red transition hover:bg-crewly-red/10">
               <RotateCcw size={14} /> Reopen check
             </button>
@@ -351,32 +369,33 @@ const CheckDetailPage = () => {
       </div>
 
       {dialog === 'assign' && (
-        <Modal title="Assign a verifier" onClose={() => setDialog(null)}>
+        <Modal title="Assign a Crewly verifier" onClose={() => setDialog(null)}>
           <div className="space-y-3">
             <input
               className={inputClass}
-              placeholder="Search people in this company"
+              placeholder="Search the Crewly team"
               onChange={(event) => {
                 const q = event.target.value.toLowerCase();
                 setForm((f) => ({ ...f, query: event.target.value }));
-                setUsers(users.filter((u) => !q || String(u.name || '').toLowerCase().includes(q) || String(u.employeeCode || '').toLowerCase().includes(q)));
+                setVerifiers(verifiers.filter((u) => !q || String(u.name || '').toLowerCase().includes(q)));
               }}
             />
+            <p className="text-xs text-crewly-dim">Only Crewly platform staff appear here — tenant accounts cannot verify (Phase 30.1.1).</p>
             <div className="max-h-64 space-y-1.5 overflow-y-auto">
-              {users.map((user) => (
+              {verifiers.map((verifier) => (
                 <button
-                  key={user._id}
+                  key={verifier.id}
                   type="button"
-                  onClick={() => setForm((f) => ({ ...f, verifierId: user._id, verifierName: user.name }))}
+                  onClick={() => setForm((f) => ({ ...f, verifierId: verifier.id, verifierName: verifier.name }))}
                   className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-sm transition ${
-                    form.verifierId === user._id ? 'border-crewly-green/60 bg-crewly-green/10' : 'border-crewly-border hover:border-crewly-green/40'
+                    form.verifierId === verifier.id ? 'border-crewly-green/60 bg-crewly-green/10' : 'border-crewly-border hover:border-crewly-green/40'
                   }`}
                 >
-                  <span>{user.name}</span>
-                  <span className="text-xs text-crewly-dim">{user.employeeCode || '—'}</span>
+                  <span>{verifier.name}</span>
+                  <span className="text-xs text-crewly-dim">{verifier.role}</span>
                 </button>
               ))}
-              {!users.length && <p className="text-sm text-crewly-dim">No people found.</p>}
+              {!verifiers.length && <p className="text-sm text-crewly-dim">No Crewly verifiers found.</p>}
             </div>
             <button
               type="button"
@@ -490,7 +509,7 @@ const CheckDetailPage = () => {
           <div className="space-y-3">
             <p className="text-sm text-crewly-dim">
               Reopening moves the check back to In progress. The terminal outcome and its history stay in the audit trail.
-              Requires BGV reopen permission.
+              Requires the bgv:assign platform permission.
             </p>
             <Field label="Written reason (required)">
               <textarea className={inputClass} rows={2} value={form.reason || ''} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))} />
@@ -505,4 +524,4 @@ const CheckDetailPage = () => {
   );
 };
 
-export default CheckDetailPage;
+export default SuperAdminBgvCheckDetailPage;

@@ -90,6 +90,11 @@ const bgvCheckSchema = new mongoose.Schema(
 
     entries: [entrySchema],
 
+    // Phase 30.1.1 — platform-operated verification: this references a
+    // User whose role ∈ PLATFORM_ROLES (BGV_TEAM etc.). Platform users
+    // live in the SAME User collection (AdminSession pattern), so the
+    // field keeps its name; bgvCheckService.assignVerifier rejects any
+    // tenant User id with a 400 — the invariant is service-enforced.
     assignedVerifierId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

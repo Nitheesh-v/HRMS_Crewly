@@ -1,24 +1,29 @@
 // ============================================================
-//  PHASE 30.1 — Verifier Workbench (BGV checks queue)
+//  PHASE 30.1.1 — BGV Ops Workbench (Crewly super-admin portal)
 //
-//  Dark Crewly/slate theme, Tailwind, Lucide. Verifiers see their
-//  own queue; BGV_CHECK_READ_ALL holders see the tenant queue.
-//  No chart library, no new deps.
+//  The cross-tenant verification queue. Columns: tenant, candidate,
+//  check type, assignee, status, SLA, last update. Filters: tenant,
+//  check type, status, aging, candidate search, "My assignments".
+//  Stat cards: Open / Due in 48h / Overdue / Awaiting response.
+//  Verification here is Crewly-operated: tenants NEVER appear as
+//  verifiers (the picker lists platform users only).
+//  Lucide + Tailwind slate, loading/error/empty states, no new deps.
 // ============================================================
 
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useSelector } from 'react-redux';
 import {
   AlertTriangle,
-  ArrowRight,
+  Building2,
   Clock3,
   Inbox,
   Search,
   ShieldCheck,
   UserPlus2,
 } from 'lucide-react';
-import bgvCheckService from '../../services/bgvCheckService.js';
+import useAuth from '../../hooks/useAuth.jsx';
+import superAdminBgvService from '../../services/superAdminBgvService.js';
+import superAdminService from '../../services/superAdminService.js';
 
 export const CHECK_TYPE_LABELS = {
   IDENTITY: 'Identity',
@@ -56,7 +61,7 @@ export const slaTone = (check) => {
   if (terminal || !due) return 'border-slate-700 text-crewly-dim';
   const now = Date.now();
   if (due < now) return 'border-crewly-red/40 text-crewly-red';
-  if (due - now <= 2 * 3600 * 1000 * 24) return 'border-amber-500/40 text-amber-300';
+  if (due - now <= 2 * dayMs) return 'border-amber-500/40 text-amber-300';
   return 'border-crewly-green/40 text-crewly-green';
 };
 
@@ -68,6 +73,9 @@ const relativeDays = (value) => {
   const diff = Math.round((Date.now() - new Date(value).getTime()) / dayMs);
   return diff <= 0 ? 'today' : `${diff}d ago`;
 };
+
+const selectClass =
+  'rounded-lg border border-crewly-border bg-crewly-bg px-3 py-2 text-sm outline-none focus:border-crewly-green';
 
 const StatCard = ({ icon: Icon, label, value, tone = '' }) => (
   <div className="card flex items-center gap-3 !p-4">
@@ -81,16 +89,27 @@ const StatCard = ({ icon: Icon, label, value, tone = '' }) => (
   </div>
 );
 
-const WorkbenchPage = () => {
+const SuperAdminBgvWorkbenchPage = () => {
   const navigate = useNavigate();
-  const currentUserId = useSelector((state) => state.auth?.user?._id);
+  const { user } = useAuth();
+  const canAssign = ['SUPER_ADMIN', 'PLATFORM_ADMIN'].includes(user?.role);
 
   const [stats, setStats] = useState(null);
   const [checks, setChecks] = useState([]);
-  const [meta, setMeta] = useState({ page: 1, total: 0, limit: 25 });
-  const [filters, setFilters] = useState({ checkType: '', status: '', agingBucket: '', search: '', mine: false });
+  const [tenants, setTenants] = useState([]);
+  const [meta, setMeta] = useState({ page: 1, total: 0, limit: 25, capped: false });
+  const [filters, setFilters] = useState({ companyId: '', checkType: '', status: '', agingBucket: '', search: '', mine: false });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Tenant dropdown (the whole point of the ops view is working
+  // ACROSS tenants, so the list starts unfiltered-but-capped).
+  useEffect(() => {
+    superAdminService
+      .companies({ limit: 200 })
+      .then((data) => setTenants(data?.rows || []))
+      .catch(() => setTenants([]));
+  }, []);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -101,15 +120,15 @@ const WorkbenchPage = () => {
       if (value) params[key] = value;
     });
     Promise.all([
-      (filters.mine ? bgvCheckService.mine(params) : bgvCheckService.list(params)),
-      bgvCheckService.stats(),
+      filters.mine ? superAdminBgvService.mine(params) : superAdminBgvService.list(params),
+      superAdminBgvService.stats(filters.companyId ? { companyId: filters.companyId } : {}),
     ])
       .then(([list, statsData]) => {
         setChecks(list.checks);
-        setMeta((m) => ({ ...m, total: list.meta?.total ?? list.checks.length }));
+        setMeta((m) => ({ ...m, total: list.meta?.total ?? list.checks.length, capped: Boolean(list.meta?.capped) }));
         setStats(statsData);
       })
-      .catch((err) => setError(err?.message || 'Could not load the workbench'))
+      .catch((err) => setError(err?.message || 'Could not load the verification queue'))
       .finally(() => setLoading(false));
   }, [filters, meta.page, meta.limit]);
 
@@ -118,7 +137,7 @@ const WorkbenchPage = () => {
   const assignToMe = async (checkId) => {
     setError('');
     try {
-      await bgvCheckService.assign(checkId, currentUserId);
+      await superAdminBgvService.assign(checkId, user?._id);
       load();
     } catch (err) {
       setError(err?.message || 'Could not assign this check to you');
@@ -131,14 +150,9 @@ const WorkbenchPage = () => {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="flex items-center gap-2 text-2xl font-bold">
-          <ShieldCheck size={22} className="text-crewly-green" /> Verifier Workbench
+          <ShieldCheck size={22} className="text-crewly-green" /> BGV Verification Queue
         </h1>
-        <Link
-          to="/app/recruitment/background-verification"
-          className="flex items-center gap-1.5 text-sm text-crewly-dim transition hover:text-crewly-text"
-        >
-          BGV HR board <ArrowRight size={14} />
-        </Link>
+        <span className="text-sm text-crewly-dim">Crewly-operated · all tenants</span>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -151,12 +165,30 @@ const WorkbenchPage = () => {
       {error && (
         <div className="rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">{error}</div>
       )}
+      {meta.capped && !error && (
+        <p className="text-xs text-crewly-dim">
+          Unfiltered queue is capped by the server — narrow with tenant, status or assignee to page deeper.
+        </p>
+      )}
 
       <div className="card flex flex-wrap items-end gap-3 !p-4">
         <label className="text-sm">
+          <span className="mb-1.5 flex items-center gap-1 text-crewly-dim"><Building2 size={12} /> Tenant</span>
+          <select
+            className={selectClass}
+            value={filters.companyId}
+            onChange={(e) => setFilters((f) => ({ ...f, companyId: e.target.value }))}
+          >
+            <option value="">All tenants</option>
+            {tenants.map((tenant) => (
+              <option key={tenant._id || tenant.id} value={tenant._id || tenant.id}>{tenant.name}</option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm">
           <span className="mb-1.5 block text-crewly-dim">Check type</span>
           <select
-            className="rounded-lg border border-crewly-border bg-crewly-bg px-3 py-2 text-sm outline-none focus:border-crewly-green"
+            className={selectClass}
             value={filters.checkType}
             onChange={(e) => setFilters((f) => ({ ...f, checkType: e.target.value }))}
           >
@@ -169,7 +201,7 @@ const WorkbenchPage = () => {
         <label className="text-sm">
           <span className="mb-1.5 block text-crewly-dim">Status</span>
           <select
-            className="rounded-lg border border-crewly-border bg-crewly-bg px-3 py-2 text-sm outline-none focus:border-crewly-green"
+            className={selectClass}
             value={filters.status}
             onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}
           >
@@ -182,7 +214,7 @@ const WorkbenchPage = () => {
         <label className="text-sm">
           <span className="mb-1.5 block text-crewly-dim">Aging</span>
           <select
-            className="rounded-lg border border-crewly-border bg-crewly-bg px-3 py-2 text-sm outline-none focus:border-crewly-green"
+            className={selectClass}
             value={filters.agingBucket}
             onChange={(e) => setFilters((f) => ({ ...f, agingBucket: e.target.value }))}
           >
@@ -212,7 +244,7 @@ const WorkbenchPage = () => {
               : 'border-crewly-border text-crewly-dim hover:text-crewly-text'
           }`}
         >
-          Assigned to me
+          My assignments
         </button>
         <button
           type="button"
@@ -228,12 +260,13 @@ const WorkbenchPage = () => {
           <p className="p-6 text-sm text-crewly-dim">Loading checks…</p>
         ) : !checks.length ? (
           <p className="p-6 text-sm text-crewly-dim">
-            No checks in this view. {filters.mine ? 'Nothing is assigned to you yet.' : 'Checks appear here once a BGV case is started.'}
+            No checks in this view. {filters.mine ? 'Nothing is assigned to you yet.' : 'Checks appear here once a tenant case is started (27.15) — or use case seeding from the detail page.'}
           </p>
         ) : (
           <table className="w-full text-left text-sm">
             <thead className="border-b border-crewly-border text-xs uppercase tracking-wide text-crewly-dim">
               <tr>
+                <th className="px-4 py-3">Tenant</th>
                 <th className="px-4 py-3">Candidate</th>
                 <th className="px-4 py-3">Check</th>
                 <th className="px-4 py-3">Assignee</th>
@@ -246,6 +279,11 @@ const WorkbenchPage = () => {
             <tbody>
               {checks.map((check) => (
                 <tr key={check.id} className="border-b border-crewly-border/60 last:border-0 hover:bg-crewly-surface/40">
+                  <td className="px-4 py-3">
+                    <Link to={`/super-admin/companies/${check.companyId}`} className="font-medium text-crewly-dim transition hover:text-crewly-green">
+                      {check.company?.name || 'Tenant'}
+                    </Link>
+                  </td>
                   <td className="px-4 py-3">
                     <span className="block font-medium">{check.caseInfo?.candidateName || 'Unknown'}</span>
                     <span className="text-xs text-crewly-dim">
@@ -272,7 +310,7 @@ const WorkbenchPage = () => {
                   <td className="px-4 py-3 text-xs text-crewly-dim">{relativeDays(check.updatedAt)}</td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-2">
-                      {!check.assignedVerifierId && currentUserId && (
+                      {canAssign && !check.assignedVerifierId && (
                         <button
                           type="button"
                           onClick={() => assignToMe(check.id)}
@@ -283,7 +321,7 @@ const WorkbenchPage = () => {
                       )}
                       <button
                         type="button"
-                        onClick={() => navigate(`/app/bgv/checks/${check.id}`)}
+                        onClick={() => navigate(`/super-admin/bgv/checks/${check.id}`)}
                         className="rounded-lg border border-crewly-border px-2 py-1 text-xs transition hover:border-crewly-green/50 hover:text-crewly-green"
                       >
                         Open
@@ -322,4 +360,4 @@ const WorkbenchPage = () => {
   );
 };
 
-export default WorkbenchPage;
+export default SuperAdminBgvWorkbenchPage;

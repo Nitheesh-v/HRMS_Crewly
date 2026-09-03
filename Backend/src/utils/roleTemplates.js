@@ -246,26 +246,6 @@ export const ROLE_TEMPLATES = Object.freeze([
       'FINAL_SETTLEMENT_READ',
     ],
   },
-  {
-    // Phase 30.1 — BGV Verifier Workbench. OPT-IN template (data only,
-    // never auto-seeded): the Company Admin creates it from
-    // Settings → Roles & Permissions → "Create from template". A verifier
-    // works ONLY checks assigned to them (no BGV_CHECK_READ_ALL); they
-    // verify/annotate their queue, never assign, never reopen, never
-    // complete the case — those stay with BGV admins (27.15 family).
-    key: 'BGV_VERIFIER',
-    name: 'BGV Verifier',
-    description:
-      'Works assigned background-verification checks: records evidence, call logs and outcomes for own queue only. Cannot assign, reopen or complete cases.',
-    defaultScope: PAYROLL_SCOPES.COMPANY,
-    permissions: [
-      ...SELF_SERVICE,
-      'BACKGROUND_VERIFICATION_READ',
-      'BGV_CHECK_READ',
-      'BGV_CHECK_VERIFY',
-      'BGV_EVIDENCE_MANAGE',
-    ],
-  },
 ]);
 
 export const ROLE_TEMPLATE_KEYS = Object.freeze(ROLE_TEMPLATES.map((template) => template.key));

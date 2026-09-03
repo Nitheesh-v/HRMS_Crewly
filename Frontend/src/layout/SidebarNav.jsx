@@ -97,8 +97,6 @@ const NAV_ICON_BY_PATH = {
   "/app/billing": CreditCard,
   "/app/subscription": CreditCard,
   "/app/governance": ShieldCheck,
-  "/app/bgv/workbench": ShieldCheck,
-  "/app/bgv/checks": ShieldCheck,
   "/app/roles-permissions": KeyRound,
   "/app/profile": UserCircle,
   "/app/notifications": Bell,
@@ -179,9 +177,6 @@ const NAV_GROUPS = [
     label: "Recruitment",
     icon: ClipboardList,
     paths: ["/app/recruitment"],
-    // Phase 30.1 — the Verifier Workbench lives at /app/bgv/* and must
-    // fold into this group (groupMenu buckets items by these prefixes).
-    prefixes: ["/app/recruitment", "/app/bgv"],
   },
 
   {

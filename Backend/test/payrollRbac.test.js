@@ -243,9 +243,6 @@ test('six payroll role templates exist and are not seeded system roles', () => {
     'PAYROLL_EXECUTIVE',
     'FINANCE_MANAGER',
     'FINANCE_EXECUTIVE',
-    // Phase 30.1 — opt-in BGV verifier template (data-only like the six
-    // payroll ones; the "never seeded" loop below covers it too).
-    'BGV_VERIFIER',
   ]);
 
   // Not part of the seeded role matrix and not a protected system role.

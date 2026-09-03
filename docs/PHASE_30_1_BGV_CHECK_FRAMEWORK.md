@@ -1,5 +1,15 @@
 # PHASE 30.1 — BGV CHECK FRAMEWORK & VERIFIER WORKBENCH
 
+> ⚠ ACCESS-MODEL UPDATE (Phase 30.1.1): BGV verification EXECUTION is
+> Crewly-platform operated — the workbench moved to the super-admin
+> portal and the tenant-side `/api/bgv/checks*` API + BGV_CHECK_*/
+> BGV_EVIDENCE_* permissions + BGV_VERIFIER template were RETIRED.
+> The framework internals documented below (model, rules, storage,
+> SLA, events, audits) remain valid. See
+> `PHASE_30_1_1_OPS_WORKBENCH.md` for the current routes, permissions
+> and the revocation migration. Sections 2–5 & 9 below describe the
+> superseded tenant-operated wiring — kept for history.
+
 Phase 30 program (in-house BGV suite): **30.1 framework (this file)** →
 30.2 Identity (DigiLocker + docs + selfie) → 30.3 external request engine →
 30.4 Employment → 30.5 Education → 30.6 Court records → 30.7 consolidated
@@ -77,6 +87,10 @@ report + HR decision → 30.8 ops analytics.
 
 ## 3. API (all under /api/bgv, JWT + tenant + subscription + recruitment feature)
 
+> 30.1.1: this family is gone — execution now lives under
+> `/api/super-admin/bgv` (platform session + bgv:* permits); `/api/bgv` retains
+> ONLY `GET /cases/:caseId/checks-summary`. The tables below are historical.
+
 - `GET /checks` — filters: checkType, status (csv), assignedVerifierId,
   assignedToMe, caseId, candidateId, agingBucket (0-3|4-7|8-12|>12),
   search (case-snapshot name/code), page, limit (max 100).
@@ -140,7 +154,10 @@ New permissions: `BGV_CHECK_READ`, `BGV_CHECK_READ_ALL`, `BGV_CHECK_ASSIGN`,
 `SYSTEM_PERMISSION_VERSION` 26 → 27. COMPANY_ADMIN receives them through the
 all-company default matrix. They are deliberately NOT added to the generic
 HR_MANAGER matrix defaults; existing tenants migrate with
-`npm run migrate:bgv30` (atomic $addToSet: roles already holding
+`npm run migrate:bgv30` — as of 30.1.1 this REVERSED into a revocation
+script ($pull the six permissions from every tenant role + deactivate the
+orphaned Permission rows; `--dry-run` supported). The historical grant run it
+replaced: (atomic $addToSet: roles already holding
 BACKGROUND_VERIFICATION_MANAGE get all six, READ-only viewers get
 BGV_CHECK_READ; --dry-run supported). `BGV_VERIFIER` is an opt-in template.
 

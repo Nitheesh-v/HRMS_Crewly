@@ -1,21 +1,18 @@
 // ============================================================
-//  PHASE 30.1 — BGV CHECK FRAMEWORK routes
+//  PHASE 30.1 / 30.1.1 — BGV CHECK FRAMEWORK routes (platform)
 //
-//  Mounted at /api/bgv (routes/index.js). No collision with the
-//  27.15 family under /api/recruitment/background-verification*.
+//  Mounted INSIDE /api/super-admin (superAdminRoutes) — protect +
+//  superAdminSession already applied there; every route below
+//  adds permit(). Verification is Crewly-team only:
+//    bgv:read   — queue, detail, evidence view, stats
+//    bgv:verify — status, evidence, extend-SLA (any check)
+//    bgv:assign — assign/reassign, reopen, seed
 //  /checks/stats and /checks/mine are declared BEFORE /checks/:id
 //  so they are not swallowed by the MongoId param route.
 // ============================================================
 
 import { Router } from 'express';
-import { protect } from '../middlewares/authMiddleware.js';
-import { tenantContext } from '../middlewares/tenantMiddleware.js';
-import {
-  checkSubscriptionStatus,
-  checkWriteAccess,
-  requireFeature,
-} from '../middlewares/subscriptionAccess.js';
-import { requirePermission } from '../middlewares/permissionMiddleware.js';
+import { permit } from '../middlewares/superAdminAuth.js';
 import { bgvEvidenceUpload } from '../middlewares/bgvEvidenceUpload.js';
 import {
   bgvCaseSeedChecks,
@@ -29,10 +26,8 @@ import {
   bgvCheckReopen,
   bgvCheckStats,
   bgvCheckStatusUpdate,
+  bgvVerifierList,
 } from '../controllers/bgvCheckController.js';
-import {
-  bgvCaseIdRules,
-} from '../validators/backgroundVerificationValidator.js';
 import {
   bgvCheckAssignRules,
   bgvCheckIdRules,
@@ -41,88 +36,47 @@ import {
   bgvEvidenceRules,
   bgvExtendSlaRules,
   bgvReopenRules,
+  bgvSeedRules,
 } from '../validators/bgvCheckValidator.js';
 
 const router = Router();
 
-router.use(
-  protect,
-  tenantContext,
-  checkSubscriptionStatus,
-  requireFeature('recruitment')
-);
-
-router.get(
-  '/checks',
-  requirePermission('BGV_CHECK_READ'),
-  bgvCheckListRules,
-  bgvCheckList
-);
-router.get(
-  '/checks/stats',
-  requirePermission('BGV_CHECK_READ'),
-  bgvCheckStats
-);
-router.get(
-  '/checks/mine',
-  requirePermission('BGV_CHECK_READ'),
-  bgvCheckListRules,
-  bgvCheckMine
-);
-router.get(
-  '/checks/:checkId',
-  requirePermission('BGV_CHECK_READ'),
-  bgvCheckIdRules,
-  bgvCheckDetail
-);
+router.get('/checks', permit('bgv:read'), bgvCheckListRules, bgvCheckList);
+router.get('/checks/stats', permit('bgv:read'), bgvCheckListRules, bgvCheckStats);
+router.get('/checks/mine', permit('bgv:read'), bgvCheckListRules, bgvCheckMine);
+router.get('/checks/verifiers', permit('bgv:assign'), bgvVerifierList);
+router.get('/checks/:checkId', permit('bgv:read'), bgvCheckIdRules, bgvCheckDetail);
 router.get(
   '/checks/:checkId/evidence/:evidenceId',
-  requirePermission('BGV_CHECK_READ'),
+  permit('bgv:read'),
   bgvCheckIdRules,
   bgvCheckEvidenceDownload
 );
-router.post(
-  '/checks/:checkId/assign',
-  checkWriteAccess,
-  requirePermission('BGV_CHECK_ASSIGN'),
-  bgvCheckAssignRules,
-  bgvCheckAssign
-);
+
+// Verify work (BGV_TEAM + admins); queue operations need bgv:assign.
 router.post(
   '/checks/:checkId/status',
-  checkWriteAccess,
-  requirePermission('BGV_CHECK_VERIFY'),
+  permit('bgv:verify', 'bgv:assign'),
   bgvCheckStatusRules,
   bgvCheckStatusUpdate
 );
 router.post(
   '/checks/:checkId/evidence',
-  checkWriteAccess,
-  requirePermission('BGV_EVIDENCE_MANAGE'),
+  permit('bgv:verify', 'bgv:assign'),
   bgvEvidenceUpload,
   bgvEvidenceRules,
   bgvCheckEvidenceAdd
 );
 router.post(
   '/checks/:checkId/extend-sla',
-  checkWriteAccess,
-  requirePermission('BGV_CHECK_VERIFY'),
+  permit('bgv:verify', 'bgv:assign'),
   bgvExtendSlaRules,
   bgvCheckExtendSla
 );
-router.post(
-  '/checks/:checkId/reopen',
-  checkWriteAccess,
-  requirePermission('BGV_CHECK_REOPEN'),
-  bgvReopenRules,
-  bgvCheckReopen
-);
-router.post(
-  '/cases/:caseId/seed-checks',
-  checkWriteAccess,
-  requirePermission('BGV_CHECK_ASSIGN'),
-  bgvCaseIdRules,
-  bgvCaseSeedChecks
-);
+
+// Operations: queue management (Crewly admins only).
+router.post('/checks/:checkId/assign', permit('bgv:assign'), bgvCheckAssignRules, bgvCheckAssign);
+router.post('/checks/:checkId/reopen', permit('bgv:assign'), bgvReopenRules, bgvCheckReopen);
+router.post('/cases/:caseId/seed-checks', permit('bgv:assign'), bgvSeedRules, bgvCaseSeedChecks);
 
 export default router;
