@@ -227,6 +227,7 @@ introspection on purpose. Read the console field instead:
 | `eviction` | `SKIP - CONFIG GET ... not permitted` | Upstash: Settings > "Max memory policy"; Redis Cloud: database > Advanced; ElastiCache: parameter group `maxmemory-policy` |
 | `commands` | `SKIP - COMMAND INFO not permitted`, or destructive commands listed as blocked | Upstash: Settings > Redis commands; Redis Cloud: disabled-commands list; Azure: Redis commands policy |
 | `latency` | `WARN - remote link` (20-80 ms is normal) | pick a region near your app/worker, not near your laptop |
+| `eviction` | `WARN - maxmemory-policy=volatile-lru` (the usual cloud default) | set it to `noeviction` - see §5b |
 | `connect` | may print `Skipping the ready check because INFO command fails: "...NOPERM..."` | benign: ioredis treats a NOPERM `INFO` as "no ready check needed" and continues. No action |
 
 Two cloud settings that matter more than any code change:
@@ -239,6 +240,37 @@ Two cloud settings that matter more than any code change:
 - **Upstash REST/HTTP endpoints are not usable here.** Crewly speaks the
   RESP protocol (ioredis + BullMQ), so use the TCP/`rediss://` connection
   string, not the REST URL or the "upstash/redis" SDK.
+
+## 5b. `IMPORTANT! Eviction policy is volatile-lru. It should be "noeviction"`
+
+If that line (or the `allkeys-*` variant) scrolls past when the worker starts,
+it is **BullMQ's own check**, not ours - `node_modules/bullmq` prints it once
+per Redis connection, so a Crewly worker with 9 queues repeats it ~20 times.
+It is a warning, not an error: the queues work. Managed tiers default to
+`volatile-lru`, which is why almost everyone sees it.
+
+Why Crewly still wants it changed:
+
+- `volatile-*` only evicts keys that have a TTL. BullMQ's queue keys
+  (lists/streams/zsets) have no TTL, so jobs are not evicted - but BullMQ's
+  own TTL-bearing bookkeeping keys (per-queue rate limiter, events/metrics
+  retention, `removeOnComplete/removeOnFail` ageing) become eviction victims.
+- The dangerous moment is a **full instance with a `maxmemory` cap**: once the
+  TTL keys are gone, Redis refuses every write with `-OOM command not allowed
+  when used memory > 'maxmemory'` - which is a queue outage, not a slowdown.
+- `allkeys-lru`/`allkeys-random` are worse: there, queue keys themselves are
+  candidates, so a job can disappear silently. `npm run redis:doctor` reports
+  that as a FAIL.
+
+Change it in the provider configuration (the setting is called "Eviction
+policy", "Max memory policy", or `maxmemory-policy` depending on the tier) and
+pick **no eviction / noeviction**. No code change, no data migration, nothing
+to re-seed: restart `npm run worker:dev` afterwards and the warning lines are
+gone. Free/prototyping tiers that refuse the change are fine for development -
+just keep an eye on the `memory` line (`used` vs `max`) and on `evicted_keys`.
+
+Re-run `npm run redis:doctor` to confirm: `eviction` should read
+`maxmemory-policy=noeviction - matches the BullMQ requirement`.
 
 ## 6. Testing the queue side properly
 
@@ -336,6 +368,10 @@ Remove-Item Env:\REDIS_LIVE_SKIP_PAUSE
 | `[WARN] eviction maxmemory-policy=allkeys-lru` | queue keys can be evicted | set the policy to `noeviction` in the provider config, or use a dedicated Redis |
 | `[SKIP] CONFIG GET … not permitted` | managed tier hides `CONFIG` | not a fault; check the policy in the dashboard instead |
 | health shows `redis: "down"` after you started Redis | the API snapshots config at boot | restart `npm run dev` |
+| `npm error Missing script: "redis:doctor"` | your clone predates this phase | `git pull origin arena/01a066f5-hrms-crewly` then re-run |
+| live test says `Redis is not configured` although `redis:check` says PONG | pre-30.1.2 bug: those suites looked for `<repo>/.env` instead of `Backend/.env` (log line `injected env (0) from ..\.env`) | pull this branch - the suites now use `src/config/loadEnv.js` |
+| `IMPORTANT! Eviction policy is volatile-lru` x20 in the worker log | provider default, BullMQ's own warning | set `noeviction` in the provider console (§5b) |
+| `injected env (0) from .env` printed right after `injected env (54)` | benign: the second dotenv call counts only NEW variables | nothing |
 
 ## 9. What this phase found (RCA + QA)
 
@@ -385,6 +421,27 @@ Elasticache parameter group). The live cache suite no longer runs
 `CLIENT PAUSE` against a managed host by default. Verified by feeding the
 doctor deliberately broken URLs: each one fails on the `url` line with the fix,
 before a 10-second connect timeout.
+
+**Cloud follow-up 2 (from your live log).** Two more defects surfaced the
+moment a real machine ran the ladder:
+
+1. **The opt-in live tests could never see your `Backend/.env`.**
+   `bullmqLive`, `opsQueueOpsLive` (and the new `redisLive`, copied from them)
+   built the path by hand as `resolve(testDir, '..', '..') + '.env'`, which is
+   the *repo root*, so dotenv loaded nothing (`injected env (0) from ..\.env`)
+   and the suites failed their own "Redis is not configured" gate even though
+   `npm run redis:check` answered `PONG`. All three now import
+   `src/config/loadEnv.js` - the single loader the API itself uses - so any
+   future entry point inherits the same correct path. Side effect: step 5 of
+   `test:ops:live` (reconciliation) never saw `MONGO_URI` either, which is why
+   it always reported the missing-Mongo error on a correctly configured box.
+2. **The eviction advice was too soft.** BullMQ warns on every connection that
+   the policy should be `noeviction`, and managed tiers default to
+   `volatile-lru`. The doctor now says exactly that (with the `maxmemory` cap
+   it is protecting), explains the ~20 repeated lines, and §5b documents the
+   blast radius: TTL-bearing BullMQ bookkeeping keys are evictable, and a
+   capped-plus-full instance turns into `-OOM` on every write. `allkeys-*`
+   stays a FAIL.
 
 Lesson recorded for later phases: hermetic suites prove *logic*; only a live
 run proves *semantics against the installed dependency version*. Any opt-in

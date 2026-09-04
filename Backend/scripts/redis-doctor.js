@@ -395,7 +395,7 @@ const checkCommands = async (client) => {
 };
 
 
-const checkEviction = async (client) => {
+const checkEviction = async (client, maxMemoryBytes = 0) => {
   const config = await withTimeout('config.maxmemory', client.config('GET', 'maxmemory-policy'));
   if (failed(config) || !Array.isArray(config) || config.length === 0) {
     report('eviction', 'SKIP', 'CONFIG GET maxmemory-policy is not permitted here', `confirm the policy in the console - allkeys-* can evict queue keys. ${hintFor('CONFIG')}`);
@@ -408,10 +408,20 @@ const checkEviction = async (client) => {
     return false;
   }
   if (policy.startsWith('volatile-')) {
-    report('eviction', 'WARN', `maxmemory-policy=${policy}`, 'Acceptable: BullMQ never sets TTLs on its queue keys, so they are not eviction candidates — but keep memory headroom');
+    // BullMQ prints its own warning on every connection:
+    //   IMPORTANT! Eviction policy is volatile-lru. It should be "noeviction"
+    // so a queue host sees ~20 identical lines at worker start. Accurate
+    // reasoning: BullMQ's list/stream/zset queue keys carry no TTL and are
+    // therefore not eviction candidates - the danger is what happens when the
+    // cap is reached and the only TTL keys left are BullMQ's rate-limiter and
+    // events/metrics keys, or nothing at all (-OOM on every write).
+    const capNote = maxMemoryBytes > 0
+      ? `a maxmemory cap is set (${Math.round(maxMemoryBytes / 1048576)} MB): at the cap, TTL keys such as the BullMQ rate-limiter and events retention get evicted and then writes fail with -OOM`
+      : 'no maxmemory cap reported, so eviction cannot trigger today - but the risk appears the moment a cap or a full instance is in play';
+    report('eviction', 'WARN', `maxmemory-policy=${policy}`, `BullMQ warns about this on every connection. ${capNote}. Change it to noeviction in the provider configuration - no code change, no data migration, restart the worker so the warning clears. ${hintFor('CONFIG')}`);
     return true;
   }
-  report('eviction', 'OK', `maxmemory-policy=${policy}`);
+  report('eviction', 'OK', `maxmemory-policy=${policy} — matches the BullMQ requirement (no startup warnings)`);
   return true;
 };
 
@@ -420,7 +430,7 @@ const checkMemory = async (client) => {
   const stats = await withTimeout('info.stats', client.info('stats'));
   if (failed(info)) {
     report('memory', 'SKIP', 'INFO memory is not permitted by this provider', hintFor('INFO'));
-    return true;
+    return { maxMemoryBytes: 0, ok: true };
   }
   const fields = parseInfo(info);
   const used = fields.get('used_memory_human') || '?';
@@ -435,10 +445,10 @@ const checkMemory = async (client) => {
   }
   if (maxMemoryBytes > 0 && ratio > 0.9) {
     report('memory', 'WARN', detail, 'above 90% of maxmemory — Redis will start evicting/rejecting writes');
-    return true;
+    return { maxMemoryBytes, ok: true };
   }
   report('memory', 'OK', detail);
-  return true;
+  return { maxMemoryBytes, ok: true };
 };
 
 // Exact self-built key, TTL as a belt-and-braces, deleted at the end.
@@ -612,8 +622,8 @@ const main = async () => {
 
   section('4/6 Operational limits');
   await checkRole(client);
-  await checkEviction(client);
-  await checkMemory(client);
+  const memoryLimits = await checkMemory(client);
+  await checkEviction(client, memoryLimits.maxMemoryBytes);
   await checkProbe(client);
 
   section('5/6 Crewly queues and workers');

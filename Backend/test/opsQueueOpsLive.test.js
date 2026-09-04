@@ -27,14 +27,17 @@
 
 import assert from 'node:assert/strict';
 import test, { describe } from 'node:test';
-import dotenv from 'dotenv';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+// Phase 30.1.2 fix: these suites used to build the .env path by hand as
+// resolve(testDir, '..', '..') + '.env', which resolves to the REPO ROOT
+// (<repo>/.env) instead of Backend/.env. dotenv then silently found
+// nothing, and every opt-in live test reported "Redis is not configured"
+// even with a correct Backend/.env (seen on Windows: "injected env (0) from
+// ..\.env"). The canonical loader is the one place that knows the real
+// path, so it is imported instead - same behaviour as src/server.js.
+import '../src/config/loadEnv.js';
 import { randomUUID } from 'node:crypto';
 import Redis from 'ioredis';
 
-const backendDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-dotenv.config({ path: resolve(backendDir, '.env') });
 
 // Isolate this run BEFORE any queue/worker creation.
 const livePrefix = `crewly:test:live-${randomUUID().slice(0, 8)}`;
