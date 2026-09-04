@@ -88,6 +88,19 @@ const cacheKey = ({ companyId, namespace, segments = [] }) =>
     })
   );
 
+// Managed/shared Redis hosts must not be paused by this suite - see the
+// op-budget test for the reason. Hostname shape only; nothing is printed.
+const MANAGED_HOST =
+  /(^|\.)(redis\.io|redislabs\.com|rlrcp\.com|upstash\.io|upstash\.com|cache\.amazonaws\.com|redis\.cache\.windows\.net|database\.windows\.net)$/i;
+const isManagedEndpoint = (url) => {
+  try {
+    const host = new URL(String(url || '').trim()).hostname.toLowerCase();
+    return MANAGED_HOST.test(host) || /^redis-\d+\.c/i.test(host);
+  } catch {
+    return false;
+  }
+};
+
 const sleep = (ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 
 if (!RUN) {
@@ -292,8 +305,18 @@ if (!RUN) {
   // server for ~300ms (every client, briefly). Skip it on a shared or
   // production-ish endpoint with REDIS_LIVE_SKIP_PAUSE=1.
   test('cache: a stalling Redis is cut off by the op budget — the caller never waits', async () => {
+    // CLIENT PAUSE freezes the WHOLE instance for ~300ms, so it is refused
+    // on managed/shared endpoints unless explicitly allowed - a cloud Redis
+    // is usually serving the rest of the tenant base too.
     if (process.env.REDIS_LIVE_SKIP_PAUSE === '1') {
       console.log('    note: REDIS_LIVE_SKIP_PAUSE=1 — op-budget test skipped');
+      return;
+    }
+    if (isManagedEndpoint(process.env.REDIS_URL) && process.env.REDIS_LIVE_ALLOW_PAUSE !== '1') {
+      console.log(
+        '    note: managed endpoint — op-budget test skipped (it pauses the whole ' +
+          'instance). Run it anyway with REDIS_LIVE_ALLOW_PAUSE=1.'
+      );
       return;
     }
     const key = cacheKey({ companyId: fakeCompanyId(), namespace: 'budget' });

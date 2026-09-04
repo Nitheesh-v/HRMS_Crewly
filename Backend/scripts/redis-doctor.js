@@ -7,17 +7,26 @@
 // instead of only "can I PING it?". It walks the SAME code paths the
 // running application uses:
 //
-//   1. config      — REDIS_ENABLED / REDIS_URL present (secret-safe)
-//   2. connect     — src/config/redis.js initializeRedis + health map
-//   3. latency     — bounded PING sample
-//   4. server      — version / mode / role (replica = read-only = fatal)
-//   5. scripting   — EVAL (BullMQ cannot run without Lua)
-//   6. eviction    — maxmemory-policy (allkeys-* can delete queue jobs)
-//   7. memory      — used vs max memory + evicted_keys
-//   8. probe       — SET/GET/TTL/DEL round trip on ONE exact self-built key
-//   9. queues      — live BullMQ job counts per Crewly queue
-//  10. workers     — Phase 28.8 heartbeat => ONLINE / OFFLINE
-//  11. keyspace    — DBSIZE + INFO keyspace (informational)
+//   1. config      - REDIS_ENABLED / REDIS_URL present (secret-safe)
+//   2. url         - CLOUD PRE-FLIGHT: TLS scheme vs port, missing/ACL
+//                    username, unescaped characters in the password,
+//                    stray whitespace/quotes from copy-paste, non-zero DB
+//   3. connect     - src/config/redis.js initializeRedis + health map
+//   4. latency     - bounded PING sample (managed links are slower)
+//   5. server      - version / mode (replica = read-only = fatal)
+//   6. commands    - are the commands Crewly/BullMQ need permitted, and are
+//                    the dangerous ones (KEYS/FLUSHDB) blocked for us
+//   7. eviction    - maxmemory-policy (allkeys-* can delete queue jobs)
+//   8. memory      - used vs max memory + evicted_keys (+ -OOM reporting)
+//   9. probe       - SET/GET/TTL/DEL round trip on ONE exact self-built key
+//  10. queues      - live BullMQ job counts per Crewly queue
+//  11. workers     - Phase 28.8 heartbeat => ONLINE / OFFLINE
+//  12. keyspace    - DBSIZE + INFO keyspace (informational)
+//
+// MANAGED REDIS (Redis Cloud / Upstash / ElastiCache / Azure Cache) is a
+// first-class case: those tiers block some introspection commands, so the
+// affected checks report SKIP with the console field to read instead, and a
+// blocked command is only a FAIL when Crewly actually needs it.
 //
 // SAFETY RULES (same discipline as the production modules):
 //   - REDIS_URL is never printed, logged or embedded in an error.
@@ -113,7 +122,121 @@ const WINDOWS_HINTS = [
   'Verify the port is answering: Test-NetConnection localhost -Port 6379',
 ];
 
-// --- Checks --------------------------------------------------------
+// --- Cloud provider knowledge -------------------------------------
+
+// A managed endpoint is detected from the hostname SHAPE only (never
+// printed) so provider quirks can be explained without exposing anything.
+// Covers Redis Cloud, Upstash, ElastiCache and Azure Cache hostnames; the
+// host itself is never printed, only its length.
+const MANAGED_HOST =
+  /(^|\.)(redis\.io|redislabs\.com|rlrcp\.com|upstash\.io|upstash\.com|cache\.amazonaws\.com|redis\.cache\.windows\.net|database\.windows\.net)$/i;
+const isManagedHost = (hostname) =>
+  MANAGED_HOST.test(String(hostname || '').toLowerCase()) ||
+  /^redis-\d+\.c/i.test(String(hostname || ''));
+
+// Where to read the same fact in each provider's console when the Redis
+// command itself is blocked (very common on managed tiers).
+const DASHBOARD = {
+  INFO: 'Redis Cloud: database page diagnostics | Upstash: console > Statistics | ElastiCache: CloudWatch',
+  CONFIG: 'Redis Cloud: database > Advanced > Eviction policy | Upstash: Settings > Max memory policy | ElastiCache: parameter group maxmemory-policy',
+  COMMAND: 'Upstash: console > Settings > Redis commands | Redis Cloud: security > Disabled commands | Azure Cache: "Redis commands" policy',
+};
+const hintFor = (command) =>
+  DASHBOARD[command] || 'this command is disabled by the provider policy';
+
+// Printed whenever credentials look unescaped (the value never is).
+const ENCODE_TABLE = 'encode as %40 (@) %3A (:) %2F (/) %23 (#) %5B ([) %5D (]) %25 (%)';
+
+const checkUrl = () => {
+  const raw = String(process.env.REDIS_URL ?? '');
+  const problems = [];
+  const notes = [];
+  if (/^\s|\s$/.test(raw)) {
+    problems.push('the value has leading/trailing whitespace - a stray space or a Windows line break in .env breaks the URL');
+  }
+  if (/\r|\n|\t/.test(raw)) {
+    problems.push('the value contains a line break or tab (paste artifact)');
+  }
+  const trimmed = raw.trim();
+  if (/^".*"$/.test(trimmed) || /^'.*'$/.test(trimmed)) {
+    problems.push('the value is wrapped in quotes - .env must be REDIS_URL=rediss://... with no quotes');
+  }
+
+  let url = null;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    problems.push('the value cannot be parsed as a redis:// or rediss:// URL');
+  }
+
+  if (url) {
+    const hostname = url.hostname;
+    if (url.protocol !== 'redis:' && url.protocol !== 'rediss:') {
+      problems.push(`unsupported scheme "${url.protocol}" - use redis:// (no TLS) or rediss:// (TLS)`);
+    }
+    if (!hostname) problems.push('no host in the URL');
+
+    // Credentials = everything between "://" and the LAST "@" (raw string,
+    // so an unescaped "@" in the password is detectable at all).
+    const authorityStart = trimmed.indexOf('://') + 3;
+    const at = trimmed.lastIndexOf('@');
+    const credentials = at > authorityStart ? trimmed.slice(authorityStart, at) : '';
+    if (isManagedHost(hostname)) {
+      if (!credentials) {
+        notes.push('managed endpoint with no credentials - Redis Cloud and Upstash always require a password/token');
+      } else if (!credentials.includes(':')) {
+        notes.push('password without a username - Upstash and ACL Redis Cloud users need rediss://default:<token>@host:port (read-only tokens use default_ro)');
+      }
+      if (url.protocol === 'redis:') {
+        notes.push('redis:// to a managed endpoint sends the credential unencrypted - most providers only expose TLS (rediss://)');
+      }
+    }
+    if (credentials) {
+      const split = credentials.indexOf(':');
+      const secret = split === -1 ? credentials : credentials.slice(split + 1);
+      const bad = /[@?:/#[\]]/.exec(secret);
+      if (bad) {
+        problems.push(`the password contains "${bad[0]}" which the URL parser treats as a separator - ${ENCODE_TABLE}`);
+      }
+      if (/%(?![0-9A-Fa-f]{2})/.test(secret)) {
+        problems.push(`the password has a "%" that is not a valid escape - ${ENCODE_TABLE}`);
+      }
+    }
+    const port = Number(url.port || (url.protocol === 'rediss:' ? 6380 : 6379));
+    const localHost = /^(localhost|127\.0\.0\.1|::1|0\.0\.0\.0)$/.test(hostname);
+    if (url.protocol === 'rediss:' && localHost) {
+      notes.push('rediss:// (TLS) points at a local host - Docker/WSL/Memurai Redis normally has NO TLS; use redis://127.0.0.1:6379 for local and keep rediss:// for the managed endpoint');
+    }
+    if (url.protocol === 'redis:' && localHost && credentials) {
+      notes.push('a password on a local endpoint is unusual - if Redis was started without requirepass, remove the credentials (ioredis AUTH would be rejected)');
+    }
+    if (url.protocol === 'rediss:' && port === 6379) {
+      notes.push('TLS (rediss://) against port 6379 - Redis Cloud/Upstash serve TLS on their own port (commonly 6380); 6379 is usually plain text');
+    }
+    if (url.protocol === 'redis:' && port === 6380) {
+      notes.push('plain redis:// against the usual TLS port 6380 - if the handshake fails, the endpoint expects rediss://');
+    }
+    const dbPath = String(url.pathname || '');
+    if (dbPath && dbPath !== '/' && dbPath !== '/0') {
+      notes.push(`the URL selects database ${dbPath.replace('/', '')} - queues and cache live there too, so keep BULLMQ_PREFIX unique per environment`);
+    }
+  }
+
+  if (problems.length > 0) {
+    report('url', 'FAIL', problems[0], problems.slice(1).join(' | '));
+    return false;
+  }
+  const shape =
+    `scheme=${url.protocol.replace(':', '')} host=<hidden, ${url.hostname.length} chars> ` +
+    `port=${url.port || 'default'} credentials=${url.password ? `yes (${url.password.length} chars)` : 'none'}`;
+  if (notes.length > 0) {
+    report('url', 'WARN', shape, notes.join(' | '));
+    return true;
+  }
+  report('url', 'OK', `${shape} (${isManagedHost(url.hostname) ? 'managed endpoint' : 'local/self-hosted shape'})`);
+  return true;
+};
+
 
 const checkConfig = () => {
   const config = getRedisConfig();
@@ -176,7 +299,7 @@ const checkLatency = async (client) => {
   const max = Math.max(...samples);
   const internalPing = await pingRedis(); // exercises the module helper too
   if (avg > 100) {
-    report('latency', 'WARN', `PING avg ${avg.toFixed(1)} ms (max ${max.toFixed(1)} ms) — slow link`, 'Typical for a remote/managed Redis; keep REDIS_CACHE_OP_TIMEOUT_MS in mind (cache stays fail-open)');
+    report('latency', 'WARN', `PING avg ${avg.toFixed(1)} ms (max ${max.toFixed(1)} ms) - remote link`, 'Normal when you are not co-located with the region. Every Redis call is now a network call: keep REDIS_CACHE_OP_TIMEOUT_MS small (the cache is fail-open) and expect the worker, not Redis, to be the queue bottleneck');
     return true;
   }
   report('latency', 'OK', `PING avg ${avg.toFixed(1)} ms (max ${max.toFixed(1)} ms), pingRedis()=${internalPing}`);
@@ -186,7 +309,7 @@ const checkLatency = async (client) => {
 const checkServer = async (client) => {
   const info = await withTimeout('info.server', client.info('server'));
   if (failed(info)) {
-    report('server', 'SKIP', 'INFO server is not permitted by this provider', 'Version/mode could not be read — not a fault, but verify manually');
+    report('server', 'SKIP', 'INFO server is not permitted by this provider', `not a fault - read the version in the console instead. ${hintFor('INFO')}`);
     return true;
   }
   const fields = parseInfo(info);
@@ -209,7 +332,7 @@ const checkServer = async (client) => {
 const checkRole = async (client) => {
   const info = await withTimeout('info.replication', client.info('replication'));
   if (failed(info)) {
-    report('role', 'SKIP', 'INFO replication is not permitted by this provider');
+    report('role', 'SKIP', 'INFO replication is not permitted by this provider', `role unknown - a read-only replica/standby endpoint rejects every queue write. ${hintFor('INFO')}`);
     return true;
   }
   const role = parseInfo(info).get('role') || 'unknown';
@@ -232,10 +355,50 @@ const checkScripting = async (client) => {
   return true;
 };
 
+// Crewly and BullMQ need these. Managed tiers sometimes block a subset,
+// and a blocked command that the queues need is fatal long before the first
+// job is ever enqueued - so it is checked up front, in one round trip.
+const REQUIRED_COMMANDS = Object.freeze([
+  'eval', 'evalsha', 'script', 'multi', 'exec', 'lpush', 'rpop', 'zadd',
+  'hgetall', 'pttl', 'publish', 'subscribe', 'xadd', 'xgroup',
+]);
+// Never a failure: the production code never calls these, and a provider
+// that blocks them is simply a safer shared instance.
+const HARDENING_COMMANDS = Object.freeze(['keys', 'flushdb', 'flushall', 'scan']);
+
+const checkCommands = async (client) => {
+  const info = await withTimeout(
+    'command.info',
+    client.command('INFO', [...REQUIRED_COMMANDS, ...HARDENING_COMMANDS])
+  );
+  if (failed(info) || !Array.isArray(info)) {
+    // COMMAND itself is blocked (common on Upstash/Redis Cloud). Not a
+    // fault: the EVAL probe already proved the critical capability.
+    report('commands', 'SKIP', 'COMMAND INFO is not permitted on this endpoint', hintFor('COMMAND'));
+    return true;
+  }
+  // COMMAND INFO answers in the order asked; an unavailable command is null.
+  const unavailable = (entry) => entry === null || entry === undefined;
+  const blocked = REQUIRED_COMMANDS.filter((name, index) => unavailable(info[index]));
+  const hardened = HARDENING_COMMANDS.filter((name, index) =>
+    unavailable(info[REQUIRED_COMMANDS.length + index])
+  );
+  const detail =
+    `${REQUIRED_COMMANDS.length - blocked.length}/${REQUIRED_COMMANDS.length} queue-critical commands available` +
+    (hardened.length > 0 ? `; destructive commands blocked by policy: ${hardened.join(', ')}` : '');
+  if (blocked.length > 0) {
+    report('commands', 'FAIL', `${detail} | missing: ${blocked.join(', ')}`, `BullMQ cannot run without these - enable them in the provider policy. ${hintFor('COMMAND')}`);
+    return false;
+  }
+  report('commands', 'OK', detail);
+  return true;
+};
+
+
 const checkEviction = async (client) => {
   const config = await withTimeout('config.maxmemory', client.config('GET', 'maxmemory-policy'));
   if (failed(config) || !Array.isArray(config) || config.length === 0) {
-    report('eviction', 'SKIP', 'CONFIG GET maxmemory-policy is not permitted here', 'Managed tiers sometimes hide CONFIG — confirm the policy in the provider dashboard');
+    report('eviction', 'SKIP', 'CONFIG GET maxmemory-policy is not permitted here', `confirm the policy in the console - allkeys-* can evict queue keys. ${hintFor('CONFIG')}`);
     return true;
   }
   const policy = String(config[1] ?? 'unknown');
@@ -256,7 +419,7 @@ const checkMemory = async (client) => {
   const info = await withTimeout('info.memory', client.info('memory'));
   const stats = await withTimeout('info.stats', client.info('stats'));
   if (failed(info)) {
-    report('memory', 'SKIP', 'INFO memory is not permitted by this provider');
+    report('memory', 'SKIP', 'INFO memory is not permitted by this provider', hintFor('INFO'));
     return true;
   }
   const fields = parseInfo(info);
@@ -284,7 +447,15 @@ const checkProbe = async (client) => {
   const payload = JSON.stringify({ probe: true, at: Date.now() });
   const set = await withTimeout('probe.set', client.set(key, payload, 'EX', 30));
   if (failed(set) || set !== 'OK') {
-    report('probe', 'FAIL', 'SET failed — the endpoint is not accepting writes', 'Usually a read-only replica, a full maxmemory, or an ACL that drops writes');
+    const writeError = `${set?.__error?.code || ''} ${set?.__error?.message || ''}`;
+    const reason = /OOM|not enough memory|maxmemory/i.test(writeError)
+      ? 'the instance is out of memory (-OOM) - raise the plan; queues must never rely on eviction'
+      : /READONLY|replica|read-only/i.test(writeError)
+        ? 'read-only endpoint - an Upstash read-only token uses the default_ro user, and a replica endpoint rejects writes'
+        : /unknown command|not allowed|disabled|NOPERM/i.test(writeError)
+          ? `the provider policy blocks writes or SET - ${hintFor('COMMAND')}`
+          : 'check the write permission of the ACL user in REDIS_URL';
+    report('probe', 'FAIL', `SET was rejected (${writeError.trim().slice(0, 48) || 'no detail'})`, reason);
     return false;
   }
   const [got, ttl, exists] = await withTimeout(
@@ -410,7 +581,7 @@ const checkKeyspace = async (client) => {
     Promise.all([client.dbsize(), client.info('keyspace')])
   );
   if (failed(info)) {
-    report('keyspace', 'SKIP', 'INFO keyspace is not permitted by this provider');
+    report('keyspace', 'SKIP', 'INFO keyspace is not permitted by this provider', hintFor('INFO'));
     return true;
   }
   const summary = String(info).split('\r\n').filter((line) => line.includes('keys=')).join(' | ') || 'no keys yet';
@@ -421,29 +592,35 @@ const checkKeyspace = async (client) => {
 // --- Runner ---------------------------------------------------------
 
 const main = async () => {
-  console.log('Crewly HRMS — Redis doctor (read-only)');
-  section('1/5 Configuration');
+  console.log('Crewly HRMS - Redis doctor (read-only)');
+  section('1/6 Configuration');
   if (!checkConfig()) return finish();
+  // Pre-flight before any socket is opened: a malformed cloud URL is the
+  // most common reason a managed Redis "does not work".
+  if (!checkUrl()) return finish();
 
-  section('2/5 Connection');
+  section('2/6 Connection');
   const up = await checkConnect();
   const client = getRedisClient();
   if (!up || !client) return finish();
 
-  section('3/5 Server capabilities');
+  section('3/6 Server capabilities');
   await checkLatency(client);
   await checkServer(client);
-  await checkRole(client);
   await checkScripting(client);
+  await checkCommands(client);
 
-  section('4/5 Operational limits');
+  section('4/6 Operational limits');
+  await checkRole(client);
   await checkEviction(client);
   await checkMemory(client);
   await checkProbe(client);
 
-  section('5/5 Crewly queues and workers');
+  section('5/6 Crewly queues and workers');
   const onlineWorkers = await checkWorkers(client);
   await checkQueues(onlineWorkers);
+
+  section('6/6 Keyspace');
   await checkKeyspace(client);
 
   return finish();

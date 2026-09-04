@@ -23,6 +23,9 @@ hermetic, and the app is fail-open by design.
 
 ## 2. Get a Redis on your machine (pick ONE)
 
+Already using a managed Redis (Redis Cloud, Upstash, ElastiCache, Azure)?
+Skip this section - your URL comes from the provider console, see §3.
+
 Open PowerShell and run one of these. All three give you
 `redis://127.0.0.1:6379`.
 
@@ -62,15 +65,70 @@ fix that first — no Crewly command can help you before this is True.
 
 ## 3. Tell the backend where it is
 
-In `Backend/.env` (the file that is git-ignored — never commit it):
+Open `Backend/.env` in an editor (Notepad is fine) - never build the URL in
+the terminal, because a command line lands in your PowerShell history:
+
+```powershell
+notepad .env
+```
+
+**Cloud / managed Redis** - paste the provider's own connection string as
+`REDIS_URL`, then save. It must start with `rediss://` (TLS):
+
+```env
+REDIS_ENABLED=true
+REDIS_URL=rediss://default:YOUR_TOKEN@YOUR_ENDPOINT:YOUR_TLS_PORT
+```
+
+The exact shape per provider (copy the value from the console, do not
+retype it):
+
+| Provider | Where | Shape |
+| --- | --- | --- |
+| Redis Cloud (Redis Inc.) | database page > "General" > Public endpoint + Default user password | `rediss://default:<password>@redis-<id>.c<n>.<region>.ec2.cloud.redislabs.com:<tls-port>` (newer DBs: `<words>-<id>.db.redis.io`) |
+| Upstash | console > your database > "Redis" connect box (TCP, not REST/HTTP) | `rediss://default:<token>@<region>.upstash.io:6380` |
+| AWS ElastiCache | cluster endpoint, TLS in transit enabled | `rediss://:<password>@<name>.<region>.cache.amazonaws.com:6379` (in-VPC only: you need a tunnel from your laptop) |
+| Azure Cache for Redis | Access keys > hostname | `rediss://:<key>@<name>.redis.cache.windows.net:6380` |
+
+Four cloud rules that save hours:
+
+1. **Escape the password.** In a URL, `@ : / # [ ] %` inside the credential
+   are *separators*. If your token contains one, percent-encode it
+   (`@` -> `%40`, `:` -> `%3A`, `/` -> `%2F`, `#` -> `%23`, `%` -> `%25`).
+   `npm run redis:doctor` checks this for you before it even connects.
+2. **Username matters.** Upstash and ACL-enabled Redis Cloud users need
+   `default:` before the token. If you enabled the Upstash *read-only* token,
+   the username is `default_ro` and every write fails - Crewly needs writes.
+3. **TLS port, not the plain port.** `rediss://` + the plain-text port (or
+   `redis://` + the TLS port) shows up as a handshake timeout, not a clear
+   error. The doctor flags the mismatch.
+4. **No quotes, no spaces, no `\r`.** One line, exactly
+   `REDIS_URL=rediss://...` - `redis:check` and `redis:doctor` both detect a
+   stray space or a Windows line break in the value.
+
+**Local Redis instead?** Use:
 
 ```env
 REDIS_ENABLED=true
 REDIS_URL=redis://127.0.0.1:6379
 ```
 
-Managed providers (Redis Cloud, Upstash, ElastiCache) instead use
-`rediss://…` — the code path is identical, TLS verification stays on.
+Both cases use the same code path; TLS certificate verification always stays
+on (`rejectUnauthorized: false` is not used anywhere in this repo), and the
+URL is never printed by any Crewly command, log line or API response.
+
+Optional, all providers:
+
+```env
+# Startup connect budget for a remote endpoint (default 10000, 1000-60000)
+REDIS_CONNECT_TIMEOUT_MS=10000
+# Per-command budget for the analytics cache (default 500, 100-2000).
+# A slower cache is abandoned and the read comes from MongoDB instead.
+REDIS_CACHE_OP_TIMEOUT_MS=500
+```
+
+On a remote Redis, 20-80 ms round trips are normal. That is why the cache
+budget is small and fail-open - do not raise it to "fix" a miss.
 
 ## 4. The verification ladder (run in this order)
 
@@ -100,28 +158,32 @@ Steps 4, 6 and 7 are **opt-in live** tests: they are deliberately *not* in
 ```
 Crewly HRMS — Redis doctor (read-only)
 
-1/5 Configuration
-[ OK ] config       REDIS_ENABLED=true, REDIS_URL present (length=25 scheme=redis://)
+1/6 Configuration
+[ OK ] config       REDIS_ENABLED=true, REDIS_URL present (length=64 scheme=rediss:// (TLS))
+[ OK ] url          scheme=rediss host=<hidden, 46 chars> port=12346 credentials=yes (18 chars) (managed endpoint)
 
-2/5 Connection
-[ OK ] connect      connected and ready in 9 ms — health "up"
+2/6 Connection
+[ OK ] connect      connected and ready in 410 ms - health "up"
 
-3/5 Server capabilities
-[ OK ] latency      PING avg 0.4 ms (max 0.6 ms), pingRedis()=true
-[ OK ] server       version=7.2.5 mode=standalone os=...
+3/6 Server capabilities
+[ OK ] latency      PING avg 34.1 ms (max 51.0 ms), pingRedis()=true
+[ OK ] server       version=7.2.7 mode=standalone os=Linux
+[ OK ] scripting    EVAL (Lua) available - required by BullMQ
+[ OK ] commands     14/14 queue-critical commands available; destructive commands blocked by policy: keys, flushdb, flushall, scan
+
+4/6 Operational limits
 [ OK ] role         role=master (writable)
-[ OK ] scripting    EVAL (Lua) available — required by BullMQ
-
-4/5 Operational limits
 [ OK ] eviction     maxmemory-policy=noeviction
-[ OK ] memory       used=2.1M max=unbounded evicted_keys=0
+[ OK ] memory       used=41.2M max=100M evicted_keys=0
 [ OK ] probe        SET/GET/TTL/DEL clean on crewly:ops:doctor:9a1c... (ttl=30s, removed=true)
 
-5/5 Crewly queues and workers
+5/6 Crewly queues and workers
 [ OK ] workers      1 worker process(es) ONLINE
   system     waiting=0 active=0 delayed=0 failed=0
   ...
-[ OK ] queues       9 queues under prefix "crewly:development": waiting=0 delayed=0 — no failures, no stuck backlog
+[ OK ] queues       9 queues under prefix "crewly:development": waiting=0 delayed=0 - no failures, no stuck backlog
+
+6/6 Keyspace
 [ OK ] keyspace     db0 keys=16; db0:keys=16,expires=1,avg_ttl=48699
 
 Summary: 12 ok, 0 warning(s), 0 skipped, 0 failed
@@ -137,14 +199,46 @@ What the checks that have no obvious "ping" equivalent are actually for:
 
 - **`scripting`** — BullMQ is 100% Lua scripts. A provider plan that blocks
   `EVAL` looks perfectly healthy to `PING` and is useless to the queues.
-- **`role`** — managed tiers hand out a read-only replica endpoint by
-  mistake; every queue write then fails with `-READONLY`.
 - **`eviction`** — `allkeys-lru`/`allkeys-random` may delete **queue and job
   keys** under memory pressure (jobs silently vanish). `noeviction` or
   `volatile-*` is required.
 - **`memory`** — `evicted_keys > 0` means eviction has *already* happened.
+- **`url`** — pure parsing, no network: it catches the four classic cloud
+  paste errors (quotes, trailing space/`\r`, unescaped `@` in the password,
+  TLS scheme against the plain port) *before* you wait 10 seconds for a
+  timeout. It prints the length of the secret, never the secret.
+- **`commands`** — one `COMMAND INFO` call that answers "can this instance
+  actually host BullMQ?". Blocked `KEYS`/`FLUSHDB`/`SCAN` are reported as a
+  **good** thing (Crewly never uses them); a blocked `eval`/`xadd`/`subscribe`
+  is a real FAIL for the queues.
+- **`role`** — managed tiers hand out a read-only replica endpoint by
+  mistake; every queue write then fails with `-READONLY`.
 - **`workers`** — the heartbeat key's own TTL is the authority: after a
   worker is killed, this flips to OFFLINE within 60 seconds.
+
+### What looks different on a managed/cloud Redis
+
+Nothing is broken when a line says SKIP there - those tiers hide
+introspection on purpose. Read the console field instead:
+
+| Doctor line | Typical managed output | Where the real answer lives |
+| --- | --- | --- |
+| `server` / `role` / `memory` / `keyspace` | `SKIP - INFO ... not permitted` | provider console (Upstash: Statistics; Redis Cloud: database diagnostics; ElastiCache: CloudWatch) |
+| `eviction` | `SKIP - CONFIG GET ... not permitted` | Upstash: Settings > "Max memory policy"; Redis Cloud: database > Advanced; ElastiCache: parameter group `maxmemory-policy` |
+| `commands` | `SKIP - COMMAND INFO not permitted`, or destructive commands listed as blocked | Upstash: Settings > Redis commands; Redis Cloud: disabled-commands list; Azure: Redis commands policy |
+| `latency` | `WARN - remote link` (20-80 ms is normal) | pick a region near your app/worker, not near your laptop |
+| `connect` | may print `Skipping the ready check because INFO command fails: "...NOPERM..."` | benign: ioredis treats a NOPERM `INFO` as "no ready check needed" and continues. No action |
+
+Two cloud settings that matter more than any code change:
+
+- **Eviction policy must never be `allkeys-*`.** Under memory pressure Redis
+  would evict BullMQ queue and job keys and jobs vanish silently.
+  `noeviction` is correct (then a full instance *errors* instead of losing
+  jobs - visible, recoverable). Free/prototyping tiers are tiny: watch
+  `evicted_keys` and the `-OOM` error text.
+- **Upstash REST/HTTP endpoints are not usable here.** Crewly speaks the
+  RESP protocol (ioredis + BullMQ), so use the TCP/`rediss://` connection
+  string, not the REST URL or the "upstash/redis" SDK.
 
 ## 6. Testing the queue side properly
 
@@ -199,8 +293,18 @@ worker, so it needs no second tab. It runs under a throw-away
 15. Recovery: once Redis returns, health flips back to `up` and the cache serves.
 16. Cleanup: every key the run created is deleted (no residue on a shared box).
 
-Test 13 momentarily pauses the whole Redis instance (~0.3s) via
-`CLIENT PAUSE`. On a **shared** instance run it instead as:
+Test 13 proves the op budget by freezing the whole Redis instance for ~0.3s
+(`CLIENT PAUSE`). Because that is rude on a shared box, it is **skipped
+automatically when the host looks managed** (Redis Cloud / Upstash /
+ElastiCache / Azure). To force it anyway:
+
+```powershell
+$env:REDIS_LIVE_ALLOW_PAUSE = "1"
+npm run test:redis:live
+Remove-Item Env:\REDIS_LIVE_ALLOW_PAUSE
+```
+
+To skip it even on a local Redis:
 
 ```powershell
 $env:REDIS_LIVE_SKIP_PAUSE = "1"
@@ -216,6 +320,15 @@ Remove-Item Env:\REDIS_LIVE_SKIP_PAUSE
 | `[FAIL] config … REDIS_URL is empty` | enabled but no URL | add `REDIS_URL=redis://127.0.0.1:6379` |
 | `[FAIL] connect … connection_refused` | nothing listening on that host:port | start Docker/WSL/Memurai (§2); confirm with `Test-NetConnection localhost -Port 6379` |
 | `[FAIL] connect … dns_resolution_failed` | host cannot be resolved | typo in the host, or you are offline / not on the VPN |
+| `[FAIL] url … the password contains "@"` | the credential is not URL-encoded | percent-encode it (`@` becomes %40, `:` %3A, `/` %2F, `#` %23, `%` %25) - do not add quotes |
+| `[FAIL] url … wrapped in quotes / whitespace` | paste artifact in `.env` | one bare line: `REDIS_URL=rediss://...` |
+| `[WARN] url … managed endpoint with no credentials` | the password/token is missing | copy the full string from the console, not just the host |
+| `connect … timeout` on a cloud host | IP allowlist, VPC-only endpoint, or wrong TLS port | add your public IP in the provider firewall; ElastiCache needs an SSH tunnel from a laptop; re-check `rediss://` vs the port |
+| `probe … SET was rejected (-OOM)` | the plan is out of memory | raise maxmemory / the plan tier; never switch to `allkeys-*` to "fix" it |
+| `probe … SET was rejected (READONLY)` | replica or read-only token | Upstash read-only tokens use `default_ro` - Crewly needs a read-write user |
+| `WRONGPASS invalid username-password pair` | wrong ACL user | use `default:<token>` (or the exact ACL user the provider shows) |
+| `read ECONNRESET` right after connect | server expects TLS | the URL must be `rediss://`, not `redis://` |
+| `Skipping the ready check because INFO command fails` | provider blocks `INFO` with NOPERM | benign warning from ioredis; no action |
 | `[FAIL] connect … auth_failed` | server rejected the credentials | re-copy the URL from the provider dashboard (never paste it into chat or a commit) |
 | `Redis is not configured (REDIS_ENABLED/REDIS_URL …)` from a live test | the opt-in test is refusing to fake success | run `npm run redis:doctor` first, then re-run |
 | `[WARN] workers … no worker heartbeat key found` | queue jobs will never drain | `npm run worker:dev` (separate tab), then re-run the doctor |
@@ -261,6 +374,17 @@ assertion must wait for a real snapshot rather than race it. Fix: a bounded
 reads, plus a clearer message when `MONGO_URI` is set but MongoDB is
 unreachable (previously a raw mongoose timeout). Result: **4/4 stable over
 repeated runs**, with step 5 requiring a live MongoDB by design.
+
+**Cloud follow-up (same phase).** Because the target deployment is a managed
+Redis, the doctor gained a pre-flight `url` check (quotes, stray
+space/`\r`, unescaped `@`/`:`/`/`/`#` in the token, `redis://` vs the TLS
+port, non-zero DB, credentials without an ACL username) and a `commands`
+capability probe, and every introspection SKIP now names the console field to
+read instead (Upstash Statistics / Settings, Redis Cloud database > Advanced,
+Elasticache parameter group). The live cache suite no longer runs
+`CLIENT PAUSE` against a managed host by default. Verified by feeding the
+doctor deliberately broken URLs: each one fails on the `url` line with the fix,
+before a 10-second connect timeout.
 
 Lesson recorded for later phases: hermetic suites prove *logic*; only a live
 run proves *semantics against the installed dependency version*. Any opt-in
