@@ -48,7 +48,7 @@ exit
 
 **Option C — Memurai (native Windows service, no Docker/WSL)**
 
-Install from <https://www.memurai.com/get-memurai> (Developer edition is
+Install the free Developer edition from https://www.memurai.com/get-memurai (it
 free). It registers `Memurai` as a Windows service listening on 6379.
 
 **Verify the port is answering (no Redis client needed):**
