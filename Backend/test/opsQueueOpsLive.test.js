@@ -45,12 +45,20 @@ const { getRedisConfig, createRedisOptions } = await import('../src/config/redis
 const { QUEUE_NAMES } = await import('../src/config/queueConfig.js');
 const { getQueue, enqueueJob, closeAllQueues } = await import('../src/queues/queueFactory.js');
 const { registerProcessor, dispatchJob } = await import('../src/workers/registry.js');
-const { Worker } = await import('bullmq');
+// UnrecoverableError means 'fail this attempt now, do not burn the retry
+// budget'. Throwing it is the version-safe way to produce a controlled
+// FAILED job: calling job.moveToFailed() from inside the processor was the
+// old trick, but BullMQ >= 6 then loses the job lock, re-delays the job and
+// re-runs the processor until maxAttempts is exhausted (verified on a live
+// Redis 7.2.5 with bullmq 6.3.1). That destroys both the attemptsMade and
+// the 'ran exactly once' premises this ladder asserts.
+const { Worker, UnrecoverableError } = await import('bullmq');
 
 const {
   startWorkerHeartbeat,
   heartbeatKeyFor,
 } = await import('../src/workers/workerHeartbeat.js');
+const { OPS_QUEUES } = await import('../src/services/opsQueueRegistry.js');
 const {
   getOpsOverview,
   getWorkerStates,
@@ -65,6 +73,19 @@ const HAS_REDIS = config.enabled && config.hasUrl;
 const HAS_MONGO = Boolean(process.env.MONGO_URI);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r), ms);
+
+// Bounded poll for eventually-consistent live reads (heartbeat key,
+// queue counts). A live suite must never depend on a hardcoded sleep:
+// on a loaded machine one round trip can take longer than any fixed
+// wait, and a flaky test is worse than no test.
+const pollUntil = async (read, isSettled, { attempts = 20, delayMs = 150 } = {}) => {
+  let value = await read();
+  for (let i = 0; i < attempts && !isSettled(value); i += 1) {
+    await sleep(delayMs);
+    value = await read();
+  }
+  return value;
+};
 
 const waitForState = async (queue, jobId, states, timeoutMs = 30000) => {
   const deadline = Date.now() + timeoutMs;
@@ -92,26 +113,40 @@ if (!HAS_REDIS) {
 
   let worker;
   let workerConnection;
+
+// Reads the ops overview through the same deps the API injects, but
+// bounded-retried: getOpsOverview is fail-safe by design (a slow queue
+// read returns queues: 'unavailable' instead of throwing), so a live
+// assertion must wait for the real snapshot instead of racing it.
+const readOverview = (predicate) =>
+  pollUntil(
+    () =>
+      getOpsOverview({
+        getQueue,
+        getRedisClient: () => workerConnection,
+        getRedisStatus: () => ({ state: 'up', reason: '' }),
+        classifySafeReason: (e) => String(e?.message || 'error').slice(0, 80),
+      }),
+    (overview) => Array.isArray(overview?.queues) && (predicate ? predicate(overview) : true),
+    { attempts: 20, delayMs: 250 }
+  );
   let heartbeat;
   let createdDeliveryId = null;
 
   // Controlled demo processors (in-process registry only).
   let transientCalls = 0;
-  registerProcessor('ops-live-transient-fail', async (job) => {
+  registerProcessor('ops-live-transient-fail', async () => {
     transientCalls += 1;
     if (transientCalls === 1) {
-      // One controlled failure that looks like a transient Redis blip.
-      await job.moveToFailed(new Error('connect ECONNREFUSED 10.0.0.5:6379'), job.token);
-      return;
+      // One controlled failure that looks like a transient Redis blip
+      // (the ops classifier maps it to REDIS_UNAVAILABLE = retryable).
+      throw new UnrecoverableError('connect ECONNREFUSED 10.0.0.5:6379');
     }
     return { ok: true, calls: transientCalls };
   });
-  registerProcessor('ops-live-security-fail', async (job) => {
-    // Tenant mismatch → SECURITY_REJECTION → never retryable.
-    await job.moveToFailed(
-      new Error('Tenant mismatch: job company does not match'),
-      job.token
-    );
+  registerProcessor('ops-live-security-fail', async () => {
+    // Tenant mismatch fails the job and is never retryable.
+    throw new UnrecoverableError('Tenant mismatch: job company does not match');
   });
 
   test.before(async () => {
@@ -168,9 +203,11 @@ if (!HAS_REDIS) {
       OPS_WORKER_HEARTBEAT_INTERVAL_MS: '10000',
       OPS_WORKER_HEARTBEAT_TTL_SECONDS: '60',
     });
-    await sleep(300); // first beat
-
-    const states = await getWorkerStates(workerConnection);
+    // First beat lands asynchronously; wait for it to be observable.
+    const states = await pollUntil(
+      () => getWorkerStates(workerConnection),
+      (snapshot) => snapshot.online >= 1
+    );
     assert.equal(states.online, 1, 'one online worker expected');
     assert.equal(states.workers[0].status, 'ONLINE');
     assert.match(states.workers[0].workerId, /^worker-[0-9a-f-]{36}$/);
@@ -178,8 +215,10 @@ if (!HAS_REDIS) {
     // Crash simulation: key disappears but the member lingers.
     const deadId = `worker-${randomUUID()}`;
     await workerConnection.sadd('crewly:ops:workers:' + livePrefix.replace('crewly:', ''), deadId);
-    await sleep(50);
-    const states2 = await getWorkerStates(workerConnection);
+    const states2 = await pollUntil(
+      () => getWorkerStates(workerConnection),
+      (snapshot) => snapshot.workers.some((w) => w.workerId === deadId)
+    );
     const dead = states2.workers.find((w) => w.workerId === deadId);
     assert.ok(dead, 'lingering member listed');
     assert.equal(dead.status, 'OFFLINE', 'expired key = OFFLINE');
@@ -187,18 +226,23 @@ if (!HAS_REDIS) {
     // Graceful stop → OFFLINE exactly (key deleted), queues visible.
     await heartbeat.stop();
     heartbeat = null;
-    const states3 = await getWorkerStates(workerConnection);
+    const states3 = await pollUntil(
+      () => getWorkerStates(workerConnection),
+      (snapshot) => snapshot.online === 0
+    );
     assert.equal(states3.online, 0, 'worker gone after graceful stop');
 
-    const overview = await getOpsOverview({
-      getQueue,
-      getRedisClient: () => workerConnection,
-      getRedisStatus: () => ({ state: 'up', reason: '' }),
-      classifySafeReason: (e) => String(e?.message || 'error').slice(0, 80),
-    });
+    const overview = await readOverview((snapshot) => snapshot.workers.online === 0);
     assert.equal(overview.workers.online, 0, 'worker down is visible');
     assert.ok(Array.isArray(overview.queues), 'queues remain visible while worker is down');
-    assert.equal(overview.queues.length, 7);
+    // Derived from the allowlist, never a literal: Phase 29.6 added the
+    // payroll queue and this line went stale unnoticed. Only a LIVE run can
+    // catch that, which is exactly what this suite is for.
+    assert.equal(
+      overview.queues.length,
+      OPS_QUEUES.length,
+      'every implemented queue stays visible in ops'
+    );
   });
 
   test('controlled failed job → ops retry → COMPLETED (real queue + worker)', async () => {
@@ -231,12 +275,9 @@ if (!HAS_REDIS) {
     const jobId = `ops-live-nr-${randomUUID()}`;
     let calls = 0;
     const name = `ops-live-nr-${randomUUID().slice(0, 8)}`;
-    registerProcessor(name, async (job) => {
+    registerProcessor(name, async () => {
       calls += 1;
-      await job.moveToFailed(
-        new Error('Tenant mismatch: job company does not match'),
-        job.token
-      );
+      throw new UnrecoverableError('Tenant mismatch: job company does not match');
     });
     await enqueueJob(
       QUEUE_NAMES.SYSTEM,
@@ -274,13 +315,12 @@ if (!HAS_REDIS) {
       { requestedAt: new Date().toISOString(), correlationId: randomUUID() },
       { jobId }
     );
-    await waitForState(systemQueue, jobId, ['failed']);
+    const failedJob = await waitForState(systemQueue, jobId, ['failed']);
+    assert.ok(failedJob, 'the controlled security job must reach FAILED');
 
-    const overview = await getOpsOverview({
-      getQueue,
-      getRedisClient: () => workerConnection,
-      getRedisStatus: () => ({ state: 'up', reason: '' }),
-      classifySafeReason: (e) => String(e?.message || 'error').slice(0, 80),
+    const overview = await readOverview((snapshot) => {
+      const entry = snapshot.queues.find((q) => q.name === QUEUE_NAMES.SYSTEM);
+      return (entry?.counts?.failed ?? 0) >= 1;
     });
     const system = overview.queues.find((q) => q.name === QUEUE_NAMES.SYSTEM);
     assert.ok(system.counts.failed >= 1, 'system queue shows the failed job');
@@ -295,7 +335,15 @@ if (!HAS_REDIS) {
     );
     const mongoose = (await import('mongoose')).default;
     if (mongoose.connection.readyState !== 1) {
-      await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 10000 });
+      try {
+        await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 10000 });
+      } catch {
+        assert.fail(
+          'MONGO_URI is set but MongoDB is unreachable - the reconciliation ' +
+            'step needs a live MongoDB. Run the first four steps alone with: ' +
+            'node --test --test-name-pattern "heartbeat|retry|tenant|overview" test/opsQueueOpsLive.test.js'
+        );
+      }
     }
     const EmailDelivery = (await import('../src/models/EmailDelivery.js')).default;
 

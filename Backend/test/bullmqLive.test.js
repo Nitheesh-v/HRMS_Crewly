@@ -140,8 +140,14 @@ if (!RUN) {
     assert.ok(done, 'job should complete within 30s');
     const state = await done.getState();
     assert.equal(state, 'completed');
-    assert.equal(done.attemptsMade, 1, 'exactly one controlled failure');
+    // attemptsStarted is the exact "how many attempts ran" counter, so
+    // 2 proves precisely ONE controlled failure. (BullMQ >= 5.12 also
+    // counts the successful attempt in attemptsMade, so it ends at 2 —
+    // asserting 1 there was a stale expectation, verified against a
+    // live Redis 7.2.5 with bullmq 6.3.1.)
     assert.equal(done.attemptsStarted, 2, 'second attempt ran');
+    assert.ok(Number(done.attemptsMade) >= 2, `both attempts must be recorded (attemptsMade=${done.attemptsMade})`);
+    assert.equal(done.returnvalue.attemptsStarted, 2, 'processor saw attempt 2');
     assert.equal(done.returnvalue.ok, true);
   });
 }
