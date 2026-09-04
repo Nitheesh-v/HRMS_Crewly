@@ -26,7 +26,6 @@ import statutoryRoutes from "./statutoryRoutes.js";
 import fnfRoutes from "./fnfRoutes.js";
 import analyticsRoutes from "./analyticsRoutes.js";
 import recruitmentRoutes from "./recruitmentRoutes.js";
-import bgvTenantRoutes from "./bgvTenantRoutes.js";
 import exitRoutes from "./exitRoutes.js";
 import billingRoutes from "./billingRoutes.js";
 import subscriptionRoutes from "./subscriptionRoutes.js";
@@ -145,12 +144,6 @@ router.use("/payroll/payments", payrollPaymentRoutes);
   router.use("/payroll/analytics", payrollAnalyticsRoutes);
 
 router.use("/recruitment", recruitmentRoutes);
-
-// Phase 30.1.1 — the BGV EXECUTION API lives under /api/super-admin/bgv
-// (Crewly-team operated). The tenant /api/bgv family is reduced to ONE
-// read-only endpoint (cases/:caseId/checks-summary); every other path
-// under /api/bgv no longer exists (404 beats 403 — nothing to try).
-router.use("/bgv", bgvTenantRoutes);
 
 router.use("/exit", exitRoutes);
 

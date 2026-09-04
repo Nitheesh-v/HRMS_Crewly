@@ -2,12 +2,12 @@ import jwt from 'jsonwebtoken';
 import env from '../config/env.js';
 import AdminSession from '../models/AdminSession.js';
 
-// Phase 30.1.1 — single source of truth lives in utils/constants.js
-// (pure module — models/services can use it without importing the
-// env/JWT chain). Re-exported here so existing imports keep working.
-import { PLATFORM_ROLES as PLATFORM_ROLES_SOURCE } from '../utils/constants.js';
-
-export const PLATFORM_ROLES = PLATFORM_ROLES_SOURCE;
+export const PLATFORM_ROLES = [
+  'SUPER_ADMIN',
+  'PLATFORM_ADMIN',
+  'SUPPORT_ADMIN',
+  'BILLING_ADMIN',
+];
 
 export const PLATFORM_PERMISSIONS = {
   SUPER_ADMIN: ['*'],
@@ -21,10 +21,6 @@ export const PLATFORM_PERMISSIONS = {
     'audit:read',
     'settings:manage',
     'revenue:read',
-    // 30.1.1 — BGV operations queue: verify work + assign/reopen/seed.
-    'bgv:read',
-    'bgv:verify',
-    'bgv:assign',
     // 28.8: can VIEW queue/worker/cache operations, but cannot
     // retry, remove, pause, run reconciliation, or invalidate
     // (those require operations:manage — SUPER_ADMIN only).
@@ -36,12 +32,6 @@ export const PLATFORM_PERMISSIONS = {
     'companies:read',
     'users:read',
     'support:manage',
-  ],
-
-  'BGV_TEAM': [
-    'dashboard:read',
-    'bgv:read',
-    'bgv:verify',
   ],
 
   BILLING_ADMIN: [

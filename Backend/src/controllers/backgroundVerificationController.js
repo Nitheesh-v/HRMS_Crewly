@@ -1,6 +1,5 @@
 import ApiResponse from '../utils/ApiResponse.js';
 import asyncHandler from '../utils/asyncHandler.js';
-import { tenantChecksSummary } from '../services/bgv/bgvCheckService.js';
 import {
   assignBgvVerifier,
   cancelBackgroundVerification,
@@ -131,16 +130,12 @@ export const bgvCaseDetail = asyncHandler(async (req, res) => {
 export const bgvCaseStart = asyncHandler(async (req, res) => {
   // Data from frontend - requests from frontend
   const { candidateId } = req.params;
-  // Phase 30.1 — optional verification-input snapshot (additive to
-  // the 27.15 contract: an empty body behaves exactly as before).
-  const verificationInputs = req.body?.verificationInputs || null;
   // DB Logic - DB logics
   const data = await startBackgroundVerification({
     companyId: req.companyId,
     candidateRef: candidateId,
     actorId: actorId(req),
     requestContext: req,
-    verificationInputs,
   });
   // Data to frontend - response to frontend
   return ApiResponse.created(res, {
@@ -243,27 +238,6 @@ export const candidateBgvSummary = asyncHandler(async (req, res) => {
   // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: 'Candidate BGV summary fetched',
-    data,
-  });
-});
-
-// Phase 30.1.1 — the tenant's read-only view of Crewly verification:
-// [{ checkType, status, updatedAt }] per check. Nothing else — no
-// evidence, no verifier notes, no call logs, no assignee names
-// (the final report is a 30.7 deliverable). Mounted at
-// GET /api/bgv/cases/:caseId/checks-summary on the 27.15 case-read
-// permission; this is ALL the /api/bgv family is now.
-export const bgvCaseChecksSummary = asyncHandler(async (req, res) => {
-  // Data from frontend - requests from frontend
-  const { caseId } = req.params;
-  // DB Logic - DB logics
-  const data = await tenantChecksSummary({
-    companyId: req.companyId,
-    caseId,
-  });
-  // Data to frontend - response to frontend
-  return ApiResponse.success(res, {
-    message: 'BGV checks summary fetched',
     data,
   });
 });

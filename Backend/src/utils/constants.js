@@ -1,8 +1,6 @@
 export const ROLES = {
   SUPER_ADMIN: 'SUPER_ADMIN',
   PLATFORM_ADMIN: 'PLATFORM_ADMIN',
-  // Phase 30.1.1 — Crewly-internal background-verification team.
-  BGV_TEAM: 'BGV_TEAM',
 SUPPORT_ADMIN: 'SUPPORT_ADMIN',
 BILLING_ADMIN: 'BILLING_ADMIN',
   COMPANY_ADMIN: 'COMPANY_ADMIN',
@@ -11,19 +9,6 @@ BILLING_ADMIN: 'BILLING_ADMIN',
   TEAM_LEAD: 'TEAM_LEAD',
   EMPLOYEE: 'EMPLOYEE',
 };
-
-// Phase 30.1.1 — roles allowed inside the Crewly super-admin portal.
-// Single source of truth (superAdminAuth re-exports this; BGV check
-// service imports THIS so it never drags env/JWT into hermetic tests).
-export const PLATFORM_ROLES = [
-  'SUPER_ADMIN',
-  'PLATFORM_ADMIN',
-  'SUPPORT_ADMIN',
-  'BILLING_ADMIN',
-  // BGV verification is executed by the Crewly team, never by
-  // tenant companies. BGV_TEAM is that working role.
-  'BGV_TEAM',
-];
 
 export const ROLE_LIST = Object.values(ROLES);
 

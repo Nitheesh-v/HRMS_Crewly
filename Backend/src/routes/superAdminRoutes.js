@@ -12,9 +12,6 @@ import * as subscriptions from "../controllers/superAdminSubscriptionController.
 import * as operations from "../controllers/superAdminOperationsController.js";
 import * as queueOps from "../controllers/superAdminQueueOpsController.js";
 import { securityRateLimit } from "../middlewares/securityRateLimit.js";
-// Phase 30.1.1 — BGV verification is Crewly-platform operated; the
-// workbench/execution API lives HERE, never in a tenant route family.
-import bgvCheckRoutes from "./bgvCheckRoutes.js";
 import {
   platformCompanyRoles,
 } from '../controllers/rolePermissionController.js';
@@ -42,9 +39,6 @@ router.get("/auth/sessions", auth.sessions);
 router.post("/auth/logout-others", auth.logoutOthers);
 router.patch("/auth/change-password", auth.changePassword);
 router.patch("/auth/2fa", auth.setTwoFactor);
-
-// Phase 30.1.1 — BGV Verifier Workbench (execution is platform-only).
-router.use("/bgv", bgvCheckRoutes);
 
 router.get("/dashboard", permit("dashboard:read"), dashboard.dashboard);
 router.get("/dashboard/charts", permit("dashboard:read"), dashboard.charts);

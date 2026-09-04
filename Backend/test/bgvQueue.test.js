@@ -56,8 +56,12 @@ const makeCase = (over = {}) => ({
   providerSubmission: { providerRequestId: null, submittedAt: null },
   polling: { status: 'NOT_APPLICABLE', attempts: 0, nextPollAt: null, stopReason: '' },
   assignedVerifier: null,
-  startedAt: new Date('2026-08-28T00:00:00.000Z'),
-  updatedAt: new Date('2026-08-28T00:00:00.000Z'),
+  // Relative, never a baked-in calendar date: a fixed 2026-08-28 made
+  // every default-fixture poll test flip to MAX_POLL_WINDOW exactly 7
+  // days later (Date.now()-based guard in bgvProcessor) — found during
+  // the 30.1.1 manual run on Sep 4.
+  startedAt: new Date(Date.now() - 3600000),
+  updatedAt: new Date(Date.now() - 3600000),
   ...over,
 });
 

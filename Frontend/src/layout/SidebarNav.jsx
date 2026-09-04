@@ -177,6 +177,7 @@ const NAV_GROUPS = [
     label: "Recruitment",
     icon: ClipboardList,
     paths: ["/app/recruitment"],
+    prefixes: ["/app/recruitment"],
   },
 
   {

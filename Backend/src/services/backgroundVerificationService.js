@@ -21,57 +21,9 @@ import { recordAudit } from '../utils/securityauditService.js';
 import { scheduleBgvCaseProcessing, cancelBgvJobs } from './bgvQueueDispatcher.js';
 import { scheduleBgvReminder } from './reminderSchedulingService.js';
 import { getBgvReminderPolicy } from '../config/queueConfig.js';
-// Phase 30.1 — framework-level BgvCheck rows (Verifier Workbench).
-// Import direction is one-way (this file → bgvCheckService); the check
-// service never imports this one, so there is no cycle.
-import { seedChecksForCase } from './bgv/bgvCheckService.js';
 
 const isObjectId = (value) => mongoose.isValidObjectId(value);
 const clean = (value, max = 2000) => String(value || '').trim().slice(0, max);
-
-const dateOrNull = (value) => {
-  if (!value) return null;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
-
-// Phase 30.1 — verification-input snapshot at case start. Everything
-// here is candidate-CLAIMED data; only verification changes truth.
-const sanitizeVerificationInputs = (payload = {}) => {
-  const list = (value) => (Array.isArray(value) ? value.slice(0, 10) : []);
-  return {
-    addressHistory: list(payload.addressHistory).map((item = {}) => ({
-      kind: ['PERMANENT', 'CURRENT', 'PREVIOUS'].includes(String(item.kind || '').toUpperCase())
-        ? String(item.kind).toUpperCase()
-        : 'PREVIOUS',
-      line: clean(item.line, 300),
-      city: clean(item.city, 120),
-      district: clean(item.district, 120),
-      state: clean(item.state, 120),
-      pinCode: clean(item.pinCode, 10),
-      fromDate: dateOrNull(item.fromDate),
-      toDate: dateOrNull(item.toDate),
-    })),
-    fatherName: clean(payload.fatherName, 160),
-    pastEmployers: list(payload.pastEmployers).map((item = {}) => ({
-      orgName: clean(item.orgName, 160),
-      hrEmail: clean(item.hrEmail, 254).toLowerCase(),
-      hrPhone: clean(item.hrPhone, 24),
-      designation: clean(item.designation, 120),
-      employeeId: clean(item.employeeId, 60),
-      fromDate: dateOrNull(item.fromDate),
-      toDate: dateOrNull(item.toDate),
-      salaryVisibleOk: Boolean(item.salaryVisibleOk),
-    })),
-    education: list(payload.education).map((item = {}) => ({
-      institution: clean(item.institution, 200),
-      university: clean(item.university, 200),
-      rollNumber: clean(item.rollNumber, 80),
-      yearOfPassing: Number(item.yearOfPassing) || null,
-      degree: clean(item.degree, 120),
-    })),
-  };
-};
 
 const DEFAULT_CHECK_TYPES = [
   {
@@ -576,15 +528,12 @@ export const getBgvSettings = async ({ companyId, actorId }) => {
     consentRequired: settings.consentRequired,
     bgvRequiredBeforeConversion: settings.bgvRequiredBeforeConversion,
     bgvRequiredBeforeJoining: settings.bgvRequiredBeforeJoining,
-    // Phase 30.1 — Verifier Workbench framework config.
-    checkConfig: settings.checkConfig && typeof settings.checkConfig === 'object' ? settings.checkConfig : {},
-    fieldVisitGeoInAudit: settings.fieldVisitGeoInAudit !== false,
     updatedAt: settings.updatedAt,
   };
 };
 
 export const updateBgvSettings = async ({ companyId, actorId, payload = {} }) => {
-  const current = await ensureDefaultBgvConfiguration({ companyId, actorId });
+  await ensureDefaultBgvConfiguration({ companyId, actorId });
   const updates = { updatedBy: actorId };
   [
     'enabled',
@@ -596,36 +545,6 @@ export const updateBgvSettings = async ({ companyId, actorId, payload = {} }) =>
   });
   if (payload.triggerStage !== undefined) {
     updates.triggerStage = String(payload.triggerStage).toUpperCase();
-  }
-  if (payload.fieldVisitGeoInAudit !== undefined) {
-    updates.fieldVisitGeoInAudit = Boolean(payload.fieldVisitGeoInAudit);
-  }
-  // Phase 30.1 — per-check-type framework config (whitelisted keys,
-  // bounded SLA days; unknown types rejected, never silently stored).
-  if (payload.checkConfig !== undefined) {
-    const incoming = payload.checkConfig;
-    if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) {
-      throw ApiError.badRequest('checkConfig must be an object of check types');
-    }
-    const allowedTypes = ['IDENTITY', 'ADDRESS', 'EDUCATION', 'EMPLOYMENT', 'COURT_RECORD'];
-    const next = { ...(current.checkConfig && typeof current.checkConfig === 'object' ? current.checkConfig : {}) };
-    for (const [rawType, rawConfig] of Object.entries(incoming)) {
-      const checkType = String(rawType).toUpperCase();
-      if (!allowedTypes.includes(checkType)) {
-        throw ApiError.badRequest(`Unknown BGV check type in configuration: ${checkType}`);
-      }
-      const existing = next[checkType] || {};
-      const config = rawConfig && typeof rawConfig === 'object' ? rawConfig : {};
-      const slaDays = config.slaDays === undefined ? existing.slaDays ?? 10 : Math.trunc(Number(config.slaDays));
-      if (!Number.isInteger(slaDays) || slaDays < 1 || slaDays > 90) {
-        throw ApiError.badRequest('SLA days must be between 1 and 90');
-      }
-      next[checkType] = {
-        required: config.required === undefined ? existing.required !== false : Boolean(config.required),
-        slaDays,
-      };
-    }
-    updates.checkConfig = next;
   }
 
   const settings = await BackgroundVerificationSettings.findOneAndUpdate(
@@ -758,7 +677,6 @@ export const startBackgroundVerification = async ({
   candidateRef,
   actorId,
   requestContext = null,
-  verificationInputs = null,
 }) => {
   if (!isObjectId(actorId)) throw ApiError.badRequest('A valid actor is required');
 
@@ -833,7 +751,6 @@ export const startBackgroundVerification = async ({
       job: candidate.job,
       offer: offer?._id || null,
       preOnboarding: preOnboarding?._id || null,
-      ...sanitizeVerificationInputs(verificationInputs || {}),
       status: 'IN_PROGRESS',
       triggerStage: settings.triggerStage,
       provider: 'INTERNAL',
@@ -912,10 +829,6 @@ export const startBackgroundVerification = async ({
   // (never-throwing; Mongo case/checks are already committed, so a
   // queue failure loses nothing — queue:reconcile re-derives it).
   scheduleBgvCaseProcessing(caseRecord).catch(() => {});
-  // Phase 30.1: framework BgvCheck rows for the Verifier Workbench.
-  // Idempotent + never fatal — POST /api/bgv/cases/:caseId/seed-checks
-  // back-fills if this fire-and-forget is lost.
-  seedChecksForCase({ companyId, caseId: caseRecord._id, actorId }).catch(() => {});
   const bgvReminderPolicy = getBgvReminderPolicy();
   if (settings.consentRequired) {
     scheduleBgvReminder({

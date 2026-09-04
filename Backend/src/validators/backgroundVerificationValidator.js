@@ -21,10 +21,6 @@ export const bgvSettingsUpdateRules = [
     .optional()
     .isIn(BGV_TRIGGER_STAGES)
     .withMessage('Choose a valid BGV trigger stage'),
-  // Phase 30.1 — Verifier Workbench framework config (validated +
-  // whitelisted in the service).
-  body('checkConfig').optional().isObject(),
-  body('fieldVisitGeoInAudit').optional().isBoolean(),
   validate,
 ];
 
@@ -69,13 +65,6 @@ export const bgvCaseIdRules = [
 
 export const bgvStartRules = [
   param('candidateId').trim().notEmpty().isLength({ max: 40 }),
-  // Phase 30.1 — optional verification-input snapshot (bounded here,
-  // sanitized in the service). Omitting it keeps 27.15 behaviour.
-  body('verificationInputs').optional().isObject(),
-  body('verificationInputs.addressHistory').optional().isArray({ max: 10 }),
-  body('verificationInputs.pastEmployers').optional().isArray({ max: 10 }),
-  body('verificationInputs.education').optional().isArray({ max: 10 }),
-  body('verificationInputs.fatherName').optional().isLength({ max: 160 }),
   validate,
 ];
 
