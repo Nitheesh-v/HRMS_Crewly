@@ -87,6 +87,8 @@ import RecruitmentDashboardPage from "../pages/recruitment/RecruitmentDashboardP
 import BackgroundVerificationPage from "../pages/recruitment/BackgroundVerificationPage.jsx";
 import BackgroundVerificationDetailPage from "../pages/recruitment/BackgroundVerificationDetailPage.jsx";
 import BackgroundVerificationSettingsPage from "../pages/recruitment/BackgroundVerificationSettingsPage.jsx";
+import SuperAdminBgvWorkbenchPage from "../pages/admin/SuperAdminBgvWorkbenchPage.jsx";
+import SuperAdminBgvCheckDetailPage from "../pages/admin/SuperAdminBgvCheckDetailPage.jsx";
 import CandidateDetailPage from "../pages/recruitment/CandidateDetailPage.jsx";
 import CandidateInboxPage from "../pages/recruitment/CandidateInboxPage.jsx";
 import RequisitionApprovalsPage from "../pages/recruitment/RequisitionApprovalsPage.jsx";
@@ -859,6 +861,18 @@ const AppRoutes = () => (
         element={
           <SuperAdminOperationsPage mode="settings" />
         }
+      />
+
+      {/* Phase 30.1.1 — BGV verification is Crewly-operated: the
+          Verifier Workbench lives INSIDE this portal, never tenant-side. */}
+      <Route
+        path="bgv"
+        element={<SuperAdminBgvWorkbenchPage />}
+      />
+
+      <Route
+        path="bgv/checks/:checkId"
+        element={<SuperAdminBgvCheckDetailPage />}
       />
     </Route>
 

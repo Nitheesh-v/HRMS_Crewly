@@ -195,6 +195,14 @@ export const DEFAULT_PERMISSIONS = [
 
   ...actions("BACKGROUND_VERIFICATION_SETTINGS", ["READ", "MANAGE"]),
 
+  // Phase 30.1.1 — BGV EXECUTION is Crewly-platform operated (see
+  // superAdminAuth PLATFORM_PERMISSIONS: bgv:read / bgv:verify / bgv:assign
+  // under /api/super-admin/bgv). Tenants keep only the 27.15 company
+  // permissions: request, consent, progress view, case decision.
+  // The six BGV_CHECK_*/BGV_EVIDENCE_* company permissions drafted in
+  // 30.1 were retired here; scripts/migratePhase30BgvPermissions.js
+  // revokes them from tenant roles that already received them.
+
   ...actions("REQUISITION", [
     "READ",
     "CREATE",

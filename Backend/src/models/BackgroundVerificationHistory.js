@@ -17,6 +17,11 @@ export const BGV_HISTORY_ACTIONS = [
   'BGV_REVIEWED',
   'BGV_COMPLETED',
   'BGV_CANCELLED',
+  // Phase 28.6 wrote these two actions already, but the enum never
+  // included them — the history insert failed validation and the
+  // caller's .catch(() => {}) swallowed it silently. Fixed in 30.1.
+  'BGV_CHECK_PROVIDER_VERIFIED',
+  'BGV_CONSENT_DECLINED',
 ];
 
 const backgroundVerificationHistorySchema = new mongoose.Schema(

@@ -63,7 +63,18 @@ export const ensurePermissions = async () => {
 //   22 → 23 : 29.9 gave HR_MANAGER and FINANCE_MANAGER PAYSLIP_READ
 //   23 → 24 : 29.10 added PAYROLL_STATUTORY_FILING and gave
 //             PAYROLL_ADMIN / FINANCE_MANAGER the statutory duties
-const SYSTEM_PERMISSION_VERSION = 26;
+//   26 → 27 : 30.1 BGV check framework drafted six tenant-side
+//             BGV_CHECK_*/BGV_EVIDENCE_* permissions (short-lived).
+//   27 → 28 : 30.1.1 RETIRES those six — BGV verification is
+//             Crewly-platform operated (bgv:read/verify/assign in
+//             PLATFORM_PERMISSIONS), tenants keep only the 27.15
+//             BACKGROUND_VERIFICATION_* set. No new defaults are
+//             added; the bump marks the catalog state, and
+//             scripts/migratePhase30BgvPermissions.js performs the
+//             removal ($pull — role migration here only ADDS, the
+//             registry no longer lists the BGV family so the
+//             $addToSet pass cannot resurrect them).
+const SYSTEM_PERMISSION_VERSION = 28;
 export const ensureCompanyRoles = async (companyId, createdBy = null) => {
   const permissions = await ensurePermissions();
 

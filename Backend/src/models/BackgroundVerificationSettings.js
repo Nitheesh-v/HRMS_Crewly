@@ -23,6 +23,15 @@ const backgroundVerificationSettingsSchema = new mongoose.Schema(
       enum: ['INTERNAL'],
       default: 'INTERNAL',
     },
+    // Phase 30.1 — per-check-type framework configuration for the
+    // Verifier Workbench. Shape: { IDENTITY: { required, slaDays }, ... }.
+    // Missing types default to required: true with a 10-day SLA (the
+    // pure rules module applies the defaults; Mixed keeps lean reads
+    // plain-object and the service whitelists keys on update).
+    checkConfig: { type: mongoose.Schema.Types.Mixed, default: {} },
+    // Field-visit geo evidence may appear in AUDIT rows (reduced
+    // precision) by default; tenants may turn it off.
+    fieldVisitGeoInAudit: { type: Boolean, default: true },
     consentRequired: { type: Boolean, default: true },
     bgvRequiredBeforeConversion: { type: Boolean, default: false },
     bgvRequiredBeforeJoining: { type: Boolean, default: false },
