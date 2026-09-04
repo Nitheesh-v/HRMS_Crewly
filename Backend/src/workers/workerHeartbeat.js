@@ -50,6 +50,63 @@ export const workerMemberKey = () =>
 const MAX_MEMBER_SET_SIZE = 200;
 const SHUTTING_DOWN_TTL_SECONDS = 10;
 
+// --- Stale member cleanup (Phase 30.1.2) --------------------------
+//
+// A worker removes itself from the discovery set on a GRACEFUL stop. A killed
+// process (nodemon restarts, a container SIGKILL, a laptop sleep) leaves its
+// id behind forever: the heartbeat KEY expires with its TTL, but a set member
+// cannot expire. That is not a correctness bug - the ops UI already reports
+// those as OFFLINE - but it makes every discovery read (ops page, doctor)
+// walk a growing list of ghosts, up to the 200-member ceiling.
+//
+// So the heartbeat owner, which is already connected and already beating,
+// tidies up: occasionally, if the set is bigger than a live fleet can explain,
+// it asks for every member's heartbeat value in ONE MGET and drops the ids
+// whose key is gone. Bounded by cadence and by batch size, never touches a
+// key another worker still holds, and is fully best-effort.
+const PRUNE_MIN_MEMBERS = 4;
+const DEFAULT_PRUNE_EVERY_NTH_BEAT = 10; // ~150s at the default 15s interval
+const MAX_PRUNE_PER_BEAT = 25;
+
+/**
+ * Remove member ids whose heartbeat key no longer exists.
+ * @param {import('ioredis')} connection
+ * @param {string} memberKey
+ * @param {string} selfId  this worker's id - never pruned
+ * @returns {Promise<{checked:number, pruned:number}>}
+ */
+export const pruneStaleMembers = async (connection, memberKey, selfId) => {
+  const empty = { checked: 0, pruned: 0 };
+  if (!connection) return empty;
+  try {
+    const ids = await connection.smembers(memberKey);
+    if (!Array.isArray(ids) || ids.length <= PRUNE_MIN_MEMBERS) {
+      return { checked: ids?.length ?? 0, pruned: 0 };
+    }
+    // One round trip for the whole fleet: a missing value means the key's TTL
+    // lapsed, i.e. that process is gone.
+    const values = await connection.mget(ids.map((id) => heartbeatKeyFor(id)));
+    if (!Array.isArray(values)) return { checked: ids.length, pruned: 0 };
+    const stale = [];
+    ids.forEach((id, index) => {
+      if (id === selfId) return;
+      if (values[index] === null || values[index] === undefined) stale.push(id);
+    });
+    if (stale.length === 0) return { checked: ids.length, pruned: 0 };
+    const batch = stale.slice(0, MAX_PRUNE_PER_BEAT);
+    for (const id of batch) {
+      await connection.srem(memberKey, id);
+    }
+    logger.debug(
+      `[Worker] Heartbeat member set pruned (${batch.length} dead worker id(s) removed, ${stale.length - batch.length} left for a later beat)`
+    );
+    return { checked: ids.length, pruned: batch.length };
+  } catch {
+    // Cleanup is visibility hygiene; it must never affect job processing.
+    return empty;
+  }
+};
+
 /**
  * Start the process heartbeat.
  * @param {import('ioredis')} connection worker-owned ioredis instance
@@ -59,6 +116,14 @@ export const startWorkerHeartbeat = (connection, source = process.env) => {
   const intervalMs = clampInt(
     source.OPS_WORKER_HEARTBEAT_INTERVAL_MS, 15000, 5000, 60000
   );
+  // Ops override (1 = sweep on every beat, useful right after a crash loop to
+  // watch the ghost list collapse); clampInt keeps invalid values at default.
+  const pruneEveryNthBeat = clampInt(
+    source.OPS_WORKER_HEARTBEAT_PRUNE_EVERY_N_BEATS,
+    DEFAULT_PRUNE_EVERY_NTH_BEAT,
+    1,
+    1000
+  );
   const ttlSeconds = clampInt(
     source.OPS_WORKER_HEARTBEAT_TTL_SECONDS, 60, 15, 300
   );
@@ -67,6 +132,7 @@ export const startWorkerHeartbeat = (connection, source = process.env) => {
   let timer = null;
   let stopped = false;
   let inFlight = false;
+  let beatCount = 0;
   let lastFailureLog = 0;
   const FAILURE_LOG_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -91,6 +157,11 @@ export const startWorkerHeartbeat = (connection, source = process.env) => {
         if (size > MAX_MEMBER_SET_SIZE) {
           await connection.srem(memberKey, workerId);
         }
+      }
+      // Occasionally sweep the ghosts a killed process left behind.
+      beatCount += 1;
+      if (beatCount % pruneEveryNthBeat === 0) {
+        await pruneStaleMembers(connection, memberKey, workerId);
       }
     } catch {
       // Heartbeat is best-effort visibility; a Redis blip must

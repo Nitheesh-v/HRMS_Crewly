@@ -395,16 +395,36 @@ const checkCommands = async (client) => {
 };
 
 
-const checkEviction = async (client, maxMemoryBytes = 0) => {
+// Redis Cloud, Upstash and friends hide CONFIG GET but still expose the
+// policy through INFO - which is exactly where BullMQ reads it before it
+// prints "IMPORTANT! Eviction policy is ...". Reading it the same way turns a
+// dead-end SKIP on those providers into the real answer.
+const readMaxMemoryPolicy = async (client) => {
   const config = await withTimeout('config.maxmemory', client.config('GET', 'maxmemory-policy'));
-  if (failed(config) || !Array.isArray(config) || config.length === 0) {
-    report('eviction', 'SKIP', 'CONFIG GET maxmemory-policy is not permitted here', `confirm the policy in the console - allkeys-* can evict queue keys. ${hintFor('CONFIG')}`);
+  if (!failed(config) && Array.isArray(config) && config.length >= 2 && config[1]) {
+    return { policy: String(config[1]), source: 'CONFIG GET' };
+  }
+  const info = await withTimeout('info.eviction', client.info('memory'));
+  if (!failed(info)) {
+    const fromInfo = parseInfo(info).get('maxmemory_policy');
+    if (fromInfo) return { policy: String(fromInfo), source: 'INFO' };
+  }
+  return null;
+};
+
+const checkEviction = async (client, maxMemoryBytes = 0) => {
+  const read = await readMaxMemoryPolicy(client);
+  if (!read) {
+    report('eviction', 'SKIP', 'neither CONFIG GET nor INFO exposes maxmemory-policy here', `read the policy in the console - allkeys-* can evict queue keys. ${hintFor('CONFIG')}`);
     return true;
   }
-  const policy = String(config[1] ?? 'unknown');
+  const policy = read.policy;
+  // Says where the number came from, because an INFO-derived policy is as
+  // good as the CONFIG one (it is what BullMQ itself warns about).
+  const sourceNote = read.source === 'CONFIG GET' ? '' : ' - read via INFO, the same field BullMQ reads';
   const risky = policy.startsWith('allkeys-');
   if (risky) {
-    report('eviction', 'FAIL', `maxmemory-policy=${policy}`, 'This policy can evict BullMQ queue/cache keys under memory pressure and silently lose jobs — set noeviction (or use a dedicated Redis)');
+    report('eviction', 'FAIL', `maxmemory-policy=${policy}${sourceNote}`, 'This policy can evict BullMQ queue/cache keys under memory pressure and silently lose jobs — set noeviction (or use a dedicated Redis)');
     return false;
   }
   if (policy.startsWith('volatile-')) {
@@ -418,10 +438,10 @@ const checkEviction = async (client, maxMemoryBytes = 0) => {
     const capNote = maxMemoryBytes > 0
       ? `a maxmemory cap is set (${Math.round(maxMemoryBytes / 1048576)} MB): at the cap, TTL keys such as the BullMQ rate-limiter and events retention get evicted and then writes fail with -OOM`
       : 'no maxmemory cap reported, so eviction cannot trigger today - but the risk appears the moment a cap or a full instance is in play';
-    report('eviction', 'WARN', `maxmemory-policy=${policy}`, `BullMQ warns about this on every connection. ${capNote}. Change it to noeviction in the provider configuration - no code change, no data migration, restart the worker so the warning clears. ${hintFor('CONFIG')}`);
+    report('eviction', 'WARN', `maxmemory-policy=${policy}${sourceNote}`, `BullMQ warns about this on every connection. ${capNote}. Change it to noeviction in the provider configuration - no code change, no data migration, restart the worker so the warning clears. ${hintFor('CONFIG')}`);
     return true;
   }
-  report('eviction', 'OK', `maxmemory-policy=${policy} — matches the BullMQ requirement (no startup warnings)`);
+  report('eviction', 'OK', `maxmemory-policy=${policy}${sourceNote} - matches the BullMQ requirement (no startup warnings)`);
   return true;
 };
 

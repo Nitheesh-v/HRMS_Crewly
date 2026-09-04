@@ -20,6 +20,7 @@
 // ============================================================
 
 import { test, describe } from 'node:test';
+import mongoose from 'mongoose';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -66,11 +67,15 @@ const {
   OPS_FAILED_PAGE_MAX,
   RECONCILE_MAX_LIMIT,
   RECONCILE_AREAS,
+  classifyAuditFailure,
+  buildOpsAuditDoc,
 } = await import('../src/services/opsQueueService.js');
+const { default: AuditLog } = await import('../src/models/AuditLog.js');
 
 const {
   startWorkerHeartbeat,
   classifyWorkerState,
+  pruneStaleMembers,
   heartbeatKeyFor,
   workerMemberKey,
 } = await import('../src/workers/workerHeartbeat.js');
@@ -177,6 +182,7 @@ const makeFakeRedis = () => {
     },
     sadd: async (_key, member) => (members.has(member) ? 0 : (members.add(member), 1)),
     smembers: async () => [...members],
+    mget: async (keys) => keys.map((key) => (store.has(key) ? store.get(key) : null)),
     scard: async () => members.size,
     srem: async (_key, member) => {
       log.srem.push(member);
@@ -197,10 +203,16 @@ const makeFakeAudit = () => {
   };
 };
 
+// `AuditLog` is stubbed for the whole file on purpose: a Mongoose write on a
+// model that has no connection does not fail fast — it buffers for
+// bufferTimeoutMS (10 s) and only then errors — so a hermetic test that ever
+// reached the real model would become a 10-second test. Keep it stubbed, and
+// use makeFakeAudit() when you need to assert on what was recorded.
 const baseDeps = (overrides = {}) => ({
   getRedisStatus: () => ({ state: 'up', reason: '' }),
   getRedisClient: () => makeFakeRedis(),
   classifySafeReason: (e) => String(e?.message || 'error').slice(0, 80),
+  AuditLog: { create: async () => {} },
   ...overrides,
 });
 
@@ -1223,6 +1235,60 @@ describe('worker heartbeat', () => {
     await hb.stop();
   });
 
+  test('a killed worker leaves a ghost member; the next sweep removes it', async () => {
+    const redis = makeFakeRedis();
+    const memberKey = workerMemberKey();
+    // Four ghosts: registered, but their heartbeat keys already expired.
+    const ghosts = Array.from({ length: 4 }, (_unused, i) => `worker-ghost-${i}`);
+    ghosts.forEach((id) => redis.members.add(id));
+
+    const hb = startWorkerHeartbeat(redis, {
+      OPS_WORKER_HEARTBEAT_INTERVAL_MS: '100000',
+      OPS_WORKER_HEARTBEAT_TTL_SECONDS: '60',
+    });
+    await new Promise((r) => setTimeout(r, 25)); // first beat lands
+
+    const result = await pruneStaleMembers(redis, memberKey, hb.workerId);
+    assert.equal(result.pruned, 4, 'all dead ids are dropped');
+    ghosts.forEach((id) => assert.ok(!redis.members.has(id), 'ghost removed'));
+    assert.ok(redis.members.has(hb.workerId), 'the live worker keeps its registration');
+    assert.deepEqual(
+      redis.log.srem.filter((id) => id.startsWith('worker-ghost-')).length,
+      4
+    );
+    await hb.stop();
+  });
+
+  test('the sweep is bounded and never prunes a live peer', async () => {
+    const redis = makeFakeRedis();
+    const memberKey = workerMemberKey();
+    // A peer that is still beating: its key exists, so it must survive.
+    const peer = 'worker-ffffffff-ffff-ffff-ffff-ffffffffffff';
+    redis.members.add(peer);
+    redis.store.set(heartbeatKeyFor(peer), JSON.stringify({ state: 'online', ts: Date.now() }));
+    // 30 ghosts: more than one batch (25) may be pruned per call.
+    Array.from({ length: 30 }, (_unused, i) => `worker-dead-${i}`).forEach((id) => redis.members.add(id));
+
+    const first = await pruneStaleMembers(redis, memberKey, 'worker-self');
+    assert.equal(first.pruned, 25, 'one beat prunes at most MAX_PRUNE_PER_BEAT');
+    assert.ok(redis.members.has(peer), 'a live peer is never removed');
+    const second = await pruneStaleMembers(redis, memberKey, 'worker-self');
+    assert.equal(second.pruned, 5, 'the next beat drains the rest');
+    // Below the threshold the sweep does nothing at all (no wasted round trips).
+    const third = await pruneStaleMembers(redis, memberKey, 'worker-self');
+    assert.ok(third.checked <= 4, 'a small set is not swept');
+  });
+
+  test('the sweep is fail-open when Redis misbehaves', async () => {
+    const broken = {
+      smembers: async () => {
+        throw new Error('READONLY you cannot write against a read only replica');
+      },
+    };
+    const result = await pruneStaleMembers(broken, workerMemberKey(), 'worker-self');
+    assert.deepEqual(result, { checked: 0, pruned: 0 }, 'cleanup must never throw into the beat');
+  });
+
   test('stop clears the key and member; single timer', async () => {
     const redis = makeFakeRedis();
     const hb = startWorkerHeartbeat(redis, { OPS_WORKER_HEARTBEAT_INTERVAL_MS: '100000' });
@@ -1405,5 +1471,122 @@ describe('platform permissions', () => {
     await protect(bad.req, bad.res, bad.next);
     assert.ok(bad.getCaptured(), 'error forwarded');
     assert.equal(bad.getCaptured().statusCode, 401);
+  });
+});
+
+describe('audit failure labelling (Phase 30.1.2)', () => {
+  test('a rejected document is labelled by what it is, not as a network error', () => {
+    const castError = Object.assign(new Error('Cast to ObjectId failed for value "live-test"'), {
+      name: 'CastError',
+    });
+    assert.equal(classifyAuditFailure(castError), 'invalid_audit_payload');
+    const validation = Object.assign(new Error('AuditLog validation failed: action: Path `action` is required.'), {
+      name: 'ValidationError',
+    });
+    assert.equal(classifyAuditFailure(validation), 'invalid_audit_payload');
+  });
+
+  test('real connectivity problems keep the safe Redis/socket labels', () => {
+    assert.equal(
+      classifyAuditFailure(Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:27017'), { code: 'ECONNREFUSED' })),
+      'connection_refused'
+    );
+    assert.equal(
+      classifyAuditFailure(new Error('Operation failed: Model "AuditLog" buffering timed out after 10000ms')),
+      'db_unavailable'
+    );
+    assert.equal(classifyAuditFailure(new Error('something odd')), 'connection_error');
+  });
+});
+
+/**
+ * Assert a generated payload against the REAL schema (no connection needed to
+ * validate). This is the check that catches a silently rejected audit row.
+ */
+const assertResolvesValid = async (doc) => {
+  const error = await new AuditLog(doc).validate().then(
+    () => undefined,
+    (err) => err
+  );
+  assert.equal(error, undefined, `row must be accepted by AuditLog: ${error?.message}`);
+};
+
+describe('ops audit payload builder (Phase 30.1.2)', () => {
+  test('a service-level retry with no HTTP request still lands a schema-valid row', async () => {
+    const job = makeFakeJob({ id: '930', failedReason: 'connect ETIMEDOUT 10.0.0.5:6379' });
+    const audit = makeFakeAudit();
+    const deps = baseDeps({
+      getQueue: () => makeFakeQueue({ failedJobs: [job] }),
+      AuditLog: audit,
+    });
+    // The worker reconciler / a script / a queue-admin tool has no req object.
+    const out = await retryJob(
+      { queueName: 'email', jobId: '930', actor: { id: 'admin-uuid-9f2', role: 'SUPER_ADMIN' } },
+      deps
+    );
+    assert.equal(out.ok, true);
+    const entry = audit.entries.find((e) => e.action === 'QUEUE_JOB_RETRIED');
+    assert.ok(entry, 'the audit row is written, not dropped');
+    assert.equal(entry.path, 'internal:ops', 'required field, never an empty string');
+    assert.equal(entry.actor, null, 'a non-hex id nulls the ref instead of throwing');
+    assert.equal(entry.actorRole, 'SUPER_ADMIN', 'the human trace survives');
+    await assertResolvesValid(entry);
+  });
+
+  test('a hung audit write cannot make an operator wait for a dead database', async () => {
+    const job = makeFakeJob({ id: '931', failedReason: 'boom' });
+    const deps = baseDeps({
+      getQueue: () => makeFakeQueue({ failedJobs: [job] }),
+      AuditLog: { create: () => new Promise(() => {}) }, // never settles
+    });
+    const startedAt = Date.now();
+    const out = await retryJob({ queueName: 'email', jobId: '931', actor: {} }, deps);
+    const elapsedMs = Date.now() - startedAt;
+    assert.equal(out.ok, true, 'the operation succeeded and is reported as such');
+    assert.ok(elapsedMs < 3000, `bounded by the audit deadline, took ${elapsedMs} ms`);
+  });
+
+
+  test('a service-level caller with no HTTP request still produces a valid row', async () => {
+    const doc = buildOpsAuditDoc({
+      actor: {}, // the worker reconciler / a script / a test: no path, no method
+      action: 'QUEUE_JOB_REMOVED',
+      metadata: { queue: 'system', jobId: '17', jobName: 'PAYROLL_BATCH', removedState: 'failed' },
+    });
+    assert.equal(doc.path, 'internal:ops', 'path is required; empty used to reject the row');
+    assert.equal(doc.method, 'POST');
+    assert.equal(doc.actor, null);
+    // The real schema, not a mock: this is the assertion that would have caught
+    // the silent data loss (AuditLog.create is fail-open).
+    await assertResolvesValid(doc);
+  });
+
+  test('a non-hex actor id nulls the ref instead of dropping the audit row', async () => {
+    const doc = buildOpsAuditDoc({
+      actor: { id: 'live-test', name: 'Ravi', role: 'SUPER_ADMIN', path: '/api/super-admin/queues' },
+      action: 'QUEUE_JOB_RETRIED',
+    });
+    assert.equal(doc.actor, null, 'a UUID or label must not CastError the ObjectId ref');
+    assert.equal(doc.actorName, 'Ravi', 'the human trace survives');
+    assert.equal(doc.actorRole, 'SUPER_ADMIN');
+    assert.equal(doc.path, '/api/super-admin/queues');
+    await assertResolvesValid(doc);
+  });
+
+  test('a real ObjectId actor is kept as the ref', async () => {
+    const doc = buildOpsAuditDoc({
+      actor: { id: VALID_OID, name: 'Admin', role: 'SUPER_ADMIN' },
+      action: 'QUEUE_PAUSED',
+      metadata: { queue: 'recruitment' },
+    });
+    assert.equal(doc.actor, VALID_OID);
+    await assertResolvesValid(doc);
+    // And an ObjectId instance (what the routes actually hand over) passes through.
+    const doc2 = buildOpsAuditDoc({
+      actor: { id: new mongoose.Types.ObjectId(VALID_OID) },
+      action: 'QUEUE_RESUMED',
+    });
+    assert.equal(typeof doc2.actor, 'string', 'a real id becomes a 24-char hex string');
+    await assertResolvesValid(doc2);
   });
 });

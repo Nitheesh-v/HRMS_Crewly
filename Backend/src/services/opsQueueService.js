@@ -142,25 +142,95 @@ export const humanAge = (ms) => {
   return `${Math.round(n / 86400000)} days`;
 };
 
+/**
+ * Label for a failed audit write. classifySafeReason() speaks about sockets,
+ * so a rejected document (bad actor id, missing field) used to be reported as
+ * "connection_error" and sent operators hunting for a database outage.
+ * Pure - exported for tests.
+ */
+export const classifyAuditFailure = (error) => {
+  // Our own deadline first: it is neither a bad document nor a dead socket,
+  // and an operator has to be able to tell the three apart in one line.
+  if (error?.code === 'AUDIT_TIMEOUT') return 'audit_write_timeout';
+  const text = `${String(error?.name || '')} ${error?.message || ''}`;
+  if (/ValidationError|CastError|Cast to |validation failed|Document fails/i.test(text)) {
+    return 'invalid_audit_payload';
+  }
+  // A model that never got a connection is a database problem; a socket error
+  // is left to classifySafeReason(), which names it precisely
+  // (connection_refused / timeout / dns_resolution_failed).
+  if (/buffering timed out|server selection/i.test(text)) {
+    return 'db_unavailable';
+  }
+  return classifySafeReason(error);
+};
+
+/**
+ * The audit document for an ops action, as one pure function.
+ *
+ * `AuditLog.create` here is fail-open: any rejected document means the trail
+ * of who poked a queue is silently lost. Two rejections were reachable before
+ * this existed, and neither had anything to do with Redis:
+ *   - `path` is `required` in the schema, and Mongoose treats `''` as missing,
+ *     so a service-level caller with no HTTP request (the worker reconciler, a
+ *     script, a test) lost its row.
+ *   - `actor` is an ObjectId ref, so any non-hex id (a UUID from another
+ *     session store, a synthetic id) threw a CastError and lost its row.
+ * So: always a non-empty path, and the ref is nulled rather than thrown away -
+ * `actorName`/`actorRole`/`metadata` still say who did it. Exported for tests.
+ */
+const OBJECT_ID_RE = /^[\da-f]{24}$/i;
+
+export const buildOpsAuditDoc = ({ actor = {}, action, metadata = {} }) => ({
+  companyId: null, // platform scope
+  actor: OBJECT_ID_RE.test(String(actor.id ?? '')) ? String(actor.id) : null,
+  actorName: String(actor.name || '').slice(0, 200),
+  actorRole: String(actor.role || '').slice(0, 40),
+  action,
+  method: actor.method || 'POST',
+  path: actor.path || 'internal:ops',
+  statusCode: 200,
+  metadata,
+});
+
+// A bounded wait, on purpose. A Mongoose write on a model that has no
+// connection does not fail fast: it buffers for `bufferTimeoutMS` (10 s by
+// default) and only then errors. The audit row is fail-open, so making an
+// operator click "Retry job" and wait ten seconds for a dead database would
+// be the worst possible trade.
+const AUDIT_WRITE_TIMEOUT_MS = 1000;
+
 const recordOpsAudit = async (d, { actor = {}, action, metadata = {} }) => {
+  let timer = null;
   try {
-    await d.AuditLog.create({
-      companyId: null, // platform scope
-      actor: actor.id || null,
-      actorName: actor.name || '',
-      actorRole: actor.role || '',
-      action,
-      method: actor.method || 'POST',
-      path: actor.path || '',
-      statusCode: 200,
-      metadata,
+    // `pending` never rejects on purpose: when the deadline wins, the write can
+    // still fail a moment later, and a late failure in a deliberately fail-open
+    // path must not surface as an unhandled rejection.
+    const pending = Promise.resolve()
+      .then(() =>
+        d.AuditLog.create(buildOpsAuditDoc({ actor, action, metadata }))
+      )
+      .then(() => null, (error) => ({ error }));
+    const deadline = new Promise((resolve) => {
+      // Not unref()'d: waiting is the point. The finally below always clears it,
+      // so a fast write leaks no timer.
+      timer = setTimeout(() => resolve('deadline'), AUDIT_WRITE_TIMEOUT_MS);
     });
+    const outcome = await Promise.race([pending, deadline]);
+    if (outcome === 'deadline') {
+      throw Object.assign(new Error('audit write exceeded its deadline'), {
+        code: 'AUDIT_TIMEOUT',
+      });
+    }
+    if (outcome?.error) throw outcome.error;
   } catch (error) {
     // Audit failure must not mask the operation result, but it
     // must be visible to operators (safe text only).
     logger.error(
-      `[Ops] Audit write failed for ${action} (${classifySafeReason(error)})`
+      `[Ops] Audit write failed for ${action} (${classifyAuditFailure(error)})`
     );
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 };
 

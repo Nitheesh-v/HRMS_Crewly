@@ -264,10 +264,25 @@ const readOverview = (predicate) =>
     const result = await retryJob({
       queueName: QUEUE_NAMES.SYSTEM,
       jobId,
-      actor: { id: 'live-test', role: 'SUPER_ADMIN', method: 'POST', path: '/live' },
+      // A 24-hex id, because AuditLog.actor is an ObjectId ref: a fake string
+      // like 'live-test' makes the (fail-open) audit write throw a CastError,
+      // which used to print a misleading connection_error line.
+      actor: {
+        id: '64a1b2c3d4e5f6a7b8c9d0e1',
+        role: 'SUPER_ADMIN',
+        method: 'POST',
+        path: '/live',
+      },
     });
     assert.equal(result.ok, true);
-    assert.equal(transientCalls, 1); // retry() has not re-run it yet
+    // A count here used to be `=== 1` ("the retry has not re-run it yet"). That
+    // is racy by construction: the worker lives in this same process, and the
+    // fail-open audit write inside retryJob can now cost up to its 1 s deadline
+    // (or, with no MongoDB, exactly that), during which the retried job is
+    // already picked up and finished. The deterministic statement is the end
+    // state asserted below: exactly two executions, one failure then one
+    // success, and nothing else re-ran the job.
+    assert.ok(transientCalls >= 1, 'the failing attempt ran');
 
     const completed = await waitForState(systemQueue, jobId, ['completed']);
     assert.ok(completed, 'job should complete after the ops retry');

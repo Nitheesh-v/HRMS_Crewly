@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
-import test from 'node:test';
+import test, { after } from 'node:test';
 
 process.env.MONGO_URI ||= 'mongodb://127.0.0.1:27017/crewly_test';
 process.env.PRIVATE_RESUME_STORAGE_DIR = path.resolve(
@@ -793,4 +793,22 @@ test('candidate RBAC, private retrieval and race-safe identifiers stay locked to
   assert.equal(identifierSource.includes('.save('), false);
   assert.equal(identifierSource.includes('findOneAndUpdate'), true);
   assert.equal(identifierSource.includes('bulkWrite'), true);
+});
+
+// ---------------------------------------------------------------
+// Hermetic-suite cleanup (Phase 30.1.2).
+// These tests drive real services, and a service that enqueues goes through
+// queueFactory. When the developer's Backend/.env happens to ENABLE Redis, that
+// opens a live BullMQ connection and caches it, and nothing in this file closes
+// it: the event loop stays alive after the last assertion, so `node --test`
+// prints every check as ✔ and then never exits - which looks exactly like a hung
+// suite (and on a cloud endpoint it can sit in reconnect backoff for minutes).
+// Release whatever the process opened so the file ends when the tests end.
+// With Redis disabled both calls are no-ops, so this is free.
+// ---------------------------------------------------------------
+after(async () => {
+  const { closeAllQueues } = await import('../src/queues/queueFactory.js');
+  const { closeRedis } = await import('../src/config/redis.js');
+  await closeAllQueues();
+  await closeRedis();
 });

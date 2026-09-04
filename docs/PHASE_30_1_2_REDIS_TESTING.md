@@ -153,6 +153,12 @@ Steps 4, 6 and 7 are **opt-in live** tests: they are deliberately *not* in
 `npm run test:all`, and they **fail loudly** when Redis is not configured
 (a silent skip would hide exactly the misconfiguration you are hunting).
 
+The hermetic suite is step 1's bigger sibling: `npm run test:all` must pass
+with Redis switched **off** *and* with your real `REDIS_URL` in `Backend/.env`,
+in the same time (about 25 seconds, 855 tests, 0 failures). It is listed last
+on purpose — if it ever stops finishing, that is a test-hygiene bug in this
+repo (see §9), not a problem with your Redis.
+
 ## 5. `npm run redis:doctor` — read the ladder
 
 ```
@@ -201,7 +207,9 @@ What the checks that have no obvious "ping" equivalent are actually for:
   `EVAL` looks perfectly healthy to `PING` and is useless to the queues.
 - **`eviction`** — `allkeys-lru`/`allkeys-random` may delete **queue and job
   keys** under memory pressure (jobs silently vanish). `noeviction` or
-  `volatile-*` is required.
+  `volatile-*` is required. Managed hosts usually refuse `CONFIG GET`, so this
+  check falls back to `INFO` — the same field BullMQ reads — and says
+  "read via INFO"; `SKIP` means the host hides *both*.
 - **`memory`** — `evicted_keys > 0` means eviction has *already* happened.
 - **`url`** — pure parsing, no network: it catches the four classic cloud
   paste errors (quotes, trailing space/`\r`, unescaped `@` in the password,
@@ -224,7 +232,7 @@ introspection on purpose. Read the console field instead:
 | Doctor line | Typical managed output | Where the real answer lives |
 | --- | --- | --- |
 | `server` / `role` / `memory` / `keyspace` | `SKIP - INFO ... not permitted` | provider console (Upstash: Statistics; Redis Cloud: database diagnostics; ElastiCache: CloudWatch) |
-| `eviction` | `SKIP - CONFIG GET ... not permitted` | Upstash: Settings > "Max memory policy"; Redis Cloud: database > Advanced; ElastiCache: parameter group `maxmemory-policy` |
+| `eviction` | `WARN - maxmemory-policy=... - read via INFO` (a managed host that blocks `CONFIG GET` is *still* diagnosed) | set the policy in the console per §5b: Upstash Settings > "Max memory policy"; Redis Cloud: database > Advanced; ElastiCache: parameter group `maxmemory-policy` |
 | `commands` | `SKIP - COMMAND INFO not permitted`, or destructive commands listed as blocked | Upstash: Settings > Redis commands; Redis Cloud: disabled-commands list; Azure: Redis commands policy |
 | `latency` | `WARN - remote link` (20-80 ms is normal) | pick a region near your app/worker, not near your laptop |
 | `eviction` | `WARN - maxmemory-policy=volatile-lru` (the usual cloud default) | set it to `noeviction` - see §5b |
@@ -271,6 +279,62 @@ just keep an eye on the `memory` line (`used` vs `max`) and on `evicted_keys`.
 
 Re-run `npm run redis:doctor` to confirm: `eviction` should read
 `maxmemory-policy=noeviction - matches the BullMQ requirement`.
+
+## 5c. Managed Redis (Redis Cloud as the example): four lines to read
+
+A managed database is not a Redis you administer, and the doctor is built to
+say that precisely instead of crying failure. A real Redis Cloud run of
+`npm run redis:doctor` looked like this:
+
+```
+[ OK ] server       version=8.6.2 mode=standalone os=Linux
+[ OK ] role         role=master (writable)
+[ OK ] latency      PING avg 51.6 ms (max 51.9 ms), pingRedis()=true
+[WARN] url          scheme=redis db=0 credentials=yes password=yes length=88
+                   host=<redacted> port=10959
+[SKIP] eviction     CONFIG GET maxmemory-policy is not permitted here
+Summary: 12 ok, 1 warning(s), 1 skipped, 0 failed
+```
+
+**`[WARN] url` on a plain `redis://` endpoint with an unusual port.** Redis
+Cloud gives every database two endpoints: an unencrypted one on its own port
+(here `10959`) and a TLS one on `10055` with `rediss://`. The WARN exists
+because a `redis://` URL carries your password across the internet in plain
+text: fine for a throwaway development database, not fine for real tenant
+data. To clear it deliberately: enable TLS in the provider's Security
+settings, paste the `rediss://` URL into `Backend/.env`, confirm with
+`npm run redis:ping`. Do not "fix" the warning by moving the URL into
+`.env.example`, the compose file or source code to make it go away —
+`Backend/.env` is git-ignored, everything else is committed.
+
+**`[SKIP] eviction` is now rare.** The provider blocks `CONFIG GET`, but the
+same value is published in `INFO`, and `INFO` is exactly where BullMQ reads it
+from. So the doctor reads `INFO` when `CONFIG` is refused and gives a real
+verdict (`WARN — maxmemory-policy=volatile-lru - read via INFO, the same field
+BullMQ reads`) plus the fix in §5b, instead of shrugging. `SKIP` now only
+happens when both sources are hidden.
+
+**`[ OK ] latency` at 50 ms is normal, and is a design constraint.** That run
+was a laptop in India against a database in another region, so every command
+costs about 50 ms. Nothing in this phase assumes sub-millisecond round trips:
+a cache read is one `GET`, the heartbeat runs on a 15-second cadence, and the
+live suite skips its op-budget test on managed hosts (a 50 ms link makes the
+old "200 commands in 150 ms" assertion meaningless, which is why that test
+measures localhost only). `latency` FAILs above 1000 ms, or above 50 ms when
+the host is *localhost*, where a slow reply means something local is wrong.
+
+**`[WARN] workers` listing a pile of `offline (stale member)` ids is not a
+worker failure.** Only a graceful `SIGTERM`/`SIGINT` shutdown removes a worker
+from `crewly:ops:workers:<env>`; a killed or crashed process (a nodemon
+restart, a container kill, a closed laptop lid) leaves its id behind, because
+a set member cannot expire the way a key with a TTL does. The ghosts were
+always reported OFFLINE, so nothing broke — but every discovery read had to
+walk them. The heartbeat now sweeps them itself: a beat occasionally does one
+`SMEMBERS` plus one `MGET` and removes ids whose heartbeat key is gone — never
+its own id, never a live peer's, at most 25 per pass, best-effort so a Redis
+blip can never affect job processing. The cadence is
+`OPS_WORKER_HEARTBEAT_PRUNE_EVERY_N_BEATS` (default `10`, about 150 seconds);
+set it to `1` for one run to watch the list collapse to the live workers.
 
 ## 6. Testing the queue side properly
 
@@ -361,6 +425,12 @@ Remove-Item Env:\REDIS_LIVE_SKIP_PAUSE
 | `WRONGPASS invalid username-password pair` | wrong ACL user | use `default:<token>` (or the exact ACL user the provider shows) |
 | `read ECONNRESET` right after connect | server expects TLS | the URL must be `rediss://`, not `redis://` |
 | `Skipping the ready check because INFO command fails` | provider blocks `INFO` with NOPERM | benign warning from ioredis; no action |
+| `workers` | `WARN` with `offline (stale member)` ids | ids left behind by killed/crashed processes; the heartbeat prunes them (§5c), `OPS_WORKER_HEARTBEAT_PRUNE_EVERY_N_BEATS=1` forces a sweep now |
+| `latency` | `WARN - remote link` at 20-100 ms | the provider's region, not your code: pick a region near the app/worker, or accept it and keep Redis usage to single commands (which Crewly does) |
+| `url` | `WARN` — `redis://` to a managed endpoint | a deliberate decision, not a bug: plain endpoint for local dev, `rediss://` + TLS port for anything real (§5c) |
+| any check | `[SKIP] ... CONFIG GET ... not permitted` on `eviction` | only if the host also hides `INFO`; read the policy in the console and still set `noeviction` (§5b) |
+| `[Ops] Audit write failed for ... (audit_write_timeout)` in app logs | the audit write did not finish within 1 s (Mongo is slow or down); the operator's action is already done and stays done | no action if it is transient and clears with the database; if it is constant, check `MONGO_URI` and the replica set |
+| `[Ops] Audit write failed for ... (invalid_audit_payload)` in app logs | the audit document was rejected (missing `path`, non-hex `actor` id, missing `action`) — the write is fail-open, so the operation itself succeeded and only the row is lost | fix the caller; `buildOpsAuditDoc()` now defends against both cases (§9) |
 | `[FAIL] connect … auth_failed` | server rejected the credentials | re-copy the URL from the provider dashboard (never paste it into chat or a commit) |
 | `Redis is not configured (REDIS_ENABLED/REDIS_URL …)` from a live test | the opt-in test is refusing to fake success | run `npm run redis:doctor` first, then re-run |
 | `[WARN] workers … no worker heartbeat key found` | queue jobs will never drain | `npm run worker:dev` (separate tab), then re-run the doctor |
@@ -449,11 +519,84 @@ live test must (a) fail loudly when its dependency is missing, (b) derive
 counts from the registry rather than literals, and (c) poll bounded instead of
 sleeping.
 
+- **A fail-open log line that said "connection_error" was a bad document, not a
+  dead database.** The live ops log showed `[Ops] Audit write failed for
+  ops.queue.job.retry (connection_error)` five times while all five tests
+  passed. `AuditLog.actor` is an `ObjectId` ref, the test had passed the literal
+  `'live-test'`, Mongoose threw a `CastError`, and the audit writer's fail-open
+  handler classified any unrecognised error as a connection problem. Two fixes:
+  the live test now passes a real-shaped id so the row is actually written (that
+  is the point of testing the flow), and `opsQueueService` labels audit failures
+  through `classifyAuditFailure()` — `invalid_audit_payload` for a rejected
+  document, `db_unavailable` for a model with no connection, otherwise the safe
+  socket label. A log line that sends you to the wrong subsystem is worse than
+  no log line.
+
+- **The honest label then exposed two silent defects in the audit write itself.**
+  With the mislabelling gone, a passing sandbox run still printed
+  `Audit write failed for QUEUE_JOB_REMOVED (invalid_audit_payload)` — and this
+  one was real, in the service, not in a test. `AuditLog.path` is `required`, and
+  Mongoose treats `''` as missing, so **every ops action from a caller without an
+  HTTP request** (the worker-side reconciler, a script, a test) produced a
+  rejected document: because the writer is fail-open, the operator got a success
+  response and no audit row, forever. Second: `AuditLog.actor` is an `ObjectId`
+  ref, so any caller passing a UUID-shaped session id threw a `CastError` and
+  lost the same way. `recordOpsAudit` now builds its document through
+  `buildOpsAuditDoc()`, which always yields a non-empty `path`
+  (`internal:ops` for a non-HTTP caller) and nulls the `actor` ref when the id is
+  not a 24-char hex, keeping `actorName`/`actorRole`/`metadata` as the trace. The
+  rule: **a fail-open writer must be validated against the real schema, not a
+  mock** — hermetic tests now run `new AuditLog(doc).validate()` against the model
+  itself, and that assertion is the one that would have caught this years ago.
+- **A fail-open write must also be *bounded*.** Making the document valid
+  revealed the next thing: `AuditLog.create()` on a Mongoose model with no
+  connection does not fail fast — it buffers for `bufferTimeoutMS` (10 seconds)
+  and then errors. So with MongoDB briefly down, an operator's "Retry job" click
+  would hang for 10 seconds and *still* return success. `recordOpsAudit` now
+  races the write against a 1-second deadline (label `audit_write_timeout`),
+  which also made the hermetic suite fast again (it had gone from 0.8 s to
+  190 s while these tests were hitting a disconnected model). Two rules for any
+  later phase: never let a best-effort write inherit a driver's default timeout,
+  and never let a best-effort write reach a real model from a hermetic test —
+  stub it, or the test becomes an accidental integration test with a 10-second
+  timer.
+
+- **`npm run test:all` stopped *finishing* the moment Redis was enabled — and
+  it was not Redis.** With `REDIS_ENABLED=true` in `Backend/.env`, two hermetic
+  files (`test/bgvQueue.test.js`, `test/candidateApplication.test.js`) printed
+  every check as ✔ and then hung forever, so the whole command looked like a
+  hang. Cause: those tests drive real services, a service that enqueues goes
+  through `queueFactory`, and `queueFactory` caches a live BullMQ connection per
+  queue. Nothing closed it, so the event loop stayed alive and `node --test`
+  never exited. With Redis disabled the connection is never opened, which is
+  why CI never saw it — enabling the feature silently changed the test
+  environment. Fix: an `after()` hook in each file that calls `closeAllQueues()`
+  plus `closeRedis()` (both no-ops when Redis is off, so the usual run is
+  unchanged). Rule for every suite that touches a service with a side connection:
+  close what you opened, or the process outlives the tests.
+- **Two follow-on findings from that same fix.** (a) `recordOpsAudit` inherited
+  the driver's 10-second buffering timeout; it is now bounded at 1 second
+  (label `audit_write_timeout`), because "fail-open" must not mean "make the
+  operator wait for a dead database". (b) That bound exposed a racy assertion in
+  the live ops suite — `transientCalls === 1` right after `retryJob()` assumed
+  the in-process worker had not yet picked the job up, which is not a
+  guarantee; the test now asserts the deterministic end state (exactly two
+  executions: one failure, one success) instead of a snapshot taken while a
+  best-effort write is in flight.
+
 ## 10. Rules this phase keeps (and that later phases must keep too)
 
 - Never add `FLUSHALL` / `FLUSHDB` / `KEYS` / `SCAN` to anything that runs
   against a shared Redis — clean up exact keys you created, or obliterate
   your own prefixed queue.
+- A `SKIP` is only honest when every source is blocked. `CONFIG GET` is denied on
+  managed hosts but `INFO` is not — read the value from `INFO` (which is what
+  BullMQ reads) and give a verdict instead of a shrug.
+- A "best-effort"/"fail-open" side write has to be both *validated* against the
+  real schema and *bounded* in time. Otherwise it silently drops data (required
+  field, cast error) or silently adds the driver's buffering timeout (10 s) to a
+  user-facing request — and it must be stubbed in hermetic tests so neither
+  behaviour hides there.
 - Never print or log `REDIS_URL`; report safe categories only
   (`classifySafeReason`).
 - Any opt-in live test must fail loudly when its dependency is missing —
