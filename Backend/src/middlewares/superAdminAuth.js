@@ -38,6 +38,11 @@ export const PLATFORM_PERMISSIONS = {
     'dashboard:read',
     'companies:read',
     'subscriptions:manage',
+    // Phase 30.2 — Crewly BGV catalogue & pricing is a commercial platform
+    // operation: BILLING_ADMIN manages it; SUPER_ADMIN via '*'; tenants are
+    // rejected at the platform gate before any of this is reachable.
+    'bgv-catalog:read',
+    'bgv-catalog:manage',
     'plans:manage',
     'billing:manage',
     'revenue:read',

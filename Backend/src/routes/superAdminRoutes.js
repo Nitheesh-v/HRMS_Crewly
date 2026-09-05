@@ -10,6 +10,7 @@ import * as dashboard from "../controllers/superAdminDashboardController.js";
 import * as companies from "../controllers/superAdminCompanyController.js";
 import * as subscriptions from "../controllers/superAdminSubscriptionController.js";
 import * as operations from "../controllers/superAdminOperationsController.js";
+import * as bgvCatalogue from "../controllers/superAdminBgvCatalogueController.js";
 import * as queueOps from "../controllers/superAdminQueueOpsController.js";
 import { securityRateLimit } from "../middlewares/securityRateLimit.js";
 import {
@@ -131,6 +132,20 @@ router.get(
   "/revenue",
   permit("revenue:read", "billing:manage"),
   subscriptions.revenueAnalytics,
+);
+
+// Phase 30.2 — Crewly BGV service catalogue & pricing (platform commerce).
+// Backend is the only price authority; tenants never reach these routes
+// (platform gate rejects non-platform roles before DB access).
+router.get(
+  "/bgv-catalogue",
+  permit("bgv-catalog:read"),
+  bgvCatalogue.bgvCatalogueList,
+);
+router.patch(
+  "/bgv-catalogue/:type",
+  permit("bgv-catalog:manage"),
+  bgvCatalogue.bgvCatalogueUpdate,
 );
 
 router.get("/usage", permit("usage:read"), operations.usage);

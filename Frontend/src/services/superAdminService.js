@@ -57,6 +57,12 @@ const superAdminService = {
 
   platformAdmins: () => get("/super-admin/platform-admins"),
 
+  // Phase 30.2 — BGV service catalogue & pricing (platform commerce).
+  bgvCatalogue: () => get("/super-admin/bgv-catalogue"),
+
+  updateBgvCatalogue: (type, body) =>
+    patch(`/super-admin/bgv-catalogue/${type}`, body),
+
   // Subscriptions and plans
   subscriptions: (params) => get("/super-admin/subscriptions", params),
 

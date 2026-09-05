@@ -41,6 +41,12 @@ const MENU = [
     roles: ["SUPER_ADMIN", "BILLING_ADMIN"],
   },
   {
+    to: "/super-admin/bgv-services",
+    label: "BGV Services",
+    icon: "🔍",
+    roles: ["SUPER_ADMIN", "BILLING_ADMIN"],
+  },
+  {
     to: "/super-admin/revenue",
     label: "Revenue",
     icon: "💰",

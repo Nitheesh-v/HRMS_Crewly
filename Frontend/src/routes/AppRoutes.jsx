@@ -140,6 +140,7 @@ import SuperAdminCompanyDetailPage from "../pages/admin/SuperAdminCompanyDetailP
 import SuperAdminCommercePage from "../pages/admin/SuperAdminCommercePage.jsx";
 import SuperAdminOperationsPage from "../pages/admin/SuperAdminOperationsPage.jsx";
 import SuperAdminBackgroundOperationsPage from "../pages/admin/SuperAdminBackgroundOperationsPage.jsx";
+import SuperAdminBgvCataloguePage from "../pages/admin/SuperAdminBgvCataloguePage.jsx";
 
 import NotFoundPage from "../pages/not-found/NotFoundPage.jsx";
 
@@ -818,6 +819,14 @@ const AppRoutes = () => (
         path="revenue"
         element={
           <SuperAdminCommercePage mode="revenue" />
+        }
+      />
+
+      {/* Phase 30.2 — platform BGV catalogue & pricing. */}
+      <Route
+        path="bgv-services"
+        element={
+          <SuperAdminBgvCataloguePage />
         }
       />
 
