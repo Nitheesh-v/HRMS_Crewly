@@ -3,6 +3,10 @@ import ApiError from '../utils/ApiError.js';
 import { BGV_TRIGGER_STAGES } from '../models/BackgroundVerificationSettings.js';
 import { BGV_CASE_STATUSES } from '../models/BackgroundVerificationCase.js';
 import { BGV_CHECK_CATEGORIES } from '../models/BackgroundVerificationCheckType.js';
+import {
+  BGV_DECISIONS,
+  BGV_DECISION_MAX_REASON_LENGTH,
+} from '../services/bgv/bgvDecisionRules.js';
 
 const validate = (req, _res, next) => {
   const errors = validationResult(req);
@@ -110,5 +114,17 @@ export const bgvCompleteRules = [
 export const bgvCancelRules = [
   param('caseId').isMongoId(),
   body('reason').trim().notEmpty().withMessage('Cancellation reason is required').isLength({ max: 1000 }),
+  validate,
+];
+
+// Phase 30.1 — optional BGV decision body/param validation.
+export const bgvDecisionRules = [
+  param('candidateId').trim().notEmpty().isLength({ max: 40 }),
+  body('decision').isIn(BGV_DECISIONS).withMessage('Choose Proceed Without BGV or Initiate BGV'),
+  body('reason')
+    .optional({ checkFalsy: true })
+    .trim()
+    .isLength({ max: BGV_DECISION_MAX_REASON_LENGTH })
+    .withMessage('Keep the reason within 300 characters'),
   validate,
 ];

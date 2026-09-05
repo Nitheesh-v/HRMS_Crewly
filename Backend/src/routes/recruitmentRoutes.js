@@ -59,6 +59,7 @@ import {
   bgvSettingsRead,
   bgvSettingsUpdate,
   candidateBgvSummary,
+  bgvDecisionRecord,
 } from '../controllers/backgroundVerificationController.js';
 import {
   bgvAssignRules,
@@ -71,6 +72,7 @@ import {
   bgvCompleteRules,
   bgvSettingsUpdateRules,
   bgvStartRules,
+  bgvDecisionRules,
 } from '../validators/backgroundVerificationValidator.js';
 
 
@@ -356,6 +358,17 @@ router.get(
   requirePermission('BACKGROUND_VERIFICATION_READ'),
   bgvStartRules,
   candidateBgvSummary
+);
+// Phase 30.1 — optional BGV decision (Proceed Without BGV / Initiate BGV).
+// Reuses BACKGROUND_VERIFICATION_MANAGE: the same HR personas who hold the
+// human final decision (CANDIDATE_FINAL_DECISION) already carry it, so no new
+// permission / SYSTEM_PERMISSION_VERSION bump is required.
+router.post(
+  '/candidates/:candidateId/bgv-decision',
+  checkWriteAccess,
+  requirePermission('BACKGROUND_VERIFICATION_MANAGE'),
+  bgvDecisionRules,
+  bgvDecisionRecord
 );
 
 // Phase 27.14 — recruitment command center analytics.

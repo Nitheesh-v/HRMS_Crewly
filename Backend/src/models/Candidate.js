@@ -15,6 +15,16 @@ export const CANDIDATE_STAGES = [
   ...LEGACY_CANDIDATE_STAGES,
 ];
 export const OFFER_STATUS = ['NONE', 'SENT', 'ACCEPTED', 'DECLINED'];
+
+// Phase 30.1 — optional BGV decision recorded by tenant HR after the human
+// final selection. NONE means "no decision yet"; PROCEEDED_WITHOUT_BGV is an
+// HR acknowledgement (NOT candidate consent and NOT a clearance); BGV_INITIATED
+// is the HR intention to use Crewly BGV (purchase/consent arrive in 30.2+).
+export const BGV_DECISION_STATUSES = [
+  'NONE',
+  'PROCEEDED_WITHOUT_BGV',
+  'BGV_INITIATED',
+];
 export const CANDIDATE_SOURCES = ['INTERNAL', 'CAREER_PAGE'];
 export const CANDIDATE_STATUSES = ['ACTIVE', 'ARCHIVED'];
 export const CANDIDATE_APPLICATION_STATUSES = ['APPLIED'];
@@ -90,6 +100,20 @@ const candidateSchema = new mongoose.Schema(
     },
     // Offer letter tracking
     offerStatus: { type: String, enum: OFFER_STATUS, default: 'NONE' },
+    // Phase 30.1 — optional BGV decision (HR acknowledgement after the human
+    // final selection). Deliberately separate from the pipeline stage and
+    // from Phase 27.15 BGV cases; never implies CLEAR/VERIFIED/PASSED.
+    bgvDecision: {
+      status: {
+        type: String,
+        enum: BGV_DECISION_STATUSES,
+        default: 'NONE',
+        index: true,
+      },
+      decidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+      decidedAt: { type: Date, default: null },
+      reason: { type: String, default: '', trim: true, maxlength: 300 },
+    },
     offerSalary: { type: Number, min: 0, default: 0 },          // monthly CTC in ₹
     offerJoiningDate: { type: Date, default: null },
     notes: { type: String, trim: true, maxlength: 500, default: '' },

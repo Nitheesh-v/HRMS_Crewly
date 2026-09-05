@@ -57,6 +57,9 @@ export const CANDIDATE_HISTORY_ACTIONS = [
   'BGV_INFORMATION_REQUESTED',
   'BGV_REVIEW_REQUIRED',
   'BGV_COMPLETED',
+  // Phase 30.1 — optional BGV decision timeline events.
+  'BGV_DECISION_WAIVED',
+  'BGV_DECISION_INITIATED',
 ];
 
 const candidateHistorySchema = new mongoose.Schema(
@@ -96,6 +99,7 @@ const candidateHistorySchema = new mongoose.Schema(
         'FINAL_DECISION',
         'OFFER',
         'PRE_ONBOARDING',
+        'BGV_DECISION',
       ],
       default: 'CAREER_PAGE',
     },

@@ -50,6 +50,11 @@ const bgvService = {
     unwrap(
       await api.get(`/recruitment/candidates/${candidateId}/background-verification`)
     ),
+  // Phase 30.1 — optional BGV decision (Proceed Without BGV / Initiate BGV).
+  decide: async (candidateId, payload) =>
+    unwrap(
+      await api.post(`/recruitment/candidates/${candidateId}/bgv-decision`, payload)
+    ),
   assign: async (caseId, verifierId) =>
     unwrap(
       await api.post(`/recruitment/background-verifications/${caseId}/assign`, {
