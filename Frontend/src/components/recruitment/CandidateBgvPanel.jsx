@@ -109,7 +109,9 @@ const CandidateBgvPanel = ({ candidate }) => {
               Open case
             </Link>
           ) : null}
-          {canStart && !caseData ? (
+          {/* Phase 30.1 guard: a recorded waiver means no BGV work — hide the
+              legacy internal start so the two tracks cannot contradict. */}
+          {canStart && !caseData && summary?.decision?.status !== 'PROCEEDED_WITHOUT_BGV' ? (
             <button type="button" className="btn-primary gap-2" disabled={busy} onClick={start}>
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               Start BGV

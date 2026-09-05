@@ -18,6 +18,7 @@ import {
   resolveDecisionOutcome,
 } from '../src/services/bgv/bgvDecisionRules.js';
 import { recordBgvDecision } from '../src/services/bgv/bgvDecisionService.js';
+import BackgroundVerificationHistory from '../src/models/BackgroundVerificationHistory.js';
 
 const COMPANY_A = 'aaa111111111111111111111';
 const COMPANY_B = 'bbb222222222222222222222';
@@ -345,6 +346,29 @@ test('service: tenant authority always flows through companyId in the load filte
   assert.equal(world.state.loads[0].candidateRef, CANDIDATE_ID);
   // The claim is tenant-scoped as well.
   assert.equal(world.state.claims[0].companyId, COMPANY_A);
+});
+
+test('regression 27.15: consent statuses are valid BGV history statuses', () => {
+  // RCA 2026-09-05: Start BGV with consentRequired wrote NOT_REQUESTED ->
+  // REQUESTED into BackgroundVerificationHistory and crashed on the enum.
+  const previous = BackgroundVerificationHistory.schema.path('previousStatus').enumValues;
+  const next = BackgroundVerificationHistory.schema.path('newStatus').enumValues;
+  for (const status of ['NOT_REQUESTED', 'REQUESTED', 'GRANTED', 'DECLINED']) {
+    assert.ok(previous.includes(status), `previousStatus must accept ${status}`);
+    assert.ok(next.includes(status), `newStatus must accept ${status}`);
+  }
+  // A consent row now passes Mongoose validation synchronously.
+  const row = new BackgroundVerificationHistory({
+    companyId: COMPANY_A,
+    case: 'fff666666666666666666666',
+    candidate: CANDIDATE_ID,
+    action: 'BGV_CONSENT_REQUESTED',
+    previousStatus: 'NOT_REQUESTED',
+    newStatus: 'REQUESTED',
+    actorType: 'TENANT_USER',
+  });
+  const validationError = row.validateSync();
+  assert.equal(validationError, undefined);
 });
 
 test('service: the decision never mutates the pipeline stage', async () => {
