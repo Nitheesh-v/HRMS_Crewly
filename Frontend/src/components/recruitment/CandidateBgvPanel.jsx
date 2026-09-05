@@ -76,6 +76,7 @@ const CandidateBgvPanel = ({ candidate }) => {
         candidateRef={ref}
         summary={summary}
         onDecided={(decision) => setSummary((current) => ({ ...(current || {}), decision }))}
+        onSync={(fresh) => setSummary(fresh)}
       />
     <section className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-5">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">

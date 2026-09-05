@@ -83,6 +83,9 @@ in-progress or HOLD/CANCELLED case. `BGV_INITIATED` alone is NOT a clearance.
 - Pre-selection candidates show an informational line only; backend remains
   the authority.
 - MongoDB is the source of truth — state survives refresh/reopen.
+- Self-healing: after every submit attempt (success or a 409 conflict caused
+  by a stale page/tab), the section re-fetches the authoritative summary so
+  the persisted badge replaces the buttons without a manual refresh.
 
 ## Automated QA
 

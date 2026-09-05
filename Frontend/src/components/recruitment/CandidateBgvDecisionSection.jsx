@@ -9,7 +9,7 @@ import bgvService from '../../services/bgvService.js';
 // (survives refresh — MongoDB is the source of truth) or the two explicit HR
 // choices, available only after the human final selection and only for users
 // holding BACKGROUND_VERIFICATION_MANAGE.
-const CandidateBgvDecisionSection = ({ candidateRef, summary, onDecided }) => {
+const CandidateBgvDecisionSection = ({ candidateRef, summary, onDecided, onSync }) => {
   const { hasPermission } = usePermission();
   const canManage = hasPermission('BACKGROUND_VERIFICATION_MANAGE');
   const [waiverOpen, setWaiverOpen] = useState(false);
@@ -25,6 +25,21 @@ const CandidateBgvDecisionSection = ({ candidateRef, summary, onDecided }) => {
   const canWaive = eligibility.proceedWithoutBgv?.allowed === true;
   const canInitiate = eligibility.initiateBgv?.allowed === true;
 
+  // MongoDB is the source of truth: after any submit attempt (success or a
+  // 409 conflict from a stale page/tab), re-fetch the authoritative summary
+  // so the persisted badge always wins over in-memory state.
+  const syncFromServer = async () => {
+    try {
+      const fresh = await bgvService.summary(candidateRef);
+      if (fresh) {
+        onSync?.(fresh);
+        onDecided?.(fresh.decision);
+      }
+    } catch {
+      // keep the current view; the error text already explains the failure
+    }
+  };
+
   const submit = async (decision) => {
     setBusy(true);
     setError('');
@@ -34,13 +49,16 @@ const CandidateBgvDecisionSection = ({ candidateRef, summary, onDecided }) => {
         decision,
         reason: decision === 'PROCEED_WITHOUT_BGV' ? reason : undefined,
       });
-      onDecided?.(result.decision);
       setMessage(
         result.idempotent ? 'BGV decision already recorded' : 'BGV decision recorded'
       );
       setWaiverOpen(false);
       setReason('');
+      await syncFromServer();
     } catch (requestError) {
+      // A 409 means the server holds a different decision than this page's
+      // stale snapshot — refresh so the persisted state is shown.
+      if (requestError?.status === 409) await syncFromServer();
       setError(requestError?.message || 'BGV decision could not be recorded');
     } finally {
       setBusy(false);
