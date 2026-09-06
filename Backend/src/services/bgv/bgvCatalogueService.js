@@ -65,23 +65,33 @@ const defaultFindAll = () => BgvServiceCatalogue.find({}).sort({ type: 1 }).lean
 // findOneAndUpdate throws in Mongoose 9 unless `updatePipeline: true` is set,
 // and pipeline upserts skip schema defaults anyway. Use a plain update doc
 // with an explicitly computed version plus $setOnInsert defaults instead.
+//
+// RCA #2 (same day): MongoDB rejects one update that writes the same path
+// twice — `active` appeared in both $set (when the payload carried it) and
+// $setOnInsert. Insert defaults therefore only cover paths the $set does
+// not already write. Pure + exported so the hermetic suite locks this in.
+export const buildCatalogueUpsertUpdate = ({ set, actorId, nextVersion }) => {
+  const setOnInsert = {
+    createdAt: new Date(),
+    currency: BGV_CATALOGUE_CURRENCY,
+  };
+  if (set.active === undefined) setOnInsert.active = true;
+  return {
+    $set: {
+      ...set,
+      updatedBy: actorId ?? null,
+      updatedAt: new Date(),
+      version: nextVersion,
+    },
+    $setOnInsert: setOnInsert,
+  };
+};
+
 const defaultUpsert = ({ type, set, actorId, nextVersion }) =>
   BgvServiceCatalogue.findOneAndUpdate(
     { type },
-    {
-      $set: {
-        ...set,
-        updatedBy: actorId ?? null,
-        updatedAt: new Date(),
-        version: nextVersion,
-      },
-      $setOnInsert: {
-        createdAt: new Date(),
-        currency: BGV_CATALOGUE_CURRENCY,
-        active: set.active ?? true,
-      },
-    },
-    { upsert: true, new: true }
+    buildCatalogueUpsertUpdate({ set, actorId, nextVersion }),
+    { upsert: true, returnDocument: 'after' }
   ).lean();
 
 const defaultAudit = (entry) => SystemEvent.create(entry);

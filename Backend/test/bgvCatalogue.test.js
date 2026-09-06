@@ -18,6 +18,7 @@ import {
   configureBgvService,
   getCatalogueView,
   resolveActivePrice,
+  buildCatalogueUpsertUpdate,
 } from '../src/services/bgv/bgvCatalogueService.js';
 import BgvServiceCatalogue from '../src/models/BgvServiceCatalogue.js';
 import {
@@ -298,6 +299,33 @@ test('catalogue view exposes no internal or sensitive fields', async () => {
       `unexpected field ${key}`
     );
   }
+});
+
+// ── live RCA 2026-09-06 #2: no double-written paths in the upsert ──
+test('upsert update doc never writes the same path twice', () => {
+  const withActive = buildCatalogueUpsertUpdate({
+    set: { priceMinorUnits: 50000, active: false },
+    actorId: ACTOR,
+    nextVersion: 1,
+  });
+  const setKeys = Object.keys(withActive.$set);
+  const insertKeys = Object.keys(withActive.$setOnInsert);
+  assert.equal(
+    setKeys.some((key) => insertKeys.includes(key)),
+    false,
+    'Mongo rejects one update writing a path in two operators'
+  );
+  assert.equal(withActive.$set.active, false);
+  assert.equal('active' in withActive.$setOnInsert, false);
+
+  const withoutActive = buildCatalogueUpsertUpdate({
+    set: { priceMinorUnits: 50000 },
+    actorId: ACTOR,
+    nextVersion: 1,
+  });
+  assert.equal('active' in withoutActive.$set, false);
+  assert.equal(withoutActive.$setOnInsert.active, true, 'insert defaults active=true');
+  assert.equal(withoutActive.$setOnInsert.currency, 'INR');
 });
 
 // ── 18 duplicate protection at schema level ──────────────────────
