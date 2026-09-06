@@ -62,6 +62,14 @@ import {
   bgvDecisionRecord,
 } from '../controllers/backgroundVerificationController.js';
 import {
+  bgvOrderCancel,
+  bgvOrderCreate,
+  bgvOrderForCandidate,
+  bgvOrderPaymentInitiate,
+  bgvOrderPaymentVerify,
+  bgvPurchasableServices,
+} from '../controllers/bgvOrderController.js';
+import {
   bgvAssignRules,
   bgvCancelRules,
   bgvCaseIdRules,
@@ -73,6 +81,10 @@ import {
   bgvSettingsUpdateRules,
   bgvStartRules,
   bgvDecisionRules,
+  bgvOrderCreateRules,
+  bgvOrderCandidateRules,
+  bgvOrderIdRules,
+  bgvOrderVerifyRules,
 } from '../validators/backgroundVerificationValidator.js';
 
 
@@ -369,6 +381,51 @@ router.post(
   requirePermission('BACKGROUND_VERIFICATION_MANAGE'),
   bgvDecisionRules,
   bgvDecisionRecord
+);
+
+// Phase 30.3 — paid BGV order (purchase of configured BGV services).
+// Same permission model as 30.1: BACKGROUND_VERIFICATION_READ for reads,
+// BACKGROUND_VERIFICATION_MANAGE + write access for money-adjacent writes.
+// Tenant-safe read-only catalogue projection — NOT the platform admin
+// mutation surface (that stays on the super-admin routes).
+router.get(
+  '/bgv-purchase/services',
+  requirePermission('BACKGROUND_VERIFICATION_READ'),
+  bgvPurchasableServices
+);
+router.post(
+  '/candidates/:candidateId/bgv-order',
+  checkWriteAccess,
+  requirePermission('BACKGROUND_VERIFICATION_MANAGE'),
+  bgvOrderCreateRules,
+  bgvOrderCreate
+);
+router.get(
+  '/candidates/:candidateId/bgv-order',
+  requirePermission('BACKGROUND_VERIFICATION_READ'),
+  bgvOrderCandidateRules,
+  bgvOrderForCandidate
+);
+router.post(
+  '/bgv-orders/:orderId/payment/initiate',
+  checkWriteAccess,
+  requirePermission('BACKGROUND_VERIFICATION_MANAGE'),
+  bgvOrderIdRules,
+  bgvOrderPaymentInitiate
+);
+router.post(
+  '/bgv-orders/:orderId/payment/verify',
+  checkWriteAccess,
+  requirePermission('BACKGROUND_VERIFICATION_MANAGE'),
+  bgvOrderVerifyRules,
+  bgvOrderPaymentVerify
+);
+router.post(
+  '/bgv-orders/:orderId/cancel',
+  checkWriteAccess,
+  requirePermission('BACKGROUND_VERIFICATION_MANAGE'),
+  bgvOrderIdRules,
+  bgvOrderCancel
 );
 
 // Phase 27.14 — recruitment command center analytics.

@@ -4,6 +4,7 @@ import { Loader2, ShieldCheck } from 'lucide-react';
 import usePermission from '../../hooks/usePermission.js';
 import bgvService from '../../services/bgvService.js';
 import CandidateBgvDecisionSection from './CandidateBgvDecisionSection.jsx';
+import BgvPurchasePanel from './BgvPurchasePanel.jsx';
 
 const CandidateBgvPanel = ({ candidate }) => {
   const { candidateRef } = useParams();
@@ -78,6 +79,11 @@ const CandidateBgvPanel = ({ candidate }) => {
         onDecided={(decision) => setSummary((current) => ({ ...(current || {}), decision }))}
         onSync={(fresh) => setSummary(fresh)}
       />
+      {/* Phase 30.3 — paid BGV order. Entry ONLY for candidates whose 30.1
+          decision is INITIATE BGV; the backend re-validates eligibility and
+          owns every price. The panel re-reads Mongo, so refresh never
+          double-charges. */}
+      <BgvPurchasePanel candidateRef={ref} />
     <section className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-5">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex items-start gap-3">

@@ -55,6 +55,19 @@ const bgvService = {
     unwrap(
       await api.post(`/recruitment/candidates/${candidateId}/bgv-decision`, payload)
     ),
+  // Phase 30.3 — paid BGV order (backend is the only price authority).
+  purchasableServices: async () =>
+    unwrap(await api.get('/recruitment/bgv-purchase/services')),
+  createOrder: async (candidateId, payload) =>
+    unwrap(await api.post(`/recruitment/candidates/${candidateId}/bgv-order`, payload)),
+  orderFor: async (candidateId) =>
+    unwrap(await api.get(`/recruitment/candidates/${candidateId}/bgv-order`)),
+  initiatePayment: async (orderId) =>
+    unwrap(await api.post(`/recruitment/bgv-orders/${orderId}/payment/initiate`)),
+  verifyPayment: async (orderId, payload) =>
+    unwrap(await api.post(`/recruitment/bgv-orders/${orderId}/payment/verify`, payload)),
+  cancelOrder: async (orderId) =>
+    unwrap(await api.post(`/recruitment/bgv-orders/${orderId}/cancel`)),
   assign: async (caseId, verifierId) =>
     unwrap(
       await api.post(`/recruitment/background-verifications/${caseId}/assign`, {
