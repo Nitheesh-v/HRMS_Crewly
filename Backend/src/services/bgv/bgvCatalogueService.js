@@ -61,21 +61,27 @@ const unconfiguredDto = (type) => ({
 // ── default (Mongo) collaborators ────────────────────────────────
 const defaultFindAll = () => BgvServiceCatalogue.find({}).sort({ type: 1 }).lean();
 
-const defaultUpsert = ({ type, set, actorId }) =>
+// RCA (2026-09-06, live localhost): an aggregation-pipeline update passed to
+// findOneAndUpdate throws in Mongoose 9 unless `updatePipeline: true` is set,
+// and pipeline upserts skip schema defaults anyway. Use a plain update doc
+// with an explicitly computed version plus $setOnInsert defaults instead.
+const defaultUpsert = ({ type, set, actorId, nextVersion }) =>
   BgvServiceCatalogue.findOneAndUpdate(
     { type },
-    [
-      {
-        $set: {
-          ...set,
-          updatedBy: actorId ?? null,
-          updatedAt: '$$NOW',
-          // Bump the version on every mutation (also on first insert: 0→1).
-          version: { $add: [{ $ifNull: ['$version', 0] }, 1] },
-        },
+    {
+      $set: {
+        ...set,
+        updatedBy: actorId ?? null,
+        updatedAt: new Date(),
+        version: nextVersion,
       },
-    ],
-    { upsert: true, new: true, setDefaultsOnInsert: true }
+      $setOnInsert: {
+        createdAt: new Date(),
+        currency: BGV_CATALOGUE_CURRENCY,
+        active: set.active ?? true,
+      },
+    },
+    { upsert: true, new: true }
   ).lean();
 
 const defaultAudit = (entry) => SystemEvent.create(entry);
@@ -130,8 +136,10 @@ export const configureBgvService = async ({ type, payload = {}, actorId, deps = 
   }
 
   // Atomic upsert with unique type index: concurrent duplicate creates for
-  // the same product cannot produce a second row.
-  const record = await upsert({ type, set, actorId });
+  // the same product cannot produce a second row. Version is bumped per
+  // mutation and copied into future 30.3 order snapshots.
+  const nextVersion = (previous?.version || 0) + 1;
+  const record = await upsert({ type, set, actorId, nextVersion });
 
   // Rows created before an explicit active flag count as active (schema
   // default), so absence is never treated as "was deactivated".

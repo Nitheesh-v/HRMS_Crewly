@@ -31,20 +31,28 @@ const ACTOR = 'eee555555555555555555555';
 // ── fakes ────────────────────────────────────────────────────────
 const makeStore = (initial = []) => {
   const records = initial.map((record) => ({ ...record }));
-  const calls = { audits: [], upserts: 0 };
+  const calls = { audits: [], upserts: 0, upsertArgs: [] };
   const deps = {
     findAll: async () => records.map((record) => ({ ...record })),
-    upsert: async ({ type, set, actorId }) => {
+    upsert: async (args) => {
+      const { type, set, actorId, nextVersion } = args;
       calls.upserts += 1;
+      calls.upsertArgs.push(args);
       let record = records.find((candidate) => candidate.type === type);
       if (!record) {
-        record = { _id: `id-${type}`, type, createdAt: new Date() };
+        record = {
+          _id: `id-${type}`,
+          type,
+          createdAt: new Date(),
+          currency: BGV_CATALOGUE_CURRENCY,
+          active: set.active ?? true,
+        };
         records.push(record);
       }
       Object.assign(record, set, {
         updatedBy: actorId ?? null,
         updatedAt: new Date(),
-        version: (record.version || 0) + 1,
+        version: nextVersion ?? (record.version || 0) + 1,
       });
       return { ...record };
     },
@@ -154,6 +162,11 @@ test('first-time configuration creates exactly one row per product', async () =>
   assert.equal(result.priceMinorUnits, 50000);
   assert.equal(result.version, 1);
   assert.equal(result.action, 'BGV_CATALOGUE_CONFIGURED');
+  // RCA 2026-09-06: the Mongo upsert must receive a plain update doc with an
+  // explicit version (aggregation pipelines are rejected without the
+  // updatePipeline option and skip schema defaults).
+  assert.equal(typeof store.calls.upsertArgs[0].nextVersion, 'number');
+  assert.equal(store.calls.upsertArgs[0].nextVersion, 1);
   assert.equal(store.records.filter((record) => record.type === 'IDENTITY').length, 1);
 
   // Duplicate configure is an update of the same row, never a second row.
