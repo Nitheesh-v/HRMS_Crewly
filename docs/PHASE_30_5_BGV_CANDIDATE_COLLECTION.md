@@ -44,6 +44,9 @@ checks are rejected server-side (409), not merely hidden.
 ## 5. Privacy boundaries
 - **Masking:** APIs/UI show `******234F` / `XXXX XXXX 9012` style masks
   only. No full identity value in Mongo, responses, logs, audit, or queue.
+  Re-saving with a blank identifier keeps the stored mask + fingerprint
+  (same document type only) — the full number never round-trips to the
+  client ("leave blank to keep it").
 - **Aadhaar:** an uploaded Aadhaar copy is *candidate-provided evidence* —
   the UI labels it "uploaded copy — not e-KYC". No UIDAI/e-KYC claims, no
   Aadhaar OTP is ever requested.

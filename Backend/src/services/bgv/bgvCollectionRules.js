@@ -99,7 +99,8 @@ export const normalizeIdentifier = (rawValue) =>
 const isNonEmpty = (value) => String(value || '').trim().length > 0;
 const MAX_TEXT = 200;
 
-export const validateIdentityInput = (input = {}) => {
+export const validateIdentityInput = (input = {}, options = {}) => {
+  const { allowBlankIdentifier = false } = options;
   if (!isNonEmpty(input.legalName)) return 'Legal name is required';
   if (String(input.legalName).length > 160) return 'Legal name is too long';
   if (!input.dateOfBirth) return 'Date of birth is required for identity comparison';
@@ -109,7 +110,9 @@ export const validateIdentityInput = (input = {}) => {
   if (!isValidIdentityDocumentType(input.documentType)) {
     return 'Choose a supported identity document type';
   }
-  if (!isValidIdentifier(input.documentType, input.identifier)) {
+  // A blank identifier is only acceptable when the service will keep the
+  // previously stored masked value (same document type).
+  if (!allowBlankIdentifier && !isValidIdentifier(input.documentType, input.identifier)) {
     return 'The identity document number format is not valid for the selected type';
   }
   return '';

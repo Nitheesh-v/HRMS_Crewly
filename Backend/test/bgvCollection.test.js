@@ -774,3 +774,42 @@ test('30.5: masking rules keep display-safe values only', async () => {
   assert.equal(validateIdentityInput(validIdentity()), '');
   assert.equal(validateEmploymentRecord({ employer: 'X', designation: 'Y' }).length > 0, true);
 });
+
+test('30.5: blank identifier on re-save keeps the stored masked value; blank with no prior value rejected', async () => {
+  const world = consentedWorld({ checks: ['IDENTITY'] });
+  await saveIdentityInformation({ rawToken: world.rawToken, input: validIdentity(), deps: world.deps });
+  const fingerprintBefore = world.state.cases[0].identity.identifierFingerprint;
+
+  // Re-save with legal-name change and BLANK identifier (UI copy promises
+  // "leave blank to keep it") — must keep mask + fingerprint.
+  const updated = await saveIdentityInformation({
+    rawToken: world.rawToken,
+    input: { ...validIdentity(), identifier: '', legalName: 'Demo Candidate Updated' },
+    deps: world.deps,
+  });
+  assert.equal(updated.identity.legalName, 'Demo Candidate Updated');
+  assert.equal(updated.identity.identifierMasked, '******234F');
+  assert.equal(world.state.cases[0].identity.identifierFingerprint, fingerprintBefore);
+  assert.equal(JSON.stringify(world.state.cases).includes('ABCDE1234F'), false);
+
+  // Changing the document type with a blank identifier is NOT a keep.
+  await assert.rejects(
+    saveIdentityInformation({
+      rawToken: world.rawToken,
+      input: { ...validIdentity(), identifier: '', documentType: 'PASSPORT' },
+      deps: world.deps,
+    }),
+    (e) => e.statusCode === 400
+  );
+
+  // A fresh case with a blank identifier is still rejected.
+  const fresh = consentedWorld({ checks: ['IDENTITY'] });
+  await assert.rejects(
+    saveIdentityInformation({
+      rawToken: fresh.rawToken,
+      input: { ...validIdentity(), identifier: '' },
+      deps: fresh.deps,
+    }),
+    (e) => e.statusCode === 400 && /required/i.test(e.message)
+  );
+});

@@ -48,6 +48,7 @@ import {
   RECORD_SCOPED_CATEGORIES,
   SELFIE_ALLOWED_MIME_TYPES,
   computeCollectionReadiness,
+  isValidIdentifier,
   maskIdentifier,
   normalizeIdentifier,
   sanitizeCollectionCase,
@@ -75,7 +76,11 @@ const defaultLoadCompany = ({ companyId }) =>
   Company.findOne({ _id: companyId }).select('name').lean();
 
 const defaultLoadCase = ({ companyId, orderId }) =>
-  BgvCollectionCase.findOne({ companyId, bgvOrder: orderId }).lean();
+  BgvCollectionCase.findOne({ companyId, bgvOrder: orderId })
+    // The fingerprint is select:false; the service needs it only to keep
+    // the stored value on blank-identifier re-saves (never returned to UI).
+    .select('+identity.identifierFingerprint')
+    .lean();
 
 const defaultCreateCase = (doc) => BgvCollectionCase.create(doc);
 
@@ -224,8 +229,34 @@ export const saveIdentityInformation = async ({ rawToken, input = {}, deps = {},
     throw ApiError.conflict('Identity verification was not purchased for this BGV order');
   }
 
-  const problem = validateIdentityInput(input);
+  // Blank identifier on re-save keeps the stored masked value (same
+  // document type) — the full number never round-trips to the client.
+  const requestedType = String(input.documentType).toUpperCase();
+  const rawIdentifier = String(input.identifier || '').trim();
+  const existingIdentity = ctx.collectionCase.identity || {};
+  const keepExisting =
+    !rawIdentifier &&
+    Boolean(existingIdentity.identifierMasked) &&
+    existingIdentity.documentType === requestedType;
+
+  if (!rawIdentifier && !keepExisting) {
+    throw ApiError.badRequest('Identity document number is required');
+  }
+  const problem = validateIdentityInput(input, { allowBlankIdentifier: keepExisting });
   if (problem) throw ApiError.badRequest(problem);
+
+  let identifierMasked;
+  let identifierFingerprint;
+  if (rawIdentifier) {
+    if (!isValidIdentifier(requestedType, rawIdentifier)) {
+      throw ApiError.badRequest('The identity document number format is not valid for the selected type');
+    }
+    identifierMasked = maskIdentifier(requestedType, rawIdentifier);
+    identifierFingerprint = fingerprintOf(rawIdentifier);
+  } else {
+    identifierMasked = existingIdentity.identifierMasked;
+    identifierFingerprint = existingIdentity.identifierFingerprint || '';
+  }
 
   // PRIVACY: only the masked display value and a select:false fingerprint
   // are stored. The full identifier never enters Mongo, logs, or audit.
@@ -233,14 +264,12 @@ export const saveIdentityInformation = async ({ rawToken, input = {}, deps = {},
     identity: {
       legalName: String(input.legalName).trim().slice(0, 160),
       dateOfBirth: new Date(input.dateOfBirth),
-      documentType: String(input.documentType).toUpperCase(),
-      identifierMasked: maskIdentifier(input.documentType, input.identifier),
-      identifierFingerprint: fingerprintOf(input.identifier),
+      documentType: requestedType,
+      identifierMasked,
+      identifierFingerprint,
       updatedAt: new Date(),
     },
-  }));
-
-  await audit({
+  }));  await audit({
     req: requestContext,
     action: 'BGV_COLLECTION_SAVED',
     companyId: ctx.token.companyId,

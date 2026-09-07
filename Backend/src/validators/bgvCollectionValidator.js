@@ -29,8 +29,10 @@ export const bgvCollectionIdentityRules = [
   body('dateOfBirth').notEmpty().withMessage('Date of birth is required').isISO8601(),
   body('documentType').isIn(BGV_IDENTITY_DOCUMENT_TYPES).withMessage('Choose a supported identity document type'),
   // The number itself is validated by the service's type-aware pattern and
-  // is never persisted — masked display + fingerprint only.
-  body('identifier').trim().notEmpty().withMessage('Identity document number is required').isLength({ max: 40 }),
+  // is never persisted — masked display + fingerprint only. Blank is
+  // accepted here so the service can keep the previously stored masked
+  // value on re-saves ("leave blank to keep it").
+  body('identifier').optional({ values: 'falsy' }).trim().isLength({ max: 40 }),
   validate,
 ];
 
