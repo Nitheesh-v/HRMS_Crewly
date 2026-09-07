@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { UserCheck } from "lucide-react";
+import { ClipboardList, UserCheck } from "lucide-react";
 import useAuth from "../hooks/useAuth.jsx";
 import superAdminService from "../services/superAdminService.js";
 
@@ -45,6 +45,12 @@ const MENU = [
     to: "/super-admin/bgv-verifiers",
     label: "BGV Verifiers",
     icon: <UserCheck className="h-4 w-4" />,
+    roles: ["SUPER_ADMIN"],
+  },
+  {
+    to: "/super-admin/bgv-operations",
+    label: "BGV Operations",
+    icon: <ClipboardList className="h-4 w-4" />,
     roles: ["SUPER_ADMIN"],
   },
   {

@@ -19,6 +19,7 @@ import {
   issueBgvConsentInvitation,
 } from '../services/bgv/bgvConsentService.js';
 import { getHrCollectionStatus } from '../services/bgv/bgvCollectionService.js';
+import { getHrAssignmentStatus } from '../services/bgv/bgvAssignmentService.js';
 
 const actorId = (req) => req.user._id;
 
@@ -197,6 +198,26 @@ export const bgvCollectionStatus = asyncHandler(async (req, res) => {
   // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: 'BGV collection status',
+    data,
+  });
+});
+
+// Phase 30.7 — GET /api/recruitment/candidates/:candidateId/bgv-assignment-status
+export const bgvAssignmentProgress = asyncHandler(async (req, res) => {
+  // Data from frontend - candidate reference (tenant-scoped via req.companyId)
+  const { candidateId } = req.params;
+
+  // DB Logic - tenant HR sees ONLY high-level per-check operational state
+  // (UNASSIGNED / ASSIGNED / IN_PROGRESS). No internal verifier identity,
+  // no evidence, no assignment management — that is platform-only.
+  const data = await getHrAssignmentStatus({
+    companyId: req.companyId,
+    candidateRef: candidateId,
+  });
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, {
+    message: 'BGV assignment progress',
     data,
   });
 });

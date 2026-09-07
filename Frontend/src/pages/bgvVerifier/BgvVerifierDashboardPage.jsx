@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BadgeCheck, Inbox, Loader2, LogOut, ShieldCheck } from 'lucide-react';
+import { BadgeCheck, ClipboardList, Inbox, Loader2, LogOut, ShieldCheck } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import bgvVerifierAuthService from '../../services/bgvVerifierAuthService.js';
 
 // Phase 30.6 — authenticated verifier landing. Shows identity +
@@ -93,17 +94,24 @@ const BgvVerifierDashboardPage = () => {
           </div>
         </section>
 
+        {/* Phase 30.7 — workspace entry. Checks appear only after the
+            platform operations team assigns them to this verifier. */}
         <section className="card">
-          <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-crewly-border/40 text-crewly-dim">
-              <Inbox className="h-5 w-5" />
-            </span>
-            <div>
-              <h2 className="font-semibold text-crewly-text">No verification work is assigned yet.</h2>
-              <p className="text-xs text-crewly-dim">
-                Case assignment and evidence review arrive with the verification workbench phase. Until then, nothing candidate-related is visible here.
-              </p>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-crewly-green/10 text-crewly-green">
+                <ClipboardList className="h-5 w-5" />
+              </span>
+              <div>
+                <h2 className="font-semibold text-crewly-text">My Verification Work</h2>
+                <p className="text-xs text-crewly-dim">
+                  Checks assigned to you by the Crewly BGV operations team. Nothing is visible before assignment.
+                </p>
+              </div>
             </div>
+            <Link to="/bgv-verifier/work" className="btn-primary gap-2 !px-4 !py-2 text-sm">
+              <Inbox className="h-4 w-4" /> Open
+            </Link>
           </div>
         </section>
       </main>

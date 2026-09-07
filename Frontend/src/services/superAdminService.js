@@ -46,6 +46,14 @@ const superAdminService = {
   reactivateBgvVerifier: (id) =>
     post(`/super-admin/bgv-verifiers/${id}/reactivate`, {}),
 
+  // Phase 30.7 — BGV check assignment operations (platform-only).
+  bgvOperationsQueue: () => get("/super-admin/bgv-operations/queue"),
+  bgvEligibleVerifiers: (checkType) =>
+    get(`/super-admin/bgv-operations/checks/${checkType}/eligible-verifiers`),
+  bgvAssignCheck: (body) => post("/super-admin/bgv-operations/assign", body),
+  bgvReassignCheck: (body) => post("/super-admin/bgv-operations/reassign", body),
+  bgvUnassignCheck: (body) => post("/super-admin/bgv-operations/unassign", body),
+
   // Dashboard
   dashboard: () => get("/super-admin/dashboard"),
 

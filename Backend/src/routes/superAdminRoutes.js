@@ -12,6 +12,7 @@ import * as subscriptions from "../controllers/superAdminSubscriptionController.
 import * as operations from "../controllers/superAdminOperationsController.js";
 import * as bgvCatalogue from "../controllers/superAdminBgvCatalogueController.js";
 import * as bgvVerifier from "../controllers/bgvVerifierController.js";
+import * as bgvOperations from "../controllers/bgvOperationsController.js";
 import * as queueOps from "../controllers/superAdminQueueOpsController.js";
 import { securityRateLimit } from "../middlewares/securityRateLimit.js";
 import {
@@ -150,6 +151,14 @@ router.post("/bgv-verifiers/:verifierId/revoke-setup", permit("bgv-verifiers:man
 router.patch("/bgv-verifiers/:verifierId", permit("bgv-verifiers:manage"), bgvVerifier.bgvVerifierUpdate);
 router.post("/bgv-verifiers/:verifierId/deactivate", permit("bgv-verifiers:manage"), bgvVerifier.bgvVerifierDeactivate);
 router.post("/bgv-verifiers/:verifierId/reactivate", permit("bgv-verifiers:manage"), bgvVerifier.bgvVerifierReactivate);
+
+// Phase 30.7 — BGV check assignment operations (platform-only; the new
+// bgv-operations permissions are held only by SUPER_ADMIN via "*").
+router.get("/bgv-operations/queue", permit("bgv-operations:read"), bgvOperations.bgvOperationsQueue);
+router.get("/bgv-operations/checks/:checkType/eligible-verifiers", permit("bgv-operations:read"), bgvOperations.bgvOperationsEligibleVerifiers);
+router.post("/bgv-operations/assign", permit("bgv-operations:manage"), bgvOperations.bgvOperationsAssign);
+router.post("/bgv-operations/reassign", permit("bgv-operations:manage"), bgvOperations.bgvOperationsReassign);
+router.post("/bgv-operations/unassign", permit("bgv-operations:manage"), bgvOperations.bgvOperationsUnassign);
 
 router.get(
   "/bgv-catalogue",

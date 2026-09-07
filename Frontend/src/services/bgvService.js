@@ -76,6 +76,10 @@ const bgvService = {
   // Phase 30.5 — candidate collection status (status only; no raw evidence).
   collectionStatus: async (candidateId) =>
     unwrap(await api.get(`/recruitment/candidates/${candidateId}/bgv-collection-status`)),
+  // Phase 30.7 — high-level assignment progress (UNASSIGNED/ASSIGNED/
+  // IN_PROGRESS per check). Never internal verifier identity or evidence.
+  assignmentStatus: async (candidateId) =>
+    unwrap(await api.get(`/recruitment/candidates/${candidateId}/bgv-assignment-status`)),
   assign: async (caseId, verifierId) =>
     unwrap(
       await api.post(`/recruitment/background-verifications/${caseId}/assign`, {

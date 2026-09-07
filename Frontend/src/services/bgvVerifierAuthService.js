@@ -47,6 +47,22 @@ const bgvVerifierAuthService = {
   forgot: (email) => verifierApi.post('/bgv-verifier/auth/forgot-password', { email }),
   reset: (resetToken, password) =>
     verifierApi.post('/bgv-verifier/auth/reset-password', { resetToken, password }),
+
+  // Phase 30.7 — My Verification Work (session principal only; the backend
+  // never accepts a client-supplied verifierId).
+  work: () => verifierApi.get('/bgv-verifier/work'),
+  workDetail: (orderId, checkType) =>
+    verifierApi.get(`/bgv-verifier/work/${orderId}/${checkType}`),
+  startWork: (orderId, checkType) =>
+    verifierApi.post(`/bgv-verifier/work/${orderId}/${checkType}/start`, {}),
+  // Evidence download through the authenticated verifier session — no
+  // public URLs; the file must belong to a check assigned to this verifier.
+  downloadEvidence: async (fileId) => {
+    const response = await verifierApi.get(`/bgv-verifier/work/files/${fileId}`, {
+      responseType: 'blob',
+    });
+    return response;
+  },
 };
 
 export default bgvVerifierAuthService;

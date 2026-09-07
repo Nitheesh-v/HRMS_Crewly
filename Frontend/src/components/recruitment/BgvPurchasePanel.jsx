@@ -71,6 +71,7 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
     reason: '',
     consent: null,
     collection: null,
+    assignmentProgress: null,
   });
   const [selected, setSelected] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -94,6 +95,12 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
         consent?.state === 'CONSENTED'
           ? await bgvService.collectionStatus(candidateRef).catch(() => null)
           : null;
+      // Phase 30.7: high-level internal assignment progress (state only —
+      // never internal verifier identity, never evidence).
+      const assignmentProgress =
+        collection?.collectionStatus === 'CANDIDATE_SUBMITTED'
+          ? await bgvService.assignmentStatus(candidateRef).catch(() => null)
+          : null;
       setState((current) => ({
         ...current,
         loading: false,
@@ -105,6 +112,7 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
         reason: orderView?.reason || '',
         consent,
         collection,
+        assignmentProgress,
       }));
     } catch (error) {
       setState((current) => ({
@@ -123,7 +131,7 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
 
   if (!canManage) return null;
 
-  const { loading, error, message, services, order, eligible, reason, consent, collection } = state;
+  const { loading, error, message, services, order, eligible, reason, consent, collection, assignmentProgress } = state;
   const selectedServices = services.filter((service) => selected.includes(service.type));
   const displayTotal = selectedServices.reduce(
     (sum, service) => sum + (service.priceMinorUnits || 0),
@@ -354,6 +362,29 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
                           String(collection.collectionStatus).replaceAll('_', ' ')}
                       </span>
                     </p>
+                  ) : null}
+                  {/* Phase 30.7 — per-check operational progress only. HR
+                      cannot select or change verifiers (platform-only). */}
+                  {assignmentProgress?.perCheck &&
+                  Object.keys(assignmentProgress.perCheck).length > 0 ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {Object.entries(assignmentProgress.perCheck).map(
+                        ([check, progress]) => (
+                          <span
+                            key={check}
+                            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${
+                              progress === 'IN_PROGRESS'
+                                ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                                : progress === 'ASSIGNED'
+                                  ? 'border-teal-500/30 bg-teal-500/10 text-teal-300'
+                                  : 'border-slate-600/50 bg-slate-800/50 text-slate-400'
+                            }`}
+                          >
+                            {check}: {String(progress).replaceAll('_', ' ')}
+                          </span>
+                        )
+                      )}
+                    </div>
                   ) : null}
                 </div>
               </div>

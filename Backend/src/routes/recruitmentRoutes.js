@@ -63,6 +63,7 @@ import {
 } from '../controllers/backgroundVerificationController.js';
 import {
   bgvCollectionStatus,
+  bgvAssignmentProgress,
   bgvConsentInvitationIssue,
   bgvConsentStatus,
   bgvOrderCancel,
@@ -455,6 +456,15 @@ router.get(
   requirePermission('BACKGROUND_VERIFICATION_READ'),
   bgvConsentStatusRules,
   bgvCollectionStatus
+);
+
+// Phase 30.7 — high-level BGV assignment progress for HR (state only,
+// never internal verifier identity or evidence).
+router.get(
+  '/candidates/:candidateId/bgv-assignment-status',
+  requirePermission('BACKGROUND_VERIFICATION_READ'),
+  bgvConsentStatusRules,
+  bgvAssignmentProgress
 );
 
 // Phase 27.14 — recruitment command center analytics.
