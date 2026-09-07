@@ -75,10 +75,14 @@ const bgvConsentAccessTokenSchema = new Schema(
       },
     ],
     orderCode: { type: String, default: '' },
+    // 30.4 invitations carry the issuing User. Phase 30.9 rotation is
+    // system-mediated on behalf of the assigned verifier (verifiers are
+    // NOT Users — 30.6 boundary), so issuance lineage lives on the
+    // BgvInfoRequest instead and this may be null.
     issuedBy: {
       type: Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
+      default: null,
       immutable: true,
     },
   },

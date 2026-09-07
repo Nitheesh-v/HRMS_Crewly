@@ -286,8 +286,11 @@ export const createInfoRequest = async ({ verifierId, orderId, checkType, catego
       logger.info(`[DEV ONLY] BGV info-request portal for ${order.orderCode}: ${portalUrl}`);
     }
   } catch (sendError) {
-    // SMTP failure: the request stands; delivery status is audited; no
-    // candidate response is fabricated and nothing is rolled back.
+    // SMTP failure (or any notification fault): the request stands, the
+    // failure is visible in the backend console + audited (delivered:false),
+    // no candidate response is fabricated, nothing is rolled back. Message
+    // only — never the token, URL, or content.
+    logger.warn(`BGV info-request notification failed for ${order.orderCode}: ${String(sendError?.message || sendError).slice(0, 200)}`);
     notificationSent = false;
   }
   await auditSafe(audit, {
