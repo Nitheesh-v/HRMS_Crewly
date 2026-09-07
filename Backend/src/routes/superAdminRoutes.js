@@ -159,6 +159,9 @@ router.get("/bgv-operations/checks/:checkType/eligible-verifiers", permit("bgv-o
 router.post("/bgv-operations/assign", permit("bgv-operations:manage"), bgvOperations.bgvOperationsAssign);
 router.post("/bgv-operations/reassign", permit("bgv-operations:manage"), bgvOperations.bgvOperationsReassign);
 router.post("/bgv-operations/unassign", permit("bgv-operations:manage"), bgvOperations.bgvOperationsUnassign);
+// Phase 30.8 — platform-only check cancellation (CANCELLED is never a
+// verifier choice; requires a business reason).
+router.post("/bgv-operations/cancel-check", permit("bgv-operations:manage"), bgvOperations.bgvOperationsCancelCheck);
 
 router.get(
   "/bgv-catalogue",

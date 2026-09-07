@@ -53,6 +53,9 @@ const superAdminService = {
   bgvAssignCheck: (body) => post("/super-admin/bgv-operations/assign", body),
   bgvReassignCheck: (body) => post("/super-admin/bgv-operations/reassign", body),
   bgvUnassignCheck: (body) => post("/super-admin/bgv-operations/unassign", body),
+  // Phase 30.8 — platform-only check cancellation (CANCELLED is never a
+  // verifier choice; business reason required).
+  bgvCancelCheck: (body) => post("/super-admin/bgv-operations/cancel-check", body),
 
   // Dashboard
   dashboard: () => get("/super-admin/dashboard"),

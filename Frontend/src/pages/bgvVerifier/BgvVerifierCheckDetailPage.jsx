@@ -2,6 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, Download, FileText, Loader2, Play } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import bgvVerifierAuthService from '../../services/bgvVerifierAuthService.js';
+import {
+  ActivityForm,
+  ActivityTimeline,
+  ConclusionPanel,
+  DiscrepancyPanel,
+  EvidenceUploadPanel,
+  StateBadgeRow,
+} from './workbench/WorkbenchPanels.jsx';
 
 // Phase 30.7 — minimum-data detail for ONE assigned check. The backend
 // projects only what this check type needs (no giant candidate object, no
@@ -66,6 +74,26 @@ const BgvVerifierCheckDetailPage = () => {
     }
   };
 
+  const downloadVerifierFile = async (fileId) => {
+    setBusy(fileId);
+    setError('');
+    try {
+      const blob = await bgvVerifierAuthService.downloadVerifierEvidence(fileId);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `verifier-evidence-${fileId}`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (requestError) {
+      setError(requestError?.message || 'Could not download verifier evidence');
+    } finally {
+      setBusy('');
+    }
+  };
+
   const renderAddress = (address) => (
     <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
       {Object.entries(address || {})
@@ -118,6 +146,9 @@ const BgvVerifierCheckDetailPage = () => {
                   {detail.status.replaceAll('_', ' ')}
                 </span>
               </div>
+              {detail.workbench ? (
+                <StateBadgeRow orderId={orderId} checkType={checkType} workbench={detail.workbench} onChanged={load} onError={setError} />
+              ) : null}
               {detail.status === 'ASSIGNED' ? (
                 <button type="button" onClick={start} disabled={busy === 'start'} className="btn-primary gap-2 !px-4 !py-2 text-sm">
                   {busy === 'start' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
@@ -241,9 +272,22 @@ const BgvVerifierCheckDetailPage = () => {
               )}
             </section>
 
+            {/* Phase 30.8 — verification workbench (this check only). */}
+            {detail.workbench ? (
+              <>
+                <ActivityForm orderId={orderId} checkType={detail.checkType} workbench={detail.workbench} onRecorded={load} onError={setError} />
+                <ActivityTimeline workbench={detail.workbench} onDownloadEvidence={downloadVerifierFile} downloading={busy} />
+                {detail.workbench.locked ? null : (
+                  <EvidenceUploadPanel orderId={orderId} checkType={detail.checkType} workbench={detail.workbench} onUploaded={load} onError={setError} />
+                )}
+                <DiscrepancyPanel orderId={orderId} checkType={detail.checkType} workbench={detail.workbench} onRecorded={load} onError={setError} />
+                <ConclusionPanel orderId={orderId} checkType={detail.checkType} workbench={detail.workbench} onSubmitted={load} onError={setError} />
+              </>
+            ) : null}
+
             <p className="text-[11px] text-crewly-dim">
-              Verification conclusions, contacting institutions/employers/references, and final reporting are not part of this phase. Access is
-              limited to this assigned check only.
+              Conclusions are BGV findings for human HR/QA review — they never reject, select, or hire a candidate, and they never clear the
+              whole BGV. Access is limited to this assigned check only.
             </p>
           </>
         ) : null}

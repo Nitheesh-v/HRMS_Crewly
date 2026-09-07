@@ -373,14 +373,18 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
                           <span
                             key={check}
                             className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${
-                              progress === 'IN_PROGRESS'
-                                ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
-                                : progress === 'ASSIGNED'
-                                  ? 'border-teal-500/30 bg-teal-500/10 text-teal-300'
-                                  : 'border-slate-600/50 bg-slate-800/50 text-slate-400'
+                              progress === 'SUBMITTED'
+                                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                                : progress === 'IN_PROGRESS'
+                                  ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                                  : progress === 'ASSIGNED'
+                                    ? 'border-teal-500/30 bg-teal-500/10 text-teal-300'
+                                    : 'border-slate-600/50 bg-slate-800/50 text-slate-400'
                             }`}
                           >
-                            {check}: {String(progress).replaceAll('_', ' ')}
+                            {/* Phase 30.8 — safe state only: 'Submitted' means
+                                verifier findings are locked for internal review. */}
+                            {check}: {progress === 'SUBMITTED' ? 'Submitted for review' : String(progress).replaceAll('_', ' ')}
                           </span>
                         )
                       )}

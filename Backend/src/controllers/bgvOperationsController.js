@@ -9,6 +9,7 @@
 
 import ApiResponse from '../utils/ApiResponse.js';
 import asyncHandler from '../utils/asyncHandler.js';
+import { cancelCheckByOperations } from '../services/bgv/bgvWorkbenchService.js';
 import {
   assignCheck,
   eligibleVerifiersForCheck,
@@ -86,4 +87,23 @@ export const bgvOperationsUnassign = asyncHandler(async (req, res) => {
   });
   // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: 'Check unassigned', data });
+});
+
+// POST /api/super-admin/bgv-operations/cancel-check
+export const bgvOperationsCancelCheck = asyncHandler(async (req, res) => {
+  // Data from frontend - order + check + business reason (min 10 chars)
+  const { orderId, checkType, reason } = req.body;
+
+  // DB Logic - platform-only cancellation with a locked CANCELLED
+  // conclusion; verifiers never see CANCELLED as a choice
+  const data = await cancelCheckByOperations({
+    actorId: req.user?._id ?? null,
+    orderId,
+    checkType,
+    reason,
+    requestContext: req,
+  });
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, { message: 'Check cancelled', data });
 });

@@ -63,6 +63,28 @@ const bgvVerifierAuthService = {
     });
     return response;
   },
+
+  // Phase 30.8 — verification workbench (structured activities, findings,
+  // conclusion). The backend re-validates method/outcome/observations —
+  // this client never widens the controlled registry.
+  recordActivity: (orderId, checkType, body) =>
+    verifierApi.post(`/bgv-verifier/work/${orderId}/${checkType}/activities`, body),
+  recordDiscrepancy: (orderId, checkType, body) =>
+    verifierApi.post(`/bgv-verifier/work/${orderId}/${checkType}/discrepancies`, body),
+  setWorkbenchState: (orderId, checkType, state) =>
+    verifierApi.post(`/bgv-verifier/work/${orderId}/${checkType}/state`, { state }),
+  submitConclusion: (orderId, checkType, body) =>
+    verifierApi.post(`/bgv-verifier/work/${orderId}/${checkType}/submit`, body),
+  uploadActivityEvidence: (orderId, checkType, formData) =>
+    verifierApi.post(`/bgv-verifier/work/${orderId}/${checkType}/evidence`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  downloadVerifierEvidence: async (fileId) => {
+    const response = await verifierApi.get(`/bgv-verifier/work/evidence/${fileId}`, {
+      responseType: 'blob',
+    });
+    return response;
+  },
 };
 
 export default bgvVerifierAuthService;

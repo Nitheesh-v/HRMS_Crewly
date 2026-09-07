@@ -7,8 +7,15 @@
 
 import { Router } from 'express';
 import { securityRateLimit } from '../middlewares/securityRateLimit.js';
+import { preOnboardingUpload } from '../middlewares/preOnboardingUpload.js';
 import { requireVerifierAuth } from '../middlewares/bgvVerifierAuth.js';
 import {
+  bgvVerifierActivityRecord,
+  bgvVerifierConclusionSubmit,
+  bgvVerifierDiscrepancyRecord,
+  bgvVerifierEvidenceDownload,
+  bgvVerifierEvidenceUpload,
+  bgvVerifierStateSet,
   bgvVerifierWorkDetail,
   bgvVerifierWorkFileDownload,
   bgvVerifierWorkList,
@@ -27,9 +34,19 @@ const workLimit = securityRateLimit({
 router.use(requireVerifierAuth, workLimit);
 
 router.get('/', bgvVerifierWorkList);
-// /files/:fileId MUST precede /:orderId/:checkType (both two segments).
+// Static two-segment paths MUST precede /:orderId/:checkType.
 router.get('/files/:fileId', bgvVerifierWorkFileDownload);
+router.get('/evidence/:fileId', bgvVerifierEvidenceDownload);
 router.get('/:orderId/:checkType', bgvVerifierWorkDetail);
 router.post('/:orderId/:checkType/start', bgvVerifierWorkStart);
+
+// Phase 30.8 — verification workbench. Verifier evidence reuses the same
+// hardened uploader as candidate uploads (MIME/size allowlist, memory
+// storage) — never a weaker second implementation.
+router.post('/:orderId/:checkType/activities', bgvVerifierActivityRecord);
+router.post('/:orderId/:checkType/discrepancies', bgvVerifierDiscrepancyRecord);
+router.post('/:orderId/:checkType/state', bgvVerifierStateSet);
+router.post('/:orderId/:checkType/submit', bgvVerifierConclusionSubmit);
+router.post('/:orderId/:checkType/evidence', preOnboardingUpload, bgvVerifierEvidenceUpload);
 
 export default router;

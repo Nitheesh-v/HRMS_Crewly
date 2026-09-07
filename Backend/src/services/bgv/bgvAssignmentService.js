@@ -29,11 +29,13 @@ import BgvCollectionCase from '../../models/BgvCollectionCase.js';
 import BgvEvidenceFile from '../../models/BgvEvidenceFile.js';
 import BgvVerifier from '../../models/BgvVerifier.js';
 import BgvCheckAssignment from '../../models/BgvCheckAssignment.js';
+import BgvCheckVerification from '../../models/BgvCheckVerification.js';
 import ApiError from '../../utils/ApiError.js';
 import { recordAudit } from '../../utils/securityauditService.js';
 import { getStoredBgvEvidence } from './bgvEvidenceStorageService.js';
 import { isCommerciallyAuthorized } from './bgvOrderRules.js';
 import { sanitizeVerifier } from './bgvVerifierRules.js';
+import { buildWorkbenchView } from './bgvWorkbenchRules.js';
 
 const isObjectId = (value) => mongoose.isValidObjectId(value);
 const FIVE_CHECKS = ['IDENTITY', 'ADDRESS', 'EDUCATION', 'EMPLOYMENT', 'REFERENCE'];
@@ -68,6 +70,12 @@ const defaultListAssignmentsForOrders = ({ orderIds }) =>
     : BgvCheckAssignment.find({ bgvOrder: { $in: orderIds }, activeKey: 'CURRENT' }).lean();
 const defaultListSubmittedCases = () =>
   BgvCollectionCase.find({ status: 'SUBMITTED' }).sort({ submittedAt: 1 }).lean();
+const defaultLoadVerification = ({ orderId, checkType }) =>
+  BgvCheckVerification.findOne({ bgvOrder: orderId, checkType, activeKey: 'CURRENT' }).lean();
+const defaultLoadVerificationsForOrders = ({ orderIds }) =>
+  orderIds === null || orderIds === undefined
+    ? BgvCheckVerification.find({ activeKey: 'CURRENT' }).lean()
+    : BgvCheckVerification.find({ bgvOrder: { $in: orderIds }, activeKey: 'CURRENT' }).lean();
 const defaultFetchFile = (args) => getStoredBgvEvidence(args);
 const defaultLoadFileFull = ({ fileId }) =>
   isObjectId(fileId) ? BgvEvidenceFile.findOne({ _id: fileId }).select('+storageKey +checksumSha256').lean() : Promise.resolve(null);
@@ -244,8 +252,11 @@ export const listOperationsQueue = async ({ deps = {} }) => {
 
   const cases = await listSubmittedCases();
   if (cases.length === 0) return { rows: [] };
+  const loadVerifications = deps.loadVerificationsForOrders || defaultLoadVerificationsForOrders;
   const assignments = await listAssignments({ orderIds: cases.map((entry) => entry.bgvOrder) });
   const byOrderCheck = new Map(assignments.map((entry) => [`${entry.bgvOrder}:${entry.checkType}`, entry]));
+  const verifications = await loadVerifications({ orderIds: cases.map((entry) => entry.bgvOrder) });
+  const verificationByOrderCheck = new Map(verifications.map((entry) => [`${entry.bgvOrder}:${entry.checkType}`, entry]));
 
   const rows = [];
   for (const collectionCase of cases) {
@@ -278,6 +289,8 @@ export const listOperationsQueue = async ({ deps = {} }) => {
         assignment: assignment
           ? { status: assignment.status, assignedAt: assignment.assignedAt, startedAt: assignment.startedAt, verifier: verifierInfo }
           : null,
+        // Phase 30.8 — operational workbench state (never a conclusion).
+        verificationState: verificationByOrderCheck.get(`${String(order._id)}:${checkType}`)?.state || null,
       });
     }
   }
@@ -303,6 +316,10 @@ const loadOwnAssignment = async ({ verifierId, orderId, checkType, deps }) => {
   }
   return assignment;
 };
+
+// Shared with the 30.8 workbench service — the authorization chain must
+// stay identical (current assignment = access; former verifiers denied).
+export { loadOwnAssignment };
 
 export const verifierWorkQueue = async ({ verifierId, deps = {} }) => {
   const loadVerifier = deps.loadVerifier || defaultLoadVerifier;
@@ -392,6 +409,12 @@ export const verifierCheckDetail = async ({ verifierId, orderId, checkType, deps
   if (!collectionCase) throw ApiError.notFound('Candidate submission not found');
 
   const activeFiles = await listActiveFiles({ companyId: order.companyId, caseId: collectionCase._id });
+  // Phase 30.8 — workbench (activities/conclusion/registry mirror). The
+  // detail stays a minimum-data DTO; the workbench view is derived from
+  // the check's own verification record only.
+  const loadVerification = deps.loadVerification || defaultLoadVerification;
+  const verification = await loadVerification({ orderId: order._id, checkType: assignment.checkType });
+  const workbench = buildWorkbenchView(verification);
   const filesFor = (type) =>
     activeFiles
       .filter((file) => file.checkType === type)
@@ -415,6 +438,7 @@ export const verifierCheckDetail = async ({ verifierId, orderId, checkType, deps
     status: assignment.status,
     assignedAt: assignment.assignedAt,
     startedAt: assignment.startedAt,
+    workbench,
     // NOTE: no payment, pricing, gateway, or full-identifier fields here.
   };
 
@@ -557,11 +581,20 @@ export const getHrAssignmentStatus = async ({ companyId, candidateRef, deps = {}
   if (!collectionCase || collectionCase.status !== 'SUBMITTED') {
     return { perCheck: {} };
   }
+  const loadVerifications = deps.loadVerificationsForOrders || defaultLoadVerificationsForOrders;
   const assignments = await listAssignments({ orderIds: [order._id] });
+  const verifications = await loadVerifications({ orderIds: [order._id] });
   const perCheck = {};
   for (const checkType of collectionCase.purchasedChecks || []) {
     const assignment = assignments.find((entry) => entry.checkType === checkType);
-    perCheck[checkType] = !assignment || !assignment.verifier ? 'UNASSIGNED' : assignment.status;
+    if (!assignment || !assignment.verifier) {
+      perCheck[checkType] = 'UNASSIGNED';
+      continue;
+    }
+    // Phase 30.8 — HR sees 'SUBMITTED' once verifier findings are locked;
+    // still state-only, never findings/notes (30.10 owns report release).
+    const verification = verifications.find((entry) => entry.checkType === checkType);
+    perCheck[checkType] = verification?.state === 'SUBMITTED' ? 'SUBMITTED' : assignment.status;
   }
   return { perCheck };
 };

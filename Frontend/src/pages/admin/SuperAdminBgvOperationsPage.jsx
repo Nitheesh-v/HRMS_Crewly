@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  Ban,
   ClipboardList,
   Loader2,
   RefreshCw,
@@ -72,11 +73,19 @@ const SuperAdminBgvOperationsPage = () => {
         await superAdminService.bgvAssignCheck({ orderId: row.orderId, checkType: row.checkType, verifierId: form.verifierId, reason: form.reason });
       } else if (mode === 'reassign') {
         await superAdminService.bgvReassignCheck({ orderId: row.orderId, checkType: row.checkType, verifierId: form.verifierId, reason: form.reason });
-      } else {
+      } else if (mode === 'unassign') {
         await superAdminService.bgvUnassignCheck({ orderId: row.orderId, checkType: row.checkType, reason: form.reason });
+      } else {
+        await superAdminService.bgvCancelCheck({ orderId: row.orderId, checkType: row.checkType, reason: form.reason });
       }
       setNotice(
-        mode === 'assign' ? 'Check assigned to verifier.' : mode === 'reassign' ? 'Check reassigned. Previous verifier lost access immediately.' : 'Check unassigned. Former verifier lost access immediately.'
+        mode === 'assign'
+          ? 'Check assigned to verifier.'
+          : mode === 'reassign'
+            ? 'Check reassigned. Previous verifier lost access immediately.'
+            : mode === 'unassign'
+              ? 'Check unassigned. Former verifier lost access immediately.'
+              : 'Check cancelled. The CANCELLED conclusion is locked; verifiers cannot cancel work.'
       );
       setDialog(null);
       await load();
@@ -186,7 +195,14 @@ const SuperAdminBgvOperationsPage = () => {
                       <span className="rounded-full border border-slate-700 bg-slate-950/60 px-2.5 py-1 text-[11px] font-semibold text-slate-300">{row.checkType}</span>
                     </td>
                     <td className="px-4 py-3 text-slate-400">{row.waitingDays}d</td>
-                    <td className="px-4 py-3">{stateBadge(row)}</td>
+                    <td className="px-4 py-3">
+                      {stateBadge(row)}
+                      {row.verificationState === 'SUBMITTED' ? (
+                        <span className="ml-2 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">FINDINGS SUBMITTED</span>
+                      ) : row.verificationState === 'AWAITING_THIRD_PARTY' ? (
+                        <span className="ml-2 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-300">AWAITING 3RD PARTY</span>
+                      ) : null}
+                    </td>
                     <td className="px-4 py-3">
                       {hasVerifier ? (
                         <span className={verifierDeactivated ? 'text-rose-300' : 'text-slate-200'}>
@@ -211,6 +227,11 @@ const SuperAdminBgvOperationsPage = () => {
                                 <UserMinus className="h-3.5 w-3.5" /> Unassign
                               </button>
                             ) : null}
+                            {row.verificationState !== 'SUBMITTED' ? (
+                              <button type="button" onClick={() => openDialog('cancel', row)} className="btn-ghost gap-2 !px-3 !py-1.5 text-xs text-rose-300">
+                                <Ban className="h-3.5 w-3.5" /> Cancel check
+                              </button>
+                            ) : null}
                           </>
                         ) : (
                           <button type="button" onClick={() => openDialog('assign', row)} className="btn-primary gap-2 !px-3 !py-1.5 text-xs">
@@ -231,7 +252,7 @@ const SuperAdminBgvOperationsPage = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4">
           <div className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-5">
             <h2 className="text-base font-semibold text-slate-100">
-              {dialog.mode === 'assign' ? 'Assign check' : dialog.mode === 'reassign' ? 'Reassign check' : 'Unassign check'}
+              {dialog.mode === 'assign' ? 'Assign check' : dialog.mode === 'reassign' ? 'Reassign check' : dialog.mode === 'unassign' ? 'Unassign check' : 'Cancel check (CANCELLED conclusion)'}
             </h2>
             <p className="mt-1 text-xs text-slate-400">
               {dialog.row.orderCode} · {dialog.row.candidateName} · {dialog.row.checkType}
@@ -260,15 +281,20 @@ const SuperAdminBgvOperationsPage = () => {
                   </select>
                 )}
               </div>
-            ) : (
+            ) : dialog.mode === 'unassign' ? (
               <p className="mt-3 text-xs text-slate-400">
                 Allowed only before verification work starts. The former verifier loses access immediately and the action is recorded in history.
+              </p>
+            ) : (
+              <p className="mt-3 text-xs text-slate-400">
+                Platform-only cancellation (verifiers never see CANCELLED). Records a locked CANCELLED conclusion with your business reason; the
+                check history is preserved.
               </p>
             )}
 
             <div className="mt-4">
               <label className="label" htmlFor="ops-reason">
-                Reason {dialog.mode === 'reassign' ? '(required)' : '(optional)'}
+                Reason {dialog.mode === 'reassign' || dialog.mode === 'cancel' ? '(required, min 10 characters for cancel)' : '(optional)'}
               </label>
               <input
                 id="ops-reason"
@@ -287,11 +313,15 @@ const SuperAdminBgvOperationsPage = () => {
               <button
                 type="button"
                 onClick={submitDialog}
-                disabled={Boolean(busy) || (dialog.mode !== 'unassign' && !form.verifierId) || (dialog.mode === 'reassign' && !form.reason.trim())}
+                disabled={
+                  Boolean(busy) ||
+                  (dialog.mode === 'assign' || dialog.mode === 'reassign' ? !form.verifierId : false) ||
+                  ((dialog.mode === 'reassign' || dialog.mode === 'cancel') && form.reason.trim().length < (dialog.mode === 'cancel' ? 10 : 1))
+                }
                 className="btn-primary gap-2 !px-4 !py-2 text-sm"
               >
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                {dialog.mode === 'assign' ? 'Assign' : dialog.mode === 'reassign' ? 'Reassign' : 'Unassign'}
+                {dialog.mode === 'assign' ? 'Assign' : dialog.mode === 'reassign' ? 'Reassign' : dialog.mode === 'unassign' ? 'Unassign' : 'Cancel check'}
               </button>
             </div>
           </div>

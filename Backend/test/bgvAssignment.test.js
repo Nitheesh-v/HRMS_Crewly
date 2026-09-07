@@ -145,6 +145,9 @@ const makeWorld = (overrides = {}) => {
       return found ? { ...found } : null;
     },
     fetchFile: async ({ storageKey }) => Buffer.from(`content:${storageKey}`),
+    // Phase 30.8 fakes: no verification records exist in the 30.7 world.
+    loadVerification: async () => null,
+    loadVerificationsForOrders: async () => [],
     loadCandidateByRef: async () => ({ _id: CANDIDATE_ID, name: 'Priya Raman' }),
     loadLatestOrder: async () => ({ ...order, status: state.orderStatus }),
     audit: async (entry) => {
