@@ -20,6 +20,15 @@ if (process.env.SMTP_HOST) {
   logger.info('📧 Mailer: MOCK mode (emails logged to console — set SMTP_* to send real mail)');
 }
 
+// Server-fixed display labels only (e.g. 'Crewly Background Verification').
+// The ADDRESS always comes from the configured verified sender (SMTP_FROM);
+// no tenant/verifier/client input can choose an arbitrary From address.
+const fromAddress = () => {
+  const configured = process.env.SMTP_FROM || 'Crewly HRMS <no-reply@crewly.com>';
+  const match = /<([^>]+)>/.exec(configured);
+  return match ? match[1] : configured;
+};
+
 export const sendMail = async ({
   to,
   subject,
@@ -27,6 +36,7 @@ export const sendMail = async ({
   text = "",
   sensitive = false,
   attachments = [],
+  fromLabel = '',
 }) => {
   // Phase 29.9 — payslip delivery attaches a PDF. Nodemailer accepts buffers
   // directly; the caller passes { filename, content, contentType }.
@@ -77,9 +87,7 @@ export const sendMail = async ({
     }
 
     await transporter.sendMail({
-      from:
-        process.env.SMTP_FROM ||
-        "Crewly HRMS <no-reply@crewly.com>",
+      from: `${fromLabel || 'Crewly HRMS'} <${fromAddress()}>`,
 
       to,
       subject,
@@ -695,17 +703,29 @@ export const receiptEmail = ({ companyName, planName, amount, months, endDate, p
     </table>`),
 });
 // Phase 30.4 — candidate BGV consent invitation email.
-// Safe content only: greeting, requesting company, what is requested, the
-// secure link and its expiry. Never documents, payments, verifiers or
-// identity numbers.
+// Crewly (operated by Infolexus) is the SENDER; the tenant company is named
+// as the REQUESTER. Safe content only: greeting, requester, checks included,
+// the secure expiring link and expiry guidance. Never payment amounts,
+// provider/payment IDs, documents, identity numbers, verifier or internal
+// operations data. Never claims verification is complete.
 export const bgvConsentInvitationEmail = ({
   candidateName,
   companyName,
+  checks = [],
   portalUrl,
   expiresAt,
 }) => {
   const safeName = escapeHtml(candidateName || 'Candidate');
   const safeCompany = escapeHtml(companyName || 'the requesting organisation');
+  const checkNames = (checks || [])
+    .map((item) => item.name || item.type)
+    .filter(Boolean);
+  const checksText = checkNames.length
+    ? checkNames.map((name) => `  - ${name}`).join('\n')
+    : '  - the checks listed on the secure page';
+  const checksHtml = checkNames.length
+    ? `<ul>${checkNames.map((name) => `<li>${escapeHtml(name)}</li>`).join('')}</ul>`
+    : '<p>The checks are listed on the secure page.</p>';
   const expiryLabel = expiresAt
     ? new Intl.DateTimeFormat('en-IN', {
         day: '2-digit',
@@ -720,19 +740,24 @@ export const bgvConsentInvitationEmail = ({
       : '';
 
   return {
-    subject: `Background verification consent request — ${String(companyName || '')
+    fromLabel: 'Crewly Background Verification',
+    subject: `Background verification requested by ${String(companyName || 'the requesting organisation')
       .replace(/[\r\n]/g, ' ')
       .slice(0, 100)}`,
     text:
       `Hello ${candidateName},\n\n` +
-      `${companyName} has requested a background verification for your candidature, coordinated through Crewly.\n` +
-      `Opening this link does NOT give consent — you will choose explicitly on the page.\n` +
+      `${companyName} has requested background verification through Crewly, operated by Infolexus.\n` +
+      `You are never asked to pay for this verification.\n` +
+      `Verification checks included in this request:\n${checksText}\n\n` +
+      `Opening the link does NOT give consent — you choose explicitly on the page.\n` +
       `Secure link: ${portalUrl}\n` +
       `The link expires on ${expiryLabel}.\n\n` +
       `If you did not expect this request, you can safely ignore this email.`,
     html:
       `<p>Hello ${safeName},</p>` +
-      `<p><strong>${safeCompany}</strong> has requested a background verification for your candidature, coordinated through Crewly.</p>` +
+      `<p><strong>${safeCompany}</strong> has requested background verification through Crewly, operated by Infolexus.</p>` +
+      `<p>You are never asked to pay for this verification.</p>` +
+      `<p>Verification checks included in this request:</p>${checksHtml}` +
       `<p>Opening the link does <strong>not</strong> give consent — you will choose explicitly on the page.</p>` +
       `<p><a href="${safeUrl}">Review and respond to the verification request</a></p>` +
       `<p>The link expires on ${escapeHtml(expiryLabel)}.</p>` +

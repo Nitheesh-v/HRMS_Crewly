@@ -41,6 +41,7 @@ export const BGV_CONSENT_STATES = [
   'INVITATION_SENT', // active unexpired token, no candidate decision yet
   'INVITATION_EXPIRED', // latest token expired without a decision
   'INVITATION_REVOKED', // latest token revoked without a decision
+  'INVITATION_FAILED', // latest delivery failed; order stays authorized
   'CONSENTED',
   'CONSENT_DECLINED',
 ];
@@ -49,7 +50,11 @@ export const deriveConsentState = ({ token }) => {
   if (!token) return 'NONE';
   if (token.finalDecision === 'CONSENTED') return 'CONSENTED';
   if (token.finalDecision === 'DECLINED') return 'CONSENT_DECLINED';
-  if (token.revokedAt) return 'INVITATION_REVOKED';
+  if (token.revokedAt) {
+    return token.revokedReason === 'DELIVERY_FAILED'
+      ? 'INVITATION_FAILED'
+      : 'INVITATION_REVOKED';
+  }
   if (token.expiresAt && new Date(token.expiresAt).getTime() <= Date.now()) {
     return 'INVITATION_EXPIRED';
   }

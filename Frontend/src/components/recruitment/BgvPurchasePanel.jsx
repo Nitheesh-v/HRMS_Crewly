@@ -33,6 +33,7 @@ const CONSENT_COPY = {
   INVITATION_SENT: 'Invitation sent — consent pending. The candidate has not decided yet.',
   INVITATION_EXPIRED: 'The last invitation expired before the candidate decided.',
   INVITATION_REVOKED: 'The last invitation was revoked.',
+  INVITATION_FAILED: 'The last invitation email failed to deliver. The order stays paid — resend when ready.',
   CONSENTED: 'Candidate CONSENTED. Consent only — not a verification result.',
   CONSENT_DECLINED: 'Candidate DECLINED. Not a verification failure; the recruitment decision stays human.',
 };

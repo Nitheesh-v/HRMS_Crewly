@@ -109,3 +109,51 @@ no-side-effects boundary. Included in `npm run test:all` (902/902).
 Document/information collection (30.5), verifier accounts/assignment/
 workbench, BGV case creation from consent, candidate auto-rejection,
 pipeline auto-mutation, re-consent workflows, credits/invoicing.
+
+## Addendum — Crewly-sent invitations & future billing boundary
+
+**Responsibility split.** Tenant HR is the BGV *requester* (initiates, selects
+checks, completes commercial authorization). Crewly/Infolexus is the
+*service provider and invitation sender*: the backend generates the token,
+renders and delivers the email from the configured verified sender
+(`SMTP_FROM`, display label "Crewly Background Verification" — server-fixed;
+no tenant/verifier/client input can choose a From address), hosts the public
+portal and records consent/decline. The candidate is the consent
+decision-maker and **never pays**. Production deployments must provision a
+verified sender domain with SPF/DKIM/DMARC — a deployment requirement, not
+application code.
+
+**Email content.** Subject: "Background verification requested by
+<Tenant Company Name>". Body states "<Tenant> has requested background
+verification through Crewly, operated by Infolexus", lists the purchased
+checks, the secure expiring link, expiry guidance and "you are never asked
+to pay". No payment amounts, provider IDs, documents, identity numbers,
+verifier or internal data; never claims completion.
+
+**Trigger pattern B.** Authorized HR clicks "Send consent invitation"; the
+action only asks Crewly's backend to generate+deliver. The raw token/URL is
+never returned to HR APIs, never copyable, no mailto/manual-download
+surfaces, frontend never constructs the secure link. Recipient always comes
+from the authoritative Candidate document (tenant-scoped via the PAID
+order) — body/query email overrides are ignored (not even parameters).
+
+**Delivery states stay separate.** commercially authorized (PAID) →
+invitation created → delivery pending/failed → consent pending →
+consented/declined. SMTP failure returns 503, revokes the undelivered link,
+leaves PAID untouched and surfaces `INVITATION_FAILED` to HR with safe
+resend. At-least-once email semantics; exactly-once never claimed.
+
+**Commercial authorization boundary.** `bgvOrderRules.commercialReadinessOf`
+/ `isCommerciallyAuthorized` is the single mapping of the 30.3 state
+(today: PAID) to `AUTHORIZED_FOR_PROCESSING`. The consent service contains
+no Razorpay/payment-provider field access and no queue coupling, so future
+modes (PREPAID_CREDITS, MONTHLY_INVOICE, SUBSCRIPTION_INCLUDED,
+ENTERPRISE_POSTPAID — **not implemented**, not exposed in UI) can reach the
+same boundary without redesigning invitation/consent/30.5+ workflows.
+
+**Addendum tests** (8 added, suite now 25): unverified payment cannot
+invite; boundary helper provider-agnostic + banned-coupling scan; Crewly
+sender/tenant-requester/checks/no-pay email assertions; recipient/sender
+override immunity; SMTP-failure state separation + safe resend; rotation
+keeps one ACTIVE link and zero extra orders; route permission boundary;
+frontend exposes no future billing modes.

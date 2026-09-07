@@ -391,3 +391,123 @@ test('rules: derive/evaluate cover the documented state machine', () => {
   assert.equal(evaluateConsentDecision({ current: 'CONSENTED', requested: 'DECLINED' }).allowed, false);
   assert.equal(evaluateConsentDecision({ current: 'DECLINED', requested: 'CONSENTED' }).allowed, false);
 });
+
+// ── Phase 30.4 ADDENDUM — Crewly-sent invitations & billing boundary ──
+import { readFileSync } from 'node:fs';
+import { commercialReadinessOf, isCommerciallyAuthorized, BGV_COMMERCIAL_READINESS } from '../src/services/bgv/bgvOrderRules.js';
+
+test('addendum: unverified/pending payment cannot authorize an invitation', async () => {
+  const world = makeWorld({ orderStatus: 'PENDING_PAYMENT' });
+  await assert.rejects(issue(world), (e) => e.statusCode === 409);
+  const failed = makeWorld({ orderStatus: 'PAYMENT_FAILED' });
+  await assert.rejects(issue(failed), (e) => e.statusCode === 409);
+  assert.equal(failed.state.mails.length, 0);
+});
+
+test('addendum: commercial readiness is a single boundary helper, provider-agnostic', () => {
+  assert.equal(commercialReadinessOf({ status: 'PAID' }), BGV_COMMERCIAL_READINESS.AUTHORIZED);
+  assert.equal(commercialReadinessOf({ status: 'PENDING_PAYMENT' }), BGV_COMMERCIAL_READINESS.NOT_AUTHORIZED);
+  assert.equal(commercialReadinessOf({ status: 'CREATED' }), BGV_COMMERCIAL_READINESS.NOT_AUTHORIZED);
+  assert.equal(isCommerciallyAuthorized({ status: 'PAID' }), true);
+  assert.equal(isCommerciallyAuthorized(null), false);
+  // consent service never consults provider/payment fields (code, not comments)
+  const codeOnly = readFileSync(new URL('../src/services/bgv/bgvConsentService.js', import.meta.url), 'utf8')
+    .split(String.fromCharCode(10))
+    .filter((line) => !line.trim().startsWith('//') && !line.trim().startsWith('*'))
+    .join(' ');
+  for (const banned of ['razorpay', 'gatewayPaymentId', 'providerOrderId', 'enqueueJob(', 'getQueue(']) {
+    assert.equal(codeOnly.toLowerCase().includes(banned.toLowerCase()), false, 'banned coupling: ' + banned);
+  }
+});
+
+test('addendum: email is Crewly-sent, names the tenant as requester, lists checks, never asks candidate to pay', async () => {
+  const world = makeWorld();
+  const result = await issue(world);
+  // HR never receives the raw token or any portal URL
+  const blob = JSON.stringify(result);
+  assert.equal(/candidate\/bgv-consent\//.test(blob), false);
+  assert.equal(blob.includes('rawToken'), false);
+
+  const mail = world.state.mails[0];
+  assert.equal(mail.fromLabel, 'Crewly Background Verification'); // Crewly sender identity
+  assert.equal(mail.from, undefined); // HR/verifier cannot choose a From address
+  assert.equal(mail.to, 'demo@candidate.example'); // authoritative recipient
+  assert.equal(mail.subject, 'Background verification requested by Demo Company');
+  assert.ok(mail.text.includes('requested background verification through Crewly, operated by Infolexus'));
+  assert.ok(mail.text.includes('never asked to pay'));
+  assert.ok(mail.text.includes('Identity Verification'));
+  assert.ok(mail.text.includes('Address Verification'));
+  // no payment/PII/internal data in the email
+  for (const banned of ['₹', '14000', 'razorpay', ORDER_ID]) {
+    assert.equal(mail.text.toLowerCase().includes(banned.toLowerCase()), false, `banned in email: ${banned}`);
+  }
+  assert.equal(/\bPAN\b/.test(mail.text), false);
+  assert.equal(/Aadhaar/i.test(mail.text), false);
+});
+
+test('addendum: HR-supplied recipient/sender overrides are ignored (authoritative Mongo email wins)', async () => {
+  const world = makeWorld();
+  await issueBgvConsentInvitation({
+    companyId: COMPANY,
+    orderId: ORDER_ID,
+    actorId: ACTOR,
+    email: 'attacker@evil.example', // ignored — not even a parameter
+    from: 'spoof@evil.example', // ignored
+    deps: world.deps,
+  });
+  assert.equal(world.state.mails[0].to, 'demo@candidate.example');
+  assert.equal(world.state.mails[0].from, undefined);
+});
+
+test('addendum: SMTP failure leaves commercial authorization intact and reports INVITATION_FAILED with safe resend', async () => {
+  const world = makeWorld({ delivery: { delivered: false, mode: 'SMTP', error: 'relay denied' } });
+  await assert.rejects(issue(world), (e) => e.statusCode === 503);
+  assert.equal(world.state.order.status, 'PAID'); // commercially authorized unchanged
+  let status = await getHrConsentStatus({ companyId: COMPANY, candidateRef: CANDIDATE_ID, deps: world.deps });
+  assert.equal(status.state, 'INVITATION_FAILED'); // honest delivery state
+  assert.equal(status.order.status, 'PAID');
+  // consent never happened
+  assert.equal(world.state.tokens.every((token) => token.finalDecision === null), true);
+  // safe resend now succeeds and flips back to INVITATION_SENT
+  const resend = makeWorld();
+  resend.state.tokens = world.state.tokens; // carry the failed history
+  const again = await issue(resend);
+  assert.equal(again.state, 'INVITATION_SENT');
+  status = await getHrConsentStatus({ companyId: COMPANY, candidateRef: CANDIDATE_ID, deps: resend.deps });
+  assert.equal(status.state, 'INVITATION_SENT');
+});
+
+test('addendum: duplicate triggers rotate safely — exactly one ACTIVE link, one commercial order', async () => {
+  const world = makeWorld();
+  await issue(world);
+  await issue(world);
+  await issue(world);
+  const active = world.state.tokens.filter((token) => !token.revokedAt);
+  assert.equal(active.length, 1);
+  assert.equal(world.state.audits.filter((entry) => entry.action === 'BGV_ORDER_CREATED').length, 0);
+  // payment never implies consent
+  const status = await getHrConsentStatus({ companyId: COMPANY, candidateRef: CANDIDATE_ID, deps: world.deps });
+  assert.equal(status.state, 'INVITATION_SENT');
+  assert.equal(status.order.status, 'PAID');
+});
+
+test('addendum: routes keep verifier/HR boundaries (MANAGE permission required to trigger)', () => {
+  const routes = readFileSync(new URL('../src/routes/recruitmentRoutes.js', import.meta.url), 'utf8');
+  const at = routes.indexOf("'/bgv-orders/:orderId/consent-invitation'");
+  const block = routes.slice(at - 60, at + 240);
+  assert.ok(block.includes("requirePermission('BACKGROUND_VERIFICATION_MANAGE')"));
+  assert.ok(block.includes('checkWriteAccess'));
+});
+
+test('addendum: current frontend exposes only per-candidate payment (no future billing modes)', () => {
+  for (const rel of [
+    '../../Frontend/src/components/recruitment/BgvPurchasePanel.jsx',
+    '../../Frontend/src/services/bgvService.js',
+    '../../Frontend/src/routes/AppRoutes.jsx',
+  ]) {
+    const source = readFileSync(new URL(rel, import.meta.url), 'utf8');
+    for (const mode of ['PREPAID_CREDITS', 'MONTHLY_INVOICE', 'SUBSCRIPTION_INCLUDED', 'ENTERPRISE_POSTPAID', 'credits']) {
+      assert.equal(source.includes(mode), false, `${rel} must not expose ${mode}`);
+    }
+  }
+});

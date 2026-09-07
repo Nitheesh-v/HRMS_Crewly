@@ -140,3 +140,23 @@ export const evaluatePurchaseEligibility = ({
   }
   return { allowed: true, code: '', reason: '' };
 };
+
+// ── commercial authorization boundary (30.4 addendum) ───────────
+// The single mapping from the 30.3 order state to commercial readiness.
+// Today only a verified per-candidate payment (PAID) authorizes processing;
+// future billing modes (prepaid credits, monthly invoice, subscription
+// allowance, enterprise postpaid — NOT implemented) must reach this same
+// boundary, so consent/invitation code never consults payment-provider
+// fields directly.
+export const BGV_COMMERCIAL_READINESS = {
+  AUTHORIZED: 'AUTHORIZED_FOR_PROCESSING',
+  NOT_AUTHORIZED: 'NOT_AUTHORIZED',
+};
+
+export const commercialReadinessOf = (order) =>
+  order?.status === 'PAID'
+    ? BGV_COMMERCIAL_READINESS.AUTHORIZED
+    : BGV_COMMERCIAL_READINESS.NOT_AUTHORIZED;
+
+export const isCommerciallyAuthorized = (order) =>
+  commercialReadinessOf(order) === BGV_COMMERCIAL_READINESS.AUTHORIZED;

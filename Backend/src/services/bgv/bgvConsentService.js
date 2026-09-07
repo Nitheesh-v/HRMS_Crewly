@@ -42,6 +42,7 @@ import {
   deriveConsentState,
   evaluateConsentDecision,
 } from './bgvConsentRules.js';
+import { isCommerciallyAuthorized } from './bgvOrderRules.js';
 
 const isObjectId = (value) => mongoose.isValidObjectId(value);
 const genericFailure = () => ApiError.notFound('BGV consent link is unavailable');
@@ -122,10 +123,11 @@ export const issueBgvConsentInvitation = async ({
   // DB Logic - tenant-scoped commercial readiness gate.
   const order = await loadOrder({ companyId, orderId });
   if (!order) throw ApiError.notFound('BGV order not found');
-  if (order.status !== 'PAID') {
-    // The ONLY commercial-readiness check: the 30.3 business state.
+  if (!isCommerciallyAuthorized(order)) {
+    // The ONLY commercial-readiness check: the 30.3 business boundary
+    // (today PAID; future billing modes map into the same helper).
     throw ApiError.conflict(
-      'Candidate consent invitations require a commercially authorized (paid) BGV order'
+      'Candidate consent invitations require a commercially authorized BGV order'
     );
   }
 
@@ -180,6 +182,7 @@ export const issueBgvConsentInvitation = async ({
   const message = bgvConsentInvitationEmail({
     candidateName: candidate.name,
     companyName,
+    checks: (order.items || []).map((item) => ({ type: item.type, name: item.name })),
     portalUrl: consentPortalUrl(rawToken),
     expiresAt,
   });
@@ -257,7 +260,7 @@ export const resolvePublicBgvConsent = async ({ rawToken, deps = {} }) => {
   await recordView(token._id).catch(() => {});
 
   const order = await loadOrder({ companyId: token.companyId, orderId: token.bgvOrder });
-  if (!order || order.status !== 'PAID') throw genericFailure();
+  if (!order || !isCommerciallyAuthorized(order)) throw genericFailure();
   const [candidate, company] = await Promise.all([
     loadCandidate({ companyId: token.companyId, candidateId: token.candidate }),
     loadCompany({ companyId: token.companyId }),
@@ -306,7 +309,7 @@ export const recordBgvConsentDecision = async ({ rawToken, decision, deps = {} }
 
   // Commercial readiness re-checked at decision time from the 30.3 state.
   const order = await loadOrderById({ companyId: token.companyId, orderId: token.bgvOrder });
-  if (!order || order.status !== 'PAID') throw genericFailure();
+  if (!order || !isCommerciallyAuthorized(order)) throw genericFailure();
 
   const gate = evaluateConsentDecision({ current: token.finalDecision, requested: decision });
   if (!gate.allowed) {
