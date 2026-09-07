@@ -563,6 +563,15 @@ test('30.8 cancellation is platform-only with reason; workbench view mirrors reg
   // Locked after cancellation.
   await assert.rejects(record(world, V_ID, 'HR_TELEPHONE', 'CONTACTED'), (err) => err.statusCode === 409);
 
+  // Regression (30.8 RCA): a freshly assigned check with NO verification
+  // row must still expose an unlocked workbench with its registry — the
+  // record is created lazily on first activity.
+  const provisional = buildWorkbenchView(null, 'ADDRESS');
+  assert.equal(provisional.locked, false);
+  assert.equal(provisional.state, 'IN_PROGRESS');
+  assert.deepEqual(provisional.allowedMethods, METHOD_REGISTRY.ADDRESS);
+  assert.deepEqual(provisional.methodOutcomes.FIELD_VERIFICATION, ['COMPLETED', 'DISCREPANCY_NOTED', 'SOURCE_UNAVAILABLE']);
+
   // Workbench view: registry mirror + lock flag, no conclusion leakage of notes into queue payloads.
   const view = buildWorkbenchView(world.state.verifications[0]);
   assert.equal(view.locked, true);

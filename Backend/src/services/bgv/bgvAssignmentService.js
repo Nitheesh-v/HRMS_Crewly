@@ -414,7 +414,7 @@ export const verifierCheckDetail = async ({ verifierId, orderId, checkType, deps
   // the check's own verification record only.
   const loadVerification = deps.loadVerification || defaultLoadVerification;
   const verification = await loadVerification({ orderId: order._id, checkType: assignment.checkType });
-  const workbench = buildWorkbenchView(verification);
+  const workbench = buildWorkbenchView(verification, assignment.checkType);
   const filesFor = (type) =>
     activeFiles
       .filter((file) => file.checkType === type)

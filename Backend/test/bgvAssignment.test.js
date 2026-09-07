@@ -425,6 +425,11 @@ test('30.7 #26-31 detail: per-check projections; no cross-check data; no payment
 
   const identity = await verifierCheckDetail({ verifierId: V_ID, orderId: ORDER_ID, checkType: 'IDENTITY', deps: world.deps });
   assert.equal(identity.identity.legalName, 'Priya Raman');
+  // Phase 30.8 regression: even before any activity is recorded, the check
+  // detail must expose an unlocked workbench (forms must render).
+  assert.ok(identity.workbench, 'fresh assignment must expose a workbench view');
+  assert.equal(identity.workbench.locked, false);
+  assert.deepEqual(identity.workbench.allowedMethods, ['DOCUMENT_REVIEW', 'SELFIE_MANUAL_COMPARISON', 'CROSS_DOCUMENT_CONSISTENCY', 'QR_ISSUER_VERIFICATION', 'DIGILOCKER_ISSUER_ASSISTED', 'MANUAL_VIDEO_VERIFICATION']);
   assert.equal(identity.identity.identifierMasked, 'XXXX-XXXX-4321');
   assert.equal(identity.identity.provenance, 'candidate-provided');
   assert.equal(identity.files.length, 1);

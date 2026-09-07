@@ -411,18 +411,23 @@ export const safeActivity = (activity) => ({
   evidenceFileId: activity.evidenceFile ? String(activity.evidenceFile) : null,
 });
 
-export const buildWorkbenchView = (verification) => {
-  if (!verification) return null;
-  const submitted = verification.state === 'SUBMITTED';
+// When no verification row exists yet (freshly assigned check), the
+// workbench must still render its registry forms — the record itself is
+// created lazily on the first recorded activity. Gating the forms behind
+// the record's existence deadlocks the workflow (Phase 30.8 RCA).
+export const buildWorkbenchView = (verification, fallbackCheckType = null) => {
+  const checkType = verification?.checkType || fallbackCheckType;
+  if (!checkType) return null;
+  const submitted = verification?.state === 'SUBMITTED';
   return {
-    state: verification.state,
-    activities: (verification.activities || []).map(safeActivity),
-    discrepancies: (verification.discrepancies || []).map((entry) => ({ ...entry, recordedBy: String(entry.recordedBy) })),
-    conclusion: verification.conclusion || null,
+    state: verification?.state || 'IN_PROGRESS',
+    activities: (verification?.activities || []).map(safeActivity),
+    discrepancies: (verification?.discrepancies || []).map((entry) => ({ ...entry, recordedBy: String(entry.recordedBy) })),
+    conclusion: verification?.conclusion || null,
     // Registry mirror for the UI — the backend re-validates every call.
-    allowedMethods: METHOD_REGISTRY[verification.checkType] || [],
+    allowedMethods: METHOD_REGISTRY[checkType] || [],
     methodOutcomes: Object.fromEntries(
-      (METHOD_REGISTRY[verification.checkType] || []).map((method) => [method, METHOD_OUTCOMES[`${verification.checkType}:${method}`] || []])
+      (METHOD_REGISTRY[checkType] || []).map((method) => [method, METHOD_OUTCOMES[`${checkType}:${method}`] || []])
     ),
     verifierConclusions: VERIFIER_CONCLUSIONS,
     states: WORKBENCH_STATES,
