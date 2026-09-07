@@ -14,6 +14,11 @@ import CareerJobDetailPage from "../pages/careers/CareerJobDetailPage.jsx";
 import CareerApplyShellPage from "../pages/careers/CareerApplyShellPage.jsx";
 import CandidateOfferPublicLayout from "../layout/CandidateOfferPublicLayout.jsx";
 import CandidateBgvConsentPublicLayout from "../layout/CandidateBgvConsentPublicLayout.jsx";
+import BgvVerifierLoginPage from "../pages/bgvVerifier/BgvVerifierLoginPage.jsx";
+import BgvVerifierSetupPage from "../pages/bgvVerifier/BgvVerifierSetupPage.jsx";
+import BgvVerifierForgotPage from "../pages/bgvVerifier/BgvVerifierForgotPage.jsx";
+import BgvVerifierResetPage from "../pages/bgvVerifier/BgvVerifierResetPage.jsx";
+import BgvVerifierDashboardPage from "../pages/bgvVerifier/BgvVerifierDashboardPage.jsx";
 import CandidateBgvConsentPortalPage from "../pages/candidate/CandidateBgvConsentPortalPage.jsx";
 import CandidateOfferPortalPage from "../pages/candidate/CandidateOfferPortalPage.jsx";
 import CandidatePreOnboardingPublicLayout from "../layout/CandidatePreOnboardingPublicLayout.jsx";
@@ -142,6 +147,7 @@ import SuperAdminCompanyDetailPage from "../pages/admin/SuperAdminCompanyDetailP
 import SuperAdminCommercePage from "../pages/admin/SuperAdminCommercePage.jsx";
 import SuperAdminOperationsPage from "../pages/admin/SuperAdminOperationsPage.jsx";
 import SuperAdminBackgroundOperationsPage from "../pages/admin/SuperAdminBackgroundOperationsPage.jsx";
+import SuperAdminBgvVerifiersPage from "../pages/admin/SuperAdminBgvVerifiersPage.jsx";
 import SuperAdminBgvCataloguePage from "../pages/admin/SuperAdminBgvCataloguePage.jsx";
 
 import NotFoundPage from "../pages/not-found/NotFoundPage.jsx";
@@ -239,6 +245,14 @@ const AppRoutes = () => (
     <Route path="/candidate/offer" element={<CandidateOfferPublicLayout />}>
       <Route path=":secureToken" element={<CandidateOfferPortalPage />} />
     </Route>
+
+    {/* Phase 30.6 — dedicated internal BGV verifier portal (separate
+        security domain: not tenant HRMS, not Super Admin). */}
+    <Route path="/bgv-verifier/login" element={<BgvVerifierLoginPage />} />
+    <Route path="/bgv-verifier/setup/:setupToken" element={<BgvVerifierSetupPage />} />
+    <Route path="/bgv-verifier/forgot-password" element={<BgvVerifierForgotPage />} />
+    <Route path="/bgv-verifier/reset-password/:resetToken" element={<BgvVerifierResetPage />} />
+    <Route path="/bgv-verifier" element={<BgvVerifierDashboardPage />} />
 
     {/* Public candidate BGV consent portal — secure token authority only */}
     <Route path="/candidate/bgv-consent" element={<CandidateBgvConsentPublicLayout />}>
@@ -834,6 +848,14 @@ const AppRoutes = () => (
         path="bgv-services"
         element={
           <SuperAdminBgvCataloguePage />
+        }
+      />
+
+      {/* Phase 30.6 — internal BGV verifier account management. */}
+      <Route
+        path="bgv-verifiers"
+        element={
+          <SuperAdminBgvVerifiersPage />
         }
       />
 

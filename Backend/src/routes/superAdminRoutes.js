@@ -11,6 +11,7 @@ import * as companies from "../controllers/superAdminCompanyController.js";
 import * as subscriptions from "../controllers/superAdminSubscriptionController.js";
 import * as operations from "../controllers/superAdminOperationsController.js";
 import * as bgvCatalogue from "../controllers/superAdminBgvCatalogueController.js";
+import * as bgvVerifier from "../controllers/bgvVerifierController.js";
 import * as queueOps from "../controllers/superAdminQueueOpsController.js";
 import { securityRateLimit } from "../middlewares/securityRateLimit.js";
 import {
@@ -137,6 +138,19 @@ router.get(
 // Phase 30.2 — Crewly BGV service catalogue & pricing (platform commerce).
 // Backend is the only price authority; tenants never reach these routes
 // (platform gate rejects non-platform roles before DB access).
+
+// Phase 30.6 — internal BGV verifier account management. Platform-only:
+// SUPER_ADMIN via '*'; tenant HR can never reach these routes (protect +
+// superAdminSession reject tenant principals before this point).
+router.get("/bgv-verifiers", permit("bgv-verifiers:read"), bgvVerifier.bgvVerifierList);
+router.get("/bgv-verifiers/:verifierId", permit("bgv-verifiers:read"), bgvVerifier.bgvVerifierRead);
+router.post("/bgv-verifiers", permit("bgv-verifiers:manage"), bgvVerifier.bgvVerifierInvite);
+router.post("/bgv-verifiers/:verifierId/resend-setup", permit("bgv-verifiers:manage"), bgvVerifier.bgvVerifierResendSetup);
+router.post("/bgv-verifiers/:verifierId/revoke-setup", permit("bgv-verifiers:manage"), bgvVerifier.bgvVerifierRevokeSetup);
+router.patch("/bgv-verifiers/:verifierId", permit("bgv-verifiers:manage"), bgvVerifier.bgvVerifierUpdate);
+router.post("/bgv-verifiers/:verifierId/deactivate", permit("bgv-verifiers:manage"), bgvVerifier.bgvVerifierDeactivate);
+router.post("/bgv-verifiers/:verifierId/reactivate", permit("bgv-verifiers:manage"), bgvVerifier.bgvVerifierReactivate);
+
 router.get(
   "/bgv-catalogue",
   permit("bgv-catalog:read"),

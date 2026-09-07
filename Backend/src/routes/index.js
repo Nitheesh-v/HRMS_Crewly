@@ -44,6 +44,7 @@ import publicCareerRoutes from "./publicCareerRoutes.js";
 import publicCandidateOfferRoutes from "./publicCandidateOfferRoutes.js";
 import publicBgvConsentRoutes from "./publicBgvConsentRoutes.js";
 import publicBgvCollectionRoutes from "./publicBgvCollectionRoutes.js";
+import bgvVerifierAuthRoutes from "./bgvVerifierAuthRoutes.js";
 import publicCandidatePreOnboardingRoutes from "./publicCandidatePreOnboardingRoutes.js";
 
 const router = Router();
@@ -90,6 +91,7 @@ router.use("/public/careers", publicCareerRoutes);
 router.use("/public/candidate/offers", publicCandidateOfferRoutes);
 router.use("/public/candidate/bgv-consent", publicBgvConsentRoutes);
 router.use("/public/candidate/bgv-collection", publicBgvCollectionRoutes);
+router.use("/bgv-verifier/auth", bgvVerifierAuthRoutes);
 router.use(
   "/public/candidate/pre-onboarding",
   publicCandidatePreOnboardingRoutes,

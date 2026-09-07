@@ -31,6 +31,21 @@ const superAdminService = {
 
   setTwoFactor: (enabled) => patch("/super-admin/auth/2fa", { enabled }),
 
+  // Phase 30.6 — internal BGV verifier account management (SUPER_ADMIN).
+  bgvVerifiers: () => get("/super-admin/bgv-verifiers"),
+  bgvVerifier: (id) => get(`/super-admin/bgv-verifiers/${id}`),
+  inviteBgvVerifier: (body) => post("/super-admin/bgv-verifiers", body),
+  resendBgvVerifierSetup: (id) =>
+    post(`/super-admin/bgv-verifiers/${id}/resend-setup`, {}),
+  revokeBgvVerifierSetup: (id) =>
+    post(`/super-admin/bgv-verifiers/${id}/revoke-setup`, {}),
+  updateBgvVerifier: (id, body) =>
+    patch(`/super-admin/bgv-verifiers/${id}`, body),
+  deactivateBgvVerifier: (id, body) =>
+    post(`/super-admin/bgv-verifiers/${id}/deactivate`, body || {}),
+  reactivateBgvVerifier: (id) =>
+    post(`/super-admin/bgv-verifiers/${id}/reactivate`, {}),
+
   // Dashboard
   dashboard: () => get("/super-admin/dashboard"),
 

@@ -764,3 +764,53 @@ export const bgvConsentInvitationEmail = ({
       `<p>If you did not expect this request, you can safely ignore this email.</p>`,
   };
 };
+
+// Phase 30.6 — internal BGV verifier account emails. Crewly-sent; never
+// contain passwords, candidate information, or BGV evidence.
+export const bgvVerifierSetupEmail = ({ name, setupUrl, expiresAt }) => {
+  const safeName = escapeHtml(String(name || 'there'));
+  const safeUrl = escapeHtml(String(setupUrl || ''));
+  const expiryLabel = new Date(expiresAt).toUTCString();
+  return {
+    subject: 'You are invited to Crewly BGV Operations',
+    text:
+      `Hello ${name},\n\n` +
+      `You have been invited to join Crewly's internal Background Verification (BGV) operations portal, operated by Infolexus.\n` +
+      `Choose your password to activate your account — no temporary password is ever issued:\n${setupUrl}\n` +
+      `This setup link expires on ${expiryLabel} and can be used once.\n` +
+      `If you did not expect this invitation, you can safely ignore this email.`,
+    html:
+      `<p>Hello ${safeName},</p>` +
+      `<p>You have been invited to join <strong>Crewly BGV Operations</strong>, the internal background verification portal operated by Infolexus.</p>` +
+      `<p><a href="${safeUrl}">Choose your password and activate your account</a></p>` +
+      `<p>No temporary password is ever issued. The setup link expires on ${escapeHtml(expiryLabel)} and can be used once.</p>` +
+      `<p>If you did not expect this invitation, you can safely ignore this email.</p>`,
+  };
+};
+
+export const bgvVerifierResetEmail = ({ name, resetUrl, expiresAt }) => {
+  const safeName = escapeHtml(String(name || 'there'));
+  const safeUrl = escapeHtml(String(resetUrl || ''));
+  const expiryLabel = new Date(expiresAt).toUTCString();
+  return {
+    subject: 'Crewly BGV Operations password reset',
+    text:
+      `Hello ${name},\n\n` +
+      `A password reset was requested for your Crewly BGV Operations account.\n` +
+      `Reset link: ${resetUrl}\n` +
+      `It expires on ${expiryLabel} and can be used once. Your existing sessions are signed out when the password changes.\n` +
+      `If you did not request this, you can safely ignore this email.`,
+    html:
+      `<p>Hello ${safeName},</p>` +
+      `<p>A password reset was requested for your Crewly BGV Operations account.</p>` +
+      `<p><a href="${safeUrl}">Reset your password</a></p>` +
+      `<p>It expires on ${escapeHtml(expiryLabel)} and can be used once. Your existing sessions are signed out when the password changes.</p>` +
+      `<p>If you did not request this, you can safely ignore this email.</p>`,
+  };
+};
+
+export const bgvVerifierOtpEmail = ({ code }) => ({
+  subject: 'Crewly BGV Operations verification code',
+  text: `Your Crewly BGV Operations verification code is ${code}. It expires in 10 minutes.`,
+  html: `<p>Your Crewly BGV Operations verification code is <strong>${code}</strong>. It expires in 10 minutes.</p>`,
+});
