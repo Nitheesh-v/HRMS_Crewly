@@ -70,6 +70,9 @@ const bgvEvidenceFileSchema = new Schema(
     },
     // Repeatable-record link (education/employment entry _id) or null.
     recordId: { type: String, default: null, maxlength: 64, immutable: true },
+    // Phase 30.9 — when this version was uploaded as a candidate response
+    // to an additional-information request (controlled resubmission).
+    bgvInfoRequest: { type: Schema.Types.ObjectId, ref: 'BgvInfoRequest', default: null },
     version: { type: Number, required: true, min: 1, immutable: true },
     isActive: { type: Boolean, default: true, index: true },
     status: {

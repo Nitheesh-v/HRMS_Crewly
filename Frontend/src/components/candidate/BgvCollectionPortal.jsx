@@ -107,6 +107,175 @@ const MissingList = ({ missing }) =>
     </ul>
   ) : null;
 
+// ── Phase 30.9 — additional information requests (controlled resubmission)
+// The verifier may ask for a correction or a clearer document. This section
+// unlocks ONLY the requested category; every other section stays locked.
+// Responses submit with an EXPLICIT action — browsing never sends anything.
+const REQUEST_STATUS = {
+  OPEN: { label: 'Action needed', className: 'bg-sky-500/10 text-sky-300' },
+  CANDIDATE_RESPONDED: { label: 'Response sent', className: 'bg-emerald-500/10 text-emerald-300' },
+  RESOLVED: { label: 'Resolved', className: 'bg-crewly-green/10 text-crewly-green' },
+  CANCELLED: { label: 'No longer needed', className: 'bg-slate-500/10 text-slate-400' },
+};
+
+const InfoRequestSection = ({ secureToken, onChanged }) => {
+  const [requests, setRequests] = useState(null);
+  const [busy, setBusy] = useState('');
+  const [texts, setTexts] = useState({});
+  const [files, setFiles] = useState({});
+  const [referenceForms, setReferenceForms] = useState({});
+
+  const loadRequests = useCallback(async () => {
+    try {
+      const data = await bgvCollectionService.infoRequests(secureToken);
+      setRequests(data.requests || []);
+    } catch {
+      setRequests([]);
+    }
+  }, [secureToken]);
+
+  useEffect(() => {
+    loadRequests();
+  }, [loadRequests]);
+
+  const run = async (key, action, message) => {
+    setBusy(key);
+    try {
+      await action();
+      await Promise.all([loadRequests(), onChanged()]);
+      return message;
+    } finally {
+      setBusy('');
+    }
+  };
+
+  if (!requests || requests.length === 0) return null;
+
+  return (
+    <section className="card">
+      <h3 className="font-semibold text-crewly-text">Additional information requests</h3>
+      <p className="mt-1 text-xs text-crewly-dim">
+        The verification team needs a small correction or a clearer document. Only the requested item is unlocked — the rest of your
+        submitted information stays locked. You are never asked for passwords, OTPs, or payment.
+      </p>
+      <ul className="mt-3 space-y-3">
+        {requests.map((request) => {
+          const status = REQUEST_STATUS[request.status] || REQUEST_STATUS.CANCELLED;
+          return (
+            <li key={request.id} className="rounded-lg border border-crewly-border bg-crewly-bg/60 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-crewly-text">{request.categoryLabel}</p>
+                <span className={`badge ${status.className}`}>{status.label}</span>
+              </div>
+              {request.message ? <p className="mt-1 text-xs text-crewly-dim">{request.message}</p> : null}
+
+              {request.status === 'OPEN' ? (
+                <div className="mt-2 space-y-2">
+                  {request.responseKind === 'FILE' ? (
+                    <>
+                      <label className="label" htmlFor={`irf-${request.id}`}>Upload replacement (PDF, JPG, PNG or WebP)</label>
+                      <input
+                        id={`irf-${request.id}`}
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png,.webp"
+                        className="input"
+                        onChange={(event) => setFiles((current) => ({ ...current, [request.id]: event.target.files?.[0] || null }))}
+                      />
+                    </>
+                  ) : null}
+                  {request.responseKind === 'TEXT' ? (
+                    <>
+                      <label className="label" htmlFor={`irt-${request.id}`}>Your clarification</label>
+                      <textarea
+                        id={`irt-${request.id}`}
+                        className="input min-h-16"
+                        maxLength={1000}
+                        value={texts[request.id] || ''}
+                        onChange={(event) => setTexts((current) => ({ ...current, [request.id]: event.target.value }))}
+                      />
+                    </>
+                  ) : null}
+                  {request.responseKind === 'REFERENCE_RECORD' ? (
+                    <>
+                      <label className="label" htmlFor={`irr-${request.id}`}>Alternate referee</label>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <input
+                          className="input"
+                          placeholder="Referee name"
+                          value={referenceForms[request.id]?.name || ''}
+                          onChange={(event) => setReferenceForms((current) => ({ ...(current[request.id] || {}), [request.id]: { ...(current[request.id] || {}), name: event.target.value } }))}
+                        />
+                        <input
+                          className="input"
+                          placeholder="Relationship"
+                          value={referenceForms[request.id]?.relationship || ''}
+                          onChange={(event) => setReferenceForms((current) => ({ [request.id]: { ...(current[request.id] || {}), relationship: event.target.value } }))}
+                        />
+                        <input
+                          className="input"
+                          placeholder="Referee email"
+                          value={referenceForms[request.id]?.email || ''}
+                          onChange={(event) => setReferenceForms((current) => ({ [request.id]: { ...(current[request.id] || {}), email: event.target.value } }))}
+                        />
+                        <input
+                          className="input"
+                          placeholder="Referee phone"
+                          value={referenceForms[request.id]?.phone || ''}
+                          onChange={(event) => setReferenceForms((current) => ({ [request.id]: { ...(current[request.id] || {}), phone: event.target.value } }))}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        disabled={Boolean(busy)}
+                        className="btn-ghost gap-2 !px-3 !py-1.5 text-xs"
+                        onClick={() => run(`ref-${request.id}`, () => bgvCollectionService.addInfoAlternateReference(secureToken, request.id, referenceForms[request.id] || {}))}
+                      >
+                        {busy === `ref-${request.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users className="h-4 w-4" />}
+                        Add alternate reference
+                      </button>
+                    </>
+                  ) : null}
+
+                  <button
+                    type="button"
+                    disabled={Boolean(busy)}
+                    className="btn-primary gap-2 !px-4 !py-2 text-sm"
+                    onClick={async () => {
+                      if (request.responseKind === 'FILE') {
+                        const file = files[request.id];
+                        if (!file) return;
+                        const formData = new FormData();
+                        formData.append('file', file);
+                        await run(`up-${request.id}`, () => bgvCollectionService.uploadInfoResponseFile(secureToken, request.id, formData));
+                      }
+                      await run(`sub-${request.id}`, () => bgvCollectionService.submitInfoResponse(secureToken, request.id, { text: texts[request.id] || '' }));
+                    }}
+                  >
+                    {busy.startsWith(`sub-${request.id}`) || busy.startsWith(`up-${request.id}`) ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                    Submit response
+                  </button>
+                </div>
+              ) : (
+                <p className="mt-1 text-[11px] text-crewly-dim">
+                  {request.status === 'CANDIDATE_RESPONDED'
+                    ? 'Your response was received and is with the verification team.'
+                    : request.status === 'RESOLVED'
+                      ? 'The verification team has reviewed this request.'
+                      : 'This request was withdrawn — nothing further is needed.'}
+                </p>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+};
+
 const BgvCollectionPortal = ({ secureToken }) => {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -235,6 +404,9 @@ const BgvCollectionPortal = ({ secureToken }) => {
 
   return (
     <div className="space-y-5">
+      {/* Phase 30.9 — additional information requests (only when they exist) */}
+      <InfoRequestSection secureToken={secureToken} onChanged={load} />
+
       {/* Progress — purchased checks only */}
       <section className="card">
         <h3 className="font-semibold text-crewly-text">Your progress</h3>

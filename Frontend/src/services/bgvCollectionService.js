@@ -54,6 +54,19 @@ const bgvCollectionService = {
   fileDownloadUrl: (secureToken, fileId) =>
     `${import.meta.env.VITE_API_URL || '/api'}${base(secureToken)}/files/${encodeURIComponent(fileId)}`,
   submit: (secureToken) => publicApi.post(`${base(secureToken)}/submit`, {}),
+
+  // Phase 30.9 — additional information requests (secure candidate portal).
+  // Explicit POSTs only; GET never submits. Token-authorized like all of
+  // this client — no candidateId URLs, no employee session.
+  infoRequests: (secureToken) => publicApi.get(`${base(secureToken)}/info-requests`),
+  submitInfoResponse: (secureToken, requestId, body) =>
+    publicApi.post(`${base(secureToken)}/info-requests/${requestId}/response`, body),
+  uploadInfoResponseFile: (secureToken, requestId, formData) =>
+    publicApi.post(`${base(secureToken)}/info-requests/${requestId}/file`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  addInfoAlternateReference: (secureToken, requestId, body) =>
+    publicApi.post(`${base(secureToken)}/info-requests/${requestId}/reference`, body),
 };
 
 export default bgvCollectionService;

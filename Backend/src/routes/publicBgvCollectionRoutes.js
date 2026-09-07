@@ -8,6 +8,10 @@ import { securityRateLimit } from '../middlewares/securityRateLimit.js';
 import { preOnboardingUpload } from '../middlewares/preOnboardingUpload.js';
 import { hashToken } from '../utils/securityPolicy.js';
 import {
+  bgvCollectionInfoReferenceAdd,
+  bgvCollectionInfoRequests,
+  bgvCollectionInfoResponseFile,
+  bgvCollectionInfoResponseSubmit,
   bgvCollectionAddressSave,
   bgvCollectionEducationRemove,
   bgvCollectionEducationSave,
@@ -87,5 +91,12 @@ router.delete('/:secureToken/files/:fileId', writeLimit, bgvCollectionFileRules,
 
 // Final submission — explicit POST only; GET/refresh can never submit.
 router.post('/:secureToken/submit', submitLimit, bgvCollectionSubmitRules, bgvCollectionSubmit);
+
+// Phase 30.9 — additional information responses. Same hardened uploader +
+// token-keyed rate limits; GET lists never submit (explicit POST only).
+router.get('/:secureToken/info-requests', readLimit, bgvCollectionTokenRules, bgvCollectionInfoRequests);
+router.post('/:secureToken/info-requests/:requestId/file', uploadLimit, preOnboardingUpload, bgvCollectionInfoResponseFile);
+router.post('/:secureToken/info-requests/:requestId/reference', writeLimit, bgvCollectionInfoReferenceAdd);
+router.post('/:secureToken/info-requests/:requestId/response', writeLimit, bgvCollectionInfoResponseSubmit);
 
 export default router;

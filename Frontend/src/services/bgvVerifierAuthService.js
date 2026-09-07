@@ -79,6 +79,15 @@ const bgvVerifierAuthService = {
     verifierApi.post(`/bgv-verifier/work/${orderId}/${checkType}/evidence`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
+  // Phase 30.9 — additional information requests (current verifier only).
+  infoRequests: (orderId, checkType) =>
+    verifierApi.get(`/bgv-verifier/work/${orderId}/${checkType}/info-requests`),
+  createInfoRequest: (orderId, checkType, body) =>
+    verifierApi.post(`/bgv-verifier/work/${orderId}/${checkType}/info-requests`, body),
+  resolveInfoRequest: (requestId, body) =>
+    verifierApi.post(`/bgv-verifier/work/info-requests/${requestId}/resolve`, body),
+  cancelInfoRequest: (requestId, body) =>
+    verifierApi.post(`/bgv-verifier/work/info-requests/${requestId}/cancel`, body),
   downloadVerifierEvidence: async (fileId) => {
     const response = await verifierApi.get(`/bgv-verifier/work/evidence/${fileId}`, {
       responseType: 'blob',

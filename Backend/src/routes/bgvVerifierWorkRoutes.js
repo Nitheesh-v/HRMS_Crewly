@@ -11,6 +11,10 @@ import { preOnboardingUpload } from '../middlewares/preOnboardingUpload.js';
 import { requireVerifierAuth } from '../middlewares/bgvVerifierAuth.js';
 import {
   bgvVerifierActivityRecord,
+  bgvVerifierInfoRequestCancel,
+  bgvVerifierInfoRequestCreate,
+  bgvVerifierInfoRequestList,
+  bgvVerifierInfoRequestResolve,
   bgvVerifierConclusionSubmit,
   bgvVerifierDiscrepancyRecord,
   bgvVerifierEvidenceDownload,
@@ -48,5 +52,12 @@ router.post('/:orderId/:checkType/discrepancies', bgvVerifierDiscrepancyRecord);
 router.post('/:orderId/:checkType/state', bgvVerifierStateSet);
 router.post('/:orderId/:checkType/submit', bgvVerifierConclusionSubmit);
 router.post('/:orderId/:checkType/evidence', preOnboardingUpload, bgvVerifierEvidenceUpload);
+
+// Phase 30.9 — additional information requests. Verifier creates/reviews;
+// resolve/cancel are path-rooted so they never collide with check routes.
+router.get('/:orderId/:checkType/info-requests', bgvVerifierInfoRequestList);
+router.post('/:orderId/:checkType/info-requests', bgvVerifierInfoRequestCreate);
+router.post('/info-requests/:requestId/resolve', bgvVerifierInfoRequestResolve);
+router.post('/info-requests/:requestId/cancel', bgvVerifierInfoRequestCancel);
 
 export default router;

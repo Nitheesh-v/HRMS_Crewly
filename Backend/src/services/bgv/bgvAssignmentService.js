@@ -594,7 +594,14 @@ export const getHrAssignmentStatus = async ({ companyId, candidateRef, deps = {}
     // Phase 30.8 — HR sees 'SUBMITTED' once verifier findings are locked;
     // still state-only, never findings/notes (30.10 owns report release).
     const verification = verifications.find((entry) => entry.checkType === checkType);
-    perCheck[checkType] = verification?.state === 'SUBMITTED' ? 'SUBMITTED' : assignment.status;
+    // Phase 30.9: an open additional-information request surfaces as
+    // AWAITING_CANDIDATE ("waiting for candidate") — state only.
+    perCheck[checkType] =
+      verification?.state === 'SUBMITTED'
+        ? 'SUBMITTED'
+        : verification?.state === 'AWAITING_CANDIDATE'
+          ? 'AWAITING_CANDIDATE'
+          : assignment.status;
   }
   return { perCheck };
 };

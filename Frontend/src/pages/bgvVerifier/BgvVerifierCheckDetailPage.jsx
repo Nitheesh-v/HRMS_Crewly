@@ -10,6 +10,7 @@ import {
   EvidenceUploadPanel,
   StateBadgeRow,
 } from './workbench/WorkbenchPanels.jsx';
+import InfoRequestPanel from './workbench/InfoRequestPanel.jsx';
 
 // Phase 30.7 — minimum-data detail for ONE assigned check. The backend
 // projects only what this check type needs (no giant candidate object, no
@@ -282,6 +283,9 @@ const BgvVerifierCheckDetailPage = () => {
                 )}
                 <DiscrepancyPanel orderId={orderId} checkType={detail.checkType} workbench={detail.workbench} onRecorded={load} onError={setError} />
                 <ConclusionPanel orderId={orderId} checkType={detail.checkType} workbench={detail.workbench} onSubmitted={load} onError={setError} />
+
+                {/* Phase 30.9 — controlled resubmission via secure candidate portal */}
+                <InfoRequestPanel orderId={orderId} checkType={detail.checkType} workbench={detail.workbench} onChanged={load} onError={setError} />
               </>
             ) : null}
 

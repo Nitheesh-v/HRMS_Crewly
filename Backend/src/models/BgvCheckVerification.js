@@ -19,7 +19,9 @@ import mongoose from 'mongoose';
 
 const { Schema } = mongoose;
 
-export const BGV_CHECK_VERIFICATION_STATES = ['IN_PROGRESS', 'AWAITING_THIRD_PARTY', 'SUBMITTED'];
+// Phase 30.9 adds AWAITING_CANDIDATE: an additional-information request is
+// open. Operational only — never a conclusion.
+export const BGV_CHECK_VERIFICATION_STATES = ['IN_PROGRESS', 'AWAITING_THIRD_PARTY', 'AWAITING_CANDIDATE', 'SUBMITTED'];
 
 export const BGV_CHECK_CONCLUSIONS = [
   'VERIFIED',

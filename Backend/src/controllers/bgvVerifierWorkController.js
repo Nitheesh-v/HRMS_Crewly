@@ -22,6 +22,12 @@ import {
   submitConclusion,
   uploadActivityEvidence,
 } from '../services/bgv/bgvWorkbenchService.js';
+import {
+  cancelInfoRequest,
+  createInfoRequest,
+  resolveInfoRequest,
+  verifierListRequests,
+} from '../services/bgv/bgvInfoRequestService.js';
 
 // GET /api/bgv-verifier/work
 export const bgvVerifierWorkList = asyncHandler(async (req, res) => {
@@ -207,4 +213,81 @@ export const bgvVerifierEvidenceDownload = asyncHandler(async (req, res) => {
   res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
   res.setHeader('X-Document-Checksum', file.checksum);
   return res.type(file.mimeType).send(file.buffer);
+});
+
+// ── Phase 30.9 — additional information requests (current verifier) ─
+
+// POST /api/bgv-verifier/work/:orderId/:checkType/info-requests
+export const bgvVerifierInfoRequestCreate = asyncHandler(async (req, res) => {
+  // Data from frontend - controlled category + bounded instructions
+  const { orderId, checkType } = req.params;
+  const { category, message } = req.body;
+
+  // DB Logic - current-assignment authorization + per-check category
+  // allowlist; duplicate OPEN requests return idempotently; Crewly sends
+  // the candidate notification (raw token never in any queue payload)
+  const data = await createInfoRequest({
+    verifierId: req.verifier._id,
+    orderId,
+    checkType,
+    category,
+    message,
+    requestContext: req,
+  });
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, { message: 'Additional information requested', data });
+});
+
+// GET /api/bgv-verifier/work/:orderId/:checkType/info-requests
+export const bgvVerifierInfoRequestList = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend (assigned check only)
+  const { orderId, checkType } = req.params;
+
+  // DB Logic - request history + candidate response metadata for the
+  // CURRENT assigned verifier (bytes via the 30.7 download route)
+  const data = await verifierListRequests({ verifierId: req.verifier._id, orderId, checkType });
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, { message: 'Information requests', data });
+});
+
+// POST /api/bgv-verifier/work/info-requests/:requestId/resolve
+export const bgvVerifierInfoRequestResolve = asyncHandler(async (req, res) => {
+  // Data from frontend - request id from the workbench list
+  const { requestId } = req.params;
+  const { orderId, checkType } = req.body;
+
+  // DB Logic - responded requests only; history preserved; the check
+  // leaves AWAITING_CANDIDATE when no OPEN request remains; no conclusion
+  const data = await resolveInfoRequest({
+    verifierId: req.verifier._id,
+    orderId,
+    checkType,
+    requestId,
+    requestContext: req,
+  });
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, { message: 'Request resolved', data });
+});
+
+// POST /api/bgv-verifier/work/info-requests/:requestId/cancel
+export const bgvVerifierInfoRequestCancel = asyncHandler(async (req, res) => {
+  // Data from frontend - request id (+ order/check for authorization)
+  const { requestId } = req.params;
+  const { orderId, checkType } = req.body;
+
+  // DB Logic - OPEN requests only; candidate response window closes;
+  // history is preserved (never deleted)
+  const data = await cancelInfoRequest({
+    verifierId: req.verifier._id,
+    orderId,
+    checkType,
+    requestId,
+    requestContext: req,
+  });
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, { message: 'Request cancelled', data });
 });

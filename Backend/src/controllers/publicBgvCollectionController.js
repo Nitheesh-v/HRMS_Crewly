@@ -5,6 +5,12 @@
 import ApiResponse from '../utils/ApiResponse.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import {
+  addAlternateReference,
+  listCandidateRequests,
+  submitInfoResponse,
+  uploadResponseFile,
+} from '../services/bgv/bgvInfoRequestService.js';
+import {
   downloadBgvEvidence,
   removeBgvEvidence,
   removeEducationRecord,
@@ -197,4 +203,57 @@ export const bgvCollectionSubmit = asyncHandler(async (req, res) => {
       : 'BGV information submitted successfully',
     data,
   });
+});
+
+// ── Phase 30.9 — additional information responses (secure portal) ───
+
+// GET /api/public/candidate/bgv-collection/:secureToken/info-requests
+export const bgvCollectionInfoRequests = asyncHandler(async (req, res) => {
+  // Data from frontend - secure token only (no candidateId URLs)
+  const { secureToken } = req.params;
+
+  // DB Logic - own case requests only; GET never submits anything
+  const data = await listCandidateRequests({ rawToken: secureToken });
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, { message: 'Additional information requests', data });
+});
+
+// POST /api/public/candidate/bgv-collection/:secureToken/info-requests/:requestId/file
+export const bgvCollectionInfoResponseFile = asyncHandler(async (req, res) => {
+  // Data from frontend - replacement document (hardened uploader ran first)
+  const { secureToken, requestId } = req.params;
+
+  // DB Logic - controlled exception: requested evidence category only;
+  // previous versions remain historical (REPLACED), never deleted
+  const data = await uploadResponseFile({ rawToken: secureToken, requestId, file: req.file, requestContext: req });
+
+  // Data to frontend - safe metadata only
+  return ApiResponse.created(res, { message: 'Document uploaded', data });
+});
+
+// POST /api/public/candidate/bgv-collection/:secureToken/info-requests/:requestId/reference
+export const bgvCollectionInfoReferenceAdd = asyncHandler(async (req, res) => {
+  // Data from frontend - alternate referee record (validated)
+  const { secureToken, requestId } = req.params;
+
+  // DB Logic - ALTERNATE_REFERENCE requests only; one addition per request
+  const data = await addAlternateReference({ rawToken: secureToken, requestId, record: req.body, requestContext: req });
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, { message: 'Alternate reference added', data });
+});
+
+// POST /api/public/candidate/bgv-collection/:secureToken/info-requests/:requestId/response
+export const bgvCollectionInfoResponseSubmit = asyncHandler(async (req, res) => {
+  // Data from frontend - EXPLICIT submit action (+ clarification text)
+  const { secureToken, requestId } = req.params;
+  const { text } = req.body;
+
+  // DB Logic - OPEN request of own case; FILE kinds need an uploaded
+  // document; response becomes CANDIDATE_RESPONDED; never auto-verified
+  const data = await submitInfoResponse({ rawToken: secureToken, requestId, text, requestContext: req });
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, { message: 'Response submitted', data });
 });

@@ -767,6 +767,67 @@ export const bgvConsentInvitationEmail = ({
 
 // Phase 30.6 — internal BGV verifier account emails. Crewly-sent; never
 // contain passwords, candidate information, or BGV evidence.
+// Phase 30.9 — candidate notification that more information is needed for
+// an existing BGV. Crewly is always the sender; safe context only (check
+// display name + bounded instructions); no documents, identifiers, or
+// verifier notes beyond the bounded safe message; never a payment ask.
+export const bgvInfoRequestedEmail = ({
+  candidateName,
+  companyName,
+  checkLabel,
+  categoryLabel,
+  message,
+  portalUrl,
+  expiresAt,
+}) => {
+  const safeName = escapeHtml(candidateName || 'Candidate');
+  const safeCompany = escapeHtml(companyName || 'the requesting organisation');
+  const safeCheck = escapeHtml(checkLabel || 'a verification check');
+  const safeCategory = escapeHtml(categoryLabel || 'additional information');
+  const safeMessage = escapeHtml(String(message || '').slice(0, 500));
+  const safeUrl =
+    /^https:\/\//i.test(portalUrl) || /^http:\/\/localhost(?::\d+)?\//i.test(portalUrl)
+      ? escapeHtml(portalUrl)
+      : '';
+  const expiryLabel = expiresAt
+    ? new Intl.DateTimeFormat('en-IN', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+      }).format(new Date(expiresAt))
+    : 'the stated expiry date';
+
+  return {
+    fromLabel: 'Crewly Background Verification',
+    subject: `Action needed: more information for your background verification (${String(
+      companyName || 'request'
+    )
+      .replace(/[\r\n]/g, ' ')
+      .slice(0, 80)})`,
+    text:
+      `Hello ${candidateName},\n\n` +
+      `${companyName} uses Crewly (operated by Infolexus) for background verification.\n` +
+      `The verification team needs more information for: ${checkLabel}.\n` +
+      `Requested: ${categoryLabel}.\n` +
+      (message ? `Instructions: ${message}\n` : '') +
+      `You are never asked to pay for this, and no new payment is created.\n` +
+      `Open your secure portal to respond before ${expiryLabel}:\n${portalUrl}\n\n` +
+      `If the link does not work, ask the hiring team to resend it.\n`,
+    html:
+      `<p>Hello ${safeName},</p>` +
+      `<p>${safeCompany} uses <strong>Crewly</strong>, operated by Infolexus, for background verification.</p>` +
+      `<p>The verification team needs more information for <strong>${safeCheck}</strong>.</p>` +
+      `<p>Requested: <strong>${safeCategory}</strong>.</p>` +
+      (safeMessage ? `<p>Instructions: ${safeMessage}</p>` : '') +
+      `<p>You are <strong>never asked to pay</strong> for this, and no new payment is created.</p>` +
+      (safeUrl
+        ? `<p><a href="${safeUrl}">Open your secure portal to respond</a> (valid until ${expiryLabel}).</p>`
+        : '<p>Open your secure portal link from the hiring team to respond.</p>') +
+      `<p>If the link does not work, ask the hiring team to resend it.</p>`,
+  };
+};
+
 export const bgvVerifierSetupEmail = ({ name, setupUrl, expiresAt }) => {
   const safeName = escapeHtml(String(name || 'there'));
   const safeUrl = escapeHtml(String(setupUrl || ''));

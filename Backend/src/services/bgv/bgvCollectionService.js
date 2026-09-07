@@ -192,6 +192,10 @@ const persist = async (deps, ctx, set) => {
   return updated || { ...ctx.collectionCase, ...set };
 };
 
+// The 30.9 controlled-response endpoints reuse this exact authorization
+// (token → consented case) so candidate isolation stays identical.
+export { loadAuthorizedContext };
+
 // ── public: collection portal summary (read-only) ───────────────────
 export const resolveCollectionPortal = async ({ rawToken, deps = {} }) => {
   const listActiveFiles = deps.listActiveFiles || defaultListActiveFiles;

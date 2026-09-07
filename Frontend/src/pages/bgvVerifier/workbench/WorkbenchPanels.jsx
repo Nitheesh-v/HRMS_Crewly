@@ -453,15 +453,20 @@ export const StateBadgeRow = ({ orderId, checkType, workbench, onChanged, onErro
   };
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <span className="badge bg-crewly-green/10 text-crewly-green">
-        {workbench.state === 'AWAITING_THIRD_PARTY' ? (
+      {/* Phase 30.9 — AWAITING_CANDIDATE is a waiting state, not an error. */}
+      <span
+        className={`badge ${
+          workbench.state === 'AWAITING_CANDIDATE' ? 'bg-sky-500/10 text-sky-300' : 'bg-crewly-green/10 text-crewly-green'
+        }`}
+      >
+        {workbench.state === 'AWAITING_THIRD_PARTY' || workbench.state === 'AWAITING_CANDIDATE' ? (
           <Clock3 className="mr-1 inline h-3.5 w-3.5" />
         ) : (
           <PhoneCall className="mr-1 inline h-3.5 w-3.5" />
         )}
-        {workbench.state.replaceAll('_', ' ')}
+        {workbench.state === 'AWAITING_CANDIDATE' ? 'Waiting for candidate' : workbench.state.replaceAll('_', ' ')}
       </span>
-      {!workbench.locked ? (
+      {!workbench.locked && workbench.state !== 'AWAITING_CANDIDATE' ? (
         <button
           type="button"
           disabled={busy}

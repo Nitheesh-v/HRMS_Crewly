@@ -375,7 +375,9 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
                             className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${
                               progress === 'SUBMITTED'
                                 ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                                : progress === 'IN_PROGRESS'
+                                : progress === 'AWAITING_CANDIDATE'
+                                  ? 'border-sky-500/30 bg-sky-500/10 text-sky-300'
+                                  : progress === 'IN_PROGRESS'
                                   ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
                                   : progress === 'ASSIGNED'
                                     ? 'border-teal-500/30 bg-teal-500/10 text-teal-300'
@@ -384,7 +386,14 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
                           >
                             {/* Phase 30.8 — safe state only: 'Submitted' means
                                 verifier findings are locked for internal review. */}
-                            {check}: {progress === 'SUBMITTED' ? 'Submitted for review' : String(progress).replaceAll('_', ' ')}
+                            {/* Phase 30.9 — 'Waiting for candidate' is safe progress
+                                copy only (no tokens, no verifier notes, no conclusions). */}
+                            {check}:{' '}
+                            {progress === 'SUBMITTED'
+                              ? 'Submitted for review'
+                              : progress === 'AWAITING_CANDIDATE'
+                                ? 'Waiting for candidate'
+                                : String(progress).replaceAll('_', ' ')}
                           </span>
                         )
                       )}
