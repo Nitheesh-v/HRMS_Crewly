@@ -18,6 +18,7 @@ import {
   getHrConsentStatus,
   issueBgvConsentInvitation,
 } from '../services/bgv/bgvConsentService.js';
+import { getHrCollectionStatus } from '../services/bgv/bgvCollectionService.js';
 
 const actorId = (req) => req.user._id;
 
@@ -176,6 +177,26 @@ export const bgvConsentStatus = asyncHandler(async (req, res) => {
   // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: 'BGV consent status',
+    data,
+  });
+});
+
+// Phase 30.5 — GET /api/recruitment/candidates/:candidateId/bgv-collection-status
+export const bgvCollectionStatus = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const { candidateId } = req.params;
+
+  // DB Logic - tenant-scoped collection visibility: high-level status only
+  // (AWAITING_CANDIDATE / CANDIDATE_DRAFT / CANDIDATE_SUBMITTED). Raw
+  // evidence files are NOT exposed to HR in 30.5 (minimum-necessary).
+  const data = await getHrCollectionStatus({
+    companyId: req.companyId,
+    candidateRef: candidateId,
+  });
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, {
+    message: 'BGV collection status',
     data,
   });
 });

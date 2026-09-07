@@ -73,6 +73,9 @@ const bgvService = {
     unwrap(await api.post(`/recruitment/bgv-orders/${orderId}/consent-invitation`)),
   consentStatus: async (candidateId) =>
     unwrap(await api.get(`/recruitment/candidates/${candidateId}/bgv-consent-status`)),
+  // Phase 30.5 — candidate collection status (status only; no raw evidence).
+  collectionStatus: async (candidateId) =>
+    unwrap(await api.get(`/recruitment/candidates/${candidateId}/bgv-collection-status`)),
   assign: async (caseId, verifierId) =>
     unwrap(
       await api.post(`/recruitment/background-verifications/${caseId}/assign`, {

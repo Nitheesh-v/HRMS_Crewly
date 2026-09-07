@@ -62,6 +62,7 @@ import {
   bgvDecisionRecord,
 } from '../controllers/backgroundVerificationController.js';
 import {
+  bgvCollectionStatus,
   bgvConsentInvitationIssue,
   bgvConsentStatus,
   bgvOrderCancel,
@@ -446,6 +447,14 @@ router.get(
   requirePermission('BACKGROUND_VERIFICATION_READ'),
   bgvConsentStatusRules,
   bgvConsentStatus
+);
+
+// Phase 30.5 — candidate BGV collection status (status only, no raw files).
+router.get(
+  '/candidates/:candidateId/bgv-collection-status',
+  requirePermission('BACKGROUND_VERIFICATION_READ'),
+  bgvConsentStatusRules,
+  bgvCollectionStatus
 );
 
 // Phase 27.14 — recruitment command center analytics.

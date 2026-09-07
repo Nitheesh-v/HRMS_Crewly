@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import bgvConsentService from '../../services/bgvConsentService.js';
+import BgvCollectionPortal from '../../components/candidate/BgvCollectionPortal.jsx';
 
 // Phase 30.4 — public candidate BGV consent portal.
 // GET is decision-free; consent/decline are explicit POSTs only. No document
@@ -222,6 +223,21 @@ const CandidateBgvConsentPortalPage = () => {
           </p>
         </section>
       )}
+
+      {/* Phase 30.5 — after explicit consent, the SAME secure token opens the
+          information & documents workspace (purchased checks only). */}
+      {view.state === 'CONSENTED' ? (
+        <div className="rounded-2xl border border-slate-200 bg-slate-100 p-4 sm:p-6">
+          <h2 className="text-lg font-semibold text-slate-900">BGV information &amp; documents</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Complete only what was requested. You can save a draft, close this page, and return
+            with the same link while it remains valid.
+          </p>
+          <div className="mt-4">
+            <BgvCollectionPortal secureToken={secureToken} />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };

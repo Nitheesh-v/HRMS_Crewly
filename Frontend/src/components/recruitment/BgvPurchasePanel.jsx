@@ -44,6 +44,14 @@ const STATUS_COPY = {
   PAID: 'Paid — BGV checks purchased',
 };
 
+// Phase 30.5 — candidate information collection status (HR sees status
+// only; raw evidence files are never exposed here).
+const COLLECTION_COPY = {
+  AWAITING_CANDIDATE: 'Awaiting candidate — information not started yet.',
+  CANDIDATE_DRAFT: 'Candidate is filling the BGV information (draft).',
+  CANDIDATE_SUBMITTED: 'Candidate SUBMITTED the BGV information. Verification has not started.',
+};
+
 // Phase 30.3 — purchase BGV services for a candidate whose 30.1 decision is
 // INITIATE BGV. All amounts shown are DISPLAY ONLY; the backend re-prices
 // every order from the active catalogue. Mongo is the truth: a refresh
@@ -62,6 +70,7 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
     code: '',
     reason: '',
     consent: null,
+    collection: null,
   });
   const [selected, setSelected] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -80,6 +89,11 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
         order?.status === 'PAID'
           ? await bgvService.consentStatus(candidateRef).catch(() => null)
           : null;
+      // Phase 30.5: collection status only appears after explicit consent.
+      const collection =
+        consent?.state === 'CONSENTED'
+          ? await bgvService.collectionStatus(candidateRef).catch(() => null)
+          : null;
       setState((current) => ({
         ...current,
         loading: false,
@@ -90,6 +104,7 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
         code: orderView?.code || '',
         reason: orderView?.reason || '',
         consent,
+        collection,
       }));
     } catch (error) {
       setState((current) => ({
@@ -108,7 +123,7 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
 
   if (!canManage) return null;
 
-  const { loading, error, message, services, order, eligible, reason, consent } = state;
+  const { loading, error, message, services, order, eligible, reason, consent, collection } = state;
   const selectedServices = services.filter((service) => selected.includes(service.type));
   const displayTotal = selectedServices.reduce(
     (sum, service) => sum + (service.priceMinorUnits || 0),
@@ -330,6 +345,16 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
                   <p className="mt-1 text-xs text-slate-500">
                     {CONSENT_COPY[consent?.state] || CONSENT_COPY.NONE}
                   </p>
+                  {collection?.collectionStatus &&
+                  collection.collectionStatus !== 'NOT_APPLICABLE' ? (
+                    <p className="mt-1 text-xs text-slate-500">
+                      Candidate information:{' '}
+                      <span className="font-semibold text-slate-300">
+                        {COLLECTION_COPY[collection.collectionStatus] ||
+                          String(collection.collectionStatus).replaceAll('_', ' ')}
+                      </span>
+                    </p>
+                  ) : null}
                 </div>
               </div>
               {consent?.state !== 'CONSENTED' && consent?.state !== 'CONSENT_DECLINED' ? (
