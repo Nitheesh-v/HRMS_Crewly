@@ -8,7 +8,6 @@ import {
   IdCard,
   Loader2,
   MapPin,
-  Paperclip,
   Send,
   Trash2,
   Upload,
@@ -21,7 +20,7 @@ import bgvCollectionService from '../../services/bgvCollectionService.js';
 // purchased checks (the backend enforces the same rule — the UI is never
 // the security boundary). Draft-first: nothing is released until the
 // candidate explicitly submits. No sensitive form data in localStorage —
-// the backend is the source of truth.
+// the backend is the source of truth. Styled with the Crewly brand theme.
 
 const ID_TYPES = [
   { value: 'PAN', label: 'PAN card' },
@@ -31,27 +30,22 @@ const ID_TYPES = [
   { value: 'OTHER_APPROVED_ID', label: 'Other approved ID' },
 ];
 
-const inputClass =
-  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500';
-
 const SectionCard = ({ icon: Icon, title, subtitle, complete, locked, children }) => (
-  <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+  <section className="card">
     <div className="mb-4 flex items-start justify-between gap-3">
       <div className="flex items-start gap-3">
-        <span className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+        <span className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl bg-crewly-green/10 text-crewly-green">
           <Icon className="h-5 w-5" />
         </span>
         <div>
-          <h3 className="font-semibold text-slate-900">{title}</h3>
-          {subtitle ? <p className="text-xs text-slate-500">{subtitle}</p> : null}
+          <h3 className="font-semibold text-crewly-text">{title}</h3>
+          {subtitle ? <p className="mt-0.5 text-xs text-crewly-dim">{subtitle}</p> : null}
         </div>
       </div>
       {complete ? (
-        <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-          <CheckCircle2 className="h-3.5 w-3.5" /> Complete
-        </span>
+        <span className="badge bg-crewly-green/10 text-crewly-green">Complete</span>
       ) : locked ? (
-        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">Locked</span>
+        <span className="badge bg-crewly-border/40 text-crewly-dim">Locked</span>
       ) : null}
     </div>
     {children}
@@ -59,35 +53,25 @@ const SectionCard = ({ icon: Icon, title, subtitle, complete, locked, children }
 );
 
 const FileRow = ({ file, onRemove, downloadUrl, locked }) => (
-  <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+  <div className="flex items-center justify-between gap-3 rounded-lg border border-crewly-border bg-crewly-bg/60 px-3 py-2 text-sm">
     <div className="flex min-w-0 items-center gap-2">
-      <FileText className="h-4 w-4 shrink-0 text-slate-400" />
-      <span className="truncate text-slate-700">{file.fileName}</span>
-      <span className="shrink-0 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+      <FileText className="h-4 w-4 shrink-0 text-crewly-dim" />
+      <span className="truncate text-crewly-text">{file.fileName}</span>
+      <span className="shrink-0 rounded bg-crewly-border/40 px-1.5 py-0.5 text-[10px] font-medium text-crewly-dim">
         v{file.version}
       </span>
       {file.scanStatus === 'NOT_CONFIGURED' ? (
-        <span className="shrink-0 text-[10px] text-slate-400" title="Automated malware scanning is not configured on this deployment">
+        <span className="shrink-0 text-[10px] text-crewly-dim" title="Automated malware scanning is not configured on this deployment">
           scan: not configured
         </span>
       ) : null}
     </div>
-    <div className="flex shrink-0 items-center gap-2">
-      <a
-        href={downloadUrl}
-        className="text-xs font-medium text-indigo-600 hover:underline"
-        target="_blank"
-        rel="noreferrer"
-      >
+    <div className="flex shrink-0 items-center gap-3">
+      <a href={downloadUrl} className="text-xs font-medium text-crewly-green hover:underline" target="_blank" rel="noreferrer">
         View
       </a>
       {!locked && onRemove ? (
-        <button
-          type="button"
-          onClick={onRemove}
-          className="text-slate-400 hover:text-rose-600"
-          aria-label="Remove file"
-        >
+        <button type="button" onClick={onRemove} className="text-crewly-dim hover:text-crewly-red" aria-label="Remove file">
           <Trash2 className="h-4 w-4" />
         </button>
       ) : null}
@@ -96,7 +80,7 @@ const FileRow = ({ file, onRemove, downloadUrl, locked }) => (
 );
 
 const UploadButton = ({ label, onPick, busy, progress }) => (
-  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-indigo-300 bg-indigo-50/50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">
+  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-crewly-border bg-crewly-bg/40 px-3 py-2 text-sm font-medium text-crewly-green transition hover:border-crewly-green">
     {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
     {busy && progress !== null ? `Uploading ${progress}%` : label}
     <input
@@ -114,7 +98,7 @@ const UploadButton = ({ label, onPick, busy, progress }) => (
 
 const MissingList = ({ missing }) =>
   missing?.length ? (
-    <ul className="mt-2 space-y-1 text-xs text-amber-700">
+    <ul className="mt-2 space-y-1 text-xs text-crewly-orange">
       {missing.map((entry) => (
         <li key={`${entry.checkType}-${entry.requirement}`} className="flex items-center gap-1.5">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> {entry.checkType}: {entry.requirement}
@@ -237,26 +221,24 @@ const BgvCollectionPortal = ({ secureToken }) => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16 text-slate-500">
+      <div className="flex items-center justify-center py-16 text-crewly-dim">
         <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading your BGV information…
       </div>
     );
   }
   if (error && !summary) {
-    return (
-      <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-700">{error}</div>
-    );
+    return <div className="rounded-xl border border-crewly-red/30 bg-crewly-red/10 p-6 text-sm text-crewly-red">{error}</div>;
   }
   if (!summary) return null;
 
   const completedCount = purchasedChecks.filter((type) => perCheck[type] === 'COMPLETE').length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Progress — purchased checks only */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h3 className="font-semibold text-slate-900">Your progress</h3>
-        <p className="mt-1 text-xs text-slate-500">
+      <section className="card">
+        <h3 className="font-semibold text-crewly-text">Your progress</h3>
+        <p className="mt-1 text-xs text-crewly-dim">
           {locked
             ? 'Submitted — your information is now locked for verification.'
             : 'Save as you go; nothing is released until you submit. You can close this page and return with the same link.'}
@@ -267,8 +249,8 @@ const BgvCollectionPortal = ({ secureToken }) => {
               key={type}
               className={`rounded-lg border px-3 py-2 text-xs font-medium ${
                 perCheck[type] === 'COMPLETE'
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                  : 'border-slate-200 bg-slate-50 text-slate-600'
+                  ? 'border-crewly-green/30 bg-crewly-green/10 text-crewly-green'
+                  : 'border-crewly-border bg-crewly-bg/40 text-crewly-dim'
               }`}
             >
               {type}
@@ -278,21 +260,21 @@ const BgvCollectionPortal = ({ secureToken }) => {
             </div>
           ))}
         </div>
-        <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+        <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-crewly-border/40">
           <div
-            className="h-full rounded-full bg-indigo-500 transition-all"
+            className="h-full rounded-full bg-crewly-green transition-all"
             style={{ width: `${purchasedChecks.length ? (completedCount / purchasedChecks.length) * 100 : 0}%` }}
           />
         </div>
       </section>
 
       {notice ? (
-        <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+        <div className="flex items-center gap-2 rounded-xl border border-crewly-green/30 bg-crewly-green/10 px-4 py-3 text-sm text-crewly-green">
           <CheckCircle2 className="h-4 w-4 shrink-0" /> {notice}
         </div>
       ) : null}
       {error ? (
-        <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <div className="flex items-center gap-2 rounded-xl border border-crewly-red/30 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">
           <AlertTriangle className="h-4 w-4 shrink-0" /> {error}
         </div>
       ) : null}
@@ -302,18 +284,18 @@ const BgvCollectionPortal = ({ secureToken }) => {
         <SectionCard icon={IdCard} title="Identity" subtitle="Provide one supported identity document. Your document number is masked — the full number is never stored." complete={perCheck.IDENTITY === 'COMPLETE'} locked={locked}>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Legal name (as on document)</label>
-              <input className={inputClass} value={identityForm.legalName} disabled={locked}
+              <label className="label">Legal name (as on document)</label>
+              <input className="input" value={identityForm.legalName} disabled={locked}
                 onChange={(event) => { touchedRef.current.identity = true; setIdentityForm({ ...identityForm, legalName: event.target.value }); }} />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Date of birth</label>
-              <input type="date" className={inputClass} value={identityForm.dateOfBirth} disabled={locked}
+              <label className="label">Date of birth</label>
+              <input type="date" className="input" value={identityForm.dateOfBirth} disabled={locked}
                 onChange={(event) => { touchedRef.current.identity = true; setIdentityForm({ ...identityForm, dateOfBirth: event.target.value }); }} />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Document type</label>
-              <select className={inputClass} value={identityForm.documentType} disabled={locked}
+              <label className="label">Document type</label>
+              <select className="input" value={identityForm.documentType} disabled={locked}
                 onChange={(event) => { touchedRef.current.identity = true; setIdentityForm({ ...identityForm, documentType: event.target.value }); }}>
                 {ID_TYPES.map((type) => (
                   <option key={type.value} value={type.value}>{type.label}</option>
@@ -321,23 +303,22 @@ const BgvCollectionPortal = ({ secureToken }) => {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Document number</label>
-              <input className={inputClass} value={identityForm.identifier} disabled={locked} autoComplete="off"
+              <label className="label">Document number</label>
+              <input className="input" value={identityForm.identifier} disabled={locked} autoComplete="off"
                 placeholder={summary.collection?.identity?.identifierMasked ? `saved: ${summary.collection.identity.identifierMasked}` : 'e.g. ABCDE1234F'}
                 onChange={(event) => { touchedRef.current.identity = true; setIdentityForm({ ...identityForm, identifier: event.target.value }); }} />
               {summary.collection?.identity?.identifierMasked ? (
-                <p className="mt-1 text-[11px] text-slate-500">
+                <p className="mt-1 text-[11px] text-crewly-dim">
                   Saved as {summary.collection.identity.identifierMasked} — leave blank to keep it
                 </p>
               ) : null}
             </div>
           </div>
-          <div className="mt-3 flex flex-wrap items-center gap-3">
+          <div className="mt-4 flex flex-wrap items-center gap-3">
             {!locked ? (
-              <button type="button" disabled={busy === 'identity'}
-                onClick={() => run('identity', async () => { touchedRef.current.identity = false; await bgvCollectionService.saveIdentity(secureToken, identityForm); }, 'Identity information saved')}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60">
-                {busy === 'identity' ? <Loader2 className="mr-1 inline h-4 w-4 animate-spin" /> : null} Save identity
+              <button type="button" className="btn-primary gap-2 !px-4 !py-2 text-sm" disabled={busy === 'identity'}
+                onClick={() => run('identity', async () => { touchedRef.current.identity = false; await bgvCollectionService.saveIdentity(secureToken, identityForm); }, 'Identity information saved')}>
+                {busy === 'identity' ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Save identity
               </button>
             ) : null}
             {!locked ? (
@@ -380,14 +361,14 @@ const BgvCollectionPortal = ({ secureToken }) => {
               ['country', 'Country *'],
             ].map(([key, label]) => (
               <div key={key}>
-                <label className="mb-1 block text-xs font-medium text-slate-600">{label}</label>
-                <input className={inputClass} value={addressForm[key] || ''} disabled={locked}
+                <label className="label">{label}</label>
+                <input className="input" value={addressForm[key] || ''} disabled={locked}
                   onChange={(event) => { touchedRef.current.address = true; setAddressForm({ ...addressForm, [key]: event.target.value }); }} />
               </div>
             ))}
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Residence type</label>
-              <select className={inputClass} value={addressForm.residenceType || ''} disabled={locked}
+              <label className="label">Residence type</label>
+              <select className="input" value={addressForm.residenceType || ''} disabled={locked}
                 onChange={(event) => { touchedRef.current.address = true; setAddressForm({ ...addressForm, residenceType: event.target.value }); }}>
                 <option value="">Select…</option>
                 {['OWNED', 'RENTED', 'FAMILY', 'HOSTEL', 'OTHER'].map((type) => (
@@ -396,12 +377,11 @@ const BgvCollectionPortal = ({ secureToken }) => {
               </select>
             </div>
           </div>
-          <div className="mt-3 flex flex-wrap items-center gap-3">
+          <div className="mt-4 flex flex-wrap items-center gap-3">
             {!locked ? (
-              <button type="button" disabled={busy === 'address'}
-                onClick={() => run('address', async () => { touchedRef.current.address = false; await bgvCollectionService.saveAddress(secureToken, addressForm); }, 'Address saved')}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60">
-                {busy === 'address' ? <Loader2 className="mr-1 inline h-4 w-4 animate-spin" /> : null} Save address
+              <button type="button" className="btn-primary gap-2 !px-4 !py-2 text-sm" disabled={busy === 'address'}
+                onClick={() => run('address', async () => { touchedRef.current.address = false; await bgvCollectionService.saveAddress(secureToken, addressForm); }, 'Address saved')}>
+                {busy === 'address' ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Save address
               </button>
             ) : null}
             {!locked ? (
@@ -424,21 +404,21 @@ const BgvCollectionPortal = ({ secureToken }) => {
         <SectionCard icon={GraduationCap} title="Education" subtitle="Add each qualification separately with its certificate or marksheet." complete={perCheck.EDUCATION === 'COMPLETE'} locked={locked}>
           <div className="space-y-2">
             {(summary.collection?.educations || []).map((record, index) => (
-              <div key={record.id} className="rounded-lg border border-slate-200 p-3">
+              <div key={record.id} className="rounded-lg border border-crewly-border bg-crewly-bg/40 p-3">
                 <div className="flex items-start justify-between gap-2">
-                  <div className="text-sm text-slate-800">
+                  <div className="text-sm text-crewly-text">
                     <span className="font-medium">{record.qualification}</span> — {record.institution}
-                    <span className="block text-xs text-slate-500">
+                    <span className="block text-xs text-crewly-dim">
                       {record.startYear}{record.endYear ? ` – ${record.endYear}` : ''} {record.universityBoard ? `· ${record.universityBoard}` : ''}
                     </span>
                   </div>
                   {!locked ? (
-                    <div className="flex shrink-0 gap-2">
-                      <button type="button" className="text-xs text-indigo-600 hover:underline"
+                    <div className="flex shrink-0 gap-3">
+                      <button type="button" className="text-xs text-crewly-green hover:underline"
                         onClick={() => setEducationForm({ ...record, startYear: record.startYear || '', endYear: record.endYear || '' })}>
                         Edit
                       </button>
-                      <button type="button" className="text-xs text-rose-600 hover:underline"
+                      <button type="button" className="text-xs text-crewly-red hover:underline"
                         onClick={() => run('edu-remove', () => bgvCollectionService.removeEducation(secureToken, record.id), 'Education record removed')}>
                         Remove
                       </button>
@@ -447,7 +427,7 @@ const BgvCollectionPortal = ({ secureToken }) => {
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   {filesFor('EDUCATION_CERTIFICATE', record.id).map((file) => (
-                    <div key={file.id} className="flex-1 min-w-[220px]">
+                    <div key={file.id} className="min-w-[220px] flex-1">
                       <FileRow file={file} downloadUrl={downloadUrl(file.id)} locked={locked}
                         onRemove={() => run('edu-file-remove', () => bgvCollectionService.removeFile(secureToken, file.id), 'File removed')} />
                     </div>
@@ -462,35 +442,34 @@ const BgvCollectionPortal = ({ secureToken }) => {
             ))}
           </div>
           {!locked ? (
-            <div className="mt-4 rounded-lg border border-dashed border-slate-300 p-3">
-              <p className="mb-2 text-xs font-semibold text-slate-600">{educationForm.recordId ? 'Edit education record' : 'Add education record'}</p>
+            <div className="mt-4 rounded-lg border border-dashed border-crewly-border p-3">
+              <p className="mb-2 text-xs font-semibold text-crewly-text">{educationForm.recordId ? 'Edit education record' : 'Add education record'}</p>
               <div className="grid gap-3 sm:grid-cols-2">
-                <input className={inputClass} placeholder="Institution *" value={educationForm.institution}
+                <input className="input" placeholder="Institution *" value={educationForm.institution}
                   onChange={(event) => setEducationForm({ ...educationForm, institution: event.target.value })} />
-                <input className={inputClass} placeholder="University / Board" value={educationForm.universityBoard}
+                <input className="input" placeholder="University / Board" value={educationForm.universityBoard}
                   onChange={(event) => setEducationForm({ ...educationForm, universityBoard: event.target.value })} />
-                <input className={inputClass} placeholder="Qualification *" value={educationForm.qualification}
+                <input className="input" placeholder="Qualification *" value={educationForm.qualification}
                   onChange={(event) => setEducationForm({ ...educationForm, qualification: event.target.value })} />
-                <input className={inputClass} placeholder="Specialization" value={educationForm.specialization}
+                <input className="input" placeholder="Specialization" value={educationForm.specialization}
                   onChange={(event) => setEducationForm({ ...educationForm, specialization: event.target.value })} />
-                <input className={inputClass} placeholder="Enrollment / registration no." value={educationForm.enrollmentNumber}
+                <input className="input" placeholder="Enrollment / registration no." value={educationForm.enrollmentNumber}
                   onChange={(event) => setEducationForm({ ...educationForm, enrollmentNumber: event.target.value })} />
-                <input className={inputClass} placeholder="Location" value={educationForm.location}
+                <input className="input" placeholder="Location" value={educationForm.location}
                   onChange={(event) => setEducationForm({ ...educationForm, location: event.target.value })} />
-                <input className={inputClass} placeholder="Start year *" inputMode="numeric" value={educationForm.startYear}
+                <input className="input" placeholder="Start year *" inputMode="numeric" value={educationForm.startYear}
                   onChange={(event) => setEducationForm({ ...educationForm, startYear: event.target.value })} />
-                <input className={inputClass} placeholder="End / passing year" inputMode="numeric" value={educationForm.endYear}
+                <input className="input" placeholder="End / passing year" inputMode="numeric" value={educationForm.endYear}
                   onChange={(event) => setEducationForm({ ...educationForm, endYear: event.target.value })} />
               </div>
               <div className="mt-3 flex gap-2">
-                <button type="button" disabled={busy === 'education'}
-                  onClick={() => run('education', () => bgvCollectionService.saveEducation(secureToken, educationForm), 'Education record saved').then(() => setEducationForm({ recordId: '', institution: '', universityBoard: '', qualification: '', specialization: '', enrollmentNumber: '', startYear: '', endYear: '', location: '' }))}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60">
-                  {busy === 'education' ? <Loader2 className="mr-1 inline h-4 w-4 animate-spin" /> : null}
+                <button type="button" className="btn-primary gap-2 !px-4 !py-2 text-sm" disabled={busy === 'education'}
+                  onClick={() => run('education', () => bgvCollectionService.saveEducation(secureToken, educationForm), 'Education record saved').then(() => setEducationForm({ recordId: '', institution: '', universityBoard: '', qualification: '', specialization: '', enrollmentNumber: '', startYear: '', endYear: '', location: '' }))}>
+                  {busy === 'education' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                   {educationForm.recordId ? 'Update record' : 'Add record'}
                 </button>
                 {educationForm.recordId ? (
-                  <button type="button" className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600"
+                  <button type="button" className="btn-ghost !px-4 !py-2 text-sm"
                     onClick={() => setEducationForm({ recordId: '', institution: '', universityBoard: '', qualification: '', specialization: '', enrollmentNumber: '', startYear: '', endYear: '', location: '' })}>
                     Cancel edit
                   </button>
@@ -506,18 +485,18 @@ const BgvCollectionPortal = ({ secureToken }) => {
         <SectionCard icon={Building2} title="Employment" subtitle="Add your previous (and current) employers. Bank statements are not required; payslips are optional and treated as highly sensitive." complete={perCheck.EMPLOYMENT === 'COMPLETE'} locked={locked}>
           <div className="space-y-2">
             {(summary.collection?.employments || []).map((record, index) => (
-              <div key={record.id} className="rounded-lg border border-slate-200 p-3">
+              <div key={record.id} className="rounded-lg border border-crewly-border bg-crewly-bg/40 p-3">
                 <div className="flex items-start justify-between gap-2">
-                  <div className="text-sm text-slate-800">
+                  <div className="text-sm text-crewly-text">
                     <span className="font-medium">{record.designation}</span> — {record.employer}
-                    <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">{record.employmentType}</span>
-                    <span className="block text-xs text-slate-500">
+                    <span className="ml-2 rounded bg-crewly-border/40 px-1.5 py-0.5 text-[10px] text-crewly-dim">{record.employmentType}</span>
+                    <span className="block text-xs text-crewly-dim">
                       {String(record.startDate || '').slice(0, 10)}{record.endDate ? ` – ${String(record.endDate).slice(0, 10)}` : ' – present'}
                     </span>
                   </div>
                   {!locked ? (
-                    <div className="flex shrink-0 gap-2">
-                      <button type="button" className="text-xs text-indigo-600 hover:underline"
+                    <div className="flex shrink-0 gap-3">
+                      <button type="button" className="text-xs text-crewly-green hover:underline"
                         onClick={() => setEmploymentForm({
                           ...record,
                           startDate: String(record.startDate || '').slice(0, 10),
@@ -525,7 +504,7 @@ const BgvCollectionPortal = ({ secureToken }) => {
                         })}>
                         Edit
                       </button>
-                      <button type="button" className="text-xs text-rose-600 hover:underline"
+                      <button type="button" className="text-xs text-crewly-red hover:underline"
                         onClick={() => run('emp-remove', () => bgvCollectionService.removeEmployment(secureToken, record.id), 'Employment record removed')}>
                         Remove
                       </button>
@@ -534,7 +513,7 @@ const BgvCollectionPortal = ({ secureToken }) => {
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   {filesFor('EMPLOYMENT_EVIDENCE', record.id).map((file) => (
-                    <div key={file.id} className="flex-1 min-w-[220px]">
+                    <div key={file.id} className="min-w-[220px] flex-1">
                       <FileRow file={file} downloadUrl={downloadUrl(file.id)} locked={locked}
                         onRemove={() => run('emp-file-remove', () => bgvCollectionService.removeFile(secureToken, file.id), 'File removed')} />
                     </div>
@@ -549,46 +528,45 @@ const BgvCollectionPortal = ({ secureToken }) => {
             ))}
           </div>
           {!locked ? (
-            <div className="mt-4 rounded-lg border border-dashed border-slate-300 p-3">
-              <p className="mb-2 text-xs font-semibold text-slate-600">{employmentForm.recordId ? 'Edit employment record' : 'Add employment record'}</p>
+            <div className="mt-4 rounded-lg border border-dashed border-crewly-border p-3">
+              <p className="mb-2 text-xs font-semibold text-crewly-text">{employmentForm.recordId ? 'Edit employment record' : 'Add employment record'}</p>
               <div className="grid gap-3 sm:grid-cols-2">
-                <input className={inputClass} placeholder="Employer *" value={employmentForm.employer}
+                <input className="input" placeholder="Employer *" value={employmentForm.employer}
                   onChange={(event) => setEmploymentForm({ ...employmentForm, employer: event.target.value })} />
-                <input className={inputClass} placeholder="Designation *" value={employmentForm.designation}
+                <input className="input" placeholder="Designation *" value={employmentForm.designation}
                   onChange={(event) => setEmploymentForm({ ...employmentForm, designation: event.target.value })} />
                 <div>
-                  <label className="mb-1 block text-xs text-slate-500">Start date *</label>
-                  <input type="date" className={inputClass} value={employmentForm.startDate}
+                  <label className="label">Start date *</label>
+                  <input type="date" className="input" value={employmentForm.startDate}
                     onChange={(event) => setEmploymentForm({ ...employmentForm, startDate: event.target.value })} />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs text-slate-500">End date (blank if current)</label>
-                  <input type="date" className={inputClass} value={employmentForm.endDate}
+                  <label className="label">End date (blank if current)</label>
+                  <input type="date" className="input" value={employmentForm.endDate}
                     onChange={(event) => setEmploymentForm({ ...employmentForm, endDate: event.target.value })} />
                 </div>
-                <input className={inputClass} placeholder="Employee ID (if known)" value={employmentForm.employeeId}
+                <input className="input" placeholder="Employee ID (if known)" value={employmentForm.employeeId}
                   onChange={(event) => setEmploymentForm({ ...employmentForm, employeeId: event.target.value })} />
-                <select className={inputClass} value={employmentForm.employmentType}
+                <select className="input" value={employmentForm.employmentType}
                   onChange={(event) => setEmploymentForm({ ...employmentForm, employmentType: event.target.value })}>
                   <option value="PREVIOUS">Previous employment</option>
                   <option value="CURRENT">Current employment</option>
                 </select>
-                <input className={inputClass} placeholder="HR contact name (optional)" value={employmentForm.hrContactName}
+                <input className="input" placeholder="HR contact name (optional)" value={employmentForm.hrContactName}
                   onChange={(event) => setEmploymentForm({ ...employmentForm, hrContactName: event.target.value })} />
-                <input className={inputClass} placeholder="HR contact email (optional)" value={employmentForm.hrContactEmail}
+                <input className="input" placeholder="HR contact email (optional)" value={employmentForm.hrContactEmail}
                   onChange={(event) => setEmploymentForm({ ...employmentForm, hrContactEmail: event.target.value })} />
-                <input className={inputClass} placeholder="HR contact phone (optional)" value={employmentForm.hrContactPhone}
+                <input className="input" placeholder="HR contact phone (optional)" value={employmentForm.hrContactPhone}
                   onChange={(event) => setEmploymentForm({ ...employmentForm, hrContactPhone: event.target.value })} />
               </div>
               <div className="mt-3 flex gap-2">
-                <button type="button" disabled={busy === 'employment'}
-                  onClick={() => run('employment', () => bgvCollectionService.saveEmployment(secureToken, employmentForm), 'Employment record saved').then(() => setEmploymentForm({ recordId: '', employer: '', designation: '', employeeId: '', startDate: '', endDate: '', employmentType: 'PREVIOUS', hrContactName: '', hrContactEmail: '', hrContactPhone: '' }))}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60">
-                  {busy === 'employment' ? <Loader2 className="mr-1 inline h-4 w-4 animate-spin" /> : null}
+                <button type="button" className="btn-primary gap-2 !px-4 !py-2 text-sm" disabled={busy === 'employment'}
+                  onClick={() => run('employment', () => bgvCollectionService.saveEmployment(secureToken, employmentForm), 'Employment record saved').then(() => setEmploymentForm({ recordId: '', employer: '', designation: '', employeeId: '', startDate: '', endDate: '', employmentType: 'PREVIOUS', hrContactName: '', hrContactEmail: '', hrContactPhone: '' }))}>
+                  {busy === 'employment' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                   {employmentForm.recordId ? 'Update record' : 'Add record'}
                 </button>
                 {employmentForm.recordId ? (
-                  <button type="button" className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600"
+                  <button type="button" className="btn-ghost !px-4 !py-2 text-sm"
                     onClick={() => setEmploymentForm({ recordId: '', employer: '', designation: '', employeeId: '', startDate: '', endDate: '', employmentType: 'PREVIOUS', hrContactName: '', hrContactEmail: '', hrContactPhone: '' })}>
                     Cancel edit
                   </button>
@@ -604,21 +582,21 @@ const BgvCollectionPortal = ({ secureToken }) => {
         <SectionCard icon={Users} title="References" subtitle="People who can vouch for your work. No calls or emails are sent at this stage." complete={perCheck.REFERENCE === 'COMPLETE'} locked={locked}>
           <div className="space-y-2">
             {(summary.collection?.references || []).map((record) => (
-              <div key={record.id} className="flex items-start justify-between gap-2 rounded-lg border border-slate-200 p-3 text-sm text-slate-800">
+              <div key={record.id} className="flex items-start justify-between gap-2 rounded-lg border border-crewly-border bg-crewly-bg/40 p-3 text-sm text-crewly-text">
                 <div>
                   <span className="font-medium">{record.name}</span> — {record.relationship}
-                  <span className="block text-xs text-slate-500">
+                  <span className="block text-xs text-crewly-dim">
                     {record.organization}{record.designation ? ` · ${record.designation}` : ''}
                     {record.email ? ` · ${record.email}` : ''}{record.phone ? ` · ${record.phone}` : ''}
                   </span>
                 </div>
                 {!locked ? (
-                  <div className="flex shrink-0 gap-2">
-                    <button type="button" className="text-xs text-indigo-600 hover:underline"
+                  <div className="flex shrink-0 gap-3">
+                    <button type="button" className="text-xs text-crewly-green hover:underline"
                       onClick={() => setReferenceForm({ ...record })}>
                       Edit
                     </button>
-                    <button type="button" className="text-xs text-rose-600 hover:underline"
+                    <button type="button" className="text-xs text-crewly-red hover:underline"
                       onClick={() => run('ref-remove', () => bgvCollectionService.removeReference(secureToken, record.id), 'Reference removed')}>
                       Remove
                     </button>
@@ -628,31 +606,30 @@ const BgvCollectionPortal = ({ secureToken }) => {
             ))}
           </div>
           {!locked ? (
-            <div className="mt-4 rounded-lg border border-dashed border-slate-300 p-3">
-              <p className="mb-2 text-xs font-semibold text-slate-600">{referenceForm.recordId ? 'Edit reference' : 'Add reference'}</p>
+            <div className="mt-4 rounded-lg border border-dashed border-crewly-border p-3">
+              <p className="mb-2 text-xs font-semibold text-crewly-text">{referenceForm.recordId ? 'Edit reference' : 'Add reference'}</p>
               <div className="grid gap-3 sm:grid-cols-2">
-                <input className={inputClass} placeholder="Referee name *" value={referenceForm.name}
+                <input className="input" placeholder="Referee name *" value={referenceForm.name}
                   onChange={(event) => setReferenceForm({ ...referenceForm, name: event.target.value })} />
-                <input className={inputClass} placeholder="Relationship * (e.g. Former Manager)" value={referenceForm.relationship}
+                <input className="input" placeholder="Relationship * (e.g. Former Manager)" value={referenceForm.relationship}
                   onChange={(event) => setReferenceForm({ ...referenceForm, relationship: event.target.value })} />
-                <input className={inputClass} placeholder="Organization" value={referenceForm.organization}
+                <input className="input" placeholder="Organization" value={referenceForm.organization}
                   onChange={(event) => setReferenceForm({ ...referenceForm, organization: event.target.value })} />
-                <input className={inputClass} placeholder="Designation" value={referenceForm.designation}
+                <input className="input" placeholder="Designation" value={referenceForm.designation}
                   onChange={(event) => setReferenceForm({ ...referenceForm, designation: event.target.value })} />
-                <input className={inputClass} placeholder="Email" value={referenceForm.email}
+                <input className="input" placeholder="Email" value={referenceForm.email}
                   onChange={(event) => setReferenceForm({ ...referenceForm, email: event.target.value })} />
-                <input className={inputClass} placeholder="Phone" value={referenceForm.phone}
+                <input className="input" placeholder="Phone" value={referenceForm.phone}
                   onChange={(event) => setReferenceForm({ ...referenceForm, phone: event.target.value })} />
               </div>
               <div className="mt-3 flex gap-2">
-                <button type="button" disabled={busy === 'reference'}
-                  onClick={() => run('reference', () => bgvCollectionService.saveReference(secureToken, referenceForm), 'Reference saved').then(() => setReferenceForm({ recordId: '', name: '', organization: '', designation: '', relationship: '', email: '', phone: '', context: '' }))}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60">
-                  {busy === 'reference' ? <Loader2 className="mr-1 inline h-4 w-4 animate-spin" /> : null}
+                <button type="button" className="btn-primary gap-2 !px-4 !py-2 text-sm" disabled={busy === 'reference'}
+                  onClick={() => run('reference', () => bgvCollectionService.saveReference(secureToken, referenceForm), 'Reference saved').then(() => setReferenceForm({ recordId: '', name: '', organization: '', designation: '', relationship: '', email: '', phone: '', context: '' }))}>
+                  {busy === 'reference' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                   {referenceForm.recordId ? 'Update reference' : 'Add reference'}
                 </button>
                 {referenceForm.recordId ? (
-                  <button type="button" className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600"
+                  <button type="button" className="btn-ghost !px-4 !py-2 text-sm"
                     onClick={() => setReferenceForm({ recordId: '', name: '', organization: '', designation: '', relationship: '', email: '', phone: '', context: '' })}>
                     Cancel edit
                   </button>
@@ -665,10 +642,9 @@ const BgvCollectionPortal = ({ secureToken }) => {
 
       {/* ── REVIEW & SUBMIT (explicit POST; GET/refresh never submits) ── */}
       <SectionCard icon={Send} title="Review & submit" subtitle="Confirm everything looks right, then submit. After submission the information is locked." complete={locked} locked={locked}>
-        <div className="space-y-1 text-sm text-slate-700">
+        <div className="space-y-1 text-sm text-crewly-text">
           <p>
-            <Paperclip className="mr-1 inline h-4 w-4 text-slate-400" />
-            Purchased checks: <span className="font-medium">{purchasedChecks.join(', ')}</span>
+            Purchased checks: <span className="font-medium text-crewly-green">{purchasedChecks.join(', ')}</span>
           </p>
           <p>
             Progress: <span className="font-medium">{completedCount} of {purchasedChecks.length} complete</span>
@@ -681,40 +657,37 @@ const BgvCollectionPortal = ({ secureToken }) => {
           ) : null}
         </div>
         {!locked && summary.readiness && !summary.readiness.ready ? (
-          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-            <p className="text-xs font-semibold text-amber-800">Still missing:</p>
+          <div className="mt-3 rounded-lg border border-crewly-orange/30 bg-crewly-orange/10 p-3">
+            <p className="text-xs font-semibold text-crewly-orange">Still missing:</p>
             <MissingList missing={summary.readiness.missing} />
           </div>
         ) : null}
         {missing ? (
-          <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3">
-            <p className="text-xs font-semibold text-rose-800">Submission refused — please complete:</p>
+          <div className="mt-3 rounded-lg border border-crewly-red/30 bg-crewly-red/10 p-3">
+            <p className="text-xs font-semibold text-crewly-red">Submission refused — please complete:</p>
             <MissingList missing={missing} />
           </div>
         ) : null}
         {locked ? (
-          <div className="mt-4 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          <div className="mt-4 flex items-center gap-2 rounded-lg border border-crewly-green/30 bg-crewly-green/10 px-4 py-3 text-sm text-crewly-green">
             <CheckCircle2 className="h-4 w-4 shrink-0" />
             Submitted{summary.collection?.submittedAt ? ` on ${new Date(summary.collection.submittedAt).toLocaleString()}` : ''}. Your information is locked; verification has not started yet.
           </div>
         ) : confirmSubmit ? (
-          <div className="mt-4 rounded-lg border border-indigo-200 bg-indigo-50 p-4">
-            <p className="text-sm text-slate-700">Submit your BGV information now? You will not be able to edit it afterwards.</p>
+          <div className="mt-4 rounded-lg border border-crewly-border bg-crewly-bg/40 p-4">
+            <p className="text-sm text-crewly-text">Submit your BGV information now? You will not be able to edit it afterwards.</p>
             <div className="mt-3 flex gap-2">
-              <button type="button" disabled={busy === 'submit'} onClick={submit}
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60">
-                {busy === 'submit' ? <Loader2 className="mr-1 inline h-4 w-4 animate-spin" /> : null} Yes, submit now
+              <button type="button" className="btn-primary gap-2 !px-4 !py-2 text-sm" disabled={busy === 'submit'} onClick={submit}>
+                {busy === 'submit' ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Yes, submit now
               </button>
-              <button type="button" className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600"
-                onClick={() => setConfirmSubmit(false)}>
+              <button type="button" className="btn-ghost !px-4 !py-2 text-sm" onClick={() => setConfirmSubmit(false)}>
                 Not yet
               </button>
             </div>
           </div>
         ) : (
-          <button type="button" onClick={() => setConfirmSubmit(true)}
-            className="mt-4 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700">
-            Submit BGV information
+          <button type="button" className="btn-primary mt-4 gap-2" onClick={() => setConfirmSubmit(true)}>
+            <Send className="h-4 w-4" /> Submit BGV information
           </button>
         )}
       </SectionCard>

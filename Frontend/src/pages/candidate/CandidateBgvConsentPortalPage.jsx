@@ -227,8 +227,8 @@ const CandidateBgvConsentPortalPage = () => {
       {/* Phase 30.5 — after explicit consent, the SAME secure token opens the
           information & documents workspace (purchased checks only). */}
       {view.state === 'CONSENTED' ? (
-        <div className="rounded-2xl border border-slate-200 bg-slate-100 p-4 sm:p-6">
-          <h2 className="text-lg font-semibold text-slate-900">BGV information &amp; documents</h2>
+        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 sm:p-6">
+          <h2 className="text-lg font-semibold text-slate-100">BGV information &amp; documents</h2>
           <p className="mt-1 text-xs text-slate-500">
             Complete only what was requested. You can save a draft, close this page, and return
             with the same link while it remains valid.
