@@ -36,7 +36,7 @@ const STATUS_COPY = {
 // INITIATE BGV. All amounts shown are DISPLAY ONLY; the backend re-prices
 // every order from the active catalogue. Mongo is the truth: a refresh
 // re-reads the order, so double-clicks/double tabs never double-charge.
-const BgvPurchasePanel = ({ candidateRef }) => {
+const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
   const { hasPermission } = usePermission();
   const canManage = hasPermission('BACKGROUND_VERIFICATION_MANAGE');
 
@@ -80,9 +80,11 @@ const BgvPurchasePanel = ({ candidateRef }) => {
     }
   }, [candidateRef]);
 
+  // Re-sync when the 30.1 decision changes (e.g. HR just clicked
+  // Initiate BGV) so the purchase UI appears without a page refresh.
   useEffect(() => {
     if (canManage) load();
-  }, [canManage, load]);
+  }, [canManage, load, decisionStatus]);
 
   if (!canManage) return null;
 

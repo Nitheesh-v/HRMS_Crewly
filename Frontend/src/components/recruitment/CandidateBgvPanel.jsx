@@ -83,7 +83,10 @@ const CandidateBgvPanel = ({ candidate }) => {
           decision is INITIATE BGV; the backend re-validates eligibility and
           owns every price. The panel re-reads Mongo, so refresh never
           double-charges. */}
-      <BgvPurchasePanel candidateRef={ref} />
+      <BgvPurchasePanel
+        candidateRef={ref}
+        decisionStatus={summary?.decision?.status}
+      />
     <section className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-5">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex items-start gap-3">
