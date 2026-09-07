@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Building2,
@@ -132,6 +132,10 @@ const BgvCollectionPortal = ({ secureToken }) => {
   const [busy, setBusy] = useState('');
   const [uploadState, setUploadState] = useState({ key: '', progress: null });
 
+  // Forms the candidate has typed into — a background refresh must never
+  // overwrite unsaved edits (server seeding only happens when untouched).
+  const touchedRef = useRef({ identity: false, address: false });
+
   // Form state (drafts live in the backend; these are just edit buffers).
   const [identityForm, setIdentityForm] = useState({ legalName: '', dateOfBirth: '', documentType: 'PAN', identifier: '' });
   const [addressForm, setAddressForm] = useState({ line1: '', line2: '', locality: '', city: '', state: '', pincode: '', country: 'India', residenceType: '', evidenceCategory: '' });
@@ -143,7 +147,7 @@ const BgvCollectionPortal = ({ secureToken }) => {
   const load = useCallback(async () => {
     const data = await bgvCollectionService.read(secureToken);
     setSummary(data);
-    if (data.collection) {
+    if (data.collection && !touchedRef.current.identity) {
       const identity = data.collection.identity || {};
       setIdentityForm((current) => ({
         ...current,
@@ -151,6 +155,8 @@ const BgvCollectionPortal = ({ secureToken }) => {
         dateOfBirth: identity.dateOfBirth ? String(identity.dateOfBirth).slice(0, 10) : current.dateOfBirth,
         documentType: identity.documentType || current.documentType,
       }));
+    }
+    if (data.collection && !touchedRef.current.address) {
       const address = data.collection.address || {};
       setAddressForm((current) => ({ ...current, ...address, residenceType: address.residenceType || '', evidenceCategory: address.evidenceCategory || '' }));
     }
@@ -298,17 +304,17 @@ const BgvCollectionPortal = ({ secureToken }) => {
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600">Legal name (as on document)</label>
               <input className={inputClass} value={identityForm.legalName} disabled={locked}
-                onChange={(event) => setIdentityForm({ ...identityForm, legalName: event.target.value })} />
+                onChange={(event) => { touchedRef.current.identity = true; setIdentityForm({ ...identityForm, legalName: event.target.value }); }} />
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600">Date of birth</label>
               <input type="date" className={inputClass} value={identityForm.dateOfBirth} disabled={locked}
-                onChange={(event) => setIdentityForm({ ...identityForm, dateOfBirth: event.target.value })} />
+                onChange={(event) => { touchedRef.current.identity = true; setIdentityForm({ ...identityForm, dateOfBirth: event.target.value }); }} />
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600">Document type</label>
               <select className={inputClass} value={identityForm.documentType} disabled={locked}
-                onChange={(event) => setIdentityForm({ ...identityForm, documentType: event.target.value })}>
+                onChange={(event) => { touchedRef.current.identity = true; setIdentityForm({ ...identityForm, documentType: event.target.value }); }}>
                 {ID_TYPES.map((type) => (
                   <option key={type.value} value={type.value}>{type.label}</option>
                 ))}
@@ -318,7 +324,7 @@ const BgvCollectionPortal = ({ secureToken }) => {
               <label className="mb-1 block text-xs font-medium text-slate-600">Document number</label>
               <input className={inputClass} value={identityForm.identifier} disabled={locked} autoComplete="off"
                 placeholder={summary.collection?.identity?.identifierMasked ? `saved: ${summary.collection.identity.identifierMasked}` : 'e.g. ABCDE1234F'}
-                onChange={(event) => setIdentityForm({ ...identityForm, identifier: event.target.value })} />
+                onChange={(event) => { touchedRef.current.identity = true; setIdentityForm({ ...identityForm, identifier: event.target.value }); }} />
               {summary.collection?.identity?.identifierMasked ? (
                 <p className="mt-1 text-[11px] text-slate-500">
                   Saved as {summary.collection.identity.identifierMasked} — leave blank to keep it
@@ -329,7 +335,7 @@ const BgvCollectionPortal = ({ secureToken }) => {
           <div className="mt-3 flex flex-wrap items-center gap-3">
             {!locked ? (
               <button type="button" disabled={busy === 'identity'}
-                onClick={() => run('identity', () => bgvCollectionService.saveIdentity(secureToken, identityForm), 'Identity information saved')}
+                onClick={() => run('identity', async () => { touchedRef.current.identity = false; await bgvCollectionService.saveIdentity(secureToken, identityForm); }, 'Identity information saved')}
                 className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60">
                 {busy === 'identity' ? <Loader2 className="mr-1 inline h-4 w-4 animate-spin" /> : null} Save identity
               </button>
@@ -376,13 +382,13 @@ const BgvCollectionPortal = ({ secureToken }) => {
               <div key={key}>
                 <label className="mb-1 block text-xs font-medium text-slate-600">{label}</label>
                 <input className={inputClass} value={addressForm[key] || ''} disabled={locked}
-                  onChange={(event) => setAddressForm({ ...addressForm, [key]: event.target.value })} />
+                  onChange={(event) => { touchedRef.current.address = true; setAddressForm({ ...addressForm, [key]: event.target.value }); }} />
               </div>
             ))}
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600">Residence type</label>
               <select className={inputClass} value={addressForm.residenceType || ''} disabled={locked}
-                onChange={(event) => setAddressForm({ ...addressForm, residenceType: event.target.value })}>
+                onChange={(event) => { touchedRef.current.address = true; setAddressForm({ ...addressForm, residenceType: event.target.value }); }}>
                 <option value="">Select…</option>
                 {['OWNED', 'RENTED', 'FAMILY', 'HOSTEL', 'OTHER'].map((type) => (
                   <option key={type} value={type}>{type}</option>
@@ -393,7 +399,7 @@ const BgvCollectionPortal = ({ secureToken }) => {
           <div className="mt-3 flex flex-wrap items-center gap-3">
             {!locked ? (
               <button type="button" disabled={busy === 'address'}
-                onClick={() => run('address', () => bgvCollectionService.saveAddress(secureToken, addressForm), 'Address saved')}
+                onClick={() => run('address', async () => { touchedRef.current.address = false; await bgvCollectionService.saveAddress(secureToken, addressForm); }, 'Address saved')}
                 className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60">
                 {busy === 'address' ? <Loader2 className="mr-1 inline h-4 w-4 animate-spin" /> : null} Save address
               </button>
