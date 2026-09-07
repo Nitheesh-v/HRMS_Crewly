@@ -175,3 +175,25 @@ export const bgvOrderVerifyRules = [
   body('razorpay_signature').optional({ checkFalsy: true }).isString().isLength({ max: 200 }),
   validate,
 ];
+
+// ── Phase 30.4 — public candidate BGV consent portal ─────────────
+export const bgvConsentReadRules = [
+  param('secureToken').trim().isLength({ min: 40, max: 200 }),
+  validate,
+];
+
+export const bgvConsentDecisionRules = [
+  param('secureToken').trim().isLength({ min: 40, max: 200 }),
+  validate,
+];
+
+// Tenant-side consent invitation / status.
+export const bgvConsentInvitationRules = [
+  param('orderId').trim().isMongoId().withMessage('Invalid BGV order reference'),
+  validate,
+];
+
+export const bgvConsentStatusRules = [
+  param('candidateId').trim().notEmpty().isLength({ max: 40 }),
+  validate,
+];

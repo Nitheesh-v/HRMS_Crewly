@@ -6,9 +6,11 @@ import {
   CreditCard,
   FlaskConical,
   Loader2,
+  MailOpen,
   Receipt,
   ShieldCheck,
   ShoppingCart,
+  UserCheck,
 } from 'lucide-react';
 import usePermission from '../../hooks/usePermission.js';
 import bgvService from '../../services/bgvService.js';
@@ -25,6 +27,15 @@ const loadRazorpayScript = () =>
     document.body.appendChild(script);
     return undefined;
   });
+
+const CONSENT_COPY = {
+  NONE: 'No consent invitation sent yet.',
+  INVITATION_SENT: 'Invitation sent — consent pending. The candidate has not decided yet.',
+  INVITATION_EXPIRED: 'The last invitation expired before the candidate decided.',
+  INVITATION_REVOKED: 'The last invitation was revoked.',
+  CONSENTED: 'Candidate CONSENTED. Consent only — not a verification result.',
+  CONSENT_DECLINED: 'Candidate DECLINED. Not a verification failure; the recruitment decision stays human.',
+};
 
 const STATUS_COPY = {
   CREATED: 'Order created — awaiting payment',
@@ -49,6 +60,7 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
     eligible: false,
     code: '',
     reason: '',
+    consent: null,
   });
   const [selected, setSelected] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -61,15 +73,22 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
         bgvService.orderFor(candidateRef),
         bgvService.purchasableServices().catch(() => ({ services: [] })),
       ]);
+      const order = orderView?.order || null;
+      // Phase 30.4: consent visibility rides on the PAID order (Mongo truth).
+      const consent =
+        order?.status === 'PAID'
+          ? await bgvService.consentStatus(candidateRef).catch(() => null)
+          : null;
       setState((current) => ({
         ...current,
         loading: false,
         error: '',
         services: catalogue?.services || [],
-        order: orderView?.order || null,
+        order,
         eligible: Boolean(orderView?.eligible),
         code: orderView?.code || '',
         reason: orderView?.reason || '',
+        consent,
       }));
     } catch (error) {
       setState((current) => ({
@@ -88,7 +107,7 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
 
   if (!canManage) return null;
 
-  const { loading, error, message, services, order, eligible, reason } = state;
+  const { loading, error, message, services, order, eligible, reason, consent } = state;
   const selectedServices = services.filter((service) => selected.includes(service.type));
   const displayTotal = selectedServices.reduce(
     (sum, service) => sum + (service.priceMinorUnits || 0),
@@ -133,6 +152,14 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
     run(
       () => bgvService.cancelOrder(order.id),
       'Order cancelled — you can raise a fresh order if needed'
+    );
+
+  // Phase 30.4 — send / rotate the candidate consent invitation. The backend
+  // requires the PAID commercial state and never reopens a terminal decision.
+  const sendInvitation = () =>
+    run(
+      () => bgvService.issueConsentInvitation(order.id),
+      'Consent invitation sent — the candidate decides on the secure portal'
     );
 
   const verify = async (payload) => {
@@ -279,12 +306,46 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
           </ul>
 
           {paid ? (
+            <>
             <p className="flex items-start gap-2 text-sm text-emerald-200/80">
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
               Paid on {new Date(order.paidAt).toLocaleString()}. Candidate consent
-              collection is part of the next workflow step — nothing has been sent
-              to the candidate yet.
+              is requested through the secure portal below — nothing has been sent
+              to the candidate until you send the invitation.
             </p>
+          {/* Phase 30.4 — candidate consent visibility + invitation control.
+              PAID != CONSENTED: both states stay visible side by side. */}
+          <div className="rounded-xl border border-slate-700/60 bg-slate-900/40 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-start gap-2 text-sm">
+                <UserCheck className="mt-0.5 h-4 w-4 shrink-0 text-teal-300" />
+                <div>
+                  <p className="font-medium text-slate-200">
+                    Candidate consent:{' '}
+                    <span className="font-semibold text-teal-300">
+                      {String(consent?.state || 'NONE').replaceAll('_', ' ')}
+                    </span>
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {CONSENT_COPY[consent?.state] || CONSENT_COPY.NONE}
+                  </p>
+                </div>
+              </div>
+              {consent?.state !== 'CONSENTED' && consent?.state !== 'CONSENT_DECLINED' ? (
+                <button
+                  type="button"
+                  className="btn-primary gap-2"
+                  disabled={busy}
+                  onClick={sendInvitation}
+                >
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <MailOpen className="h-4 w-4" />}
+                  {consent?.state === 'INVITATION_SENT' ? 'Resend invitation' : 'Send consent invitation'}
+                </button>
+              ) : null}
+            </div>
+          </div>
+') + '''
+            </>
           ) : (
             <div className="flex flex-wrap gap-2">
               <button type="button" className="btn-primary gap-2" disabled={busy} onClick={startPayment}>

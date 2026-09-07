@@ -694,3 +694,48 @@ export const receiptEmail = ({ companyName, planName, amount, months, endDate, p
       <tr><td style="padding:4px 10px">Payment ID</td><td style="font-family:monospace">${paymentId}</td></tr>
     </table>`),
 });
+// Phase 30.4 — candidate BGV consent invitation email.
+// Safe content only: greeting, requesting company, what is requested, the
+// secure link and its expiry. Never documents, payments, verifiers or
+// identity numbers.
+export const bgvConsentInvitationEmail = ({
+  candidateName,
+  companyName,
+  portalUrl,
+  expiresAt,
+}) => {
+  const safeName = escapeHtml(candidateName || 'Candidate');
+  const safeCompany = escapeHtml(companyName || 'the requesting organisation');
+  const expiryLabel = expiresAt
+    ? new Intl.DateTimeFormat('en-IN', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+      }).format(new Date(expiresAt))
+    : 'the stated expiry date';
+  const safeUrl =
+    /^https:\/\//i.test(portalUrl) || /^http:\/\/localhost(?::\d+)?\//i.test(portalUrl)
+      ? escapeHtml(portalUrl)
+      : '';
+
+  return {
+    subject: `Background verification consent request — ${String(companyName || '')
+      .replace(/[\r\n]/g, ' ')
+      .slice(0, 100)}`,
+    text:
+      `Hello ${candidateName},\n\n` +
+      `${companyName} has requested a background verification for your candidature, coordinated through Crewly.\n` +
+      `Opening this link does NOT give consent — you will choose explicitly on the page.\n` +
+      `Secure link: ${portalUrl}\n` +
+      `The link expires on ${expiryLabel}.\n\n` +
+      `If you did not expect this request, you can safely ignore this email.`,
+    html:
+      `<p>Hello ${safeName},</p>` +
+      `<p><strong>${safeCompany}</strong> has requested a background verification for your candidature, coordinated through Crewly.</p>` +
+      `<p>Opening the link does <strong>not</strong> give consent — you will choose explicitly on the page.</p>` +
+      `<p><a href="${safeUrl}">Review and respond to the verification request</a></p>` +
+      `<p>The link expires on ${escapeHtml(expiryLabel)}.</p>` +
+      `<p>If you did not expect this request, you can safely ignore this email.</p>`,
+  };
+};

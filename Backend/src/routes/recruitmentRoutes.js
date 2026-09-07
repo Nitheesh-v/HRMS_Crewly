@@ -62,6 +62,8 @@ import {
   bgvDecisionRecord,
 } from '../controllers/backgroundVerificationController.js';
 import {
+  bgvConsentInvitationIssue,
+  bgvConsentStatus,
   bgvOrderCancel,
   bgvOrderCreate,
   bgvOrderForCandidate,
@@ -85,6 +87,8 @@ import {
   bgvOrderCandidateRules,
   bgvOrderIdRules,
   bgvOrderVerifyRules,
+  bgvConsentInvitationRules,
+  bgvConsentStatusRules,
 } from '../validators/backgroundVerificationValidator.js';
 
 
@@ -426,6 +430,22 @@ router.post(
   requirePermission('BACKGROUND_VERIFICATION_MANAGE'),
   bgvOrderIdRules,
   bgvOrderCancel
+);
+
+// Phase 30.4 — candidate BGV consent invitation (requires 30.3 PAID order;
+// the service re-checks commercial readiness itself).
+router.post(
+  '/bgv-orders/:orderId/consent-invitation',
+  checkWriteAccess,
+  requirePermission('BACKGROUND_VERIFICATION_MANAGE'),
+  bgvConsentInvitationRules,
+  bgvConsentInvitationIssue
+);
+router.get(
+  '/candidates/:candidateId/bgv-consent-status',
+  requirePermission('BACKGROUND_VERIFICATION_READ'),
+  bgvConsentStatusRules,
+  bgvConsentStatus
 );
 
 // Phase 27.14 — recruitment command center analytics.

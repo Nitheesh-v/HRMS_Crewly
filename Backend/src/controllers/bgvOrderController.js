@@ -14,6 +14,10 @@ import {
   listPurchasableBgvServices,
   verifyBgvOrderPayment,
 } from '../services/bgv/bgvOrderService.js';
+import {
+  getHrConsentStatus,
+  issueBgvConsentInvitation,
+} from '../services/bgv/bgvConsentService.js';
 
 const actorId = (req) => req.user._id;
 
@@ -129,5 +133,49 @@ export const bgvOrderCancel = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, {
     message: 'BGV order cancelled',
     data: result,
+  });
+});
+
+// ── Phase 30.4 — candidate consent invitation (HR) ───────────────
+
+// POST /api/recruitment/bgv-orders/:orderId/consent-invitation
+export const bgvConsentInvitationIssue = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const { orderId } = req.params;
+
+  // DB Logic - issue or safely rotate the candidate consent invitation;
+  // requires the 30.3 PAID commercial state (never payment-provider fields).
+  const result = await issueBgvConsentInvitation({
+    companyId: req.companyId,
+    orderId,
+    actorId: actorId(req),
+    requestContext: req,
+  });
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, {
+    message: result.reissued
+      ? 'Invitation reissued — the previous link is no longer valid'
+      : 'Candidate consent invitation sent',
+    data: result,
+  });
+});
+
+// GET /api/recruitment/candidates/:candidateId/bgv-consent-status
+export const bgvConsentStatus = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const { candidateId } = req.params;
+
+  // DB Logic - tenant-scoped consent visibility; PAID stays visible and
+  // distinct from CONSENTED.
+  const data = await getHrConsentStatus({
+    companyId: req.companyId,
+    candidateRef: candidateId,
+  });
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, {
+    message: 'BGV consent status',
+    data,
   });
 });

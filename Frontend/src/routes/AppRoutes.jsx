@@ -13,6 +13,8 @@ import CareerJobsPage from "../pages/careers/CareerJobsPage.jsx";
 import CareerJobDetailPage from "../pages/careers/CareerJobDetailPage.jsx";
 import CareerApplyShellPage from "../pages/careers/CareerApplyShellPage.jsx";
 import CandidateOfferPublicLayout from "../layout/CandidateOfferPublicLayout.jsx";
+import CandidateBgvConsentPublicLayout from "../layout/CandidateBgvConsentPublicLayout.jsx";
+import CandidateBgvConsentPortalPage from "../pages/candidate/CandidateBgvConsentPortalPage.jsx";
 import CandidateOfferPortalPage from "../pages/candidate/CandidateOfferPortalPage.jsx";
 import CandidatePreOnboardingPublicLayout from "../layout/CandidatePreOnboardingPublicLayout.jsx";
 import CandidatePreOnboardingPortalPage from "../pages/candidate/CandidatePreOnboardingPortalPage.jsx";
@@ -236,6 +238,11 @@ const AppRoutes = () => (
     {/* Public candidate offer portal — secure token authority, no employee session */}
     <Route path="/candidate/offer" element={<CandidateOfferPublicLayout />}>
       <Route path=":secureToken" element={<CandidateOfferPortalPage />} />
+    </Route>
+
+    {/* Public candidate BGV consent portal — secure token authority only */}
+    <Route path="/candidate/bgv-consent" element={<CandidateBgvConsentPublicLayout />}>
+      <Route path=":secureToken" element={<CandidateBgvConsentPortalPage />} />
     </Route>
 
     {/* Public candidate pre-onboarding portal — secure token authority only */}

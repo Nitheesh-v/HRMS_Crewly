@@ -68,6 +68,11 @@ const bgvService = {
     unwrap(await api.post(`/recruitment/bgv-orders/${orderId}/payment/verify`, payload)),
   cancelOrder: async (orderId) =>
     unwrap(await api.post(`/recruitment/bgv-orders/${orderId}/cancel`)),
+  // Phase 30.4 — candidate consent invitation (requires a PAID 30.3 order).
+  issueConsentInvitation: async (orderId) =>
+    unwrap(await api.post(`/recruitment/bgv-orders/${orderId}/consent-invitation`)),
+  consentStatus: async (candidateId) =>
+    unwrap(await api.get(`/recruitment/candidates/${candidateId}/bgv-consent-status`)),
   assign: async (caseId, verifierId) =>
     unwrap(
       await api.post(`/recruitment/background-verifications/${caseId}/assign`, {
