@@ -562,3 +562,8 @@ export const getQueueConfigSummary = (source = process.env) => ({
   concurrency: parseWorkerConcurrency(source),
   jobDefaults: getDefaultJobOptions(),
 });
+
+// Canonical staleness threshold for resume-parse recovery: a PENDING
+// intent older than this is assumed to have lost its BullMQ job (degraded
+// enqueue / worker downtime) and may be re-enqueued or reprocessed.
+export const RESUME_RECOVERY_MIN_AGE_MS = 60 * 1000;

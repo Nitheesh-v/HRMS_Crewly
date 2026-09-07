@@ -6,6 +6,10 @@ import CandidateResume from '../models/CandidateResume.js';
 import ResumeParseResult from '../models/ResumeParseResult.js';
 import ApiError from '../utils/ApiError.js';
 import { getStoredResumeAccess } from './resumeStorageService.js';
+import {
+  dispatchResumeProcessing,
+} from './resumeProcessingDispatcher.js';
+import { RESUME_RECOVERY_MIN_AGE_MS } from '../config/queueConfig.js';
 import { normalizeCandidateStage } from './candidatePipelineService.js';
 
 const escapeRegex = (value) =>
@@ -516,44 +520,76 @@ const safeParsedData = (value = {}) => ({
 export const getCandidateParsedResume = async ({
   companyId,
   candidateRef,
+  deps = {},
 }) => {
-  const candidate = await Candidate.findOne({
+  const loadCandidate =
+    deps.loadCandidate ||
+    ((filter) => Candidate.findOne(filter).select('_id candidateCode').lean());
+  const loadResume =
+    deps.loadResume ||
+    ((filter) =>
+      CandidateResume.findOne(filter)
+        .select(
+          'parsingStatus parserVersion parsingAttempts parsingRequestedAt parsingStartedAt parsingCompletedAt'
+        )
+        .lean());
+  const loadResult =
+    deps.loadResult ||
+    ((filter) =>
+      ResumeParseResult.findOne(filter)
+        .select(
+          'source parserVersion extractorVersion status structuredData warnings extractionConfidence attemptCount requestedAt startedAt completedAt failedAt nextRetryAllowedAt failureCategory safeErrorMessage processingMetadata createdAt updatedAt'
+        )
+        .sort({ createdAt: -1 })
+        .lean());
+  const dispatch = deps.dispatch || dispatchResumeProcessing;
+
+  const candidate = await loadCandidate({
     companyId,
     ...candidateReferenceFilter(candidateRef),
-  })
-    .select('_id candidateCode')
-    .lean();
+  });
 
   if (!candidate) throw ApiError.notFound('Candidate not found');
 
-  const resume = await CandidateResume.findOne({
+  const resume = await loadResume({
     companyId,
     candidate: candidate._id,
     status: 'UPLOADED',
     scanStatus: { $ne: 'REJECTED' },
-  })
-    .select(
-      'parsingStatus parserVersion parsingAttempts parsingRequestedAt parsingStartedAt parsingCompletedAt'
-    )
-    .lean();
+  });
 
   if (!resume) throw ApiError.notFound('Resume not found');
 
-  const result = await ResumeParseResult.findOne({
+  const result = await loadResult({
     companyId,
     candidate: candidate._id,
     resume: resume._id,
-  })
-    .select(
-      'source parserVersion extractorVersion status structuredData warnings extractionConfidence attemptCount requestedAt startedAt completedAt failedAt nextRetryAllowedAt failureCategory safeErrorMessage processingMetadata createdAt updatedAt'
-    )
-    .sort({ createdAt: -1 })
-    .lean();
+  });
   const status = currentParsingStatus(resume.parsingStatus || result?.status);
   const retryBlocked = ['PENDING', 'RETRY_PENDING', 'PROCESSING'].includes(status);
   const cooldownBlocked =
     result?.nextRetryAllowedAt &&
     new Date(result.nextRetryAllowedAt).getTime() > Date.now();
+
+  // Self-heal: a PENDING intent older than the recovery min-age means its
+  // BullMQ job was lost (degraded enqueue while Redis was down, or the
+  // worker started before the upload and never recovered it). The poll
+  // itself re-enqueues the deterministic job id — idempotent, never
+  // throws, and a no-op when the queue is unavailable (intent stays in
+  // Mongo for the next recovery pass).
+  const stalePending =
+    ['PENDING', 'RETRY_PENDING'].includes(status) &&
+    (!resume.parsingRequestedAt ||
+      Date.now() - new Date(resume.parsingRequestedAt).getTime() >
+        RESUME_RECOVERY_MIN_AGE_MS);
+  if (stalePending) {
+    dispatch({
+      companyId,
+      candidateId: candidate._id,
+      resumeId: resume._id,
+      parsingRequestedAt: resume.parsingRequestedAt,
+    }).catch(() => {});
+  }
 
   return {
     candidateCode: candidate.candidateCode,
@@ -590,7 +626,10 @@ export const getCandidateParsedResume = async ({
       processingDurationMs: result?.processingMetadata?.processingDurationMs || 0,
     },
     structuredData: safeParsedData(result?.structuredData),
-    reprocessAvailable: !retryBlocked && !cooldownBlocked,
+    // A stale PENDING intent is a dead end unless HR can reprocess it —
+    // expose the button instead of "waiting" forever.
+    reprocessAvailable: (!retryBlocked || stalePending) && !cooldownBlocked,
+    stalePending,
   };
 };
 
