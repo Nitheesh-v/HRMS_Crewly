@@ -8,6 +8,8 @@ const post = (url, body) => api.post(url, body).then(unwrap);
 
 const patch = (url, body) => api.patch(url, body).then(unwrap);
 
+const put = (url, body) => api.put(url, body).then(unwrap);
+
 const superAdminService = {
   // Authentication
   login: (body) => post("/super-admin/auth/login", body),
@@ -70,6 +72,14 @@ const superAdminService = {
   // Phase 30.8 — platform-only check cancellation (CANCELLED is never a
   // verifier choice; business reason required).
   bgvCancelCheck: (body) => post("/super-admin/bgv-operations/cancel-check", body),
+
+  // Phase 30.11 — internal BGV operations dashboard (derived counts,
+  // drill-down queues, verifier workload, SLA configuration).
+  bgvOpsDashboard: () => get("/super-admin/bgv-ops/dashboard"),
+  bgvOpsQueue: (params) => get("/super-admin/bgv-ops/queue", params),
+  bgvOpsWorkload: () => get("/super-admin/bgv-ops/workload"),
+  bgvOpsSlaRead: () => get("/super-admin/bgv-ops/sla"),
+  bgvOpsSlaUpdate: (body) => put("/super-admin/bgv-ops/sla", body),
 
   // Dashboard
   dashboard: () => get("/super-admin/dashboard"),

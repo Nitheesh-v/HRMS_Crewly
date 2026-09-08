@@ -875,3 +875,79 @@ export const bgvVerifierOtpEmail = ({ code }) => ({
   text: `Your Crewly BGV Operations verification code is ${code}. It expires in 10 minutes.`,
   html: `<p>Your Crewly BGV Operations verification code is <strong>${code}</strong>. It expires in 10 minutes.</p>`,
 });
+
+// ── Phase 30.11 — operational reminder emails (Crewly sender) ─────
+// Candidate nudges identify the tenant as requester but Crewly as the
+// service sender ("operated by Infolexus"); no payment asks, no
+// sensitive PII, no internal notes. A portal link appears ONLY when
+// the worker rotated a fresh token at dispatch time; otherwise the
+// candidate is pointed to their existing secure link (raw tokens
+// never travel through the queue).
+export const bgv30ReminderEmail = ({
+  kind,
+  candidateName,
+  companyName,
+  checkLabel,
+  categoryLabel,
+  portalUrl,
+  slaStatus,
+}) => {
+  const safeName = escapeHtml(String(candidateName || 'Candidate'));
+  const safeCompany = escapeHtml(String(companyName || 'the requesting organisation'));
+  const safeCheck = escapeHtml(String(checkLabel || 'a verification check'));
+  const safeCategory = escapeHtml(String(categoryLabel || 'the requested information'));
+  const safeUrl =
+    portalUrl && (/^https:\/\//i.test(portalUrl) || /^http:\/\/localhost(?::\d+)?\//i.test(portalUrl))
+      ? escapeHtml(portalUrl)
+      : '';
+  const isInternal = kind === 'VERIFIER_SLA' || kind === 'QA_PENDING';
+
+  const subjects = {
+    CONSENT_PENDING: 'Reminder: your background verification consent is pending',
+    SUBMISSION_PENDING: 'Reminder: your background verification information is pending',
+    INFO_PENDING: 'Reminder: additional information requested for your background verification',
+    VERIFIER_SLA: `Internal: BGV check ${slaStatus === 'OVERDUE' ? 'overdue' : 'due soon'}`,
+    QA_PENDING: 'Internal: BGV check awaiting QA review',
+  };
+  const subject = subjects[kind] || subjects.CONSENT_PENDING;
+
+  if (isInternal) {
+    const line =
+      kind === 'VERIFIER_SLA'
+        ? `Your assigned ${safeCheck} check is ${slaStatus === 'OVERDUE' ? 'past its turnaround target' : 'approaching its turnaround target'}. This is an operational nudge only — no conclusions or assignments change automatically.`
+        : `A submitted ${safeCheck} check is awaiting QA review. This is an operational nudge only.`;
+    return {
+      subject,
+      text: `Hello ${candidateName || 'teammate'},\n\n${line.replace(/<[^>]+>/g, '')}\n\n— Crewly BGV Operations`,
+      html: `<p>Hello ${safeName},</p><p>${line}</p>`,
+    };
+  }
+
+  const intro = {
+    CONSENT_PENDING: `your background verification consent for ${safeCompany} is still pending`,
+    SUBMISSION_PENDING: `your background verification information for ${safeCompany} is still pending`,
+    INFO_PENDING: `the verification team for ${safeCompany} is waiting for ${safeCategory} (${safeCheck})`,
+  }[kind] || `your background verification for ${safeCompany} is still pending`;
+
+  const linkHtml = safeUrl
+    ? `<p><a href="${safeUrl}">Open your secure portal</a> to complete this step.</p>`
+    : '<p>Use the secure portal link from your earlier Crewly email to complete this step.</p>';
+
+  return {
+    fromLabel: 'Crewly Background Verification',
+    subject,
+    text:
+      `Hello ${candidateName || 'Candidate'},\n\n` +
+      `This is a friendly reminder that ${intro.replace(/<[^>]+>/g, '')}.\n` +
+      `${safeCompany} uses Crewly, operated by Infolexus, for background verification.\n` +
+      'You are never asked to pay for this, and no new payment is created.\n' +
+      (safeUrl ? `Open your secure portal: ${safeUrl}\n` : 'Use the secure portal link from your earlier Crewly email.\n') +
+      '\n— Crewly Background Verification (operated by Infolexus)',
+    html:
+      `<p>Hello ${safeName},</p>` +
+      `<p>This is a friendly reminder that ${intro}.</p>` +
+      `<p>${safeCompany} uses <strong>Crewly</strong>, operated by Infolexus, for background verification.</p>` +
+      `<p>You are <strong>never asked to pay</strong> for this, and no new payment is created.</p>` +
+      linkHtml,
+  };
+};

@@ -152,6 +152,7 @@ import SuperAdminBackgroundOperationsPage from "../pages/admin/SuperAdminBackgro
 import SuperAdminBgvVerifiersPage from "../pages/admin/SuperAdminBgvVerifiersPage.jsx";
 import SuperAdminBgvOperationsPage from "../pages/admin/SuperAdminBgvOperationsPage.jsx";
 import SuperAdminBgvQaPage from "../pages/admin/SuperAdminBgvQaPage.jsx";
+import SuperAdminBgvOpsDashboardPage from "../pages/admin/SuperAdminBgvOpsDashboardPage.jsx";
 import SuperAdminBgvCataloguePage from "../pages/admin/SuperAdminBgvCataloguePage.jsx";
 
 import NotFoundPage from "../pages/not-found/NotFoundPage.jsx";
@@ -878,6 +879,15 @@ const AppRoutes = () => (
         path="bgv-qa"
         element={
           <SuperAdminBgvQaPage />
+        }
+      />
+
+      {/* Phase 30.11 — internal BGV operations dashboard (derived counts,
+          drill-down queues, verifier workload, SLA configuration). */}
+      <Route
+        path="bgv-ops"
+        element={
+          <SuperAdminBgvOpsDashboardPage />
         }
       />
 

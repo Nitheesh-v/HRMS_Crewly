@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { ClipboardList, ShieldCheck, UserCheck } from "lucide-react";
+import { ClipboardList, Gauge, ShieldCheck, UserCheck } from "lucide-react";
 import useAuth from "../hooks/useAuth.jsx";
 import superAdminService from "../services/superAdminService.js";
 
@@ -59,6 +59,14 @@ const MENU = [
     label: "BGV QA Review",
     icon: <ShieldCheck className="h-4 w-4" />,
     roles: ["SUPER_ADMIN", "PLATFORM_ADMIN"],
+  },
+  {
+    // Phase 30.11 — internal BGV operations dashboard (bgv-operations:*
+    // is SUPER_ADMIN-only via "*"; PLATFORM_ADMIN intentionally excluded).
+    to: "/super-admin/bgv-ops",
+    label: "BGV Ops Dashboard",
+    icon: <Gauge className="h-4 w-4" />,
+    roles: ["SUPER_ADMIN"],
   },
   {
     to: "/super-admin/bgv-services",
