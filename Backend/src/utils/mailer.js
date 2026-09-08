@@ -20,15 +20,6 @@ if (process.env.SMTP_HOST) {
   logger.info('📧 Mailer: MOCK mode (emails logged to console — set SMTP_* to send real mail)');
 }
 
-// Server-fixed display labels only (e.g. 'Crewly Background Verification').
-// The ADDRESS always comes from the configured verified sender (SMTP_FROM);
-// no tenant/verifier/client input can choose an arbitrary From address.
-const fromAddress = () => {
-  const configured = process.env.SMTP_FROM || 'Crewly HRMS <no-reply@crewly.com>';
-  const match = /<([^>]+)>/.exec(configured);
-  return match ? match[1] : configured;
-};
-
 export const sendMail = async ({
   to,
   subject,
@@ -36,7 +27,6 @@ export const sendMail = async ({
   text = "",
   sensitive = false,
   attachments = [],
-  fromLabel = '',
 }) => {
   // Phase 29.9 — payslip delivery attaches a PDF. Nodemailer accepts buffers
   // directly; the caller passes { filename, content, contentType }.
@@ -87,7 +77,9 @@ export const sendMail = async ({
     }
 
     await transporter.sendMail({
-      from: `${fromLabel || 'Crewly HRMS'} <${fromAddress()}>`,
+      from:
+        process.env.SMTP_FROM ||
+        "Crewly HRMS <no-reply@crewly.com>",
 
       to,
       subject,
@@ -701,177 +693,4 @@ export const receiptEmail = ({ companyName, planName, amount, months, endDate, p
       <tr><td style="padding:4px 10px">Valid until</td><td><b>${new Date(endDate).toLocaleDateString('en-IN')}</b></td></tr>
       <tr><td style="padding:4px 10px">Payment ID</td><td style="font-family:monospace">${paymentId}</td></tr>
     </table>`),
-});
-// Phase 30.4 — candidate BGV consent invitation email.
-// Crewly (operated by Infolexus) is the SENDER; the tenant company is named
-// as the REQUESTER. Safe content only: greeting, requester, checks included,
-// the secure expiring link and expiry guidance. Never payment amounts,
-// provider/payment IDs, documents, identity numbers, verifier or internal
-// operations data. Never claims verification is complete.
-export const bgvConsentInvitationEmail = ({
-  candidateName,
-  companyName,
-  checks = [],
-  portalUrl,
-  expiresAt,
-}) => {
-  const safeName = escapeHtml(candidateName || 'Candidate');
-  const safeCompany = escapeHtml(companyName || 'the requesting organisation');
-  const checkNames = (checks || [])
-    .map((item) => item.name || item.type)
-    .filter(Boolean);
-  const checksText = checkNames.length
-    ? checkNames.map((name) => `  - ${name}`).join('\n')
-    : '  - the checks listed on the secure page';
-  const checksHtml = checkNames.length
-    ? `<ul>${checkNames.map((name) => `<li>${escapeHtml(name)}</li>`).join('')}</ul>`
-    : '<p>The checks are listed on the secure page.</p>';
-  const expiryLabel = expiresAt
-    ? new Intl.DateTimeFormat('en-IN', {
-        day: '2-digit',
-        month: 'long',
-        year: 'numeric',
-        timeZone: 'UTC',
-      }).format(new Date(expiresAt))
-    : 'the stated expiry date';
-  const safeUrl =
-    /^https:\/\//i.test(portalUrl) || /^http:\/\/localhost(?::\d+)?\//i.test(portalUrl)
-      ? escapeHtml(portalUrl)
-      : '';
-
-  return {
-    fromLabel: 'Crewly Background Verification',
-    subject: `Background verification requested by ${String(companyName || 'the requesting organisation')
-      .replace(/[\r\n]/g, ' ')
-      .slice(0, 100)}`,
-    text:
-      `Hello ${candidateName},\n\n` +
-      `${companyName} has requested background verification through Crewly, operated by Infolexus.\n` +
-      `You are never asked to pay for this verification.\n` +
-      `Verification checks included in this request:\n${checksText}\n\n` +
-      `Opening the link does NOT give consent — you choose explicitly on the page.\n` +
-      `Secure link: ${portalUrl}\n` +
-      `The link expires on ${expiryLabel}.\n\n` +
-      `If you did not expect this request, you can safely ignore this email.`,
-    html:
-      `<p>Hello ${safeName},</p>` +
-      `<p><strong>${safeCompany}</strong> has requested background verification through Crewly, operated by Infolexus.</p>` +
-      `<p>You are never asked to pay for this verification.</p>` +
-      `<p>Verification checks included in this request:</p>${checksHtml}` +
-      `<p>Opening the link does <strong>not</strong> give consent — you will choose explicitly on the page.</p>` +
-      `<p><a href="${safeUrl}">Review and respond to the verification request</a></p>` +
-      `<p>The link expires on ${escapeHtml(expiryLabel)}.</p>` +
-      `<p>If you did not expect this request, you can safely ignore this email.</p>`,
-  };
-};
-
-// Phase 30.6 — internal BGV verifier account emails. Crewly-sent; never
-// contain passwords, candidate information, or BGV evidence.
-// Phase 30.9 — candidate notification that more information is needed for
-// an existing BGV. Crewly is always the sender; safe context only (check
-// display name + bounded instructions); no documents, identifiers, or
-// verifier notes beyond the bounded safe message; never a payment ask.
-export const bgvInfoRequestedEmail = ({
-  candidateName,
-  companyName,
-  checkLabel,
-  categoryLabel,
-  message,
-  portalUrl,
-  expiresAt,
-}) => {
-  const safeName = escapeHtml(candidateName || 'Candidate');
-  const safeCompany = escapeHtml(companyName || 'the requesting organisation');
-  const safeCheck = escapeHtml(checkLabel || 'a verification check');
-  const safeCategory = escapeHtml(categoryLabel || 'additional information');
-  const safeMessage = escapeHtml(String(message || '').slice(0, 500));
-  const safeUrl =
-    /^https:\/\//i.test(portalUrl) || /^http:\/\/localhost(?::\d+)?\//i.test(portalUrl)
-      ? escapeHtml(portalUrl)
-      : '';
-  const expiryLabel = expiresAt
-    ? new Intl.DateTimeFormat('en-IN', {
-        day: '2-digit',
-        month: 'long',
-        year: 'numeric',
-        timeZone: 'UTC',
-      }).format(new Date(expiresAt))
-    : 'the stated expiry date';
-
-  return {
-    fromLabel: 'Crewly Background Verification',
-    subject: `Action needed: more information for your background verification (${String(
-      companyName || 'request'
-    )
-      .replace(/[\r\n]/g, ' ')
-      .slice(0, 80)})`,
-    text:
-      `Hello ${candidateName},\n\n` +
-      `${companyName} uses Crewly (operated by Infolexus) for background verification.\n` +
-      `The verification team needs more information for: ${checkLabel}.\n` +
-      `Requested: ${categoryLabel}.\n` +
-      (message ? `Instructions: ${message}\n` : '') +
-      `You are never asked to pay for this, and no new payment is created.\n` +
-      `Open your secure portal to respond before ${expiryLabel}:\n${portalUrl}\n\n` +
-      `If the link does not work, ask the hiring team to resend it.\n`,
-    html:
-      `<p>Hello ${safeName},</p>` +
-      `<p>${safeCompany} uses <strong>Crewly</strong>, operated by Infolexus, for background verification.</p>` +
-      `<p>The verification team needs more information for <strong>${safeCheck}</strong>.</p>` +
-      `<p>Requested: <strong>${safeCategory}</strong>.</p>` +
-      (safeMessage ? `<p>Instructions: ${safeMessage}</p>` : '') +
-      `<p>You are <strong>never asked to pay</strong> for this, and no new payment is created.</p>` +
-      (safeUrl
-        ? `<p><a href="${safeUrl}">Open your secure portal to respond</a> (valid until ${expiryLabel}).</p>`
-        : '<p>Open your secure portal link from the hiring team to respond.</p>') +
-      `<p>If the link does not work, ask the hiring team to resend it.</p>`,
-  };
-};
-
-export const bgvVerifierSetupEmail = ({ name, setupUrl, expiresAt }) => {
-  const safeName = escapeHtml(String(name || 'there'));
-  const safeUrl = escapeHtml(String(setupUrl || ''));
-  const expiryLabel = new Date(expiresAt).toUTCString();
-  return {
-    subject: 'You are invited to Crewly BGV Operations',
-    text:
-      `Hello ${name},\n\n` +
-      `You have been invited to join Crewly's internal Background Verification (BGV) operations portal, operated by Infolexus.\n` +
-      `Choose your password to activate your account — no temporary password is ever issued:\n${setupUrl}\n` +
-      `This setup link expires on ${expiryLabel} and can be used once.\n` +
-      `If you did not expect this invitation, you can safely ignore this email.`,
-    html:
-      `<p>Hello ${safeName},</p>` +
-      `<p>You have been invited to join <strong>Crewly BGV Operations</strong>, the internal background verification portal operated by Infolexus.</p>` +
-      `<p><a href="${safeUrl}">Choose your password and activate your account</a></p>` +
-      `<p>No temporary password is ever issued. The setup link expires on ${escapeHtml(expiryLabel)} and can be used once.</p>` +
-      `<p>If you did not expect this invitation, you can safely ignore this email.</p>`,
-  };
-};
-
-export const bgvVerifierResetEmail = ({ name, resetUrl, expiresAt }) => {
-  const safeName = escapeHtml(String(name || 'there'));
-  const safeUrl = escapeHtml(String(resetUrl || ''));
-  const expiryLabel = new Date(expiresAt).toUTCString();
-  return {
-    subject: 'Crewly BGV Operations password reset',
-    text:
-      `Hello ${name},\n\n` +
-      `A password reset was requested for your Crewly BGV Operations account.\n` +
-      `Reset link: ${resetUrl}\n` +
-      `It expires on ${expiryLabel} and can be used once. Your existing sessions are signed out when the password changes.\n` +
-      `If you did not request this, you can safely ignore this email.`,
-    html:
-      `<p>Hello ${safeName},</p>` +
-      `<p>A password reset was requested for your Crewly BGV Operations account.</p>` +
-      `<p><a href="${safeUrl}">Reset your password</a></p>` +
-      `<p>It expires on ${escapeHtml(expiryLabel)} and can be used once. Your existing sessions are signed out when the password changes.</p>` +
-      `<p>If you did not request this, you can safely ignore this email.</p>`,
-  };
-};
-
-export const bgvVerifierOtpEmail = ({ code }) => ({
-  subject: 'Crewly BGV Operations verification code',
-  text: `Your Crewly BGV Operations verification code is ${code}. It expires in 10 minutes.`,
-  html: `<p>Your Crewly BGV Operations verification code is <strong>${code}</strong>. It expires in 10 minutes.</p>`,
 });

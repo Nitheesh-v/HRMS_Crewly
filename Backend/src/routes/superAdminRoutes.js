@@ -10,9 +10,6 @@ import * as dashboard from "../controllers/superAdminDashboardController.js";
 import * as companies from "../controllers/superAdminCompanyController.js";
 import * as subscriptions from "../controllers/superAdminSubscriptionController.js";
 import * as operations from "../controllers/superAdminOperationsController.js";
-import * as bgvCatalogue from "../controllers/superAdminBgvCatalogueController.js";
-import * as bgvVerifier from "../controllers/bgvVerifierController.js";
-import * as bgvOperations from "../controllers/bgvOperationsController.js";
 import * as queueOps from "../controllers/superAdminQueueOpsController.js";
 import { securityRateLimit } from "../middlewares/securityRateLimit.js";
 import {
@@ -134,44 +131,6 @@ router.get(
   "/revenue",
   permit("revenue:read", "billing:manage"),
   subscriptions.revenueAnalytics,
-);
-
-// Phase 30.2 — Crewly BGV service catalogue & pricing (platform commerce).
-// Backend is the only price authority; tenants never reach these routes
-// (platform gate rejects non-platform roles before DB access).
-
-// Phase 30.6 — internal BGV verifier account management. Platform-only:
-// SUPER_ADMIN via '*'; tenant HR can never reach these routes (protect +
-// superAdminSession reject tenant principals before this point).
-router.get("/bgv-verifiers", permit("bgv-verifiers:read"), bgvVerifier.bgvVerifierList);
-router.get("/bgv-verifiers/:verifierId", permit("bgv-verifiers:read"), bgvVerifier.bgvVerifierRead);
-router.post("/bgv-verifiers", permit("bgv-verifiers:manage"), bgvVerifier.bgvVerifierInvite);
-router.post("/bgv-verifiers/:verifierId/resend-setup", permit("bgv-verifiers:manage"), bgvVerifier.bgvVerifierResendSetup);
-router.post("/bgv-verifiers/:verifierId/revoke-setup", permit("bgv-verifiers:manage"), bgvVerifier.bgvVerifierRevokeSetup);
-router.patch("/bgv-verifiers/:verifierId", permit("bgv-verifiers:manage"), bgvVerifier.bgvVerifierUpdate);
-router.post("/bgv-verifiers/:verifierId/deactivate", permit("bgv-verifiers:manage"), bgvVerifier.bgvVerifierDeactivate);
-router.post("/bgv-verifiers/:verifierId/reactivate", permit("bgv-verifiers:manage"), bgvVerifier.bgvVerifierReactivate);
-
-// Phase 30.7 — BGV check assignment operations (platform-only; the new
-// bgv-operations permissions are held only by SUPER_ADMIN via "*").
-router.get("/bgv-operations/queue", permit("bgv-operations:read"), bgvOperations.bgvOperationsQueue);
-router.get("/bgv-operations/checks/:checkType/eligible-verifiers", permit("bgv-operations:read"), bgvOperations.bgvOperationsEligibleVerifiers);
-router.post("/bgv-operations/assign", permit("bgv-operations:manage"), bgvOperations.bgvOperationsAssign);
-router.post("/bgv-operations/reassign", permit("bgv-operations:manage"), bgvOperations.bgvOperationsReassign);
-router.post("/bgv-operations/unassign", permit("bgv-operations:manage"), bgvOperations.bgvOperationsUnassign);
-// Phase 30.8 — platform-only check cancellation (CANCELLED is never a
-// verifier choice; requires a business reason).
-router.post("/bgv-operations/cancel-check", permit("bgv-operations:manage"), bgvOperations.bgvOperationsCancelCheck);
-
-router.get(
-  "/bgv-catalogue",
-  permit("bgv-catalog:read"),
-  bgvCatalogue.bgvCatalogueList,
-);
-router.patch(
-  "/bgv-catalogue/:type",
-  permit("bgv-catalog:manage"),
-  bgvCatalogue.bgvCatalogueUpdate,
 );
 
 router.get("/usage", permit("usage:read"), operations.usage);

@@ -524,17 +524,12 @@ test('tenant-scoped reprocess is atomic, attempt-bounded and audited in candidat
     assert.equal(candidateFilter.companyId, COMPANY_ID);
     assert.equal(atomicFilter.companyId, COMPANY_ID);
     assert.equal(atomicFilter.candidate, CANDIDATE_ID);
-    assert.deepEqual(atomicFilter.$and[0].$or[0].parsingStatus.$in, [
+    assert.deepEqual(atomicFilter.parsingStatus.$in, [
       'COMPLETED',
       'FAILED',
       'UNSUPPORTED',
       'REVIEW_REQUIRED',
       'PARSED',
-    ]);
-    // Stale PENDING/RETRY_PENDING intents are reprocessable (lost-job recovery).
-    assert.deepEqual(atomicFilter.$and[0].$or[1].parsingStatus.$in, [
-      'PENDING',
-      'RETRY_PENDING',
     ]);
     assert.equal(result.status, 'RETRY_PENDING');
     assert.equal(historyPayload.action, 'RESUME_REPROCESS_REQUESTED');

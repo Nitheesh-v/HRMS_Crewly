@@ -379,6 +379,36 @@ test('30.7 #21/#40 unassignment: only before work starts; history kept; former v
   );
 });
 
+test('30.7 regression: assign after unassign fills the placeholder row instead of 409 "already has a current assignment"', async () => {
+  const world = makeWorld();
+  world.verifiers.push({ _id: 'ver666666666666666666666', name: 'Verifier Six', status: 'ACTIVE', specializations: ['IDENTITY'] });
+  world.verifiers.push({ _id: 'ver888888888888888888888', name: 'Verifier Eight', status: 'ACTIVE', specializations: ['IDENTITY'] });
+  await assignCheck({ actorId: ADMIN, orderId: ORDER_ID, checkType: 'IDENTITY', verifierId: V_ID, deps: world.deps });
+  await unassignCheck({ actorId: ADMIN, orderId: ORDER_ID, checkType: 'IDENTITY', reason: 'wrong queue', deps: world.deps });
+
+  // The ops page shows this check as unassigned with an Assign button —
+  // clicking Assign must work, not demand reassignment of a null verifier.
+  const refilled = await assignCheck({ actorId: ADMIN, orderId: ORDER_ID, checkType: 'IDENTITY', verifierId: 'ver666666666666666666666', deps: world.deps });
+  assert.equal(refilled.idempotent, false);
+  assert.equal(String(refilled.assignment.verifier), 'ver666666666666666666666');
+  assert.equal(refilled.assignment.status, 'ASSIGNED');
+  // Single row, full immutable trail: ASSIGNED → UNASSIGNED → ASSIGNED.
+  assert.equal(world.state.assignments.filter((a) => a.checkType === 'IDENTITY').length, 1);
+  assert.deepEqual(
+    refilled.assignment.history.map((h) => h.action),
+    ['ASSIGNED', 'UNASSIGNED', 'ASSIGNED']
+  );
+  // A real current assignment still blocks assign (reassignment required).
+  // Same-verifier duplicate stays idempotent; a DIFFERENT verifier must be
+  // told to use reassignment.
+  const same = await assignCheck({ actorId: ADMIN, orderId: ORDER_ID, checkType: 'IDENTITY', verifierId: 'ver666666666666666666666', deps: world.deps });
+  assert.equal(same.idempotent, true);
+  await expectConflict(
+    assignCheck({ actorId: ADMIN, orderId: ORDER_ID, checkType: 'IDENTITY', verifierId: 'ver888888888888888888888', deps: world.deps }),
+    'occupied check must use reassignment'
+  );
+});
+
 // ── verifier queue ────────────────────────────────────────────────
 test('30.7 #22-25 queue: only own CURRENT assignments; safe fields only; deactivated forbidden; ops queue shows states', async () => {
   const world = makeWorld();
@@ -527,6 +557,7 @@ test('30.7 #38-40/#42 deactivated verifier identifiable in ops queue + reassigna
   // Outstanding work of a deactivated verifier can be reassigned (no silent
   // auto-reassignment: the operator acts explicitly).
   world.verifiers.push({ _id: 'ver666666666666666666666', name: 'Verifier Six', status: 'ACTIVE', specializations: ['IDENTITY'] });
+  world.verifiers.push({ _id: 'ver888888888888888888888', name: 'Verifier Eight', status: 'ACTIVE', specializations: ['IDENTITY'] });
   const reassigned = await reassignCheck({
     actorId: ADMIN,
     orderId: ORDER_ID,

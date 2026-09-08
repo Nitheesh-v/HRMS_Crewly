@@ -132,10 +132,36 @@ export const assignCheck = async ({ actorId, orderId, checkType, verifierId, rea
 
   const existing = await findAssignment({ orderId: order._id, checkType: safeCheck });
   if (existing) {
-    if (String(existing.verifier) === String(verifier._id)) {
-      return { assignment: existing, idempotent: true }; // duplicate request
+    if (existing.verifier) {
+      if (String(existing.verifier) === String(verifier._id)) {
+        return { assignment: existing, idempotent: true }; // duplicate request
+      }
+      throw ApiError.conflict('This check already has a current assignment — use reassignment');
     }
-    throw ApiError.conflict('This check already has a current assignment — use reassignment');
+    // Soft-unassigned placeholder row (verifier: null, activeKey CURRENT):
+    // fill it instead of racing a second row against the unique index.
+    const updateAssignment = deps.updateAssignment || defaultUpdateAssignment;
+    const filled = await updateAssignment({
+      assignmentId: existing._id,
+      set: {
+        verifier: verifier._id,
+        status: 'ASSIGNED',
+        assignedBy: actorId ?? null,
+        assignedAt: new Date(),
+        startedAt: null,
+      },
+      push: { action: 'ASSIGNED', verifierFrom: null, verifierTo: verifier._id, actor: actorId ?? null, reason: String(reason || '').slice(0, 300) },
+    });
+    if (!filled) throw ApiError.conflict('The assignment changed concurrently — retry');
+    await auditSafe(audit, {
+      req: requestContext,
+      action: 'BGV_CHECK_ASSIGNED',
+      actorId,
+      resource: 'BgvCheckAssignment',
+      resourceId: filled._id,
+      metadata: { orderCode: order.orderCode, checkType: safeCheck, verifierId: String(verifier._id), refilled: true, phase: '30.7' },
+    });
+    return { assignment: filled, idempotent: false };
   }
 
   try {

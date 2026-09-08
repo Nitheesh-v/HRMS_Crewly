@@ -15,7 +15,6 @@ import {
   RESUME_PARSER_VERSION,
   parseResumeDeterministically,
 } from './resumeDeterministicParser.js';
-import { RESUME_RECOVERY_MIN_AGE_MS } from '../config/queueConfig.js';
 import { uniqueStrings } from './resumeNormalizationService.js';
 import { dispatchATSMatching } from './atsDispatcher.js';
 
@@ -577,18 +576,7 @@ export const requestResumeReprocess = async ({
     throw ApiError.notFound('Resume not found');
   }
 
-  const now = new Date();
-  const pendingStatuses = ['PENDING', 'RETRY_PENDING', 'PROCESSING'];
-  // PENDING/RETRY_PENDING hold no worker lease: an intent older than the
-  // recovery min-age has lost its BullMQ job and is reprocessable instead
-  // of dead-ending in 409. PROCESSING keeps its lease — lease-expiry
-  // recovery owns that state.
-  const staleBoundary = new Date(now.getTime() - RESUME_RECOVERY_MIN_AGE_MS);
-  const isStalePending =
-    ['PENDING', 'RETRY_PENDING'].includes(currentResume.parsingStatus) &&
-    (!currentResume.parsingRequestedAt ||
-      new Date(currentResume.parsingRequestedAt) <= staleBoundary);
-  if (pendingStatuses.includes(currentResume.parsingStatus) && !isStalePending) {
+  if (['PENDING', 'RETRY_PENDING', 'PROCESSING'].includes(currentResume.parsingStatus)) {
     throw new ApiError(409, 'Resume processing is already pending or in progress');
   }
 
@@ -599,6 +587,7 @@ export const requestResumeReprocess = async ({
     );
   }
 
+  const now = new Date();
   const cooldownBoundary = new Date(now.getTime() - REPROCESS_COOLDOWN_MS);
 
   if (
@@ -614,29 +603,12 @@ export const requestResumeReprocess = async ({
       companyId,
       candidate: candidate._id,
       scanStatus: { $ne: 'REJECTED' },
+      parsingStatus: { $in: REPROCESSABLE_STATUSES },
       parsingAttempts: { $lt: MAX_ATTEMPTS },
-      $and: [
-        {
-          $or: [
-            { parsingStatus: { $in: REPROCESSABLE_STATUSES } },
-            {
-              // Stale stuck intent (lost BullMQ job) is reprocessable.
-              parsingStatus: { $in: ['PENDING', 'RETRY_PENDING'] },
-              $or: [
-                { parsingRequestedAt: { $lte: staleBoundary } },
-                { parsingRequestedAt: null },
-                { parsingRequestedAt: { $exists: false } },
-              ],
-            },
-          ],
-        },
-        {
-          $or: [
-            { lastReprocessRequestedAt: { $lte: cooldownBoundary } },
-            { lastReprocessRequestedAt: null },
-            { lastReprocessRequestedAt: { $exists: false } },
-          ],
-        },
+      $or: [
+        { lastReprocessRequestedAt: { $lte: cooldownBoundary } },
+        { lastReprocessRequestedAt: null },
+        { lastReprocessRequestedAt: { $exists: false } },
       ],
     },
     {

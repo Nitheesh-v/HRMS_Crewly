@@ -30,27 +30,19 @@ const genericFailure = () => ApiError.notFound('Offer is unavailable');
 
 const publicDto = (source) => {
   const offer = safeOfferDto(source);
-  // Defensive shape: offers created before the snapshot fields existed must
-  // still render the portal (a missing snapshot may NEVER blank the page).
   return {
     offerCode: offer.offerCode,
     status: offer.status,
-    candidate: { name: offer.candidateSnapshot?.name || 'Candidate' },
-    job: offer.jobSnapshot || null,
-    company: { name: offer.companySnapshot?.name || '' },
+    candidate: { name: offer.candidateSnapshot.name },
+    job: offer.jobSnapshot,
+    company: offer.companySnapshot,
     terms: {
-      ...(offer.terms || {}),
+      ...offer.terms,
       reportingManager: undefined,
     },
-    compensation: offer.compensationSnapshot || {
-      annualCTC: 0,
-      currency: 'INR',
-      monthly: { basic: 0, hra: 0, allowances: 0 },
-      variablePay: 0,
-      bonus: 0,
-    },
-    renderedContent: offer.renderedContent || '',
-    document: offer.document || null,
+    compensation: offer.compensationSnapshot,
+    renderedContent: offer.renderedContent,
+    document: offer.document,
     viewedAt: offer.viewedAt,
     acceptedAt: offer.acceptedAt,
     rejectedAt: offer.rejectedAt,

@@ -112,29 +112,6 @@ const InterviewFeedbackModal = ({ interviewId, onClose, onSaved }) => {
     }));
   };
 
-  // Client-side mirror of the backend submit gate: show exactly what is
-  // missing BEFORE opening the confirm step (backend still re-validates).
-  const missingForSubmit = [
-    ...(template?.criteria || [])
-      .filter(
-        (criterion) =>
-          criterion.required &&
-          (ratings[criterion.key]?.score === '' ||
-            ratings[criterion.key]?.score === undefined)
-      )
-      .map((criterion) => criterion.label),
-    ...(narrative.recommendation ? [] : ['Recommendation']),
-  ];
-
-  const reviewAndSubmit = () => {
-    if (missingForSubmit.length) {
-      setError(`Complete before submitting: ${missingForSubmit.join(', ')}`);
-      return;
-    }
-    setError('');
-    setConfirmSubmit(true);
-  };
-
   const save = async (action) => {
     if (busy || readOnly) return;
     setBusy(true);
@@ -295,7 +272,7 @@ const InterviewFeedbackModal = ({ interviewId, onClose, onSaved }) => {
                 ) : null}
                 <div className="flex flex-wrap justify-end gap-2">
                   <button type="button" className="btn-ghost gap-2" disabled={busy || confirmSubmit} onClick={() => save('SAVE_DRAFT')}><Save className="h-4 w-4" /> {busy ? 'Saving…' : 'Save draft'}</button>
-                  <button type="button" className="btn-primary gap-2" disabled={busy || confirmSubmit} onClick={reviewAndSubmit}><Send className="h-4 w-4" /> Review and submit</button>
+                  <button type="button" className="btn-primary gap-2" disabled={busy || confirmSubmit} onClick={() => setConfirmSubmit(true)}><Send className="h-4 w-4" /> Review and submit</button>
                 </div>
               </div>
             ) : (

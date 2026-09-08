@@ -43,7 +43,6 @@ import {
   JOB_NAMES,
   getResumeJobOptions,
   redactConnectionSecrets,
-  RESUME_RECOVERY_MIN_AGE_MS,
 } from '../config/queueConfig.js';
 import { RESUME_PARSER_VERSION } from './resumeDeterministicParser.js';
 import { resumeProcessingConfiguration } from './resumeProcessingService.js';
@@ -51,7 +50,7 @@ import { resumeProcessingConfiguration } from './resumeProcessingService.js';
 const RECOVERY_BATCH_SIZE = 100;
 // A healthy in-flight job is minutes from its request at most; the
 // min-age keeps recovery from racing jobs the API just enqueued.
-const DEFAULT_MIN_AGE_MS = RESUME_RECOVERY_MIN_AGE_MS;
+const DEFAULT_MIN_AGE_MS = 60 * 1000;
 
 const validJob = (job) =>
   mongoose.isValidObjectId(job?.companyId) &&
