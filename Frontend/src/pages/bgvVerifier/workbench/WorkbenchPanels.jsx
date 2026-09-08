@@ -240,7 +240,9 @@ export const EvidenceUploadPanel = ({ orderId, checkType, workbench, onUploaded,
     try {
       const formData = new FormData();
       formData.append('activitySeq', String(activitySeq));
-      formData.append('file', file);
+      // Field name MUST be 'document' — the shared hardened multer
+      // uploader on the evidence route only accepts that single field.
+      formData.append('document', file);
       await bgvVerifierAuthService.uploadActivityEvidence(orderId, checkType, formData);
       setFile(null);
       setActivitySeq('');

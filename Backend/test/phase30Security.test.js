@@ -796,3 +796,27 @@ test('§31.55 issuer-assisted provenance is explicit and honest', () => {
   });
   assert.notEqual(bogus.originRepresentation, 'API_VERIFIED');
 });
+
+// ── Phase 30.12 regression: multipart field contract — the shared
+// hardened uploader accepts a single file field named 'document'; every
+// Phase 30 upload client must use that exact name (the verifier workbench
+// once sent 'file', multer raised LIMIT_UNEXPECTED_FILE, and the attach
+// failed with 400 during localhost acceptance).
+test('§30.12 verifier evidence upload uses the hardened uploader field name', async () => {
+  const { readFileSync } = await import('node:fs');
+  const middleware = readFileSync(
+    new URL('../src/middlewares/preOnboardingUpload.js', import.meta.url),
+    'utf8'
+  );
+  assert.ok(middleware.includes(".single('document')"), 'uploader accepts only the document field');
+  const panel = readFileSync(
+    new URL('../../Frontend/src/pages/bgvVerifier/workbench/WorkbenchPanels.jsx', import.meta.url),
+    'utf8'
+  );
+  assert.ok(panel.includes("formData.append('document', file)"), 'verifier panel sends the document field');
+  const collection = readFileSync(
+    new URL('../../Frontend/src/services/bgvCollectionService.js', import.meta.url),
+    'utf8'
+  );
+  assert.ok(collection.includes("form.append('document', file)"), 'candidate collection sends the document field');
+});
