@@ -29,7 +29,9 @@ const bgvVerifierTokenSchema = new Schema(
       required: true,
     },
     tokenHash: { type: String, required: true, unique: true, select: false },
-    expiresAt: { type: Date, required: true, index: true },
+    // Indexed by the TTL index below (30.12: removed the duplicate
+    // `index: true` that made mongoose declare {expiresAt:1} twice).
+    expiresAt: { type: Date, required: true },
     usedAt: { type: Date, default: null },
     revokedAt: { type: Date, default: null },
     requestedIp: { type: String, default: '' },

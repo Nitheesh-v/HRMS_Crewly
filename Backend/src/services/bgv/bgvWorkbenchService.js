@@ -50,7 +50,8 @@ const defaultFindVerification = ({ orderId, checkType }) =>
 const defaultInsertVerification = (doc) => BgvCheckVerification.create(doc);
 // Atomic pipeline update: appends one activity with seq = size+1 in a
 // single server-side operation (no read-then-save race).
-const defaultAppendActivity = ({ verificationId, activity }) =>
+// Mongoose 9 requires `updatePipeline: true` for array-pipeline updates.
+export const defaultAppendActivity = ({ verificationId, activity }) =>
   BgvCheckVerification.findOneAndUpdate(
     { _id: verificationId, activeKey: 'CURRENT', conclusion: null },
     [
@@ -65,13 +66,13 @@ const defaultAppendActivity = ({ verificationId, activity }) =>
         },
       },
     ],
-    { returnDocument: 'after' }
+    { returnDocument: 'after', updatePipeline: true }
   ).lean();
-const defaultAppendDiscrepancy = ({ verificationId, discrepancy }) =>
+export const defaultAppendDiscrepancy = ({ verificationId, discrepancy }) =>
   BgvCheckVerification.findOneAndUpdate(
     { _id: verificationId, activeKey: 'CURRENT', conclusion: null },
     [{ $set: { discrepancies: { $concatArrays: ['$discrepancies', [discrepancy]] } } }],
-    { returnDocument: 'after' }
+    { returnDocument: 'after', updatePipeline: true }
   ).lean();
 const defaultUpdateVerificationState = ({ verificationId, onlyStates, set }) =>
   BgvCheckVerification.findOneAndUpdate(

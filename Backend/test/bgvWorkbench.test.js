@@ -538,7 +538,10 @@ test('30.8 #51-61 security: cross-check evidence denied, private storage, redact
   // #56-61 structural scans on the workbench service.
   {
     const service = stripComments(readFileSync(new URL('../src/services/bgv/bgvWorkbenchService.js', import.meta.url), 'utf8'));
-    const lower = service.toLowerCase();
+    // `updatePipeline` is a mongoose 9 query OPTION (required for the
+    // atomic append pipelines) — not candidate-pipeline coupling. Strip
+    // the option name before scanning so the intent stays intact.
+    const lower = service.toLowerCase().replace(/updatepipeline/g, '');
     assert.ok(!/bullmq|queue|redis/.test(lower), 'no new queue coupling');
     assert.ok(!/currentstage|pipeline/.test(lower), 'no candidate pipeline mutation');
     assert.ok(!/\bclear\b/.test(lower), 'no automatic BGV CLEAR');
@@ -609,4 +612,23 @@ test('30.8 #62-69 regression: phase suites are wired into test:all; verifier aut
   // Readiness engine unit: INCONCLUSIVE explanation enforced.
   const readiness = evaluateConclusionReadiness({ conclusion: 'INCONCLUSIVE', reason: 'x', activities: [], discrepancies: [] });
   assert.equal(readiness.ok, false);
+});
+
+// ── Phase 30.12 regression: mongoose 9 rejects array-pipeline updates
+// unless `updatePipeline: true` is declared. The hermetic suites inject
+// these collaborators, so this test executes the REAL defaults (query
+// construction is client-side — no Mongo connection needed).
+test('§30.12 default append helpers declare updatePipeline (mongoose 9 compatible)', async () => {
+  const mongoose = (await import('mongoose')).default;
+  await import('../src/models/BgvCheckVerification.js');
+  const { defaultAppendActivity, defaultAppendDiscrepancy } = await import(
+    '../src/services/bgv/bgvWorkbenchService.js'
+  );
+  const verificationId = new mongoose.Types.ObjectId();
+  // Before the fix these threw synchronously:
+  // "Cannot pass an array to query updates unless the `updatePipeline` option is set"
+  const q1 = defaultAppendActivity({ verificationId, activity: { method: 'DOCUMENT_REVIEW', outcome: 'COMPLETED' } });
+  assert.ok(q1 && typeof q1.then === 'function', 'appendActivity builds a query');
+  const q2 = defaultAppendDiscrepancy({ verificationId, discrepancy: { field: 'employer', candidateClaimed: 'A', sourceConfirmed: 'B', severity: 'MINOR', explanation: 'Mismatch', recordedBy: verificationId } });
+  assert.ok(q2 && typeof q2.then === 'function', 'appendDiscrepancy builds a query');
 });
