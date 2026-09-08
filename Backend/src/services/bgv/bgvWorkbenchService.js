@@ -84,10 +84,34 @@ const defaultUpdateVerificationState = ({ verificationId, onlyStates, set }) =>
     { $set: set },
     { returnDocument: 'after' }
   ).lean();
-const defaultSubmitConclusion = ({ verificationId, conclusion }) =>
+// Phase 30.10 — submissions are append-only revisions. The conditional filter
+// (state NOT SUBMITTED) is the submission lock; QA_RETURNED work re-enters
+// here as revision N+1 while v1..vN stay immutable inside `submissions`.
+const defaultSubmitConclusion = ({ verificationId, conclusion, revision = 1, discrepancyCount = 0 }) =>
   BgvCheckVerification.findOneAndUpdate(
-    { _id: verificationId, activeKey: 'CURRENT', conclusion: null },
-    { $set: { conclusion, state: 'SUBMITTED' } },
+    { _id: verificationId, activeKey: 'CURRENT', state: { $nin: ['SUBMITTED'] } },
+    {
+      $set: {
+        conclusion,
+        state: 'SUBMITTED',
+        qaStatus: 'PENDING',
+        qaReturnReason: '',
+        'qa.status': 'PENDING',
+        'qa.currentRevision': revision,
+        'qa.reviewedBy': null,
+        'qa.reviewedAt': null,
+        'qa.returnReason': '',
+      },
+      $push: {
+        submissions: {
+          revision,
+          conclusion,
+          discrepancyCountAtSubmission: discrepancyCount,
+          submittedAt: conclusion?.submittedAt || new Date(),
+          qa: { status: 'PENDING' },
+        },
+      },
+    },
     { returnDocument: 'after' }
   ).lean();
 const defaultInsertEvidenceFile = (doc) => BgvVerifierEvidenceFile.create(doc);
@@ -289,9 +313,18 @@ export const submitConclusion = async ({ verifierId, orderId, checkType, conclus
     activityCountAtSubmission: (verification.activities || []).length,
   };
 
+  // Phase 30.10 — revision numbering: QA-returned work resubmits as N+1;
+  // earlier revisions remain immutable history (never overwritten).
+  const revision = (verification.submissions || []).length + 1;
+
   // Atomic conditional write = submission lock. A racing second submit
-  // fails the `conclusion: null` filter and lands in the idempotent path.
-  const updated = await submit({ verificationId: verification._id, conclusion: conclusionDoc });
+  // fails the `state NOT SUBMITTED` filter and lands in the idempotent path.
+  const updated = await submit({
+    verificationId: verification._id,
+    conclusion: conclusionDoc,
+    revision,
+    discrepancyCount: (verification.discrepancies || []).length,
+  });
   if (!updated) {
     const current = await (deps.findVerification || defaultFindVerification)({ orderId, checkType: safeCheck });
     if (
@@ -309,7 +342,7 @@ export const submitConclusion = async ({ verifierId, orderId, checkType, conclus
     action: 'BGV_CHECK_CONCLUSION_SUBMITTED',
     resource: 'BgvCheckVerification',
     resourceId: updated._id,
-    metadata: { orderCode: order?.orderCode || '', checkType: safeCheck, conclusion: safeConclusion, verifierId: String(verifierId), phase: '30.8' },
+    metadata: { orderCode: order?.orderCode || '', checkType: safeCheck, conclusion: safeConclusion, revision, verifierId: String(verifierId), phase: '30.10' },
   });
   // NOTE: intentionally NO candidate pipeline mutation, NO case CLEAR,
   // NO tenant report release here — 30.10 owns consolidation.

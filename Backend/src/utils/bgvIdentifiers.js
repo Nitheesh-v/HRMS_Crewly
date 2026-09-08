@@ -32,3 +32,10 @@ export const nextBgvOrderCode = async (companyId) => {
   const value = await nextSequence(companyId, 'BGV_ORDER');
   return `BGVORD-${String(value).padStart(6, '0')}`;
 };
+
+// Phase 30.10 — final BGV report reference, same TenantSequence convention.
+// Readable, unique per tenant, collision-safe — never Date.now/Math.random.
+export const nextBgvReportCode = async (companyId) => {
+  const value = await nextSequence(companyId, 'BGV_REPORT');
+  return `BGVRPT-${String(value).padStart(6, '0')}`;
+};

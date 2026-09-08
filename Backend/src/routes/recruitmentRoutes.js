@@ -72,6 +72,8 @@ import {
   bgvOrderPaymentInitiate,
   bgvOrderPaymentVerify,
   bgvPurchasableServices,
+  bgvFinalReportDownload,
+  bgvFinalReportSummary,
 } from '../controllers/bgvOrderController.js';
 import {
   bgvAssignRules,
@@ -465,6 +467,19 @@ router.get(
   requirePermission('BACKGROUND_VERIFICATION_READ'),
   bgvConsentStatusRules,
   bgvAssignmentProgress
+);
+
+// Phase 30.10 — released final BGV report for tenant HR. Authority is
+// req.companyId from the tenant session; unreleased reports stay invisible.
+router.get(
+  '/candidates/:candidateId/bgv-final-report',
+  requirePermission('BACKGROUND_VERIFICATION_READ'),
+  bgvFinalReportSummary
+);
+router.get(
+  '/candidates/:candidateId/bgv-final-report/download',
+  requirePermission('BACKGROUND_VERIFICATION_READ'),
+  bgvFinalReportDownload
 );
 
 // Phase 27.14 — recruitment command center analytics.

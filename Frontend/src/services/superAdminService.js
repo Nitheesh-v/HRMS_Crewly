@@ -51,6 +51,20 @@ const superAdminService = {
   bgvEligibleVerifiers: (checkType) =>
     get(`/super-admin/bgv-operations/checks/${checkType}/eligible-verifiers`),
   bgvAssignCheck: (body) => post("/super-admin/bgv-operations/assign", body),
+
+  // Phase 30.10 — internal BGV QA review + final report release.
+  bgvQaQueue: (params) => get("/super-admin/bgv-qa/queue", params),
+  bgvQaDetail: (orderId, checkType) => get(`/super-admin/bgv-qa/check/${orderId}/${checkType}`),
+  bgvQaApprove: (orderId, checkType) => post(`/super-admin/bgv-qa/check/${orderId}/${checkType}/approve`, {}),
+  bgvQaReturn: (orderId, checkType, body) => post(`/super-admin/bgv-qa/check/${orderId}/${checkType}/return`, body),
+  bgvQaEvidence: async (orderId, checkType, fileId) =>
+    api.get(`/super-admin/bgv-qa/check/${orderId}/${checkType}/evidence/${fileId}`, { responseType: "blob" }),
+  bgvQaReportStatus: (orderId) => get(`/super-admin/bgv-qa/report/${orderId}`),
+  bgvQaGenerateReport: (orderId) => post(`/super-admin/bgv-qa/report/${orderId}/generate`, {}),
+  bgvQaRetryPdf: (orderId) => post(`/super-admin/bgv-qa/report/${orderId}/pdf-retry`, {}),
+  bgvQaReleaseReport: (orderId) => post(`/super-admin/bgv-qa/report/${orderId}/release`, {}),
+  bgvQaDownloadReport: (orderId) =>
+    api.get(`/super-admin/bgv-qa/report/${orderId}/download`, { responseType: "blob" }),
   bgvReassignCheck: (body) => post("/super-admin/bgv-operations/reassign", body),
   bgvUnassignCheck: (body) => post("/super-admin/bgv-operations/unassign", body),
   // Phase 30.8 — platform-only check cancellation (CANCELLED is never a

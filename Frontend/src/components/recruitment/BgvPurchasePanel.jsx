@@ -4,6 +4,8 @@ import {
   Ban,
   CheckCircle2,
   CreditCard,
+  Download,
+  FileText,
   FlaskConical,
   Loader2,
   MailOpen,
@@ -27,6 +29,54 @@ const loadRazorpayScript = () =>
     document.body.appendChild(script);
     return undefined;
   });
+
+// Phase 30.10 — released final BGV report card (tenant HR). Read-only
+// decision support: the employment decision remains a human HR action.
+const FinalReportCard = ({ report, candidateRef }) => {
+  const [busy, setBusy] = useState(false);
+  const download = async () => {
+    setBusy(true);
+    try {
+      const blob = await bgvService.finalReportDownload(candidateRef);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `${report.reportNumber || 'bgv-report'}-v${report.version || 1}.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="mt-3 rounded-lg border border-crewly-green/30 bg-crewly-green/5 p-3">
+      <p className="flex items-center gap-2 text-xs font-semibold text-crewly-green">
+        <ShieldCheck className="h-4 w-4" /> BGV report available — {report.reportNumber} v{report.version}
+      </p>
+      <p className="mt-1 text-xs text-crewly-text">
+        Overall outcome: <span className="font-semibold">{String(report.overallOutcome || '').replaceAll('_', ' ')}</span>
+        {report.releasedAt ? ` · released ${new Date(report.releasedAt).toLocaleDateString('en-IN')}` : ''}
+      </p>
+      <ul className="mt-2 space-y-1 text-[11px] text-crewly-dim">
+        {(report.checks || []).map((check) => (
+          <li key={check.checkType}>
+            {check.checkType}: {String(check.conclusion || '').replaceAll('_', ' ')}
+            {(check.discrepancies || []).length ? ` · ${check.discrepancies.length} discrepancy note(s)` : ''}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-[10px] text-crewly-dim">
+        This report is provided for information. The employment decision remains with your organization.
+      </p>
+      <button type="button" onClick={download} disabled={busy} className="btn-primary mt-2 gap-2 !px-4 !py-2 text-xs">
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+        <FileText className="hidden" /> View / Download report
+      </button>
+    </div>
+  );
+};
 
 const CONSENT_COPY = {
   NONE: 'No consent invitation sent yet.',
@@ -398,6 +448,11 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
                         )
                       )}
                     </div>
+                  ) : null}
+
+                  {/* Phase 30.10 — released final BGV report (HR decision support). */}
+                  {finalReport ? (
+                    <FinalReportCard report={finalReport} candidateRef={candidateRef} />
                   ) : null}
                 </div>
               </div>

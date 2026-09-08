@@ -8,6 +8,7 @@ import {
   ConclusionPanel,
   DiscrepancyPanel,
   EvidenceUploadPanel,
+  QaReturnPanel,
   StateBadgeRow,
 } from './workbench/WorkbenchPanels.jsx';
 import InfoRequestPanel from './workbench/InfoRequestPanel.jsx';
@@ -276,6 +277,7 @@ const BgvVerifierCheckDetailPage = () => {
             {/* Phase 30.8 — verification workbench (this check only). */}
             {detail.workbench ? (
               <>
+                <QaReturnPanel workbench={detail.workbench} />
                 <ActivityForm orderId={orderId} checkType={detail.checkType} workbench={detail.workbench} onRecorded={load} onError={setError} />
                 <ActivityTimeline workbench={detail.workbench} onDownloadEvidence={downloadVerifierFile} downloading={busy} />
                 {detail.workbench.locked ? null : (

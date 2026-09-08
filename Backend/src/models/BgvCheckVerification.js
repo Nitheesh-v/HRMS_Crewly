@@ -21,7 +21,7 @@ const { Schema } = mongoose;
 
 // Phase 30.9 adds AWAITING_CANDIDATE: an additional-information request is
 // open. Operational only — never a conclusion.
-export const BGV_CHECK_VERIFICATION_STATES = ['IN_PROGRESS', 'AWAITING_THIRD_PARTY', 'AWAITING_CANDIDATE', 'SUBMITTED'];
+export const BGV_CHECK_VERIFICATION_STATES = ['IN_PROGRESS', 'AWAITING_THIRD_PARTY', 'AWAITING_CANDIDATE', 'QA_RETURNED', 'SUBMITTED'];
 
 export const BGV_CHECK_CONCLUSIONS = [
   'VERIFIED',
@@ -82,6 +82,37 @@ const bgvCheckVerificationSchema = new Schema(
     activities: { type: [activitySchema], default: [] },
     discrepancies: { type: [discrepancySchema], default: [] },
     conclusion: { type: conclusionSchema, default: null },
+    // Phase 30.10 — immutable finding revisions + QA lifecycle.
+    // Every verifier (re)submissionmission appends ONE entry; v1 is never
+    // overwritten. `conclusion` always mirrorss the latest submission.
+    submissions: {
+      type: [
+        new Schema(
+          {
+            revision: { type: Number, required: true, min: 1 },
+            conclusion: { type: conclusionSchema, required: true },
+            discrepancyCountAtSubmission: { type: Number, default: 0 },
+            submittedAt: { type: Date, default: Date.now },
+            qa: {
+              status: { type: String, enum: ['PENDING', 'APPROVED', 'RETURNED'], default: 'PENDING' },
+              reviewedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+              reviewedAt: { type: Date, default: null },
+              returnReason: { type: String, default: '', maxlength: 500 },
+            },
+          },
+          { _id: false }
+        )
+      ],
+      default: [],
+    },
+    // Convenience mirror of submissions[length-1] (kept atomic by the service).
+    qa: {
+      status: { type: String, enum: ['NONE', 'PENDING', 'APPROVED', 'RETURNED'], default: 'NONE' },
+      currentRevision: { type: Number, default: 0 },
+      reviewedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+      reviewedAt: { type: Date, default: null },
+      returnReason: { type: String, default: '', maxlength: 500 },
+    },
     activeKey: { type: String, default: 'CURRENT', select: false },
   },
   { timestamps: true, versionKey: false }

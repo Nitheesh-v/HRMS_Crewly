@@ -25,6 +25,12 @@ export const PLATFORM_PERMISSIONS = {
     // retry, remove, pause, run reconciliation, or invalidate
     // (those require operations:manage — SUPER_ADMIN only).
     'operations:read',
+    // Phase 30.10 — internal BGV QA review + report release. QA is a
+    // Crewly/Infolexus platform function (never a tenant User, never a
+    // verifier principal). SUPER_ADMIN holds it via "*"; other platform
+    // users gain it through this role or User.platformPermissions.
+    'bgv-qa:review',
+    'bgv-qa:release',
   ],
 
   SUPPORT_ADMIN: [

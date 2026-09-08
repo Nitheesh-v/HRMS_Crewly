@@ -151,6 +151,7 @@ import SuperAdminOperationsPage from "../pages/admin/SuperAdminOperationsPage.js
 import SuperAdminBackgroundOperationsPage from "../pages/admin/SuperAdminBackgroundOperationsPage.jsx";
 import SuperAdminBgvVerifiersPage from "../pages/admin/SuperAdminBgvVerifiersPage.jsx";
 import SuperAdminBgvOperationsPage from "../pages/admin/SuperAdminBgvOperationsPage.jsx";
+import SuperAdminBgvQaPage from "../pages/admin/SuperAdminBgvQaPage.jsx";
 import SuperAdminBgvCataloguePage from "../pages/admin/SuperAdminBgvCataloguePage.jsx";
 
 import NotFoundPage from "../pages/not-found/NotFoundPage.jsx";
@@ -869,6 +870,14 @@ const AppRoutes = () => (
         path="bgv-operations"
         element={
           <SuperAdminBgvOperationsPage />
+        }
+      />
+
+      {/* Phase 30.10 — internal BGV QA review + final report release. */}
+      <Route
+        path="bgv-qa"
+        element={
+          <SuperAdminBgvQaPage />
         }
       />
 

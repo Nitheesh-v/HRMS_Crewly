@@ -432,5 +432,17 @@ export const buildWorkbenchView = (verification, fallbackCheckType = null) => {
     verifierConclusions: VERIFIER_CONCLUSIONS,
     states: WORKBENCH_STATES,
     locked: submitted,
+    // Phase 30.10 — QA lifecycle + immutable revision history for the UI.
+    qaStatus: verification?.qaStatus || 'NONE',
+    qaReturnReason: verification?.qaReturnReason || '',
+    revision: verification?.qa?.currentRevision || (verification?.submissions || []).length,
+    submissions: (verification?.submissions || []).map((entry) => ({
+      revision: entry.revision,
+      conclusion: entry.conclusion?.value || null,
+      submittedAt: entry.submittedAt || null,
+      qaStatus: entry.qa?.status || 'PENDING',
+      qaReturnReason: entry.qa?.returnReason || '',
+      reviewedAt: entry.qa?.reviewedAt || null,
+    })),
   };
 };

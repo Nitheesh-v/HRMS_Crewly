@@ -80,6 +80,11 @@ const bgvService = {
   // IN_PROGRESS per check). Never internal verifier identity or evidence.
   assignmentStatus: async (candidateId) =>
     unwrap(await api.get(`/recruitment/candidates/${candidateId}/bgv-assignment-status`)),
+  // Phase 30.10 — released final BGV report (tenant HR, BACKGROUND_VERIFICATION_READ).
+  finalReport: async (candidateId) =>
+    unwrap(await api.get(`/recruitment/candidates/${candidateId}/bgv-final-report`)),
+  finalReportDownload: (candidateId) =>
+    api.get(`/recruitment/candidates/${candidateId}/bgv-final-report/download`, { responseType: 'blob' }),
   assign: async (caseId, verifierId) =>
     unwrap(
       await api.post(`/recruitment/background-verifications/${caseId}/assign`, {

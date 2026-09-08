@@ -480,3 +480,32 @@ export const StateBadgeRow = ({ orderId, checkType, workbench, onChanged, onErro
     </div>
   );
 };
+
+// ── Phase 30.10 — QA returned work (verifier side) ────────────────
+// Read-only return notice + immutable revision history. The correction
+// itself happens through the normal (now unlocked) workbench forms; the
+// next conclusion submit creates revision N+1 — earlier revisions are
+// preserved forever and can never be deleted from this UI.
+export const QaReturnPanel = ({ workbench }) => {
+  if (!workbench || workbench.qaStatus !== 'RETURNED') return null;
+  return (
+    <section className="card">
+      <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold text-amber-300">
+        <AlertTriangle className="h-4 w-4" /> Returned by QA — correction required
+      </h2>
+      <p className="text-xs text-crewly-text">QA reason: {workbench.qaReturnReason || '(no reason recorded)'}</p>
+      <p className="mt-1 text-[11px] text-crewly-dim">
+        Current revision v{workbench.revision || (workbench.submissions || []).length}. Record the correction through the workbench forms and
+        submit findings again — a NEW revision is created; previous submissions stay in history and cannot be deleted.
+      </p>
+      <ul className="mt-2 space-y-1 text-[11px] text-crewly-dim">
+        {(workbench.submissions || []).map((submission) => (
+          <li key={submission.revision}>
+            v{submission.revision} — {String(submission.conclusion || '').replaceAll('_', ' ')} · {submission.qaStatus}
+            {submission.qaReturnReason ? ` · “${submission.qaReturnReason}”` : ''}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+};

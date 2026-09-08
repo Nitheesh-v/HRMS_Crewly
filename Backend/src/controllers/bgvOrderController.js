@@ -20,6 +20,10 @@ import {
 } from '../services/bgv/bgvConsentService.js';
 import { getHrCollectionStatus } from '../services/bgv/bgvCollectionService.js';
 import { getHrAssignmentStatus } from '../services/bgv/bgvAssignmentService.js';
+import {
+  tenantReportDownload,
+  tenantReportSummary,
+} from '../services/bgv/bgvQaReportService.js';
 
 const actorId = (req) => req.user._id;
 
@@ -220,4 +224,44 @@ export const bgvAssignmentProgress = asyncHandler(async (req, res) => {
     message: 'BGV assignment progress',
     data,
   });
+});
+
+// ── Phase 30.10 — released final BGV report (tenant HR) ───────────
+
+// GET /api/recruitment/candidates/:candidateId/bgv-final-report
+export const bgvFinalReportSummary = asyncHandler(async (req, res) => {
+  // Data from frontend - candidate reference (tenant-scoped)
+  const { candidateId } = req.params;
+
+  // DB Logic - authority is req.companyId ONLY (tenant context middleware);
+  // a body/query companyId can never select another tenant's report.
+  // Unreleased reports are invisible here (generated ≠ released).
+  const data = await tenantReportSummary({
+    companyId: req.companyId,
+    candidateId,
+  });
+
+  // Data to frontend - safe report summary or null
+  return ApiResponse.success(res, { message: 'BGV final report', data });
+});
+
+// GET /api/recruitment/candidates/:candidateId/bgv-final-report/download
+export const bgvFinalReportDownload = asyncHandler(async (req, res) => {
+  // Data from frontend - candidate reference (tenant-scoped)
+  const { candidateId } = req.params;
+
+  // DB Logic - RELEASED + same-tenant + BACKGROUND_VERIFICATION_READ are
+  // enforced; storage keys never leave the backend; download is audited.
+  const { buffer, fileName, checksum } = await tenantReportDownload({
+    companyId: req.companyId,
+    candidateId,
+    requestContext: req,
+  });
+
+  // Data to frontend - private controlled stream; no permanent public URL
+  res.setHeader('Cache-Control', 'private, no-store, max-age=0');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+  if (checksum) res.setHeader('X-BGV-Report-Sha256', checksum);
+  return res.status(200).type('application/pdf').send(buffer);
 });

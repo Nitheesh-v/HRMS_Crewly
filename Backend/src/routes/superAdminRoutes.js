@@ -13,6 +13,7 @@ import * as operations from "../controllers/superAdminOperationsController.js";
 import * as bgvCatalogue from "../controllers/superAdminBgvCatalogueController.js";
 import * as bgvVerifier from "../controllers/bgvVerifierController.js";
 import * as bgvOperations from "../controllers/bgvOperationsController.js";
+import * as bgvQa from "../controllers/bgvQaController.js";
 import * as queueOps from "../controllers/superAdminQueueOpsController.js";
 import { securityRateLimit } from "../middlewares/securityRateLimit.js";
 import {
@@ -162,6 +163,21 @@ router.post("/bgv-operations/unassign", permit("bgv-operations:manage"), bgvOper
 // Phase 30.8 — platform-only check cancellation (CANCELLED is never a
 // verifier choice; requires a business reason).
 router.post("/bgv-operations/cancel-check", permit("bgv-operations:manage"), bgvOperations.bgvOperationsCancelCheck);
+
+// Phase 30.10 — internal BGV QA review + final report release.
+// permit() enforces bgv-qa:* on top of the platform session; tenant HR and
+// verifier principals live on separate auth stacks and cannot reach these.
+// QA approves/returns findings and releases reports — it never hires/rejects.
+router.get("/bgv-qa/queue", permit("bgv-qa:review"), bgvQa.bgvQaQueue);
+router.get("/bgv-qa/check/:orderId/:checkType", permit("bgv-qa:review"), bgvQa.bgvQaCheckDetail);
+router.get("/bgv-qa/check/:orderId/:checkType/evidence/:fileId", permit("bgv-qa:review"), bgvQa.bgvQaEvidenceDownload);
+router.post("/bgv-qa/check/:orderId/:checkType/approve", permit("bgv-qa:review"), bgvQa.bgvQaApprove);
+router.post("/bgv-qa/check/:orderId/:checkType/return", permit("bgv-qa:review"), bgvQa.bgvQaReturn);
+router.get("/bgv-qa/report/:orderId", permit("bgv-qa:review"), bgvQa.bgvQaReportStatus);
+router.post("/bgv-qa/report/:orderId/generate", permit("bgv-qa:release"), bgvQa.bgvQaGenerateReport);
+router.post("/bgv-qa/report/:orderId/pdf-retry", permit("bgv-qa:release"), bgvQa.bgvQaRetryReportPdf);
+router.post("/bgv-qa/report/:orderId/release", permit("bgv-qa:release"), bgvQa.bgvQaReleaseReport);
+router.get("/bgv-qa/report/:orderId/download", permit("bgv-qa:review"), bgvQa.bgvQaReportDownload);
 
 router.get(
   "/bgv-catalogue",
