@@ -50,6 +50,36 @@ const bgvService = {
     unwrap(
       await api.get(`/recruitment/candidates/${candidateId}/background-verification`)
     ),
+  // Phase 30.1 — optional BGV decision (Proceed Without BGV / Initiate BGV).
+  decide: async (candidateId, payload) =>
+    unwrap(
+      await api.post(`/recruitment/candidates/${candidateId}/bgv-decision`, payload)
+    ),
+  // Phase 30.3 — paid BGV order (backend is the only price authority).
+  purchasableServices: async () =>
+    unwrap(await api.get('/recruitment/bgv-purchase/services')),
+  createOrder: async (candidateId, payload) =>
+    unwrap(await api.post(`/recruitment/candidates/${candidateId}/bgv-order`, payload)),
+  orderFor: async (candidateId) =>
+    unwrap(await api.get(`/recruitment/candidates/${candidateId}/bgv-order`)),
+  initiatePayment: async (orderId) =>
+    unwrap(await api.post(`/recruitment/bgv-orders/${orderId}/payment/initiate`)),
+  verifyPayment: async (orderId, payload) =>
+    unwrap(await api.post(`/recruitment/bgv-orders/${orderId}/payment/verify`, payload)),
+  cancelOrder: async (orderId) =>
+    unwrap(await api.post(`/recruitment/bgv-orders/${orderId}/cancel`)),
+  // Phase 30.4 — candidate consent invitation (requires a PAID 30.3 order).
+  issueConsentInvitation: async (orderId) =>
+    unwrap(await api.post(`/recruitment/bgv-orders/${orderId}/consent-invitation`)),
+  consentStatus: async (candidateId) =>
+    unwrap(await api.get(`/recruitment/candidates/${candidateId}/bgv-consent-status`)),
+  // Phase 30.5 — candidate collection status (status only; no raw evidence).
+  collectionStatus: async (candidateId) =>
+    unwrap(await api.get(`/recruitment/candidates/${candidateId}/bgv-collection-status`)),
+  // Phase 30.7 — high-level assignment progress (UNASSIGNED/ASSIGNED/
+  // IN_PROGRESS per check). Never internal verifier identity or evidence.
+  assignmentStatus: async (candidateId) =>
+    unwrap(await api.get(`/recruitment/candidates/${candidateId}/bgv-assignment-status`)),
   assign: async (caseId, verifierId) =>
     unwrap(
       await api.post(`/recruitment/background-verifications/${caseId}/assign`, {

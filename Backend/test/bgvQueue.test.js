@@ -56,8 +56,11 @@ const makeCase = (over = {}) => ({
   providerSubmission: { providerRequestId: null, submittedAt: null },
   polling: { status: 'NOT_APPLICABLE', attempts: 0, nextPollAt: null, stopReason: '' },
   assignedVerifier: null,
-  startedAt: new Date('2026-08-28T00:00:00.000Z'),
-  updatedAt: new Date('2026-08-28T00:00:00.000Z'),
+  // RCA (2026-09-05): the fixed 2026-08-28 date aged past BGV_POLL_MAX_WINDOW_MS
+  // (7 days) and silently turned these cases into MAX_POLL_WINDOW short-circuits.
+  // Use a relative "one hour ago" so the fixture stays inside the poll window.
+  startedAt: new Date(Date.now() - 60 * 60 * 1000),
+  updatedAt: new Date(Date.now() - 60 * 60 * 1000),
   ...over,
 });
 

@@ -17,6 +17,8 @@ export const SYSTEM_EVENT_TYPES = [
   'HIGH_USAGE',
   'STORAGE_LIMIT',
   'SECURITY',
+  // Phase 30.2 — platform BGV catalogue commercial mutations.
+  'BGV_CATALOGUE_UPDATED',
 ];
 
 const systemEventSchema = new mongoose.Schema(

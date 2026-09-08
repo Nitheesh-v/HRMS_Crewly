@@ -31,6 +31,32 @@ const superAdminService = {
 
   setTwoFactor: (enabled) => patch("/super-admin/auth/2fa", { enabled }),
 
+  // Phase 30.6 — internal BGV verifier account management (SUPER_ADMIN).
+  bgvVerifiers: () => get("/super-admin/bgv-verifiers"),
+  bgvVerifier: (id) => get(`/super-admin/bgv-verifiers/${id}`),
+  inviteBgvVerifier: (body) => post("/super-admin/bgv-verifiers", body),
+  resendBgvVerifierSetup: (id) =>
+    post(`/super-admin/bgv-verifiers/${id}/resend-setup`, {}),
+  revokeBgvVerifierSetup: (id) =>
+    post(`/super-admin/bgv-verifiers/${id}/revoke-setup`, {}),
+  updateBgvVerifier: (id, body) =>
+    patch(`/super-admin/bgv-verifiers/${id}`, body),
+  deactivateBgvVerifier: (id, body) =>
+    post(`/super-admin/bgv-verifiers/${id}/deactivate`, body || {}),
+  reactivateBgvVerifier: (id) =>
+    post(`/super-admin/bgv-verifiers/${id}/reactivate`, {}),
+
+  // Phase 30.7 — BGV check assignment operations (platform-only).
+  bgvOperationsQueue: () => get("/super-admin/bgv-operations/queue"),
+  bgvEligibleVerifiers: (checkType) =>
+    get(`/super-admin/bgv-operations/checks/${checkType}/eligible-verifiers`),
+  bgvAssignCheck: (body) => post("/super-admin/bgv-operations/assign", body),
+  bgvReassignCheck: (body) => post("/super-admin/bgv-operations/reassign", body),
+  bgvUnassignCheck: (body) => post("/super-admin/bgv-operations/unassign", body),
+  // Phase 30.8 — platform-only check cancellation (CANCELLED is never a
+  // verifier choice; business reason required).
+  bgvCancelCheck: (body) => post("/super-admin/bgv-operations/cancel-check", body),
+
   // Dashboard
   dashboard: () => get("/super-admin/dashboard"),
 
@@ -56,6 +82,12 @@ const superAdminService = {
   users: (params) => get("/super-admin/users", params),
 
   platformAdmins: () => get("/super-admin/platform-admins"),
+
+  // Phase 30.2 — BGV service catalogue & pricing (platform commerce).
+  bgvCatalogue: () => get("/super-admin/bgv-catalogue"),
+
+  updateBgvCatalogue: (type, body) =>
+    patch(`/super-admin/bgv-catalogue/${type}`, body),
 
   // Subscriptions and plans
   subscriptions: (params) => get("/super-admin/subscriptions", params),
