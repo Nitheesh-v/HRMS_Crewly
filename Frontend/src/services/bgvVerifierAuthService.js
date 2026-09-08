@@ -25,10 +25,22 @@ verifierApi.interceptors.request.use((config) => {
 verifierApi.interceptors.response.use(
   (response) => response.data?.data ?? response.data,
   (error) => {
+    const status = error.response?.status;
+    // Phase 30.12 — expired/revoked/deactivated sessions end the portal
+    // visit immediately (the backend already re-checks every request; this
+    // is convenience only, never authority). Auth endpoints are excluded
+    // so a wrong password does not bounce the login form.
+    const isAuthEndpoint = String(error.config?.url || '').includes('/bgv-verifier/auth/');
+    if (status === 401 && !isAuthEndpoint) {
+      localStorage.removeItem(TOKEN_KEY);
+      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/bgv-verifier/login')) {
+        window.location.assign('/bgv-verifier/login');
+      }
+    }
     const normalized = new Error(
       error.response?.data?.message || error.message || 'BGV verifier authentication failed'
     );
-    normalized.status = error.response?.status;
+    normalized.status = status;
     return Promise.reject(normalized);
   }
 );

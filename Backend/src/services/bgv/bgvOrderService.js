@@ -395,7 +395,9 @@ export const verifyBgvOrderPayment = async ({
   if (order.gateway === 'mock') {
     verified = payload.mock === true; // explicit TEST MODE confirm
   } else if (order.gateway === 'razorpay') {
-    verified = verifySignature({
+    // 30.12 hardening: awaited so an injected/async verifier can never
+    // hand back a truthy Promise that would mark a forged payment PAID.
+    verified = await verifySignature({
       orderId: order.providerOrderId,
       paymentId: payload.razorpay_payment_id,
       signature: payload.razorpay_signature,

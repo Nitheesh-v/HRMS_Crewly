@@ -27,6 +27,7 @@ import CandidatePreOnboardingPublicLayout from "../layout/CandidatePreOnboarding
 import CandidatePreOnboardingPortalPage from "../pages/candidate/CandidatePreOnboardingPortalPage.jsx";
 
 import RequireAuth from "./RequireAuth.jsx";
+import RequireVerifierAuth from "./RequireVerifierAuth.jsx";
 import RequirePermission from "./RequirePermission.jsx";
 import RequireRole from "./RequireRole.jsx";
 
@@ -257,9 +258,30 @@ const AppRoutes = () => (
     <Route path="/bgv-verifier/setup/:setupToken" element={<BgvVerifierSetupPage />} />
     <Route path="/bgv-verifier/forgot-password" element={<BgvVerifierForgotPage />} />
     <Route path="/bgv-verifier/reset-password/:resetToken" element={<BgvVerifierResetPage />} />
-    <Route path="/bgv-verifier/work/:orderId/:checkType" element={<BgvVerifierCheckDetailPage />} />
-    <Route path="/bgv-verifier/work" element={<BgvVerifierWorkPage />} />
-    <Route path="/bgv-verifier" element={<BgvVerifierDashboardPage />} />
+    <Route
+      path="/bgv-verifier/work/:orderId/:checkType"
+      element={
+        <RequireVerifierAuth>
+          <BgvVerifierCheckDetailPage />
+        </RequireVerifierAuth>
+      }
+    />
+    <Route
+      path="/bgv-verifier/work"
+      element={
+        <RequireVerifierAuth>
+          <BgvVerifierWorkPage />
+        </RequireVerifierAuth>
+      }
+    />
+    <Route
+      path="/bgv-verifier"
+      element={
+        <RequireVerifierAuth>
+          <BgvVerifierDashboardPage />
+        </RequireVerifierAuth>
+      }
+    />
 
     {/* Public candidate BGV consent portal — secure token authority only */}
     <Route path="/candidate/bgv-consent" element={<CandidateBgvConsentPublicLayout />}>
