@@ -95,8 +95,6 @@ const defaultSubmitConclusion = ({ verificationId, conclusion, revision = 1, dis
       $set: {
         conclusion,
         state: 'SUBMITTED',
-        qaStatus: 'PENDING',
-        qaReturnReason: '',
         'qa.status': 'PENDING',
         'qa.currentRevision': revision,
         'qa.reviewedBy': null,

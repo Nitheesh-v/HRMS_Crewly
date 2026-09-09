@@ -65,10 +65,9 @@ const defaultUpdateReport = ({ reportId, filter = {}, set, push }) =>
 // Atomic QA decision writes: only while the latest submission is still PENDING.
 const defaultApproveUpdate = ({ verificationId, revision, actorId, now }) =>
   BgvCheckVerification.findOneAndUpdate(
-    { _id: verificationId, activeKey: 'CURRENT', state: 'SUBMITTED', qaStatus: 'PENDING', 'qa.currentRevision': revision },
+    { _id: verificationId, activeKey: 'CURRENT', state: 'SUBMITTED', 'qa.status': 'PENDING', 'qa.currentRevision': revision },
     {
       $set: {
-        qaStatus: 'APPROVED',
         'qa.status': 'APPROVED',
         'qa.reviewedBy': actorId,
         'qa.reviewedAt': now,
@@ -81,12 +80,10 @@ const defaultApproveUpdate = ({ verificationId, revision, actorId, now }) =>
   ).lean();
 const defaultReturnUpdate = ({ verificationId, revision, actorId, now, reason }) =>
   BgvCheckVerification.findOneAndUpdate(
-    { _id: verificationId, activeKey: 'CURRENT', state: 'SUBMITTED', qaStatus: 'PENDING', 'qa.currentRevision': revision },
+    { _id: verificationId, activeKey: 'CURRENT', state: 'SUBMITTED', 'qa.status': 'PENDING', 'qa.currentRevision': revision },
     {
       $set: {
         state: 'QA_RETURNED',
-        qaStatus: 'RETURNED',
-        qaReturnReason: reason,
         'qa.status': 'RETURNED',
         'qa.reviewedBy': actorId,
         'qa.reviewedAt': now,
@@ -105,11 +102,26 @@ const defaultLoadEvidenceFiles = ({ ids }) =>
   ids.length ? BgvVerifierEvidenceFile.find({ _id: { $in: ids } }).lean() : Promise.resolve([]);
 const defaultNextReportCode = (companyId) => nextBgvReportCode(companyId);
 
+// Phase 30.12 fix: the authoritative QA state is NESTED (qa.status /
+// qa.returnReason). The top-level qaStatus/qaReturnReason paths never
+// existed on the BgvCheckVerification schema — strict-mode writes dropped
+// them and reads saw undefined, so the QA queue stayed empty and the
+// approve/return conditional updates never matched. Views read the nested
+// fields; a top-level fallback keeps older injected fixtures working.
+const qaStatusOf = (verification) => {
+  const nested = verification?.qa?.status;
+  if (nested && nested !== 'NONE') return nested;
+  if (verification?.qaStatus && verification.qaStatus !== 'NONE') return verification.qaStatus;
+  return nested || 'NONE';
+};
+const qaReturnReasonOf = (verification) =>
+  verification?.qa?.returnReason || verification?.qaReturnReason || '';
+
 const safeCheckView = (verification) => ({
   checkType: verification.checkType,
   state: verification.state,
-  qaStatus: verification.qaStatus || 'NONE',
-  qaReturnReason: verification.qaReturnReason || '',
+  qaStatus: qaStatusOf(verification),
+  qaReturnReason: qaReturnReasonOf(verification),
   revision: verification.qa?.currentRevision || (verification.submissions || []).length,
   conclusion: verification.conclusion?.value || null,
   submittedAt: verification.conclusion?.submittedAt || null,
@@ -262,7 +274,7 @@ export const qaApprove = async ({ actorId, orderId, checkType, requestContext = 
   if (verification.state !== 'SUBMITTED') {
     throw ApiError.conflict('QA can only approve submitted findings');
   }
-  if (verification.qaStatus !== 'PENDING' && verification.qaStatus !== 'NONE') {
+  if (qaStatusOf(verification) !== 'PENDING' && qaStatusOf(verification) !== 'NONE') {
     throw ApiError.conflict('This submission was already reviewed — a resubmission is required');
   }
 
@@ -295,10 +307,10 @@ export const qaReturn = async ({ actorId, orderId, checkType, reason, requestCon
   const safeCheck = String(checkType || '').toUpperCase();
   const verification = await findVerification({ orderId: order._id, checkType: safeCheck });
   if (!verification) throw ApiError.notFound('No verification exists for this check');
-  if (verification.state !== 'SUBMITTED' || verification.qaStatus === 'APPROVED') {
+  if (verification.state !== 'SUBMITTED' || qaStatusOf(verification) === 'APPROVED') {
     throw ApiError.conflict('Only a PENDING submitted finding can be returned for correction');
   }
-  if (verification.qaStatus === 'RETURNED') {
+  if (qaStatusOf(verification) === 'RETURNED') {
     return { verification: safeCheckView(verification), idempotent: true };
   }
 

@@ -433,8 +433,11 @@ export const buildWorkbenchView = (verification, fallbackCheckType = null) => {
     states: WORKBENCH_STATES,
     locked: submitted,
     // Phase 30.10 — QA lifecycle + immutable revision history for the UI.
-    qaStatus: verification?.qaStatus || 'NONE',
-    qaReturnReason: verification?.qaReturnReason || '',
+    qaStatus:
+      verification?.qa?.status && verification.qa.status !== 'NONE'
+        ? verification.qa.status
+        : verification?.qaStatus || 'NONE',
+    qaReturnReason: verification?.qa?.returnReason || verification?.qaReturnReason || '',
     revision: verification?.qa?.currentRevision || (verification?.submissions || []).length,
     submissions: (verification?.submissions || []).map((entry) => ({
       revision: entry.revision,

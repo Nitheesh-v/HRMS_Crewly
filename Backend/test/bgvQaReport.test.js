@@ -540,5 +540,91 @@ test('30.10 #59-69 regression wiring: 30.1-30.9 + 27.15 suites all in test:all; 
   // Verifier workbench still owns conclusions; QA additions are additive.
   const workbench = readFileSync(new URL('../src/services/bgv/bgvWorkbenchService.js', import.meta.url), 'utf8');
   assert.ok(workbench.includes('BGV_CHECK_CONCLUSION_SUBMITTED'));
-  assert.ok(workbench.includes('qaStatus'));
+  // 30.12: submission writes the authoritative NESTED qa state only.
+  assert.ok(workbench.includes("'qa.status': 'PENDING'"));
+});
+
+// ── Phase 30.12 regression — QA state lives at the nested qa.* schema paths.
+// The historical top-level qaStatus/qaReturnReason never existed on
+// BgvCheckVerification, so the queue read 'NONE' forever (submitted work
+// invisible to QA) and the approve/return conditional filters never matched.
+// These tests feed REAL schema-shaped documents (no top-level qaStatus)
+// through the real queue/approve/return logic.
+const schemaShaped = (orderId) => ({
+  _id: 'e'.repeat(24),
+  bgvOrder: orderId,
+  checkType: 'IDENTITY',
+  state: 'SUBMITTED',
+  conclusion: { value: 'VERIFIED', submittedAt: new Date() },
+  qa: { status: 'PENDING', currentRevision: 1 },
+  submissions: [{ revision: 1, qa: { status: 'PENDING' } }],
+  activities: [{ seq: 1 }],
+  discrepancies: [],
+});
+
+test('§30.12 schema-shaped submission surfaces in the QA awaiting queue', async () => {
+  const orderId = 'o'.repeat(24);
+  const { rows } = await qaQueue({
+    filters: { status: 'awaiting' },
+    deps: {
+      listSubmittedCases: async () => [{ bgvOrder: orderId, status: 'SUBMITTED', identity: { legalName: 'Candidate' } }],
+      loadOrderById: async () => ({ _id: orderId, companyId: 'c'.repeat(24), candidate: 'd'.repeat(24), orderCode: 'BGV-3012', status: 'PAID' }),
+      loadCompany: async () => ({ name: 'Tenant' }),
+      loadCandidate: async () => ({ name: 'Candidate' }),
+      listVerifications: async () => [schemaShaped(orderId)],
+      countOpenInfoRequests: async () => 0,
+    },
+  });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].qaStatus, 'PENDING');
+  assert.equal(rows[0].conclusion, 'VERIFIED');
+  assert.equal(rows[0].checkType, 'IDENTITY');
+});
+
+test('§30.12 qaApprove accepts a schema-shaped PENDING submission', async () => {
+  const orderId = 'o'.repeat(24);
+  const verification = schemaShaped(orderId);
+  const updated = { ...verification, qa: { ...verification.qa, status: 'APPROVED', reviewedBy: 'qa-1' } };
+  const result = await qaApprove({
+    actorId: 'qa-1',
+    orderId,
+    checkType: 'IDENTITY',
+    deps: {
+      loadOrderById: async () => ({ _id: orderId, orderCode: 'BGV-3012', status: 'PAID' }),
+      findVerification: async () => verification,
+      approveUpdate: async () => updated,
+      audit: async () => ({ ok: true, mode: 'test' }),
+    },
+  });
+  assert.equal(result.idempotent, false);
+  assert.equal(result.verification.qaStatus, 'APPROVED');
+});
+
+test('§30.12 qaReturn accepts a schema-shaped PENDING submission', async () => {
+  const orderId = 'o'.repeat(24);
+  const verification = schemaShaped(orderId);
+  const updated = { ...verification, state: 'QA_RETURNED', qa: { ...verification.qa, status: 'RETURNED', returnReason: 'Please clarify the issuing authority on the document.' } };
+  const result = await qaReturn({
+    actorId: 'qa-1',
+    orderId,
+    checkType: 'IDENTITY',
+    reason: 'Please clarify the issuing authority on the document.',
+    deps: {
+      loadOrderById: async () => ({ _id: orderId, orderCode: 'BGV-3012', status: 'PAID' }),
+      findVerification: async () => verification,
+      returnUpdate: async () => updated,
+      audit: async () => ({ ok: true, mode: 'test' }),
+    },
+  });
+  assert.equal(result.idempotent, false);
+  assert.equal(result.verification.qaStatus, 'RETURNED');
+  assert.equal(result.verification.state, 'QA_RETURNED');
+});
+
+test('§30.12 approve/return conditional filters target the nested qa status', () => {
+  const source = readFileSync(new URL('../src/services/bgv/bgvQaReportService.js', import.meta.url), 'utf8');
+  assert.ok(!source.includes("state: 'SUBMITTED', qaStatus:"), 'no phantom top-level qaStatus in conditional filters');
+  assert.ok(source.includes("'qa.status': 'PENDING'"), 'conditional lock queries the nested qa status');
+  const model = readFileSync(new URL('../src/models/BgvCheckVerification.js', import.meta.url), 'utf8');
+  assert.ok(!model.includes('qaStatus'), 'schema never defined a top-level qaStatus path');
 });
