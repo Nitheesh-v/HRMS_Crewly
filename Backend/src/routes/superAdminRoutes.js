@@ -14,6 +14,7 @@ import * as bgvCatalogue from "../controllers/superAdminBgvCatalogueController.j
 import * as bgvVerifier from "../controllers/bgvVerifierController.js";
 import * as bgvOperations from "../controllers/bgvOperationsController.js";
 import * as bgvQa from "../controllers/bgvQaController.js";
+import * as bgvBilling from "../controllers/bgvBillingController.js";
 import * as bgvOpsDash from "../controllers/bgvOperationsDashboardController.js";
 import * as queueOps from "../controllers/superAdminQueueOpsController.js";
 import { securityRateLimit } from "../middlewares/securityRateLimit.js";
@@ -168,6 +169,10 @@ router.post("/bgv-operations/cancel-check", permit("bgv-operations:manage"), bgv
 // Phase 30.11 — internal BGV operations dashboard (derived counts, drill-down
 // queues, verifier workload, SLA config). READS are count lookups and are
 // deliberately NOT audited; only the SLA configuration write is audited.
+// Phase 30.12 — BGV billing reporting (read-only over immutable order
+// snapshots; SUPER_ADMIN via "*", no payment mutation lives here).
+router.get("/bgv-billing/overview", permit("bgv-billing:read"), bgvBilling.bgvBilling);
+
 router.get("/bgv-ops/dashboard", permit("bgv-operations:read"), bgvOpsDash.bgvOpsDashboard);
 router.get("/bgv-ops/queue", permit("bgv-operations:read"), bgvOpsDash.bgvOpsQueue);
 router.get("/bgv-ops/workload", permit("bgv-operations:read"), bgvOpsDash.bgvOpsWorkload);

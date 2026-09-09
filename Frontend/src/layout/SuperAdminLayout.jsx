@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { ClipboardList, Gauge, ShieldCheck, UserCheck } from "lucide-react";
+import { ClipboardList, Gauge, ReceiptText, ShieldCheck, UserCheck } from "lucide-react";
 import useAuth from "../hooks/useAuth.jsx";
 import superAdminService from "../services/superAdminService.js";
 
@@ -51,6 +51,13 @@ const MENU = [
     to: "/super-admin/bgv-operations",
     label: "BGV Operations",
     icon: <ClipboardList className="h-4 w-4" />,
+    roles: ["SUPER_ADMIN"],
+  },
+  {
+    // Phase 30.12 — BGV billing reporting (read-only).
+    to: "/super-admin/bgv-billing",
+    label: "BGV Billing",
+    icon: <ReceiptText className="h-4 w-4" />,
     roles: ["SUPER_ADMIN"],
   },
   {

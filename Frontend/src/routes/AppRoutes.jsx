@@ -153,6 +153,7 @@ import SuperAdminBackgroundOperationsPage from "../pages/admin/SuperAdminBackgro
 import SuperAdminBgvVerifiersPage from "../pages/admin/SuperAdminBgvVerifiersPage.jsx";
 import SuperAdminBgvOperationsPage from "../pages/admin/SuperAdminBgvOperationsPage.jsx";
 import SuperAdminBgvQaPage from "../pages/admin/SuperAdminBgvQaPage.jsx";
+import SuperAdminBgvBillingPage from "../pages/admin/SuperAdminBgvBillingPage.jsx";
 import SuperAdminBgvOpsDashboardPage from "../pages/admin/SuperAdminBgvOpsDashboardPage.jsx";
 import SuperAdminBgvCataloguePage from "../pages/admin/SuperAdminBgvCataloguePage.jsx";
 
@@ -893,6 +894,14 @@ const AppRoutes = () => (
         path="bgv-operations"
         element={
           <SuperAdminBgvOperationsPage />
+        }
+      />
+
+      {/* Phase 30.12 — BGV billing reporting (read-only snapshots). */}
+      <Route
+        path="bgv-billing"
+        element={
+          <SuperAdminBgvBillingPage />
         }
       />
 
