@@ -15,6 +15,10 @@ const CandidateBgvPanel = ({ candidate }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  // Phase 30.12 — a purchased Crewly-managed BGV order means the legacy
+  // internal 'Start BGV' track must not invite duplicate work (same
+  // contradiction logic as the waiver guard).
+  const [hasOrder, setHasOrder] = useState(false);
 
   const ref =
     candidateRef ||
@@ -86,7 +90,10 @@ const CandidateBgvPanel = ({ candidate }) => {
       <BgvPurchasePanel
         candidateRef={ref}
         decisionStatus={summary?.decision?.status}
+        onOrderState={setHasOrder}
       />
+    {(caseData ||
+      (canStart && !hasOrder && summary?.decision?.status !== 'PROCEEDED_WITHOUT_BGV')) ? (
     <section className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-5">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex items-start gap-3">
@@ -129,6 +136,7 @@ const CandidateBgvPanel = ({ candidate }) => {
         </div>
       </div>
     </section>
+    ) : null}
     </div>
   );
 };

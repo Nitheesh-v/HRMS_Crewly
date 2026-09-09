@@ -833,6 +833,18 @@ test('§30.12 tenant BGV panel defines and loads finalReport before rendering it
   assert.ok(!panel.includes("'''"), 'no heredoc artifact rendered as JSX text');
 });
 
+// Phase 30.12 regression: the legacy internal 'Start BGV' track must not be
+// offered once a purchased Crewly-managed order exists (duplicate-work guard).
+test('§30.12 legacy internal BGV start hides when a purchased order exists', async () => {
+  const { readFileSync } = await import('node:fs');
+  const panel = readFileSync(
+    new URL('../../Frontend/src/components/recruitment/CandidateBgvPanel.jsx', import.meta.url),
+    'utf8'
+  );
+  assert.ok(panel.includes('onOrderState={setHasOrder}'), 'purchase panel reports order presence');
+  assert.ok(panel.includes('canStart && !hasOrder'), 'legacy track gated on order presence');
+});
+
 test('§30.12 verifier evidence upload uses the hardened uploader field name', async () => {
   const { readFileSync } = await import('node:fs');
   const middleware = readFileSync(

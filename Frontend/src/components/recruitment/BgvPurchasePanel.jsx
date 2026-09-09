@@ -106,7 +106,7 @@ const COLLECTION_COPY = {
 // INITIATE BGV. All amounts shown are DISPLAY ONLY; the backend re-prices
 // every order from the active catalogue. Mongo is the truth: a refresh
 // re-reads the order, so double-clicks/double tabs never double-charge.
-const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
+const BgvPurchasePanel = ({ candidateRef, decisionStatus, onOrderState = null }) => {
   const { hasPermission } = usePermission();
   const canManage = hasPermission('BACKGROUND_VERIFICATION_MANAGE');
 
@@ -187,6 +187,12 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
   useEffect(() => {
     if (canManage) load();
   }, [canManage, load, decisionStatus]);
+
+  // Phase 30.12 — let the parent hide the legacy internal BGV track once a
+  // purchased order exists (two tracks must not invite duplicate work).
+  useEffect(() => {
+    onOrderState?.(Boolean(state.order));
+  }, [state.order, onOrderState]);
 
   if (!canManage) return null;
 
