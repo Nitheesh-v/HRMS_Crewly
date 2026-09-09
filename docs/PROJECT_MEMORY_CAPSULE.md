@@ -2,7 +2,9 @@
 
 For starting a new Agent/session on this project. Read this first, then the
 repo (the repo is always the source of truth).
-Last updated: 2026-08-29, after Phase 28.9 close (commit a869ad9).
+Last updated: 2026-09-09, after Phase 30 close (branch
+`arena/01a0706f-hrms-crewly`, tip `bd02668`; `main` is still `c9fde14` —
+merge the PR before starting the next phase).
 
 ---
 
@@ -133,6 +135,14 @@ career portal.
   queues, Redis analytics cache, queue operations + failure management,
   final hardening. Reference: `docs/PHASE_28_FINAL_ARCHITECTURE.md`
   (diagram, full inventory, runbooks, production guidance, §15 capsule).
+- Phase 30 (Internal BGV, 30.1–30.12, ALL CLOSED): the full in-house
+  background-verification lifecycle — HR decision → priced catalogue →
+  paid order → candidate consent → candidate evidence collection →
+  verifier accounts → assignment → verification workbench → info
+  requests → internal QA + final report → operations/SLA dashboard →
+  super-admin billing + stale-cancel. Reference:
+  `docs/PHASE_30_INTERNAL_BGV.md` + the twelve per-step docs
+  (`docs/PHASE_30_1_…` … `PHASE_30_11_…`). Full record in §9 below.
 
 ## 3. Domain invariants (project-wide)
 
@@ -252,6 +262,8 @@ career portal.
   RESUME_REPROCESS_COOLDOWN_MS, ATS_WEIGHT_* (required/experience/
   preferred/education/location), ATS_DEFAULT_MAX_NOTICE_PERIOD_DAYS
 - Phase 29.1: PAYROLL_SETUP_CACHE_TTL_SECONDS
+- Phase 30: BGV_CONSENT_TOKEN_MAX_DAYS (default 7),
+  BGV_VERIFIER_SESSION_HOURS
 - Phase 28: REDIS_ENABLED, REDIS_URL (secret — env only),
   REDIS_CONNECT_TIMEOUT_MS, BULLMQ_PREFIX, WORKER_CONCURRENCY,
   EMAIL/RESUME/ATS/SCHEDULED/DOCUMENT/BGV_WORKER_CONCURRENCY,
@@ -276,7 +288,7 @@ npm run worker     # Background worker (separate process)
 # Frontend: npm run dev
 
 # tests (Backend)
-npm run test:all          # 24 non-live suites, 366 hermetic tests
+npm run test:all          # full hermetic ladder — 1078/1078 as of Phase 30 close
 npm run test:phase28      # Phase 28 suites
 npm run test:redis / test:bullmq / test:email / test:processing /
 npm run test:scheduled / test:background-jobs / test:cache / test:operations
@@ -559,7 +571,151 @@ Frontend first (node_modules may be missing).
   portal, no automatic government filing, no digital signature, no Form 16, no
   Form 24Q upload — the PDF states in print that it is not a filed return.
 
-## 9. Current state (2026-09-01)
+## 8b. Phase 30 standing rules (user-set — never violate)
+
+Scope fence (the whole phase):
+- EXACTLY five BGV services: IDENTITY, ADDRESS, EDUCATION, EMPLOYMENT,
+  REFERENCE (`BGV_CATALOGUE_TYPES`). NO feature expansion: no DigiLocker
+  API integration, no criminal/court/watchlist/PEP/credit/medical/drug/
+  licence checks. DigiLocker-style checks are manual / issuer-assisted
+  evidence only.
+- NO new billing models ever without explicit instruction: no prepaid
+  wallets, monthly plans, subscriptions, enterprise postpaid, no
+  refunds. Billing surfaces are READ-ONLY reporting over immutable
+  order snapshots; amounts only from `totalMinorUnits` /
+  `unitPriceMinorUnits`; never re-price history.
+- No payment bypass or dev-bypass endpoints; never manually set an
+  order PAID; never weaken payment verification for local testing;
+  never claim exactly-once webhooks or emails.
+
+Consent (30.4):
+- Raw token never persisted, logged, audited or queued — sha256 hash
+  only, purpose-isolated collection (can never resolve as offer/pre-
+  onboarding/reset tokens). Resend ROTATES the active link; a completed
+  decision is never invalidated by resend. Decline is NOT verification
+  failure and NOT rejection. GET never submits a decision.
+- Crewly is always the email sender (configured SMTP_FROM, "operated by
+  Infolexus"); recipients only from authoritative Mongo; SMTP failure
+  never reverses PAID.
+
+Collection (30.5):
+- Consent is mandatory, backend-enforced, before any upload. Only
+  purchased checks are collectible. No credentials/OTPs anywhere.
+  Masked identifiers in UI/emails/audit. Aadhaar provenance is
+  "candidate-provided". Selfie is private, no biometrics. No phone
+  geolocation. `NOT_CONFIGURED` is not `CLEAN`. No public file URLs;
+  file authorization server-side only; reuse existing secure
+  upload/storage abstractions.
+
+Verifier boundary (30.6-30.9):
+- Verifiers are NOT tenant Users (separate model/session/token). No
+  temp passwords; hash-only setup tokens; generic auth errors; soft
+  deactivation. Specialization alone = ZERO access; current assignment
+  IS the authorization. ONE primary verifier per check, claimed
+  atomically; immutable assignment history. Evidence reads are audited.
+  Verifiers see NO pricing/payment data and make NO recruitment
+  decisions.
+- Workbench: status is never conflated with conclusion; backend method
+  allowlist; append-only attempts; submission locking with idempotent
+  duplicate; UAN last-4 supporting-only; no salary amounts; original
+  evidence never destroyed; no new BullMQ queues; no
+  dangerouslySetInnerHTML; duplicate OPEN info-request is idempotent;
+  GET never submits.
+
+QA + report (30.10):
+- QA is separated from verification; an approved revision is terminal;
+  return requires reason of at least 10 chars; readiness is
+  backend-enforced at BOTH generate and release; no REJECTED outcome;
+  generated is not released; report PDF is rendered from the stored
+  snapshot only; tenant access via `req.companyId`; BGVRPT codes via
+  TenantSequence.
+
+Operations (30.11):
+- No duplicate state machines; no hardcoded SLA defaults (policy data
+  only); no auto-reassignment/auto-rejection; tenants never see
+  workload/SLA/QA internals; no revenue/BI analytics beyond the agreed
+  surfaces; no `razorpayPaymentId` dependency in business logic;
+  dashboard count reads are not audited.
+
+Close-out discipline (30.12):
+- Fix defects only — no product-scope expansion; do not blindly remove
+  unrelated historical code; BLOCKED is not PASS; report CURRENT
+  checkout test numbers only; keep the NOT-implemented list in docs
+  honest; no seed/demo scripts ever; no Phase 31 without explicit
+  instruction.
+- All new UI uses the dark Crewly tokens (`Frontend/src/style.css` —
+  `.card/.input/.label/.btn-primary/.btn-ghost/.badge`); Lucide icons.
+
+## 9. Current state (2026-09-09 — Phase 30 CLOSED)
+
+- Branch `arena/01a0706f-hrms-crewly`, tip `bd02668`, pushed. `main` is
+  `c9fde14` — a PR (arena branch into main) must be MERGED before the
+  next phase session, or the new branch will not contain Phase 30.
+- Backend `npm run test:all` = 1078/1078 hermetic. Frontend
+  `npm run build` green. Developer accepted Phase 30 on localhost.
+- Phase 30 delivered, step by step (docs/PHASE_30_* for each):
+  - 30.1 Optional BGV decision — post-selection human decision on the
+    candidate (BGV_INITIATED / PROCEEDED_WITHOUT_BGV,
+    bgvDecisionRules/Service); gates the purchase entry.
+  - 30.2 Catalogue & pricing — `BgvServiceCatalogue`, exactly the five
+    services, backend is the ONLY price authority (minor units, INR,
+    `formatMinorUnits`); Super Admin catalogue page; SystemEvent audit.
+    Tenant HR can NOT mutate the catalogue.
+  - 30.3 Paid BGV order — `BgvOrder` with IMMUTABLE items/total
+    snapshot, BGVORD-nnnnnn via TenantSequence, statuses CREATED →
+    PENDING_PAYMENT → PAID (+ PAYMENT_FAILED/CANCELLED/EXPIRED),
+    `openKey` partial-unique index = one open order per candidate;
+    mock + razorpay gateways; `commercialReadinessOf()` is the single
+    commercial boundary future billing modes must map into.
+  - 30.4 Candidate consent — `BgvConsentAccessToken` (hash-only,
+    rotation, POST-only CONSENTED/DECLINED with provenance, GET
+    telemetry only, expiry BGV_CONSENT_TOKEN_MAX_DAYS default 7).
+  - 30.5 Candidate collection — `BgvCollectionCase` +
+    `BgvEvidenceFile` + public collection portal; consent-first;
+    purchased-checks-only; masked identifiers.
+  - 30.6 Verifier accounts — `BgvVerifier` / `BgvVerifierSession`
+    (BGV_VERIFIER_SESSION_HOURS) / `BgvVerifierToken`; specializations;
+    zero access by default.
+  - 30.7 Check assignment — `BgvCheckAssignment`; one primary verifier
+    per check, atomic; immutable history; verifier work queue.
+  - 30.8 Verification workbench — `BgvCheckVerification`; append-only
+    attempts; conclusion states separate from status; method allowlist;
+    5 MB evidence cap; locked submissions.
+  - 30.9 Additional info requests — `BgvInfoRequest`; category
+    allowlist; duplicate OPEN idempotent; system-mediated rotation.
+  - 30.10 QA + final report — QA review (`bgv-qa:*`), append-only
+    revisions, release gate at generate AND release, BGVRPT-nnnnnn,
+    PDF from stored snapshot (`bgvQaReportService`), honest
+    NOT_CONFIGURED → WARNING pill; tenant final-report card; HR
+    post-release is human decision only.
+  - 30.11 Operations & SLA — `BgvSlaPolicy` (policy data, no hardcoded
+    defaults), operations dashboard (`bgvOperationsDashboardService`,
+    `bgv-operations:*`), workload view for SUPER_ADMIN/PLATFORM_ADMIN.
+  - 30.12 Close-out (this branch): defect fix-forwards — corrupt-PDF
+    self-heal (magic-byte check → re-render from snapshot), tenant
+    report CODE→ObjectId resolution, duplicate-BGV-track gate
+    (`f267f10`); verifier portal UI pass (`4a0472c`); Super Admin BGV
+    Billing (`498194d`): read-only overview — collected (PAID sum),
+    per-status totals, paginated orders — behind `bgv-billing:read`
+    (SUPER_ADMIN only via `'*'`); awaiting-candidate + stale-cancel
+    (`bd02668`): unpaid-reply list (latest consent token, no decision),
+    cancel behind `bgv-billing:cancel` — only after the invitation
+    window expired, reason of at least 10 chars, order → CANCELLED
+    (the ONE new state edge PAID → CANCELLED), consent link revoked,
+    openKey released so the tenant can re-initiate, WARN SystemEvent
+    audit.
+- NOT implemented (kept honest, by design): external BGV providers of
+  any kind; future billing models (prepaid/subscription/postpaid) and
+  refunds; loans/advances ledger (29.11 reversal); HR_HEAD/HR_EXECUTIVE
+  activation (data-only templates); Phase 31.
+- Agent-sandbox quirks: local git may be a depth-1 shallow clone at the
+  anchor commit with the working tree on top — the REMOTE branch is
+  authoritative (`git ls-remote origin <branch>`); node_modules is
+  wiped by snapshot resets (`npm install --no-audit --no-fund` in both
+  Backend and Frontend); no mongod in sandboxes, so all tests stay
+  hermetic (DI seams everywhere in bgv services).
+
+## 9a. Previous state (2026-09-01)
 
 - Phase 29.1 = Company Payroll Setup + an RBAC update on top of it: 39
   granular payroll permissions (10 resources), opt-in role templates
@@ -670,6 +826,10 @@ Frontend first (node_modules may be missing).
 
 ## 10. Next-phase candidates (start ONLY on explicit instruction)
 
+- Phase 30 is closed and there is NO Phase 31 without the developer
+  naming it — the next phase arrives as an explicit brief.
+- First housekeeping for the next session: confirm `main` contains
+  `bd02668` (merge the arena PR) before branching.
 - HR_HEAD / HR_EXECUTIVE roles; payroll redesign; L&D module;
   asset/expense upgrades; helpdesk.
 - Hardening backlog: external BGV provider integration; OCR for scanned
