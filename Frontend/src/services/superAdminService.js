@@ -57,6 +57,8 @@ const superAdminService = {
   // Phase 30.10 — internal BGV QA review + final report release.
   // Phase 30.12 — BGV billing reporting (read-only).
   bgvBillingOverview: (params) => get("/super-admin/bgv-billing/overview", params),
+  bgvBillingAwaiting: (params) => get("/super-admin/bgv-billing/awaiting-candidate", params),
+  bgvBillingCancel: (orderId, data) => post(`/super-admin/bgv-billing/cancel/${orderId}`, data),
   bgvQaQueue: (params) => get("/super-admin/bgv-qa/queue", params),
   bgvQaDetail: (orderId, checkType) => get(`/super-admin/bgv-qa/check/${orderId}/${checkType}`),
   bgvQaApprove: (orderId, checkType) => post(`/super-admin/bgv-qa/check/${orderId}/${checkType}/approve`, {}),

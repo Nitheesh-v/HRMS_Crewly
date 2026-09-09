@@ -28,7 +28,11 @@ export const BGV_ORDER_OPEN_STATUSES = ['CREATED', 'PENDING_PAYMENT', 'PAID'];
 export const BGV_ORDER_TRANSITIONS = {
   CREATED: ['PENDING_PAYMENT', 'CANCELLED', 'EXPIRED'],
   PENDING_PAYMENT: ['PAID', 'PAYMENT_FAILED', 'CANCELLED', 'EXPIRED'],
-  PAID: [],
+  // Phase 30.12 — the ONLY exit from PAID is the platform stale-cancel
+  // (super admin cancels an answered-nowhere consent request after the
+  // invitation window expired; reason + SystemEvent audit mandatory).
+  // Tenant flows can never take this edge.
+  PAID: ['CANCELLED'],
   PAYMENT_FAILED: [],
   CANCELLED: [],
   EXPIRED: [],

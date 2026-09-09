@@ -172,6 +172,10 @@ router.post("/bgv-operations/cancel-check", permit("bgv-operations:manage"), bgv
 // Phase 30.12 — BGV billing reporting (read-only over immutable order
 // snapshots; SUPER_ADMIN via "*", no payment mutation lives here).
 router.get("/bgv-billing/overview", permit("bgv-billing:read"), bgvBilling.bgvBilling);
+// HR initiated, candidate never replied: awaiting list + stale-cancel
+// (cancel only allowed after the invitation window expired).
+router.get("/bgv-billing/awaiting-candidate", permit("bgv-billing:read"), bgvBilling.bgvAwaitingCandidate);
+router.post("/bgv-billing/cancel/:orderId", permit("bgv-billing:cancel"), bgvBilling.cancelUnansweredBgv);
 
 router.get("/bgv-ops/dashboard", permit("bgv-operations:read"), bgvOpsDash.bgvOpsDashboard);
 router.get("/bgv-ops/queue", permit("bgv-operations:read"), bgvOpsDash.bgvOpsQueue);
