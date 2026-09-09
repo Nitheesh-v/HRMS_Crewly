@@ -122,6 +122,7 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
     consent: null,
     collection: null,
     assignmentProgress: null,
+    finalReport: null,
   });
   const [selected, setSelected] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -151,6 +152,13 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
         collection?.collectionStatus === 'CANDIDATE_SUBMITTED'
           ? await bgvService.assignmentStatus(candidateRef).catch(() => null)
           : null;
+      // Phase 30.12 fix: the released-report card below reads finalReport —
+      // it must actually be loaded (null until QA releases; backend gates).
+      const finalReportView =
+        order?.status === 'PAID'
+          ? await bgvService.finalReport(candidateRef).catch(() => null)
+          : null;
+      const finalReport = finalReportView?.report || null;
       setState((current) => ({
         ...current,
         loading: false,
@@ -163,6 +171,7 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
         consent,
         collection,
         assignmentProgress,
+        finalReport,
       }));
     } catch (error) {
       setState((current) => ({
@@ -181,7 +190,7 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
 
   if (!canManage) return null;
 
-  const { loading, error, message, services, order, eligible, reason, consent, collection, assignmentProgress } = state;
+  const { loading, error, message, services, order, eligible, reason, consent, collection, assignmentProgress, finalReport } = state;
   const selectedServices = services.filter((service) => selected.includes(service.type));
   const displayTotal = selectedServices.reduce(
     (sum, service) => sum + (service.priceMinorUnits || 0),
@@ -469,7 +478,6 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus }) => {
               ) : null}
             </div>
           </div>
-') + '''
             </>
           ) : (
             <div className="flex flex-wrap gap-2">

@@ -802,6 +802,22 @@ test('§31.55 issuer-assisted provenance is explicit and honest', () => {
 // Phase 30 upload client must use that exact name (the verifier workbench
 // once sent 'file', multer raised LIMIT_UNEXPECTED_FILE, and the attach
 // failed with 400 during localhost acceptance).
+// Phase 30.12 regression: the tenant candidate page crashed blank because the
+// paid-order branch rendered FinalReportCard from a `finalReport` identifier
+// that was never loaded or destructured (ReferenceError, no error boundary).
+// The panel must define, fetch, and destructure it.
+test('§30.12 tenant BGV panel defines and loads finalReport before rendering it', async () => {
+  const { readFileSync } = await import('node:fs');
+  const panel = readFileSync(
+    new URL('../../Frontend/src/components/recruitment/BgvPurchasePanel.jsx', import.meta.url),
+    'utf8'
+  );
+  assert.ok(panel.includes('finalReport: null'), 'state initialises finalReport');
+  assert.ok(panel.includes('bgvService.finalReport(candidateRef)'), 'released report is fetched');
+  assert.ok(/const \{[^}]*finalReport[^}]*\} = state;/.test(panel), 'finalReport is destructured from state');
+  assert.ok(!panel.includes("'''"), 'no heredoc artifact rendered as JSX text');
+});
+
 test('§30.12 verifier evidence upload uses the hardened uploader field name', async () => {
   const { readFileSync } = await import('node:fs');
   const middleware = readFileSync(
