@@ -54,7 +54,12 @@ const defaultFindVerification = ({ orderId, checkType }) =>
 const defaultCountOpenInfoRequests = ({ orderId }) =>
   BgvInfoRequest.countDocuments({ bgvOrder: orderId, status: 'OPEN' });
 const defaultFindReport = ({ orderId }) =>
-  BgvFinalReport.findOne({ bgvOrder: orderId }).sort({ version: -1 }).lean();
+  // Phase 30.12 fix: pdf.storageKey is select:false (private by default) —
+  // download paths must opt in or the availability guard always 409s.
+  BgvFinalReport.findOne({ bgvOrder: orderId })
+    .sort({ version: -1 })
+    .select('+pdf.storageKey')
+    .lean();
 const defaultInsertReport = (doc) => BgvFinalReport.create(doc);
 const defaultUpdateReport = ({ reportId, filter = {}, set, push }) =>
   BgvFinalReport.findOneAndUpdate(
@@ -666,7 +671,11 @@ export const platformReportDownload = async ({ actorId, orderId, requestContext 
 // ── tenant HR access (req.companyId is the ONLY authority) ────────
 const loadTenantReport = async ({ companyId, candidateId, deps }) => {
   const findReportForTenant = deps.findReportForTenant ||
-    ((args) => BgvFinalReport.findOne({ companyId: args.companyId, candidate: args.candidateId }).sort({ version: -1 }).lean());
+    ((args) =>
+      BgvFinalReport.findOne({ companyId: args.companyId, candidate: args.candidateId })
+        .sort({ version: -1 })
+        .select('+pdf.storageKey')
+        .lean());
   const report = await findReportForTenant({ companyId, candidateId });
   if (!report) return null;
   return report;

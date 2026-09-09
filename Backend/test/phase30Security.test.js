@@ -806,6 +806,21 @@ test('§31.55 issuer-assisted provenance is explicit and honest', () => {
 // paid-order branch rendered FinalReportCard from a `finalReport` identifier
 // that was never loaded or destructured (ReferenceError, no error boundary).
 // The panel must define, fetch, and destructure it.
+// Phase 30.12 regression: pdf.storageKey is select:false, so every report
+// finder used by a download path must opt in with +pdf.storageKey — otherwise
+// the availability guard sees undefined and 409s even when the PDF is stored.
+test('§30.12 report download finders select the private pdf storage key', async () => {
+  const { readFileSync } = await import('node:fs');
+  const service = readFileSync(
+    new URL('../src/services/bgv/bgvQaReportService.js', import.meta.url),
+    'utf8'
+  );
+  const model = readFileSync(new URL('../src/models/BgvFinalReport.js', import.meta.url), 'utf8');
+  assert.ok(model.includes('storageKey: { type: String, default: \'\', select: false }'), 'key stays private by default');
+  const finderMatches = service.match(/\.select\('\+pdf\.storageKey'\)/g) || [];
+  assert.ok(finderMatches.length >= 2, 'both QA and tenant report finders opt in to the key');
+});
+
 test('§30.12 tenant BGV panel defines and loads finalReport before rendering it', async () => {
   const { readFileSync } = await import('node:fs');
   const panel = readFileSync(
