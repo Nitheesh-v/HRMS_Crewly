@@ -430,7 +430,7 @@ const renderAndStorePdf = async ({ report, order, deps }) => {
       },
       push: { action: 'BGV_REPORT_PDF_GENERATED', actor: null, metadata: { sizeBytes: buffer.length } },
     });
-    return { report: updated, pdfFailed: false };
+    return { report: updated, pdfFailed: false, buffer };
   } catch (error) {
     // PDF/storage failure NEVER falsely releases and never touches findings.
     // Phase 30.12 — surface a sanitized reason server-side so operators can
@@ -647,16 +647,45 @@ const safeSnapshot = (snapshot = {}) => ({
   })),
 });
 
+// Phase 30.12 — self-healing PDF delivery: serve stored bytes only when they
+// are a real PDF; otherwise re-render deterministically from the IMMUTABLE
+// snapshot (findings untouched) and re-store, so one stale/corrupt artifact
+// can never block the released-report flow.
+const isPdfBuffer = (buffer) =>
+  Buffer.isBuffer(buffer) && buffer.length > 8 && buffer.subarray(0, 5).toString('ascii') === '%PDF-';
+
+const serveReportPdf = async ({ report, deps = {} }) => {
+  const fetchFile = deps.fetchFile || defaultFetchFile;
+  if (report.pdf?.status === 'GENERATED' && report.pdf?.storageKey) {
+    try {
+      const stored = await fetchFile({
+        storageProvider: report.pdf.storageProvider,
+        storageKey: report.pdf.storageKey,
+      });
+      if (isPdfBuffer(stored?.buffer)) return { buffer: stored.buffer, report };
+      console.warn('[BGV-REPORT-PDF] stored bytes are not a valid PDF — re-rendering from the immutable snapshot');
+    } catch (error) {
+      console.warn('[BGV-REPORT-PDF] stored file unreadable — re-rendering:', error?.message || String(error));
+    }
+  }
+  const rendered = await renderAndStorePdf({
+    report,
+    order: { companyId: report.companyId, orderCode: report.orderCode },
+    deps,
+  });
+  if (rendered.pdfFailed || !isPdfBuffer(rendered.buffer)) {
+    throw ApiError.conflict('The report PDF is not available');
+  }
+  return { buffer: rendered.buffer, report: rendered.report };
+};
+
 export const platformReportDownload = async ({ actorId, orderId, requestContext = null, deps = {} }) => {
   const audit = deps.audit || defaultAudit;
   const findReport = deps.findReport || defaultFindReport;
   const fetchFile = deps.fetchFile || defaultFetchFile;
   const report = await findReport({ orderId });
   if (!report) throw ApiError.notFound('No report exists for this order');
-  if (report.pdf?.status !== 'GENERATED' || !report.pdf?.storageKey) {
-    throw ApiError.conflict('The report PDF is not available');
-  }
-  const stored = await fetchFile({ storageProvider: report.pdf.storageProvider, storageKey: report.pdf.storageKey });
+  const served = await serveReportPdf({ report, deps });
   await auditSafe(audit, {
     req: requestContext,
     action: 'BGV_REPORT_DOWNLOADED_INTERNAL',
@@ -665,7 +694,11 @@ export const platformReportDownload = async ({ actorId, orderId, requestContext 
     resourceId: report._id,
     metadata: { reportNumber: report.reportNumber, phase: '30.10' },
   });
-  return { buffer: stored.buffer, fileName: report.pdf.fileName || 'bgv-report.pdf', checksum: report.pdf.checksumSha256 };
+  return {
+    buffer: served.buffer,
+    fileName: served.report?.pdf?.fileName || report.pdf?.fileName || 'bgv-report.pdf',
+    checksum: served.report?.pdf?.checksumSha256 || report.pdf?.checksumSha256 || '',
+  };
 };
 
 // ── tenant HR access (req.companyId is the ONLY authority) ────────
@@ -713,10 +746,7 @@ export const tenantReportDownload = async ({ companyId, candidateId, requestCont
   if (!report || report.status !== 'RELEASED') {
     throw ApiError.notFound('No released BGV report is available for this candidate');
   }
-  if (report.pdf?.status !== 'GENERATED' || !report.pdf?.storageKey) {
-    throw ApiError.conflict('The report PDF is not available');
-  }
-  const stored = await fetchFile({ storageProvider: report.pdf.storageProvider, storageKey: report.pdf.storageKey });
+  const served = await serveReportPdf({ report, deps });
   await auditSafe(audit, {
     req: requestContext,
     action: 'BGV_FINAL_REPORT_DOWNLOADED',
@@ -725,5 +755,9 @@ export const tenantReportDownload = async ({ companyId, candidateId, requestCont
     resourceId: report._id,
     metadata: { reportNumber: report.reportNumber, phase: '30.10' },
   });
-  return { buffer: stored.buffer, fileName: report.pdf.fileName || 'bgv-report.pdf', checksum: report.pdf.checksumSha256 };
+  return {
+    buffer: served.buffer,
+    fileName: served.report?.pdf?.fileName || report.pdf?.fileName || 'bgv-report.pdf',
+    checksum: served.report?.pdf?.checksumSha256 || report.pdf?.checksumSha256 || '',
+  };
 };

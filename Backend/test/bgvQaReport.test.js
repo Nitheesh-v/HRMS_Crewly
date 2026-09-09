@@ -628,3 +628,35 @@ test('§30.12 approve/return conditional filters target the nested qa status', (
   const model = readFileSync(new URL('../src/models/BgvCheckVerification.js', import.meta.url), 'utf8');
   assert.ok(!model.includes('qaStatus'), 'schema never defined a top-level qaStatus path');
 });
+
+// ── Phase 30.12 regression — self-healing PDF delivery: a stored artifact
+// whose bytes are not a real PDF must be re-rendered from the immutable
+// snapshot at download time instead of serving garbage (or 409ing forever).
+test('§30.12 report download self-heals corrupt stored bytes from the snapshot', async () => {
+  const fakeReport = {
+    _id: 'r1',
+    companyId: 'c1',
+    orderCode: 'BGVORD-9',
+    reportNumber: 'BGVRPT-9',
+    version: 1,
+    status: 'GENERATED',
+    pdf: { status: 'GENERATED', storageKey: 'k1', fileName: 'BGVRPT-9-v1.pdf', checksumSha256: 'old' },
+    snapshot: { overallOutcome: 'CLEAR', checks: [], generatedAt: new Date() },
+  };
+  const result = await platformReportDownload({
+    actorId: 'actor',
+    orderId: 'o1',
+    deps: {
+      findReport: async () => fakeReport,
+      fetchFile: async () => ({ buffer: Buffer.from('definitely not a pdf') }),
+      storeFile: async () => ({ storageProvider: 'LOCAL_PRIVATE', storageKey: 'k2' }),
+      updateReport: async ({ set }) => ({
+        ...fakeReport,
+        pdf: { ...fakeReport.pdf, status: set['pdf.status'], storageKey: 'k2', checksumSha256: 'new', fileName: 'BGVRPT-9-v1.pdf' },
+      }),
+      audit: async () => ({ ok: true, mode: 'test' }),
+    },
+  });
+  assert.equal(result.buffer.subarray(0, 5).toString(), '%PDF-');
+  assert.equal(result.checksum, 'new');
+});
