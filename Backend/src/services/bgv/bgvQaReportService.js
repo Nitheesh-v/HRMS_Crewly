@@ -428,6 +428,10 @@ const renderAndStorePdf = async ({ report, order, deps }) => {
     return { report: updated, pdfFailed: false };
   } catch (error) {
     // PDF/storage failure NEVER falsely releases and never touches findings.
+    // Phase 30.12 — surface a sanitized reason server-side so operators can
+    // diagnose a FAILED pdf (message only; no buffers, keys, or paths beyond
+    // what the driver itself reports).
+    console.warn('[BGV-REPORT-PDF] render/store failed:', error?.message || String(error));
     const updated = await updateReport({
       reportId: report._id,
       set: { 'pdf.status': 'FAILED' },
