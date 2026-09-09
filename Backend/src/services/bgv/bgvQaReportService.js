@@ -702,14 +702,31 @@ export const platformReportDownload = async ({ actorId, orderId, requestContext 
 };
 
 // ── tenant HR access (req.companyId is the ONLY authority) ────────
+// Phase 30.12 fix: tenant HR navigates by candidate CODE (CAN-000003) but
+// reports store the candidate ObjectId — resolve the ref exactly like the
+// order endpoint does, otherwise the released report is invisible to HR.
+const looksLikeObjectId = (value) => /^[0-9a-fA-F]{24}$/.test(String(value || ''));
+const defaultResolveCandidateRef = async ({ companyId, candidateRef }) => {
+  if (looksLikeObjectId(candidateRef)) return String(candidateRef);
+  const candidate = await Candidate.findOne({
+    companyId,
+    candidateCode: String(candidateRef || '').trim().toUpperCase(),
+  })
+    .select('_id')
+    .lean();
+  return candidate ? String(candidate._id) : null;
+};
 const loadTenantReport = async ({ companyId, candidateId, deps }) => {
+  const resolveRef = deps.resolveCandidateRef || defaultResolveCandidateRef;
   const findReportForTenant = deps.findReportForTenant ||
     ((args) =>
       BgvFinalReport.findOne({ companyId: args.companyId, candidate: args.candidateId })
         .sort({ version: -1 })
         .select('+pdf.storageKey')
         .lean());
-  const report = await findReportForTenant({ companyId, candidateId });
+  const candidateKey = await resolveRef({ companyId, candidateRef: candidateId });
+  if (!candidateKey) return null;
+  const report = await findReportForTenant({ companyId, candidateId: candidateKey });
   if (!report) return null;
   return report;
 };

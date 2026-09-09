@@ -660,3 +660,40 @@ test('§30.12 report download self-heals corrupt stored bytes from the snapshot'
   assert.equal(result.buffer.subarray(0, 5).toString(), '%PDF-');
   assert.equal(result.checksum, 'new');
 });
+
+// ── Phase 30.12 regression — tenant HR reaches the report endpoints with a
+// candidate CODE (CAN-…), but BgvFinalReport stores the candidate ObjectId;
+// the ref must be resolved or the released report stays invisible.
+test('§30.12 tenant report summary resolves candidate codes to ids', async () => {
+  let receivedKey = null;
+  const released = {
+    reportNumber: 'BGVRPT-000007',
+    version: 1,
+    status: 'RELEASED',
+    release: { releasedAt: new Date() },
+    snapshot: {
+      overallOutcome: 'CLEAR',
+      candidateName: 'nimmy',
+      tenantName: 'Infolexus Solutions',
+      identity: [],
+      checks: [{ checkType: 'IDENTITY', conclusion: 'VERIFIED', methods: ['DOCUMENT_REVIEW'], discrepancies: [] }],
+    },
+  };
+  const result = await tenantReportSummary({
+    companyId: 'c'.repeat(24),
+    candidateId: 'CAN-000003',
+    deps: {
+      resolveCandidateRef: async ({ candidateRef }) => {
+        assert.equal(candidateRef, 'CAN-000003');
+        return 'e'.repeat(24);
+      },
+      findReportForTenant: async ({ candidateId }) => {
+        receivedKey = candidateId;
+        return released;
+      },
+    },
+  });
+  assert.equal(receivedKey, 'e'.repeat(24), 'finder received the resolved ObjectId, not the code');
+  assert.equal(result.report.reportNumber, 'BGVRPT-000007');
+  assert.equal(result.report.overallOutcome, 'CLEAR');
+});
