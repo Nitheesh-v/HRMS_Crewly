@@ -111,6 +111,11 @@ export const ActivityForm = ({ orderId, checkType, workbench, onRecorded, onErro
     }
   };
 
+  // Phase 30.12 — submitted findings are terminal: hide the recorder once
+  // locked (the backend already 409s any locked append; this stops the UI
+  // from inviting edits that can never land).
+  if (workbench.locked) return null;
+
   return (
     <section className="card">
       <h2 className="mb-3 text-sm font-semibold text-crewly-text">Record verification activity</h2>

@@ -814,6 +814,10 @@ test('§30.12 verifier evidence upload uses the hardened uploader field name', a
     'utf8'
   );
   assert.ok(panel.includes("formData.append('document', file)"), 'verifier panel sends the document field');
+  assert.ok(
+    /if \(workbench\.locked\) return null;[\s\S]{0,400}Record verification activity/.test(panel),
+    'activity recorder is hidden once the workbench is locked'
+  );
   const collection = readFileSync(
     new URL('../../Frontend/src/services/bgvCollectionService.js', import.meta.url),
     'utf8'
