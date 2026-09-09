@@ -159,6 +159,39 @@ const BgvVerifierCheckDetailPage = () => {
               ) : null}
             </div>
 
+            {/* Phase 30.12 — at-a-glance case pulse: work state, QA lifecycle,
+                revision and finding counts in one strip. */}
+            {detail.workbench ? (
+              <div className="card flex flex-wrap items-center gap-2 !py-3">
+                <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-crewly-dim">Case pulse</span>
+                <span className="badge bg-slate-500/10 text-slate-300">
+                  {String(detail.workbench.state || '').replaceAll('_', ' ')}
+                </span>
+                <span
+                  className={`badge ${
+                    detail.workbench.qaStatus === 'APPROVED'
+                      ? 'bg-crewly-green/10 text-crewly-green'
+                      : detail.workbench.qaStatus === 'RETURNED'
+                        ? 'bg-amber-500/10 text-amber-300'
+                        : detail.workbench.qaStatus === 'PENDING'
+                          ? 'bg-sky-500/10 text-sky-300'
+                          : 'bg-slate-500/10 text-slate-400'
+                  }`}
+                >
+                  QA {detail.workbench.qaStatus} · v{detail.workbench.revision || (detail.workbench.submissions || []).length}
+                </span>
+                <span className="badge bg-slate-500/10 text-slate-300">
+                  {detail.workbench.activities.length} activit{detail.workbench.activities.length === 1 ? 'y' : 'ies'}
+                </span>
+                <span className="badge bg-slate-500/10 text-slate-300">
+                  {detail.workbench.discrepancies.length} discrepanc{detail.workbench.discrepancies.length === 1 ? 'y' : 'ies'}
+                </span>
+                {detail.workbench.locked ? (
+                  <span className="badge bg-crewly-green/10 text-crewly-green">Locked — findings submitted</span>
+                ) : null}
+              </div>
+            ) : null}
+
             {detail.identity ? (
               <section className="card">
                 <h2 className="mb-3 text-sm font-semibold text-crewly-text">Identity context</h2>

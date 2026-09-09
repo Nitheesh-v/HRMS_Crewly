@@ -367,9 +367,11 @@ export const verifierWorkQueue = async ({ verifierId, deps = {} }) => {
   for (const assignment of mine) {
     const order = await loadOrderById({ orderId: assignment.bgvOrder });
     if (!order) continue;
-    const [company, collectionCase] = await Promise.all([
+    const loadVerification = deps.loadVerification || defaultLoadVerification;
+    const [company, collectionCase, verification] = await Promise.all([
       loadCompany({ companyId: order.companyId }),
       loadCase({ companyId: order.companyId, orderId: order._id }),
+      loadVerification({ orderId: order._id, checkType: assignment.checkType }),
     ]);
     rows.push({
       orderId: String(order._id),
@@ -380,8 +382,14 @@ export const verifierWorkQueue = async ({ verifierId, deps = {} }) => {
       status: assignment.status,
       assignedAt: assignment.assignedAt,
       startedAt: assignment.startedAt,
-      // Readiness context only — no evidence, no payment details.
+      // Readiness context only — operational state + QA lifecycle, no
+      // evidence, no identifiers beyond the declared legal name, no payment.
       submittedAt: collectionCase?.submittedAt || null,
+      workState: verification?.state || 'ASSIGNED',
+      qaStatus:
+        verification?.qa?.status && verification.qa.status !== 'NONE'
+          ? verification.qa.status
+          : 'NONE',
     });
   }
   return { rows };

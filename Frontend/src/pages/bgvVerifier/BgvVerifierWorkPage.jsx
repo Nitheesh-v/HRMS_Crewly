@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, ClipboardList, Inbox, Loader2, LogOut, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, ClipboardList, Inbox, Loader2, LogOut, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import bgvVerifierAuthService from '../../services/bgvVerifierAuthService.js';
 
@@ -104,14 +104,26 @@ const BgvVerifierWorkPage = () => {
                   </p>
                   <p className="text-[11px] text-crewly-dim">
                     {row.companyName} · {row.orderCode} · Assigned {new Date(row.assignedAt).toLocaleDateString()}
+                    {row.submittedAt ? ` · Candidate submitted ${new Date(row.submittedAt).toLocaleDateString()}` : ''}
                   </p>
                 </div>
               </div>
-              <span
-                className={`badge ${row.status === 'IN_PROGRESS' ? 'bg-amber-500/10 text-amber-300' : 'bg-crewly-green/10 text-crewly-green'}`}
-              >
-                {row.status.replaceAll('_', ' ')}
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                {row.qaStatus === 'APPROVED' ? (
+                  <span className="badge bg-crewly-green/10 text-crewly-green">QA APPROVED</span>
+                ) : row.qaStatus === 'RETURNED' ? (
+                  <span className="badge bg-amber-500/10 text-amber-300">QA RETURNED</span>
+                ) : row.workState === 'SUBMITTED' ? (
+                  <span className="badge bg-sky-500/10 text-sky-300">AWAITING QA</span>
+                ) : (
+                  <span
+                    className={`badge ${row.status === 'IN_PROGRESS' ? 'bg-amber-500/10 text-amber-300' : 'bg-crewly-green/10 text-crewly-green'}`}
+                  >
+                    {row.status.replaceAll('_', ' ')}
+                  </span>
+                )}
+                <ArrowUpRight className="h-4 w-4 text-crewly-dim" />
+              </div>
             </div>
           </Link>
         ))}

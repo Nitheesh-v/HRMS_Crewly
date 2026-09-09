@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
+  ClipboardList,
   Clock3,
   Download,
   Loader2,
@@ -118,7 +119,12 @@ export const ActivityForm = ({ orderId, checkType, workbench, onRecorded, onErro
 
   return (
     <section className="card">
-      <h2 className="mb-3 text-sm font-semibold text-crewly-text">Record verification activity</h2>
+      <h2 className="flex items-center gap-2 text-sm font-semibold text-crewly-text">
+        <Plus className="h-4 w-4 text-crewly-green" /> Record verification activity
+      </h2>
+      <p className="mb-3 mt-1 text-[11px] text-crewly-dim">
+        Controlled methods &amp; outcomes only. Attempts append — history is never overwritten or deleted.
+      </p>
       <div className="space-y-3">
         <div>
           <label className="label" htmlFor="wb-method">Method (controlled registry)</label>
@@ -187,7 +193,12 @@ export const ActivityForm = ({ orderId, checkType, workbench, onRecorded, onErro
 
 export const ActivityTimeline = ({ workbench, onDownloadEvidence, downloading }) => (
   <section className="card">
-    <h2 className="mb-3 text-sm font-semibold text-crewly-text">Verification activity timeline</h2>
+    <h2 className="flex items-center gap-2 text-sm font-semibold text-crewly-text">
+      <ClipboardList className="h-4 w-4 text-crewly-green" /> Verification activity timeline
+    </h2>
+    <p className="mb-3 mt-1 text-[11px] text-crewly-dim">
+      Append-only attempt history with attached evidence downloads (audited).
+    </p>
     {workbench.activities.length === 0 ? (
       <p className="text-xs text-crewly-dim">No activities recorded yet. Attempts append — history is never overwritten.</p>
     ) : (
@@ -263,7 +274,8 @@ export const EvidenceUploadPanel = ({ orderId, checkType, workbench, onUploaded,
     <section className="card">
       <h2 className="mb-1 text-sm font-semibold text-crewly-text">Attach verifier evidence</h2>
       <p className="mb-3 text-[11px] text-crewly-dim">
-        Official responses, issuer-verification screenshots, field photos. Private storage — never a public URL. PDF/JPG/PNG/WEBP only.
+        Official responses, issuer-verification screenshots, field photos. Private storage — never a public URL. PDF/JPG/PNG/WEBP only,
+        max 5 MB per file. Originals are versioned, never destroyed.
       </p>
       <div className="flex flex-wrap items-end gap-3">
         <div>
