@@ -910,3 +910,13 @@ test('entry types stay inside the documented catalogue', () => {
   assert.ok(ENTRY_TYPES.length >= 18);
   assert.ok(BULK_ACTIONS.includes('REMOVE_IMPORTED_ENTRIES'));
 });
+
+// ── 8. drawer catalogue (§8) ───────────────────────────────────────────────
+
+test('listInputs exposes the entry-type catalogue for the drawer dropdown', async () => {
+  const { service } = makeHarness();
+  const result = await service.listInputs({ companyId: 'company-a', month: MONTH });
+  assert.ok(Array.isArray(result.entryTypes) && result.entryTypes.length >= 5);
+  const bonus = result.entryTypes.find((option) => option.value === 'BONUS_FESTIVAL');
+  assert.ok(bonus && bonus.label && bonus.category, 'festival bonus option with label + category');
+});

@@ -21,6 +21,7 @@ import {
   BULK_ACTIONS,
   CATEGORY_OF,
   ENTRY_TYPES,
+  ENTRY_TYPE_LABELS,
   PERIOD_TRANSITIONS,
   computeAutomaticSummary,
   entryTotals,
@@ -374,6 +375,13 @@ export const makeMonthlyInputService = ({
       period: period || null,
       summary: summarizeMonth(enriched),
       monthLabel: monthLabel(month),
+      // The drawer's type dropdown is fed from here — the controller ships
+      // it as meta.entryTypes; without it the add-entry select is empty.
+      entryTypes: ENTRY_TYPES.map((type) => ({
+        value: type,
+        label: ENTRY_TYPE_LABELS[type] || type,
+        category: CATEGORY_OF(type),
+      })),
     };
   };
 
