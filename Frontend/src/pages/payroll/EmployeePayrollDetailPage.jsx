@@ -237,6 +237,314 @@ const EmployeePayrollDetailPage = () => {
     }
   };
 
+  const statutoryConfig = profile?.statutoryConfig || {};
+  const pfApplies = Boolean(statutoryConfig.pf?.applicable);
+  const esiApplies = Boolean(statutoryConfig.esi?.applicable);
+
+  const previewTable = (rows = []) =>
+    rows.map((row) => (
+      <tr key={`${row.componentCode}-${row.order}`} className="border-b border-crewly-border/60">
+        <td className="py-1.5 pr-3">{row.name}</td>
+        <td className="py-1.5 pr-3 text-crewly-dim">{row.methodLabel}</td>
+        <td className="py-1.5 text-right">{formatMoney(row.amount)}</td>
+      </tr>
+    ));
+
+  // The create/edit form must render in BOTH the empty state and the
+  // profiled state — the old early return for the empty state never
+  // mounted the modal, so "Create Payroll Profile" appeared dead.
+  const profileFormModal = (
+    <>
+      {formOpen && (
+        <Modal title="Payroll Profile" onClose={() => setFormOpen(false)} wide>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold">Salary Information</h3>
+
+              <label className="label block">
+                Salary Structure (active only)
+                <select
+                  className="input mt-1 w-full"
+                  value={form.structureId}
+                  onChange={(event) => setForm((prev) => ({ ...prev, structureId: event.target.value }))}
+                >
+                  <option value="">Select a structure</option>
+                  {structures.map((structure) => (
+                    <option key={structure._id} value={structure._id}>
+                      {structure.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="label block">
+                  Annual CTC (Rs)
+                  <input
+                    className="input mt-1 w-full"
+                    type="number"
+                    value={form.annualCtc}
+                    onChange={(event) => setForm((prev) => ({ ...prev, annualCtc: event.target.value }))}
+                  />
+                </label>
+                <label className="label block">
+                  Monthly Gross (Rs)
+                  <input
+                    className="input mt-1 w-full"
+                    type="number"
+                    value={form.monthlyGross}
+                    onChange={(event) => setForm((prev) => ({ ...prev, monthlyGross: event.target.value }))}
+                  />
+                </label>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="label block">
+                  Employment Type
+                  <select
+                    className="input mt-1 w-full"
+                    value={form.employmentType}
+                    onChange={(event) => setForm((prev) => ({ ...prev, employmentType: event.target.value }))}
+                  >
+                    {EMPLOYMENT_TYPES.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="label block">
+                  Pay Group
+                  <select
+                    className="input mt-1 w-full"
+                    value={form.payGroup}
+                    onChange={(event) => setForm((prev) => ({ ...prev, payGroup: event.target.value }))}
+                  >
+                    {PAY_GROUPS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="label block">
+                  Effective From
+                  <input
+                    type="date"
+                    className="input mt-1 w-full"
+                    value={form.effectiveFrom}
+                    onChange={(event) => setForm((prev) => ({ ...prev, effectiveFrom: event.target.value }))}
+                  />
+                </label>
+                <label className="label block">
+                  Payroll Status
+                  <select
+                    className="input mt-1 w-full"
+                    value={form.payrollStatus}
+                    onChange={(event) => setForm((prev) => ({ ...prev, payrollStatus: event.target.value }))}
+                  >
+                    <option value="DRAFT">Draft</option>
+                    <option value="ACTIVE">Active</option>
+                    <option value="ON_HOLD">On Hold</option>
+                    <option value="SUSPENDED">Suspended</option>
+                  </select>
+                </label>
+              </div>
+
+              <h3 className="pt-2 text-sm font-semibold">Bank Details</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="label block">
+                  Bank Name
+                  <input
+                    className="input mt-1 w-full"
+                    value={form.bank.bankName}
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, bank: { ...prev.bank, bankName: event.target.value } }))
+                    }
+                  />
+                </label>
+                <label className="label block">
+                  Account Holder
+                  <input
+                    className="input mt-1 w-full"
+                    value={form.bank.accountHolderName}
+                    onChange={(event) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        bank: { ...prev.bank, accountHolderName: event.target.value },
+                      }))
+                    }
+                  />
+                </label>
+                <label className="label block">
+                  Account Number {profile?.bank?.accountNumberMasked ? '(leave blank to keep)' : ''}
+                  <input
+                    className="input mt-1 w-full"
+                    value={form.bank.accountNumber}
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, bank: { ...prev.bank, accountNumber: event.target.value } }))
+                    }
+                  />
+                </label>
+                <label className="label block">
+                  IFSC
+                  <input
+                    className="input mt-1 w-full"
+                    value={form.bank.ifsc}
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, bank: { ...prev.bank, ifsc: event.target.value } }))
+                    }
+                  />
+                </label>
+              </div>
+              {profile?.bank?.accountNumberMasked && (
+                <p className="text-xs text-crewly-dim">
+                  Stored account: <span className="font-mono">{profile.bank.accountNumberMasked}</span>
+                </p>
+              )}
+
+              <h3 className="pt-2 text-sm font-semibold">Statutory & Tax</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="label block">
+                  PAN
+                  <input
+                    className="input mt-1 w-full"
+                    value={form.statutory.pan}
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, statutory: { ...prev.statutory, pan: event.target.value } }))
+                    }
+                  />
+                </label>
+                <label className="label block">
+                  UAN {pfApplies ? '' : '(optional)'}
+                  <input
+                    className="input mt-1 w-full"
+                    value={form.statutory.uan}
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, statutory: { ...prev.statutory, uan: event.target.value } }))
+                    }
+                  />
+                </label>
+                <label className="label block">
+                  ESI Number {esiApplies ? '' : '(optional)'}
+                  <input
+                    className="input mt-1 w-full"
+                    value={form.statutory.esiNumber}
+                    onChange={(event) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        statutory: { ...prev.statutory, esiNumber: event.target.value },
+                      }))
+                    }
+                  />
+                </label>
+                <label className="label block">
+                  Tax Regime
+                  <select
+                    className="input mt-1 w-full"
+                    value={form.tax.regime}
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, tax: { ...prev.tax, regime: event.target.value } }))
+                    }
+                  >
+                    <option value="NEW">New Regime</option>
+                    <option value="OLD">Old Regime</option>
+                  </select>
+                </label>
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.statutory.pfMember}
+                  onChange={(event) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      statutory: { ...prev.statutory, pfMember: event.target.checked },
+                    }))
+                  }
+                />
+                PF Member
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.tax.tdsApplicable}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, tax: { ...prev.tax, tdsApplicable: event.target.checked } }))
+                  }
+                />
+                TDS Applicable
+              </label>
+            </div>
+
+            {/* §9 — live breakup preview */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold">Live Salary Breakup</h3>
+              {!preview ? (
+                <p className="text-xs text-crewly-dim">
+                  Select an active structure and enter the monthly gross to see the breakup.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {[
+                    { title: 'Earnings', rows: preview.earnings },
+                    { title: 'Deductions', rows: preview.deductions },
+                    { title: 'Employer Contribution', rows: preview.employerContributions },
+                  ].map((section) => (
+                    <div key={section.title}>
+                      <div className="text-xs uppercase tracking-wide text-crewly-dim">
+                        {section.title}
+                      </div>
+                      <table className="w-full text-left text-xs">
+                        <tbody>{previewTable(section.rows || [])}</tbody>
+                      </table>
+                    </div>
+                  ))}
+
+                  <div className="rounded border border-crewly-border p-3 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-crewly-dim">Gross / month</span>
+                      <span>{formatMoney(preview.totals?.gross)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-crewly-dim">Net pay / month</span>
+                      <span>{formatMoney(preview.totals?.netPay)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-crewly-dim">Employer cost / month</span>
+                      <span>{formatMoney(preview.totals?.employerCost)}</span>
+                    </div>
+                    <div className="flex justify-between font-semibold">
+                      <span>CTC / year</span>
+                      <span>{formatMoney(preview.annual?.ctc)}</span>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-crewly-dim">
+                    Use this figure as the Annual CTC so gross and CTC stay aligned. This preview is
+                    for HR verification only — no payroll is generated.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-5 flex justify-end gap-2">
+            <button type="button" className="btn-ghost" onClick={() => setFormOpen(false)}>
+              Cancel
+            </button>
+            <button type="button" className="btn-primary" onClick={submit} disabled={busy}>
+              {profile ? 'Save / Revise' : 'Create Profile'}
+            </button>
+          </div>
+        </Modal>
+      )}
+    </>
+  );
+
   if (forbidden) {
     return (
       <div className="space-y-5">
@@ -274,22 +582,10 @@ const EmployeePayrollDetailPage = () => {
             </button>
           )}
         </div>
+        {profileFormModal}
       </div>
     );
   }
-
-  const statutoryConfig = profile.statutoryConfig || {};
-  const pfApplies = Boolean(statutoryConfig.pf?.applicable);
-  const esiApplies = Boolean(statutoryConfig.esi?.applicable);
-
-  const previewTable = (rows = []) =>
-    rows.map((row) => (
-      <tr key={`${row.componentCode}-${row.order}`} className="border-b border-crewly-border/60">
-        <td className="py-1.5 pr-3">{row.name}</td>
-        <td className="py-1.5 pr-3 text-crewly-dim">{row.methodLabel}</td>
-        <td className="py-1.5 text-right">{formatMoney(row.amount)}</td>
-      </tr>
-    ));
 
   return (
     <div className="space-y-5">
@@ -636,293 +932,7 @@ const EmployeePayrollDetailPage = () => {
       )}
 
       {/* §6 / §7 / §15 — edit + revise */}
-      {formOpen && (
-        <Modal title="Payroll Profile" onClose={() => setFormOpen(false)} wide>
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="space-y-3">
-              <h3 className="text-sm font-semibold">Salary Information</h3>
-
-              <label className="label block">
-                Salary Structure (active only)
-                <select
-                  className="input mt-1 w-full"
-                  value={form.structureId}
-                  onChange={(event) => setForm((prev) => ({ ...prev, structureId: event.target.value }))}
-                >
-                  <option value="">Select a structure</option>
-                  {structures.map((structure) => (
-                    <option key={structure._id} value={structure._id}>
-                      {structure.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <div className="grid grid-cols-2 gap-3">
-                <label className="label block">
-                  Annual CTC (Rs)
-                  <input
-                    className="input mt-1 w-full"
-                    type="number"
-                    value={form.annualCtc}
-                    onChange={(event) => setForm((prev) => ({ ...prev, annualCtc: event.target.value }))}
-                  />
-                </label>
-                <label className="label block">
-                  Monthly Gross (Rs)
-                  <input
-                    className="input mt-1 w-full"
-                    type="number"
-                    value={form.monthlyGross}
-                    onChange={(event) => setForm((prev) => ({ ...prev, monthlyGross: event.target.value }))}
-                  />
-                </label>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <label className="label block">
-                  Employment Type
-                  <select
-                    className="input mt-1 w-full"
-                    value={form.employmentType}
-                    onChange={(event) => setForm((prev) => ({ ...prev, employmentType: event.target.value }))}
-                  >
-                    {EMPLOYMENT_TYPES.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="label block">
-                  Pay Group
-                  <select
-                    className="input mt-1 w-full"
-                    value={form.payGroup}
-                    onChange={(event) => setForm((prev) => ({ ...prev, payGroup: event.target.value }))}
-                  >
-                    {PAY_GROUPS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <label className="label block">
-                  Effective From
-                  <input
-                    type="date"
-                    className="input mt-1 w-full"
-                    value={form.effectiveFrom}
-                    onChange={(event) => setForm((prev) => ({ ...prev, effectiveFrom: event.target.value }))}
-                  />
-                </label>
-                <label className="label block">
-                  Payroll Status
-                  <select
-                    className="input mt-1 w-full"
-                    value={form.payrollStatus}
-                    onChange={(event) => setForm((prev) => ({ ...prev, payrollStatus: event.target.value }))}
-                  >
-                    <option value="DRAFT">Draft</option>
-                    <option value="ACTIVE">Active</option>
-                    <option value="ON_HOLD">On Hold</option>
-                    <option value="SUSPENDED">Suspended</option>
-                  </select>
-                </label>
-              </div>
-
-              <h3 className="pt-2 text-sm font-semibold">Bank Details</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="label block">
-                  Bank Name
-                  <input
-                    className="input mt-1 w-full"
-                    value={form.bank.bankName}
-                    onChange={(event) =>
-                      setForm((prev) => ({ ...prev, bank: { ...prev.bank, bankName: event.target.value } }))
-                    }
-                  />
-                </label>
-                <label className="label block">
-                  Account Holder
-                  <input
-                    className="input mt-1 w-full"
-                    value={form.bank.accountHolderName}
-                    onChange={(event) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        bank: { ...prev.bank, accountHolderName: event.target.value },
-                      }))
-                    }
-                  />
-                </label>
-                <label className="label block">
-                  Account Number {profile?.bank?.accountNumberMasked ? '(leave blank to keep)' : ''}
-                  <input
-                    className="input mt-1 w-full"
-                    value={form.bank.accountNumber}
-                    onChange={(event) =>
-                      setForm((prev) => ({ ...prev, bank: { ...prev.bank, accountNumber: event.target.value } }))
-                    }
-                  />
-                </label>
-                <label className="label block">
-                  IFSC
-                  <input
-                    className="input mt-1 w-full"
-                    value={form.bank.ifsc}
-                    onChange={(event) =>
-                      setForm((prev) => ({ ...prev, bank: { ...prev.bank, ifsc: event.target.value } }))
-                    }
-                  />
-                </label>
-              </div>
-              {profile?.bank?.accountNumberMasked && (
-                <p className="text-xs text-crewly-dim">
-                  Stored account: <span className="font-mono">{profile.bank.accountNumberMasked}</span>
-                </p>
-              )}
-
-              <h3 className="pt-2 text-sm font-semibold">Statutory & Tax</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="label block">
-                  PAN
-                  <input
-                    className="input mt-1 w-full"
-                    value={form.statutory.pan}
-                    onChange={(event) =>
-                      setForm((prev) => ({ ...prev, statutory: { ...prev.statutory, pan: event.target.value } }))
-                    }
-                  />
-                </label>
-                <label className="label block">
-                  UAN {pfApplies ? '' : '(optional)'}
-                  <input
-                    className="input mt-1 w-full"
-                    value={form.statutory.uan}
-                    onChange={(event) =>
-                      setForm((prev) => ({ ...prev, statutory: { ...prev.statutory, uan: event.target.value } }))
-                    }
-                  />
-                </label>
-                <label className="label block">
-                  ESI Number {esiApplies ? '' : '(optional)'}
-                  <input
-                    className="input mt-1 w-full"
-                    value={form.statutory.esiNumber}
-                    onChange={(event) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        statutory: { ...prev.statutory, esiNumber: event.target.value },
-                      }))
-                    }
-                  />
-                </label>
-                <label className="label block">
-                  Tax Regime
-                  <select
-                    className="input mt-1 w-full"
-                    value={form.tax.regime}
-                    onChange={(event) =>
-                      setForm((prev) => ({ ...prev, tax: { ...prev.tax, regime: event.target.value } }))
-                    }
-                  >
-                    <option value="NEW">New Regime</option>
-                    <option value="OLD">Old Regime</option>
-                  </select>
-                </label>
-              </div>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={form.statutory.pfMember}
-                  onChange={(event) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      statutory: { ...prev.statutory, pfMember: event.target.checked },
-                    }))
-                  }
-                />
-                PF Member
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={form.tax.tdsApplicable}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, tax: { ...prev.tax, tdsApplicable: event.target.checked } }))
-                  }
-                />
-                TDS Applicable
-              </label>
-            </div>
-
-            {/* §9 — live breakup preview */}
-            <div className="space-y-3">
-              <h3 className="text-sm font-semibold">Live Salary Breakup</h3>
-              {!preview ? (
-                <p className="text-xs text-crewly-dim">
-                  Select an active structure and enter the monthly gross to see the breakup.
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {[
-                    { title: 'Earnings', rows: preview.earnings },
-                    { title: 'Deductions', rows: preview.deductions },
-                    { title: 'Employer Contribution', rows: preview.employerContributions },
-                  ].map((section) => (
-                    <div key={section.title}>
-                      <div className="text-xs uppercase tracking-wide text-crewly-dim">
-                        {section.title}
-                      </div>
-                      <table className="w-full text-left text-xs">
-                        <tbody>{previewTable(section.rows || [])}</tbody>
-                      </table>
-                    </div>
-                  ))}
-
-                  <div className="rounded border border-crewly-border p-3 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-crewly-dim">Gross / month</span>
-                      <span>{formatMoney(preview.totals?.gross)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-crewly-dim">Net pay / month</span>
-                      <span>{formatMoney(preview.totals?.netPay)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-crewly-dim">Employer cost / month</span>
-                      <span>{formatMoney(preview.totals?.employerCost)}</span>
-                    </div>
-                    <div className="flex justify-between font-semibold">
-                      <span>CTC / year</span>
-                      <span>{formatMoney(preview.annual?.ctc)}</span>
-                    </div>
-                  </div>
-
-                  <p className="text-[11px] text-crewly-dim">
-                    Use this figure as the Annual CTC so gross and CTC stay aligned. This preview is
-                    for HR verification only — no payroll is generated.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-5 flex justify-end gap-2">
-            <button type="button" className="btn-ghost" onClick={() => setFormOpen(false)}>
-              Cancel
-            </button>
-            <button type="button" className="btn-primary" onClick={submit} disabled={busy}>
-              {profile ? 'Save / Revise' : 'Create Profile'}
-            </button>
-          </div>
-        </Modal>
-      )}
+      {profileFormModal}
     </div>
   );
 };
