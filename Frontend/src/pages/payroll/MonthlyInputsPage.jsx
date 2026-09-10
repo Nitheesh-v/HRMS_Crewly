@@ -192,7 +192,7 @@ const MonthlyInputsPage = () => {
     if (!permsLoading || !canRead) return;
     departmentService
       .getAll()
-      .then((response) => setDepartments(response?.data || []))
+      .then((response) => setDepartments(Array.isArray(response) ? response : response?.data || []))
       .catch(() => setDepartments([]));
   }, [permsLoading, canRead]);
 

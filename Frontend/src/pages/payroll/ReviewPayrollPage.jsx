@@ -222,7 +222,7 @@ const ReviewPayrollPage = () => {
         state: filters.state === 'ALL' ? undefined : filters.state,
         search: filters.search || undefined,
       });
-      setRows(response?.data || []);
+      setRows(Array.isArray(response) ? response : response?.data || []);
     } catch (error) {
       if (error?.status !== 403) flash('error', error?.message || 'Unable to load employees');
     }
