@@ -7,6 +7,10 @@ import Candidate from "../models/Candidate.js";
 import JobPosting from "../models/JobPosting.js";
 import UsageMetric from "../models/UsageMetric.js";
 import { getPlan, getPlanPrice } from "./platformPlans.js";
+import {
+  readSubscriptionGateCache,
+  writeSubscriptionGateCache,
+} from "./subscriptionGateCache.js";
 
 const PLAN_ALIASES = {
   FREE_TRIAL: "TRIAL",
@@ -72,21 +76,49 @@ export const getSubscriptionStatus = async (companyId) => {
   return subscription?.status || "EXPIRED";
 };
 
+// Builds the plain summary the gate caches (never the live document).
+const buildGateSummary = (subscription) => {
+  if (!subscription) return null;
+  const plan = subscription.planRef
+    ? {
+        features: subscription.planRef.features || null,
+        enabledModules: subscription.planRef.enabledModules || [],
+      }
+    : (() => {
+        const staticPlan = getPlan(subscription.plan);
+        return staticPlan
+          ? {
+              features: staticPlan.features || null,
+              enabledModules: staticPlan.enabledModules || [],
+            }
+          : null;
+      })();
+  return {
+    enabledModules: subscription.enabledModules || [],
+    plan,
+  };
+};
+
 export const hasFeature = async (companyId, requestedFeature) => {
-  const subscription = await getCurrentSubscription(companyId);
+  // Gate-only fast path: short-TTL in-process summary, exact-invalidation
+  // via Subscription post-save hooks. Mutation paths bypass this cache.
+  let summary = readSubscriptionGateCache(companyId);
+  if (summary === null) {
+    summary = buildGateSummary(await getCurrentSubscription(companyId));
+    writeSubscriptionGateCache(companyId, summary);
+  }
 
-  if (!subscription) return false;
-
-  const plan = await getCurrentPlan(companyId, subscription);
+  if (!summary) return false;
 
   const feature = FEATURE_ALIASES[requestedFeature] || requestedFeature;
+  const plan = summary.plan;
 
   if (plan?.features && plan.features[feature] !== undefined) {
     return !!plan.features[feature];
   }
 
-  const modules = subscription.enabledModules?.length
-    ? subscription.enabledModules
+  const modules = summary.enabledModules?.length
+    ? summary.enabledModules
     : plan?.enabledModules || [];
 
   const normalizedModules = modules.map((moduleName) =>

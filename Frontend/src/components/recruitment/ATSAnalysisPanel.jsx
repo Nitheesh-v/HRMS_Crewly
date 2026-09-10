@@ -183,6 +183,13 @@ const ATSAnalysisPanel = ({
               <RefreshCw className="h-4 w-4 animate-spin" /> Recalculating…
             </button>
           ) : null}
+          {/* Recovery: lets HR unstick a lost parse job (the backend also
+              self-heals stale PENDING intents on poll). */}
+          {canReprocess && !reprocessBusy ? (
+            <button type="button" className="btn-ghost shrink-0 gap-2" onClick={onReprocess}>
+              <Wrench className="h-4 w-4" /> Reprocess resume
+            </button>
+          ) : null}
         </div>
         <div className="mt-5 flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-950/50 p-4">
           <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />

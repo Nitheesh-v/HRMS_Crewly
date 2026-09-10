@@ -31,6 +31,14 @@ import CandidateDocument from '../models/CandidateDocument.js';
 import CandidateDocumentRequirement from '../models/CandidateDocumentRequirement.js';
 import BackgroundVerificationCase from '../models/BackgroundVerificationCase.js';
 import {
+  revalidateReminder,
+  ensurePortalLink,
+  resolveCandidateEmail,
+  resolveCompany,
+  resolveQaRecipients,
+  resolveVerifier,
+} from '../services/bgv/bgvReminderService.js';
+import {
   sendMail,
   applicationReceivedEmail,
   candidatePipelineUpdateEmail,
@@ -42,6 +50,7 @@ import {
   preOnboardingDocumentDecisionEmail,
   preOnboardingReminderEmail,
   bgvReminderEmail,
+  bgv30ReminderEmail,
 } from '../utils/mailer.js';
 import { formatInterviewSchedule } from '../utils/interviewDateTime.js';
 import { normalizeCandidateStage } from '../services/candidatePipelineService.js';
@@ -78,6 +87,8 @@ const EMAIL_JOB_KEYS = {
     'stateVersionIso',
   ],
   [JOB_NAMES.EMAIL_BGV_REMINDER]: [...COMMON_KEYS, 'caseId', 'reminderType', 'stateVersionIso'],
+  // 30.11 — references only (ids + kind + bucket); no tokens/PII/HTML.
+  [JOB_NAMES.EMAIL_BGV30_REMINDER]: [...COMMON_KEYS, 'orderId', 'kind', 'checkType', 'requestId', 'bucket'],
   [JOB_NAMES.EMAIL_PREONBOARDING_DOC_DECISION]: [
     ...COMMON_KEYS,
     'preOnboardingId',
@@ -787,6 +798,86 @@ const finishSend = async ({ value, result }) => {
   return { sent: false, reason: category, deliveryId: value.deliveryId };
 };
 
+
+// ─── 30.11: Phase-30 pipeline reminders ─────────────────────────
+// The queue carries references only. This handler re-fetches the
+// authoritative state and skips anything already actioned (consent
+// decided, submission done, info responded, QA finished, order
+// cancelled). Candidate portal tokens are rotated HERE, synchronously
+// at dispatch — the raw token is never queued — and only when the
+// candidate has no active, unexpired token yet. Transport errors
+// throw (BullMQ retries); terminal skips mark STALE and return.
+const emailBgv30Reminder = async ({ value }) => {
+  const { orderId, kind, checkType, requestId } = value;
+  const skip = () => {
+    skipStale(value);
+    return { skipped: true, kind };
+  };
+  const state = await revalidateReminder({ orderId, kind, checkType, requestId });
+  if (!state.valid) return skip();
+  const order = state.order;
+  const company = await resolveCompany(order.companyId);
+
+  if (kind === 'QA_PENDING') {
+    const reviewers = await resolveQaRecipients(order.companyId);
+    if (!reviewers.length) return skip();
+    const template = bgv30ReminderEmail({
+      kind,
+      candidateName: 'QA reviewer',
+      companyName: company?.name,
+      checkLabel: checkType,
+    });
+    // finishSend classifies: delivered → SENT; retryable transport
+    // errors throw for BullMQ backoff; terminal errors → FAILED.
+    const result = await sendMail({
+      to: reviewers,
+      subject: template.subject,
+      text: template.text,
+      html: template.html,
+    });
+    return finishSend({ value, result });
+  }
+
+  if (kind === 'VERIFIER_SLA') {
+    const found = await resolveVerifier(orderId, checkType);
+    if (!found) return skip();
+    const template = bgv30ReminderEmail({
+      kind,
+      candidateName: found.verifier?.name || 'Verifier',
+      checkLabel: checkType,
+      slaStatus: state.slaStatus || 'DUE_SOON',
+    });
+    const result = await sendMail({
+      to: [found.verifier.email],
+      subject: template.subject,
+      text: template.text,
+      html: template.html,
+    });
+    return finishSend({ value, result });
+  }
+
+  const candidate = await resolveCandidateEmail(order.candidate);
+  if (!candidate?.email) return skip();
+  // Rotate a fresh secure link only when none is active/unexpired —
+  // raw token is built in-process, never queued.
+  const link = await ensurePortalLink({ order, kind, nowIso: new Date().toISOString() });
+  const template = bgv30ReminderEmail({
+    kind,
+    candidateName: candidate.name,
+    companyName: company?.name,
+    checkLabel: checkType,
+    categoryLabel: state.categoryLabel,
+    portalUrl: link.portalUrl,
+  });
+  const result = await sendMail({
+    to: [candidate.email],
+    subject: template.subject,
+    text: template.text,
+    html: template.html,
+  });
+  return finishSend({ value, result });
+};
+
 const EMAIL_HANDLERS = {
   [JOB_NAMES.EMAIL_APPLICATION_RECEIVED]: emailApplicationReceived,
   [JOB_NAMES.EMAIL_PIPELINE_UPDATE]: emailPipelineUpdate,
@@ -797,6 +888,7 @@ const EMAIL_HANDLERS = {
   [JOB_NAMES.EMAIL_OFFER_WITHDRAWN]: emailOfferWithdrawn,
   [JOB_NAMES.EMAIL_PREONBOARDING_REMINDER]: emailPreOnboardingReminder,
   [JOB_NAMES.EMAIL_BGV_REMINDER]: emailBgvReminder,
+  [JOB_NAMES.EMAIL_BGV30_REMINDER]: emailBgv30Reminder,
   [JOB_NAMES.EMAIL_PREONBOARDING_DOC_DECISION]: emailPreOnboardingDocDecision,
 };
 

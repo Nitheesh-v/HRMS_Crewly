@@ -50,6 +50,10 @@ export const JOB_NAMES = {
   // and BGV HR reminder (reference-based, no candidate PII in payload).
   EMAIL_PREONBOARDING_REMINDER: 'email-preonboarding-reminder',
   EMAIL_BGV_REMINDER: 'email-bgv-reminder',
+  // 30.11: Phase-30 pipeline reminders (consent/submission/info/verifier
+  // SLA/QA). Reference-only payloads; worker revalidates Mongo + rotates
+  // portal tokens synchronously at dispatch (never in the queue).
+  EMAIL_BGV30_REMINDER: 'email-bgv30-reminder',
   // 29.6: payroll calculation run (background, progress-tracked).
   PAYROLL_RUN: 'payroll-run',
   // 29.7: payroll review export generation (same queue, own job name).
@@ -562,3 +566,8 @@ export const getQueueConfigSummary = (source = process.env) => ({
   concurrency: parseWorkerConcurrency(source),
   jobDefaults: getDefaultJobOptions(),
 });
+
+// Canonical staleness threshold for resume-parse recovery: a PENDING
+// intent older than this is assumed to have lost its BullMQ job (degraded
+// enqueue / worker downtime) and may be re-enqueued or reprocessed.
+export const RESUME_RECOVERY_MIN_AGE_MS = 60 * 1000;

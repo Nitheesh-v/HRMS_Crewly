@@ -3,6 +3,12 @@ import ApiError from '../utils/ApiError.js';
 import { BGV_TRIGGER_STAGES } from '../models/BackgroundVerificationSettings.js';
 import { BGV_CASE_STATUSES } from '../models/BackgroundVerificationCase.js';
 import { BGV_CHECK_CATEGORIES } from '../models/BackgroundVerificationCheckType.js';
+import {
+  BGV_DECISIONS,
+  BGV_DECISION_MAX_REASON_LENGTH,
+} from '../services/bgv/bgvDecisionRules.js';
+import { BGV_CATALOGUE_TYPES } from '../services/bgv/bgvCatalogueRules.js';
+import { clientMoneyViolations } from '../services/bgv/bgvOrderRules.js';
 
 const validate = (req, _res, next) => {
   const errors = validationResult(req);
@@ -110,5 +116,84 @@ export const bgvCompleteRules = [
 export const bgvCancelRules = [
   param('caseId').isMongoId(),
   body('reason').trim().notEmpty().withMessage('Cancellation reason is required').isLength({ max: 1000 }),
+  validate,
+];
+
+// Phase 30.1 — optional BGV decision body/param validation.
+export const bgvDecisionRules = [
+  param('candidateId').trim().notEmpty().isLength({ max: 40 }),
+  body('decision').isIn(BGV_DECISIONS).withMessage('Choose Proceed Without BGV or Initiate BGV'),
+  body('reason')
+    .optional({ checkFalsy: true })
+    .trim()
+    .isLength({ max: BGV_DECISION_MAX_REASON_LENGTH })
+    .withMessage('Keep the reason within 300 characters'),
+  validate,
+];
+
+// ── Phase 30.3 — paid BGV order ──────────────────────────────────
+// Backend price authority: ANY client-submitted money field is rejected
+// outright (the service double-checks, defense in depth).
+const rejectClientMoney = (req, _res, next) => {
+  const hits = clientMoneyViolations(req.body || {});
+  if (hits.length) {
+    return next(
+      ApiError.badRequest(
+        `Client-provided amounts are not accepted (${hits.join(', ')})`
+      )
+    );
+  }
+  return next();
+};
+
+export const bgvOrderCreateRules = [
+  param('candidateId').trim().notEmpty().isLength({ max: 40 }),
+  body('selected')
+    .isArray({ min: 1, max: 5 })
+    .withMessage('Select at least one BGV service (max 5)'),
+  body('selected.*')
+    .isIn(BGV_CATALOGUE_TYPES)
+    .withMessage('Unsupported BGV service in selection'),
+  rejectClientMoney,
+  validate,
+];
+
+export const bgvOrderCandidateRules = [
+  param('candidateId').trim().notEmpty().isLength({ max: 40 }),
+  validate,
+];
+
+export const bgvOrderIdRules = [
+  param('orderId').trim().isMongoId().withMessage('Invalid BGV order reference'),
+  validate,
+];
+
+export const bgvOrderVerifyRules = [
+  param('orderId').trim().isMongoId().withMessage('Invalid BGV order reference'),
+  body('mock').optional().isBoolean(),
+  body('razorpay_payment_id').optional({ checkFalsy: true }).isString().isLength({ max: 80 }),
+  body('razorpay_signature').optional({ checkFalsy: true }).isString().isLength({ max: 200 }),
+  validate,
+];
+
+// ── Phase 30.4 — public candidate BGV consent portal ─────────────
+export const bgvConsentReadRules = [
+  param('secureToken').trim().isLength({ min: 40, max: 200 }),
+  validate,
+];
+
+export const bgvConsentDecisionRules = [
+  param('secureToken').trim().isLength({ min: 40, max: 200 }),
+  validate,
+];
+
+// Tenant-side consent invitation / status.
+export const bgvConsentInvitationRules = [
+  param('orderId').trim().isMongoId().withMessage('Invalid BGV order reference'),
+  validate,
+];
+
+export const bgvConsentStatusRules = [
+  param('candidateId').trim().notEmpty().isLength({ max: 40 }),
   validate,
 ];

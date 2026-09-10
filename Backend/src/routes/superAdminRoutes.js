@@ -10,6 +10,12 @@ import * as dashboard from "../controllers/superAdminDashboardController.js";
 import * as companies from "../controllers/superAdminCompanyController.js";
 import * as subscriptions from "../controllers/superAdminSubscriptionController.js";
 import * as operations from "../controllers/superAdminOperationsController.js";
+import * as bgvCatalogue from "../controllers/superAdminBgvCatalogueController.js";
+import * as bgvVerifier from "../controllers/bgvVerifierController.js";
+import * as bgvOperations from "../controllers/bgvOperationsController.js";
+import * as bgvQa from "../controllers/bgvQaController.js";
+import * as bgvBilling from "../controllers/bgvBillingController.js";
+import * as bgvOpsDash from "../controllers/bgvOperationsDashboardController.js";
 import * as queueOps from "../controllers/superAdminQueueOpsController.js";
 import { securityRateLimit } from "../middlewares/securityRateLimit.js";
 import {
@@ -131,6 +137,76 @@ router.get(
   "/revenue",
   permit("revenue:read", "billing:manage"),
   subscriptions.revenueAnalytics,
+);
+
+// Phase 30.2 — Crewly BGV service catalogue & pricing (platform commerce).
+// Backend is the only price authority; tenants never reach these routes
+// (platform gate rejects non-platform roles before DB access).
+
+// Phase 30.6 — internal BGV verifier account management. Platform-only:
+// SUPER_ADMIN via '*'; tenant HR can never reach these routes (protect +
+// superAdminSession reject tenant principals before this point).
+router.get("/bgv-verifiers", permit("bgv-verifiers:read"), bgvVerifier.bgvVerifierList);
+router.get("/bgv-verifiers/:verifierId", permit("bgv-verifiers:read"), bgvVerifier.bgvVerifierRead);
+router.post("/bgv-verifiers", permit("bgv-verifiers:manage"), bgvVerifier.bgvVerifierInvite);
+router.post("/bgv-verifiers/:verifierId/resend-setup", permit("bgv-verifiers:manage"), bgvVerifier.bgvVerifierResendSetup);
+router.post("/bgv-verifiers/:verifierId/revoke-setup", permit("bgv-verifiers:manage"), bgvVerifier.bgvVerifierRevokeSetup);
+router.patch("/bgv-verifiers/:verifierId", permit("bgv-verifiers:manage"), bgvVerifier.bgvVerifierUpdate);
+router.post("/bgv-verifiers/:verifierId/deactivate", permit("bgv-verifiers:manage"), bgvVerifier.bgvVerifierDeactivate);
+router.post("/bgv-verifiers/:verifierId/reactivate", permit("bgv-verifiers:manage"), bgvVerifier.bgvVerifierReactivate);
+
+// Phase 30.7 — BGV check assignment operations (platform-only; the new
+// bgv-operations permissions are held only by SUPER_ADMIN via "*").
+router.get("/bgv-operations/queue", permit("bgv-operations:read"), bgvOperations.bgvOperationsQueue);
+router.get("/bgv-operations/checks/:checkType/eligible-verifiers", permit("bgv-operations:read"), bgvOperations.bgvOperationsEligibleVerifiers);
+router.post("/bgv-operations/assign", permit("bgv-operations:manage"), bgvOperations.bgvOperationsAssign);
+router.post("/bgv-operations/reassign", permit("bgv-operations:manage"), bgvOperations.bgvOperationsReassign);
+router.post("/bgv-operations/unassign", permit("bgv-operations:manage"), bgvOperations.bgvOperationsUnassign);
+// Phase 30.8 — platform-only check cancellation (CANCELLED is never a
+// verifier choice; requires a business reason).
+router.post("/bgv-operations/cancel-check", permit("bgv-operations:manage"), bgvOperations.bgvOperationsCancelCheck);
+
+// Phase 30.11 — internal BGV operations dashboard (derived counts, drill-down
+// queues, verifier workload, SLA config). READS are count lookups and are
+// deliberately NOT audited; only the SLA configuration write is audited.
+// Phase 30.12 — BGV billing reporting (read-only over immutable order
+// snapshots; SUPER_ADMIN via "*", no payment mutation lives here).
+router.get("/bgv-billing/overview", permit("bgv-billing:read"), bgvBilling.bgvBilling);
+// HR initiated, candidate never replied: awaiting list + stale-cancel
+// (cancel only allowed after the invitation window expired).
+router.get("/bgv-billing/awaiting-candidate", permit("bgv-billing:read"), bgvBilling.bgvAwaitingCandidate);
+router.post("/bgv-billing/cancel/:orderId", permit("bgv-billing:cancel"), bgvBilling.cancelUnansweredBgv);
+
+router.get("/bgv-ops/dashboard", permit("bgv-operations:read"), bgvOpsDash.bgvOpsDashboard);
+router.get("/bgv-ops/queue", permit("bgv-operations:read"), bgvOpsDash.bgvOpsQueue);
+router.get("/bgv-ops/workload", permit("bgv-operations:read"), bgvOpsDash.bgvOpsWorkload);
+router.get("/bgv-ops/sla", permit("bgv-operations:read"), bgvOpsDash.bgvOpsSlaPolicyRead);
+router.put("/bgv-ops/sla", permit("bgv-operations:manage"), bgvOpsDash.bgvOpsSlaPolicyUpdate);
+
+// Phase 30.10 — internal BGV QA review + final report release.
+// permit() enforces bgv-qa:* on top of the platform session; tenant HR and
+// verifier principals live on separate auth stacks and cannot reach these.
+// QA approves/returns findings and releases reports — it never hires/rejects.
+router.get("/bgv-qa/queue", permit("bgv-qa:review"), bgvQa.bgvQaQueue);
+router.get("/bgv-qa/check/:orderId/:checkType", permit("bgv-qa:review"), bgvQa.bgvQaCheckDetail);
+router.get("/bgv-qa/check/:orderId/:checkType/evidence/:fileId", permit("bgv-qa:review"), bgvQa.bgvQaEvidenceDownload);
+router.post("/bgv-qa/check/:orderId/:checkType/approve", permit("bgv-qa:review"), bgvQa.bgvQaApprove);
+router.post("/bgv-qa/check/:orderId/:checkType/return", permit("bgv-qa:review"), bgvQa.bgvQaReturn);
+router.get("/bgv-qa/report/:orderId", permit("bgv-qa:review"), bgvQa.bgvQaReportStatus);
+router.post("/bgv-qa/report/:orderId/generate", permit("bgv-qa:release"), bgvQa.bgvQaGenerateReport);
+router.post("/bgv-qa/report/:orderId/pdf-retry", permit("bgv-qa:release"), bgvQa.bgvQaRetryReportPdf);
+router.post("/bgv-qa/report/:orderId/release", permit("bgv-qa:release"), bgvQa.bgvQaReleaseReport);
+router.get("/bgv-qa/report/:orderId/download", permit("bgv-qa:review"), bgvQa.bgvQaReportDownload);
+
+router.get(
+  "/bgv-catalogue",
+  permit("bgv-catalog:read"),
+  bgvCatalogue.bgvCatalogueList,
+);
+router.patch(
+  "/bgv-catalogue/:type",
+  permit("bgv-catalog:manage"),
+  bgvCatalogue.bgvCatalogueUpdate,
 );
 
 router.get("/usage", permit("usage:read"), operations.usage);

@@ -133,7 +133,7 @@ const RunPayrollPage = () => {
 
       setRun(summaryResponse?.data?.run || null);
       setSummary(summaryResponse?.data?.summary || {});
-      setResults(resultsResponse?.data || []);
+      setResults(Array.isArray(resultsResponse) ? resultsResponse : resultsResponse?.data || []);
       setAccessDenied(false);
     } catch (error) {
       if (error?.status === 403) setAccessDenied(true);
@@ -164,7 +164,8 @@ const RunPayrollPage = () => {
     import('../../services/monthlyInputService.js')
       .then((module) => module.default.periods())
       .then((response) => {
-        const found = (response?.data || []).find((row) => row.month === month);
+        const list = Array.isArray(response) ? response : response?.data || [];
+        const found = list.find((row) => row.month === month);
         setPeriodStatus(found?.status || '');
       })
       .catch(() => setPeriodStatus(''));
@@ -585,7 +586,7 @@ const PayrollDetailDrawer = ({
     payrollRunService
       .result(month, employeeId)
       .then((response) => {
-        if (active) setData(response?.data || null);
+        if (active) setData(response?.data ?? response ?? null);
       })
       .catch((error) => flash('error', error?.message || 'Unable to load the payroll breakdown'))
       .finally(() => {

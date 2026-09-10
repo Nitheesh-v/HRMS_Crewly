@@ -3,6 +3,8 @@ import { Link, useParams } from 'react-router-dom';
 import { Loader2, ShieldCheck } from 'lucide-react';
 import usePermission from '../../hooks/usePermission.js';
 import bgvService from '../../services/bgvService.js';
+import CandidateBgvDecisionSection from './CandidateBgvDecisionSection.jsx';
+import BgvPurchasePanel from './BgvPurchasePanel.jsx';
 
 const CandidateBgvPanel = ({ candidate }) => {
   const { candidateRef } = useParams();
@@ -13,6 +15,10 @@ const CandidateBgvPanel = ({ candidate }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  // Phase 30.12 — a purchased Crewly-managed BGV order means the legacy
+  // internal 'Start BGV' track must not invite duplicate work (same
+  // contradiction logic as the waiver guard).
+  const [hasOrder, setHasOrder] = useState(false);
 
   const ref =
     candidateRef ||
@@ -69,6 +75,25 @@ const CandidateBgvPanel = ({ candidate }) => {
   const caseData = summary?.case;
 
   return (
+    <div className="flex flex-col gap-4">
+      {/* Phase 30.1 — optional BGV decision (persisted, refresh-safe). */}
+      <CandidateBgvDecisionSection
+        candidateRef={ref}
+        summary={summary}
+        onDecided={(decision) => setSummary((current) => ({ ...(current || {}), decision }))}
+        onSync={(fresh) => setSummary(fresh)}
+      />
+      {/* Phase 30.3 — paid BGV order. Entry ONLY for candidates whose 30.1
+          decision is INITIATE BGV; the backend re-validates eligibility and
+          owns every price. The panel re-reads Mongo, so refresh never
+          double-charges. */}
+      <BgvPurchasePanel
+        candidateRef={ref}
+        decisionStatus={summary?.decision?.status}
+        onOrderState={setHasOrder}
+      />
+    {(caseData ||
+      (canStart && !hasOrder && summary?.decision?.status !== 'PROCEEDED_WITHOUT_BGV')) ? (
     <section className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-5">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex items-start gap-3">
@@ -100,7 +125,9 @@ const CandidateBgvPanel = ({ candidate }) => {
               Open case
             </Link>
           ) : null}
-          {canStart && !caseData ? (
+          {/* Phase 30.1 guard: a recorded waiver means no BGV work — hide the
+              legacy internal start so the two tracks cannot contradict. */}
+          {canStart && !caseData && summary?.decision?.status !== 'PROCEEDED_WITHOUT_BGV' ? (
             <button type="button" className="btn-primary gap-2" disabled={busy} onClick={start}>
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               Start BGV
@@ -109,6 +136,8 @@ const CandidateBgvPanel = ({ candidate }) => {
         </div>
       </div>
     </section>
+    ) : null}
+    </div>
   );
 };
 

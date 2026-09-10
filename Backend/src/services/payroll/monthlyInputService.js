@@ -21,6 +21,8 @@ import {
   BULK_ACTIONS,
   CATEGORY_OF,
   ENTRY_TYPES,
+  ENTRY_TYPE_LABELS,
+  countWorkingDaysInMonth,
   PERIOD_TRANSITIONS,
   computeAutomaticSummary,
   entryTotals,
@@ -129,6 +131,22 @@ export const makeMonthlyInputService = ({
     }
   };
 
+  // §7 — the working-day basis of a month. 29.1 never stores a numeric cycle
+  // length, so when one is absent it is derived from the weekend policy with
+  // the same calendar maths the attendance report uses: a running month counts
+  // ELAPSED working days (today cap), a closed month the whole cycle.
+  const workingBasisFor = ({ setup, month, holidayDates }) => {
+    const explicit = Number(setup?.payrollCycle?.workingDays || 0);
+    if (explicit > 0) return explicit;
+    const now = new Date().toISOString().slice(0, 10);
+    return countWorkingDaysInMonth({
+      month,
+      weekendPolicy: setup?.weekendPolicy || {},
+      holidayDates,
+      untilKey: month === now.slice(0, 7) ? now : null,
+    });
+  };
+
   const ensurePeriod = async ({ companyId, month, actor, req }) => {
     if (!isValidMonth(month)) throw ApiError.badRequest('Payroll month must look like 2026-08');
 
@@ -136,6 +154,9 @@ export const makeMonthlyInputService = ({
     if (existing) return existing;
 
     const setup = await loadSetup(companyId);
+    const holidayRows = HolidayModel
+      ? await HolidayModel.find({ companyId }).select('date').lean()
+      : [];
     const { startKey, endKey } = monthBounds(month);
 
     const period = await PayrollPeriodModel.create({
@@ -144,7 +165,7 @@ export const makeMonthlyInputService = ({
       financialYear: financialYearOf(month),
       cycleStart: setup?.payrollCycle?.cycleStart ? `${month}-01` : startKey,
       cycleEnd: setup?.payrollCycle?.cycleEnd ? endKey : endKey,
-      workingDays: Number(setup?.payrollCycle?.workingDays || 0),
+      workingDays: workingBasisFor({ setup, month, holidayDates: holidayRows.map((row) => row.date) }),
       status: 'COLLECTING_INPUTS',
       createdBy: actor?._id || null,
       updatedBy: actor?._id || null,
@@ -219,7 +240,11 @@ export const makeMonthlyInputService = ({
 
     return computeAutomaticSummary({
       month,
-      workingDays: Number(setup?.payrollCycle?.workingDays || 0),
+      workingDays: workingBasisFor({
+        setup,
+        month,
+        holidayDates: (holidayRows || []).map((row) => row.date),
+      }),
       attendance: shifts,
       leaves: leavesInMonth,
       holidays: holidayRows || [],
@@ -273,6 +298,15 @@ export const makeMonthlyInputService = ({
         imported += 1;
       }),
     );
+
+    // Periods created before the basis derivation existed stored 0; keep the
+    // card honest by syncing it to the basis the rows were imported with.
+    const setup = await loadSetup(companyId);
+    const holidayRows = HolidayModel
+      ? await HolidayModel.find({ companyId }).select('date').lean()
+      : [];
+    const basis = workingBasisFor({ setup, month, holidayDates: holidayRows.map((row) => row.date) });
+    if (Number(period.workingDays) !== basis) period.workingDays = basis;
 
     period.attendanceImportedAt = new Date();
     period.leaveImportedAt = new Date();
@@ -374,6 +408,13 @@ export const makeMonthlyInputService = ({
       period: period || null,
       summary: summarizeMonth(enriched),
       monthLabel: monthLabel(month),
+      // The drawer's type dropdown is fed from here — the controller ships
+      // it as meta.entryTypes; without it the add-entry select is empty.
+      entryTypes: ENTRY_TYPES.map((type) => ({
+        value: type,
+        label: ENTRY_TYPE_LABELS[type] || type,
+        category: CATEGORY_OF(type),
+      })),
     };
   };
 

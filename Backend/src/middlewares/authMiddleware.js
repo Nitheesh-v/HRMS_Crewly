@@ -44,6 +44,13 @@ export const protect = asyncHandler(async (req, res, next) => {
     throw ApiError.unauthorized('Invalid token subject');
   }
 
+  // Phase 30.6 — principal gate BEFORE any domain DB access: verifier
+  // tokens are a separate internal principal and can never ride tenant
+  // routes (and tenant/platform tokens can never ride verifier routes).
+  if (decoded.principalType === 'BGV_VERIFIER') {
+    throw ApiError.unauthorized('Invalid token for this portal');
+  }
+
   const user = await User.findById(userId);
 
   if (!user) {

@@ -19,6 +19,11 @@ import { recordAudit } from '../utils/securityauditService.js';
 // dispatchBgvJob call site moved to the BGV queue; the provider
 // registry + internal provider are unchanged).
 import { scheduleBgvCaseProcessing, cancelBgvJobs } from './bgvQueueDispatcher.js';
+// Phase 30.1 — pure decision rules (optional BGV decision + conversion waiver).
+import {
+  composeConversionBgvEligibility,
+  evaluateDecisionEligibility,
+} from './bgv/bgvDecisionRules.js';
 import { scheduleBgvReminder } from './reminderSchedulingService.js';
 import { getBgvReminderPolicy } from '../config/queueConfig.js';
 
@@ -1443,76 +1448,38 @@ export const cancelBackgroundVerification = async ({
  * Returns { required, satisfied, blockingReasons, caseSummary }
  */
 export const evaluateBgvForConversion = async ({ companyId, candidateId }) => {
+  // DB Logic - tenant-scoped settings; short-circuit when BGV is not required.
   const settings = await BackgroundVerificationSettings.findOne({ companyId }).lean();
   if (!settings?.enabled || !settings.bgvRequiredBeforeConversion) {
     return {
       required: false,
       satisfied: true,
+      waived: false,
       blockingReasons: [],
       caseSummary: null,
     };
   }
 
-  const caseRecord = await BackgroundVerificationCase.findOne({
-    companyId,
-    candidate: candidateId,
-    activeKey: 'ACTIVE',
-  })
-    .select('+activeKey')
-    .lean();
+  const [caseRecord, candidate] = await Promise.all([
+    BackgroundVerificationCase.findOne({
+      companyId,
+      candidate: candidateId,
+      activeKey: 'ACTIVE',
+    })
+      .select('+activeKey')
+      .lean(),
+    // Phase 30.1 — the audited HR waiver, read tenant-scoped.
+    Candidate.findOne({ _id: candidateId, companyId })
+      .select('bgvDecision.status')
+      .lean(),
+  ]);
 
-  if (!caseRecord) {
-    return {
-      required: true,
-      satisfied: false,
-      blockingReasons: ['Background verification is required before conversion'],
-      caseSummary: null,
-    };
-  }
-
-  if (caseRecord.status !== 'COMPLETED') {
-    return {
-      required: true,
-      satisfied: false,
-      blockingReasons: [
-        `Background verification case ${caseRecord.caseCode} is ${caseRecord.status}`,
-      ],
-      caseSummary: {
-        id: caseRecord._id,
-        caseCode: caseRecord.caseCode,
-        status: caseRecord.status,
-        overallOutcome: caseRecord.overallOutcome || '',
-      },
-    };
-  }
-
-  if (!['CLEAR', 'CLEAR_WITH_DISCREPANCIES'].includes(caseRecord.overallOutcome)) {
-    return {
-      required: true,
-      satisfied: false,
-      blockingReasons: [
-        `Background verification outcome ${caseRecord.overallOutcome || 'unknown'} blocks conversion`,
-      ],
-      caseSummary: {
-        id: caseRecord._id,
-        caseCode: caseRecord.caseCode,
-        status: caseRecord.status,
-        overallOutcome: caseRecord.overallOutcome || '',
-      },
-    };
-  }
-
-  return {
-    required: true,
-    satisfied: true,
-    blockingReasons: [],
-    caseSummary: {
-      id: caseRecord._id,
-      caseCode: caseRecord.caseCode,
-      status: caseRecord.status,
-      overallOutcome: caseRecord.overallOutcome,
-    },
-  };
+  // Pure rules keep every Phase 27.15 branch and add the explicit waiver.
+  return composeConversionBgvEligibility({
+    settings,
+    caseRecord,
+    decisionStatus: candidate?.bgvDecision?.status,
+  });
 };
 
 export const getCandidateBgvSummary = async ({ companyId, candidateRef }) => {
@@ -1525,8 +1492,35 @@ export const getCandidateBgvSummary = async ({ companyId, candidateRef }) => {
     .select('+activeKey')
     .lean();
 
+  // Phase 30.1 — the persisted optional BGV decision plus what the UI may
+  // offer right now (stage + active-case eligibility, computed server-side).
+  const decision = candidate.bgvDecision ?? {};
+  const stage = candidate.currentStage || candidate.stage;
+  const hasActiveCase = Boolean(caseRecord);
+  const decisionView = {
+    stage,
+    decision: {
+      status: decision.status || 'NONE',
+      decidedBy: decision.decidedBy || null,
+      decidedAt: decision.decidedAt || null,
+      reason: decision.reason || '',
+    },
+    eligibility: {
+      proceedWithoutBgv: evaluateDecisionEligibility({
+        stage,
+        decision: 'PROCEED_WITHOUT_BGV',
+        hasActiveCase,
+      }),
+      initiateBgv: evaluateDecisionEligibility({
+        stage,
+        decision: 'INITIATE_BGV',
+        hasActiveCase,
+      }),
+    },
+  };
+
   if (!caseRecord) {
-    return { hasCase: false, case: null };
+    return { hasCase: false, case: null, ...decisionView };
   }
 
   return {
@@ -1541,5 +1535,6 @@ export const getCandidateBgvSummary = async ({ companyId, candidateRef }) => {
       discrepancyCount: caseRecord.discrepancyCount,
       completedAt: caseRecord.completedAt,
     },
+    ...decisionView,
   };
 };

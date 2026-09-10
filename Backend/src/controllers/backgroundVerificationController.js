@@ -15,6 +15,8 @@ import {
   updateBgvCheckType,
   updateBgvSettings,
 } from '../services/backgroundVerificationService.js';
+// Phase 30.1 — optional BGV decision (Proceed Without BGV / Initiate BGV).
+import { recordBgvDecision } from '../services/bgv/bgvDecisionService.js';
 
 const actorId = (req) => req.user._id;
 
@@ -239,5 +241,30 @@ export const candidateBgvSummary = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, {
     message: 'Candidate BGV summary fetched',
     data,
+  });
+});
+
+// Phase 30.1 — record the optional BGV decision (idempotent, tenant-scoped).
+export const bgvDecisionRecord = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const { candidateId } = req.params;
+  const { decision, reason } = req.body ?? {};
+
+  // DB Logic - DB logics
+  const result = await recordBgvDecision({
+    companyId: req.companyId,
+    candidateRef: candidateId,
+    actorId: actorId(req),
+    decision,
+    reason,
+    requestContext: req,
+  });
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, {
+    message: result.idempotent
+      ? 'BGV decision already recorded'
+      : 'BGV decision recorded',
+    data: result,
   });
 });

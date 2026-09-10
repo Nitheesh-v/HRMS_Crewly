@@ -167,7 +167,7 @@ const MonthlyInputsPage = () => {
     setLoading(true);
     try {
       const data = await monthlyInputService.list({ month });
-      setRows(data?.data || []);
+      setRows(data?.data ?? data ?? []);
       setPeriod(data?.meta?.period || null);
       setSummary(data?.meta?.summary || {});
       setEntryTypes(data?.meta?.entryTypes || []);
@@ -192,7 +192,7 @@ const MonthlyInputsPage = () => {
     if (!permsLoading || !canRead) return;
     departmentService
       .getAll()
-      .then((response) => setDepartments(response?.data || []))
+      .then((response) => setDepartments(Array.isArray(response) ? response : response?.data || []))
       .catch(() => setDepartments([]));
   }, [permsLoading, canRead]);
 
@@ -236,7 +236,7 @@ const MonthlyInputsPage = () => {
     });
     if (!data) return;
     await load();
-    const { withErrors = 0, total = 0 } = data?.data || {};
+    const { withErrors = 0, total = 0 } = data?.data ?? data ?? {};
     if (withErrors > 0) {
       setReportOpen(true);
       flash('error', `${withErrors} of ${total} employee(s) still have validation errors`);

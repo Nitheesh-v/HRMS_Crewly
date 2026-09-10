@@ -8,6 +8,8 @@ const post = (url, body) => api.post(url, body).then(unwrap);
 
 const patch = (url, body) => api.patch(url, body).then(unwrap);
 
+const put = (url, body) => api.put(url, body).then(unwrap);
+
 const superAdminService = {
   // Authentication
   login: (body) => post("/super-admin/auth/login", body),
@@ -30,6 +32,58 @@ const superAdminService = {
   changePassword: (body) => patch("/super-admin/auth/change-password", body),
 
   setTwoFactor: (enabled) => patch("/super-admin/auth/2fa", { enabled }),
+
+  // Phase 30.6 — internal BGV verifier account management (SUPER_ADMIN).
+  bgvVerifiers: () => get("/super-admin/bgv-verifiers"),
+  bgvVerifier: (id) => get(`/super-admin/bgv-verifiers/${id}`),
+  inviteBgvVerifier: (body) => post("/super-admin/bgv-verifiers", body),
+  resendBgvVerifierSetup: (id) =>
+    post(`/super-admin/bgv-verifiers/${id}/resend-setup`, {}),
+  revokeBgvVerifierSetup: (id) =>
+    post(`/super-admin/bgv-verifiers/${id}/revoke-setup`, {}),
+  updateBgvVerifier: (id, body) =>
+    patch(`/super-admin/bgv-verifiers/${id}`, body),
+  deactivateBgvVerifier: (id, body) =>
+    post(`/super-admin/bgv-verifiers/${id}/deactivate`, body || {}),
+  reactivateBgvVerifier: (id) =>
+    post(`/super-admin/bgv-verifiers/${id}/reactivate`, {}),
+
+  // Phase 30.7 — BGV check assignment operations (platform-only).
+  bgvOperationsQueue: () => get("/super-admin/bgv-operations/queue"),
+  bgvEligibleVerifiers: (checkType) =>
+    get(`/super-admin/bgv-operations/checks/${checkType}/eligible-verifiers`),
+  bgvAssignCheck: (body) => post("/super-admin/bgv-operations/assign", body),
+
+  // Phase 30.10 — internal BGV QA review + final report release.
+  // Phase 30.12 — BGV billing reporting (read-only).
+  bgvBillingOverview: (params) => get("/super-admin/bgv-billing/overview", params),
+  bgvBillingAwaiting: (params) => get("/super-admin/bgv-billing/awaiting-candidate", params),
+  bgvBillingCancel: (orderId, data) => post(`/super-admin/bgv-billing/cancel/${orderId}`, data),
+  bgvQaQueue: (params) => get("/super-admin/bgv-qa/queue", params),
+  bgvQaDetail: (orderId, checkType) => get(`/super-admin/bgv-qa/check/${orderId}/${checkType}`),
+  bgvQaApprove: (orderId, checkType) => post(`/super-admin/bgv-qa/check/${orderId}/${checkType}/approve`, {}),
+  bgvQaReturn: (orderId, checkType, body) => post(`/super-admin/bgv-qa/check/${orderId}/${checkType}/return`, body),
+  bgvQaEvidence: async (orderId, checkType, fileId) =>
+    api.get(`/super-admin/bgv-qa/check/${orderId}/${checkType}/evidence/${fileId}`, { responseType: "blob" }),
+  bgvQaReportStatus: (orderId) => get(`/super-admin/bgv-qa/report/${orderId}`),
+  bgvQaGenerateReport: (orderId) => post(`/super-admin/bgv-qa/report/${orderId}/generate`, {}),
+  bgvQaRetryPdf: (orderId) => post(`/super-admin/bgv-qa/report/${orderId}/pdf-retry`, {}),
+  bgvQaReleaseReport: (orderId) => post(`/super-admin/bgv-qa/report/${orderId}/release`, {}),
+  bgvQaDownloadReport: (orderId) =>
+    api.get(`/super-admin/bgv-qa/report/${orderId}/download`, { responseType: "blob" }),
+  bgvReassignCheck: (body) => post("/super-admin/bgv-operations/reassign", body),
+  bgvUnassignCheck: (body) => post("/super-admin/bgv-operations/unassign", body),
+  // Phase 30.8 — platform-only check cancellation (CANCELLED is never a
+  // verifier choice; business reason required).
+  bgvCancelCheck: (body) => post("/super-admin/bgv-operations/cancel-check", body),
+
+  // Phase 30.11 — internal BGV operations dashboard (derived counts,
+  // drill-down queues, verifier workload, SLA configuration).
+  bgvOpsDashboard: () => get("/super-admin/bgv-ops/dashboard"),
+  bgvOpsQueue: (params) => get("/super-admin/bgv-ops/queue", params),
+  bgvOpsWorkload: () => get("/super-admin/bgv-ops/workload"),
+  bgvOpsSlaRead: () => get("/super-admin/bgv-ops/sla"),
+  bgvOpsSlaUpdate: (body) => put("/super-admin/bgv-ops/sla", body),
 
   // Dashboard
   dashboard: () => get("/super-admin/dashboard"),
@@ -56,6 +110,12 @@ const superAdminService = {
   users: (params) => get("/super-admin/users", params),
 
   platformAdmins: () => get("/super-admin/platform-admins"),
+
+  // Phase 30.2 — BGV service catalogue & pricing (platform commerce).
+  bgvCatalogue: () => get("/super-admin/bgv-catalogue"),
+
+  updateBgvCatalogue: (type, body) =>
+    patch(`/super-admin/bgv-catalogue/${type}`, body),
 
   // Subscriptions and plans
   subscriptions: (params) => get("/super-admin/subscriptions", params),

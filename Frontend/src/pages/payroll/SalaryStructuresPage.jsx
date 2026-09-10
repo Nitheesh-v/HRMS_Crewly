@@ -120,7 +120,7 @@ const SalaryStructuresPage = () => {
         status: filters.status === 'ALL' ? undefined : filters.status,
         page: filters.page,
       });
-      setStructures(data?.data || []);
+      setStructures(data?.data ?? data ?? []);
       setComponents(data?.meta?.components || []);
       setMeta(
         data?.meta || { total: 0, page: 1, limit: 25, pages: 1 },
@@ -160,7 +160,7 @@ const SalaryStructuresPage = () => {
           })),
           gross: Number(sampleGross) || 0,
         });
-        setPreview(data?.data || null);
+        setPreview(data?.data ?? data ?? null);
       } catch {
         setPreview(null);
       }
@@ -197,7 +197,7 @@ const SalaryStructuresPage = () => {
   const openDetail = async (structure) => {
     try {
       const data = await salaryStructureService.get(structure._id);
-      setDetail(data?.data || structure);
+      setDetail(data?.data ?? data ?? structure);
     } catch {
       setDetail(structure);
     }

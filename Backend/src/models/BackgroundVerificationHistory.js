@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { BGV_CASE_STATUSES } from './BackgroundVerificationCase.js';
+import { BGV_CASE_STATUSES, BGV_CONSENT_STATUSES } from './BackgroundVerificationCase.js';
 import { BGV_CHECK_STATUSES } from './BackgroundVerificationCheck.js';
 
 export const BGV_HISTORY_ACTIONS = [
@@ -53,15 +53,19 @@ const backgroundVerificationHistorySchema = new mongoose.Schema(
       required: true,
       immutable: true,
     },
+    // RCA (2026-09-05): consent transitions (NOT_REQUESTED -> REQUESTED etc.)
+    // are recorded as history rows, so consent statuses must be valid here;
+    // previously Start BGV crashed with a ValidationError when consent was
+    // required. Additive enum extension — no migration needed.
     previousStatus: {
       type: String,
-      enum: [...BGV_CASE_STATUSES, ...BGV_CHECK_STATUSES, ''],
+      enum: [...BGV_CASE_STATUSES, ...BGV_CHECK_STATUSES, ...BGV_CONSENT_STATUSES, ''],
       default: '',
       immutable: true,
     },
     newStatus: {
       type: String,
-      enum: [...BGV_CASE_STATUSES, ...BGV_CHECK_STATUSES, ''],
+      enum: [...BGV_CASE_STATUSES, ...BGV_CHECK_STATUSES, ...BGV_CONSENT_STATUSES, ''],
       default: '',
       immutable: true,
     },

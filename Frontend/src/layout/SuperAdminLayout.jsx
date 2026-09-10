@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { ClipboardList, Gauge, ReceiptText, ShieldCheck, UserCheck } from "lucide-react";
 import useAuth from "../hooks/useAuth.jsx";
 import superAdminService from "../services/superAdminService.js";
 
@@ -38,6 +39,46 @@ const MENU = [
     to: "/super-admin/billing",
     label: "Billing",
     icon: "🧾",
+    roles: ["SUPER_ADMIN", "BILLING_ADMIN"],
+  },
+  {
+    to: "/super-admin/bgv-verifiers",
+    label: "BGV Verifiers",
+    icon: <UserCheck className="h-4 w-4" />,
+    roles: ["SUPER_ADMIN"],
+  },
+  {
+    to: "/super-admin/bgv-operations",
+    label: "BGV Operations",
+    icon: <ClipboardList className="h-4 w-4" />,
+    roles: ["SUPER_ADMIN"],
+  },
+  {
+    // Phase 30.12 — BGV billing reporting (read-only).
+    to: "/super-admin/bgv-billing",
+    label: "BGV Billing",
+    icon: <ReceiptText className="h-4 w-4" />,
+    roles: ["SUPER_ADMIN"],
+  },
+  {
+    // Phase 30.10 — internal QA review + report release (bgv-qa:*).
+    to: "/super-admin/bgv-qa",
+    label: "BGV QA Review",
+    icon: <ShieldCheck className="h-4 w-4" />,
+    roles: ["SUPER_ADMIN", "PLATFORM_ADMIN"],
+  },
+  {
+    // Phase 30.11 — internal BGV operations dashboard (bgv-operations:*
+    // is SUPER_ADMIN-only via "*"; PLATFORM_ADMIN intentionally excluded).
+    to: "/super-admin/bgv-ops",
+    label: "BGV Ops Dashboard",
+    icon: <Gauge className="h-4 w-4" />,
+    roles: ["SUPER_ADMIN"],
+  },
+  {
+    to: "/super-admin/bgv-services",
+    label: "BGV Services",
+    icon: "🔍",
     roles: ["SUPER_ADMIN", "BILLING_ADMIN"],
   },
   {
