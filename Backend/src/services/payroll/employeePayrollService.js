@@ -311,6 +311,10 @@ export const makeEmployeePayrollService = ({
     const errors = validateEmployeePayroll(
       {
         ...incoming,
+        // §23 duplicate-date check excludes the profile's OWN version by
+        // _id — without this the in-place edit always collides with its
+        // own effectiveFrom ("Another revision already starts…").
+        _id: current?._id ?? null,
         bank: {
           ...incoming.bank,
           hasStoredAccount: Boolean(current?.bank?.accountNumber || bank.accountNumber),
