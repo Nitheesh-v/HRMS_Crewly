@@ -119,7 +119,7 @@ const SalaryComponentsPage = () => {
         taxability: filters.taxability === 'ALL' ? undefined : filters.taxability,
         page: filters.page,
       });
-      setComponents(data?.data || []);
+      setComponents(data?.data ?? data ?? []);
       setMeta(data?.meta || { total: 0, page: 1, limit: 25, pages: 1 });
       setAccessDenied(false);
     } catch (error) {
@@ -153,7 +153,7 @@ const SalaryComponentsPage = () => {
   const openDetail = async (component) => {
     try {
       const data = await salaryComponentService.get(component._id);
-      setDetail(data?.data || component);
+      setDetail(data?.data ?? data ?? component);
     } catch {
       setDetail(component);
     }
@@ -237,7 +237,7 @@ const SalaryComponentsPage = () => {
   const loadDefaults = async () => {
     try {
       const data = await salaryComponentService.defaults();
-      setDefaults(data?.data || []);
+      setDefaults(data?.data ?? data ?? []);
     } catch {
       setDefaults([]);
     }

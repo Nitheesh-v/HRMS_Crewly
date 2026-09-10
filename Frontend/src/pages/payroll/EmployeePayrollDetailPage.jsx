@@ -147,7 +147,7 @@ const EmployeePayrollDetailPage = () => {
     setLoading(true);
     try {
       const data = await employeePayrollService.get(employeeId);
-      setProfile(data?.data || null);
+      setProfile(data?.data ?? data ?? null);
       setForbidden(false);
     } catch (error) {
       if (error?.status === 403 || error?.code === 'PAYROLL_ACCESS_DENIED') setForbidden(true);
@@ -187,7 +187,7 @@ const EmployeePayrollDetailPage = () => {
           structureId: form.structureId,
           monthlyGross: Number(form.monthlyGross) || 0,
         });
-        setPreview(data?.data || null);
+        setPreview(data?.data ?? data ?? null);
       } catch {
         setPreview(null);
       }

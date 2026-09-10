@@ -82,7 +82,7 @@ const EmployeePayrollPage = () => {
         employmentType: filters.employmentType === 'ALL' ? undefined : filters.employmentType,
         structureId: filters.structureId === 'ALL' ? undefined : filters.structureId,
       });
-      setProfiles(data?.data || []);
+      setProfiles(data?.data ?? data ?? []);
       setStructures(data?.meta?.structures || []);
       setWithoutProfile(data?.meta?.withoutProfile || []);
       setAccessDenied(false);
