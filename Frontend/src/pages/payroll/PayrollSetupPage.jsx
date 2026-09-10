@@ -218,7 +218,12 @@ const PayrollSetupPage = () => {
         setDirty(false);
         flash('ok', 'Draft saved');
       } catch (err) {
-        setError(err.message || 'Could not save this section');
+        // The backend ships per-field format errors — surface them, not
+        // just the generic banner (the six-400 BANK defect).
+        const detail = err?.data?.errors?.length
+          ? err.data.errors.map((fieldError) => fieldError.message).join(' · ')
+          : err.message;
+        setError(detail || 'Could not save this section');
       }
     }, 1800);
 
@@ -273,7 +278,10 @@ const PayrollSetupPage = () => {
       }
       return true;
     } catch (err) {
-      setError(err.message || 'Could not save this section');
+      const detail = err?.data?.errors?.length
+          ? err.data.errors.map((fieldError) => fieldError.message).join(' · ')
+          : err.message;
+        setError(detail || 'Could not save this section');
       if (err?.data?.errors?.length) {
         setError(err.data.errors.map((e) => e.message).join(' · '));
       }

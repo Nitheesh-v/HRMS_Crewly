@@ -4,6 +4,7 @@
 // Plans: TRIAL → BASIC / PRO / ENTERPRISE (upgraded via billing).
 // ─────────────────────────────────────────────────────────────
 import mongoose from 'mongoose';
+import { invalidateSubscriptionGateCache } from '../utils/subscriptionGateCache.js';
 
 const subscriptionSchema = new mongoose.Schema(
   {
@@ -248,5 +249,14 @@ subscriptionSchema.index({
   endDate: 1,
 });
 
+
+// Phase 29 fix-forward: the feature-gate cache (subscriptionGateCache)
+// must die the moment a subscription changes, in the same process.
+subscriptionSchema.post('save', function hookGateInvalidate(doc) {
+  invalidateSubscriptionGateCache(doc?.company);
+});
+subscriptionSchema.post('deleteOne', { document: true, query: false }, function hookGateInvalidateDel(doc) {
+  invalidateSubscriptionGateCache(doc?.company);
+});
 
 export default mongoose.model('Subscription', subscriptionSchema);

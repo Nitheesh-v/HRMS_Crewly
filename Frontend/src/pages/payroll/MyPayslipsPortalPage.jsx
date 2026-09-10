@@ -7,6 +7,7 @@ import Modal from '../../components/Modal.jsx';
 import PayslipDocument, { downloadPayslipFile } from './PayslipDocument.jsx';
 import payslipService from '../../services/payslipService.js';
 import statutoryService from '../../services/statutoryService.js';
+import usePermission from '../../hooks/usePermission.js';
 import fnfService from '../../services/fnfService.js';
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -76,6 +77,7 @@ const MyPayslipsPortalPage = () => {
   const [statutory, setStatutory] = useState(null);
   // Phase 29.11 §18 — the employee's own final settlement, if there is one.
   const [settlement, setSettlement] = useState(null);
+  const { hasPermission, isLoaded: permissionsLoaded } = usePermission();
 
   const load = useCallback(async () => {
     try {
@@ -88,11 +90,6 @@ const MyPayslipsPortalPage = () => {
     } finally {
       setLoading(false);
     }
-    // The statutory card is a bonus read, never a reason to fail the page.
-    statutoryService
-      .mine()
-      .then((data) => setStatutory(data || null))
-      .catch(() => setStatutory(null));
     // Phase 29.11 §18 — a leaving employee sees their F&F here too.
     fnfService
       .mine()
@@ -103,6 +100,26 @@ const MyPayslipsPortalPage = () => {
   useEffect(() => {
     load();
   }, [load]);
+
+  // §17 — the statutory card is a bonus read, never a reason to fail the
+  // page. Wait for the permission set, then only call /statutory/mine when
+  // the role actually carries EMPLOYEE_SALARY_READ_SELF (no noisy 403s for
+  // custom roles); the graceful catch stays as the last line of defence.
+  const loadStatutory = useCallback(() => {
+    if (!permissionsLoaded) return undefined;
+    if (!hasPermission('EMPLOYEE_SALARY_READ_SELF')) {
+      setStatutory(null);
+      return undefined;
+    }
+    return statutoryService
+      .mine()
+      .then((data) => setStatutory(data || null))
+      .catch(() => setStatutory(null));
+  }, [permissionsLoaded, hasPermission]);
+
+  useEffect(() => {
+    loadStatutory();
+  }, [loadStatutory]);
 
   const financialYears = useMemo(
     () => [...new Set(rows.map((row) => financialYearOf(row.month)).filter(Boolean))].sort().reverse(),
