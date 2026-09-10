@@ -21,6 +21,7 @@ const {
   PERIOD_STATUSES,
   PERIOD_TRANSITIONS,
   computeAutomaticSummary,
+  countWorkingDaysInMonth,
   entryTotals,
   financialYearOf,
   isDateInMonth,
@@ -919,4 +920,51 @@ test('listInputs exposes the entry-type catalogue for the drawer dropdown', asyn
   assert.ok(Array.isArray(result.entryTypes) && result.entryTypes.length >= 5);
   const bonus = result.entryTypes.find((option) => option.value === 'BONUS_FESTIVAL');
   assert.ok(bonus && bonus.label && bonus.category, 'festival bonus option with label + category');
+});
+
+// ── 9. working-day basis derivation (§7) ───────────────────────────────────
+
+test('working-day basis matches the attendance report calendar', () => {
+  // September 2026 under the default SAT_SUN policy: 30 days minus 8 weekend
+  // days = 22; elapsed through 10 Sep = 8 (the number the report shows).
+  assert.equal(
+    countWorkingDaysInMonth({ month: '2026-09', weekendPolicy: { type: 'SAT_SUN' } }),
+    22,
+  );
+  assert.equal(
+    countWorkingDaysInMonth({
+      month: '2026-09',
+      weekendPolicy: { type: 'SAT_SUN' },
+      untilKey: '2026-09-10',
+    }),
+    8,
+  );
+  assert.equal(
+    countWorkingDaysInMonth({ month: '2026-09', weekendPolicy: { type: 'SUN_ONLY' } }),
+    26,
+  );
+  // A holiday on a working day reduces the basis.
+  assert.equal(
+    countWorkingDaysInMonth({
+      month: '2026-09',
+      weekendPolicy: { type: 'SAT_SUN' },
+      holidayDates: ['2026-09-07'],
+      untilKey: '2026-09-10',
+    }),
+    7,
+  );
+  assert.equal(countWorkingDaysInMonth({ month: 'not-a-month' }), 0);
+});
+
+test('auto summary mirrors the report: 1 present of 8 elapsed => 7 LOP', () => {
+  const auto = computeAutomaticSummary({
+    month: '2026-09',
+    workingDays: 8,
+    attendance: [{ status: 'LATE', date: '2026-09-07', lateMinutes: 12, overtimeMinutes: 0 }],
+    leaves: [],
+  });
+  assert.equal(auto.presentDays, 1);
+  assert.equal(auto.absentDays, 7);
+  assert.equal(auto.lopDays, 7);
+  assert.equal(auto.lopSource, 'ATTENDANCE');
 });

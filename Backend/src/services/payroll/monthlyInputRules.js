@@ -496,6 +496,47 @@ const isWeekend = (dateKey, weekendPolicy = {}) => {
   return days.includes(day);
 };
 
+// §7 — 29.1 stores the weekend policy as { type, customWorkingDays } and never
+// a numeric cycle length, so the working-day BASIS of a month is derived from
+// that policy with the same calendar maths the attendance report uses.
+const WEEKDAY_KEYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
+export const workingWeekdaysOf = (weekendPolicy = {}) => {
+  const type = String(weekendPolicy.type || 'SAT_SUN').toUpperCase();
+  if (type === 'CUSTOM') {
+    const custom = (weekendPolicy.customWorkingDays || [])
+      .map((day) => String(day).toUpperCase())
+      .filter((day) => WEEKDAY_KEYS.includes(day));
+    if (custom.length) return custom;
+  }
+  if (type === 'SUN_ONLY') return WEEKDAY_KEYS.filter((day) => day !== 'SUN');
+  return WEEKDAY_KEYS.filter((day) => day !== 'SAT' && day !== 'SUN');
+};
+
+// Counts working weekdays in `month`, skipping holidays. `untilKey` caps the
+// count at a date (the attendance report uses today for a running month, so a
+// mid-month import only treats ELAPSED unworked days as absent).
+export const countWorkingDaysInMonth = ({
+  month,
+  weekendPolicy = {},
+  holidayDates = [],
+  untilKey = null,
+} = {}) => {
+  if (!isValidMonth(month)) return 0;
+  const { daysInMonth } = monthBounds(month);
+  const working = new Set(workingWeekdaysOf(weekendPolicy));
+  const holidays = new Set((holidayDates || []).map((date) => String(date).slice(0, 10)));
+
+  let count = 0;
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const key = `${month}-${String(day).padStart(2, '0')}`;
+    if (untilKey && key > untilKey) break;
+    const weekday = WEEKDAY_KEYS[new Date(`${key}T00:00:00Z`).getUTCDay()];
+    if (working.has(weekday) && !holidays.has(key)) count += 1;
+  }
+  return count;
+};
+
 export const computeAutomaticSummary = ({
   month = '',
   workingDays = 0,
