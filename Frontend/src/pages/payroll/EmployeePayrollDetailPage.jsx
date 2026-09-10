@@ -104,6 +104,7 @@ const EmployeePayrollDetailPage = () => {
   const [forbidden, setForbidden] = useState(false);
 
   const [formOpen, setFormOpen] = useState(false);
+  const [formError, setFormError] = useState('');
   const [form, setForm] = useState(emptyForm);
   const [structures, setStructures] = useState([]);
   const [preview, setPreview] = useState(null);
@@ -169,6 +170,7 @@ const EmployeePayrollDetailPage = () => {
       setStructures([]);
     }
     setForm(profile ? toForm(profile) : emptyForm);
+    setFormError('');
     setFormOpen(true);
   };
 
@@ -217,7 +219,13 @@ const EmployeePayrollDetailPage = () => {
       await load();
     } catch (error) {
       const details = error?.data?.errors;
-      flash('error', details?.length ? details[0].message : error?.message || 'Could not save this payroll profile');
+      const message = details?.length
+        ? details.map((fieldError) => fieldError.message).join(' · ')
+        : error?.message || 'Could not save this payroll profile';
+      // Persistent, in-modal, next to the button the user just pressed —
+      // the transient toast alone was missable on a tall form.
+      setFormError(message);
+      flash('error', message);
     } finally {
       setBusy(false);
     }
@@ -532,6 +540,11 @@ const EmployeePayrollDetailPage = () => {
             </div>
           </div>
 
+          {formError ? (
+            <div className="mt-5 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+              {formError}
+            </div>
+          ) : null}
           <div className="mt-5 flex justify-end gap-2">
             <button type="button" className="btn-ghost" onClick={() => setFormOpen(false)}>
               Cancel
