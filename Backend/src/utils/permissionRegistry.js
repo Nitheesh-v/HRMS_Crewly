@@ -114,6 +114,11 @@ export const DEFAULT_PERMISSIONS = [
 
   ...actions("ATTENDANCE", ["READ", "CREATE", "UPDATE", "APPROVE"]),
 
+  // Phase 31.1 — Attendance Policy (company configuration layer).
+  // ACTIVATE is deliberately separate from MANAGE: activation is a
+  // high-impact, audited transition (least privilege).
+  ...actions("ATTENDANCE_POLICY", ["READ", "MANAGE", "ACTIVATE"]),
+
   ...actions("LEAVE", ["READ", "CREATE", "UPDATE", "APPROVE", "REJECT"]),
 
   ...actions("PAYROLL", ["READ", "CREATE", "UPDATE", "APPROVE", "MANAGE"]),
@@ -439,6 +444,11 @@ export const DEFAULT_ROLE_MATRIX = {
     "DEPARTMENT_UPDATE",
 
     "ATTENDANCE_READ",
+
+    // Phase 31.1 — HR reads and edits the attendance policy, but only a
+    // Company Admin may ACTIVATE it (§15 least privilege).
+    "ATTENDANCE_POLICY_READ",
+    "ATTENDANCE_POLICY_MANAGE",
 
     "LEAVE_READ",
     "LEAVE_APPROVE",

@@ -50,6 +50,7 @@ const OrgChartPage = lazy(() => import("../pages/org-chart/OrgChartPage.jsx"));
 
 const AttendancePage = lazy(() => import("../pages/attendance/AttendancePage.jsx"));
 const AttendanceReportPage = lazy(() => import("../pages/attendance/AttendanceReportPage.jsx"));
+const AttendancePolicyPage = lazy(() => import("../pages/attendance/AttendancePolicyPage.jsx"));
 
 const LeavesPage = lazy(() => import("../pages/leaves/LeavesPage.jsx"));
 const LeaveApprovalsPage = lazy(() => import("../pages/leaves/LeaveApprovalsPage.jsx"));
@@ -393,6 +394,13 @@ const AppRoutes = () => (
             <AttendanceReportPage />
           </RequireRole>
         }
+      />
+
+      {/* Phase 31.1 — Attendance Policy (permission-gated inside the page,
+          like the payroll setup pages: no role-name gate here) */}
+      <Route
+        path="attendance/policy"
+        element={<AttendancePolicyPage />}
       />
 
       {/* Leave management */}

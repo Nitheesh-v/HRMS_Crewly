@@ -116,7 +116,9 @@ export const ensurePermissions = async () => {
 //   22 → 23 : 29.9 gave HR_MANAGER and FINANCE_MANAGER PAYSLIP_READ
 //   23 → 24 : 29.10 added PAYROLL_STATUTORY_FILING and gave
 //             PAYROLL_ADMIN / FINANCE_MANAGER the statutory duties
-const SYSTEM_PERMISSION_VERSION = 26;
+//   26 → 27 : 31.1 added ATTENDANCE_POLICY_READ/_MANAGE/_ACTIVATE and gave
+//             HR_MANAGER READ + MANAGE (activation stays admin-only)
+const SYSTEM_PERMISSION_VERSION = 27;
 export const ensureCompanyRoles = async (
   companyId,
   createdBy = null,

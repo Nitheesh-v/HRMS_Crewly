@@ -423,8 +423,18 @@ const AppLayout = () => {
       : []),
   ];
 
+  // Phase 31.1 — Attendance Policy entry, permission-driven like payroll.
+  const attendancePolicyMenu = hasAnyPermission([
+    'ATTENDANCE_POLICY_READ',
+    'ATTENDANCE_POLICY_MANAGE',
+    'ATTENDANCE_POLICY_ACTIVATE',
+  ])
+    ? [{ to: '/app/attendance/policy', label: 'Attendance Policy' }]
+    : [];
+
   const menu = [
     ...baseMenu,
+    ...attendancePolicyMenu,
     ...payrollMenu,
     ...recruitmentDashboardMenu,
     ...candidateMenu,

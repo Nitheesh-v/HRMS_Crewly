@@ -9,6 +9,7 @@ import companyRoutes from "./companyRoutes.js";
 import departmentRoutes from "./departmentRoutes.js";
 import userRoutes from "./userRoutes.js";
 import attendanceRoutes from "./attendanceRoutes.js";
+import attendancePolicyRoutes from "./attendancePolicyRoutes.js";
 import leaveRoutes from "./leaveRoutes.js";
 import projectRoutes from "./projectRoutes.js";
 import taskRoutes from "./taskRoutes.js";
@@ -121,6 +122,10 @@ router.use("/companies", companyRoutes);
 router.use("/departments", departmentRoutes);
 
 router.use("/users", userRoutes);
+
+// Phase 31.1 — mounted before /attendance so policy reads never fall
+// through to the punch routers.
+router.use("/attendance/policy", attendancePolicyRoutes);
 
 router.use("/attendance", attendanceRoutes);
 
