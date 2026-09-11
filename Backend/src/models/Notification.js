@@ -16,4 +16,10 @@ const notificationSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Perf: exact filter+sort support (no equivalent compound existed).
+// - { user, readAt } → unreadCount + markAllRead filter { user, readAt: null }.
+// - { user, createdAt } → myNotifications find({ user }).sort(-createdAt).limit(20).
+notificationSchema.index({ user: 1, readAt: 1 });
+notificationSchema.index({ user: 1, createdAt: -1 });
+
 export default mongoose.model('Notification', notificationSchema);

@@ -82,6 +82,9 @@ export const listUsers = asyncHandler(async (req, res) => {
     ];
   }
 
+  // Perf: lean — the list response is serialized to JSON untouched
+  // (no virtuals/methods in the payload), so this only skips hydrating
+  // up to `limit` full User documents per page.
   const [users, total] = await Promise.all([
     User.find(filter)
       .select('-password')
@@ -89,7 +92,8 @@ export const listUsers = asyncHandler(async (req, res) => {
       .populate('reportingTo', 'name role')
       .sort('-createdAt')
       .skip((page - 1) * limit)
-      .limit(limit),
+      .limit(limit)
+      .lean(),
     User.countDocuments(filter),
   ]);
 

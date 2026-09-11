@@ -5,6 +5,7 @@ import {
   hasFeature,
 } from "../utils/subscriptionEngine.js";
 import { recordHistory } from "../utils/subscriptionEngine.js";
+import { markPerf } from "./perfTiming.js";
 
 const denied = (res, status, code, message, data = {}) =>
   res.status(status).json({
@@ -21,7 +22,23 @@ export const checkSubscriptionStatus = async (req, res, next) => {
       return denied(res, 400, "COMPANY_REQUIRED", "Company context required");
     }
 
-    const subscription = await getCurrentSubscription(req.companyId);
+    // Perf: tenantContext (which always runs first on these routers)
+    // already populated req.company.subscription milliseconds ago in
+    // this same request. Reuse it instead of re-reading Subscription +
+    // planRef (2 Atlas round-trips). The ownership check + fallback keep
+    // routers without tenantContext, null/stale pointers, or a corrupted
+    // pointer working exactly as before. Status checks below unchanged.
+    const attached = req.company?.subscription;
+    const attachedUsable =
+      attached &&
+      typeof attached === 'object' &&
+      attached._id &&
+      attached.status &&
+      String(attached.company || '') === String(req.companyId || '');
+
+    const subscription = attachedUsable
+      ? attached
+      : await getCurrentSubscription(req.companyId);
 
     if (!subscription) {
       return denied(
@@ -33,6 +50,7 @@ export const checkSubscriptionStatus = async (req, res, next) => {
     }
 
     req.subscription = subscription;
+    markPerf(req, 'sub');
 
     if (subscription.status === "SUSPENDED") {
       return denied(

@@ -3,161 +3,162 @@ import {
   Route,
   Routes,
 } from "react-router-dom";
+import { Suspense, lazy } from "react";
 
 import PublicLayout from "../layout/PublicLayout.jsx";
 import AppLayout from "../layout/AppLayout.jsx";
 import SuperAdminLayout from "../layout/SuperAdminLayout.jsx";
 import CareerPublicLayout from "../layout/CareerPublicLayout.jsx";
-import CareerLandingPage from "../pages/careers/CareerLandingPage.jsx";
-import CareerJobsPage from "../pages/careers/CareerJobsPage.jsx";
-import CareerJobDetailPage from "../pages/careers/CareerJobDetailPage.jsx";
-import CareerApplyShellPage from "../pages/careers/CareerApplyShellPage.jsx";
+const CareerLandingPage = lazy(() => import("../pages/careers/CareerLandingPage.jsx"));
+const CareerJobsPage = lazy(() => import("../pages/careers/CareerJobsPage.jsx"));
+const CareerJobDetailPage = lazy(() => import("../pages/careers/CareerJobDetailPage.jsx"));
+const CareerApplyShellPage = lazy(() => import("../pages/careers/CareerApplyShellPage.jsx"));
 import CandidateOfferPublicLayout from "../layout/CandidateOfferPublicLayout.jsx";
 import CandidateBgvConsentPublicLayout from "../layout/CandidateBgvConsentPublicLayout.jsx";
-import BgvVerifierLoginPage from "../pages/bgvVerifier/BgvVerifierLoginPage.jsx";
-import BgvVerifierSetupPage from "../pages/bgvVerifier/BgvVerifierSetupPage.jsx";
-import BgvVerifierForgotPage from "../pages/bgvVerifier/BgvVerifierForgotPage.jsx";
-import BgvVerifierResetPage from "../pages/bgvVerifier/BgvVerifierResetPage.jsx";
-import BgvVerifierDashboardPage from "../pages/bgvVerifier/BgvVerifierDashboardPage.jsx";
-import BgvVerifierWorkPage from "../pages/bgvVerifier/BgvVerifierWorkPage.jsx";
-import BgvVerifierCheckDetailPage from "../pages/bgvVerifier/BgvVerifierCheckDetailPage.jsx";
-import CandidateBgvConsentPortalPage from "../pages/candidate/CandidateBgvConsentPortalPage.jsx";
-import CandidateOfferPortalPage from "../pages/candidate/CandidateOfferPortalPage.jsx";
+const BgvVerifierLoginPage = lazy(() => import("../pages/bgvVerifier/BgvVerifierLoginPage.jsx"));
+const BgvVerifierSetupPage = lazy(() => import("../pages/bgvVerifier/BgvVerifierSetupPage.jsx"));
+const BgvVerifierForgotPage = lazy(() => import("../pages/bgvVerifier/BgvVerifierForgotPage.jsx"));
+const BgvVerifierResetPage = lazy(() => import("../pages/bgvVerifier/BgvVerifierResetPage.jsx"));
+const BgvVerifierDashboardPage = lazy(() => import("../pages/bgvVerifier/BgvVerifierDashboardPage.jsx"));
+const BgvVerifierWorkPage = lazy(() => import("../pages/bgvVerifier/BgvVerifierWorkPage.jsx"));
+const BgvVerifierCheckDetailPage = lazy(() => import("../pages/bgvVerifier/BgvVerifierCheckDetailPage.jsx"));
+const CandidateBgvConsentPortalPage = lazy(() => import("../pages/candidate/CandidateBgvConsentPortalPage.jsx"));
+const CandidateOfferPortalPage = lazy(() => import("../pages/candidate/CandidateOfferPortalPage.jsx"));
 import CandidatePreOnboardingPublicLayout from "../layout/CandidatePreOnboardingPublicLayout.jsx";
-import CandidatePreOnboardingPortalPage from "../pages/candidate/CandidatePreOnboardingPortalPage.jsx";
+const CandidatePreOnboardingPortalPage = lazy(() => import("../pages/candidate/CandidatePreOnboardingPortalPage.jsx"));
 
 import RequireAuth from "./RequireAuth.jsx";
 import RequireVerifierAuth from "./RequireVerifierAuth.jsx";
 import RequirePermission from "./RequirePermission.jsx";
 import RequireRole from "./RequireRole.jsx";
 
-import LandingPage from "../pages/landing/LandingPage.jsx";
-import LoginPage from "../pages/login/LoginPage.jsx";
-import RegisterCompanyPage from "../pages/register/RegisterCompanyPage.jsx";
+const LandingPage = lazy(() => import("../pages/landing/LandingPage.jsx"));
+const LoginPage = lazy(() => import("../pages/login/LoginPage.jsx"));
+const RegisterCompanyPage = lazy(() => import("../pages/register/RegisterCompanyPage.jsx"));
 
-import ForgotPasswordPage from "../pages/security/ForgotPasswordPage.jsx";
-import ResetPasswordPage from "../pages/security/ResetPasswordPage.jsx";
-import ActiveSessionsPage from "../pages/security/ActiveSessionsPage.jsx";
-import SecurityDashboardPage from "../pages/security/SecurityDashboardPage.jsx";
-import AuditLogsPage from "../pages/security/AuditLogsPage.jsx";
-import SecuritySettingsPage from "../pages/security/SecuritySettingsPage.jsx";
+const ForgotPasswordPage = lazy(() => import("../pages/security/ForgotPasswordPage.jsx"));
+const ResetPasswordPage = lazy(() => import("../pages/security/ResetPasswordPage.jsx"));
+const ActiveSessionsPage = lazy(() => import("../pages/security/ActiveSessionsPage.jsx"));
+const SecurityDashboardPage = lazy(() => import("../pages/security/SecurityDashboardPage.jsx"));
+const AuditLogsPage = lazy(() => import("../pages/security/AuditLogsPage.jsx"));
+const SecuritySettingsPage = lazy(() => import("../pages/security/SecuritySettingsPage.jsx"));
 
-import DashboardPage from "../pages/dashboard/DashboardPage.jsx";
-import DepartmentsPage from "../pages/departments/DepartmentsPage.jsx";
-import UsersPage from "../pages/users/UsersPage.jsx";
-import OrgChartPage from "../pages/org-chart/OrgChartPage.jsx";
+const DashboardPage = lazy(() => import("../pages/dashboard/DashboardPage.jsx"));
+const DepartmentsPage = lazy(() => import("../pages/departments/DepartmentsPage.jsx"));
+const UsersPage = lazy(() => import("../pages/users/UsersPage.jsx"));
+const OrgChartPage = lazy(() => import("../pages/org-chart/OrgChartPage.jsx"));
 
-import AttendancePage from "../pages/attendance/AttendancePage.jsx";
-import AttendanceReportPage from "../pages/attendance/AttendanceReportPage.jsx";
+const AttendancePage = lazy(() => import("../pages/attendance/AttendancePage.jsx"));
+const AttendanceReportPage = lazy(() => import("../pages/attendance/AttendanceReportPage.jsx"));
 
-import LeavesPage from "../pages/leaves/LeavesPage.jsx";
-import LeaveApprovalsPage from "../pages/leaves/LeaveApprovalsPage.jsx";
+const LeavesPage = lazy(() => import("../pages/leaves/LeavesPage.jsx"));
+const LeaveApprovalsPage = lazy(() => import("../pages/leaves/LeaveApprovalsPage.jsx"));
 
-import ProjectsPage from "../pages/projects/ProjectsPage.jsx";
-import ProjectDetailPage from "../pages/projects/ProjectDetailPage.jsx";
-import TasksPage from "../pages/tasks/TasksPage.jsx";
+const ProjectsPage = lazy(() => import("../pages/projects/ProjectsPage.jsx"));
+const ProjectDetailPage = lazy(() => import("../pages/projects/ProjectDetailPage.jsx"));
+const TasksPage = lazy(() => import("../pages/tasks/TasksPage.jsx"));
 
-import PayrollPage from "../pages/payroll/PayrollPage.jsx";
-import PayrollSetupPage from "../pages/payroll/PayrollSetupPage.jsx";
-import SalaryComponentsPage from "../pages/payroll/SalaryComponentsPage.jsx";
-import SalaryStructuresPage from "../pages/payroll/SalaryStructuresPage.jsx";
-import EmployeePayrollPage from "../pages/payroll/EmployeePayrollPage.jsx";
-import MonthlyInputsPage from "../pages/payroll/MonthlyInputsPage.jsx";
-import RunPayrollPage from "../pages/payroll/RunPayrollPage.jsx";
-import ReviewPayrollPage from "../pages/payroll/ReviewPayrollPage.jsx";
-import SalaryPaymentPage from "../pages/payroll/SalaryPaymentPage.jsx";
-import PayslipsPage from "../pages/payroll/PayslipsPage.jsx";
-import MyPayslipsPortalPage from "../pages/payroll/MyPayslipsPortalPage.jsx";
-import StatutoryCompliancePage from "../pages/payroll/StatutoryCompliancePage.jsx";
+const PayrollPage = lazy(() => import("../pages/payroll/PayrollPage.jsx"));
+const PayrollSetupPage = lazy(() => import("../pages/payroll/PayrollSetupPage.jsx"));
+const SalaryComponentsPage = lazy(() => import("../pages/payroll/SalaryComponentsPage.jsx"));
+const SalaryStructuresPage = lazy(() => import("../pages/payroll/SalaryStructuresPage.jsx"));
+const EmployeePayrollPage = lazy(() => import("../pages/payroll/EmployeePayrollPage.jsx"));
+const MonthlyInputsPage = lazy(() => import("../pages/payroll/MonthlyInputsPage.jsx"));
+const RunPayrollPage = lazy(() => import("../pages/payroll/RunPayrollPage.jsx"));
+const ReviewPayrollPage = lazy(() => import("../pages/payroll/ReviewPayrollPage.jsx"));
+const SalaryPaymentPage = lazy(() => import("../pages/payroll/SalaryPaymentPage.jsx"));
+const PayslipsPage = lazy(() => import("../pages/payroll/PayslipsPage.jsx"));
+const MyPayslipsPortalPage = lazy(() => import("../pages/payroll/MyPayslipsPortalPage.jsx"));
+const StatutoryCompliancePage = lazy(() => import("../pages/payroll/StatutoryCompliancePage.jsx"));
 // Phase 29.12 — Payroll Analytics & Reports (§26 — ten pages).
-import ExecutiveDashboardPage from "../pages/payroll/analytics/ExecutiveDashboardPage.jsx";
-import PayrollOverviewPage from "../pages/payroll/analytics/PayrollOverviewPage.jsx";
-import DepartmentAnalyticsPage from "../pages/payroll/analytics/DepartmentAnalyticsPage.jsx";
-import SalaryDistributionPage from "../pages/payroll/analytics/SalaryDistributionPage.jsx";
-import PayrollTrendsPage from "../pages/payroll/analytics/PayrollTrendsPage.jsx";
-import BonusReportPage from "../pages/payroll/analytics/BonusReportPage.jsx";
-import OvertimeReportPage from "../pages/payroll/analytics/OvertimeReportPage.jsx";
-import StatutorySummaryPage from "../pages/payroll/analytics/StatutorySummaryPage.jsx";
-import EarningsReportPage from "../pages/payroll/analytics/EarningsReportPage.jsx";
-import DeductionsReportPage from "../pages/payroll/analytics/DeductionsReportPage.jsx";
-import EmployerContributionPage from "../pages/payroll/analytics/EmployerContributionPage.jsx";
-import ReimbursementReportPage from "../pages/payroll/analytics/ReimbursementReportPage.jsx";
-import FnfAnalyticsPage from "../pages/payroll/analytics/FnfAnalyticsPage.jsx";
-import PayrollVariancePage from "../pages/payroll/analytics/PayrollVariancePage.jsx";
-import SalaryHistoryPage from "../pages/payroll/analytics/SalaryHistoryPage.jsx";
-import PayrollRegisterPage from "../pages/payroll/analytics/PayrollRegisterPage.jsx";
-import ScheduledReportsPage from "../pages/payroll/analytics/ScheduledReportsPage.jsx";
-import FinalSettlementPage from "../pages/payroll/FinalSettlementPage.jsx";
-import MyFinalSettlementPage from "../pages/payroll/MyFinalSettlementPage.jsx";
-import EmployeePayrollDetailPage from "../pages/payroll/EmployeePayrollDetailPage.jsx";
-import MyPayslipsPage from "../pages/payroll/MyPayslipsPage.jsx";
+const ExecutiveDashboardPage = lazy(() => import("../pages/payroll/analytics/ExecutiveDashboardPage.jsx"));
+const PayrollOverviewPage = lazy(() => import("../pages/payroll/analytics/PayrollOverviewPage.jsx"));
+const DepartmentAnalyticsPage = lazy(() => import("../pages/payroll/analytics/DepartmentAnalyticsPage.jsx"));
+const SalaryDistributionPage = lazy(() => import("../pages/payroll/analytics/SalaryDistributionPage.jsx"));
+const PayrollTrendsPage = lazy(() => import("../pages/payroll/analytics/PayrollTrendsPage.jsx"));
+const BonusReportPage = lazy(() => import("../pages/payroll/analytics/BonusReportPage.jsx"));
+const OvertimeReportPage = lazy(() => import("../pages/payroll/analytics/OvertimeReportPage.jsx"));
+const StatutorySummaryPage = lazy(() => import("../pages/payroll/analytics/StatutorySummaryPage.jsx"));
+const EarningsReportPage = lazy(() => import("../pages/payroll/analytics/EarningsReportPage.jsx"));
+const DeductionsReportPage = lazy(() => import("../pages/payroll/analytics/DeductionsReportPage.jsx"));
+const EmployerContributionPage = lazy(() => import("../pages/payroll/analytics/EmployerContributionPage.jsx"));
+const ReimbursementReportPage = lazy(() => import("../pages/payroll/analytics/ReimbursementReportPage.jsx"));
+const FnfAnalyticsPage = lazy(() => import("../pages/payroll/analytics/FnfAnalyticsPage.jsx"));
+const PayrollVariancePage = lazy(() => import("../pages/payroll/analytics/PayrollVariancePage.jsx"));
+const SalaryHistoryPage = lazy(() => import("../pages/payroll/analytics/SalaryHistoryPage.jsx"));
+const PayrollRegisterPage = lazy(() => import("../pages/payroll/analytics/PayrollRegisterPage.jsx"));
+const ScheduledReportsPage = lazy(() => import("../pages/payroll/analytics/ScheduledReportsPage.jsx"));
+const FinalSettlementPage = lazy(() => import("../pages/payroll/FinalSettlementPage.jsx"));
+const MyFinalSettlementPage = lazy(() => import("../pages/payroll/MyFinalSettlementPage.jsx"));
+const EmployeePayrollDetailPage = lazy(() => import("../pages/payroll/EmployeePayrollDetailPage.jsx"));
+const MyPayslipsPage = lazy(() => import("../pages/payroll/MyPayslipsPage.jsx"));
 
-import RecruitmentPage from "../pages/recruitment/RecruitmentPage.jsx";
-import RecruitmentDashboardPage from "../pages/recruitment/RecruitmentDashboardPage.jsx";
-import BackgroundVerificationPage from "../pages/recruitment/BackgroundVerificationPage.jsx";
-import BackgroundVerificationDetailPage from "../pages/recruitment/BackgroundVerificationDetailPage.jsx";
-import BackgroundVerificationSettingsPage from "../pages/recruitment/BackgroundVerificationSettingsPage.jsx";
-import CandidateDetailPage from "../pages/recruitment/CandidateDetailPage.jsx";
-import CandidateInboxPage from "../pages/recruitment/CandidateInboxPage.jsx";
-import RequisitionApprovalsPage from "../pages/recruitment/RequisitionApprovalsPage.jsx";
-import RequisitionsPage from "../pages/recruitment/RequisitionsPage.jsx";
-import InterviewsPage from "../pages/recruitment/InterviewsPage.jsx";
-import MyInterviewsPage from "../pages/recruitment/MyInterviewsPage.jsx";
-import OffersPage from "../pages/recruitment/OffersPage.jsx";
-import OfferDetailPage from "../pages/recruitment/OfferDetailPage.jsx";
-import OfferTemplatesPage from "../pages/recruitment/OfferTemplatesPage.jsx";
-import PreOnboardingPage from "../pages/recruitment/PreOnboardingPage.jsx";
-import PreOnboardingDetailPage from "../pages/recruitment/PreOnboardingDetailPage.jsx";
-import PreOnboardingRequirementsPage from "../pages/recruitment/PreOnboardingRequirementsPage.jsx";
-import ConvertToEmployeePage from "../pages/recruitment/ConvertToEmployeePage.jsx";
-import ExitProcessPage from "../pages/exit/ExitProcessPage.jsx";
+const RecruitmentPage = lazy(() => import("../pages/recruitment/RecruitmentPage.jsx"));
+const RecruitmentDashboardPage = lazy(() => import("../pages/recruitment/RecruitmentDashboardPage.jsx"));
+const BackgroundVerificationPage = lazy(() => import("../pages/recruitment/BackgroundVerificationPage.jsx"));
+const BackgroundVerificationDetailPage = lazy(() => import("../pages/recruitment/BackgroundVerificationDetailPage.jsx"));
+const BackgroundVerificationSettingsPage = lazy(() => import("../pages/recruitment/BackgroundVerificationSettingsPage.jsx"));
+const CandidateDetailPage = lazy(() => import("../pages/recruitment/CandidateDetailPage.jsx"));
+const CandidateInboxPage = lazy(() => import("../pages/recruitment/CandidateInboxPage.jsx"));
+const RequisitionApprovalsPage = lazy(() => import("../pages/recruitment/RequisitionApprovalsPage.jsx"));
+const RequisitionsPage = lazy(() => import("../pages/recruitment/RequisitionsPage.jsx"));
+const InterviewsPage = lazy(() => import("../pages/recruitment/InterviewsPage.jsx"));
+const MyInterviewsPage = lazy(() => import("../pages/recruitment/MyInterviewsPage.jsx"));
+const OffersPage = lazy(() => import("../pages/recruitment/OffersPage.jsx"));
+const OfferDetailPage = lazy(() => import("../pages/recruitment/OfferDetailPage.jsx"));
+const OfferTemplatesPage = lazy(() => import("../pages/recruitment/OfferTemplatesPage.jsx"));
+const PreOnboardingPage = lazy(() => import("../pages/recruitment/PreOnboardingPage.jsx"));
+const PreOnboardingDetailPage = lazy(() => import("../pages/recruitment/PreOnboardingDetailPage.jsx"));
+const PreOnboardingRequirementsPage = lazy(() => import("../pages/recruitment/PreOnboardingRequirementsPage.jsx"));
+const ConvertToEmployeePage = lazy(() => import("../pages/recruitment/ConvertToEmployeePage.jsx"));
+const ExitProcessPage = lazy(() => import("../pages/exit/ExitProcessPage.jsx"));
 
-import CompanyProfilePage from "../pages/company/CompanyProfilePage.jsx";
+const CompanyProfilePage = lazy(() => import("../pages/company/CompanyProfilePage.jsx"));
 
 import BillingPage from  "../pages/billing/BillingPage.jsx"
-import SubscriptionPage from "../pages/billing/SubscriptionPage.jsx";
+const SubscriptionPage = lazy(() => import("../pages/billing/SubscriptionPage.jsx"));
 
-import GovernancePage from "../pages/governance/GovernancePage.jsx";
-import RolesPermissionsPage from "../pages/settings/RolesPermissionsPage.jsx";
+const GovernancePage = lazy(() => import("../pages/governance/GovernancePage.jsx"));
+const RolesPermissionsPage = lazy(() => import("../pages/settings/RolesPermissionsPage.jsx"));
 
-import MyProfilePage from "../pages/profile/MyProfilePage.jsx";
-import MyDocumentsPage from "../pages/documents/MyDocumentsPage.jsx";
-import EmployeeFilesPage from "../pages/documents/EmployeeFilesPage.jsx";
+const MyProfilePage = lazy(() => import("../pages/profile/MyProfilePage.jsx"));
+const MyDocumentsPage = lazy(() => import("../pages/documents/MyDocumentsPage.jsx"));
+const EmployeeFilesPage = lazy(() => import("../pages/documents/EmployeeFilesPage.jsx"));
 
-import MeetingsPage from "../pages/meetings/MeetingsPage.jsx";
-import AnnouncementsPage from "../pages/announcements/AnnouncementsPage.jsx";
-import SupportPage from "../pages/support/SupportPage.jsx";
+const MeetingsPage = lazy(() => import("../pages/meetings/MeetingsPage.jsx"));
+const AnnouncementsPage = lazy(() => import("../pages/announcements/AnnouncementsPage.jsx"));
+const SupportPage = lazy(() => import("../pages/support/SupportPage.jsx"));
 
-import NotificationsPage from "../pages/notifications/NotificationsPage.jsx";
-import NotificationSettingsPage from "../pages/notifications/NotificationSettingsPage.jsx";
+const NotificationsPage = lazy(() => import("../pages/notifications/NotificationsPage.jsx"));
+const NotificationSettingsPage = lazy(() => import("../pages/notifications/NotificationSettingsPage.jsx"));
 
-import LifecyclePage from "../pages/lifecycle/LifecyclePage.jsx";
-import PerformancePage from "../pages/performance/PerformancePage.jsx";
-import ExpensesPage from "../pages/expenses/ExpensesPage.jsx";
-import AssetsPage from "../pages/assets/AssetsPage.jsx";
+const LifecyclePage = lazy(() => import("../pages/lifecycle/LifecyclePage.jsx"));
+const PerformancePage = lazy(() => import("../pages/performance/PerformancePage.jsx"));
+const ExpensesPage = lazy(() => import("../pages/expenses/ExpensesPage.jsx"));
+const AssetsPage = lazy(() => import("../pages/assets/AssetsPage.jsx"));
 
-import HolidaysPage from "../pages/schedule/HolidaysPage.jsx";
-import ShiftsPage from "../pages/schedule/ShiftsPage.jsx";
-import SchedulesPage from "../pages/schedule/SchedulesPage.jsx";
+const HolidaysPage = lazy(() => import("../pages/schedule/HolidaysPage.jsx"));
+const ShiftsPage = lazy(() => import("../pages/schedule/ShiftsPage.jsx"));
+const SchedulesPage = lazy(() => import("../pages/schedule/SchedulesPage.jsx"));
 
-import AnalyticsHubPage from "../pages/analytics/AnalyticsHubPage.jsx";
-import ReportBuilderPage from "../pages/analytics/ReportBuilderPage.jsx";
+const AnalyticsHubPage = lazy(() => import("../pages/analytics/AnalyticsHubPage.jsx"));
+const ReportBuilderPage = lazy(() => import("../pages/analytics/ReportBuilderPage.jsx"));
 
-import SuperAdminAuthPage from "../pages/admin/SuperAdminAuthPage.jsx";
-import SuperAdminDashboardPage from "../pages/admin/SuperAdminDashboardPage.jsx";
-import SuperAdminCompaniesPage from "../pages/admin/SuperAdminCompaniesPage.jsx";
-import SuperAdminCompanyDetailPage from "../pages/admin/SuperAdminCompanyDetailPage.jsx";
-import SuperAdminCommercePage from "../pages/admin/SuperAdminCommercePage.jsx";
-import SuperAdminOperationsPage from "../pages/admin/SuperAdminOperationsPage.jsx";
-import SuperAdminBackgroundOperationsPage from "../pages/admin/SuperAdminBackgroundOperationsPage.jsx";
-import SuperAdminBgvVerifiersPage from "../pages/admin/SuperAdminBgvVerifiersPage.jsx";
-import SuperAdminBgvOperationsPage from "../pages/admin/SuperAdminBgvOperationsPage.jsx";
-import SuperAdminBgvQaPage from "../pages/admin/SuperAdminBgvQaPage.jsx";
-import SuperAdminBgvBillingPage from "../pages/admin/SuperAdminBgvBillingPage.jsx";
-import SuperAdminBgvOpsDashboardPage from "../pages/admin/SuperAdminBgvOpsDashboardPage.jsx";
-import SuperAdminBgvCataloguePage from "../pages/admin/SuperAdminBgvCataloguePage.jsx";
+const SuperAdminAuthPage = lazy(() => import("../pages/admin/SuperAdminAuthPage.jsx"));
+const SuperAdminDashboardPage = lazy(() => import("../pages/admin/SuperAdminDashboardPage.jsx"));
+const SuperAdminCompaniesPage = lazy(() => import("../pages/admin/SuperAdminCompaniesPage.jsx"));
+const SuperAdminCompanyDetailPage = lazy(() => import("../pages/admin/SuperAdminCompanyDetailPage.jsx"));
+const SuperAdminCommercePage = lazy(() => import("../pages/admin/SuperAdminCommercePage.jsx"));
+const SuperAdminOperationsPage = lazy(() => import("../pages/admin/SuperAdminOperationsPage.jsx"));
+const SuperAdminBackgroundOperationsPage = lazy(() => import("../pages/admin/SuperAdminBackgroundOperationsPage.jsx"));
+const SuperAdminBgvVerifiersPage = lazy(() => import("../pages/admin/SuperAdminBgvVerifiersPage.jsx"));
+const SuperAdminBgvOperationsPage = lazy(() => import("../pages/admin/SuperAdminBgvOperationsPage.jsx"));
+const SuperAdminBgvQaPage = lazy(() => import("../pages/admin/SuperAdminBgvQaPage.jsx"));
+const SuperAdminBgvBillingPage = lazy(() => import("../pages/admin/SuperAdminBgvBillingPage.jsx"));
+const SuperAdminBgvOpsDashboardPage = lazy(() => import("../pages/admin/SuperAdminBgvOpsDashboardPage.jsx"));
+const SuperAdminBgvCataloguePage = lazy(() => import("../pages/admin/SuperAdminBgvCataloguePage.jsx"));
 
-import NotFoundPage from "../pages/not-found/NotFoundPage.jsx";
+const NotFoundPage = lazy(() => import("../pages/not-found/NotFoundPage.jsx"));
 
 const PLATFORM_ROLES = [
   "SUPER_ADMIN",
@@ -191,6 +192,7 @@ const COMPANY_ADMIN = [
 ];
 
 const AppRoutes = () => (
+  <Suspense fallback={<div className="p-6 text-crewly-dim">Loading…</div>}>
   <Routes>
     {/* Public customer routes */}
     <Route element={<PublicLayout />}>
@@ -990,6 +992,7 @@ const AppRoutes = () => (
       element={<NotFoundPage />}
     />
   </Routes>
+  </Suspense>
 );
 
 export default AppRoutes;

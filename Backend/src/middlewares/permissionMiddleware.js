@@ -1,10 +1,11 @@
-import Permission from '../models/Permission.js';
 import {
+  getPermissionByName,
   hasAllPermissions,
   hasAnyPermission,
   hasPermission,
   permissionAllowedByPlan,
 } from '../utils/permissionService.js';
+import { markPerf } from './perfTiming.js';
 
 const forbidden = (
   res,
@@ -37,13 +38,10 @@ const planDenied = (
     },
   });
 
-const loadPermission = async (
-  name
-) =>
-  Permission.findOne({
-    name,
-    isActive: true,
-  }).lean();
+// Perf: short-TTL in-process metadata cache (see permissionService).
+// Same query, same semantics — the Atlas round-trip happens at most
+// once per TTL per permission name instead of on every request.
+const loadPermission = (name) => getPermissionByName(name);
 
 export const requirePermission = (
   resourceOrName,
@@ -115,6 +113,7 @@ export const requirePermission = (
       req.requiredPermission =
         permissionName;
 
+      markPerf(req, 'rbac');
       next();
     } catch (error) {
       return res
@@ -146,6 +145,7 @@ export const requireAnyPermission = (
         return forbidden(res);
       }
 
+      markPerf(req, 'rbac');
       next();
     } catch (error) {
       return res
@@ -176,6 +176,7 @@ export const requireAllPermissions = (
         return forbidden(res);
       }
 
+      markPerf(req, 'rbac');
       next();
     } catch (error) {
       return res
