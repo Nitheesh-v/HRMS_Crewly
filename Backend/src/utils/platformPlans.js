@@ -168,10 +168,11 @@ export const DEFAULT_PLATFORM_PLANS = {
 
 // Seed missing plans only.
 // Existing Super Admin changes are never overwritten.
-const PLAN_CONFIG_VERSION = 2;
+const PLAN_CONFIG_VERSION = 3;
 
 export const ensureDefaultPlans = async (
-  userId = null
+  userId = null,
+  PlanModel = SubscriptionPlan,
 ) => {
   for (
     const [
@@ -182,13 +183,13 @@ export const ensureDefaultPlans = async (
     )
   ) {
     let storedPlan =
-      await SubscriptionPlan.findOne({
+      await PlanModel.findOne({
         key,
       });
 
     // Create plans that do not exist.
     if (!storedPlan) {
-      await SubscriptionPlan.create({
+      await PlanModel.create({
         key,
         ...defaultPlan,
         configVersion:
@@ -217,6 +218,14 @@ export const ensureDefaultPlans = async (
           []
         ),
       ];
+
+      // v3 — limits join the migration. Older plan records may carry seat
+      // limits (e.g. a per-plan "managers" cap) that NO current plan defines;
+      // left in place they gate role assignment forever ("managers limit
+      // reached … supports 1"). Refreshing from defaults heals them once.
+      storedPlan.limits = {
+        ...defaultPlan.limits,
+      };
 
       storedPlan.configVersion =
         PLAN_CONFIG_VERSION;

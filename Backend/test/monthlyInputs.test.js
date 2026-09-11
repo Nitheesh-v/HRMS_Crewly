@@ -968,3 +968,22 @@ test('auto summary mirrors the report: 1 present of 8 elapsed => 7 LOP', () => {
   assert.equal(auto.lopDays, 7);
   assert.equal(auto.lopSource, 'ATTENDANCE');
 });
+
+test('weekend punches never mask weekday absences (§10)', () => {
+  const satSun = { type: 'SAT_SUN' };
+  const auto = computeAutomaticSummary({
+    month: '2026-09',
+    workingDays: 8,
+    attendance: [
+      // Saturday 5 Sep — recorded, but not a working day under SAT_SUN.
+      { status: 'PRESENT', date: '2026-09-05', weekendPolicy: satSun },
+      // Monday 7 Sep — counts toward the basis.
+      { status: 'PRESENT', date: '2026-09-07', weekendPolicy: satSun },
+    ],
+    leaves: [],
+  });
+  assert.equal(auto.presentDays, 1);
+  assert.equal(auto.weekendShiftCount, 1);
+  assert.equal(auto.absentDays, 7);
+  assert.equal(auto.lopDays, 7);
+});

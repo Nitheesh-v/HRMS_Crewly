@@ -490,10 +490,11 @@ export const summarizeMonth = (inputs = []) => {
 // ── automatic imports (§7 / §14 / §15) ─────────────────────────────────────
 
 // Weekend policy comes from 29.1; the input module never re-decides it.
+// 29.1 stores { type, customWorkingDays }, so a day is off when it is not in
+// the policy's working weekday set.
 const isWeekend = (dateKey, weekendPolicy = {}) => {
-  const day = new Date(`${dateKey}T00:00:00Z`).getUTCDay(); // 0 = Sunday
-  const days = weekendPolicy.weekendDays || [0];
-  return days.includes(day);
+  const day = WEEKDAY_KEYS[new Date(`${dateKey}T00:00:00Z`).getUTCDay()];
+  return !workingWeekdaysOf(weekendPolicy).includes(day);
 };
 
 // §7 — 29.1 stores the weekend policy as { type, customWorkingDays } and never
@@ -575,14 +576,22 @@ export const computeAutomaticSummary = ({
   };
 
   (attendance || []).forEach((row) => {
-    if (row.status === 'HALF_DAY') summary.halfDays += 1;
-    else if (row.status === 'PRESENT' || row.status === 'LATE') summary.presentDays += 1;
-    if (Number(row.lateMinutes) > 0) summary.lateMarks += 1;
+    const onWeekend = isWeekend(row.date, row.weekendPolicy);
+    const onHoliday = (holidays || []).some((holiday) => holiday.date === row.date);
+
+    // §10 — weekend / holiday punches stay recorded (shift counters below)
+    // but never count toward the working-day basis: a Saturday punch must
+    // not mask a missing Monday.
+    if (!onWeekend && !onHoliday) {
+      if (row.status === 'HALF_DAY') summary.halfDays += 1;
+      else if (row.status === 'PRESENT' || row.status === 'LATE') summary.presentDays += 1;
+      if (Number(row.lateMinutes) > 0) summary.lateMarks += 1;
+    }
     summary.otMinutes += Number(row.overtimeMinutes) || 0;
 
     if (row.shiftIsNight) summary.nightShiftCount += 1;
-    if (isWeekend(row.date, row.weekendPolicy)) summary.weekendShiftCount += 1;
-    if ((holidays || []).some((holiday) => holiday.date === row.date)) summary.holidayShiftCount += 1;
+    if (onWeekend) summary.weekendShiftCount += 1;
+    if (onHoliday) summary.holidayShiftCount += 1;
   });
 
   // §14 — LOP lives in the Leave module as soon as it owns a LOP type; until
