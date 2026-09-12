@@ -69,6 +69,13 @@ writes, jobs, or Redis traffic).
   key + same action replays (`200` + `meta.idempotentReplay`), same key
   + other action → 409, isolated per tenant + employee by index. No TTL
   needed — the key lives on the permanent fact.
+- Duplicate merge (walkthrough hardening): a repeated action landing
+  within 10 s of the identical recorded fact — double-click, render-gap
+  re-click, overlapped retry with a fresh key — merges into a replay
+  (`200` + `meta.idempotentReplay`) instead of a phantom 409. The merge
+  requires the current session's latest event to be the same action and
+  fresh; stale duplicates, wrong-state actions, completed sessions and
+  other-date sessions still refuse loudly with reasons.
 
 ## 5. Daily projection & legacy compatibility
 

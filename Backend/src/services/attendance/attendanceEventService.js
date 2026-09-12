@@ -407,15 +407,30 @@ export const recordEvent = async ({
 
   // CLOCK_IN needs a free day AND no open session anywhere.
   if (action === EVENT_TYPE.CLOCK_IN) {
-    if (control) {
-      const state = deriveLiveState(control);
-      if (control.date === todayKey || isOpenState(state)) {
-        throw ApiError.conflict(
-          control.date === todayKey
-            ? 'You have already clocked in today'
-            : `Close your open session from ${control.date} before clocking in`,
-        );
+    if (control && (control.date === todayKey || isOpenState(deriveLiveState(control)))) {
+      // Fresh duplicate dispatch (double-click / render-gap re-click):
+      // the session this request wanted already exists — merge into a
+      // replay instead of a phantom 409. Completed sessions and other
+      // dates still refuse (different intent, not a duplicate).
+      if (!control.punchOut) {
+        const merged = await tryMergeFreshDuplicate({
+          full,
+          companyId,
+          userId,
+          date: control.date,
+          action,
+          policy,
+          timezone,
+          todayKey,
+          at,
+        });
+        if (merged) return merged;
       }
+      throw ApiError.conflict(
+        control.date === todayKey
+          ? 'You have already clocked in today'
+          : `Close your open session from ${control.date} before clocking in`,
+      );
     }
     return clockIn({ full, companyId, userId, at, todayKey, timezone, policy, workMode, idempotencyKey });
   }
@@ -427,6 +442,18 @@ export const recordEvent = async ({
   const liveState = deriveLiveState(control);
   const check = transition(liveState, action);
   if (!check.allowed) {
+    const merged = await tryMergeFreshDuplicate({
+      full,
+      companyId,
+      userId,
+      date: control.date,
+      action,
+      policy,
+      timezone,
+      todayKey,
+      at,
+    });
+    if (merged) return merged;
     if (check.code === 'SESSION_COMPLETED') throw ApiError.conflict(check.reason);
     throw ApiError.badRequest(check.reason);
   }
@@ -500,7 +527,20 @@ export const recordEvent = async ({
   );
 
   if (!updated) {
-    // Lost a race. A retried key replays; anything else refreshes.
+    // Lost a race. A fresh duplicate merges, a retried key replays;
+    // anything else refreshes.
+    const merged = await tryMergeFreshDuplicate({
+      full,
+      companyId,
+      userId,
+      date: control.date,
+      action,
+      policy,
+      timezone,
+      todayKey,
+      at,
+    });
+    if (merged) return merged;
     if (idempotencyKey) {
       const existing = await AttendanceEventModel.findOne({
         companyId,
@@ -568,6 +608,54 @@ export const recordEvent = async ({
 const isOpenState = (liveState) =>
   liveState === LIVE_STATE.WORKING || liveState === LIVE_STATE.ON_BREAK;
 
+// Duplicate-merge window (§15 idempotent behavior): a repeated action
+// landing within seconds of the identical recorded fact — double-click,
+// render-gap re-click, overlapped retry with a fresh key — merges into
+// a replay instead of a phantom 409. The caller's intent is satisfied
+// either way. Genuine mistakes (stale, wrong state, other session) still
+// refuse loudly: the merge requires the CURRENT session's LATEST event
+// to be the SAME action and FRESH.
+const MERGE_WINDOW_MS = 10 * 1000;
+
+const isFresh = (timestamp, now) => {
+  const ms = timestamp instanceof Date ? timestamp.getTime() : new Date(timestamp).getTime();
+  if (Number.isNaN(ms)) return false;
+  return now.getTime() - ms <= MERGE_WINDOW_MS;
+};
+
+// Returns a replay result when `action` is a fresh duplicate of the
+// session's latest fact, else null. Reloads events (callers may hold
+// stale pre-race reads).
+const tryMergeFreshDuplicate = async ({
+  full,
+  companyId,
+  userId,
+  date,
+  action,
+  policy,
+  timezone,
+  todayKey,
+  at,
+}) => {
+  const events = await full.AttendanceEventModel.find({ companyId, user: userId, date })
+    .sort({ seq: 1 })
+    .lean();
+  if (!events.length) return null;
+  const latest = events[events.length - 1];
+  if (latest.type !== action || !isFresh(latest.at, at)) return null;
+  const schedule = await bestEffortSchedule({
+    resolveScheduleRule: full.resolveScheduleRule,
+    engine: full.engine,
+    companyId,
+    userId,
+    at,
+  });
+  return replayFromEvent(
+    { deps: full, companyId, userId, policy, timezone, todayKey, schedule, now: at },
+    latest,
+  );
+};
+
 const bestEffortSchedule = async ({ resolveScheduleRule, engine, companyId, userId, at }) => {
   try {
     const resolved = await resolveScheduleRule({ companyId, user: { _id: userId }, at, engine });
@@ -626,7 +714,20 @@ const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy
     });
   } catch (err) {
     if (!isDuplicateKey(err)) throw err;
-    // Lost the creation race: replay a retried key, else report.
+    // Lost the creation race: a fresh duplicate merges, a retried key
+    // replays, else report.
+    const merged = await tryMergeFreshDuplicate({
+      full,
+      companyId,
+      userId,
+      date: todayKey,
+      action: EVENT_TYPE.CLOCK_IN,
+      policy,
+      timezone,
+      todayKey,
+      at,
+    });
+    if (merged) return merged;
     if (idempotencyKey) {
       const existing = await AttendanceEventModel.findOne({
         companyId,

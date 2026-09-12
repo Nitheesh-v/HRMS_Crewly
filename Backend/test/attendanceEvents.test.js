@@ -604,15 +604,19 @@ test('service: break/out before clock-in and duplicates are refused', async () =
   await assert.rejects(() => punch(ctx, 'CLOCK_OUT'), /not clocked in/);
 
   await punch(ctx, 'CLOCK_IN');
+  // Stale duplicates (past the 10s merge window) still refuse loudly.
+  ctx.setNow('2026-09-12T09:05:00+05:30');
   await assert.rejects(() => punch(ctx, 'CLOCK_IN'), /already clocked in/);
   await assert.rejects(() => punch(ctx, 'BREAK_END'), /no active break/);
 
   await punch(ctx, 'BREAK_START');
+  ctx.setNow('2026-09-12T09:10:00+05:30');
   await assert.rejects(() => punch(ctx, 'BREAK_START'), /already in progress/);
   await assert.rejects(() => punch(ctx, 'CLOCK_OUT'), /End your break/);
 
   await punch(ctx, 'BREAK_END');
   await punch(ctx, 'CLOCK_OUT');
+  ctx.setNow('2026-09-12T09:15:00+05:30');
   await assert.rejects(() => punch(ctx, 'CLOCK_IN'), /already clocked in/);
   await assert.rejects(() => punch(ctx, 'BREAK_START'), /already completed/);
   await assert.rejects(() => punch(ctx, 'CLOCK_OUT'), /already completed/);
@@ -696,6 +700,7 @@ test('service: concurrent clock-in creation collapses to one session', async () 
   const ctx = makeCtx();
 
   await punch(ctx, 'CLOCK_IN', { idempotencyKey: 'race-winner-1' });
+  ctx.setNow('2026-09-12T09:20:00+05:30'); // past the merge window
   // A second creator hits the unique gate (simulated by direct insert).
   await assert.rejects(
     () =>
@@ -969,4 +974,62 @@ test('service: legacy-interleaved double-open sessions stay resolvable', async (
 
   const after = await getLiveAttendance({ companyId: COMPANY_A, userId: USER_A, deps: ctx.deps });
   assert.equal(after.otherOpenSession, null);
+});
+
+test('merge: fresh duplicate CLOCK_IN replays instead of a phantom 409', async () => {
+  const ctx = makeCtx();
+  const first = await punch(ctx, 'CLOCK_IN', { idempotencyKey: 'merge-dup-key-a1' });
+  assert.equal(first.replayed, false);
+
+  // Same action, fresh key, seconds later (double-click / render-gap).
+  ctx.setNow('2026-09-12T09:00:05+05:30');
+  const second = await punch(ctx, 'CLOCK_IN', { idempotencyKey: 'merge-dup-key-a2' });
+  assert.equal(second.replayed, true);
+  assert.equal(second.event.id, first.event.id);
+  assert.equal(second.snapshot.liveState, 'WORKING');
+  assert.equal(ctx.AttendanceEventModel.rows.length, 1);
+  assert.equal(ctx.AttendanceModel.rows.length, 1);
+});
+
+test('merge: fresh duplicate break/out actions replay mid-flow', async () => {
+  const ctx = makeCtx();
+  await punch(ctx, 'CLOCK_IN');
+
+  ctx.setNow('2026-09-12T09:01:00+05:30');
+  await punch(ctx, 'BREAK_START', { idempotencyKey: 'merge-dup-key-b1' });
+  ctx.setNow('2026-09-12T09:01:04+05:30');
+  const dupStart = await punch(ctx, 'BREAK_START', { idempotencyKey: 'merge-dup-key-b2' });
+  assert.equal(dupStart.replayed, true);
+  assert.equal(dupStart.snapshot.liveState, 'ON_BREAK');
+
+  ctx.setNow('2026-09-12T09:05:00+05:30');
+  await punch(ctx, 'BREAK_END', { idempotencyKey: 'merge-dup-key-c1' });
+  ctx.setNow('2026-09-12T09:05:03+05:30');
+  const dupEnd = await punch(ctx, 'BREAK_END', { idempotencyKey: 'merge-dup-key-c2' });
+  assert.equal(dupEnd.replayed, true);
+  assert.equal(dupEnd.snapshot.liveState, 'WORKING');
+
+  ctx.setNow('2026-09-12T18:00:00+05:30');
+  await punch(ctx, 'CLOCK_OUT', { idempotencyKey: 'merge-dup-key-d1' });
+  ctx.setNow('2026-09-12T18:00:02+05:30');
+  const dupOut = await punch(ctx, 'CLOCK_OUT', { idempotencyKey: 'merge-dup-key-d2' });
+  assert.equal(dupOut.replayed, true);
+  assert.equal(dupOut.snapshot.liveState, 'COMPLETED');
+
+  // Exactly 4 facts for 8 dispatches.
+  assert.equal(ctx.AttendanceEventModel.rows.length, 4);
+});
+
+test('merge: wrong-state actions never merge, even when fresh', async () => {
+  const ctx = makeCtx();
+  await punch(ctx, 'CLOCK_IN');
+
+  ctx.setNow('2026-09-12T09:00:05+05:30');
+  await assert.rejects(() => punch(ctx, 'BREAK_END'), /no active break/);
+
+  await punch(ctx, 'BREAK_START');
+  ctx.setNow('2026-09-12T09:00:08+05:30');
+  await assert.rejects(() => punch(ctx, 'CLOCK_OUT'), /End your break/);
+
+  assert.equal(ctx.AttendanceEventModel.rows.length, 2);
 });
