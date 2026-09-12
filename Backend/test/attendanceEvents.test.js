@@ -161,9 +161,10 @@ const makeFakeAttendanceModel = ({ failCasTimes = 0, onCasFail = null } = {}) =>
 };
 
 // In-memory AttendanceEvent fake with both unique gates.
-const makeFakeEventModel = () => {
+const makeFakeEventModel = ({ dropFirstFinds = 0 } = {}) => {
   const rows = [];
   let seq = 1;
+  let findsToDrop = dropFirstFinds;
 
   const chain = (resolve) => {
     const self = {
@@ -185,14 +186,18 @@ const makeFakeEventModel = () => {
         return found ? { ...found } : null;
       }),
     find: (filter) =>
-      chain(() =>
-        rows
+      chain(() => {
+        if (findsToDrop > 0) {
+          findsToDrop -= 1;
+          return []; // winner mid-flight: fact committed but not yet visible
+        }
+        return rows
           .filter((row) =>
             Object.entries(filter).every(([key, value]) => String(row[key] ?? '') === String(value ?? '')),
           )
           .sort((a, b) => a.seq - b.seq)
-          .map((row) => ({ ...row })),
-      ),
+          .map((row) => ({ ...row }));
+      }),
     create: async (doc) => {
       const dupSeq = rows.find(
         (row) =>
@@ -252,14 +257,18 @@ const makeCompanyModel = (timezone = 'Asia/Kolkata') => ({
 });
 
 // Controllable clock + deps bundle.
-const makeCtx = ({ policy = policyAllModes(), engine = null, now = null, attendanceOpts = {} } = {}) => {
+const makeCtx = ({ policy = policyAllModes(), engine = null, now = null, attendanceOpts = {}, eventOpts = {} } = {}) => {
   let current = now ? new Date(now).getTime() : new Date('2026-09-12T09:00:00+05:30').getTime();
   const AttendanceModel = makeFakeAttendanceModel(attendanceOpts);
-  const AttendanceEventModel = makeFakeEventModel();
+  const AttendanceEventModel = makeFakeEventModel(eventOpts);
+  const sleepCalls = { count: 0 };
   const deps = {
     AttendanceModel,
     AttendanceEventModel,
     CompanyModel: makeCompanyModel('Asia/Kolkata'),
+    sleep: async () => {
+      sleepCalls.count += 1;
+    },
     policyReader: async ({ companyId }) => {
       assert.ok(companyId, 'policy reader must receive the tenant');
       return { policy, configured: Boolean(policy), hasActive: Boolean(policy) };
@@ -271,6 +280,7 @@ const makeCtx = ({ policy = policyAllModes(), engine = null, now = null, attenda
     deps,
     AttendanceModel,
     AttendanceEventModel,
+    sleepCalls,
     setNow: (iso) => {
       current = new Date(iso).getTime();
     },
@@ -1121,4 +1131,66 @@ test('conflict: orphaned ledger fact (seq collision, no key match) raises a diag
   // while the colliding fact was refused — the ledger gained nothing.
   assert.equal(ctx.AttendanceModel.rows[0].liveState, 'ON_BREAK');
   assert.equal(ctx.AttendanceEventModel.rows.length, 2);
+});
+
+test('merge: duplicate landing in the winner write window merges after one retry', async () => {
+  const ctx = makeCtx({ eventOpts: { dropFirstFinds: 1 } });
+  await punch(ctx, 'CLOCK_IN', { idempotencyKey: 'midflight-in-a' });
+
+  // Duplicate CLOCK_IN on a fresh key: the first events read lands in
+  // the winner's commit→fact window (empty); the delayed re-read merges.
+  const dup = await punch(ctx, 'CLOCK_IN', { idempotencyKey: 'midflight-in-b' });
+  assert.equal(dup.replayed, true);
+  assert.equal(dup.snapshot.liveState, 'WORKING');
+  assert.equal(ctx.sleepCalls.count, 1);
+  assert.equal(ctx.AttendanceEventModel.rows.length, 1);
+});
+
+test('merge: loser of a break race merges once the winner fact lands', async () => {
+  // Winner commits BREAK_START between our read and CAS; its fact is
+  // still in flight on our first two events reads.
+  const winnerBreakAt = new Date('2026-09-12T09:01:00+05:30');
+  const onCasFail = async (rows) => {
+    const control = rows.find((row) => String(row.user) === USER_A);
+    control.liveState = 'ON_BREAK';
+    control.eventSeq = 2;
+    control.lastEventAt = winnerBreakAt;
+  };
+  const ctx = makeCtx({
+    attendanceOpts: { failCasTimes: 1, onCasFail },
+    eventOpts: { dropFirstFinds: 2 },
+  });
+  await punch(ctx, 'CLOCK_IN');
+  await ctx.AttendanceEventModel.create({
+    companyId: COMPANY_A,
+    user: USER_A,
+    date: '2026-09-12',
+    seq: 2,
+    type: 'BREAK_START',
+    at: winnerBreakAt,
+    workMode: null,
+    source: 'WEB',
+    requestId: null,
+  });
+
+  ctx.setNow('2026-09-12T09:01:05+05:30');
+  const dup = await punch(ctx, 'BREAK_START', { idempotencyKey: 'midflight-bs-b' });
+  assert.equal(dup.replayed, true);
+  assert.equal(dup.snapshot.liveState, 'ON_BREAK');
+  assert.equal(ctx.sleepCalls.count, 1);
+  assert.equal(ctx.AttendanceEventModel.rows.length, 2);
+});
+
+test('merge: genuine duplicate still refuses after the retry finds nothing new', async () => {
+  const ctx = makeCtx();
+  await punch(ctx, 'CLOCK_IN', { idempotencyKey: 'stale-in-a' });
+
+  // Past the 10s window: both reads see the same stale fact.
+  ctx.setNow('2026-09-12T09:05:00+05:30');
+  await assert.rejects(
+    () => punch(ctx, 'CLOCK_IN', { idempotencyKey: 'stale-in-b' }),
+    /already clocked in/,
+  );
+  assert.equal(ctx.sleepCalls.count, 1);
+  assert.equal(ctx.AttendanceEventModel.rows.length, 1);
 });

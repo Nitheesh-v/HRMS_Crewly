@@ -75,7 +75,10 @@ writes, jobs, or Redis traffic).
   (`200` + `meta.idempotentReplay`) instead of a phantom 409. The merge
   requires the current session's latest event to be the same action and
   fresh; stale duplicates, wrong-state actions, completed sessions and
-  other-date sessions still refuse loudly with reasons.
+  other-date sessions still refuse loudly with reasons. On a merge miss
+  the helper pauses 800 ms and re-reads once, so a duplicate landing
+  inside the winner's commit→fact window (Atlas write latency) still
+  merges; only genuine refusals pay the delay.
 
 ## 5. Daily projection & legacy compatibility
 

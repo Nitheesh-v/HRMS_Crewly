@@ -103,6 +103,7 @@ const defaultDeps = () => ({
   },
   resolveScheduleRule: defaultResolveScheduleRule,
   now: () => new Date(),
+  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 });
 
 const isDuplicateKey = (err) => err?.code === 11000;
@@ -643,6 +644,12 @@ const isOpenState = (liveState) =>
 // to be the SAME action and FRESH.
 const MERGE_WINDOW_MS = 10 * 1000;
 
+// Delayed merge re-read. A duplicate landing inside the winner's
+// commit→fact window (Atlas write latency) reads empty/stale events on
+// the first attempt; one pause lets the in-flight fact land before we
+// refuse. Only merge-miss paths pay this — successes never sleep.
+const MERGE_RETRY_MS = 800;
+
 const isFresh = (timestamp, now) => {
   const ms = timestamp instanceof Date ? timestamp.getTime() : new Date(timestamp).getTime();
   if (Number.isNaN(ms)) return false;
@@ -651,7 +658,9 @@ const isFresh = (timestamp, now) => {
 
 // Returns a replay result when `action` is a fresh duplicate of the
 // session's latest fact, else null. Reloads events (callers may hold
-// stale pre-race reads).
+// stale pre-race reads); on a miss, pauses once and re-reads, so a
+// duplicate landing inside the winner's commit→fact window still merges
+// instead of a phantom 409. Genuine refusals just take ~800ms longer.
 const tryMergeFreshDuplicate = async ({
   full,
   companyId,
@@ -663,12 +672,22 @@ const tryMergeFreshDuplicate = async ({
   todayKey,
   at,
 }) => {
-  const events = await full.AttendanceEventModel.find({ companyId, user: userId, date })
-    .sort({ seq: 1 })
-    .lean();
-  if (!events.length) return null;
-  const latest = events[events.length - 1];
-  if (latest.type !== action || !isFresh(latest.at, at)) return null;
+  const sleep = full.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const readLatest = async () => {
+    const events = await full.AttendanceEventModel.find({ companyId, user: userId, date })
+      .sort({ seq: 1 })
+      .lean();
+    if (!events.length) return null;
+    const latest = events[events.length - 1];
+    if (latest.type !== action || !isFresh(latest.at, at)) return null;
+    return latest;
+  };
+  let latest = await readLatest();
+  if (!latest) {
+    await sleep(MERGE_RETRY_MS);
+    latest = await readLatest();
+  }
+  if (!latest) return null;
   const schedule = await bestEffortSchedule({
     resolveScheduleRule: full.resolveScheduleRule,
     engine: full.engine,
