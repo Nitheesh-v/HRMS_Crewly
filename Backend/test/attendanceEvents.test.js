@@ -149,6 +149,7 @@ const makeFakeAttendanceModel = ({ failCasTimes = 0, onCasFail = null } = {}) =>
       if (dup) {
         const err = new Error('duplicate key');
         err.code = 11000;
+        err.keyValue = { companyId: String(doc.companyId), user: String(doc.user), date: doc.date };
         throw err;
       }
       const row = { ...doc, _id: `att${seq}`, id: `att${seq}`, createdAt: new Date(), updatedAt: new Date() };
@@ -203,6 +204,12 @@ const makeFakeEventModel = () => {
       if (dupSeq) {
         const err = new Error('duplicate key');
         err.code = 11000;
+        err.keyValue = {
+          companyId: String(doc.companyId),
+          user: String(doc.user),
+          date: doc.date,
+          seq: doc.seq,
+        };
         throw err;
       }
       if (doc.requestId) {
@@ -215,6 +222,11 @@ const makeFakeEventModel = () => {
         if (dupKey) {
           const err = new Error('duplicate key');
           err.code = 11000;
+          err.keyValue = {
+            companyId: String(doc.companyId),
+            user: String(doc.user),
+            requestId: doc.requestId,
+          };
           throw err;
         }
       }
@@ -1069,4 +1081,44 @@ test('race: lost CAS explains against current state, not generic refresh', async
   ctx.setNow('2026-09-12T09:01:05+05:30');
   await assert.rejects(() => punch(ctx, 'CLOCK_OUT'), /End your break before clocking out/);
   assert.ok(ctx.AttendanceEventModel.rows.every((row) => row.type !== 'CLOCK_OUT'));
+});
+
+test('conflict: orphaned ledger fact (seq collision, no key match) raises a diagnostic 409', async () => {
+  const ctx = makeCtx();
+  await punch(ctx, 'CLOCK_IN', { idempotencyKey: 'orphan-in-a' });
+  ctx.setNow('2026-09-12T09:05:00+05:30');
+  await punch(ctx, 'BREAK_START', { idempotencyKey: 'orphan-bs-a' });
+
+  // Partial deletion outside the API (retest cleanup that dropped the
+  // control + CLOCK_IN fact but left the BREAK_START fact orphaned).
+  ctx.AttendanceModel.rows.length = 0;
+  const orphanIdx = ctx.AttendanceEventModel.rows.findIndex((row) => row.type === 'CLOCK_IN');
+  ctx.AttendanceEventModel.rows.splice(orphanIdx, 1);
+  assert.equal(ctx.AttendanceEventModel.rows.length, 1);
+
+  // Fresh session starts fine (no seq-1 orphan).
+  ctx.setNow('2026-09-12T09:10:00+05:30');
+  await punch(ctx, 'CLOCK_IN', { idempotencyKey: 'orphan-in-b' });
+
+  // BREAK_START: CAS commits the flip, then the seq-2 insert collides
+  // with the orphan under a fresh key — diagnostic 409, never a masked
+  // generic race, and the server log names the colliding key.
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args);
+  try {
+    ctx.setNow('2026-09-12T09:11:00+05:30');
+    await assert.rejects(() => punch(ctx, 'BREAK_START', { idempotencyKey: 'orphan-bs-b' }), /record conflict/);
+  } finally {
+    console.warn = originalWarn;
+  }
+  assert.equal(warnings.length, 1);
+  assert.match(String(warnings[0][0]), /event insert conflict/);
+  assert.equal(warnings[0][1].seq, 2);
+  assert.equal(warnings[0][1].keyValue.seq, 2);
+
+  // Partial-commit semantics documented: the control flipped (ON_BREAK)
+  // while the colliding fact was refused — the ledger gained nothing.
+  assert.equal(ctx.AttendanceModel.rows[0].liveState, 'ON_BREAK');
+  assert.equal(ctx.AttendanceEventModel.rows.length, 2);
 });

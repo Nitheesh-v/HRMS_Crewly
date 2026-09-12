@@ -61,3 +61,24 @@ As an **Employee** on `/app/attendance` (fresh day, no punches yet):
 10. History table + month chips include the new day; report page,
     leaves, shifts, schedules, payroll inputs all load unchanged.
 11. No browser geolocation prompt appears at any point.
+
+## Ledger hygiene for retests (read before deleting rows to re-run a day)
+
+The event ledger is append-only: `attendances` (control) + `attendanceevents`
+(facts) must always be reset **together**. Deleting only one side orphans
+sequence numbers, and the next punch then fails with
+`409 Attendance record conflict — please refresh…` while the server log names
+the colliding key (`[attendance] event insert conflict (no key match)`).
+That 409 is the ledger defending itself, not a product bug.
+
+Clean slate for a retest day (dev database only — never production):
+
+```js
+// mongosh "<MONGO_URI>" — deletes TODAY's attendance rows for ALL users
+db.attendances.deleteMany({ date: "2026-09-12" });
+db.attendanceevents.deleteMany({ date: "2026-09-12" });
+```
+
+Then restart the backend (fresh code + fresh data) and retest with single
+clicks. If `record conflict` still appears on a clean slate, paste the
+backend log line — it names the exact colliding key.

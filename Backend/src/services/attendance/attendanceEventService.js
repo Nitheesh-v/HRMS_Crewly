@@ -598,6 +598,23 @@ export const recordEvent = async ({
         );
       }
     }
+    if (isDuplicateKey(err)) {
+      // Sequence collision with NO matching idempotency key: the ledger
+      // holds an orphaned/conflicting fact (e.g. rows were partially
+      // deleted outside the API). Never mask it as a generic race —
+      // name the colliding key in the server log for instant diagnosis.
+      console.warn('[attendance] event insert conflict (no key match)', {
+        companyId: String(companyId),
+        userId: String(userId),
+        date: control.date,
+        action,
+        seq: nextSeq,
+        keyValue: err.keyValue || null,
+      });
+      throw ApiError.conflict(
+        'Attendance record conflict — please refresh. If this keeps happening, ask support to reset the day.',
+      );
+    }
     throw ApiError.conflict('Attendance state changed — please refresh and retry');
   }
 
@@ -781,6 +798,21 @@ const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy
           existing,
         );
       }
+    }
+    if (isDuplicateKey(err)) {
+      // Sequence collision with NO matching idempotency key: orphaned
+      // facts from rows deleted outside the API. Name the colliding
+      // key in the server log instead of masking it as a duplicate.
+      console.warn('[attendance] clock-in event insert conflict (no key match)', {
+        companyId: String(companyId),
+        userId: String(userId),
+        date: todayKey,
+        seq: 1,
+        keyValue: err.keyValue || null,
+      });
+      throw ApiError.conflict(
+        'Attendance record conflict — please refresh. If this keeps happening, ask support to reset the day.',
+      );
     }
     throw ApiError.conflict('You have already clocked in today');
   }
