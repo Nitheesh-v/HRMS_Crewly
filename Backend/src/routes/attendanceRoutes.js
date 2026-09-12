@@ -7,6 +7,11 @@ import {
   getCompanyAttendance,
   getMonthlyReport,
 } from '../controllers/attendanceController.js';
+import {
+  getTodayLive,
+  postEvent,
+} from '../controllers/attendanceEventController.js';
+import { attendanceEventValidator } from '../validators/attendanceEventValidator.js';
 import { protect } from '../middlewares/authMiddleware.js';
 import {
   tenantContext,
@@ -54,6 +59,27 @@ router.get(
     'ATTENDANCE_READ',
   ]),
   getMyToday
+);
+
+// Phase 31.2 — advanced self-service punching. Reuses the established
+// self-attendance permissions; no new permissions introduced.
+router.post(
+  '/events',
+  checkWriteAccess,
+  requirePermission(
+    'ATTENDANCE_CREATE_SELF'
+  ),
+  attendanceEventValidator,
+  postEvent
+);
+
+router.get(
+  '/today/live',
+  requireAnyPermission([
+    'ATTENDANCE_READ_SELF',
+    'ATTENDANCE_READ',
+  ]),
+  getTodayLive
 );
 
 router.get(

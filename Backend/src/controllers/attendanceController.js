@@ -252,6 +252,17 @@ export const punchOut = asyncHandler(async (req, res) => {
     throw ApiError.conflict("You have already punched out today");
   }
 
+  // Phase 31.2 seam: event-backed sessions derive workMinutes from the
+  // immutable event ledger. The classic formula (span minus fixed rule
+  // breaks) must not silently overwrite those facts — such sessions
+  // close through the Clock Out action instead. Classic-only sessions
+  // (eventSeq 0, no liveState) behave exactly as before.
+  if ((record.eventSeq || 0) > 0 || record.liveState) {
+    throw ApiError.conflict(
+      "This session uses advanced punching — use Clock Out to finish your day",
+    );
+  }
+
   const punchOut = new Date();
 
   const { rule } = await ruleFromRecord(record, req.user);
