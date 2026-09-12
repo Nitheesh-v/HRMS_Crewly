@@ -87,7 +87,7 @@ const fakeEngine = (overrides = {}) => ({
 });
 
 // In-memory Attendance fake: findOne/findOneAndUpdate/create + unique gate.
-const makeFakeAttendanceModel = ({ failCasTimes = 0 } = {}) => {
+const makeFakeAttendanceModel = ({ failCasTimes = 0, onCasFail = null } = {}) => {
   const rows = [];
   let seq = 1;
   let casFailuresLeft = failCasTimes;
@@ -127,6 +127,8 @@ const makeFakeAttendanceModel = ({ failCasTimes = 0 } = {}) => {
     findOneAndUpdate: async (filter, update, opts = {}) => {
       if (casFailuresLeft > 0) {
         casFailuresLeft -= 1;
+        // Simulate the race winner committing between our read and CAS.
+        if (onCasFail) await onCasFail(rows);
         return null; // simulated lost race
       }
       const row = rows.find((candidate) => matches(candidate, filter));
@@ -1032,4 +1034,39 @@ test('merge: wrong-state actions never merge, even when fresh', async () => {
   await assert.rejects(() => punch(ctx, 'CLOCK_OUT'), /End your break/);
 
   assert.equal(ctx.AttendanceEventModel.rows.length, 2);
+});
+
+test('race: lost CAS explains against current state, not generic refresh', async () => {
+  // Winner commits BREAK_START between our read and our CLOCK_OUT CAS.
+  const winnerBreakAt = new Date('2026-09-12T09:01:00+05:30');
+  const onCasFail = async (rows) => {
+    const control = rows.find((row) => String(row.user) === USER_A);
+    control.liveState = 'ON_BREAK';
+    control.eventSeq = 2;
+    control.lastEventAt = winnerBreakAt;
+  };
+  const ctx = makeCtx({ attendanceOpts: { failCasTimes: 1, onCasFail } });
+
+  await punch(ctx, 'CLOCK_IN');
+  ctx.setNow('2026-09-12T09:01:00+05:30');
+  // Record the winner's fact directly (what the overlapping request did).
+  await ctx.AttendanceEventModel.create({
+    companyId: COMPANY_A,
+    user: USER_A,
+    date: '2026-09-12',
+    seq: 2,
+    type: 'BREAK_START',
+    at: winnerBreakAt,
+    workMode: null,
+    source: 'WEB',
+    requestId: null,
+  });
+  // Reset the control to the pre-race read: our request saw WORKING/seq 1.
+  const control = ctx.AttendanceModel.rows[0];
+  control.liveState = 'WORKING';
+  control.eventSeq = 1;
+
+  ctx.setNow('2026-09-12T09:01:05+05:30');
+  await assert.rejects(() => punch(ctx, 'CLOCK_OUT'), /End your break before clocking out/);
+  assert.ok(ctx.AttendanceEventModel.rows.every((row) => row.type !== 'CLOCK_OUT'));
 });

@@ -558,6 +558,15 @@ export const recordEvent = async ({
         );
       }
     }
+    // No replay applies. Explain against CURRENT state: if the action is
+    // no longer valid (e.g. Clock Out mashed during a fresh break), say
+    // so actionably instead of a generic refresh prompt.
+    const fresh = await AttendanceModel.findOne({ companyId, user: userId, date: control.date });
+    const freshCheck = transition(deriveLiveState(fresh), action);
+    if (!freshCheck.allowed) {
+      if (freshCheck.code === 'SESSION_COMPLETED') throw ApiError.conflict(freshCheck.reason);
+      throw ApiError.badRequest(freshCheck.reason);
+    }
     throw ApiError.conflict('Attendance state changed — please refresh and retry');
   }
 
