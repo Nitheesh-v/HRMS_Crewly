@@ -8,6 +8,7 @@ import {
   LogIn,
   LogOut,
   Play,
+  X,
 } from 'lucide-react';
 import attendanceService from '../../services/attendanceService.js';
 
@@ -68,6 +69,10 @@ const AttendancePage = () => {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const fetchedAtRef = useRef(Date.now());
+  // Synchronous double-submit guard: React state updates async, so two
+  // rapid clicks can both pass the `busy` check and fire duplicate
+  // requests (each with its own idempotency key). The ref closes that.
+  const busyRef = useRef(false);
 
   // 1s local tick — the display derives from server-authoritative
   // timestamps; no per-second backend traffic happens here.
@@ -110,6 +115,8 @@ const AttendancePage = () => {
   }, [loadLive]);
 
   const doAction = async (action, extra = {}) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
     setError('');
     setBusy(true);
     try {
@@ -125,13 +132,15 @@ const AttendancePage = () => {
       } else {
         await loadLive();
       }
-      loadMonth();
+      await loadMonth();
     } catch (err) {
       setError(err.message);
       // Backend is authoritative — refresh even on failure (a 409 means
       // state moved under us).
       loadLive();
+      loadMonth();
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
@@ -154,8 +163,15 @@ const AttendancePage = () => {
       </h1>
 
       {error && (
-        <div className="rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">
-          {error}
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">
+          <span>{error}</span>
+          <button
+            onClick={() => setError('')}
+            aria-label="Dismiss error"
+            className="rounded p-0.5 transition hover:bg-crewly-red/20"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
       )}
 
