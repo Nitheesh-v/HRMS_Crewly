@@ -13,7 +13,12 @@ const attendancePolicyService = {
   saveDraft: (payload) => envelope(api.post('/attendance/policy/draft', payload)),
 
   activate: (expectedConfigVersion) =>
-    envelope(api.post('/attendance/policy/activate', { expectedConfigVersion })),
+    envelope(
+      api.post(
+        '/attendance/policy/activate',
+        expectedConfigVersion == null ? {} : { expectedConfigVersion },
+      ),
+    ),
 };
 
 export default attendancePolicyService;

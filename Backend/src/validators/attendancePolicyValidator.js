@@ -34,7 +34,7 @@ const int = (min, max) =>
 
 export const attendancePolicyDraftValidator = [
   noCompanyId(),
-  body('expectedConfigVersion').optional().isInt({ min: 1 }),
+  body('expectedConfigVersion').optional({ nullable: true }).isInt({ min: 1 }),
   body('name').optional().isString().trim().isLength({ min: 1, max: 80 }),
   body('description').optional().isString().trim().isLength({ max: 500 }),
   body('timezone').optional().isString().trim().isLength({ min: 1, max: 64 }),
@@ -73,7 +73,7 @@ export const attendancePolicyDraftValidator = [
 
 export const attendancePolicyActivateValidator = [
   noCompanyId(),
-  body('expectedConfigVersion').optional().isInt({ min: 1 }),
+  body('expectedConfigVersion').optional({ nullable: true }).isInt({ min: 1 }),
   validate,
 ];
 

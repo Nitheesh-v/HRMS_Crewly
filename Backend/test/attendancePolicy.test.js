@@ -777,3 +777,39 @@ test('compat: policy layer never touches punches or money', async () => {
   // ApiError import resolves (service throws HTTP-safe errors).
   assert.equal(typeof ApiError.badRequest, 'function');
 });
+
+// ── VALIDATOR REGRESSION (31.1 walkthrough bug) ──────────────
+
+test('validators: explicit null concurrency tokens are treated as absent', async () => {
+  const {
+    attendancePolicyDraftValidator,
+    attendancePolicyActivateValidator,
+  } = await import('../src/validators/attendancePolicyValidator.js');
+  const { validationResult } = await import('express-validator');
+
+  // Run every chain item except the terminal `validate` thrower.
+  const runChain = async (chain, body) => {
+    const req = { body, query: {} };
+    for (const middleware of chain.slice(0, -1)) {
+      await middleware.run(req);
+    }
+    return validationResult(req);
+  };
+
+  const draftErrors = await runChain(attendancePolicyDraftValidator, {
+    expectedConfigVersion: null,
+    name: 'V1',
+  });
+  assert.equal(draftErrors.isEmpty(), true);
+
+  const activateErrors = await runChain(attendancePolicyActivateValidator, {
+    expectedConfigVersion: null,
+  });
+  assert.equal(activateErrors.isEmpty(), true);
+
+  // A non-integer token is still refused.
+  const badErrors = await runChain(attendancePolicyDraftValidator, {
+    expectedConfigVersion: 'abc',
+  });
+  assert.equal(badErrors.isEmpty(), false);
+});

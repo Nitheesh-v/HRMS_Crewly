@@ -81,7 +81,8 @@ const toForm = (policy) => {
 };
 
 const toPayload = (form, expectedConfigVersion) => ({
-  expectedConfigVersion,
+  // Omit the token on first save — the API treats a missing token as "no check".
+  ...(expectedConfigVersion == null ? {} : { expectedConfigVersion }),
   name: form.name.trim(),
   description: form.description.trim(),
   timezone: form.timezone.trim(),
