@@ -79,6 +79,9 @@ writes, jobs, or Redis traffic).
   the helper pauses 800 ms and re-reads once, so a duplicate landing
   inside the winner's commit→fact window (Atlas write latency) still
   merges; only genuine refusals pay the delay.
+- Insert failures are never silent: a non-duplicate event-write failure
+  is logged server-side (`[attendance] event insert failed` with the
+  Mongo code + message) so Atlas-level causes surface immediately.
 
 ## 5. Daily projection & legacy compatibility
 

@@ -165,6 +165,7 @@ const makeFakeEventModel = ({ dropFirstFinds = 0 } = {}) => {
   const rows = [];
   let seq = 1;
   let findsToDrop = dropFirstFinds;
+  let pendingFailure = null;
 
   const chain = (resolve) => {
     const self = {
@@ -178,6 +179,9 @@ const makeFakeEventModel = ({ dropFirstFinds = 0 } = {}) => {
 
   return {
     rows,
+    failNextCreate: (err) => {
+      pendingFailure = err;
+    },
     findOne: (filter) =>
       chain(() => {
         const found = rows.find((row) =>
@@ -199,6 +203,11 @@ const makeFakeEventModel = ({ dropFirstFinds = 0 } = {}) => {
           .map((row) => ({ ...row }));
       }),
     create: async (doc) => {
+      if (pendingFailure) {
+        const forced = pendingFailure;
+        pendingFailure = null;
+        throw forced;
+      }
       const dupSeq = rows.find(
         (row) =>
           String(row.companyId) === String(doc.companyId) &&
@@ -1193,4 +1202,29 @@ test('merge: genuine duplicate still refuses after the retry finds nothing new',
   );
   assert.equal(ctx.sleepCalls.count, 1);
   assert.equal(ctx.AttendanceEventModel.rows.length, 1);
+});
+
+test('diagnostics: non-duplicate insert failure is logged with code, not swallowed', async () => {
+  const ctx = makeCtx();
+  const errors = [];
+  const originalError = console.error;
+  console.error = (...args) => errors.push(args);
+  try {
+    const failure = new Error('Document failed validation');
+    failure.name = 'MongoServerError';
+    failure.code = 121;
+    ctx.AttendanceEventModel.failNextCreate(failure);
+    await assert.rejects(
+      () => punch(ctx, 'CLOCK_IN', { idempotencyKey: 'diag-in-a' }),
+      /already clocked in/,
+    );
+  } finally {
+    console.error = originalError;
+  }
+  assert.equal(errors.length, 1);
+  assert.match(String(errors[0][0]), /event insert failed/);
+  assert.equal(errors[0][1].code, 121);
+  // Partial-commit documented: the control exists, no fact was written.
+  assert.equal(ctx.AttendanceModel.rows.length, 1);
+  assert.equal(ctx.AttendanceEventModel.rows.length, 0);
 });

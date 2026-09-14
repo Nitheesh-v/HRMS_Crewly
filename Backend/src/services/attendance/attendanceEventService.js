@@ -616,6 +616,19 @@ export const recordEvent = async ({
         'Attendance record conflict — please refresh. If this keeps happening, ask support to reset the day.',
       );
     }
+    // True insert failure (not a duplicate): never swallow it — log the
+    // code + message so causes like Atlas validation rules (121) are
+    // named in the server log instead of surfacing as a generic 409.
+    console.error('[attendance] event insert failed', {
+      companyId: String(companyId),
+      userId: String(userId),
+      date: control.date,
+      action,
+      seq: nextSeq,
+      name: err?.name || null,
+      code: err?.code || null,
+      message: err?.message || null,
+    });
     throw ApiError.conflict('Attendance state changed — please refresh and retry');
   }
 
@@ -833,6 +846,17 @@ const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy
         'Attendance record conflict — please refresh. If this keeps happening, ask support to reset the day.',
       );
     }
+    // True insert failure (not a duplicate): log the Mongo code + message
+    // instead of swallowing it behind the duplicate message.
+    console.error('[attendance] clock-in event insert failed', {
+      companyId: String(companyId),
+      userId: String(userId),
+      date: todayKey,
+      seq: 1,
+      name: err?.name || null,
+      code: err?.code || null,
+      message: err?.message || null,
+    });
     throw ApiError.conflict('You have already clocked in today');
   }
 
