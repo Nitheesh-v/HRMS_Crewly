@@ -96,7 +96,11 @@ const makeFakeAttendanceModel = ({ failCasTimes = 0, onCasFail = null } = {}) =>
     Object.entries(filter).every(([key, value]) => {
       if (key === '$or') return value.some((clause) => matches(row, clause));
       if (value !== null && typeof value === 'object' && !(value instanceof Date)) {
-        if (value.$in) return value.$in.map(String).includes(String(row[key]));
+        if (value.$in) {
+          // Mongo matches missing fields against null in $in lists.
+          const actual = row[key] === undefined ? 'null' : String(row[key]);
+          return value.$in.map(String).includes(actual);
+        }
         if (value.$ne !== undefined) {
           if (Array.isArray(value.$ne)) return true;
           return String(row[key] ?? '') !== String(value.$ne ?? '');
@@ -1227,4 +1231,50 @@ test('diagnostics: non-duplicate insert failure is logged with code, not swallow
   // Partial-commit documented: the control exists, no fact was written.
   assert.equal(ctx.AttendanceModel.rows.length, 1);
   assert.equal(ctx.AttendanceEventModel.rows.length, 0);
+});
+
+test('adopt: legacy open session without eventSeq adopts on first 31.2 touch', async () => {
+  const ctx = makeCtx();
+  // Legacy-shaped control: classic punch-in, no 31.2 fields at all.
+  ctx.AttendanceModel.rows.push({
+    _id: 'legacy1',
+    id: 'legacy1',
+    companyId: COMPANY_A,
+    user: USER_A,
+    date: '2026-09-12',
+    punchIn: new Date('2026-09-12T09:00:00+05:30'),
+    status: 'PRESENT',
+  });
+
+  const started = await punch(ctx, 'BREAK_START', { idempotencyKey: 'adopt-bs-a' });
+  assert.equal(started.replayed, false);
+  assert.equal(started.snapshot.liveState, 'ON_BREAK');
+  // Counter backfilled: the next action CASes on a real numeric seq.
+  assert.equal(ctx.AttendanceModel.rows[0].eventSeq, 1);
+  assert.equal(ctx.AttendanceEventModel.rows.length, 1);
+  assert.equal(ctx.AttendanceEventModel.rows[0].seq, 1);
+
+  const ended = await punch(ctx, 'BREAK_END', { idempotencyKey: 'adopt-be-a' });
+  assert.equal(ended.snapshot.liveState, 'WORKING');
+  assert.equal(ctx.AttendanceModel.rows[0].eventSeq, 2);
+  assert.equal(ctx.AttendanceEventModel.rows.length, 2);
+});
+
+test('diagnostics: lost CAS logs expected-vs-fresh sequence for instant triage', async () => {
+  const ctx = makeCtx({ attendanceOpts: { failCasTimes: 1 } });
+  await punch(ctx, 'CLOCK_IN');
+
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args);
+  try {
+    await assert.rejects(() => punch(ctx, 'CLOCK_OUT'), /state changed/);
+  } finally {
+    console.warn = originalWarn;
+  }
+  assert.equal(warnings.length, 1);
+  assert.match(String(warnings[0][0]), /CAS missed/);
+  assert.equal(warnings[0][1].expectedSeq, 1);
+  assert.equal(warnings[0][1].freshEventSeq, 1);
+  assert.equal(warnings[0][1].freshState, 'WORKING');
 });

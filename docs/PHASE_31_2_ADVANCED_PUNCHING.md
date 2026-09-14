@@ -82,6 +82,10 @@ writes, jobs, or Redis traffic).
 - Insert failures are never silent: a non-duplicate event-write failure
   is logged server-side (`[attendance] event insert failed` with the
   Mongo code + message) so Atlas-level causes surface immediately.
+- Legacy adoption: pre-31.2 open sessions have no `eventSeq`; the first
+  31.2 touch matches 0/null/missing once and `$inc` backfills the
+  counter, so inherited sessions act instead of wedging. Lost CASes log
+  expected-vs-fresh sequence for instant triage.
 
 ## 5. Daily projection & legacy compatibility
 

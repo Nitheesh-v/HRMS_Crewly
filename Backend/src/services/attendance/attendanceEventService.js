@@ -521,8 +521,11 @@ export const recordEvent = async ({
   }
 
   // Atomic transition: exactly one concurrent writer wins the sequence.
+  // Legacy/hand-mangled controls may lack eventSeq: match 0/null/missing
+  // once so the first 31.2 touch adopts the session ($inc backfills it).
+  const seqFilter = expectedSeq === 0 ? { $in: [0, null] } : expectedSeq;
   const updated = await AttendanceModel.findOneAndUpdate(
-    { companyId, user: userId, date: control.date, eventSeq: expectedSeq },
+    { companyId, user: userId, date: control.date, eventSeq: seqFilter },
     { $set: patch, $inc: { eventSeq: 1 } },
     { new: true },
   );
@@ -563,6 +566,15 @@ export const recordEvent = async ({
     // no longer valid (e.g. Clock Out mashed during a fresh break), say
     // so actionably instead of a generic refresh prompt.
     const fresh = await AttendanceModel.findOne({ companyId, user: userId, date: control.date });
+    console.warn('[attendance] CAS missed (concurrent write or stale read)', {
+      companyId: String(companyId),
+      userId: String(userId),
+      date: control.date,
+      action,
+      expectedSeq,
+      freshEventSeq: fresh?.eventSeq ?? null,
+      freshState: deriveLiveState(fresh),
+    });
     const freshCheck = transition(deriveLiveState(fresh), action);
     if (!freshCheck.allowed) {
       if (freshCheck.code === 'SESSION_COMPLETED') throw ApiError.conflict(freshCheck.reason);
