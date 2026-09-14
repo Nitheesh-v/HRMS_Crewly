@@ -30,14 +30,58 @@ const noIdentityOverride = body().custom((value, { req }) => {
   return true;
 });
 
+// Phase 31.3 — the backend computes every geofence fact server-side.
+// Client-supplied verdicts/measurements are refused outright, never
+// trusted, never stored.
+const noLocationFacts = body().custom((value, { req }) => {
+  const body = req.body || {};
+  for (const field of [
+    'insideGeofence',
+    'distanceMeters',
+    'radiusMeters',
+    'verified',
+    'location',
+    'locationVerification',
+  ]) {
+    if (body[field] !== undefined) {
+      throw new Error(`${field} must not be supplied by the client`);
+    }
+  }
+  if (body.position !== undefined && body.position !== null && typeof body.position !== 'object') {
+    throw new Error('position must be an object');
+  }
+  return true;
+});
+
 export const attendanceEventValidator = [
   noIdentityOverride,
+  noLocationFacts,
   body('action')
     .exists({ checkFalsy: true })
     .withMessage('action is required')
     .isString()
     .isIn(Object.values(EVENT_TYPE))
     .withMessage(`action must be one of ${Object.values(EVENT_TYPE).join(', ')}`),
+  // Phase 31.3 — CLOCK_IN geofence inputs (consumed only by CLOCK_IN;
+  // exact ranges live in the pure rules, enforced by the service).
+  body('locationId')
+    .optional({ nullable: true })
+    .isString()
+    .isMongoId()
+    .withMessage('locationId must be a valid location id'),
+  body('position').optional({ nullable: true }).isObject().withMessage('position must be an object'),
+  body('position.latitude')
+    .optional()
+    .isFloat()
+    .withMessage('position.latitude must be a number'),
+  body('position.longitude')
+    .optional()
+    .isFloat()
+    .withMessage('position.longitude must be a number'),
+  body('position.accuracy')
+    .optional({ nullable: true })
+    .isFloat()
+    .withMessage('position.accuracy must be a number'),
   body('workMode')
     .optional({ nullable: true })
     .isString()

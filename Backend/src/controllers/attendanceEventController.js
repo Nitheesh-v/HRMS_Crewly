@@ -10,6 +10,10 @@ import {
 export const postEvent = asyncHandler(async (req, res) => {
   // Data from frontend - requests from frontend
   const { action, workMode = null, date = null, idempotencyKey = null } = req.body || {};
+  // Phase 31.3 — geofence inputs assembled server-side (the client sends
+  // locationId + position; the service consumes them for CLOCK_IN only).
+  const { locationId = null, position = null } = req.body || {};
+  const location = locationId || position ? { locationId, position } : null;
 
   // DB Logic - DB logics
   const result = await recordEvent({
@@ -19,6 +23,7 @@ export const postEvent = asyncHandler(async (req, res) => {
     workMode,
     date,
     idempotencyKey,
+    location,
   });
 
   // Data to frontend - response to frontend

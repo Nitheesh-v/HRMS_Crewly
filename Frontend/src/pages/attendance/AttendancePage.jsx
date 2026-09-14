@@ -7,10 +7,48 @@ import {
   History,
   LogIn,
   LogOut,
+  MapPin,
   Play,
   X,
 } from 'lucide-react';
 import attendanceService from '../../services/attendanceService.js';
+import attendanceLocationService from '../../services/attendanceLocationService.js';
+
+// One-shot browser position for the explicit Clock-In click. Resolves
+// { latitude, longitude, accuracy? } or throws an employee-safe Error.
+// getCurrentPosition ONLY — watchPosition must never appear in this file.
+const readSinglePosition = () =>
+  new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('Location is not available in this browser'));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude, accuracy } = position.coords;
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+          reject(new Error('Could not determine your location — please retry'));
+          return;
+        }
+        resolve({
+          latitude,
+          longitude,
+          ...(Number.isFinite(accuracy) ? { accuracy } : {}),
+        });
+      },
+      (failure) => {
+        // GeolocationPositionError codes: 1 denied, 2 unavailable, 3 timeout.
+        if (failure?.code === 1) {
+          reject(new Error('Location permission was denied'));
+        } else if (failure?.code === 3) {
+          reject(new Error('Location request timed out — please retry'));
+        } else {
+          reject(new Error('Could not determine your location — please retry'));
+        }
+      },
+      { timeout: 10000, maximumAge: 0 },
+    );
+  });
 
 const fmtTime = (d) =>
   d ? new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
@@ -74,6 +112,63 @@ const AttendancePage = () => {
   // requests (each with its own idempotency key). The ref closes that.
   const busyRef = useRef(false);
 
+  // Phase 31.3 — geofenced Clock In. Eligible offices load only when the
+  // policy enforces location for OFFICE; the browser position is sampled
+  // one-shot inside the explicit Clock-In click — never on load, tick
+  // or break. No watchPosition anywhere in this file, by design.
+  const [locations, setLocations] = useState([]);
+  const [locationId, setLocationId] = useState('');
+  const [locNote, setLocNote] = useState('');
+
+  const geofenceRule = live?.locationEnforcement || 'DISABLED';
+  const needsGeofencePick =
+    (geofenceRule === 'REQUIRED' || geofenceRule === 'OPTIONAL') &&
+    workMode === 'OFFICE' &&
+    live?.liveState === 'NOT_IN';
+
+  useEffect(() => {
+    if (!needsGeofencePick) return;
+    attendanceLocationService
+      .eligible()
+      .then((rows) => {
+        const list = Array.isArray(rows) ? rows : [];
+        setLocations(list);
+        setLocationId((current) =>
+          list.some((row) => row.id === current) ? current : list[0]?.id || '',
+        );
+      })
+      .catch(() => {});
+  }, [needsGeofencePick]);
+
+  // Builds the CLOCK_IN location payload (or throws an employee-safe
+  // error that aborts the click without posting). REQUIRED blocks on
+  // any gap; OPTIONAL degrades to unverified.
+  const resolveClockInLocation = async () => {
+    if (!needsGeofencePick) return null;
+    const strict = geofenceRule === 'REQUIRED';
+    if (!locations.length) {
+      if (strict) {
+        throw new Error('No active attendance locations are configured — please contact your administrator');
+      }
+      return null;
+    }
+    if (!locationId) {
+      if (strict) throw new Error('Choose your attendance location to clock in');
+      return null;
+    }
+    try {
+      const position = await readSinglePosition();
+      return { locationId, position };
+    } catch (err) {
+      if (strict) {
+        throw new Error(
+          `${err.message}. Your company's attendance policy requires location verification for this clock-in.`,
+        );
+      }
+      return null;
+    }
+  };
+
   // 1s local tick — the display derives from server-authoritative
   // timestamps; no per-second backend traffic happens here.
   useEffect(() => {
@@ -118,14 +213,28 @@ const AttendancePage = () => {
     if (busyRef.current) return;
     busyRef.current = true;
     setError('');
+    setLocNote('');
     setBusy(true);
     try {
+      // Geofence sampling happens inside the guarded click: aborts here
+      // (REQUIRED gaps) post nothing.
+      const location = action === 'CLOCK_IN' ? await resolveClockInLocation() : null;
       const result = await attendanceService.recordEvent({
         action,
         ...(action === 'CLOCK_IN' ? { workMode } : {}),
         idempotencyKey: newIdempotencyKey(),
+        ...(location ? { location } : {}),
         ...extra,
       });
+      // Employee-safe verification note from the server's own snapshot.
+      const verdict = result?.event?.location;
+      if (action === 'CLOCK_IN' && verdict?.result === 'VERIFIED') {
+        setLocNote(`Verified at ${verdict.locationName}`);
+      } else if (action === 'CLOCK_IN' && verdict?.result === 'OUTSIDE') {
+        setLocNote(`Outside the ${verdict.locationName} radius — recorded as unverified`);
+      } else if (action === 'CLOCK_IN' && needsGeofencePick && !location) {
+        setLocNote('Clocked in without location verification');
+      }
       if (result?.snapshot) {
         setLive(result.snapshot);
         fetchedAtRef.current = Date.now();
@@ -172,6 +281,12 @@ const AttendancePage = () => {
           >
             <X className="h-4 w-4" />
           </button>
+        </div>
+      )}
+
+      {locNote && !error && (
+        <div className="rounded-lg border border-crewly-green/40 bg-crewly-green/10 px-4 py-3 text-sm text-crewly-green">
+          {locNote}
         </div>
       )}
 
@@ -237,6 +352,33 @@ const AttendancePage = () => {
                     <option key={mode} value={mode}>{MODE_LABEL[mode] || mode}</option>
                   ))}
                 </select>
+                {needsGeofencePick && (
+                  <>
+                    <label className="label mt-1 flex items-center gap-2" htmlFor="attendance-location">
+                      <MapPin className="h-4 w-4" /> Attendance location
+                    </label>
+                    {locations.length === 0 ? (
+                      <p className="max-w-xs text-sm text-crewly-orange">
+                        No active attendance locations are configured — please contact your administrator.
+                      </p>
+                    ) : (
+                      <select
+                        id="attendance-location"
+                        className="input w-56 text-center"
+                        value={locationId}
+                        onChange={(e) => setLocationId(e.target.value)}
+                        disabled={busy}
+                      >
+                        {locations.map((row) => (
+                          <option key={row.id} value={row.id}>{row.name}</option>
+                        ))}
+                      </select>
+                    )}
+                    <p className="max-w-xs text-xs text-crewly-dim">
+                      Your location is checked once, only for this clock-in — Crewly never tracks you continuously.
+                    </p>
+                  </>
+                )}
                 {can('CLOCK_IN') && (
                   <button
                     onClick={() => doAction('CLOCK_IN')}

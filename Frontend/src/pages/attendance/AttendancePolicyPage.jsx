@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import usePermission from '../../hooks/usePermission.js';
 import attendancePolicyService from '../../services/attendancePolicyService.js';
+import attendanceLocationService from '../../services/attendanceLocationService.js';
 
 const DEFAULT_FORM = {
   name: 'Attendance Policy',
@@ -184,6 +185,8 @@ const AttendancePolicyPage = () => {
   const canManage =
     hasPermission('ATTENDANCE_POLICY_MANAGE') || hasPermission('ATTENDANCE_POLICY_ACTIVATE');
   const canActivate = hasPermission('ATTENDANCE_POLICY_ACTIVATE');
+  const canReadLocations = hasPermission('ATTENDANCE_LOCATION_READ');
+  const canManageLocations = hasPermission('ATTENDANCE_LOCATION_MANAGE');
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -193,6 +196,35 @@ const AttendancePolicyPage = () => {
   const [form, setForm] = useState(() => structuredClone(DEFAULT_FORM));
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+
+  // Phase 31.3 — office locations share this page (no extra route).
+  const [locations, setLocations] = useState([]);
+  const [locForm, setLocForm] = useState({
+    id: null,
+    name: '',
+    code: '',
+    displayAddress: '',
+    latitude: '',
+    longitude: '',
+    radiusMeters: 200,
+    isActive: true,
+  });
+  const [locBusy, setLocBusy] = useState(false);
+  const [locError, setLocError] = useState('');
+
+  const loadLocations = useCallback(async () => {
+    if (!canReadLocations && !canManageLocations) return;
+    try {
+      const rows = await attendanceLocationService.list();
+      setLocations(Array.isArray(rows) ? rows : []);
+    } catch (loadError) {
+      setLocError(loadError?.message || 'Could not load the office locations');
+    }
+  }, [canReadLocations, canManageLocations]);
+
+  useEffect(() => {
+    if (!permissionsLoading) loadLocations();
+  }, [permissionsLoading, loadLocations]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -277,6 +309,66 @@ const AttendancePolicyPage = () => {
       setError(activationError?.message || 'Could not activate the policy');
     } finally {
       setActivating(false);
+    }
+  };
+
+  const resetLocForm = () =>
+    setLocForm({
+      id: null,
+      name: '',
+      code: '',
+      displayAddress: '',
+      latitude: '',
+      longitude: '',
+      radiusMeters: 200,
+      isActive: true,
+    });
+
+  const saveLocation = async () => {
+    setLocBusy(true);
+    setLocError('');
+    setMessage('');
+
+    try {
+      const payload = {
+        name: locForm.name.trim(),
+        code: locForm.code.trim() || null,
+        displayAddress: locForm.displayAddress.trim() || null,
+        latitude: Number(locForm.latitude),
+        longitude: Number(locForm.longitude),
+        radiusMeters: Number(locForm.radiusMeters),
+        isActive: locForm.isActive,
+      };
+      if (locForm.id) {
+        await attendanceLocationService.update(locForm.id, payload);
+      } else {
+        await attendanceLocationService.create(payload);
+      }
+      setMessage(locForm.id ? 'Location updated' : 'Location created');
+      resetLocForm();
+      await loadLocations();
+    } catch (saveError) {
+      setLocError(saveError?.message || 'Could not save the location');
+    } finally {
+      setLocBusy(false);
+    }
+  };
+
+  const toggleLocationActive = async (row) => {
+    setLocBusy(true);
+    setLocError('');
+
+    try {
+      if (row.isActive) {
+        await attendanceLocationService.deactivate(row.id);
+      } else {
+        await attendanceLocationService.activate(row.id);
+      }
+      await loadLocations();
+    } catch (toggleError) {
+      setLocError(toggleError?.message || 'Could not update the location');
+    } finally {
+      setLocBusy(false);
     }
   };
 
@@ -560,7 +652,7 @@ const AttendancePolicyPage = () => {
           />
         </div>
         <div className="max-w-xs">
-          <label className="label">Location enforcement (future)</label>
+          <label className="label">Location enforcement</label>
           <select
             className="input w-full"
             value={form.locationEnforcement}
@@ -574,11 +666,170 @@ const AttendancePolicyPage = () => {
             <option value="REQUIRED">Required</option>
           </select>
           <p className="mt-1 text-xs text-crewly-dim">
-            Geofence configuration arrives later. This page never requests device
-            location.
+            Applies to OFFICE clock-ins; offices are configured in the section
+            below. This page never requests device location.
           </p>
         </div>
       </Section>
+
+      {(canReadLocations || canManageLocations) && (
+        <Section icon={MapPin} title="Office locations">
+          <p className="text-xs text-crewly-dim">
+            Company premises an OFFICE clock-in can be verified against.
+            Coordinates describe offices — employee positions are checked once
+            per clock-in and never stored. Deactivate instead of deleting:
+            history stays interpretable.
+          </p>
+          {form.locationEnforcement === 'REQUIRED' &&
+            locations.filter((row) => row.isActive).length === 0 && (
+              <p className="text-sm text-crewly-orange">
+                Enforcement is REQUIRED but no location is active — OFFICE
+                clock-ins will be refused until one exists.
+              </p>
+            )}
+          {locError && <p className="text-sm text-crewly-red">{locError}</p>}
+          <div className="space-y-2">
+            {locations.map((row) => (
+              <div
+                key={row.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-crewly-border px-3 py-2 text-sm"
+              >
+                <span>
+                  {row.name}
+                  {row.code ? ` · ${row.code}` : ''} · {row.radiusMeters}m
+                  {!row.isActive && <span className="badge ml-2">Inactive</span>}
+                </span>
+                {canManageLocations && (
+                  <span className="flex gap-2">
+                    <button
+                      type="button"
+                      className="btn-ghost px-3 py-1 text-sm"
+                      disabled={locBusy}
+                      onClick={() =>
+                        setLocForm({
+                          id: row.id,
+                          name: row.name,
+                          code: row.code || '',
+                          displayAddress: row.displayAddress || '',
+                          latitude: row.latitude,
+                          longitude: row.longitude,
+                          radiusMeters: row.radiusMeters,
+                          isActive: row.isActive,
+                        })
+                      }
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost px-3 py-1 text-sm"
+                      disabled={locBusy}
+                      onClick={() => toggleLocationActive(row)}
+                    >
+                      {row.isActive ? 'Deactivate' : 'Activate'}
+                    </button>
+                  </span>
+                )}
+              </div>
+            ))}
+            {locations.length === 0 && (
+              <p className="text-sm text-crewly-dim">No locations yet.</p>
+            )}
+          </div>
+          {canManageLocations && (
+            <div className="grid max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="label">Name</label>
+                <input
+                  className="input w-full"
+                  value={locForm.name}
+                  disabled={locBusy}
+                  onChange={(event) => setLocForm((previous) => ({ ...previous, name: event.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="label">Code (optional)</label>
+                <input
+                  className="input w-full"
+                  value={locForm.code}
+                  disabled={locBusy}
+                  onChange={(event) => setLocForm((previous) => ({ ...previous, code: event.target.value }))}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="label">Address / description (optional)</label>
+                <input
+                  className="input w-full"
+                  value={locForm.displayAddress}
+                  disabled={locBusy}
+                  onChange={(event) =>
+                    setLocForm((previous) => ({ ...previous, displayAddress: event.target.value }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="label">Latitude (−90…90)</label>
+                <input
+                  className="input w-full"
+                  type="number"
+                  step="any"
+                  value={locForm.latitude}
+                  disabled={locBusy}
+                  onChange={(event) =>
+                    setLocForm((previous) => ({ ...previous, latitude: event.target.value }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="label">Longitude (−180…180)</label>
+                <input
+                  className="input w-full"
+                  type="number"
+                  step="any"
+                  value={locForm.longitude}
+                  disabled={locBusy}
+                  onChange={(event) =>
+                    setLocForm((previous) => ({ ...previous, longitude: event.target.value }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="label">Radius in meters (10…100000)</label>
+                <input
+                  className="input w-full"
+                  type="number"
+                  step="1"
+                  value={locForm.radiusMeters}
+                  disabled={locBusy}
+                  onChange={(event) =>
+                    setLocForm((previous) => ({ ...previous, radiusMeters: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="flex items-end gap-2 pb-1">
+                <button
+                  type="button"
+                  className="btn-primary px-4 py-2"
+                  disabled={locBusy}
+                  onClick={saveLocation}
+                >
+                  {locBusy ? 'Saving…' : locForm.id ? 'Update location' : 'Add location'}
+                </button>
+                {locForm.id && (
+                  <button
+                    type="button"
+                    className="btn-ghost px-4 py-2"
+                    disabled={locBusy}
+                    onClick={resetLocForm}
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </Section>
+      )}
 
       <Section icon={ShieldCheck} title="Policy state">
         <div className="flex flex-wrap items-center gap-3">

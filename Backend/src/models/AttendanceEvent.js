@@ -63,6 +63,25 @@ const attendanceEventSchema = new Schema(
     },
     // Opaque client idempotency key. Null when the client sent none.
     requestId: { type: String, default: null },
+    // Phase 31.3 — immutable geofence verification snapshot (CLOCK_IN
+    // only, when verified). Minimal facts answering "what location rule
+    // accepted this punch" even after the office is edited. Raw employee
+    // coordinates are NEVER persisted (privacy by design).
+    locationVerification: {
+      type: new Schema(
+        {
+          locationId: { type: Schema.Types.ObjectId, ref: 'AttendanceLocation' },
+          locationName: { type: String },
+          radiusMeters: { type: Number },
+          distanceMeters: { type: Number },
+          result: { type: String, enum: ['VERIFIED', 'OUTSIDE'] },
+          accuracyMeters: { type: Number },
+          verifiedAt: { type: Date },
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
   },
   { timestamps: true },
 );

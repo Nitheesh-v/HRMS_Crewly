@@ -7,12 +7,17 @@ const attendanceService = {
   // Phase 31.2 — advanced punching. recordEvent normalizes the replay
   // envelope (200 + meta) to the same { event, snapshot } shape as 201.
   todayLive: () => api.get('/attendance/today/live'),
-  recordEvent: async ({ action, workMode = null, date = null, idempotencyKey = null }) => {
+  recordEvent: async ({ action, workMode = null, date = null, idempotencyKey = null, location = null }) => {
     const result = await api.post('/attendance/events', {
       action,
       ...(workMode ? { workMode } : {}),
       ...(date ? { date } : {}),
       ...(idempotencyKey ? { idempotencyKey } : {}),
+      // Phase 31.3 — CLOCK_IN geofence inputs (locationId + one-shot
+      // position). Only sent for explicit attendance actions that need
+      // verification; the backend measures everything server-side.
+      ...(location?.locationId ? { locationId: location.locationId } : {}),
+      ...(location?.position ? { position: location.position } : {}),
     });
     return result && result.success !== undefined && result.data ? result.data : result;
   },

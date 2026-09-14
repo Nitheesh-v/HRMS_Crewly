@@ -119,6 +119,10 @@ export const DEFAULT_PERMISSIONS = [
   // high-impact, audited transition (least privilege).
   ...actions("ATTENDANCE_POLICY", ["READ", "MANAGE", "ACTIVATE"]),
 
+  // Phase 31.3 — Attendance Locations (company geofence configuration).
+  // No ACTIVATE split: activation is an ordinary MANAGE-level toggle.
+  ...actions("ATTENDANCE_LOCATION", ["READ", "MANAGE"]),
+
   ...actions("LEAVE", ["READ", "CREATE", "UPDATE", "APPROVE", "REJECT"]),
 
   ...actions("PAYROLL", ["READ", "CREATE", "UPDATE", "APPROVE", "MANAGE"]),
@@ -449,6 +453,10 @@ export const DEFAULT_ROLE_MATRIX = {
     // Company Admin may ACTIVATE it (§15 least privilege).
     "ATTENDANCE_POLICY_READ",
     "ATTENDANCE_POLICY_MANAGE",
+
+    // Phase 31.3 — HR configures geofenced attendance locations.
+    "ATTENDANCE_LOCATION_READ",
+    "ATTENDANCE_LOCATION_MANAGE",
 
     "LEAVE_READ",
     "LEAVE_APPROVE",

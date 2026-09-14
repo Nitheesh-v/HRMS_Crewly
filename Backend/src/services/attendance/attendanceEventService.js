@@ -19,8 +19,10 @@
 // ─────────────────────────────────────────────────────────────
 import Attendance from '../../models/Attendance.js';
 import AttendanceEvent from '../../models/AttendanceEvent.js';
+import AttendanceLocation from '../../models/AttendanceLocation.js';
 import Company from '../../models/Company.js';
 import ApiError from '../../utils/ApiError.js';
+import { verifyClockInLocation } from './attendanceLocationService.js';
 import {
   HALF_DAY_MINUTES,
   LATE_GRACE_MINUTES,
@@ -90,6 +92,7 @@ const defaultResolveScheduleRule = async ({ companyId, user, at, engine }) => {
 const defaultDeps = () => ({
   AttendanceModel: Attendance,
   AttendanceEventModel: AttendanceEvent,
+  AttendanceLocationModel: AttendanceLocation,
   CompanyModel: Company,
   policyReader: (args) => getCurrentPolicy(args),
   engine: {
@@ -108,6 +111,19 @@ const defaultDeps = () => ({
 
 const isDuplicateKey = (err) => err?.code === 11000;
 
+const serializeLocationVerification = (snapshot) => {
+  if (!snapshot) return null;
+  return {
+    locationId: String(snapshot.locationId || ''),
+    locationName: snapshot.locationName || null,
+    radiusMeters: snapshot.radiusMeters ?? null,
+    distanceMeters: snapshot.distanceMeters ?? null,
+    result: snapshot.result || null,
+    accuracyMeters: snapshot.accuracyMeters ?? null,
+    verifiedAt: snapshot.verifiedAt ? new Date(snapshot.verifiedAt).toISOString() : null,
+  };
+};
+
 const serializeEvent = (event) => ({
   id: String(event._id || event.id || ''),
   seq: event.seq,
@@ -115,6 +131,7 @@ const serializeEvent = (event) => ({
   at: event.at instanceof Date ? event.at.toISOString() : new Date(event.at).toISOString(),
   workMode: event.workMode || null,
   source: event.source || EVENT_SOURCE.WEB,
+  location: serializeLocationVerification(event.locationVerification),
 });
 
 // Company/policy timezone for day boundaries. Policy wins when active,
@@ -233,6 +250,9 @@ const buildSnapshot = async ({
     policyVersion: control?.policyVersion ?? null,
     allowedActions: allowedActions(liveState),
     enabledWorkModes: enabledWorkModes(policy),
+    // Phase 31.3: the employee UI reads enforcement here (self-service
+    // safe — no policy-read permission needed to know the rule).
+    locationEnforcement: policy?.locationEnforcement || 'DISABLED',
     schedule,
   };
 };
@@ -345,6 +365,9 @@ export const recordEvent = async ({
   workMode = null,
   date = null,
   idempotencyKey = null,
+  // Phase 31.3: { locationId, position? } — consumed ONLY by CLOCK_IN;
+  // break/out actions ignore it (no location collection by design).
+  location = null,
   deps = {},
 }) => {
   const full = { ...defaultDeps(), ...deps };
@@ -433,7 +456,7 @@ export const recordEvent = async ({
           : `Close your open session from ${control.date} before clocking in`,
       );
     }
-    return clockIn({ full, companyId, userId, at, todayKey, timezone, policy, workMode, idempotencyKey });
+    return clockIn({ full, companyId, userId, at, todayKey, timezone, policy, workMode, idempotencyKey, location });
   }
 
   if (!control) {
@@ -749,8 +772,8 @@ const resolveRuleFromRecord = async ({ control, companyId, userId, engine, resol
   return resolveScheduleRule({ companyId, user: { _id: userId }, at, engine });
 };
 
-const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy, workMode, idempotencyKey }) => {
-  const { AttendanceModel, AttendanceEventModel, resolveScheduleRule, engine } = full;
+const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy, workMode, idempotencyKey, location = null }) => {
+  const { AttendanceModel, AttendanceEventModel, AttendanceLocationModel, resolveScheduleRule, engine } = full;
 
   const mode = workMode || WORK_MODE.OFFICE;
   if (!Object.values(WORK_MODE).includes(mode)) {
@@ -759,6 +782,17 @@ const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy
   if (!isWorkModeAllowed(mode, policy)) {
     throw ApiError.forbidden(`${mode} is not enabled in your company attendance policy`);
   }
+
+  // Phase 31.3 — geofence gate (OFFICE CLOCK_IN only). Refusals throw
+  // here, before anything is written: no control, no event.
+  const verification = await verifyClockInLocation({
+    AttendanceLocationModel,
+    companyId,
+    policy,
+    mode,
+    location,
+    now: at,
+  });
 
   const resolved = await resolveScheduleRule({ companyId, user: { _id: userId }, at, engine });
   const evaluation = engine.evaluatePunch({ rule: resolved.rule, punchIn: at });
@@ -817,7 +851,7 @@ const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy
 
   let created;
   try {
-    created = await AttendanceEventModel.create({
+    const eventDoc = {
       companyId,
       user: userId,
       date: todayKey,
@@ -827,7 +861,11 @@ const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy
       workMode: mode,
       source: EVENT_SOURCE.WEB,
       requestId: idempotencyKey || null,
-    });
+    };
+    // Immutable verification snapshot rides the fact (absent when no
+    // verification applied — DISABLED, non-OFFICE, or OPTIONAL-empty).
+    if (verification.snapshot) eventDoc.locationVerification = verification.snapshot;
+    created = await AttendanceEventModel.create(eventDoc);
   } catch (err) {
     if (isDuplicateKey(err) && idempotencyKey) {
       const existing = await AttendanceEventModel.findOne({
