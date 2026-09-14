@@ -16,13 +16,18 @@ const USER_A = 'aaaaaaaaaaaaaaaaaaaaaaa1';
 const USER_B = 'bbbbbbbbbbbbbbbbbbbbbbb2';
 const USER_C = 'ccccccccccccccccccccccc3';
 
-const [eventRules, eventService, policyRules, sched, AttendanceReal] = await Promise.all([
+const [eventRules, eventService, policyRules, sched, AttendanceReal, mongooseReal, AttendanceEventReal] = await Promise.all([
   import('../src/services/attendance/attendanceEventRules.js'),
   import('../src/services/attendance/attendanceEventService.js'),
   import('../src/services/attendance/attendancePolicyRules.js'),
   import('../src/utils/scheduleEngine.js'),
   import('../src/models/Attendance.js'),
+  import('mongoose'),
+  import('../src/models/AttendanceEvent.js'),
 ]);
+
+const mongoose = mongooseReal.default;
+const AttendanceEvent = AttendanceEventReal.default;
 
 const { EVENT_TYPE, LIVE_STATE, WORK_MODE, EVENT_SOURCE } = policyRules;
 const {
@@ -1277,4 +1282,31 @@ test('diagnostics: lost CAS logs expected-vs-fresh sequence for instant triage',
   assert.equal(warnings[0][1].expectedSeq, 1);
   assert.equal(warnings[0][1].freshEventSeq, 1);
   assert.equal(warnings[0][1].freshState, 'WORKING');
+});
+
+test('model: event save passes document hooks (regression: next-style pre-save)', async () => {
+  // Hermetic and connectionless: with no connection, save() must reach
+  // operation buffering (hooks passed), never die in middleware. The
+  // Mongoose 9 `next`-style pre('save') died here with TypeError on
+  // EVERY insert — invisible to fakes and to validate()-only probes.
+  const previous = mongoose.get('bufferTimeoutMS');
+  mongoose.set('bufferTimeoutMS', 800);
+  try {
+    await assert.rejects(
+      new AttendanceEvent({
+        companyId: new mongoose.Types.ObjectId(),
+        user: new mongoose.Types.ObjectId(),
+        date: '2026-09-14',
+        seq: 1,
+        type: 'CLOCK_IN',
+        at: new Date(),
+        workMode: 'OFFICE',
+        source: 'WEB',
+        requestId: 'hook-regression-probe',
+      }).save(),
+      /buffering timed out/,
+    );
+  } finally {
+    mongoose.set('bufferTimeoutMS', previous);
+  }
 });

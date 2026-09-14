@@ -96,11 +96,12 @@ attendanceEventSchema.pre('findOneAndReplace', refuseMutation('findOneAndReplace
 attendanceEventSchema.pre('deleteOne', refuseMutation('deleteOne'));
 attendanceEventSchema.pre('deleteMany', refuseMutation('deleteMany'));
 attendanceEventSchema.pre('findOneAndDelete', refuseMutation('findOneAndDelete'));
-attendanceEventSchema.pre('save', function refuseResave(next) {
+// Sync-throw style (no `next`): Mongoose 8+ document middleware takes no
+// callback — a `next`-style hook here dies with TypeError on EVERY save.
+attendanceEventSchema.pre('save', function refuseResave() {
   if (!this.isNew) {
-    return next(new Error('AttendanceEvent is immutable: re-saving is not allowed'));
+    throw new Error('AttendanceEvent is immutable: re-saving is not allowed');
   }
-  return next();
 });
 
 const AttendanceEvent = model('AttendanceEvent', attendanceEventSchema);
