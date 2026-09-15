@@ -80,6 +80,11 @@ import {
   addDays,
   businessDateForInstant,
 } from './attendanceScheduleRules.js';
+import {
+  ATTENDANCE_PRESENCE,
+  DAILY_OUTCOME,
+  resolveDay as resolveReconciliationDay,
+} from './attendanceReconciliationService.js';
 
 const DEFAULT_TIMEZONE = 'Asia/Kolkata';
 const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -425,6 +430,25 @@ export const getLiveAttendance = async ({ companyId, userId, deps = {} }) => {
     schedule = null;
   }
 
+  // Phase 31.7 — derived daily resolution for the today card
+  // (best-effort: null when unreadable, like the schedule above).
+  // Stored snapshot preferred; without a control the day still
+  // resolves as no-work (leave / holiday / off / absent).
+  let dayReconciliation = null;
+  try {
+    dayReconciliation = await resolveReconciliationDay({
+      companyId,
+      userId,
+      attendanceDate: control?.date || todayKey,
+      control,
+      schedule: resolveStoredSchedule({ control }),
+      LeaveModel: full.LeaveModel,
+      engine,
+    });
+  } catch {
+    dayReconciliation = null;
+  }
+
   if (!control) {
     const empty = await buildSnapshot({
       control: null,
@@ -437,6 +461,7 @@ export const getLiveAttendance = async ({ companyId, userId, deps = {} }) => {
     });
     empty.otherOpenSession = null;
     empty.workModeAuthorization = workModeAuthorization;
+    empty.reconciliation = dayReconciliation;
     return empty;
   }
 
@@ -468,6 +493,7 @@ export const getLiveAttendance = async ({ companyId, userId, deps = {} }) => {
   }
   snapshot.otherOpenSession = otherOpenSession;
   snapshot.workModeAuthorization = workModeAuthorization;
+  snapshot.reconciliation = dayReconciliation;
   return snapshot;
 };
 
@@ -647,6 +673,33 @@ export const recordEvent = async ({
       effectiveOut: at,
       workedMinutes,
     });
+    // Phase 31.7 — re-resolve the day on close (best-effort: a
+    // failed lookup must never break a punch).
+    let dayReconciliation = null;
+    try {
+      dayReconciliation = await resolveReconciliationDay({
+        companyId,
+        userId,
+        attendanceDate: control.date,
+        attendance: {
+          presence: ATTENDANCE_PRESENCE.FULL,
+          workedMinutes,
+          breakMinutes: policy ? closed.breakMinutes : 0,
+          lateMinutes: verdict.lateMinutes,
+          earlyMinutes: verdict.earlyMinutes,
+          outcomeBand: verdict.status === 'HALF_DAY' ? DAILY_OUTCOME.HALF_DAY : DAILY_OUTCOME.PRESENT,
+          exceptions: control.policyExceptions || [],
+          effectiveIn: control.punchIn,
+          effectiveOut: at,
+          expectedMinutes: 0,
+        },
+        schedule: stored.scheduleCtx?.status === SCHEDULE_STATUS.RESOLVED ? stored.scheduleCtx : null,
+        LeaveModel: full.LeaveModel,
+        engine,
+      });
+    } catch {
+      dayReconciliation = null;
+    }
 
     patch = {
       ...patch,
@@ -658,6 +711,9 @@ export const recordEvent = async ({
       overtimeMinutes: verdict.overtimeMinutes,
       status: verdict.status,
     };
+    if (dayReconciliation) {
+      patch.reconciliation = { ...dayReconciliation, resolvedAt: at, resolvedBy: 'SYSTEM' };
+    }
 
     policyDerivation = await derivePolicyOutcome({
       policy,
@@ -1006,6 +1062,33 @@ const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy
   });
   const status = verdict.status;
   const scheduleCtx = active?.scheduleCtx || null;
+  // Phase 31.7 — derived daily resolution rides the create
+  // (best-effort: a failed lookup must never break a punch).
+  let dayReconciliation = null;
+  try {
+    dayReconciliation = await resolveReconciliationDay({
+      companyId,
+      userId,
+      attendanceDate: businessDate,
+      attendance: {
+        presence: ATTENDANCE_PRESENCE.PARTIAL,
+        workedMinutes: 0,
+        breakMinutes: 0,
+        lateMinutes: verdict.lateMinutes,
+        earlyMinutes: 0,
+        outcomeBand: DAILY_OUTCOME.UNRESOLVED,
+        exceptions: [],
+        effectiveIn: at,
+        effectiveOut: null,
+        expectedMinutes: 0,
+      },
+      schedule: scheduleCtx?.status === SCHEDULE_STATUS.RESOLVED ? scheduleCtx : null,
+      LeaveModel: full.LeaveModel,
+      engine,
+    });
+  } catch {
+    dayReconciliation = null;
+  }
 
   let control;
   try {
@@ -1023,6 +1106,7 @@ const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy
         ? buildScheduleSnapshot({ ctx: scheduleCtx, rule: active.rule })
         : null,
       scheduleStatus: scheduleCtx?.status || (active.rule ? 'RESOLVED' : 'UNRESOLVED'),
+      reconciliation: dayReconciliation ? { ...dayReconciliation, resolvedAt: at, resolvedBy: 'SYSTEM' } : null,
       workMode: mode,
       liveState: LIVE_STATE.WORKING,
       eventSeq: 1,

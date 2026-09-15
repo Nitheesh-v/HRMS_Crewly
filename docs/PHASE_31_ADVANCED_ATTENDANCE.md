@@ -22,7 +22,9 @@ Programme laws (all phases):
 | 31.3 Office Locations & Geofencing | `PHASE_31_3_OFFICE_LOCATIONS_GEOFENCING.md` (+ `PHASE_31_3_TESTING_CHECKLIST.md`) | Shipped (CLOCK_IN-only OFFICE geofence, strict REQUIRED, RBAC v28) |
 | 31.4 WFH, Field & On-Duty Workflows | `PHASE_31_4_WORK_MODE_REQUESTS.md` (+ `PHASE_31_4_TESTING_CHECKLIST.md`) | Shipped (request→approve→clock-in authorization, RBAC v29) |
 | 31.5 Attendance Regularization & Exception Center | `PHASE_31_5_ATTENDANCE_REGULARIZATION.md` (+ `PHASE_31_5_TESTING_CHECKLIST.md`) | Shipped (correction overlay + exception explanations, RBAC v30) |
-| 31.6+ | — | Not started. No code, no scaffolding, no plan in repo. |
+| 31.6 Shift / Roster Intelligence | `PHASE_31_6_SHIFT_ROSTER_INTELLIGENCE.md` (+ `PHASE_31_6_TESTING_CHECKLIST.md`) | Shipped (dated resolution, overnight anchoring, payroll verdict, snapshot versioning) |
+| 31.7 Leave, Holiday & Weekly-Off Reconciliation | `PHASE_31_7_LEAVE_HOLIDAY_RECONCILIATION.md` | Shipped (deterministic daily resolution, conflicts, no payroll changes) |
+| 31.8+ | — | Not started. No code, no scaffolding, no plan in repo. |
 
 ## Vocabulary (owned by 31.1, binding on all later phases)
 

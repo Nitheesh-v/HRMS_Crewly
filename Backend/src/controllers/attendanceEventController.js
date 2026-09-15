@@ -1,5 +1,6 @@
 import ApiResponse from '../utils/ApiResponse.js';
 import asyncHandler from '../utils/asyncHandler.js';
+import Leave from '../models/Leave.js';
 import {
   getLiveAttendance,
   recordEvent,
@@ -16,6 +17,8 @@ export const postEvent = asyncHandler(async (req, res) => {
   const location = locationId || position ? { locationId, position } : null;
 
   // DB Logic - DB logics
+  // Phase 31.7 — the live service resolves leave itself when the
+  // model is injected (hermetic callers without one skip fast).
   const result = await recordEvent({
     companyId: req.companyId,
     userId: req.user._id,
@@ -24,6 +27,7 @@ export const postEvent = asyncHandler(async (req, res) => {
     date,
     idempotencyKey,
     location,
+    deps: { LeaveModel: Leave },
   });
 
   // Data to frontend - response to frontend
@@ -49,7 +53,8 @@ export const getTodayLive = asyncHandler(async (req, res) => {
   const userId = req.user._id;
 
   // DB Logic - DB logics
-  const snapshot = await getLiveAttendance({ companyId, userId });
+  // Phase 31.7 — Leave injection (see postEvent).
+  const snapshot = await getLiveAttendance({ companyId, userId, deps: { LeaveModel: Leave } });
 
   // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: "Today's live attendance", data: snapshot });

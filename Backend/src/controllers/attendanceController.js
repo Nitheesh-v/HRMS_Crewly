@@ -1,5 +1,6 @@
 import Attendance from "../models/Attendance.js";
 import User from "../models/User.js";
+import Leave from "../models/Leave.js";
 import Shift from "../models/Shift.js";
 import WorkSchedule from "../models/WorkSchedule.js";
 import ApiError from "../utils/ApiError.js";
@@ -13,6 +14,12 @@ import {
 } from "../utils/constants.js";
 import { todayString, monthRange } from "../utils/dateHelpers.js";
 import * as engine from "../utils/scheduleEngine.js";
+import {
+  eachDayInRange,
+  resolveDay as resolveReconciliationDay,
+} from "../services/attendance/attendanceReconciliationService.js";
+import { isLeaveCountedDay } from "../services/attendance/attendanceReconciliationRules.js";
+import { resolveStoredSchedule } from "../services/attendance/attendanceScheduleService.js";
 
 const FULL_ACCESS = [ROLES.COMPANY_ADMIN, ROLES.HR_MANAGER];
 
@@ -158,6 +165,30 @@ const expectedOnDate = async (companyId, user, date) => {
   const holiday = await engine.holidayOnDate(companyId, user, date);
 
   return !holiday;
+};
+
+// Phase 31.7 — derived day for a history/company row: the stored
+// projection wins (frozen meaning), else live resolution against
+// current authorities. Never throws — reads stay silent instead of
+// misleading when a lookup fails.
+const bestEffortRowDay = async (companyId, person, record, date) => {
+  try {
+    const stored = record?.reconciliation || record?.toObject?.()?.reconciliation;
+    if (stored?.resolvedAt) return stored;
+    const control = record?.toObject ? record.toObject() : record;
+    return await resolveReconciliationDay({
+      companyId,
+      userId: person._id || person,
+      user: person,
+      attendanceDate: date,
+      control: control || null,
+      schedule: resolveStoredSchedule({ control: control || {} }),
+      LeaveModel: Leave,
+      engine,
+    });
+  } catch {
+    return null;
+  }
 };
 
 // ============================================================
@@ -375,12 +406,46 @@ export const getMyAttendance = asyncHandler(async (req, res) => {
 
   const absent = Math.max(0, workingDays - present);
 
+  // Phase 31.7 — derived day per row (stored preferred, live on
+  // miss) plus display-only rows for approved-leave days without
+  // punches (31.7 never fabricates attendance rows). Summary math
+  // above is untouched.
+  const enriched = await Promise.all(
+    records.map(async (record) => {
+      const plain = record.toObject ? record.toObject() : { ...record };
+      plain.reconciliation = await bestEffortRowDay(req.companyId, req.user, record, record.date);
+      return plain;
+    }),
+  );
+  const haveDates = new Set(enriched.map((row) => row.date));
+  const approvedLeaves = await Leave.find({
+    companyId: req.companyId,
+    user: req.user._id,
+    status: "APPROVED",
+    startDate: { $lte: end },
+    endDate: { $gte: start },
+  }).lean();
+  for (const leave of approvedLeaves || []) {
+    for (const day of eachDayInRange(leave.startDate, leave.endDate)) {
+      if (day < start || day > end || haveDates.has(day)) continue;
+      if (!isLeaveCountedDay(day)) continue;
+      haveDates.add(day);
+      enriched.push({
+        _id: `leave-${day}`,
+        derived: "LEAVE",
+        date: day,
+        reconciliation: await bestEffortRowDay(req.companyId, req.user, null, day),
+      });
+    }
+  }
+  enriched.sort((a, b) => (a.date < b.date ? -1 : 1));
+
   // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: "My attendance",
 
     data: {
-      records,
+      records: enriched,
 
       summary: {
         present,
@@ -436,13 +501,18 @@ export const getCompanyAttendance = asyncHandler(async (req, res) => {
   );
 
   const rows = await Promise.all(
-    users.map(async (user) => ({
-      user,
+    users.map(async (user) => {
+      const userRecord = recordMap[String(user._id)] || null;
+      return {
+        user,
 
-      record: recordMap[String(user._id)] || null,
+        record: userRecord,
 
-      expected: await expectedOnDate(req.companyId, user, date),
-    })),
+        expected: await expectedOnDate(req.companyId, user, date),
+
+        reconciliation: await bestEffortRowDay(req.companyId, user, userRecord, date),
+      };
+    }),
   );
 
   const counts = {

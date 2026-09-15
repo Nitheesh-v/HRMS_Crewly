@@ -163,6 +163,54 @@ const attendanceSchema = new Schema(
       overtimeEligible: { type: Boolean, default: false },
       resolvedAt: { type: Date, default: null },
     },
+    // ── Phase 31.7 (all additive; legacy readers ignore them) ──
+    // Deterministic daily resolution: outcome + calendar + leave
+    // dimensions, fractions, conflicts. Refs/snapshots only — Leave
+    // and Holiday stay authoritative in their own modules. Days
+    // without punches have no control row and resolve on read.
+    reconciliation: {
+      outcome: { type: String, default: null },
+      calendar: {
+        primary: { type: String, default: null },
+        alsoWeeklyOff: { type: Boolean, default: false },
+        holiday: {
+          name: { type: String, default: null },
+          type: { type: String, default: null },
+        },
+      },
+      leave: {
+        portion: { type: String, default: 'NONE' },
+        leaveId: { type: Schema.Types.ObjectId, ref: 'Leave', default: null },
+        type: { type: String, default: null },
+        label: { type: String, default: null },
+      },
+      halves: {
+        first: { type: String, default: null },
+        second: { type: String, default: null },
+        midpoint: { type: Date, default: null },
+      },
+      fractions: {
+        worked: { type: Number, default: 0 },
+        leave: { type: Number, default: 0 },
+        absent: { type: Number, default: 0 },
+      },
+      exceptions: { type: [String], default: [] },
+      conflicts: { type: [String], default: [] },
+      needsReview: { type: Boolean, default: false },
+      unresolved: { type: Boolean, default: false },
+      nonWorkingDayWorked: { type: Boolean, default: false },
+      holidayWorked: { type: Boolean, default: false },
+      weeklyOffWorked: { type: Boolean, default: false },
+      schedule: {
+        startTime: { type: String, default: null },
+        endTime: { type: String, default: null },
+        shiftName: { type: String, default: null },
+        scheduleName: { type: String, default: null },
+      },
+      notes: { type: [String], default: [] },
+      resolvedAt: { type: Date, default: null },
+      resolvedBy: { type: String, default: null },
+    },
   },
   { timestamps: true },
 );

@@ -309,6 +309,24 @@ const AttendancePage = () => {
               {new Date(now).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
             </div>
 
+            {/* Phase 31.7 — derived day notice: leave / holiday / conflict. */}
+            {live.reconciliation?.leave?.portion && live.reconciliation.leave.portion !== 'NONE' && (
+              <p className="rounded-lg bg-blue-400/10 px-4 py-2 text-sm text-blue-300">
+                On approved {live.reconciliation.leave.portion === 'FULL_DAY' ? 'leave' : 'half-day leave'}
+                {live.reconciliation.leave.label ? ` (${live.reconciliation.leave.label})` : ''}
+              </p>
+            )}
+            {live.reconciliation?.calendar?.primary === 'HOLIDAY' && live.reconciliation.calendar.holiday && (
+              <p className="rounded-lg bg-crewly-orange/10 px-4 py-2 text-sm text-crewly-orange">
+                Holiday{live.reconciliation.calendar.holiday.name ? `: ${live.reconciliation.calendar.holiday.name}` : ''}
+              </p>
+            )}
+            {live.reconciliation?.conflicts?.length > 0 && (
+              <p className="rounded-lg bg-crewly-red/10 px-4 py-2 text-sm text-crewly-red" title={live.reconciliation.conflicts.join(', ')}>
+                This day needs review — attendance overlaps approved leave.
+              </p>
+            )}
+
             {!live.isToday && (
               <p className="rounded-lg bg-crewly-orange/10 px-4 py-2 text-sm text-crewly-orange">
                 Showing your open session from {live.date} — close it to start a new day.
@@ -587,15 +605,44 @@ const AttendancePage = () => {
                   </td>
                   <td className="px-5 py-3">{r.workMinutes ? `${(r.workMinutes / 60).toFixed(1)}h` : '—'}</td>
                   <td className="px-5 py-3">
-                    <span className={`badge ${STATUS_STYLE[r.status]}`}>{r.status.replace('_', ' ')}</span>
+                    {r.status ? (
+                      <span className={`badge ${STATUS_STYLE[r.status]}`}>{r.status.replace('_', ' ')}</span>
+                    ) : r.derived === 'LEAVE' ? (
+                      <span className="badge bg-blue-400/15 text-blue-300" title={r.reconciliation?.leave?.label || ''}>Leave</span>
+                    ) : null}
                     {r.regularized && (
                       <span className="badge ml-1 bg-crewly-green/15 text-crewly-green" title="An approved correction overlays this day">Regularized</span>
                     )}
+                    {/* Phase 31.7 — derived dimensions stay separate badges. */}
+                    {r.reconciliation?.conflicts?.length > 0 && (
+                      <span className="badge ml-1 bg-crewly-red/15 text-crewly-red" title={r.reconciliation.conflicts.join(', ')}>Needs review</span>
+                    )}
+                    {r.status && r.reconciliation?.leave?.portion === 'FULL_DAY' && (
+                      <span className="badge ml-1 bg-blue-400/15 text-blue-300" title={r.reconciliation.leave.label || ''}>Leave</span>
+                    )}
+                    {r.reconciliation?.halves && (
+                      <span
+                        className="badge ml-1 bg-blue-400/15 text-blue-300"
+                        title={`First half: ${r.reconciliation.halves.first}, second half: ${r.reconciliation.halves.second}`}
+                      >
+                        1st {r.reconciliation.halves.first} · 2nd {r.reconciliation.halves.second}
+                      </span>
+                    )}
+                    {r.reconciliation?.nonWorkingDayWorked && r.reconciliation.calendar?.primary === 'HOLIDAY' && (
+                      <span className="badge ml-1 bg-crewly-orange/15 text-crewly-orange" title={r.reconciliation.calendar.holiday?.name || ''}>Worked on holiday</span>
+                    )}
+                    {r.reconciliation?.nonWorkingDayWorked && r.reconciliation.calendar?.primary === 'WEEKLY_OFF' && (
+                      <span className="badge ml-1 bg-crewly-orange/15 text-crewly-orange">Worked on weekly off</span>
+                    )}
                   </td>
                   <td className="px-5 py-3 text-right">
-                    <Link className="text-xs text-crewly-green underline" to={`/app/attendance/regularizations?date=${r.date}`}>
-                      Request correction
-                    </Link>
+                    {r.derived === 'LEAVE' ? (
+                      <span className="text-xs text-crewly-dim">{r.reconciliation?.leave?.label || 'Leave'}</span>
+                    ) : (
+                      <Link className="text-xs text-crewly-green underline" to={`/app/attendance/regularizations?date=${r.date}`}>
+                        Request correction
+                      </Link>
+                    )}
                   </td>
                 </tr>
               ))}

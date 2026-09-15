@@ -44,6 +44,11 @@ import {
   deriveAttendanceVerdict,
 } from './attendanceScheduleService.js';
 import {
+  ATTENDANCE_PRESENCE,
+  DAILY_OUTCOME,
+  resolveDay as resolveReconciliationDay,
+} from './attendanceReconciliationService.js';
+import {
   EVENT_TYPE,
   LIVE_STATE,
   WORK_MODE,
@@ -510,6 +515,7 @@ export const rebuildDayProjection = async ({
   engine = null,
   resolveScheduleRule = resolveDayScheduleRule,
   models = {},
+  LeaveModel = null,
   now = null,
 }) => {
   const activeEngine = engine || defaultEngine();
@@ -644,6 +650,40 @@ export const rebuildDayProjection = async ({
   } else if (!control?.scheduleStatus && !stored.rule) {
     patch.scheduleStatus = 'UNRESOLVED';
   }
+  try {
+    const outPresent = Boolean(effective.clockOut);
+    const reconciled = await resolveReconciliationDay({
+      companyId,
+      userId,
+      attendanceDate,
+      attendance: {
+        presence: effective.clockIn && outPresent
+          ? ATTENDANCE_PRESENCE.FULL
+          : effective.clockIn || outPresent
+            ? ATTENDANCE_PRESENCE.PARTIAL
+            : ATTENDANCE_PRESENCE.NONE,
+        workedMinutes,
+        breakMinutes: policy ? closed.breakMinutes : 0,
+        lateMinutes: verdict.lateMinutes,
+        earlyMinutes: verdict.earlyMinutes,
+        outcomeBand: !outPresent
+          ? DAILY_OUTCOME.UNRESOLVED
+          : verdict.status === 'HALF_DAY'
+            ? DAILY_OUTCOME.HALF_DAY
+            : DAILY_OUTCOME.PRESENT,
+        exceptions: control?.policyExceptions || [],
+        effectiveIn: effective.clockIn,
+        effectiveOut: effective.clockOut,
+        expectedMinutes: 0,
+      },
+      schedule: scheduleCtx?.status === 'RESOLVED' ? scheduleCtx : null,
+      LeaveModel,
+      engine: activeEngine,
+    });
+    patch.reconciliation = { ...reconciled, resolvedAt: at, resolvedBy: 'SYSTEM' };
+  } catch {
+    // Best-effort: reads recompute on miss.
+  }
 
   if (effective.clockOut) {
     const derivation = await derivePolicyOutcome({
@@ -732,6 +772,7 @@ export const decideRegularization = async ({
       engine,
       resolveScheduleRule,
       models,
+      LeaveModel,
     });
     const appliedAt = new Date();
     await RequestModel.findOneAndUpdate(
@@ -882,6 +923,7 @@ export const decideRegularization = async ({
       engine,
       resolveScheduleRule,
       models,
+      LeaveModel,
     });
     const appliedAt = new Date();
     await RequestModel.findOneAndUpdate(

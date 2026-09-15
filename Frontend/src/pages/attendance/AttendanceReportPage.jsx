@@ -92,7 +92,7 @@ const AttendanceReportPage = () => {
                 </tr>
               </thead>
               <tbody>
-                {todayData?.rows.map(({ user, record }) => (
+                {todayData?.rows.map(({ user, record, reconciliation }) => (
                   <tr key={user._id} className="border-b border-crewly-border/50 last:border-0">
                     <td className="px-5 py-3">
                       <div className="font-medium">{user.name}</div>
@@ -114,12 +114,33 @@ const AttendanceReportPage = () => {
                       )}
                     </td>
                     <td className="px-5 py-3">
-                      {!record && <span className="badge bg-crewly-red/15 text-crewly-red">NOT PUNCHED</span>}
+                      {!record && reconciliation?.leave?.portion && reconciliation.leave.portion !== 'NONE' && (
+                        <span className="badge bg-blue-400/15 text-blue-300" title={reconciliation.leave.label || ''}>ON LEAVE</span>
+                      )}
+                      {!record && (!reconciliation?.leave?.portion || reconciliation.leave.portion === 'NONE') && reconciliation?.calendar?.primary === 'HOLIDAY' && (
+                        <span className="badge bg-crewly-orange/15 text-crewly-orange" title={reconciliation.calendar.holiday?.name || ''}>HOLIDAY</span>
+                      )}
+                      {!record && (!reconciliation?.leave?.portion || reconciliation.leave.portion === 'NONE') && reconciliation?.calendar?.primary === 'WEEKLY_OFF' && (
+                        <span className="badge bg-crewly-dim/15 text-crewly-dim">WEEKLY OFF</span>
+                      )}
+                      {!record && (!reconciliation || (reconciliation.leave?.portion === 'NONE' && reconciliation.calendar?.primary === 'WORK_DAY')) && (
+                        <span className="badge bg-crewly-red/15 text-crewly-red">NOT PUNCHED</span>
+                      )}
                       {record && !record.punchOut && <span className="badge bg-crewly-green/15 text-crewly-green">ON DUTY</span>}
                       {record?.punchOut && <span className="badge bg-blue-400/15 text-blue-300">DONE · {(record.workMinutes / 60).toFixed(1)}h</span>}
                       {record?.status === 'LATE' && <span className="badge ml-1 bg-crewly-orange/15 text-crewly-orange">LATE</span>}
                       {record?.status === 'HALF_DAY' && <span className="badge ml-1 bg-blue-400/15 text-blue-300">HALF</span>}
                       {record?.regularized && <span className="badge ml-1 bg-crewly-green/15 text-crewly-green" title="An approved correction overlays this day">REGULARIZED</span>}
+                      {/* Phase 31.7 — conflicts and off-day work stay visible. */}
+                      {reconciliation?.conflicts?.length > 0 && (
+                        <span className="badge ml-1 bg-crewly-red/15 text-crewly-red" title={reconciliation.conflicts.join(', ')}>NEEDS REVIEW</span>
+                      )}
+                      {reconciliation?.nonWorkingDayWorked && reconciliation.calendar?.primary === 'HOLIDAY' && (
+                        <span className="badge ml-1 bg-crewly-orange/15 text-crewly-orange" title={reconciliation.calendar.holiday?.name || ''}>WORKED ON HOLIDAY</span>
+                      )}
+                      {reconciliation?.nonWorkingDayWorked && reconciliation.calendar?.primary === 'WEEKLY_OFF' && (
+                        <span className="badge ml-1 bg-crewly-orange/15 text-crewly-orange">WORKED ON WEEKLY OFF</span>
+                      )}
                     </td>
                   </tr>
                 ))}
