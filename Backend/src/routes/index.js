@@ -13,6 +13,7 @@ import attendancePolicyRoutes from "./attendancePolicyRoutes.js";
 import attendanceLocationRoutes from "./attendanceLocationRoutes.js";
 import attendanceWorkModeRoutes from "./attendanceWorkModeRoutes.js";
 import attendanceRegularizationRoutes from "./attendanceRegularizationRoutes.js";
+import attendanceOvertimeRoutes from "./attendanceOvertimeRoutes.js";
 import leaveRoutes from "./leaveRoutes.js";
 import projectRoutes from "./projectRoutes.js";
 import taskRoutes from "./taskRoutes.js";
@@ -138,6 +139,9 @@ router.use("/attendance/work-mode-requests", attendanceWorkModeRoutes);
 // Phase 31.5 — mounted before /attendance so regularization reads
 // never fall through to the generic attendance router.
 router.use("/attendance/regularizations", attendanceRegularizationRoutes);
+// Phase 31.8 — mounted before /attendance so overtime reads never
+// fall through to the generic attendance router.
+router.use("/attendance/overtime", attendanceOvertimeRoutes);
 
 router.use("/attendance", attendanceRoutes);
 

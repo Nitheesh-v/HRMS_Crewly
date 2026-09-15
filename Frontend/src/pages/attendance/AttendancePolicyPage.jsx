@@ -28,6 +28,10 @@ const DEFAULT_FORM = {
     approvalRequired: true,
     weekendEligible: false,
     holidayEligible: false,
+    normalDayBenefit: 'OVERTIME',
+    weeklyOffBenefit: 'NONE',
+    holidayBenefit: 'NONE',
+    compOffMinutesPerDay: 480,
   },
   weekendHoliday: { allowWorkOnWeeklyOff: true, allowWorkOnHoliday: true },
   workModes: { office: true, wfh: false, field: false, clientSite: false, businessTravel: false },
@@ -66,6 +70,10 @@ const toForm = (policy) => {
       approvalRequired: policy.overtime?.approvalRequired ?? true,
       weekendEligible: policy.overtime?.weekendEligible ?? false,
       holidayEligible: policy.overtime?.holidayEligible ?? false,
+      normalDayBenefit: policy.overtime?.normalDayBenefit ?? 'OVERTIME',
+      weeklyOffBenefit: policy.overtime?.weeklyOffBenefit ?? 'NONE',
+      holidayBenefit: policy.overtime?.holidayBenefit ?? 'NONE',
+      compOffMinutesPerDay: policy.overtime?.compOffMinutesPerDay ?? 480,
     },
     weekendHoliday: {
       allowWorkOnWeeklyOff: policy.weekendHoliday?.allowWorkOnWeeklyOff ?? true,
@@ -121,6 +129,10 @@ const toPayload = (form, expectedConfigVersion) => ({
     approvalRequired: Boolean(form.overtime.approvalRequired),
     weekendEligible: Boolean(form.overtime.weekendEligible),
     holidayEligible: Boolean(form.overtime.holidayEligible),
+    normalDayBenefit: form.overtime.normalDayBenefit || 'OVERTIME',
+    weeklyOffBenefit: form.overtime.weeklyOffBenefit || 'NONE',
+    holidayBenefit: form.overtime.holidayBenefit || 'NONE',
+    compOffMinutesPerDay: Number(form.overtime.compOffMinutesPerDay) || 480,
   },
   weekendHoliday: {
     allowWorkOnWeeklyOff: Boolean(form.weekendHoliday.allowWorkOnWeeklyOff),
@@ -609,6 +621,56 @@ const AttendancePolicyPage = () => {
             disabled={readOnly || !form.overtime.trackingEnabled}
             onChange={(value) => setSection('overtime', 'holidayEligible', value)}
           />
+          {/* Phase 31.8 — one benefit disposition per approved block. */}
+          <div className="max-w-xs">
+            <label className="label">Normal extra hours become</label>
+            <select
+              className="input w-full"
+              value={form.overtime.normalDayBenefit}
+              disabled={readOnly || !form.overtime.trackingEnabled}
+              onChange={(event) => setSection('overtime', 'normalDayBenefit', event.target.value)}
+            >
+              <option value="OVERTIME">Overtime (payable minutes)</option>
+              <option value="NONE">Nothing</option>
+            </select>
+          </div>
+          <div className="max-w-xs">
+            <label className="label">Weekly-off work becomes</label>
+            <select
+              className="input w-full"
+              value={form.overtime.weeklyOffBenefit}
+              disabled={readOnly || !form.overtime.trackingEnabled || !form.overtime.weekendEligible}
+              onChange={(event) => setSection('overtime', 'weeklyOffBenefit', event.target.value)}
+            >
+              <option value="NONE">Nothing</option>
+              <option value="OVERTIME">Overtime (payable minutes)</option>
+              <option value="COMP_OFF">Comp-off (leave days)</option>
+            </select>
+            <p className="mt-1 text-xs text-crewly-dim">Needs “Weekend work is OT-eligible” above.</p>
+          </div>
+          <div className="max-w-xs">
+            <label className="label">Holiday work becomes</label>
+            <select
+              className="input w-full"
+              value={form.overtime.holidayBenefit}
+              disabled={readOnly || !form.overtime.trackingEnabled || !form.overtime.holidayEligible}
+              onChange={(event) => setSection('overtime', 'holidayBenefit', event.target.value)}
+            >
+              <option value="NONE">Nothing</option>
+              <option value="OVERTIME">Overtime (payable minutes)</option>
+              <option value="COMP_OFF">Comp-off (leave days)</option>
+            </select>
+            <p className="mt-1 text-xs text-crewly-dim">Needs “Holiday work is OT-eligible” above.</p>
+          </div>
+          <div className="max-w-xs">
+            <NumberField
+              label="Comp-off minutes that earn one leave day"
+              value={form.overtime.compOffMinutesPerDay}
+              min={1}
+              disabled={readOnly || !form.overtime.trackingEnabled}
+              onChange={(value) => setSection('overtime', 'compOffMinutesPerDay', value)}
+            />
+          </div>
         </div>
       </Section>
 

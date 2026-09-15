@@ -46,6 +46,11 @@ const LeavesPage = () => {
   };
 
   const availableOf = (type) => data.balance.find((b) => b.type === type)?.available ?? 0;
+  // Phase 31.8 — comp-off has no yearly quota: it appears only once
+  // earned days exist (or are in use), never as a permanent 0/0 card.
+  const visibleBalance = (data.balance || []).filter(
+    (b) => b.type !== 'COMP_OFF' || (b.total || 0) > 0 || (b.used || 0) > 0 || (b.pending || 0) > 0,
+  );
 
   return (
     <div className="space-y-5">
@@ -58,7 +63,7 @@ const LeavesPage = () => {
 
       {/* Balance cards */}
       <div className="grid gap-3 sm:grid-cols-3">
-        {data.balance.map((b) => (
+        {visibleBalance.map((b) => (
           <div key={b.type} className="card p-4">
             <div className="text-xs text-crewly-dim">{b.label}</div>
             <div className="mt-1 text-2xl font-bold">
@@ -124,7 +129,7 @@ const LeavesPage = () => {
             <div>
               <label className="label">Leave Type</label>
               <select className="input" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
-                {data.balance.map((b) => (
+                {visibleBalance.map((b) => (
                   <option key={b.type} value={b.type}>{b.label} — {b.available} left</option>
                 ))}
               </select>

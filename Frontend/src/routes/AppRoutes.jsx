@@ -53,6 +53,7 @@ const AttendanceReportPage = lazy(() => import("../pages/attendance/AttendanceRe
 const AttendancePolicyPage = lazy(() => import("../pages/attendance/AttendancePolicyPage.jsx"));
 const AttendanceWorkModePage = lazy(() => import("../pages/attendance/AttendanceWorkModePage.jsx"));
 const AttendanceRegularizationPage = lazy(() => import("../pages/attendance/AttendanceRegularizationPage.jsx"));
+const AttendanceOvertimePage = lazy(() => import("../pages/attendance/AttendanceOvertimePage.jsx"));
 
 const LeavesPage = lazy(() => import("../pages/leaves/LeavesPage.jsx"));
 const LeaveApprovalsPage = lazy(() => import("../pages/leaves/LeaveApprovalsPage.jsx"));
@@ -417,6 +418,13 @@ const AppRoutes = () => (
       <Route
         path="attendance/regularizations"
         element={<AttendanceRegularizationPage />}
+      />
+
+      {/* Phase 31.8 — Overtime & Comp-Off (permission-gated inside
+          the page: My overtime vs Review queue tabs) */}
+      <Route
+        path="attendance/overtime"
+        element={<AttendanceOvertimePage />}
       />
 
       {/* Leave management */}

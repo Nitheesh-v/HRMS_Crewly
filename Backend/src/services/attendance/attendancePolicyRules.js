@@ -152,6 +152,10 @@ export const defaultPolicyInput = () => ({
     approvalRequired: true,
     weekendEligible: false,
     holidayEligible: false,
+    normalDayBenefit: 'OVERTIME',
+    weeklyOffBenefit: 'NONE',
+    holidayBenefit: 'NONE',
+    compOffMinutesPerDay: 480,
   },
   weekendHoliday: { allowWorkOnWeeklyOff: true, allowWorkOnHoliday: true },
   workModes: { office: true, wfh: false, field: false, clientSite: false, businessTravel: false },
@@ -271,6 +275,36 @@ export const validateOvertime = (overtime = {}) => {
 
   if (typeof overtime.holidayEligible !== 'boolean') {
     errors.push('overtime.holidayEligible must be a boolean');
+  }
+
+  // Phase 31.8 — benefit disposition + comp-off divisor. Absent
+  // fields pass (old documents predate them; the 31.8 rules apply
+  // read-time defaults), present-but-invalid fields fail.
+  if (overtime.normalDayBenefit !== undefined && !['OVERTIME', 'NONE'].includes(overtime.normalDayBenefit)) {
+    errors.push('overtime.normalDayBenefit must be OVERTIME or NONE');
+  }
+
+  if (
+    overtime.weeklyOffBenefit !== undefined &&
+    !['NONE', 'OVERTIME', 'COMP_OFF'].includes(overtime.weeklyOffBenefit)
+  ) {
+    errors.push('overtime.weeklyOffBenefit must be NONE, OVERTIME, or COMP_OFF');
+  }
+
+  if (
+    overtime.holidayBenefit !== undefined &&
+    !['NONE', 'OVERTIME', 'COMP_OFF'].includes(overtime.holidayBenefit)
+  ) {
+    errors.push('overtime.holidayBenefit must be NONE, OVERTIME, or COMP_OFF');
+  }
+
+  if (
+    overtime.compOffMinutesPerDay !== undefined &&
+    (!isInt(overtime.compOffMinutesPerDay) ||
+      overtime.compOffMinutesPerDay < 1 ||
+      overtime.compOffMinutesPerDay > MINUTES_PER_DAY)
+  ) {
+    errors.push('overtime.compOffMinutesPerDay must be an integer between 1 and 1440');
   }
 
   return errors;

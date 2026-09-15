@@ -117,12 +117,20 @@ const attendancePolicySchema = new mongoose.Schema(
 
     // Overtime TIME/ELIGIBILITY only. No rates, no amounts — money is
     // exclusively a payroll concern.
+    // Phase 31.8 — benefit disposition per calendar context (one
+    // benefit per approved block; BOTH is intentionally absent) +
+    // the comp-off minutes→day divisor. Old documents predate these
+    // fields; the 31.8 rules default them defensively on read.
     overtime: {
       trackingEnabled: { type: Boolean, default: false },
       minimumExtraMinutes: { type: Number, default: 30, min: 0 },
       approvalRequired: { type: Boolean, default: true },
       weekendEligible: { type: Boolean, default: false },
       holidayEligible: { type: Boolean, default: false },
+      normalDayBenefit: { type: String, enum: ['OVERTIME', 'NONE'], default: 'OVERTIME' },
+      weeklyOffBenefit: { type: String, enum: ['NONE', 'OVERTIME', 'COMP_OFF'], default: 'NONE' },
+      holidayBenefit: { type: String, enum: ['NONE', 'OVERTIME', 'COMP_OFF'], default: 'NONE' },
+      compOffMinutesPerDay: { type: Number, default: 480, min: 1, max: 1440 },
     },
 
     // Evaluation BEHAVIOR only. Holiday/WorkSchedule remain authoritative

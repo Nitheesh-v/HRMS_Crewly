@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import attendanceService from '../../services/attendanceService.js';
 import attendanceLocationService from '../../services/attendanceLocationService.js';
+import attendanceOvertimeService from '../../services/attendanceOvertimeService.js';
 
 // One-shot browser position for the explicit Clock-In click. Resolves
 // { latitude, longitude, accuracy? } or throws an employee-safe Error.
@@ -120,6 +121,9 @@ const AttendancePage = () => {
   const [locations, setLocations] = useState([]);
   const [locationId, setLocationId] = useState('');
   const [locNote, setLocNote] = useState('');
+  // Phase 31.8 — overtime / comp-off state per visible day (date →
+  // eligibility day). Fails silent: the page works without it.
+  const [otDays, setOtDays] = useState({});
 
   const geofenceRule = live?.locationEnforcement || 'DISABLED';
   const needsGeofencePick =
@@ -202,8 +206,30 @@ const AttendancePage = () => {
     [month],
   );
 
+  // Phase 31.8 — eligibility for the visible month (read-only; a
+  // 403 or network gap leaves the map empty, never an error).
+  const loadOt = useCallback(() => {
+    const [year, mon] = String(month || '').split('-').map(Number);
+    if (!year || !mon) return;
+    const last = new Date(Date.UTC(year, mon, 0)).getUTCDate();
+    const from = `${month}-01`;
+    const to = `${month}-${String(last).padStart(2, '0')}`;
+    attendanceOvertimeService
+      .eligibility(from, to)
+      .then((result) => {
+        const rows = result?.data?.days;
+        const map = {};
+        (Array.isArray(rows) ? rows : []).forEach((day) => {
+          map[day.attendanceDate] = day;
+        });
+        setOtDays(map);
+      })
+      .catch(() => {});
+  }, [month]);
+
   useEffect(() => { loadLive(); }, [loadLive]);
   useEffect(() => { loadMonth(); }, [loadMonth]);
+  useEffect(() => { loadOt(); }, [loadOt]);
 
   // Reconcile to authoritative state whenever the tab regains focus.
   useEffect(() => {
@@ -244,12 +270,14 @@ const AttendancePage = () => {
         await loadLive();
       }
       await loadMonth();
+      loadOt();
     } catch (err) {
       setError(err.message);
       // Backend is authoritative — refresh even on failure (a 409 means
       // state moved under us).
       loadLive();
       loadMonth();
+      loadOt();
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -266,6 +294,47 @@ const AttendancePage = () => {
   const breakSeconds = (live?.breakSecondsSoFar || 0) + (openKind === 'BREAK' ? sinceFetch : 0);
 
   const s = data.summary;
+
+  // Phase 31.8 — one additive OT / comp-off badge per day. Never
+  // replaces the underlying Holiday / Weekly Off / Leave badges.
+  const otChipFor = (date) => {
+    const day = otDays[date];
+    if (!day) return null;
+    const existing = day.existingRequest;
+    if (existing?.status === 'APPROVED' && existing.type === 'OVERTIME') {
+      return <span className="badge ml-1 bg-crewly-green/15 text-crewly-green">OT approved</span>;
+    }
+    if (existing?.status === 'PENDING' && existing.type === 'OVERTIME') {
+      return <span className="badge ml-1 bg-crewly-orange/15 text-crewly-orange">OT pending</span>;
+    }
+    if (existing?.status === 'APPROVED' && existing.type === 'COMP_OFF') {
+      return <span className="badge ml-1 bg-crewly-green/15 text-crewly-green">Comp-off earned</span>;
+    }
+    if (existing?.status === 'PENDING' && existing.type === 'COMP_OFF') {
+      return <span className="badge ml-1 bg-crewly-orange/15 text-crewly-orange">Comp-off pending</span>;
+    }
+    if (day.requestable && day.type === 'OVERTIME') {
+      return (
+        <span
+          className="badge ml-1 bg-blue-400/15 text-blue-300"
+          title={`${day.eligibleMinutes}m eligible — request it from Overtime & Comp-Off`}
+        >
+          OT candidate
+        </span>
+      );
+    }
+    if (day.requestable && day.type === 'COMP_OFF') {
+      return (
+        <span
+          className="badge ml-1 bg-blue-400/15 text-blue-300"
+          title={`Earns ${day.compOffDaysAtEligible} leave day(s) — request it from Overtime & Comp-Off`}
+        >
+          Comp-off candidate
+        </span>
+      );
+    }
+    return null;
+  };
 
   return (
     <div className="space-y-5">
@@ -326,6 +395,9 @@ const AttendancePage = () => {
                 This day needs review — attendance overlaps approved leave.
               </p>
             )}
+
+            {/* Phase 31.8 — OT / comp-off state for the shown day. */}
+            {live.date && otChipFor(live.date)}
 
             {!live.isToday && (
               <p className="rounded-lg bg-crewly-orange/10 px-4 py-2 text-sm text-crewly-orange">
@@ -634,14 +706,24 @@ const AttendancePage = () => {
                     {r.reconciliation?.nonWorkingDayWorked && r.reconciliation.calendar?.primary === 'WEEKLY_OFF' && (
                       <span className="badge ml-1 bg-crewly-orange/15 text-crewly-orange">Worked on weekly off</span>
                     )}
+                    {/* Phase 31.8 — OT / comp-off state, additive. */}
+                    {otChipFor(r.date)}
                   </td>
                   <td className="px-5 py-3 text-right">
                     {r.derived === 'LEAVE' ? (
                       <span className="text-xs text-crewly-dim">{r.reconciliation?.leave?.label || 'Leave'}</span>
                     ) : (
-                      <Link className="text-xs text-crewly-green underline" to={`/app/attendance/regularizations?date=${r.date}`}>
-                        Request correction
-                      </Link>
+                      <>
+                        <Link className="text-xs text-crewly-green underline" to={`/app/attendance/regularizations?date=${r.date}`}>
+                          Request correction
+                        </Link>
+                        {/* Phase 31.8 — deep link into the OT request form. */}
+                        {otDays[r.date]?.requestable && (
+                          <Link className="ml-2 text-xs text-crewly-green underline" to={`/app/attendance/overtime?date=${r.date}`}>
+                            {otDays[r.date]?.type === 'COMP_OFF' ? 'Request comp-off' : 'Request OT'}
+                          </Link>
+                        )}
+                      </>
                     )}
                   </td>
                 </tr>

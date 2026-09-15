@@ -962,9 +962,13 @@ test('compat: payroll-facing projection fields stay populated; no money maths', 
 
   const control = ctx.AttendanceModel.rows[0];
   // The exact 29.5 reader selection: date/status/lateMinutes/overtimeMinutes/shift.
-  for (const field of ['date', 'status', 'lateMinutes', 'overtimeMinutes', 'shift', 'workMinutes', 'punchIn', 'punchOut']) {
+  for (const field of ['date', 'status', 'lateMinutes', 'shift', 'workMinutes', 'punchIn', 'punchOut']) {
     assert.ok(control[field] !== undefined, `projection.${field} populated`);
   }
+  // Phase 31.8 — punch-out never writes approved OT: the record
+  // field stays at its default (0) until a 31.8 approval lands, so
+  // a late clock-out can never auto-become payable time.
+  assert.equal(control.overtimeMinutes ?? 0, 0);
 
   const [rulesSource, serviceSource] = await Promise.all([
     readFile(new URL('../src/services/attendance/attendanceEventRules.js', import.meta.url), 'utf8'),

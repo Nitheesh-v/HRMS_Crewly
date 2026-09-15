@@ -50,6 +50,11 @@ const attendanceSchema = new Schema(
       default: 0,
     },
 
+    // Phase 31.8 — APPROVED overtime minutes only (the 29.5 seam
+    // sums this field into payable hours). Written solely by a 31.8
+    // OT approval (republished from the approved requests); punch,
+    // regularization, and verdict code must never write eligible /
+    // unapproved minutes here.
     overtimeMinutes: {
       type: Number,
       default: 0,

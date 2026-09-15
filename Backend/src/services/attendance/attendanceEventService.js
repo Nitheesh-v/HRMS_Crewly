@@ -708,7 +708,11 @@ export const recordEvent = async ({
       breakMinutes: policy ? closed.breakMinutes : 0,
       lateMinutes: verdict.lateMinutes,
       earlyMinutes: verdict.earlyMinutes,
-      overtimeMinutes: verdict.overtimeMinutes,
+      // Phase 31.8 — verdict.overtimeMinutes is the ELIGIBLE
+      // candidate (display/eligibility only). The record field is
+      // approved-only and written solely by a 31.8 OT approval, so
+      // a late clock-out never auto-becomes payable time. Any
+      // previously approved value is preserved, never clobbered.
       status: verdict.status,
     };
     if (dayReconciliation) {

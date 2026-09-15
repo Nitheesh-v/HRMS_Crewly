@@ -135,6 +135,12 @@ export const DEFAULT_PERMISSIONS = [
   // requesting must never imply reviewing.
   ...actions("ATTENDANCE_REGULARIZATION", ["REQUEST", "REVIEW"]),
 
+  // Phase 31.8 — Overtime / comp-off. REQUEST is self-service
+  // (own requests only, org scope enforced at the service layer);
+  // REVIEW gates the approval queue. Split by design: requesting
+  // must never imply reviewing.
+  ...actions("ATTENDANCE_OVERTIME", ["REQUEST", "REVIEW"]),
+
   ...actions("LEAVE", ["READ", "CREATE", "UPDATE", "APPROVE", "REJECT"]),
 
   ...actions("PAYROLL", ["READ", "CREATE", "UPDATE", "APPROVE", "MANAGE"]),
@@ -404,6 +410,11 @@ const SELF_SERVICE_PERMISSIONS = [
   // Phase 31.5 — every employee may request corrections /
   // explanations for their own attendance days.
   "ATTENDANCE_REGULARIZATION_REQUEST",
+
+  // Phase 31.8 — every employee may request overtime / comp-off
+  // for their own eligible days; reviewing stays separately
+  // granted.
+  "ATTENDANCE_OVERTIME_REQUEST",
 ];
 
 export const DEFAULT_ROLE_MATRIX = {
@@ -483,6 +494,9 @@ export const DEFAULT_ROLE_MATRIX = {
 
     // Phase 31.5 — HR reviews regularizations company-wide.
     "ATTENDANCE_REGULARIZATION_REVIEW",
+
+    // Phase 31.8 — HR reviews overtime / comp-off company-wide.
+    "ATTENDANCE_OVERTIME_REVIEW",
 
     "LEAVE_READ",
     "LEAVE_APPROVE",
@@ -576,6 +590,9 @@ export const DEFAULT_ROLE_MATRIX = {
     "ATTENDANCE_WORK_MODE_REVIEW",
     // Phase 31.5 — review regularizations within the org subtree.
     "ATTENDANCE_REGULARIZATION_REVIEW",
+    // Phase 31.8 — review overtime / comp-off within the org
+    // subtree (scope enforced at the service layer).
+    "ATTENDANCE_OVERTIME_REVIEW",
     // Phase 29.5 §4 — view own team's monthly inputs only (TEAM scope).
     "PAYROLL_INPUT_READ",
     "ATTENDANCE_READ",

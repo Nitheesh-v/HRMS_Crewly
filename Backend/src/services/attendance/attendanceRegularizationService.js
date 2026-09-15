@@ -630,7 +630,9 @@ export const rebuildDayProjection = async ({
     patch.workMinutes = workedMinutes;
     patch.breakMinutes = policy ? closed.breakMinutes : 0;
     patch.earlyMinutes = verdict.earlyMinutes;
-    patch.overtimeMinutes = verdict.overtimeMinutes;
+    // Phase 31.8 — the verdict's eligible minutes are NOT written
+    // here (see attendanceEventService): record.overtimeMinutes is
+    // approved-only, preserved across correction approvals.
     patch.status = verdict.status;
   } else if (!control) {
     // Corrected clock-in with the day still open: the projection

@@ -312,7 +312,10 @@ export const punchOut = asyncHandler(async (req, res) => {
 
   record.earlyMinutes = evaluation.earlyMinutes || 0;
 
-  record.overtimeMinutes = evaluation.overtimeMinutes || 0;
+  // Phase 31.8 — evaluation.overtimeMinutes is raw clock-out math
+  // (no threshold, no approval). The record field is approved-only
+  // and written solely by a 31.8 OT approval, so classic punch-out
+  // preserves any approved value and never auto-creates payable OT.
 
   if (record.workMinutes < minimumMinutes) {
     record.status = "HALF_DAY";

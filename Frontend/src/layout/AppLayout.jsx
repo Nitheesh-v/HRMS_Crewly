@@ -450,11 +450,21 @@ const AppLayout = () => {
     ? [{ to: '/app/attendance/regularizations', label: 'Regularizations' }]
     : [];
 
+  // Phase 31.8 — Overtime & Comp-Off entry (one item; the page
+  // splits My overtime / Review queue by permission internally).
+  const overtimeMenu = hasAnyPermission([
+    'ATTENDANCE_OVERTIME_REQUEST',
+    'ATTENDANCE_OVERTIME_REVIEW',
+  ])
+    ? [{ to: '/app/attendance/overtime', label: 'Overtime & Comp-Off' }]
+    : [];
+
   const menu = [
     ...baseMenu,
     ...attendancePolicyMenu,
     ...workModeMenu,
     ...regularizationMenu,
+    ...overtimeMenu,
     ...payrollMenu,
     ...recruitmentDashboardMenu,
     ...candidateMenu,

@@ -9,6 +9,7 @@ import { todayString, countWorkingDays } from '../utils/dateHelpers.js';
 import { resolveScopeIds, getSubtreeIds } from '../utils/orgHelpers.js';
 import { notifySmart } from '../utils/notifyPref.js';
 import { refreshRangeForLeave } from '../services/attendance/attendanceReconciliationService.js';
+import { earnedCompOffDays } from '../services/attendance/attendanceOvertimeService.js';
 import { getWorkingDaysForUser, holidayOnDate } from '../utils/scheduleEngine.js';
 
 // Days already committed per type this year (APPROVED + PENDING)
@@ -22,14 +23,31 @@ const committedDays = async (userId, year) => {
   rows.forEach((r) => {
     map[r._id.type][r._id.status.toLowerCase()] += r.days;
   });
+  // Phase 31.8 — COMP_OFF spends an all-time entitlement (earned
+  // days never expire), so its committed days are counted across
+  // all years: year-scoped spending would double-count availability
+  // at every year boundary.
+  if (map.COMP_OFF) {
+    const compOffRows = await Leave.aggregate([
+      { $match: { user: userId, type: 'COMP_OFF', status: { $in: ['APPROVED', 'PENDING'] } } },
+      { $group: { _id: '$status', days: { $sum: '$days' } } },
+    ]);
+    map.COMP_OFF = { approved: 0, pending: 0 };
+    (compOffRows || []).forEach((r) => {
+      map.COMP_OFF[String(r._id).toLowerCase()] = r.days;
+    });
+  }
   return map;
 };
 
-const buildBalance = (committed) =>
+const buildBalance = (committed, totals = {}) =>
   Object.entries(LEAVE_TYPES).map(([type, cfg]) => {
     const used = committed[type]?.approved || 0;
     const pending = committed[type]?.pending || 0;
-    return { type, label: cfg.label, total: cfg.yearly, used, pending, available: cfg.yearly - used - pending };
+    // Phase 31.8 — COMP_OFF total is the earned entitlement, not
+    // the yearly quota (which is 0 for that type).
+    const total = totals[type] ?? cfg.yearly;
+    return { type, label: cfg.label, total, used, pending, available: total - used - pending };
   });
 
 // 🔔 Phase 13 — safe notify wrapper: never throws, never blocks a workflow
@@ -68,7 +86,10 @@ export const applyLeave = asyncHandler(async (req, res) => {
   const year = startDate.slice(0, 4);
   const committed = await committedDays(req.user._id, year);
   const alreadyCommitted = (committed[type].approved || 0) + (committed[type].pending || 0);
-  const allowed = LEAVE_TYPES[type].yearly;
+  // Phase 31.8 — COMP_OFF spends earned entitlement days, not a quota.
+  const allowed = type === 'COMP_OFF'
+    ? await earnedCompOffDays({ companyId: req.companyId, userId: req.user._id })
+    : LEAVE_TYPES[type].yearly;
   if (alreadyCommitted + days > allowed) {
     throw ApiError.badRequest(
       `Insufficient ${LEAVE_TYPES[type].label} balance — ${allowed - alreadyCommitted} day(s) left, you asked for ${days}`
