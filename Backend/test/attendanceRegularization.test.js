@@ -886,15 +886,14 @@ test('approve: missed clock-out rebuilds the day — recorded punches untouched'
   assert.equal(control.regularization.correctedIn.toISOString(), control.punchIn.toISOString());
   assert.deepEqual(control.regularization.appliedRequestIds, ['rg1']);
   // Re-derived through the shared CLOCK_OUT math: 09:05 → 18:00.
-  // scheduleEngine anchors on UTC (established production semantic,
-  // mirrored exactly — never "fixed" by this phase), so the IST
-  // morning punch evaluates on-time while the 31.1 policy layer
-  // (true wall-clock math) still records the late arrival.
+  // Phase 31.6 verdict: day-framed schedule math (09:00 start) sees
+  // the 5-minute delay the old UTC-anchored evaluator missed, and the
+  // on-time 18:00 out-punch records zero early minutes (not 330).
   assert.equal(control.workMinutes, 535);
   assert.equal(control.breakMinutes, 0);
-  assert.equal(control.status, 'PRESENT');
-  assert.equal(control.lateMinutes, 0);
-  assert.equal(control.earlyMinutes, 330);
+  assert.equal(control.status, 'LATE');
+  assert.equal(control.lateMinutes, 5);
+  assert.equal(control.earlyMinutes, 0);
   assert.equal(control.policyOutcome, 'PRESENT');
   assert.deepEqual(control.policyExceptions, ['LATE_IN']);
   // The raw ledger gained nothing: approvals never append events.
@@ -1099,10 +1098,10 @@ test('decide: mode guard needs 31.4 cover — HR/Admin may record an override', 
   assert.equal(hrCtx.AttendanceModel.rows[0].workMode, 'WFH');
   assert.equal(hrCtx.AttendanceModel.rows[0].regularization.correctedWorkMode, 'WFH');
   // Times unchanged, so durations stand; lateness recomputes through
-  // the shared evaluator (production UTC-anchored semantics).
+  // the shared 31.6 verdict (day-framed: the 09:05 arrival is 5 late).
   assert.equal(hrCtx.AttendanceModel.rows[0].workMinutes, 515);
-  assert.equal(hrCtx.AttendanceModel.rows[0].lateMinutes, 0);
-  assert.equal(hrCtx.AttendanceModel.rows[0].status, 'PRESENT');
+  assert.equal(hrCtx.AttendanceModel.rows[0].lateMinutes, 5);
+  assert.equal(hrCtx.AttendanceModel.rows[0].status, 'LATE');
 
   const covered = makeSvcCtx({
     ...day,

@@ -126,6 +126,43 @@ const attendanceSchema = new Schema(
       },
       appliedAt: { type: Date, default: null },
     },
+
+    // ── Phase 31.6 (all additive; legacy readers ignore them) ──
+    // Schedule meaning is versioned at first evaluation: later Shift
+    // edits cannot rewrite this day. Legacy rows stay snapshot-less.
+    scheduleStatus: {
+      type: String,
+      enum: ['RESOLVED', 'UNRESOLVED'],
+      default: null,
+    },
+
+    scheduleSnapshot: {
+      shiftId: { type: Schema.Types.ObjectId, ref: 'Shift', default: null },
+      shiftName: { type: String, default: null },
+      shiftType: { type: String, default: null },
+      scheduleId: { type: Schema.Types.ObjectId, ref: 'WorkSchedule', default: null },
+      scheduleName: { type: String, default: null },
+      source: { type: String, default: null },
+      startTime: { type: String, default: null },
+      endTime: { type: String, default: null },
+      scheduledStartAt: { type: Date, default: null },
+      scheduledEndAt: { type: Date, default: null },
+      scheduledMinutes: { type: Number, default: null },
+      breakMinutes: { type: Number, default: null },
+      minimumMinutes: { type: Number, default: null },
+      crossesMidnight: { type: Boolean, default: false },
+      isWorkingDay: { type: Boolean, default: null },
+      dayType: { type: String, default: null },
+      holiday: {
+        name: { type: String, default: null },
+        type: { type: String, default: null },
+      },
+      timezone: { type: String, default: null },
+      graceMinutes: { type: Number, default: null },
+      earlyGraceMinutes: { type: Number, default: null },
+      overtimeEligible: { type: Boolean, default: false },
+      resolvedAt: { type: Date, default: null },
+    },
   },
   { timestamps: true },
 );

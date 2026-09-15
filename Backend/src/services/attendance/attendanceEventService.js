@@ -21,18 +21,22 @@ import Attendance from '../../models/Attendance.js';
 import AttendanceEvent from '../../models/AttendanceEvent.js';
 import AttendanceLocation from '../../models/AttendanceLocation.js';
 import AttendanceWorkModeRequest from '../../models/AttendanceWorkModeRequest.js';
+import ShiftAssignment from '../../models/ShiftAssignment.js';
+import Shift from '../../models/Shift.js';
+import WorkSchedule from '../../models/WorkSchedule.js';
+import User from '../../models/User.js';
 import Company from '../../models/Company.js';
+import {
+  HALF_DAY_MINUTES,
+  LATE_GRACE_MINUTES,
+  WORK_START_TIME,
+} from '../../utils/constants.js';
 import ApiError from '../../utils/ApiError.js';
 import { verifyClockInLocation } from './attendanceLocationService.js';
 import {
   findClockInAuthorization,
   getWorkModeAuthorization,
 } from './attendanceWorkModeService.js';
-import {
-  HALF_DAY_MINUTES,
-  LATE_GRACE_MINUTES,
-  WORK_START_TIME,
-} from '../../utils/constants.js';
 import {
   dayKey,
   evaluatePunch,
@@ -65,32 +69,78 @@ import {
   orderEvents,
   transition,
 } from './attendanceEventRules.js';
+import {
+  buildScheduleSnapshot,
+  deriveAttendanceVerdict,
+  resolveEmployeeSchedule,
+  resolveStoredSchedule,
+} from './attendanceScheduleService.js';
+import {
+  SCHEDULE_STATUS,
+  addDays,
+  businessDateForInstant,
+} from './attendanceScheduleRules.js';
 
 const DEFAULT_TIMEZONE = 'Asia/Kolkata';
 const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const OPEN_STATES = [LIVE_STATE.WORKING, LIVE_STATE.ON_BREAK];
 
-// Legacy parity: the classic punch flow's schedule fallback (Shift ›
-// Work Schedule › default). Mirrors attendanceController.resolveRule.
-const defaultResolveScheduleRule = async ({ companyId, user, at, engine }) => {
-  const resolved = await engine.resolveShiftForUser(companyId, user, at);
-  const schedule =
-    resolved.schedule || (await engine.resolveScheduleForUser(companyId, user));
-  const fallbackRule = {
-    name: 'Default schedule',
-    startTime: WORK_START_TIME,
-    endTime: '18:00',
-    breakMinutes: 0,
-    graceMinutes: LATE_GRACE_MINUTES,
-    minWorkingHours: 8,
-    halfDayHours: HALF_DAY_MINUTES / 60,
-    overtimeEligible: false,
-  };
+// Phase 31.6 — dated attendance-facing resolution (Shift › Work
+// Schedule › explicit UNRESOLVED). Replaces the legacy DEFAULT
+// fabrication: without a resolvable schedule the context reports
+// UNRESOLVED and schedule-dependent flags stay neutral (never
+// guessed). Returns the legacy shape plus `scheduleCtx`.
+const defaultResolveScheduleRule = async ({ companyId, user, at, engine, timezone, attendanceDate, models }) => {
+  // Legacy engine seam: a caller-supplied shift resolver (the 31.x
+  // hermetic suites' stub engines — anything but the real
+  // scheduleEngine fn) keeps the EXACT legacy behavior, fabrication
+  // included. Only the real engine takes the dated 31.6 path, so
+  // production never fabricates while legacy-injected callers see
+  // nothing but the verdict's UTC→day framing correction.
+  if (engine?.resolveShiftForUser && engine.resolveShiftForUser !== resolveShiftForUser) {
+    const resolved = await engine.resolveShiftForUser(companyId, user, at);
+    const schedule = resolved.schedule
+      || (engine.resolveScheduleForUser ? await engine.resolveScheduleForUser(companyId, user) : null);
+    const fallbackRule = {
+      name: 'Default schedule',
+      startTime: WORK_START_TIME,
+      endTime: '18:00',
+      breakMinutes: 0,
+      graceMinutes: LATE_GRACE_MINUTES,
+      minWorkingHours: 8,
+      halfDayHours: HALF_DAY_MINUTES / 60,
+      overtimeEligible: false,
+    };
+    return {
+      shift: resolved.shift || null,
+      schedule: schedule || null,
+      source: resolved.shift ? resolved.source : schedule ? 'WORK_SCHEDULE' : 'DEFAULT',
+      rule: resolved.shift || schedule || fallbackRule,
+    };
+  }
+  const zone = timezone || DEFAULT_TIMEZONE;
+  const instant = at instanceof Date ? at : new Date(at);
+  const businessDate = attendanceDate || dayKeyInZone(instant, zone);
+  const ctx = await resolveEmployeeSchedule({
+    companyId,
+    user,
+    attendanceDate: businessDate,
+    timezone: zone,
+    ShiftAssignmentModel: models?.ShiftAssignmentModel,
+    ShiftModel: models?.ShiftModel,
+    WorkScheduleModel: models?.WorkScheduleModel,
+    UserModel: models?.UserModel,
+    engine,
+  });
+  if (!ctx || ctx.status !== SCHEDULE_STATUS.RESOLVED) {
+    return { rule: null, shift: null, schedule: null, source: 'UNRESOLVED', scheduleCtx: ctx || null };
+  }
   return {
-    shift: resolved.shift || null,
-    schedule: schedule || null,
-    source: resolved.shift ? resolved.source : schedule ? 'WORK_SCHEDULE' : 'DEFAULT',
-    rule: resolved.shift || schedule || fallbackRule,
+    rule: ctx.rule || null,
+    shift: ctx.shiftDoc || null,
+    schedule: ctx.scheduleDoc || null,
+    source: ctx.source || 'WORK_SCHEDULE',
+    scheduleCtx: ctx,
   };
 };
 
@@ -100,6 +150,10 @@ const defaultDeps = () => ({
   AttendanceLocationModel: AttendanceLocation,
   WorkModeRequestModel: AttendanceWorkModeRequest,
   CompanyModel: Company,
+  ShiftAssignmentModel: ShiftAssignment,
+  ShiftModel: Shift,
+  WorkScheduleModel: WorkSchedule,
+  UserModel: User,
   policyReader: (args) => getCurrentPolicy(args),
   engine: {
     resolveShiftForUser,
@@ -181,12 +235,30 @@ const findOpenSession = async ({ AttendanceModel, companyId, userId, excludeDate
   }).sort({ date: -1 });
 
 const snapshotSchedule = (resolved) => {
-  if (!resolved?.rule) return null;
-  return {
-    name: resolved.rule.name || null,
-    startTime: resolved.rule.startTime || null,
-    endTime: resolved.rule.endTime || null,
+  const ctx = resolved?.scheduleCtx;
+  if (!resolved?.rule && ctx?.status !== SCHEDULE_STATUS.RESOLVED) return null;
+  const base = {
+    name: resolved.rule?.name || null,
+    startTime: resolved.rule?.startTime || null,
+    endTime: resolved.rule?.endTime || null,
     source: resolved.source || 'DEFAULT',
+  };
+  if (!ctx || ctx.status !== SCHEDULE_STATUS.RESOLVED) return base;
+  return {
+    ...base,
+    status: SCHEDULE_STATUS.RESOLVED,
+    shiftName: ctx.shift?.name || null,
+    scheduleName: ctx.schedule?.name || null,
+    crossesMidnight: ctx.crossesMidnight === true,
+    windowLabel: ctx.crossesMidnight === true
+      ? `${ctx.startTime} – ${ctx.endTime} (+1 day)`
+      : `${ctx.startTime} – ${ctx.endTime}`,
+    scheduledStartAt: ctx.scheduledStartAt ? new Date(ctx.scheduledStartAt).toISOString() : null,
+    scheduledEndAt: ctx.scheduledEndAt ? new Date(ctx.scheduledEndAt).toISOString() : null,
+    scheduledMinutes: ctx.scheduledMinutes,
+    isWorkingDay: ctx.isWorkingDay === true,
+    dayType: ctx.dayType,
+    holiday: ctx.holiday || null,
   };
 };
 
@@ -333,13 +405,22 @@ export const getLiveAttendance = async ({ companyId, userId, deps = {} }) => {
 
   let schedule = null;
   try {
-    const resolved = await resolveScheduleRule({
-      companyId,
-      user: { _id: userId },
-      at,
-      engine,
-    });
-    schedule = snapshotSchedule(resolved);
+    // Overnight-aware display: at 01:00 the relevant schedule is
+    // yesterday's window, not today's. Legacy-injected resolvers
+    // (no scheduleCtx) degrade to the legacy today-only snapshot.
+    const [todayResolved, yesterdayResolved] = await Promise.all([
+      resolveScheduleRule({ companyId, user: { _id: userId }, at, engine, timezone, attendanceDate: todayKey, models: full }),
+      resolveScheduleRule({ companyId, user: { _id: userId }, at, engine, timezone, attendanceDate: addDays(todayKey, -1), models: full }),
+    ]);
+    const yesterdayCtx = yesterdayResolved?.scheduleCtx;
+    const businessDate = yesterdayCtx?.status === SCHEDULE_STATUS.RESOLVED && yesterdayCtx.crossesMidnight === true
+      ? businessDateForInstant({
+        now: at,
+        timezone,
+        yesterdayInterval: { startAt: yesterdayCtx.scheduledStartAt, endAt: yesterdayCtx.scheduledEndAt },
+      })
+      : todayKey;
+    schedule = snapshotSchedule(businessDate === todayKey ? todayResolved : yesterdayResolved);
   } catch {
     schedule = null;
   }
@@ -442,7 +523,7 @@ export const recordEvent = async ({
       if (existing.type !== action) {
         throw ApiError.conflict('This request was already used for a different attendance action');
       }
-      const schedule = await bestEffortSchedule({ resolveScheduleRule, engine, companyId, userId, at });
+      const schedule = await bestEffortSchedule({ resolveScheduleRule, engine, companyId, userId, at, timezone, attendanceDate: existing.date, models: full });
       return replayFromEvent(
         { deps: full, companyId, userId, policy, timezone, todayKey, schedule, now: at },
         existing,
@@ -548,22 +629,34 @@ export const recordEvent = async ({
     const closed = deriveClosedDurations(withNew, { sessionOpenedAt, sessionClosedAt: at, includeBreaks });
     // Same-rule evaluation as the classic punch-out (late/early/OT stay
     // scheduleEngine-derived for payroll parity).
-    const stored = await resolveRuleFromRecord({ control, companyId, userId, engine, resolveScheduleRule, at });
-    const evaluation = engine.evaluatePunch({ rule: stored.rule, punchIn: control.punchIn, punchOut: at });
-    const minimumMinutes = Number(stored.rule.minWorkingHours || 8) * 60;
+    const stored = await resolveRuleFromRecord({ control, companyId, userId, engine, resolveScheduleRule, at, timezone, attendanceDate: control.date, models: full });
     const workedMinutes = policy
       ? closed.workedMinutes
-      : Math.max(0, Math.round((at.getTime() - new Date(control.punchIn).getTime()) / 60000)
-          - Number(stored.rule.breakMinutes || 0));
+      : Math.max(0, Math.round((at.getTime() - new Date(control.punchIn || control.regularization?.correctedIn || at).getTime()) / 60000)
+          - Number(stored.rule?.breakMinutes || 0));
+    // Phase 31.6 — payroll verdict from the resolved schedule +
+    // policy grace (replaces the UTC-anchored punch evaluation).
+    // Recomputed here so a mid-day policy change applies at each
+    // evaluation point instead of half the day going stale.
+    const verdict = deriveAttendanceVerdict({
+      resolved: stored,
+      attendanceDate: control.date,
+      timezone,
+      policy,
+      effectiveIn: control.punchIn,
+      effectiveOut: at,
+      workedMinutes,
+    });
 
     patch = {
       ...patch,
       punchOut: at,
       workMinutes: workedMinutes,
       breakMinutes: policy ? closed.breakMinutes : 0,
-      earlyMinutes: evaluation.earlyMinutes || 0,
-      overtimeMinutes: evaluation.overtimeMinutes || 0,
-      status: workedMinutes < minimumMinutes ? 'HALF_DAY' : control.status || 'PRESENT',
+      lateMinutes: verdict.lateMinutes,
+      earlyMinutes: verdict.earlyMinutes,
+      overtimeMinutes: verdict.overtimeMinutes,
+      status: verdict.status,
     };
 
     policyDerivation = await derivePolicyOutcome({
@@ -617,7 +710,7 @@ export const recordEvent = async ({
         if (existing.type !== action) {
           throw ApiError.conflict('This request was already used for a different attendance action');
         }
-        const schedule = await bestEffortSchedule({ resolveScheduleRule, engine, companyId, userId, at });
+        const schedule = await bestEffortSchedule({ resolveScheduleRule, engine, companyId, userId, at, timezone, attendanceDate: control.date, models: full });
         return replayFromEvent(
           { deps: full, companyId, userId, policy, timezone, todayKey, schedule, now: at },
           existing,
@@ -666,7 +759,7 @@ export const recordEvent = async ({
         requestId: idempotencyKey,
       }).lean();
       if (existing) {
-        const schedule = await bestEffortSchedule({ resolveScheduleRule, engine, companyId, userId, at });
+        const schedule = await bestEffortSchedule({ resolveScheduleRule, engine, companyId, userId, at, timezone, attendanceDate: control.date, models: full });
         return replayFromEvent(
           { deps: full, companyId, userId, policy, timezone, todayKey, schedule, now: at },
           existing,
@@ -706,7 +799,7 @@ export const recordEvent = async ({
     throw ApiError.conflict('Attendance state changed — please refresh and retry');
   }
 
-  const schedule = await bestEffortSchedule({ resolveScheduleRule, engine, companyId, userId, at });
+  const schedule = await bestEffortSchedule({ resolveScheduleRule, engine, companyId, userId, at, timezone, attendanceDate: control.date, models: full });
   const snapshot = await buildSnapshot({
     control: updated,
     events: [...events, created.toObject ? created.toObject() : created],
@@ -781,6 +874,9 @@ const tryMergeFreshDuplicate = async ({
     companyId,
     userId,
     at,
+    timezone,
+    attendanceDate: date,
+    models: full,
   });
   return replayFromEvent(
     { deps: full, companyId, userId, policy, timezone, todayKey, schedule, now: at },
@@ -788,18 +884,37 @@ const tryMergeFreshDuplicate = async ({
   );
 };
 
-const bestEffortSchedule = async ({ resolveScheduleRule, engine, companyId, userId, at }) => {
+const bestEffortSchedule = async ({ resolveScheduleRule, engine, companyId, userId, at, timezone, attendanceDate, models }) => {
   try {
-    const resolved = await resolveScheduleRule({ companyId, user: { _id: userId }, at, engine });
+    const resolved = await resolveScheduleRule({ companyId, user: { _id: userId }, at, engine, timezone, attendanceDate, models });
     return snapshotSchedule(resolved);
   } catch {
     return null;
   }
 };
 
-// Prefer the rule stored at CLOCK_IN (same guarantee as the classic
-// flow's ruleFromRecord), else re-resolve.
-const resolveRuleFromRecord = async ({ control, companyId, userId, engine, resolveScheduleRule, at }) => {
+// Phase 31.6 — stored meaning first: a control carrying a schedule
+// snapshot evaluates against it (later Shift edits cannot rewrite the
+// day); else the legacy stored-rule hook; else dated re-resolution
+// for the record's own business date.
+const resolveRuleFromRecord = async ({ control, companyId, userId, engine, resolveScheduleRule, at, timezone, attendanceDate, models }) => {
+  const snapCtx = resolveStoredSchedule({ control });
+  if (snapCtx) {
+    return {
+      rule: {
+        name: snapCtx.shift?.name || snapCtx.schedule?.name || null,
+        startTime: snapCtx.startTime,
+        endTime: snapCtx.endTime,
+        breakMinutes: snapCtx.breakMinutes,
+        minWorkingHours: Number(snapCtx.minimumMinutes || 480) / 60,
+        overtimeEligible: snapCtx.overtimeEligible === true,
+      },
+      shift: snapCtx.shiftId ? { _id: snapCtx.shiftId } : null,
+      schedule: snapCtx.scheduleId ? { _id: snapCtx.scheduleId } : null,
+      source: snapCtx.source,
+      scheduleCtx: snapCtx,
+    };
+  }
   if (engine.resolveStoredRule) {
     try {
       const stored = await engine.resolveStoredRule({ control });
@@ -808,7 +923,7 @@ const resolveRuleFromRecord = async ({ control, companyId, userId, engine, resol
       // Fall through to re-resolution.
     }
   }
-  return resolveScheduleRule({ companyId, user: { _id: userId }, at, engine });
+  return resolveScheduleRule({ companyId, user: { _id: userId }, at, engine, timezone, attendanceDate: attendanceDate || control.date, models });
 };
 
 // Phase 31.5 — approval-rebuild reuse seam. The regularization
@@ -838,12 +953,33 @@ const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy
   // attendance date when the policy requires approval for them.
   // Refusals throw here, before anything is written. Matching NEVER
   // mutates the request.
+  // Phase 31.6 — schedule resolution + overnight anchoring FIRST: the
+  // authorization below must cover the BUSINESS date (single-day
+  // approvals name the shift date), and both gates stay before any
+  // write. Attribution itself never throws — calendar day stands.
+  const resolved = await resolveScheduleRule({ companyId, user: { _id: userId }, at, engine, timezone, attendanceDate: todayKey, models: full });
+  let businessDate = todayKey;
+  let active = resolved;
+  try {
+    const yesterdayResolved = await resolveScheduleRule({ companyId, user: { _id: userId }, at, engine, timezone, attendanceDate: addDays(todayKey, -1), models: full });
+    const yesterdayCtx = yesterdayResolved?.scheduleCtx;
+    if (yesterdayCtx?.status === SCHEDULE_STATUS.RESOLVED && yesterdayCtx.crossesMidnight === true) {
+      businessDate = businessDateForInstant({
+        now: at,
+        timezone,
+        yesterdayInterval: { startAt: yesterdayCtx.scheduledStartAt, endAt: yesterdayCtx.scheduledEndAt },
+      });
+      if (businessDate !== todayKey) active = yesterdayResolved;
+    }
+  } catch {
+    // Attribution must never break punching — calendar day stands.
+  }
   const authorization = await findClockInAuthorization({
     WorkModeRequestModel,
     companyId,
     userId,
     mode,
-    date: todayKey,
+    date: businessDate,
     policy,
   });
 
@@ -858,22 +994,35 @@ const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy
     now: at,
   });
 
-  const resolved = await resolveScheduleRule({ companyId, user: { _id: userId }, at, engine });
-  const evaluation = engine.evaluatePunch({ rule: resolved.rule, punchIn: at });
-  const status = evaluation.status === 'LATE' ? 'LATE' : 'PRESENT';
+  // Phase 31.6 — payroll verdict from schedule + policy grace.
+  const verdict = deriveAttendanceVerdict({
+    resolved: active,
+    attendanceDate: businessDate,
+    timezone,
+    policy,
+    effectiveIn: at,
+    effectiveOut: null,
+    workedMinutes: 0,
+  });
+  const status = verdict.status;
+  const scheduleCtx = active?.scheduleCtx || null;
 
   let control;
   try {
     control = await AttendanceModel.create({
       companyId,
       user: userId,
-      date: todayKey,
+      date: businessDate,
       punchIn: at,
       status,
-      shift: resolved.shift?._id || null,
-      schedule: resolved.schedule?._id || null,
-      shiftSource: resolved.source,
-      lateMinutes: evaluation.lateMinutes || 0,
+      shift: active.shift?._id || null,
+      schedule: active.schedule?._id || null,
+      shiftSource: active.source,
+      lateMinutes: verdict.lateMinutes,
+      scheduleSnapshot: scheduleCtx?.status === SCHEDULE_STATUS.RESOLVED
+        ? buildScheduleSnapshot({ ctx: scheduleCtx, rule: active.rule })
+        : null,
+      scheduleStatus: scheduleCtx?.status || (active.rule ? 'RESOLVED' : 'UNRESOLVED'),
       workMode: mode,
       liveState: LIVE_STATE.WORKING,
       eventSeq: 1,
@@ -888,7 +1037,7 @@ const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy
       full,
       companyId,
       userId,
-      date: todayKey,
+      date: businessDate,
       action: EVENT_TYPE.CLOCK_IN,
       policy,
       timezone,
@@ -903,7 +1052,7 @@ const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy
         requestId: idempotencyKey,
       }).lean();
       if (existing && existing.type === EVENT_TYPE.CLOCK_IN) {
-        const schedule = await bestEffortSchedule({ resolveScheduleRule, engine, companyId, userId, at });
+        const schedule = await bestEffortSchedule({ resolveScheduleRule, engine, companyId, userId, at, timezone, attendanceDate: businessDate, models: full });
         return replayFromEvent(
           { deps: full, companyId, userId, policy, timezone, todayKey, schedule, now: at },
           existing,
@@ -918,7 +1067,7 @@ const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy
     const eventDoc = {
       companyId,
       user: userId,
-      date: todayKey,
+      date: businessDate,
       seq: 1,
       type: EVENT_TYPE.CLOCK_IN,
       at,
@@ -941,7 +1090,7 @@ const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy
         requestId: idempotencyKey,
       }).lean();
       if (existing && existing.type === EVENT_TYPE.CLOCK_IN) {
-        const schedule = await bestEffortSchedule({ resolveScheduleRule, engine, companyId, userId, at });
+        const schedule = await bestEffortSchedule({ resolveScheduleRule, engine, companyId, userId, at, timezone, attendanceDate: businessDate, models: full });
         return replayFromEvent(
           { deps: full, companyId, userId, policy, timezone, todayKey, schedule, now: at },
           existing,
@@ -955,7 +1104,7 @@ const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy
       console.warn('[attendance] clock-in event insert conflict (no key match)', {
         companyId: String(companyId),
         userId: String(userId),
-        date: todayKey,
+        date: businessDate,
         seq: 1,
         keyValue: err.keyValue || null,
       });
@@ -968,7 +1117,7 @@ const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy
     console.error('[attendance] clock-in event insert failed', {
       companyId: String(companyId),
       userId: String(userId),
-      date: todayKey,
+      date: businessDate,
       seq: 1,
       name: err?.name || null,
       code: err?.code || null,
@@ -983,7 +1132,7 @@ const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy
     policy,
     timezone,
     todayKey,
-    schedule: snapshotSchedule(resolved),
+    schedule: snapshotSchedule(active),
     now: at,
   });
   return { event: serializeEvent(created), snapshot, replayed: false };

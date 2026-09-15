@@ -332,12 +332,18 @@ const AttendancePage = () => {
 
             {live.liveState === 'NOT_IN' && (
               <>
-                {live.schedule && live.schedule.source !== 'DEFAULT' && (
+                {/* Phase 31.6 — resolved roster context: shift name,
+                    overnight-aware window, weekly-off/holiday note. */}
+                {live.schedule && live.schedule.source !== 'DEFAULT' && live.schedule.source !== 'UNRESOLVED' && (
                   <p className="text-sm text-crewly-dim">
-                    {live.schedule.name}
-                    {live.schedule.startTime && live.schedule.endTime
-                      ? ` · ${live.schedule.startTime}–${live.schedule.endTime}`
-                      : ''}
+                    {live.schedule.shiftName || live.schedule.scheduleName || live.schedule.name}
+                    {live.schedule.windowLabel
+                      ? ` · ${live.schedule.windowLabel}`
+                      : live.schedule.startTime && live.schedule.endTime
+                        ? ` · ${live.schedule.startTime}–${live.schedule.endTime}`
+                        : ''}
+                    {live.schedule.dayType === 'WEEKLY_OFF' && ' · Weekly off'}
+                    {live.schedule.dayType === 'HOLIDAY' && ` · ${live.schedule.holiday?.name || 'Holiday'}`}
                   </p>
                 )}
                 <label className="label mt-1 flex items-center gap-2" htmlFor="work-mode">
@@ -406,6 +412,9 @@ const AttendancePage = () => {
                   On duty since <span className="text-crewly-green">{fmtTime(live.clockInAt)}</span>
                   {live.workMode && (
                     <span className="text-crewly-dim"> · {MODE_LABEL[live.workMode] || live.workMode}</span>
+                  )}
+                  {live.schedule?.windowLabel && (
+                    <span className="text-crewly-dim"> · Shift {live.schedule.windowLabel}</span>
                   )}
                   {live.status === 'LATE' && (
                     <span className="badge ml-2 bg-crewly-orange/15 text-crewly-orange">LATE</span>
@@ -476,6 +485,9 @@ const AttendancePage = () => {
                   {live.breakMinutes > 0 && (
                     <span> · Breaks {live.breakMinutes}m</span>
                   )}
+                  {live.schedule?.windowLabel && (
+                    <span> · Scheduled {live.schedule.windowLabel}</span>
+                  )}
                   {live.status && (
                     <span className={`badge ml-2 ${STATUS_STYLE[live.status] || ''}`}>
                       {live.status.replace('_', ' ')}
@@ -542,6 +554,7 @@ const AttendancePage = () => {
                 <th className="px-5 py-3">Date</th>
                 <th className="px-5 py-3">Punch In</th>
                 <th className="px-5 py-3">Punch Out</th>
+                <th className="px-5 py-3">Scheduled</th>
                 <th className="px-5 py-3">Hours</th>
                 <th className="px-5 py-3">Status</th>
                 <th className="px-5 py-3"><span className="sr-only">Correction</span></th>
@@ -565,6 +578,13 @@ const AttendancePage = () => {
                       <span className="ml-1 text-crewly-green" title={`Recorded: ${fmtTime(r.punchOut)}`}>*</span>
                     )}
                   </td>
+                  {/* Phase 31.6 — the versioned schedule behind the
+                      verdict; legacy rows predate snapshots. */}
+                  <td className="px-5 py-3 text-crewly-dim" title={r.scheduleSnapshot ? (r.scheduleSnapshot.shiftName || r.scheduleSnapshot.scheduleName || '') : ''}>
+                    {r.scheduleSnapshot?.startTime
+                      ? `${r.scheduleSnapshot.startTime}–${r.scheduleSnapshot.endTime}${r.scheduleSnapshot.crossesMidnight ? ' +1' : ''}`
+                      : '—'}
+                  </td>
                   <td className="px-5 py-3">{r.workMinutes ? `${(r.workMinutes / 60).toFixed(1)}h` : '—'}</td>
                   <td className="px-5 py-3">
                     <span className={`badge ${STATUS_STYLE[r.status]}`}>{r.status.replace('_', ' ')}</span>
@@ -580,7 +600,7 @@ const AttendancePage = () => {
                 </tr>
               ))}
               {data.records.length === 0 && (
-                <tr><td colSpan={6} className="px-5 py-8 text-center text-crewly-dim">No records this month.</td></tr>
+                <tr><td colSpan={7} className="px-5 py-8 text-center text-crewly-dim">No records this month.</td></tr>
               )}
             </tbody>
           </table>

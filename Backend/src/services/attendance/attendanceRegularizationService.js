@@ -40,6 +40,10 @@ import {
   resolveRuleFromRecord,
 } from './attendanceEventService.js';
 import {
+  buildScheduleSnapshot,
+  deriveAttendanceVerdict,
+} from './attendanceScheduleService.js';
+import {
   EVENT_TYPE,
   LIVE_STATE,
   WORK_MODE,
@@ -505,6 +509,7 @@ export const rebuildDayProjection = async ({
   RequestModel = AttendanceRegularization,
   engine = null,
   resolveScheduleRule = resolveDayScheduleRule,
+  models = {},
   now = null,
 }) => {
   const activeEngine = engine || defaultEngine();
@@ -574,8 +579,8 @@ export const rebuildDayProjection = async ({
   });
   overlay.correctedBreakMinutes = policy ? closed.breakMinutes : 0;
 
-  // Same-rule evaluation as the classic flow (stored rule wins,
-  // schedule re-resolution is the fallback).
+  // Phase 31.6 — stored snapshot wins, else dated re-resolution for
+  // the request's own business date (never the effective-out day).
   const stored = await resolveRuleFromRecord({
     control: control || { date: attendanceDate },
     companyId,
@@ -583,13 +588,10 @@ export const rebuildDayProjection = async ({
     engine: activeEngine,
     resolveScheduleRule,
     at: effective.clockOut || effective.clockIn || at,
+    timezone,
+    attendanceDate,
+    models,
   });
-  const evaluation = activeEngine.evaluatePunch({
-    rule: stored.rule,
-    punchIn: effective.clockIn,
-    punchOut: effective.clockOut,
-  });
-  const minimumMinutes = Number(stored.rule?.minWorkingHours || 8) * 60;
   const workedMinutes = policy
     ? closed.workedMinutes
     : Math.max(
@@ -605,24 +607,42 @@ export const rebuildDayProjection = async ({
     regularized: true,
     workMode: effective.workMode,
   };
-  if (effective.clockIn) patch.lateMinutes = evaluation.lateMinutes || 0;
+  // Phase 31.6 — payroll verdict from EFFECTIVE facts against the
+  // resolved schedule + policy grace (replaces the UTC-anchored
+  // punch evaluation so approvals match live derivation exactly).
+  const verdict = deriveAttendanceVerdict({
+    resolved: stored,
+    attendanceDate,
+    timezone,
+    policy,
+    effectiveIn: effective.clockIn,
+    effectiveOut: effective.clockOut,
+    workedMinutes,
+  });
+  if (effective.clockIn) patch.lateMinutes = verdict.lateMinutes;
   if (effective.clockOut) {
     patch.workMinutes = workedMinutes;
     patch.breakMinutes = policy ? closed.breakMinutes : 0;
-    patch.earlyMinutes = evaluation.earlyMinutes || 0;
-    patch.overtimeMinutes = evaluation.overtimeMinutes || 0;
-    patch.status = workedMinutes < minimumMinutes
-      ? 'HALF_DAY'
-      : evaluation.status === 'LATE'
-        ? 'LATE'
-        : 'PRESENT';
+    patch.earlyMinutes = verdict.earlyMinutes;
+    patch.overtimeMinutes = verdict.overtimeMinutes;
+    patch.status = verdict.status;
   } else if (!control) {
     // Corrected clock-in with the day still open: the projection
     // opens as a working session the employee can clock out of.
-    patch.status = evaluation.status === 'LATE' ? 'LATE' : 'PRESENT';
+    patch.status = verdict.status;
     patch.liveState = LIVE_STATE.WORKING;
     patch.workMinutes = 0;
     patch.breakMinutes = 0;
+  }
+  // First 31.6 evaluation versions a snapshot-less control: later
+  // Shift edits cannot rewrite the day. Existing snapshots are never
+  // overwritten here (resolveRuleFromRecord already preferred them).
+  const scheduleCtx = stored.scheduleCtx || null;
+  if (!control?.scheduleSnapshot && scheduleCtx?.status === 'RESOLVED') {
+    patch.scheduleSnapshot = buildScheduleSnapshot({ ctx: scheduleCtx, rule: stored.rule });
+    patch.scheduleStatus = 'RESOLVED';
+  } else if (!control?.scheduleStatus && !stored.rule) {
+    patch.scheduleStatus = 'UNRESOLVED';
   }
 
   if (effective.clockOut) {
@@ -680,6 +700,7 @@ export const decideRegularization = async ({
   resolveScopeIds = defaultResolveScopeIds,
   engine = null,
   resolveScheduleRule = resolveDayScheduleRule,
+  models = {},
   notify = defaultNotify,
   audit = writeAudit,
 }) => {
@@ -710,6 +731,7 @@ export const decideRegularization = async ({
       RequestModel,
       engine,
       resolveScheduleRule,
+      models,
     });
     const appliedAt = new Date();
     await RequestModel.findOneAndUpdate(
@@ -859,6 +881,7 @@ export const decideRegularization = async ({
       RequestModel,
       engine,
       resolveScheduleRule,
+      models,
     });
     const appliedAt = new Date();
     await RequestModel.findOneAndUpdate(
