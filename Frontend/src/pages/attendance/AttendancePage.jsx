@@ -130,7 +130,8 @@ const AttendancePage = () => {
     if (!needsGeofencePick) return;
     attendanceLocationService
       .eligible()
-      .then((rows) => {
+      .then((result) => {
+        const rows = result?.data;
         const list = Array.isArray(rows) ? rows : [];
         setLocations(list);
         setLocationId((current) =>

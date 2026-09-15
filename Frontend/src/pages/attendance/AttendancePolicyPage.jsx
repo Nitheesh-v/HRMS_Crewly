@@ -215,7 +215,8 @@ const AttendancePolicyPage = () => {
   const loadLocations = useCallback(async () => {
     if (!canReadLocations && !canManageLocations) return;
     try {
-      const rows = await attendanceLocationService.list();
+      const result = await attendanceLocationService.list();
+      const rows = result?.data;
       setLocations(Array.isArray(rows) ? rows : []);
     } catch (loadError) {
       setLocError(loadError?.message || 'Could not load the office locations');
