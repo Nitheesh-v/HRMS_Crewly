@@ -99,14 +99,27 @@ const AttendanceReportPage = () => {
                       <span className={`badge mt-1 ${ROLE_STYLES[user.role]}`}>{roleLabel(user.role)}</span>
                     </td>
                     <td className="px-5 py-3 text-crewly-dim">{user.department?.name || '—'}</td>
-                    <td className="px-5 py-3">{fmtTime(record?.punchIn)}</td>
-                    <td className="px-5 py-3">{fmtTime(record?.punchOut)}</td>
+                    {/* Phase 31.5 — effective times win for display; the
+                        recorded punch stays one hover away. */}
+                    <td className="px-5 py-3">
+                      {fmtTime(record?.regularization?.correctedIn || record?.punchIn)}
+                      {record?.regularization?.correctedIn && (
+                        <span className="ml-1 text-crewly-green" title={`Recorded: ${fmtTime(record?.punchIn)}`}>*</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3">
+                      {fmtTime(record?.regularization?.correctedOut || record?.punchOut)}
+                      {record?.regularization?.correctedOut && (
+                        <span className="ml-1 text-crewly-green" title={`Recorded: ${fmtTime(record?.punchOut)}`}>*</span>
+                      )}
+                    </td>
                     <td className="px-5 py-3">
                       {!record && <span className="badge bg-crewly-red/15 text-crewly-red">NOT PUNCHED</span>}
                       {record && !record.punchOut && <span className="badge bg-crewly-green/15 text-crewly-green">ON DUTY</span>}
                       {record?.punchOut && <span className="badge bg-blue-400/15 text-blue-300">DONE · {(record.workMinutes / 60).toFixed(1)}h</span>}
                       {record?.status === 'LATE' && <span className="badge ml-1 bg-crewly-orange/15 text-crewly-orange">LATE</span>}
                       {record?.status === 'HALF_DAY' && <span className="badge ml-1 bg-blue-400/15 text-blue-300">HALF</span>}
+                      {record?.regularized && <span className="badge ml-1 bg-crewly-green/15 text-crewly-green" title="An approved correction overlays this day">REGULARIZED</span>}
                     </td>
                   </tr>
                 ))}

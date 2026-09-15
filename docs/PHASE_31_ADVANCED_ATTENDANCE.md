@@ -21,7 +21,8 @@ Programme laws (all phases):
 | 31.2 Advanced Punching & Live Attendance | `PHASE_31_2_ADVANCED_PUNCHING.md` (+ `PHASE_31_2_TESTING_CHECKLIST.md`) | Shipped |
 | 31.3 Office Locations & Geofencing | `PHASE_31_3_OFFICE_LOCATIONS_GEOFENCING.md` (+ `PHASE_31_3_TESTING_CHECKLIST.md`) | Shipped (CLOCK_IN-only OFFICE geofence, strict REQUIRED, RBAC v28) |
 | 31.4 WFH, Field & On-Duty Workflows | `PHASE_31_4_WORK_MODE_REQUESTS.md` (+ `PHASE_31_4_TESTING_CHECKLIST.md`) | Shipped (request→approve→clock-in authorization, RBAC v29) |
-| 31.5+ | — | Not started. No code, no scaffolding, no plan in repo. |
+| 31.5 Attendance Regularization & Exception Center | `PHASE_31_5_ATTENDANCE_REGULARIZATION.md` (+ `PHASE_31_5_TESTING_CHECKLIST.md`) | Shipped (correction overlay + exception explanations, RBAC v30) |
+| 31.6+ | — | Not started. No code, no scaffolding, no plan in repo. |
 
 ## Vocabulary (owned by 31.1, binding on all later phases)
 

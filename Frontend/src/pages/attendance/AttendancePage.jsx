@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Briefcase,
   CheckCircle2,
@@ -543,20 +544,43 @@ const AttendancePage = () => {
                 <th className="px-5 py-3">Punch Out</th>
                 <th className="px-5 py-3">Hours</th>
                 <th className="px-5 py-3">Status</th>
+                <th className="px-5 py-3"><span className="sr-only">Correction</span></th>
               </tr>
             </thead>
             <tbody>
               {[...data.records].reverse().map((r) => (
                 <tr key={r._id} className="border-b border-crewly-border/50 last:border-0">
                   <td className="px-5 py-3">{new Date(`${r.date}T00:00:00`).toLocaleDateString([], { day: 'numeric', month: 'short', weekday: 'short' })}</td>
-                  <td className="px-5 py-3">{fmtTime(r.punchIn)}</td>
-                  <td className="px-5 py-3">{fmtTime(r.punchOut)}</td>
+                  {/* Phase 31.5 — effective times win for display; the
+                      recorded punch stays one hover away. */}
+                  <td className="px-5 py-3">
+                    {fmtTime(r.regularization?.correctedIn || r.punchIn)}
+                    {r.regularization?.correctedIn && (
+                      <span className="ml-1 text-crewly-green" title={`Recorded: ${fmtTime(r.punchIn)}`}>*</span>
+                    )}
+                  </td>
+                  <td className="px-5 py-3">
+                    {fmtTime(r.regularization?.correctedOut || r.punchOut)}
+                    {r.regularization?.correctedOut && (
+                      <span className="ml-1 text-crewly-green" title={`Recorded: ${fmtTime(r.punchOut)}`}>*</span>
+                    )}
+                  </td>
                   <td className="px-5 py-3">{r.workMinutes ? `${(r.workMinutes / 60).toFixed(1)}h` : '—'}</td>
-                  <td className="px-5 py-3"><span className={`badge ${STATUS_STYLE[r.status]}`}>{r.status.replace('_', ' ')}</span></td>
+                  <td className="px-5 py-3">
+                    <span className={`badge ${STATUS_STYLE[r.status]}`}>{r.status.replace('_', ' ')}</span>
+                    {r.regularized && (
+                      <span className="badge ml-1 bg-crewly-green/15 text-crewly-green" title="An approved correction overlays this day">Regularized</span>
+                    )}
+                  </td>
+                  <td className="px-5 py-3 text-right">
+                    <Link className="text-xs text-crewly-green underline" to={`/app/attendance/regularizations?date=${r.date}`}>
+                      Request correction
+                    </Link>
+                  </td>
                 </tr>
               ))}
               {data.records.length === 0 && (
-                <tr><td colSpan={5} className="px-5 py-8 text-center text-crewly-dim">No records this month.</td></tr>
+                <tr><td colSpan={6} className="px-5 py-8 text-center text-crewly-dim">No records this month.</td></tr>
               )}
             </tbody>
           </table>

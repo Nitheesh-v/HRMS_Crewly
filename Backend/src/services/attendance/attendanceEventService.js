@@ -527,7 +527,12 @@ export const recordEvent = async ({
   const expectedSeq = Number(control.eventSeq || 0);
   const nextSeq = expectedSeq + 1;
   const withNew = [...events, { seq: nextSeq, type: action, at, workMode: null }];
-  const sessionOpenedAt = control.punchIn || withNew[0]?.at || at;
+  // Phase 31.5 interplay: a day whose clock-in exists only as an
+  // approved correction has no recorded punchIn — live durations
+  // then seed from the effective (regularized) clock-in. No-op for
+  // every day without an approved clock-in correction.
+  const sessionOpenedAt =
+    control.punchIn || control.regularization?.correctedIn || withNew[0]?.at || at;
   const includeBreaks = policy?.breaks?.includeInWorkedTime === true;
 
   let patch = { lastEventAt: at, liveState: check.next };
@@ -804,6 +809,17 @@ const resolveRuleFromRecord = async ({ control, companyId, userId, engine, resol
     }
   }
   return resolveScheduleRule({ companyId, user: { _id: userId }, at, engine });
+};
+
+// Phase 31.5 — approval-rebuild reuse seam. The regularization
+// approval path re-derives the daily projection with the SAME
+// helpers the live session path uses, so a regularized day matches
+// a day that was punched correctly. Additive export only: no live
+// behavior changes.
+export {
+  defaultResolveScheduleRule as resolveDayScheduleRule,
+  derivePolicyOutcome,
+  resolveRuleFromRecord,
 };
 
 const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy, workMode, idempotencyKey, location = null }) => {

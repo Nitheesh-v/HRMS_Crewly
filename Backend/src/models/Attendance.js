@@ -104,6 +104,28 @@ const attendanceSchema = new Schema(
       type: Date,
       default: null,
     },
+
+    // ── Phase 31.5 (all additive; legacy readers ignore them) ──
+    // True once an approved regularization wrote an effective-facts
+    // overlay. Recorded punches stay untouched: the overlay carries
+    // the corrected timeline for display + re-derivation.
+    regularized: {
+      type: Boolean,
+      default: false,
+    },
+
+    regularization: {
+      correctedIn: { type: Date, default: null },
+      correctedOut: { type: Date, default: null },
+      correctedBreakMinutes: { type: Number, default: null },
+      correctedWorkMode: { type: String, default: null },
+      resolvedExceptions: { type: [String], default: [] },
+      appliedRequestIds: {
+        type: [{ type: Schema.Types.ObjectId, ref: 'AttendanceRegularization' }],
+        default: [],
+      },
+      appliedAt: { type: Date, default: null },
+    },
   },
   { timestamps: true },
 );

@@ -122,7 +122,9 @@ export const ensurePermissions = async () => {
 //             HR_MANAGER both
 //   28 → 29 : 31.4 added ATTENDANCE_WORK_MODE_REQUEST (self-service)
 //             and _REVIEW (MANAGER + HR_MANAGER scoped queue)
-const SYSTEM_PERMISSION_VERSION = 29;
+//   29 → 30 : 31.5 added ATTENDANCE_REGULARIZATION_REQUEST (self-service)
+//             and _REVIEW (MANAGER + HR_MANAGER scoped queue)
+const SYSTEM_PERMISSION_VERSION = 30;
 export const ensureCompanyRoles = async (
   companyId,
   createdBy = null,

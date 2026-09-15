@@ -441,10 +441,20 @@ const AppLayout = () => {
     ? [{ to: '/app/attendance/work-modes', label: 'Work Mode Requests' }]
     : [];
 
+  // Phase 31.5 — Attendance Regularization entry (one item; the page
+  // splits My requests / Exception center by permission internally).
+  const regularizationMenu = hasAnyPermission([
+    'ATTENDANCE_REGULARIZATION_REQUEST',
+    'ATTENDANCE_REGULARIZATION_REVIEW',
+  ])
+    ? [{ to: '/app/attendance/regularizations', label: 'Regularizations' }]
+    : [];
+
   const menu = [
     ...baseMenu,
     ...attendancePolicyMenu,
     ...workModeMenu,
+    ...regularizationMenu,
     ...payrollMenu,
     ...recruitmentDashboardMenu,
     ...candidateMenu,
