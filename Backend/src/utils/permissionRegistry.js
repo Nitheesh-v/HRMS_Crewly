@@ -141,6 +141,12 @@ export const DEFAULT_PERMISSIONS = [
   // must never imply reviewing.
   ...actions("ATTENDANCE_OVERTIME", ["REQUEST", "REVIEW"]),
 
+  // Phase 31.11 — Monthly attendance finalization. READ views status /
+  // validation / preview / history; MANAGE finalizes + sends to payroll;
+  // REOPEN reopens a finalized month. Company-level authority only —
+  // managers keep scoped team timesheets, never finalization.
+  ...actions("ATTENDANCE_FINALIZATION", ["READ", "MANAGE", "REOPEN"]),
+
   ...actions("LEAVE", ["READ", "CREATE", "UPDATE", "APPROVE", "REJECT"]),
 
   ...actions("PAYROLL", ["READ", "CREATE", "UPDATE", "APPROVE", "MANAGE"]),
@@ -497,6 +503,11 @@ export const DEFAULT_ROLE_MATRIX = {
 
     // Phase 31.8 — HR reviews overtime / comp-off company-wide.
     "ATTENDANCE_OVERTIME_REVIEW",
+
+    // Phase 31.11 — HR runs monthly attendance finalization company-wide.
+    "ATTENDANCE_FINALIZATION_READ",
+    "ATTENDANCE_FINALIZATION_MANAGE",
+    "ATTENDANCE_FINALIZATION_REOPEN",
 
     "LEAVE_READ",
     "LEAVE_APPROVE",

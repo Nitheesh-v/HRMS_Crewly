@@ -140,7 +140,8 @@ const parseTimesheetQuery = (query = {}) => {
 
 // Company/policy timezone for day boundaries (same precedence as
 // the live read: policy wins, else company, else IST).
-const resolveTimezone = async ({ companyId, policy, CompanyModel }) => {
+// Exported for 31.11 finalization (same precedence, zero behavior change).
+export const resolveTimezone = async ({ companyId, policy, CompanyModel }) => {
   if (policy?.timezone) return policy.timezone;
   try {
     const company = CompanyModel
@@ -383,6 +384,9 @@ const buildDay = ({
     compOffDays,
     calendarPrimary: resolution?.calendar?.primary || DAY_TYPE.WORK_DAY,
     hasSession: isFuture ? false : hasSession,
+    // 31.11 validation seam: open live session on this business
+    // date regardless of past/today (future days never open).
+    sessionOpen: isFuture ? false : Boolean(control && OPEN_STATES.includes(control.liveState)),
     workedMinutes: isFuture ? 0 : workFacts.workedMinutes,
     breakMinutes: isFuture ? 0 : workFacts.breakMinutes,
   };
@@ -412,7 +416,8 @@ const indexByUser = (rows, userKey = 'user') => {
 
 // Whole-month derivation for already-scoped users. Bounded reads:
 // masters(4-in-1) + controls + events + leaves + regs + ots.
-const deriveMonths = async ({
+// Exported for 31.11 finalization (whole-company derivation reuse).
+export const deriveMonths = async ({
   companyId,
   users,
   dates,

@@ -532,6 +532,11 @@ const MonthlyInputsPage = () => {
                     <span className="ml-1 text-xs text-crewly-dim">
                       ({row.auto?.lopSource === 'LEAVE' ? 'leave' : 'attendance'})
                     </span>
+                    {row.auto?.attendanceSource?.version ? (
+                      <span className="ml-1 rounded-full bg-crewly-green/15 px-1.5 py-0.5 text-[10px] text-crewly-green" title={`Synced from finalized attendance v${row.auto.attendanceSource.version}`}>
+                        finalized v{row.auto.attendanceSource.version}
+                      </span>
+                    ) : null}
                   </td>
                   <td className="px-3 py-2">{formatNumber(row.auto?.otHours)}</td>
                   <td className="px-3 py-2">{formatMoney(row.totals?.bonus)}</td>

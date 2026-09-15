@@ -3,6 +3,8 @@ import { ChevronLeft, ChevronRight, Download, RefreshCw, Search } from 'lucide-r
 import attendanceService from '../../services/attendanceService.js';
 import departmentService from '../../services/departmentService.js';
 import TimesheetMonthView from '../../components/attendance/TimesheetMonthView.jsx';
+import AttendanceFinalizationPanel from '../../components/attendance/AttendanceFinalizationPanel.jsx';
+import usePermission from '../../hooks/usePermission.js';
 
 // Phase 31.10 — Team Timesheets: the scoped monthly summary table
 // for managers, team leads and HR, with per-employee drill-down and
@@ -133,6 +135,28 @@ const AttendanceTeamTimesheetsPage = () => {
         </div>
       </div>
 
+      {canSeeFinalization && (
+        <div className="flex items-center gap-2" role="tablist" aria-label="Timesheets views">
+          {[
+            ['timesheets', 'Timesheets'],
+            ['finalization', 'Month finalization'],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={tab === value}
+              onClick={() => setTab(value)}
+              className={tab === value ? 'btn-primary px-3 py-1 text-sm' : 'btn-ghost px-3 py-1 text-sm'}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {(!canSeeFinalization || tab === 'timesheets') ? (
+        <>
       <div className="card flex flex-wrap items-center gap-2">
         <label className="relative">
           <Search size={14} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-crewly-dim" />
@@ -271,6 +295,10 @@ const AttendanceTeamTimesheetsPage = () => {
             <TimesheetMonthView sheet={detail} employeeName={detail?.employee?.name || ''} />
           )}
         </div>
+      )}
+        </>
+      ) : (
+        <AttendanceFinalizationPanel month={month} />
       )}
     </div>
   );

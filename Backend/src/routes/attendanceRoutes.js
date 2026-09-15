@@ -20,6 +20,14 @@ import {
   getScopedEmployeeTimesheet,
   getTeamTimesheetTable,
 } from '../controllers/attendanceTimesheetController.js';
+import {
+  finalizeAttendanceMonth,
+  getFinalization,
+  previewFinalizationMonth,
+  reopenAttendanceMonth,
+  sendAttendanceToPayroll,
+  validateFinalizationMonth,
+} from '../controllers/attendanceFinalizationController.js';
 import { attendanceEventValidator } from '../validators/attendanceEventValidator.js';
 import { protect } from '../middlewares/authMiddleware.js';
 import {
@@ -165,6 +173,58 @@ router.get(
     'ATTENDANCE_READ'
   ),
   getScopedEmployeeTimesheet
+);
+
+// Phase 31.11 — Monthly attendance finalization & payroll sync.
+// Company-level authority: READ views status/validation/preview,
+// MANAGE finalizes + sends, REOPEN reopens. Org scope never
+// applies — finalization always covers the whole company month.
+router.get(
+  '/finalization/:month',
+  requirePermission(
+    'ATTENDANCE_FINALIZATION_READ'
+  ),
+  getFinalization
+);
+
+router.get(
+  '/finalization/:month/validate',
+  requirePermission(
+    'ATTENDANCE_FINALIZATION_READ'
+  ),
+  validateFinalizationMonth
+);
+
+router.get(
+  '/finalization/:month/preview',
+  requirePermission(
+    'ATTENDANCE_FINALIZATION_READ'
+  ),
+  previewFinalizationMonth
+);
+
+router.post(
+  '/finalization/:month/finalize',
+  requirePermission(
+    'ATTENDANCE_FINALIZATION_MANAGE'
+  ),
+  finalizeAttendanceMonth
+);
+
+router.post(
+  '/finalization/:month/send-to-payroll',
+  requirePermission(
+    'ATTENDANCE_FINALIZATION_MANAGE'
+  ),
+  sendAttendanceToPayroll
+);
+
+router.post(
+  '/finalization/:month/reopen',
+  requirePermission(
+    'ATTENDANCE_FINALIZATION_REOPEN'
+  ),
+  reopenAttendanceMonth
 );
 
 export default router;

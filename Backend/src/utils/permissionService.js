@@ -126,7 +126,9 @@ export const ensurePermissions = async () => {
 //             and _REVIEW (MANAGER + HR_MANAGER scoped queue)
 //   30 → 31 : 31.8 added ATTENDANCE_OVERTIME_REQUEST (self-service)
 //             and _REVIEW (MANAGER + HR_MANAGER scoped queue)
-const SYSTEM_PERMISSION_VERSION = 31;
+//   31 → 32 : 31.11 added ATTENDANCE_FINALIZATION_READ / _MANAGE /
+//             _REOPEN (COMPANY_ADMIN + HR_MANAGER, company-level)
+const SYSTEM_PERMISSION_VERSION = 32;
 export const ensureCompanyRoles = async (
   companyId,
   createdBy = null,

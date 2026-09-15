@@ -72,6 +72,15 @@ const attendanceService = {
     anchor.remove();
     window.URL.revokeObjectURL(url);
   },
+  // Phase 31.11 — Monthly attendance finalization. Status, validate
+  // and preview are read-only; finalize / send / reopen mutate one
+  // month and are guarded backend-side by dedicated permissions.
+  finalizationStatus: (month) => api.get(`/attendance/finalization/${month}/status`),
+  finalizationValidate: (month) => api.get(`/attendance/finalization/${month}/validate`),
+  finalizationPreview: (month) => api.get(`/attendance/finalization/${month}/preview`),
+  finalizeMonth: (month) => api.post(`/attendance/finalization/${month}/finalize`, {}),
+  sendFinalizationToPayroll: (month) => api.post(`/attendance/finalization/${month}/send-to-payroll`, {}),
+  reopenFinalization: (month, reason) => api.post(`/attendance/finalization/${month}/reopen`, { reason }),
 };
 
 export default attendanceService;
