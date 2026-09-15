@@ -82,6 +82,7 @@ export const serializeAttendancePolicy = (doc) => {
     overtime: raw.overtime || {},
     weekendHoliday: raw.weekendHoliday || {},
     workModes: raw.workModes || {},
+    workModeApproval: raw.workModeApproval || {},
     locationEnforcement: raw.locationEnforcement || 'DISABLED',
     createdAt: raw.createdAt || null,
     updatedAt: raw.updatedAt || null,
@@ -172,6 +173,7 @@ const ALLOWED_DRAFT_FIELDS = [
   'overtime',
   'weekendHoliday',
   'workModes',
+  'workModeApproval',
   'locationEnforcement',
 ];
 
@@ -235,6 +237,7 @@ export const saveDraftPolicy = async ({
     overtime: merged.overtime,
     weekendHoliday: merged.weekendHoliday,
     workModes: merged.workModes,
+    workModeApproval: merged.workModeApproval,
   });
 
   if (!check.valid) {
@@ -269,6 +272,7 @@ export const saveDraftPolicy = async ({
       overtime: merged.overtime,
       weekendHoliday: merged.weekendHoliday,
       workModes: merged.workModes,
+      workModeApproval: merged.workModeApproval,
       locationEnforcement: merged.locationEnforcement || 'DISABLED',
       createdBy: actor?._id || actor?.id || null,
       updatedBy: actor?._id || actor?.id || null,

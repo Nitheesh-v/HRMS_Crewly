@@ -123,6 +123,12 @@ export const DEFAULT_PERMISSIONS = [
   // No ACTIVATE split: activation is an ordinary MANAGE-level toggle.
   ...actions("ATTENDANCE_LOCATION", ["READ", "MANAGE"]),
 
+  // Phase 31.4 — Work-mode requests. REQUEST is self-service (own
+  // requests only, org scope enforced at the service layer);
+  // REVIEW gates the manager/HR approval queue. Split by design:
+  // requesting must never imply reviewing.
+  ...actions("ATTENDANCE_WORK_MODE", ["REQUEST", "REVIEW"]),
+
   ...actions("LEAVE", ["READ", "CREATE", "UPDATE", "APPROVE", "REJECT"]),
 
   ...actions("PAYROLL", ["READ", "CREATE", "UPDATE", "APPROVE", "MANAGE"]),
@@ -384,6 +390,10 @@ const SELF_SERVICE_PERMISSIONS = [
   "ANNOUNCEMENT_READ",
   "HOLIDAY_READ",
   "SHIFT_READ",
+
+  // Phase 31.4 — every employee may request non-office work for
+  // themselves; reviewing stays a separately-granted power.
+  "ATTENDANCE_WORK_MODE_REQUEST",
 ];
 
 export const DEFAULT_ROLE_MATRIX = {
@@ -457,6 +467,9 @@ export const DEFAULT_ROLE_MATRIX = {
     // Phase 31.3 — HR configures geofenced attendance locations.
     "ATTENDANCE_LOCATION_READ",
     "ATTENDANCE_LOCATION_MANAGE",
+
+    // Phase 31.4 — HR reviews work-mode requests company-wide.
+    "ATTENDANCE_WORK_MODE_REVIEW",
 
     "LEAVE_READ",
     "LEAVE_APPROVE",
@@ -545,6 +558,9 @@ export const DEFAULT_ROLE_MATRIX = {
   MANAGER: permissions(
     ...SELF_SERVICE_PERMISSIONS,
     "EMPLOYEE_READ_TEAM",
+    // Phase 31.4 — review work-mode requests within the org subtree
+    // (scope enforced at the service layer, never by role name).
+    "ATTENDANCE_WORK_MODE_REVIEW",
     // Phase 29.5 §4 — view own team's monthly inputs only (TEAM scope).
     "PAYROLL_INPUT_READ",
     "ATTENDANCE_READ",

@@ -68,6 +68,11 @@ export const attendancePolicyDraftValidator = [
   body('workModes.field').optional().isBoolean(),
   body('workModes.clientSite').optional().isBoolean(),
   body('workModes.businessTravel').optional().isBoolean(),
+  body('workModeApproval').optional().isObject(),
+  body('workModeApproval.wfh').optional().isBoolean(),
+  body('workModeApproval.field').optional().isBoolean(),
+  body('workModeApproval.clientSite').optional().isBoolean(),
+  body('workModeApproval.businessTravel').optional().isBoolean(),
   validate,
 ];
 

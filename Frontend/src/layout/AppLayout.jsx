@@ -432,9 +432,19 @@ const AppLayout = () => {
     ? [{ to: '/app/attendance/policy', label: 'Attendance Policy' }]
     : [];
 
+  // Phase 31.4 — Work Mode Requests entry (one item; the page splits
+  // My requests / Pending approvals by permission internally).
+  const workModeMenu = hasAnyPermission([
+    'ATTENDANCE_WORK_MODE_REQUEST',
+    'ATTENDANCE_WORK_MODE_REVIEW',
+  ])
+    ? [{ to: '/app/attendance/work-modes', label: 'Work Mode Requests' }]
+    : [];
+
   const menu = [
     ...baseMenu,
     ...attendancePolicyMenu,
+    ...workModeMenu,
     ...payrollMenu,
     ...recruitmentDashboardMenu,
     ...candidateMenu,

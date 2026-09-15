@@ -380,6 +380,13 @@ const AttendancePage = () => {
                     </p>
                   </>
                 )}
+                {workMode !== 'OFFICE' &&
+                  live.workModeAuthorization &&
+                  live.workModeAuthorization[workMode] === false && (
+                    <p className="max-w-xs text-sm text-crewly-red">
+                      Approved {MODE_LABEL[workMode] || workMode} request required for today.
+                    </p>
+                  )}
                 {can('CLOCK_IN') && (
                   <button
                     onClick={() => doAction('CLOCK_IN')}

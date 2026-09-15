@@ -51,6 +51,7 @@ const OrgChartPage = lazy(() => import("../pages/org-chart/OrgChartPage.jsx"));
 const AttendancePage = lazy(() => import("../pages/attendance/AttendancePage.jsx"));
 const AttendanceReportPage = lazy(() => import("../pages/attendance/AttendanceReportPage.jsx"));
 const AttendancePolicyPage = lazy(() => import("../pages/attendance/AttendancePolicyPage.jsx"));
+const AttendanceWorkModePage = lazy(() => import("../pages/attendance/AttendanceWorkModePage.jsx"));
 
 const LeavesPage = lazy(() => import("../pages/leaves/LeavesPage.jsx"));
 const LeaveApprovalsPage = lazy(() => import("../pages/leaves/LeaveApprovalsPage.jsx"));
@@ -401,6 +402,13 @@ const AppRoutes = () => (
       <Route
         path="attendance/policy"
         element={<AttendancePolicyPage />}
+      />
+
+      {/* Phase 31.4 — Work Mode Requests (permission-gated inside the
+          page: My requests vs Pending approvals tabs) */}
+      <Route
+        path="attendance/work-modes"
+        element={<AttendanceWorkModePage />}
       />
 
       {/* Leave management */}

@@ -142,6 +142,17 @@ const attendancePolicySchema = new mongoose.Schema(
       businessTravel: { type: Boolean, default: false },
     },
 
+    // Phase 31.4 — per-mode approval requirement. true = clock-in
+    // under the mode needs an APPROVED work-mode request covering
+    // the day. Secure default: approval required. OFFICE never
+    // needs a request, so it has no flag here.
+    workModeApproval: {
+      wfh: { type: Boolean, default: true },
+      field: { type: Boolean, default: true },
+      clientSite: { type: Boolean, default: true },
+      businessTravel: { type: Boolean, default: true },
+    },
+
     // Future-compatible seam for Phase 31.3. No coordinates, no offices,
     // no geofences, no browser location in 31.1.
     locationEnforcement: {

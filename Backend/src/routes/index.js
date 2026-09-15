@@ -11,6 +11,7 @@ import userRoutes from "./userRoutes.js";
 import attendanceRoutes from "./attendanceRoutes.js";
 import attendancePolicyRoutes from "./attendancePolicyRoutes.js";
 import attendanceLocationRoutes from "./attendanceLocationRoutes.js";
+import attendanceWorkModeRoutes from "./attendanceWorkModeRoutes.js";
 import leaveRoutes from "./leaveRoutes.js";
 import projectRoutes from "./projectRoutes.js";
 import taskRoutes from "./taskRoutes.js";
@@ -130,6 +131,9 @@ router.use("/attendance/policy", attendancePolicyRoutes);
 
 // Phase 31.3 — same ordering for the same reason.
 router.use("/attendance/locations", attendanceLocationRoutes);
+// Phase 31.4 — mounted before /attendance so work-mode reads never
+// fall through to the generic attendance router.
+router.use("/attendance/work-mode-requests", attendanceWorkModeRoutes);
 
 router.use("/attendance", attendanceRoutes);
 

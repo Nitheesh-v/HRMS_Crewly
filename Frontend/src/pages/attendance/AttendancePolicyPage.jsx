@@ -31,6 +31,7 @@ const DEFAULT_FORM = {
   },
   weekendHoliday: { allowWorkOnWeeklyOff: true, allowWorkOnHoliday: true },
   workModes: { office: true, wfh: false, field: false, clientSite: false, businessTravel: false },
+  workModeApproval: { wfh: true, field: true, clientSite: true, businessTravel: true },
   locationEnforcement: 'DISABLED',
 };
 
@@ -76,6 +77,12 @@ const toForm = (policy) => {
       field: policy.workModes?.field ?? false,
       clientSite: policy.workModes?.clientSite ?? false,
       businessTravel: policy.workModes?.businessTravel ?? false,
+    },
+    workModeApproval: {
+      wfh: policy.workModeApproval?.wfh ?? true,
+      field: policy.workModeApproval?.field ?? true,
+      clientSite: policy.workModeApproval?.clientSite ?? true,
+      businessTravel: policy.workModeApproval?.businessTravel ?? true,
     },
     locationEnforcement: policy.locationEnforcement || 'DISABLED',
   };
@@ -125,6 +132,12 @@ const toPayload = (form, expectedConfigVersion) => ({
     field: Boolean(form.workModes.field),
     clientSite: Boolean(form.workModes.clientSite),
     businessTravel: Boolean(form.workModes.businessTravel),
+  },
+  workModeApproval: {
+    wfh: Boolean(form.workModeApproval.wfh),
+    field: Boolean(form.workModeApproval.field),
+    clientSite: Boolean(form.workModeApproval.clientSite),
+    businessTravel: Boolean(form.workModeApproval.businessTravel),
   },
   locationEnforcement: form.locationEnforcement,
 });
@@ -651,6 +664,37 @@ const AttendancePolicyPage = () => {
             disabled={readOnly}
             onChange={(value) => setSection('workModes', 'businessTravel', value)}
           />
+        </div>
+        <div className="max-w-xs space-y-2">
+          <p className="label">Approval required to clock in</p>
+          <Toggle
+            label="WFH needs approval"
+            checked={form.workModeApproval.wfh}
+            disabled={readOnly}
+            onChange={(value) => setSection('workModeApproval', 'wfh', value)}
+          />
+          <Toggle
+            label="Field needs approval"
+            checked={form.workModeApproval.field}
+            disabled={readOnly}
+            onChange={(value) => setSection('workModeApproval', 'field', value)}
+          />
+          <Toggle
+            label="Client site needs approval"
+            checked={form.workModeApproval.clientSite}
+            disabled={readOnly}
+            onChange={(value) => setSection('workModeApproval', 'clientSite', value)}
+          />
+          <Toggle
+            label="Business travel needs approval"
+            checked={form.workModeApproval.businessTravel}
+            disabled={readOnly}
+            onChange={(value) => setSection('workModeApproval', 'businessTravel', value)}
+          />
+          <p className="text-xs text-crewly-dim">
+            When on, clock-in under the mode needs an APPROVED work-mode
+            request covering the day. OFFICE never needs a request.
+          </p>
         </div>
         <div className="max-w-xs">
           <label className="label">Location enforcement</label>

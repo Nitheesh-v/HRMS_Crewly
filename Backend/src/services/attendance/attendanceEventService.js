@@ -20,9 +20,14 @@
 import Attendance from '../../models/Attendance.js';
 import AttendanceEvent from '../../models/AttendanceEvent.js';
 import AttendanceLocation from '../../models/AttendanceLocation.js';
+import AttendanceWorkModeRequest from '../../models/AttendanceWorkModeRequest.js';
 import Company from '../../models/Company.js';
 import ApiError from '../../utils/ApiError.js';
 import { verifyClockInLocation } from './attendanceLocationService.js';
+import {
+  findClockInAuthorization,
+  getWorkModeAuthorization,
+} from './attendanceWorkModeService.js';
 import {
   HALF_DAY_MINUTES,
   LATE_GRACE_MINUTES,
@@ -93,6 +98,7 @@ const defaultDeps = () => ({
   AttendanceModel: Attendance,
   AttendanceEventModel: AttendanceEvent,
   AttendanceLocationModel: AttendanceLocation,
+  WorkModeRequestModel: AttendanceWorkModeRequest,
   CompanyModel: Company,
   policyReader: (args) => getCurrentPolicy(args),
   engine: {
@@ -132,6 +138,17 @@ const serializeEvent = (event) => ({
   workMode: event.workMode || null,
   source: event.source || EVENT_SOURCE.WEB,
   location: serializeLocationVerification(event.locationVerification),
+  // Phase 31.4 — which approved request permitted this mode (CLOCK_IN
+  // only, approval-gated modes only; otherwise null).
+  authorization: event.authorization
+    ? {
+        requestId: String(event.authorization.requestId || ''),
+        mode: event.authorization.mode || null,
+        startDate: event.authorization.startDate || null,
+        endDate: event.authorization.endDate || null,
+        dayPortion: event.authorization.dayPortion || null,
+      }
+    : null,
 });
 
 // Company/policy timezone for day boundaries. Policy wins when active,
@@ -294,6 +311,21 @@ export const getLiveAttendance = async ({ companyId, userId, deps = {} }) => {
   const timezone = await resolveTimezone({ companyId, policy, CompanyModel: full.CompanyModel });
   const todayKey = dayKeyInZone(at, timezone);
 
+  // Phase 31.4 — today-card authorization map (best-effort: null when
+  // unreadable so the UI stays silent instead of misleading).
+  let workModeAuthorization = null;
+  try {
+    workModeAuthorization = await getWorkModeAuthorization({
+      WorkModeRequestModel: full.WorkModeRequestModel,
+      companyId,
+      userId,
+      date: todayKey,
+      policy,
+    });
+  } catch {
+    workModeAuthorization = null;
+  }
+
   let control = await AttendanceModel.findOne({ companyId, user: userId, date: todayKey });
   if (!control) {
     control = await findOpenSession({ AttendanceModel, companyId, userId, excludeDate: todayKey });
@@ -323,6 +355,7 @@ export const getLiveAttendance = async ({ companyId, userId, deps = {} }) => {
       now: at,
     });
     empty.otherOpenSession = null;
+    empty.workModeAuthorization = workModeAuthorization;
     return empty;
   }
 
@@ -353,6 +386,7 @@ export const getLiveAttendance = async ({ companyId, userId, deps = {} }) => {
     if (other) otherOpenSession = { date: other.date, liveState: deriveLiveState(other) };
   }
   snapshot.otherOpenSession = otherOpenSession;
+  snapshot.workModeAuthorization = workModeAuthorization;
   return snapshot;
 };
 
@@ -773,7 +807,7 @@ const resolveRuleFromRecord = async ({ control, companyId, userId, engine, resol
 };
 
 const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy, workMode, idempotencyKey, location = null }) => {
-  const { AttendanceModel, AttendanceEventModel, AttendanceLocationModel, resolveScheduleRule, engine } = full;
+  const { AttendanceModel, AttendanceEventModel, AttendanceLocationModel, WorkModeRequestModel, resolveScheduleRule, engine } = full;
 
   const mode = workMode || WORK_MODE.OFFICE;
   if (!Object.values(WORK_MODE).includes(mode)) {
@@ -782,6 +816,20 @@ const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy
   if (!isWorkModeAllowed(mode, policy)) {
     throw ApiError.forbidden(`${mode} is not enabled in your company attendance policy`);
   }
+
+  // Phase 31.4 — non-office authorization gate. OFFICE never needs a
+  // request; other modes need an APPROVED request covering the
+  // attendance date when the policy requires approval for them.
+  // Refusals throw here, before anything is written. Matching NEVER
+  // mutates the request.
+  const authorization = await findClockInAuthorization({
+    WorkModeRequestModel,
+    companyId,
+    userId,
+    mode,
+    date: todayKey,
+    policy,
+  });
 
   // Phase 31.3 — geofence gate (OFFICE CLOCK_IN only). Refusals throw
   // here, before anything is written: no control, no event.
@@ -865,6 +913,9 @@ const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy
     // Immutable verification snapshot rides the fact (absent when no
     // verification applied — DISABLED, non-OFFICE, or OPTIONAL-empty).
     if (verification.snapshot) eventDoc.locationVerification = verification.snapshot;
+    // Phase 31.4 — minimal authorization facts (absent for OFFICE and
+    // approval-free modes). Read-only match; the request is untouched.
+    if (authorization) eventDoc.authorization = authorization;
     created = await AttendanceEventModel.create(eventDoc);
   } catch (err) {
     if (isDuplicateKey(err) && idempotencyKey) {

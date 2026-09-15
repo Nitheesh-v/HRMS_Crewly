@@ -120,7 +120,9 @@ export const ensurePermissions = async () => {
 //             HR_MANAGER READ + MANAGE (activation stays admin-only)
 //   27 → 28 : 31.3 added ATTENDANCE_LOCATION_READ/_MANAGE and gave
 //             HR_MANAGER both
-const SYSTEM_PERMISSION_VERSION = 28;
+//   28 → 29 : 31.4 added ATTENDANCE_WORK_MODE_REQUEST (self-service)
+//             and _REVIEW (MANAGER + HR_MANAGER scoped queue)
+const SYSTEM_PERMISSION_VERSION = 29;
 export const ensureCompanyRoles = async (
   companyId,
   createdBy = null,

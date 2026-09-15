@@ -82,6 +82,23 @@ const attendanceEventSchema = new Schema(
       ),
       default: undefined,
     },
+    // Phase 31.4 — work-mode authorization snapshot (CLOCK_IN under a
+    // non-office mode, when the policy required approval). Minimal
+    // facts answering "which approved request permitted this mode"
+    // even after later workflow changes. No reason text, no PII.
+    authorization: {
+      type: new Schema(
+        {
+          requestId: { type: Schema.Types.ObjectId, ref: 'AttendanceWorkModeRequest' },
+          mode: { type: String },
+          startDate: { type: String },
+          endDate: { type: String },
+          dayPortion: { type: String },
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
   },
   { timestamps: true },
 );

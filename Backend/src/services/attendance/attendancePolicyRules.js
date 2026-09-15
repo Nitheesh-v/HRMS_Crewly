@@ -311,6 +311,21 @@ export const validateWorkModes = (workModes = {}) => {
   return errors;
 };
 
+// Phase 31.4 — per-mode approval flags. Missing entirely is valid
+// (pre-31.4 policies): readers grandfather approval-free clock-in
+// until the policy is re-saved with explicit flags.
+const validateWorkModeApproval = (value) => {
+  if (value === undefined || value === null) return [];
+  if (typeof value !== 'object') return ['workModeApproval must be an object'];
+  const errors = [];
+  for (const key of ['wfh', 'field', 'clientSite', 'businessTravel']) {
+    if (value[key] !== undefined && typeof value[key] !== 'boolean') {
+      errors.push(`workModeApproval.${key} must be a boolean`);
+    }
+  }
+  return errors;
+};
+
 export const validatePolicy = (policy = {}) => {
   const errors = [];
 
@@ -345,6 +360,7 @@ export const validatePolicy = (policy = {}) => {
     ...validateOvertime(policy.overtime),
     ...validateWeekendHoliday(policy.weekendHoliday),
     ...validateWorkModes(policy.workModes),
+    ...validateWorkModeApproval(policy.workModeApproval),
   );
 
   return { valid: errors.length === 0, errors };
