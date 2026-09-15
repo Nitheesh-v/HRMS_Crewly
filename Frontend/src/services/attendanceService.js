@@ -37,6 +37,41 @@ const attendanceService = {
     params.set('pageSize', String(pageSize));
     return api.get(`/attendance/presence?${params.toString()}`);
   },
+  // Phase 31.10 — Monthly timesheets. Scope derives backend-side
+  // from the session; only allowlisted filters travel on the query.
+  myTimesheet: (month) => api.get(`/attendance/timesheets/mine?month=${month}`),
+  teamTimesheets: ({ month, search = '', departmentId = '', hasExceptions = false, page = 1, pageSize = 10 } = {}) => {
+    const params = new URLSearchParams();
+    params.set('month', month);
+    if (search) params.set('search', search);
+    if (departmentId) params.set('departmentId', departmentId);
+    if (hasExceptions) params.set('hasExceptions', 'true');
+    params.set('page', String(page));
+    params.set('pageSize', String(pageSize));
+    return api.get(`/attendance/timesheets/team?${params.toString()}`);
+  },
+  employeeTimesheet: (employeeId, month) =>
+    api.get(`/attendance/timesheets/employee/${employeeId}?month=${month}`),
+  // CSV export (same scope + filters as the team table). Triggers a
+  // browser download from the blob the API streams back.
+  downloadTeamTimesheets: async ({ month, search = '', departmentId = '', hasExceptions = false } = {}) => {
+    const params = new URLSearchParams();
+    params.set('month', month);
+    if (search) params.set('search', search);
+    if (departmentId) params.set('departmentId', departmentId);
+    if (hasExceptions) params.set('hasExceptions', 'true');
+    const blob = await api.get(`/attendance/timesheets/export?${params.toString()}`, {
+      responseType: 'blob',
+    });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `crewly-timesheet-${month}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.URL.revokeObjectURL(url);
+  },
 };
 
 export default attendanceService;

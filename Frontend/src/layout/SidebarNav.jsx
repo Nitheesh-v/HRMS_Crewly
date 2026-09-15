@@ -68,6 +68,8 @@ const NAV_ICON_BY_PATH = {
   "/app/attendance/regularizations": ClipboardList,
   "/app/attendance/overtime": Timer,
   "/app/attendance/team": Users,
+  "/app/attendance/timesheet": CalendarDays,
+  "/app/attendance/team-timesheets": CalendarRange,
   "/app/leaves": CalendarOff,
   "/app/leaves/approvals": CheckCircle2,
   "/app/payroll": Wallet,

@@ -26,7 +26,8 @@ Programme laws (all phases):
 | 31.7 Leave, Holiday & Weekly-Off Reconciliation | `PHASE_31_7_LEAVE_HOLIDAY_RECONCILIATION.md` | Shipped (deterministic daily resolution, conflicts, no payroll changes) |
 | 31.8 Overtime, Weekend/Holiday Work & Comp-Off | `PHASE_31_8_OVERTIME_COMPOFF.md` | Shipped (human-approved OT/comp-off, approved-only payroll seam, RBAC v31) |
 | 31.9 Teams-Style Who's Working & Live Team Attendance | `PHASE_31_9_WHOS_WORKING.md` | Shipped (live presence board, batched derivation, no new permission, RBAC v31) |
-| 31.10+ | — | Not started. No code, no scaffolding, no plan in repo. |
+| 31.10 Attendance Calendar & Timesheets | `PHASE_31_10_ATTENDANCE_CALENDAR_TIMESHEETS.md` | Shipped (my/team timesheets, day drawer, scoped CSV export, no new permission, RBAC v31) |
+| 31.11+ | — | Not started. No code, no scaffolding, no plan in repo. |
 
 ## Vocabulary (owned by 31.1, binding on all later phases)
 

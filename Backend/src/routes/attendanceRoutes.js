@@ -14,6 +14,12 @@ import {
 import {
   getPresence,
 } from '../controllers/attendancePresenceController.js';
+import {
+  downloadTeamTimesheets,
+  getMyTimesheetMonth,
+  getScopedEmployeeTimesheet,
+  getTeamTimesheetTable,
+} from '../controllers/attendanceTimesheetController.js';
 import { attendanceEventValidator } from '../validators/attendanceEventValidator.js';
 import { protect } from '../middlewares/authMiddleware.js';
 import {
@@ -121,6 +127,44 @@ router.get(
     'ATTENDANCE_READ'
   ),
   getPresence
+);
+
+// Phase 31.10 — Attendance calendar & timesheets (read-only).
+// Self month for every employee; team table, scoped drill-down
+// and CSV export under the same oversight permission as the
+// register/report/presence above (no new permission). Org scope
+// is derived backend-side in the timesheet service.
+router.get(
+  '/timesheets/mine',
+  requireAnyPermission([
+    'ATTENDANCE_READ_SELF',
+    'ATTENDANCE_READ',
+  ]),
+  getMyTimesheetMonth
+);
+
+router.get(
+  '/timesheets/team',
+  requirePermission(
+    'ATTENDANCE_READ'
+  ),
+  getTeamTimesheetTable
+);
+
+router.get(
+  '/timesheets/export',
+  requirePermission(
+    'ATTENDANCE_READ'
+  ),
+  downloadTeamTimesheets
+);
+
+router.get(
+  '/timesheets/employee/:employeeId',
+  requirePermission(
+    'ATTENDANCE_READ'
+  ),
+  getScopedEmployeeTimesheet
 );
 
 export default router;

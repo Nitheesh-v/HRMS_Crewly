@@ -55,6 +55,8 @@ const AttendanceWorkModePage = lazy(() => import("../pages/attendance/Attendance
 const AttendanceRegularizationPage = lazy(() => import("../pages/attendance/AttendanceRegularizationPage.jsx"));
 const AttendanceOvertimePage = lazy(() => import("../pages/attendance/AttendanceOvertimePage.jsx"));
 const AttendanceTeamPage = lazy(() => import("../pages/attendance/AttendanceTeamPage.jsx"));
+const AttendanceTimesheetPage = lazy(() => import("../pages/attendance/AttendanceTimesheetPage.jsx"));
+const AttendanceTeamTimesheetsPage = lazy(() => import("../pages/attendance/AttendanceTeamTimesheetsPage.jsx"));
 
 const LeavesPage = lazy(() => import("../pages/leaves/LeavesPage.jsx"));
 const LeaveApprovalsPage = lazy(() => import("../pages/leaves/LeaveApprovalsPage.jsx"));
@@ -408,6 +410,25 @@ const AppRoutes = () => (
         element={
           <RequireRole roles={SENIORS}>
             <AttendanceTeamPage />
+          </RequireRole>
+        }
+      />
+
+      {/* Phase 31.10 — My Timesheet (self-service month; the backend
+          enforces ATTENDANCE_READ_SELF/READ + actor identity). */}
+      <Route
+        path="attendance/timesheet"
+        element={<AttendanceTimesheetPage />}
+      />
+
+      {/* Phase 31.10 — Team Timesheets (same SENIORS audience as the
+          Who's Working board; the backend additionally enforces
+          ATTENDANCE_READ + org scope). */}
+      <Route
+        path="attendance/team-timesheets"
+        element={
+          <RequireRole roles={SENIORS}>
+            <AttendanceTeamTimesheetsPage />
           </RequireRole>
         }
       />

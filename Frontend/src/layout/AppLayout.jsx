@@ -466,6 +466,16 @@ const AppLayout = () => {
     ? [{ to: '/app/attendance/team', label: "Who's Working" }]
     : [];
 
+  // Phase 31.10 — My Timesheet entry (every employee with the
+  // self-service attendance read; seniors hold it too) plus the
+  // scoped Team Timesheets table for the oversight audience.
+  const timesheetMenu = hasAnyPermission(['ATTENDANCE_READ_SELF', 'ATTENDANCE_READ'])
+    ? [{ to: '/app/attendance/timesheet', label: 'My Timesheet' }]
+    : [];
+  const teamTimesheetsMenu = hasAnyPermission(['ATTENDANCE_READ'])
+    ? [{ to: '/app/attendance/team-timesheets', label: 'Team Timesheets' }]
+    : [];
+
   const menu = [
     ...baseMenu,
     ...attendancePolicyMenu,
@@ -473,6 +483,8 @@ const AppLayout = () => {
     ...regularizationMenu,
     ...overtimeMenu,
     ...teamMenu,
+    ...timesheetMenu,
+    ...teamTimesheetsMenu,
     ...payrollMenu,
     ...recruitmentDashboardMenu,
     ...candidateMenu,
