@@ -11,6 +11,9 @@ import {
   getTodayLive,
   postEvent,
 } from '../controllers/attendanceEventController.js';
+import {
+  getPresence,
+} from '../controllers/attendancePresenceController.js';
 import { attendanceEventValidator } from '../validators/attendanceEventValidator.js';
 import { protect } from '../middlewares/authMiddleware.js';
 import {
@@ -107,6 +110,17 @@ router.get(
     'ATTENDANCE_READ'
   ),
   getMonthlyReport
+);
+
+// Phase 31.9 — Who's Working live board. Same scoped oversight
+// permission as the register/report above (no new permission);
+// org scope is derived backend-side in the presence service.
+router.get(
+  '/presence',
+  requirePermission(
+    'ATTENDANCE_READ'
+  ),
+  getPresence
 );
 
 export default router;

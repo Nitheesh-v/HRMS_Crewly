@@ -54,6 +54,7 @@ const AttendancePolicyPage = lazy(() => import("../pages/attendance/AttendancePo
 const AttendanceWorkModePage = lazy(() => import("../pages/attendance/AttendanceWorkModePage.jsx"));
 const AttendanceRegularizationPage = lazy(() => import("../pages/attendance/AttendanceRegularizationPage.jsx"));
 const AttendanceOvertimePage = lazy(() => import("../pages/attendance/AttendanceOvertimePage.jsx"));
+const AttendanceTeamPage = lazy(() => import("../pages/attendance/AttendanceTeamPage.jsx"));
 
 const LeavesPage = lazy(() => import("../pages/leaves/LeavesPage.jsx"));
 const LeaveApprovalsPage = lazy(() => import("../pages/leaves/LeaveApprovalsPage.jsx"));
@@ -395,6 +396,18 @@ const AppRoutes = () => (
         element={
           <RequireRole roles={SENIORS}>
             <AttendanceReportPage />
+          </RequireRole>
+        }
+      />
+
+      {/* Phase 31.9 — Who's Working live team board (same senior
+          audience as the report; the backend additionally enforces
+          ATTENDANCE_READ + org scope). */}
+      <Route
+        path="attendance/team"
+        element={
+          <RequireRole roles={SENIORS}>
+            <AttendanceTeamPage />
           </RequireRole>
         }
       />

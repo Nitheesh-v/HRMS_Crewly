@@ -459,12 +459,20 @@ const AppLayout = () => {
     ? [{ to: '/app/attendance/overtime', label: 'Overtime & Comp-Off' }]
     : [];
 
+  // Phase 31.9 — Who's Working live board (one item; holders of the
+  // existing scoped attendance-read permission, i.e. managers, team
+  // leads and HR — the backend derives company vs team scope).
+  const teamMenu = hasAnyPermission(['ATTENDANCE_READ'])
+    ? [{ to: '/app/attendance/team', label: "Who's Working" }]
+    : [];
+
   const menu = [
     ...baseMenu,
     ...attendancePolicyMenu,
     ...workModeMenu,
     ...regularizationMenu,
     ...overtimeMenu,
+    ...teamMenu,
     ...payrollMenu,
     ...recruitmentDashboardMenu,
     ...candidateMenu,
