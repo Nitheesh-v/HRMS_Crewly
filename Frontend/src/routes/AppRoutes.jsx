@@ -62,6 +62,7 @@ const KioskStationsPage = lazy(() => import("../pages/attendance/KioskStationsPa
 const QrChallengesPage = lazy(() => import("../pages/attendance/QrChallengesPage.jsx"));
 const QrPunchPage = lazy(() => import("../pages/attendance/QrPunchPage.jsx"));
 const AttendanceImportPage = lazy(() => import("../pages/attendance/AttendanceImportPage.jsx"));
+const AttendanceAnalyticsPage = lazy(() => import("../pages/attendance/AttendanceAnalyticsPage.jsx"));
 
 const LeavesPage = lazy(() => import("../pages/leaves/LeavesPage.jsx"));
 const LeaveApprovalsPage = lazy(() => import("../pages/leaves/LeaveApprovalsPage.jsx"));
@@ -516,6 +517,15 @@ const AppRoutes = () => (
             <AttendanceImportPage />
           </RequireRole>
         }
+      />
+
+      {/* Phase 31.15 — Attendance Reports & Analytics (permission-gated
+          inside the page: analytics tabs need ATTENDANCE_ANALYTICS_READ,
+          My summary needs ATTENDANCE_READ_SELF — the backend additionally
+          enforces both plus org scope). */}
+      <Route
+        path="attendance/analytics"
+        element={<AttendanceAnalyticsPage />}
       />
 
       {/* Leave management */}

@@ -158,6 +158,12 @@ export const DEFAULT_PERMISSIONS = [
   // keep scoped team views, employees keep self-service QR redemption.
   ...actions("ATTENDANCE_CAPTURE", ["MANAGE"]),
 
+  // Phase 31.15 — historical attendance reporting & analytics.
+  // Company analytics for HR/admin; managers holding it stay
+  // team-scoped (scope is enforced in the service, never widened
+  // by this permission). Exports ride this permission + audit.
+  ...actions("ATTENDANCE_ANALYTICS", ["READ"]),
+
   ...actions("LEAVE", ["READ", "CREATE", "UPDATE", "APPROVE", "REJECT"]),
 
   ...actions("PAYROLL", ["READ", "CREATE", "UPDATE", "APPROVE", "MANAGE"]),
@@ -525,6 +531,7 @@ export const DEFAULT_ROLE_MATRIX = {
 
     // Phase 31.14 — HR manages kiosks, QR challenges, and CSV imports.
     "ATTENDANCE_CAPTURE_MANAGE",
+    "ATTENDANCE_ANALYTICS_READ",
 
     "LEAVE_READ",
     "LEAVE_APPROVE",

@@ -25,6 +25,7 @@ import { ROLES } from '../../utils/constants.js';
 import { resolveScopeIds as defaultResolveScopeIds } from '../../utils/orgHelpers.js';
 import { notifySmart } from '../../utils/notifyPref.js';
 import { recordAudit } from '../../utils/securityauditService.js';
+import { bumpAttendanceAnalyticsGeneration } from '../analyticsCacheInvalidation.js';
 import {
   dayKey,
   evaluatePunch,
@@ -790,6 +791,8 @@ export const decideRegularization = async ({
       newValue: { type: row.type, attendanceDate: row.attendanceDate, completed: 'retry' },
     });
     const completed = await RequestModel.findOne({ _id: row._id, companyId }).lean();
+    // 31.15 — review decision changes attendance facts: retire cached analytics.
+    bumpAttendanceAnalyticsGeneration(companyId).catch(() => {});
     return serializeRegularization(completed || row, { viewerId: reviewerId, isReviewer: true });
   }
 

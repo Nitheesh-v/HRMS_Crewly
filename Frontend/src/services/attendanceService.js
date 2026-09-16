@@ -98,6 +98,91 @@ const attendanceService = {
     params.set('pageSize', String(pageSize));
     return api.get(`/attendance/operations?${params.toString()}`);
   },
+  // Phase 31.15 — Attendance reports & analytics (read-only).
+  // Scope, FINALIZED-vs-LIVE source and rate math all derive
+  // backend-side; only allowlisted filters travel on the query.
+  // Range is month | from/to | preset+month anchor; filters are
+  // singular ids mirroring the validator (departmentId/shiftId/
+  // locationId/employeeId/workMode).
+  analyticsOverview: ({ month = '', from = '', to = '', preset = '', departmentId = '', shiftId = '', locationId = '', employeeId = '', workMode = '' } = {}) => {
+    const params = new URLSearchParams();
+    if (month) params.set('month', month);
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    if (preset) params.set('preset', preset);
+    if (departmentId) params.set('departmentId', departmentId);
+    if (shiftId) params.set('shiftId', shiftId);
+    if (locationId) params.set('locationId', locationId);
+    if (employeeId) params.set('employeeId', employeeId);
+    if (workMode) params.set('workMode', workMode);
+    return api.get(`/attendance/analytics/overview?${params.toString()}`);
+  },
+  analyticsTrends: ({ month = '', from = '', to = '', preset = '', departmentId = '', shiftId = '', locationId = '', employeeId = '', workMode = '' } = {}) => {
+    const params = new URLSearchParams();
+    if (month) params.set('month', month);
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    if (preset) params.set('preset', preset);
+    if (departmentId) params.set('departmentId', departmentId);
+    if (shiftId) params.set('shiftId', shiftId);
+    if (locationId) params.set('locationId', locationId);
+    if (employeeId) params.set('employeeId', employeeId);
+    if (workMode) params.set('workMode', workMode);
+    return api.get(`/attendance/analytics/trends?${params.toString()}`);
+  },
+  analyticsEmployees: ({ month = '', from = '', to = '', preset = '', departmentId = '', shiftId = '', locationId = '', employeeId = '', workMode = '', sort = 'name', page = 1, pageSize = 25 } = {}) => {
+    const params = new URLSearchParams();
+    if (month) params.set('month', month);
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    if (preset) params.set('preset', preset);
+    if (departmentId) params.set('departmentId', departmentId);
+    if (shiftId) params.set('shiftId', shiftId);
+    if (locationId) params.set('locationId', locationId);
+    if (employeeId) params.set('employeeId', employeeId);
+    if (workMode) params.set('workMode', workMode);
+    params.set('sort', sort);
+    params.set('page', String(page));
+    params.set('pageSize', String(pageSize));
+    return api.get(`/attendance/analytics/employees?${params.toString()}`);
+  },
+  analyticsMine: ({ month = '', from = '', to = '', preset = '' } = {}) =>
+    api.get(`/attendance/analytics/mine?${new URLSearchParams(
+      Object.fromEntries(
+        [['month', month], ['from', from], ['to', to], ['preset', preset]].filter(([, v]) => v)
+      )
+    ).toString()}`),
+  analyticsReconciliation: (month) =>
+    api.get(`/attendance/analytics/payroll-reconciliation?month=${month}`),
+  // Phase 31.15 — CSV / XLSX export (same scope + filters as the
+  // on-screen report). Triggers a browser download from the blob
+  // the API streams back; metadata-only audit stays server-side.
+  downloadAnalytics: async ({ reportType = 'employees', format = 'csv', month = '', from = '', to = '', preset = '', departmentId = '', shiftId = '', locationId = '', employeeId = '', workMode = '' } = {}) => {
+    const params = new URLSearchParams();
+    params.set('reportType', reportType);
+    params.set('format', format);
+    if (month) params.set('month', month);
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    if (preset) params.set('preset', preset);
+    if (departmentId) params.set('departmentId', departmentId);
+    if (shiftId) params.set('shiftId', shiftId);
+    if (locationId) params.set('locationId', locationId);
+    if (employeeId) params.set('employeeId', employeeId);
+    if (workMode) params.set('workMode', workMode);
+    const blob = await api.get(`/attendance/analytics/export?${params.toString()}`, {
+      responseType: 'blob',
+    });
+    const stamp = month || (from && to ? `${from}_${to}` : 'range');
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `crewly-attendance-${reportType}-${stamp}.${format === 'xlsx' ? 'xlsx' : 'csv'}`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.URL.revokeObjectURL(url);
+  },
 };
 
 export default attendanceService;

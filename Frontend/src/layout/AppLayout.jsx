@@ -482,6 +482,13 @@ const AppLayout = () => {
     ? [{ to: '/app/attendance/operations', label: 'Attendance Operations' }]
     : [];
 
+  // Phase 31.15 — Attendance Analytics entry (oversight audience
+  // plus self-service: the page splits analytics tabs / My summary
+  // by permission internally).
+  const analyticsMenu = hasAnyPermission(['ATTENDANCE_ANALYTICS_READ', 'ATTENDANCE_READ_SELF'])
+    ? [{ to: '/app/attendance/analytics', label: 'Attendance Analytics' }]
+    : [];
+
   // Phase 31.14 — alternate capture entries (HR/Admin holders of the
   // capture permission; one item each inside the Time & Leave group).
   const captureMenu = hasAnyPermission(['ATTENDANCE_CAPTURE_MANAGE'])
@@ -502,6 +509,7 @@ const AppLayout = () => {
     ...timesheetMenu,
     ...teamTimesheetsMenu,
     ...operationsMenu,
+    ...analyticsMenu,
     ...captureMenu,
     ...payrollMenu,
     ...recruitmentDashboardMenu,

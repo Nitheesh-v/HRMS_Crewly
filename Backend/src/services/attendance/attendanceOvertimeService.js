@@ -13,6 +13,7 @@
 // block double decisions. No Redis correctness locks.
 // ─────────────────────────────────────────────────────────────
 import ApiError from '../../utils/ApiError.js';
+import { bumpAttendanceAnalyticsGeneration } from '../analyticsCacheInvalidation.js';
 import Attendance from '../../models/Attendance.js';
 import AttendanceOvertimeRequest from '../../models/AttendanceOvertimeRequest.js';
 import Leave from '../../models/Leave.js';
@@ -899,6 +900,8 @@ export const approveOvertimeRequest = async ({
     .populate({ path: 'user', select: 'name email designation' })
     .populate({ path: 'reviewedBy', select: 'name' })
     .lean();
+  // 31.15 — approval changes attendance facts: retire cached analytics.
+  bumpAttendanceAnalyticsGeneration(companyId).catch(() => {});
   return serializeOvertimeRequest(fresh || updated, { viewerId: reviewerId, isReviewer: true });
 };
 
@@ -944,6 +947,8 @@ export const rejectOvertimeRequest = async ({
     link: '/app/attendance/overtime',
     category: 'ATTENDANCE',
   });
+  // 31.15 — rejection changes the OT funnel: retire cached analytics.
+  bumpAttendanceAnalyticsGeneration(companyId).catch(() => {});
   return serializeOvertimeRequest(updated, { viewerId: reviewerId, isReviewer: true });
 };
 

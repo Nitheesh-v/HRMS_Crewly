@@ -59,6 +59,7 @@ import {
   minutesSinceMidnightInZone,
 } from './attendancePolicyRules.js';
 import { validateIngestContext } from './attendanceSourceRules.js';
+import { bumpAttendanceAnalyticsGeneration } from '../analyticsCacheInvalidation.js';
 import { getCurrentPolicy } from './attendancePolicyService.js';
 import {
   allowedActions,
@@ -897,6 +898,9 @@ export const recordEvent = async ({
       requestId: idempotencyKey || null,
       ...(ingest?.provenance ? { provenance: { ...ingest.provenance } } : {}),
     });
+    // 31.15 — new attendance fact: retire cached analytics (fire-
+    // and-forget; the punch never waits on Redis).
+    bumpAttendanceAnalyticsGeneration(companyId).catch(() => {});
   } catch (err) {
     if (isDuplicateKey(err) && idempotencyKey) {
       const existing = await AttendanceEventModel.findOne({
@@ -1260,6 +1264,8 @@ const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy
     // approval-free modes). Read-only match; the request is untouched.
     if (authorization) eventDoc.authorization = authorization;
     created = await AttendanceEventModel.create(eventDoc);
+    // 31.15 — new clock-in fact: retire cached analytics.
+    bumpAttendanceAnalyticsGeneration(companyId).catch(() => {});
   } catch (err) {
     if (isDuplicateKey(err) && idempotencyKey) {
       const existing = await AttendanceEventModel.findOne({

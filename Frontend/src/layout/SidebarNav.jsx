@@ -75,6 +75,7 @@ const NAV_ICON_BY_PATH = {
   "/app/attendance/timesheet": CalendarDays,
   "/app/attendance/team-timesheets": CalendarRange,
   "/app/attendance/operations": Gauge,
+  "/app/attendance/analytics": BarChart3,
   "/app/attendance/kiosks": MonitorSmartphone,
   "/app/attendance/qr": QrCode,
   "/app/attendance/imports": FileUp,

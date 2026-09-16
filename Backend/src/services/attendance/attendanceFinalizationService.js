@@ -59,6 +59,7 @@ import {
   deleteCache,
   noteCacheInvalidation,
 } from '../redisCacheService.js';
+import { bumpAttendanceAnalyticsGeneration } from '../analyticsCacheInvalidation.js';
 import {
   FINALIZATION_ISSUE,
   FINALIZATION_STATUS,
@@ -649,6 +650,8 @@ export const finalizeMonth = async ({ companyId, actor, month, deps = {}, req = 
     companyId, type: 'ATTENDANCE_FINALIZED', month: target, version, actorId,
   });
 
+  // 31.15 — new finalized version: retire cached analytics.
+  bumpAttendanceAnalyticsGeneration(companyId).catch(() => {});
   return { month: target, version, status: FINALIZATION_STATUS.FINALIZED, summary, fingerprint: facts.fingerprint };
 };
 
@@ -813,6 +816,8 @@ export const sendToPayroll = async ({ companyId, actor, month, deps = {}, req = 
     companyId, type: 'ATTENDANCE_SENT_TO_PAYROLL', month: target, version, actorId,
   });
 
+  // 31.15 — payroll sync changes reconciliation inputs: retire cached analytics.
+  bumpAttendanceAnalyticsGeneration(companyId).catch(() => {});
   return {
     month: target, version, status: FINALIZATION_STATUS.SENT_TO_PAYROLL, syncedEmployees: synced,
   };
@@ -876,6 +881,8 @@ export const reopenMonth = async ({ companyId, actor, month, reason = '', deps =
     companyId, type: 'ATTENDANCE_REOPENED', month: target, version: period.currentVersion, actorId,
   });
 
+  // 31.15 — reopen changes the authoritative source: retire cached analytics.
+  bumpAttendanceAnalyticsGeneration(companyId).catch(() => {});
   return { month: target, version: period.currentVersion, status: FINALIZATION_STATUS.REOPENED };
 };
 

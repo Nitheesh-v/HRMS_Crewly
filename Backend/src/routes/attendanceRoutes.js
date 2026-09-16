@@ -60,6 +60,22 @@ import {
   qrTokenValidator,
 } from '../validators/attendanceCaptureValidator.js';
 import { csvUpload } from '../middlewares/uploadMiddleware.js';
+import {
+  getAnalyticsEmployees,
+  getAnalyticsExport,
+  getAnalyticsMine,
+  getAnalyticsOverview,
+  getAnalyticsRecon,
+  getAnalyticsTrends,
+} from '../controllers/attendanceAnalyticsController.js';
+import {
+  analyticsEmployeesValidator,
+  analyticsExportValidator,
+  analyticsMineValidator,
+  analyticsOverviewValidator,
+  analyticsReconValidator,
+  analyticsTrendsValidator,
+} from '../validators/attendanceAnalyticsValidator.js';
 import { protect } from '../middlewares/authMiddleware.js';
 import {
   tenantContext,
@@ -390,6 +406,69 @@ router.get(
   ),
   importIdValidator,
   getImportById
+);
+
+// ─────────────────────────────────────────────────────────────
+// Phase 31.15 — historical attendance reporting & analytics.
+// Read-only GETs. Analytics permission gates company/team reads
+// (service enforces org scope); self analytics reuses READ_SELF.
+// ─────────────────────────────────────────────────────────────
+
+router.get(
+  '/analytics/overview',
+  requirePermission(
+    'ATTENDANCE_ANALYTICS_READ'
+  ),
+  analyticsOverviewValidator,
+  getAnalyticsOverview
+);
+
+router.get(
+  '/analytics/trends',
+  requirePermission(
+    'ATTENDANCE_ANALYTICS_READ'
+  ),
+  analyticsTrendsValidator,
+  getAnalyticsTrends
+);
+
+router.get(
+  '/analytics/employees',
+  requirePermission(
+    'ATTENDANCE_ANALYTICS_READ'
+  ),
+  analyticsEmployeesValidator,
+  getAnalyticsEmployees
+);
+
+// Declared before /analytics/payroll-reconciliation siblings so
+// no report path is shadowed; self analytics needs no analytics
+// permission (identity is the session itself).
+router.get(
+  '/analytics/mine',
+  requirePermission(
+    'ATTENDANCE_READ_SELF'
+  ),
+  analyticsMineValidator,
+  getAnalyticsMine
+);
+
+router.get(
+  '/analytics/payroll-reconciliation',
+  requirePermission(
+    'ATTENDANCE_ANALYTICS_READ'
+  ),
+  analyticsReconValidator,
+  getAnalyticsRecon
+);
+
+router.get(
+  '/analytics/export',
+  requirePermission(
+    'ATTENDANCE_ANALYTICS_READ'
+  ),
+  analyticsExportValidator,
+  getAnalyticsExport
 );
 
 export default router;

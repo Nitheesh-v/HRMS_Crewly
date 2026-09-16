@@ -58,3 +58,38 @@ export const bumpRecruitmentAnalyticsGeneration = async (companyId) => {
     return false;
   }
 };
+
+// ── Phase 31.15 — attendance analytics generation ────────────
+// Same contract as recruitment: tenant-owned counter, value keys
+// embed it, old generations expire via their own TTL. Bumped
+// fire-and-forget AFTER the Mongo commit from: recordEvent (all
+// punch paths incl. kiosk/QR/import), regularization + OT review
+// decisions, finalization transitions, and leave approve/cancel.
+
+export const attendanceAnalyticsGenerationKey = (companyId) =>
+  `crewly:cache:company:${String(companyId).toLowerCase()}:attendance:analytics:generation`;
+
+export const bumpAttendanceAnalyticsGeneration = async (companyId) => {
+  if (!companyId || !/^[a-f0-9]{24}$/i.test(String(companyId))) return false;
+  try {
+    const generation = await incrementWithTtl(
+      attendanceAnalyticsGenerationKey(companyId),
+      GENERATION_TTL_SECONDS
+    );
+    if (generation !== null) {
+      noteCacheInvalidation();
+      logger.debug(
+        `[Cache] attendance analytics generation bumped (generation=${generation})`
+      );
+      return true;
+    }
+    logger.debug('[Cache] attendance analytics generation bump skipped (Redis unavailable)');
+    return false;
+  } catch (error) {
+    // Cache invalidation must never break a valid business write.
+    logger.warn(
+      `[Cache] attendance analytics generation bump failed safely (${error?.code || 'error'})`
+    );
+    return false;
+  }
+};

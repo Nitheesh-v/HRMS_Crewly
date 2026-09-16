@@ -2,6 +2,7 @@ import Leave from '../models/Leave.js';
 import User from '../models/User.js';
 import Attendance from '../models/Attendance.js';
 import ApiError from '../utils/ApiError.js';
+import { bumpAttendanceAnalyticsGeneration } from '../services/analyticsCacheInvalidation.js';
 import ApiResponse from '../utils/ApiResponse.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { ROLES, LEAVE_TYPES } from '../utils/constants.js';
@@ -200,6 +201,10 @@ export const decideLeave = asyncHandler(async (req, res) => {
   leave.decidedAt = new Date();
   await leave.save();
 
+  // Phase 31.15 — leave verdicts change attendance facts: retire
+  // cached analytics (fire-and-forget; never fails the workflow).
+  bumpAttendanceAnalyticsGeneration(req.companyId).catch(() => {});
+
   // Phase 31.7 — an approval changes which days count as leave:
   // best-effort refresh the affected attendance projections
   // (bounded, idempotent, never fails the Leave workflow; reads
@@ -249,6 +254,10 @@ export const cancelLeave = asyncHandler(async (req, res) => {
 
   leave.status = 'CANCELLED';
   await leave.save();
+
+  // Phase 31.15 — cancellation changes attendance facts: retire
+  // cached analytics (fire-and-forget; never fails the workflow).
+  bumpAttendanceAnalyticsGeneration(req.companyId).catch(() => {});
 
   // Phase 31.7 — same best-effort seam as approval. Cancel is only
   // reachable from PENDING today (pending never applies), so this
