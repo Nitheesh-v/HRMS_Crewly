@@ -31,7 +31,16 @@ Programme laws (all phases):
 | 31.12 HR Attendance Operations Dashboard | `PHASE_31_12_ATTENDANCE_OPERATIONS.md` | Shipped (today-ops KPIs, attention queue, groupings, HR-only, RBAC v33) |
 | 31.13 Attendance Notifications & Automation | `PHASE_31_13_ATTENDANCE_NOTIFICATIONS_AUTOMATION.md` | Shipped (reminders observe, never act; reconcile-direct for reviewers) |
 | 31.14 Kiosk, QR & Attendance Import | `PHASE_31_14_KIOSK_QR_IMPORT.md` | Shipped (one engine, server-decided ingest, RBAC v34) |
-| 31.15+ | — | Not started. No code, no scaffolding, no plan in repo. |
+| 31.15 Attendance Reports & Analytics | `PHASE_31_15_ATTENDANCE_ANALYTICS.md` (+ `PHASE_31_15_TESTING_CHECKLIST.md`) | Shipped (read-only KPIs/trends/recon/exports, finalized-vs-live provenance, RBAC v35) |
+| 31.16 Security, Audit, Hardening & Final Close-Out | `PHASE_31_FINAL_ARCHITECTURE.md` | Shipped (close-out audit, 2 defects fixed, adversarial tests, final architecture) |
+
+## Programme status (31.16 close-out)
+
+Phase 31 is **CLOSED** on localhost acceptance of 31.16: Advanced
+Attendance & Workforce Time is production-ready within the agreed
+scope. No Phase 32 exists. The future Teams-like Presence &
+Availability enhancement is explicitly NOT part of Phase 31 and has
+no code, scaffolding, or tracking in this repository.
 
 ## Vocabulary (owned by 31.1, binding on all later phases)
 

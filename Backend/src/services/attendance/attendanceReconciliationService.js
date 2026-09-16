@@ -247,6 +247,10 @@ export const refreshRangeForLeave = async ({
     if (!person && UserModel?.findById) {
       try {
         person = await UserModel.findById(userId).lean();
+        // 31.16 — the leave doc is server-side, but the resolved user
+        // must still belong to this tenant (defense in depth; the
+        // event-service and reminder loaders already do the same).
+        if (person && String(person.companyId || '') !== String(companyId)) person = null;
       } catch {
         person = null;
       }
