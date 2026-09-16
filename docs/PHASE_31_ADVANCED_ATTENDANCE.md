@@ -29,7 +29,9 @@ Programme laws (all phases):
 | 31.10 Attendance Calendar & Timesheets | `PHASE_31_10_ATTENDANCE_CALENDAR_TIMESHEETS.md` | Shipped (my/team timesheets, day drawer, scoped CSV export, no new permission, RBAC v31) |
 | 31.11 Monthly Attendance Finalization | `PHASE_31_11_FINALIZATION.md` | Shipped (month lifecycle, blockers, versioned snapshots, payroll sync, RBAC v32) |
 | 31.12 HR Attendance Operations Dashboard | `PHASE_31_12_ATTENDANCE_OPERATIONS.md` | Shipped (today-ops KPIs, attention queue, groupings, HR-only, RBAC v33) |
-| 31.13+ | — | Not started. No code, no scaffolding, no plan in repo. |
+| 31.13 Attendance Notifications & Automation | `PHASE_31_13_ATTENDANCE_NOTIFICATIONS_AUTOMATION.md` | Shipped (reminders observe, never act; reconcile-direct for reviewers) |
+| 31.14 Kiosk, QR & Attendance Import | `PHASE_31_14_KIOSK_QR_IMPORT.md` | Shipped (one engine, server-decided ingest, RBAC v34) |
+| 31.15+ | — | Not started. No code, no scaffolding, no plan in repo. |
 
 ## Vocabulary (owned by 31.1, binding on all later phases)
 

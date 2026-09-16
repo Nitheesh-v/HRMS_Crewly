@@ -99,6 +99,26 @@ const attendanceEventSchema = new Schema(
       ),
       default: undefined,
     },
+    // Phase 31.14 — source provenance snapshot (KIOSK/QR/IMPORT
+    // only; WEB events carry none). Set at creation, immutable
+    // after (guards below). Honest minimal facts: which station /
+    // challenge / batch produced this event. A station-to-location
+    // binding here is provenance, never GPS verification.
+    provenance: {
+      type: new Schema(
+        {
+          stationId: { type: Schema.Types.ObjectId, ref: 'AttendanceKiosk' },
+          stationName: { type: String },
+          locationId: { type: Schema.Types.ObjectId, ref: 'AttendanceLocation' },
+          locationName: { type: String },
+          challengeId: { type: Schema.Types.ObjectId, ref: 'AttendanceQrChallenge' },
+          importBatchId: { type: Schema.Types.ObjectId, ref: 'AttendanceImport' },
+          sourceReference: { type: String },
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
   },
   { timestamps: true },
 );

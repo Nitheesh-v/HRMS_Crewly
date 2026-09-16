@@ -34,3 +34,19 @@ export const avatarUpload = wrap(
 export const documentUpload = wrap(
   multer({ storage: memory, limits: { fileSize: 5 * 1024 * 1024 }, fileFilter: docFilter }).single('document')
 );
+
+// Phase 31.14 — attendance CSV import (memory only; the raw file
+// is never persisted — only its fingerprint + outcomes). 2MB
+// comfortably holds the 5000-row cap; the parser enforces rows.
+const csvFilter = (req, file, cb) => {
+  if (/^(text\/csv|application\/vnd\.ms-excel|application\/csv|text\/plain)$/i.test(file.mimetype || '')) {
+    return cb(null, true);
+  }
+  // Browsers often sniff CSV as octet-stream — accept by extension.
+  if (/\.csv$/i.test(file.originalname || '')) return cb(null, true);
+  cb(new Error('Only CSV files are allowed'));
+};
+
+export const csvUpload = wrap(
+  multer({ storage: memory, limits: { fileSize: 2 * 1024 * 1024 }, fileFilter: csvFilter }).single('file')
+);

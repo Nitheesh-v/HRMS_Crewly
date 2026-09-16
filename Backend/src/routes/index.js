@@ -9,6 +9,7 @@ import companyRoutes from "./companyRoutes.js";
 import departmentRoutes from "./departmentRoutes.js";
 import userRoutes from "./userRoutes.js";
 import attendanceRoutes from "./attendanceRoutes.js";
+import attendanceKioskRoutes from "./attendanceKioskRoutes.js";
 import attendancePolicyRoutes from "./attendancePolicyRoutes.js";
 import attendanceLocationRoutes from "./attendanceLocationRoutes.js";
 import attendanceWorkModeRoutes from "./attendanceWorkModeRoutes.js";
@@ -144,6 +145,9 @@ router.use("/attendance/regularizations", attendanceRegularizationRoutes);
 router.use("/attendance/overtime", attendanceOvertimeRoutes);
 
 router.use("/attendance", attendanceRoutes);
+
+// Phase 31.14 — kiosk punch router (separate kioskAuth trust boundary).
+router.use("/kiosk", attendanceKioskRoutes);
 
 router.use("/leaves", leaveRoutes);
 

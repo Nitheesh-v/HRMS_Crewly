@@ -32,6 +32,34 @@ import {
   validateFinalizationMonth,
 } from '../controllers/attendanceFinalizationController.js';
 import { attendanceEventValidator } from '../validators/attendanceEventValidator.js';
+import {
+  getImportById,
+  getImports,
+  getImportTemplate,
+  postImportConfirm,
+  postImportPreview,
+} from '../controllers/attendanceImportController.js';
+import {
+  getStations,
+  patchStation,
+  postStation,
+  postStationRotate,
+} from '../controllers/attendanceKioskController.js';
+import {
+  postChallenge,
+  postRedeem,
+  postResolve,
+} from '../controllers/attendanceQrController.js';
+import {
+  importIdValidator,
+  kioskStationIdValidator,
+  kioskStationPatchValidator,
+  kioskStationValidator,
+  qrChallengeValidator,
+  qrRedeemValidator,
+  qrTokenValidator,
+} from '../validators/attendanceCaptureValidator.js';
+import { csvUpload } from '../middlewares/uploadMiddleware.js';
 import { protect } from '../middlewares/authMiddleware.js';
 import {
   tenantContext,
@@ -240,6 +268,128 @@ router.post(
     'ATTENDANCE_FINALIZATION_REOPEN'
   ),
   reopenAttendanceMonth
+);
+
+// ─────────────────────────────────────────────────────────────
+// Phase 31.14 — alternate capture (HR setup + self-service QR).
+// Kiosk punch endpoints live on the separate /api/kiosk router
+// (kioskAuth trust boundary); only station MANAGEMENT (HR) sits
+// here. QR redemption reuses self-service attendance permissions.
+// ─────────────────────────────────────────────────────────────
+
+// Kiosk stations (HR).
+router.post(
+  '/kiosks',
+  checkWriteAccess,
+  requirePermission(
+    'ATTENDANCE_CAPTURE_MANAGE'
+  ),
+  kioskStationValidator,
+  postStation
+);
+
+router.get(
+  '/kiosks',
+  requirePermission(
+    'ATTENDANCE_CAPTURE_MANAGE'
+  ),
+  getStations
+);
+
+router.patch(
+  '/kiosks/:id',
+  checkWriteAccess,
+  requirePermission(
+    'ATTENDANCE_CAPTURE_MANAGE'
+  ),
+  kioskStationPatchValidator,
+  patchStation
+);
+
+router.post(
+  '/kiosks/:id/rotate-secret',
+  checkWriteAccess,
+  requirePermission(
+    'ATTENDANCE_CAPTURE_MANAGE'
+  ),
+  kioskStationIdValidator,
+  postStationRotate
+);
+
+// QR challenges (HR issues; employees resolve + redeem).
+router.post(
+  '/qr/challenges',
+  checkWriteAccess,
+  requirePermission(
+    'ATTENDANCE_CAPTURE_MANAGE'
+  ),
+  qrChallengeValidator,
+  postChallenge
+);
+
+router.post(
+  '/qr/resolve',
+  requirePermission(
+    'ATTENDANCE_READ_SELF'
+  ),
+  qrTokenValidator,
+  postResolve
+);
+
+router.post(
+  '/qr/redeem',
+  checkWriteAccess,
+  requirePermission(
+    'ATTENDANCE_CREATE_SELF'
+  ),
+  qrRedeemValidator,
+  postRedeem
+);
+
+// CSV imports (HR; multipart file, memory only).
+router.post(
+  '/imports/preview',
+  checkWriteAccess,
+  requirePermission(
+    'ATTENDANCE_CAPTURE_MANAGE'
+  ),
+  csvUpload,
+  postImportPreview
+);
+
+router.post(
+  '/imports/confirm',
+  checkWriteAccess,
+  requirePermission(
+    'ATTENDANCE_CAPTURE_MANAGE'
+  ),
+  csvUpload,
+  postImportConfirm
+);
+
+router.get(
+  '/imports',
+  requirePermission(
+    'ATTENDANCE_CAPTURE_MANAGE'
+  ),
+  getImports
+);
+
+router.get(
+  '/imports/template.csv',
+  requirePermission(
+    'ATTENDANCE_CAPTURE_MANAGE'
+  ),
+  getImportTemplate
+);
+
+router.get(
+  '/imports/:id',
+  requirePermission(
+    'ATTENDANCE_CAPTURE_MANAGE'
+  ),
+  importIdValidator,
+  getImportById
 );
 
 export default router;

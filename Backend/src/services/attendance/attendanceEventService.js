@@ -58,6 +58,7 @@ import {
   evaluateDay,
   minutesSinceMidnightInZone,
 } from './attendancePolicyRules.js';
+import { validateIngestContext } from './attendanceSourceRules.js';
 import { getCurrentPolicy } from './attendancePolicyService.js';
 import {
   allowedActions,
@@ -196,6 +197,18 @@ const serializeEvent = (event) => ({
   at: event.at instanceof Date ? event.at.toISOString() : new Date(event.at).toISOString(),
   workMode: event.workMode || null,
   source: event.source || EVENT_SOURCE.WEB,
+  // 31.14: honest provenance for KIOSK/QR/IMPORT events (WEB: null).
+  provenance: event.provenance
+    ? {
+        stationId: event.provenance.stationId ? String(event.provenance.stationId) : null,
+        stationName: event.provenance.stationName || null,
+        locationId: event.provenance.locationId ? String(event.provenance.locationId) : null,
+        locationName: event.provenance.locationName || null,
+        challengeId: event.provenance.challengeId ? String(event.provenance.challengeId) : null,
+        importBatchId: event.provenance.importBatchId ? String(event.provenance.importBatchId) : null,
+        sourceReference: event.provenance.sourceReference || null,
+      }
+    : null,
   location: serializeLocationVerification(event.locationVerification),
   // Phase 31.4 — which approved request permitted this mode (CLOCK_IN
   // only, approval-gated modes only; otherwise null).
@@ -571,6 +584,10 @@ export const recordEvent = async ({
   // Phase 31.3: { locationId, position? } — consumed ONLY by CLOCK_IN;
   // break/out actions ignore it (no location collection by design).
   location = null,
+  // Phase 31.14: server-side ingest context { source, provenance }
+  // from trusted adapters (KIOSK/QR/IMPORT). Null = WEB default.
+  // Never populated from client input.
+  ingest = null,
   deps = {},
 }) => {
   const full = { ...defaultDeps(), ...deps };
@@ -585,6 +602,12 @@ export const recordEvent = async ({
 
   if (!Object.values(EVENT_TYPE).includes(action)) {
     throw ApiError.badRequest('Unknown attendance action');
+  }
+  // 31.14: non-WEB sources are server-decided and must carry valid
+  // provenance. DEVICE/MANUAL have no write path and are rejected.
+  const ingestErrors = validateIngestContext(ingest);
+  if (ingestErrors.length) {
+    throw ApiError.badRequest(`Invalid ingest context: ${ingestErrors[0]}`);
   }
   if (date !== null && (typeof date !== 'string' || !DATE_KEY_PATTERN.test(date))) {
     throw ApiError.badRequest('date must be YYYY-MM-DD');
@@ -659,7 +682,7 @@ export const recordEvent = async ({
           : `Close your open session from ${control.date} before clocking in`,
       );
     }
-    return clockIn({ full, companyId, userId, at, todayKey, timezone, policy, workMode, idempotencyKey, location });
+    return clockIn({ full, companyId, userId, at, todayKey, timezone, policy, workMode, idempotencyKey, location, ingest });
   }
 
   if (!control) {
@@ -870,8 +893,9 @@ export const recordEvent = async ({
       type: action,
       at,
       workMode: null,
-      source: EVENT_SOURCE.WEB,
+      source: ingest?.source || EVENT_SOURCE.WEB,
       requestId: idempotencyKey || null,
+      ...(ingest?.provenance ? { provenance: { ...ingest.provenance } } : {}),
     });
   } catch (err) {
     if (isDuplicateKey(err) && idempotencyKey) {
@@ -1062,7 +1086,7 @@ export {
   resolveRuleFromRecord,
 };
 
-const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy, workMode, idempotencyKey, location = null }) => {
+const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy, workMode, idempotencyKey, location = null, ingest = null }) => {
   const { AttendanceModel, AttendanceEventModel, AttendanceLocationModel, WorkModeRequestModel, resolveScheduleRule, engine } = full;
 
   const mode = workMode || WORK_MODE.OFFICE;
@@ -1225,8 +1249,9 @@ const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy
       type: EVENT_TYPE.CLOCK_IN,
       at,
       workMode: mode,
-      source: EVENT_SOURCE.WEB,
+      source: ingest?.source || EVENT_SOURCE.WEB,
       requestId: idempotencyKey || null,
+      ...(ingest?.provenance ? { provenance: { ...ingest.provenance } } : {}),
     };
     // Immutable verification snapshot rides the fact (absent when no
     // verification applied — DISABLED, non-OFFICE, or OPTIONAL-empty).

@@ -482,6 +482,16 @@ const AppLayout = () => {
     ? [{ to: '/app/attendance/operations', label: 'Attendance Operations' }]
     : [];
 
+  // Phase 31.14 — alternate capture entries (HR/Admin holders of the
+  // capture permission; one item each inside the Time & Leave group).
+  const captureMenu = hasAnyPermission(['ATTENDANCE_CAPTURE_MANAGE'])
+    ? [
+        { to: '/app/attendance/kiosks', label: 'Kiosk Stations' },
+        { to: '/app/attendance/qr', label: 'QR Challenges' },
+        { to: '/app/attendance/imports', label: 'Attendance Import' },
+      ]
+    : [];
+
   const menu = [
     ...baseMenu,
     ...attendancePolicyMenu,
@@ -492,6 +502,7 @@ const AppLayout = () => {
     ...timesheetMenu,
     ...teamTimesheetsMenu,
     ...operationsMenu,
+    ...captureMenu,
     ...payrollMenu,
     ...recruitmentDashboardMenu,
     ...candidateMenu,

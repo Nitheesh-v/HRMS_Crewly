@@ -1197,5 +1197,5 @@ test('31.11 routes + permissions mount the six guarded endpoints', () => {
   const registry = readSource('src/utils/permissionRegistry.js');
   assert.match(registry, /ATTENDANCE_FINALIZATION", \["READ", "MANAGE", "REOPEN"\]/);
   const permService = readSource('src/utils/permissionService.js');
-  assert.match(permService, /SYSTEM_PERMISSION_VERSION = 33/);
+  assert.match(permService, /SYSTEM_PERMISSION_VERSION = 34/);
 });

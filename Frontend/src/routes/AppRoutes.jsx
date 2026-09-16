@@ -58,6 +58,10 @@ const AttendanceTeamPage = lazy(() => import("../pages/attendance/AttendanceTeam
 const AttendanceTimesheetPage = lazy(() => import("../pages/attendance/AttendanceTimesheetPage.jsx"));
 const AttendanceTeamTimesheetsPage = lazy(() => import("../pages/attendance/AttendanceTeamTimesheetsPage.jsx"));
 const AttendanceOperationsPage = lazy(() => import("../pages/attendance/AttendanceOperationsPage.jsx"));
+const KioskStationsPage = lazy(() => import("../pages/attendance/KioskStationsPage.jsx"));
+const QrChallengesPage = lazy(() => import("../pages/attendance/QrChallengesPage.jsx"));
+const QrPunchPage = lazy(() => import("../pages/attendance/QrPunchPage.jsx"));
+const AttendanceImportPage = lazy(() => import("../pages/attendance/AttendanceImportPage.jsx"));
 
 const LeavesPage = lazy(() => import("../pages/leaves/LeavesPage.jsx"));
 const LeaveApprovalsPage = lazy(() => import("../pages/leaves/LeaveApprovalsPage.jsx"));
@@ -471,6 +475,47 @@ const AppRoutes = () => (
       <Route
         path="attendance/overtime"
         element={<AttendanceOvertimePage />}
+      />
+
+      {/* Phase 31.14 — Kiosk stations (HR audience; the backend
+          additionally enforces ATTENDANCE_CAPTURE_MANAGE). */}
+      <Route
+        path="attendance/kiosks"
+        element={
+          <RequireRole roles={HR}>
+            <KioskStationsPage />
+          </RequireRole>
+        }
+      />
+
+      {/* Phase 31.14 — QR challenge issuance (HR audience; the backend
+          additionally enforces ATTENDANCE_CAPTURE_MANAGE). */}
+      <Route
+        path="attendance/qr"
+        element={
+          <RequireRole roles={HR}>
+            <QrChallengesPage />
+          </RequireRole>
+        }
+      />
+
+      {/* Phase 31.14 — employee QR punch (any authenticated employee;
+          the backend enforces ATTENDANCE_READ_SELF / CREATE_SELF +
+          challenge validity; GET never punches). */}
+      <Route
+        path="attendance/qr/:token"
+        element={<QrPunchPage />}
+      />
+
+      {/* Phase 31.14 — CSV attendance import (HR audience; the backend
+          additionally enforces ATTENDANCE_CAPTURE_MANAGE). */}
+      <Route
+        path="attendance/imports"
+        element={
+          <RequireRole roles={HR}>
+            <AttendanceImportPage />
+          </RequireRole>
+        }
       />
 
       {/* Leave management */}

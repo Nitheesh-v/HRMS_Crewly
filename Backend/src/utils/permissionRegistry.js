@@ -152,6 +152,12 @@ export const DEFAULT_PERMISSIONS = [
   // scoped 31.9 board, never operations.
   ...actions("ATTENDANCE_OPERATIONS", ["READ"]),
 
+  // Phase 31.14 — alternate attendance capture (kiosk stations, QR
+  // challenges, CSV imports). Company-level authority: stations,
+  // challenges and bulk imports are HR/admin duties — managers
+  // keep scoped team views, employees keep self-service QR redemption.
+  ...actions("ATTENDANCE_CAPTURE", ["MANAGE"]),
+
   ...actions("LEAVE", ["READ", "CREATE", "UPDATE", "APPROVE", "REJECT"]),
 
   ...actions("PAYROLL", ["READ", "CREATE", "UPDATE", "APPROVE", "MANAGE"]),
@@ -516,6 +522,9 @@ export const DEFAULT_ROLE_MATRIX = {
 
     // Phase 31.12 — HR runs the attendance operations dashboard.
     "ATTENDANCE_OPERATIONS_READ",
+
+    // Phase 31.14 — HR manages kiosks, QR challenges, and CSV imports.
+    "ATTENDANCE_CAPTURE_MANAGE",
 
     "LEAVE_READ",
     "LEAVE_APPROVE",

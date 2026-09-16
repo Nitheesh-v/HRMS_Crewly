@@ -25,6 +25,12 @@ class ApiError extends Error {
   static conflict(message = 'Conflict') {
     return new ApiError(409, message);
   }
+
+  // Phase 31.14 — single-use resources (QR challenges) that were
+  // valid but expired or were already consumed.
+  static gone(message = 'Gone') {
+    return new ApiError(410, message);
+  }
 }
 
 export default ApiError;
