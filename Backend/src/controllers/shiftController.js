@@ -91,6 +91,37 @@ export const deleteShift = async (req, res) => {
   } catch (e) { return fail(res, 500, e.message); }
 };
 
+// ── Phase 31.13: reactive reminder scheduling ───────────────
+// Fire-and-forget after a shift assignment commits. Bounded:
+// explicit users + first 200 active department members, 7-day
+// horizon. Never throws, never delays the response. Stale jobs
+// are harmless — the worker revalidates every anchor.
+const scheduleRemindersForAssignment = ({ companyId, userIds, departmentId, from }) => {
+  Promise.resolve()
+    .then(async () => {
+      const { scheduleForAssignmentDays } = await import('../services/attendance/attendanceReminderService.js');
+      const { default: UserModel } = await import('../models/User.js');
+      const ids = [...new Set((userIds || []).filter(Boolean).map(String))];
+      if (departmentId) {
+        const members = await UserModel.find({ companyId, department: departmentId, status: 'ACTIVE' })
+          .select('_id')
+          .limit(200)
+          .lean()
+          .catch(() => []);
+        for (const member of members || []) ids.push(String(member._id));
+      }
+      const unique = [...new Set(ids)].slice(0, 200);
+      if (!unique.length) return;
+      const users = await UserModel.find({ _id: { $in: unique }, companyId, status: 'ACTIVE' })
+        .select('_id companyId department branch')
+        .lean()
+        .catch(() => []);
+      if (!users?.length) return;
+      await scheduleForAssignmentDays({ companyId, users, fromDay: engine.dstr(from) });
+    })
+    .catch(() => {});
+};
+
 // POST /api/shifts/:id/assign  { userIds?: [], departmentId?, effectiveFrom?, reason?, scheduleId? } (HR)
 export const assignShift = async (req, res) => {
   try {
@@ -127,6 +158,9 @@ export const assignShift = async (req, res) => {
     }
 
     await engine.auditSafe({ path: req.originalUrl, method: req.method, path: req.originalUrl, method: req.method, path: req.originalUrl, method: req.method, companyId, userId: req.user._id, action: userIds.length > 1 ? 'SHIFT_BULK_ASSIGNED' : 'SHIFT_ASSIGNED', target: shift.name, next: { userIds, departmentId, effectiveFrom: engine.dstr(from), reason } });
+    // 31.13: reactive reminder scheduling — fire-and-forget (the
+    // assignment committed; scheduling can never fail this response).
+    scheduleRemindersForAssignment({ companyId, userIds, departmentId, from });
     // Data to frontend - response to frontend
     return ok(res, 200, { assigned }, `Assigned "${shift.name}" ✅ (${assigned} record${assigned === 1 ? '' : 's'})`);
   } catch (e) { return fail(res, 500, e.message); }

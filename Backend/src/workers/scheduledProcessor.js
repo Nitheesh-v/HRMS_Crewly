@@ -37,6 +37,8 @@ import {
   deliverPreOnboardingReminder,
   deliverBgvReminder,
 } from '../services/reminderSchedulingService.js';
+import { executeReminder } from '../services/attendance/attendanceReminderService.js';
+import { validateAttendanceReminderPayload } from '../services/attendance/attendanceReminderRules.js';
 
 const OBJECT_ID = /^[a-f0-9]{24}$/i;
 const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
@@ -444,6 +446,44 @@ export const bgvReminderProcessor = async (job, deps = {}) => {
   return { processed: true, reminderType: data.reminderType };
 };
 
+// ── ATTENDANCE_REMINDER (31.13) ───────────────────────────────────
+//
+// Employee shift/missing/break reminders. Reference-only payload
+// (ids, day, type, anchor instant) — the recipient, the schedule,
+// the attendance state, and the policy are ALL re-fetched from
+// Mongo at execution. Nothing the client sent is trusted.
+//
+// Business ineligibility (leave, resolved, stale anchor, muted)
+// returns { skipped }; only unexpected infra failures throw
+// (BullMQ retries those: attempts=3, exponential backoff).
+
+export const attendanceReminderProcessor = async (job, deps = {}) => {
+  const execute = deps.execute || executeReminder;
+
+  const data = job?.data;
+  const check = validateAttendanceReminderPayload(data);
+  if (!check.valid) {
+    throw new Error('ATTENDANCE_REMINDER rejected: payload validation failed');
+  }
+
+  const result = await execute(
+    {
+      companyId: data.companyId,
+      employeeId: data.employeeId,
+      attendanceDate: data.attendanceDate,
+      reminderType: data.reminderType,
+      anchorIso: data.anchorIso,
+    },
+    deps.executeDeps || {}
+  );
+  if (result?.skipped) return result;
+  logger.info(
+    `[Scheduled] Attendance reminder processed (employee=${data.employeeId}, ` +
+      `day=${data.attendanceDate}, type=${data.reminderType})`
+  );
+  return { processed: true, reminderType: data.reminderType };
+};
+
 export const registerScheduledProcessors = ({ registerProcessor }) => {
   // Thin adapters: the shared registry dispatches by job name.
   for (const [jobName, processor] of Object.entries({
@@ -452,12 +492,14 @@ export const registerScheduledProcessors = ({ registerProcessor }) => {
     [JOB_NAMES.OFFER_EXPIRE]: offerExpireProcessor,
     [JOB_NAMES.PREONBOARDING_REMINDER]: preOnboardingReminderProcessor,
     [JOB_NAMES.BGV_REMINDER]: bgvReminderProcessor,
+    [JOB_NAMES.ATTENDANCE_REMINDER]: attendanceReminderProcessor,
   })) {
     registerProcessor(jobName, processor);
   }
   logger.info(
     `[Queue] SCHEDULED processors ready (${SCHEDULED_JOB_NAMES.length} jobs: ` +
       `${JOB_NAMES.INTERVIEW_REMINDER}, ${JOB_NAMES.OFFER_EXPIRY_REMINDER}, ` +
-      `${JOB_NAMES.OFFER_EXPIRE}, ${JOB_NAMES.PREONBOARDING_REMINDER}, ${JOB_NAMES.BGV_REMINDER})`
+      `${JOB_NAMES.OFFER_EXPIRE}, ${JOB_NAMES.PREONBOARDING_REMINDER}, ${JOB_NAMES.BGV_REMINDER}, ` +
+      `${JOB_NAMES.ATTENDANCE_REMINDER})`
   );
 };

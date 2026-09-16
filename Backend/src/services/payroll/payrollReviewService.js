@@ -969,7 +969,8 @@ import { dispatchPayrollExport } from './payrollExportDispatcher.js';
 // Company roles hold the permission list, so this is two indexed reads plus
 // one user lookup; per-user ALLOW overrides are honoured for authorization
 // but are not enumerated here — fan-out is best-effort by design.
-const resolveAudience = async ({ companyId, permissions = [] }) => {
+// Exported for 31.11 attendance-finalization fan-out (same helper).
+export const resolveNotificationAudience = async ({ companyId, permissions = [] }) => {
   const names = (permissions || []).filter((name) => typeof name === 'string');
   if (!companyId || !names.length) return [];
 
@@ -1026,7 +1027,7 @@ const defaultService = makePayrollReviewService({
       category: 'PAYROLL',
       metadata: { type, ...payload },
     }),
-  audience: resolveAudience,
+  audience: resolveNotificationAudience,
   dispatch: dispatchPayrollExport,
 });
 

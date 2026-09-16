@@ -14,6 +14,9 @@
 //     pending / resubmission / joining-date (90-day window).
 //   - BGV reminders (28.6): open cases, candidate / verifier /
 //     review (60-day window).
+//   - Attendance reminders (31.13): forward window (today +
+//     tomorrow per company tz) for shift/missing legs, plus
+//     reconcile-direct reviewer + finalization nudges.
 //
 // Re-running is safe:
 //   - job ids are deterministic (entity id + canonical timestamp)
@@ -33,6 +36,7 @@ import {
   runPreOnboardingReminderReconcile,
   runBgvReminderReconcile,
 } from '../src/services/reminderSchedulingService.js';
+import { runAttendanceReminderReconcile } from '../src/services/attendance/attendanceReminderService.js';
 
 const main = async () => {
   const config = getRedisConfig();
@@ -70,6 +74,14 @@ const main = async () => {
     skipped: 0,
     errors: 1,
   }));
+  const attendanceSummary = await runAttendanceReminderReconcile().catch(() => ({
+    companies: 0,
+    checked: 0,
+    queued: 0,
+    skipped: 0,
+    reviewerNotified: 0,
+    errors: 1,
+  }));
 
   console.log(
     `Interviews: checked=${summary.interviews.checked}, ` +
@@ -90,6 +102,12 @@ const main = async () => {
     `BGV reminders: checked=${bgvSummary.checked}, ` +
       `queued=${bgvSummary.queued}, skipped=${bgvSummary.skipped}, ` +
       `errors=${bgvSummary.errors}`
+  );
+  console.log(
+    `Attendance reminders: companies=${attendanceSummary.companies}, ` +
+      `checked=${attendanceSummary.checked}, queued=${attendanceSummary.queued}, ` +
+      `reviewerNotified=${attendanceSummary.reviewerNotified}, skipped=${attendanceSummary.skipped}, ` +
+      `errors=${attendanceSummary.errors}`
   );
   if (
     summary.interviews.checked === 0 &&

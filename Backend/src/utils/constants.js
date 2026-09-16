@@ -35,6 +35,10 @@ export const LEAVE_TYPES = {
   CASUAL: { label: 'Casual Leave', yearly: 12 },
   SICK:   { label: 'Sick Leave',   yearly: 6 },
   EARNED: { label: 'Earned Leave', yearly: 12 },
+  // Phase 31.8 — Compensatory Off. yearly is 0: availability is
+  // entitlement-driven (approved comp-off days earned), resolved
+  // in leaveController — never from this quota.
+  COMP_OFF: { label: 'Compensatory Off', yearly: 0 },
 };
 
 export const LEAVE_STATUS = ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'];

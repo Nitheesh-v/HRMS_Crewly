@@ -82,6 +82,19 @@ const autoSchema = new Schema(
     nightShiftCount: { type: Number, default: 0 },
     weekendShiftCount: { type: Number, default: 0 },
     holidayShiftCount: { type: Number, default: 0 },
+    // 31.11 — which finalized attendance snapshot produced this
+    // auto block (absent for legacy live-attendance imports).
+    attendanceSource: {
+      type: new Schema(
+        {
+          version: { type: Number, default: null },
+          finalizedAt: { type: Date, default: null },
+          syncedAt: { type: Date, default: null },
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
   },
   { _id: false },
 );

@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 export const NOTIFY_CATEGORIES = [
   'LEAVE', 'TASK', 'PROJECT', 'MEETING', 'ANNOUNCEMENT',
   'DOCUMENT', 'PAYROLL', 'BILLING', 'SUPPORT', 'SYSTEM',
+  'ATTENDANCE', // 31.13: attendance reminders (employee + reviewer)
 ];
 
 const prefSchema = new mongoose.Schema(

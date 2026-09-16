@@ -30,6 +30,19 @@ import PreOnboarding from '../models/PreOnboarding.js';
 import CandidateDocument from '../models/CandidateDocument.js';
 import CandidateDocumentRequirement from '../models/CandidateDocumentRequirement.js';
 import BackgroundVerificationCase from '../models/BackgroundVerificationCase.js';
+import AttendancePolicy from '../models/AttendancePolicy.js';
+import Attendance from '../models/Attendance.js';
+import AttendanceEvent from '../models/AttendanceEvent.js';
+import AttendanceRegularization from '../models/AttendanceRegularization.js';
+import AttendanceOvertimeRequest from '../models/AttendanceOvertimeRequest.js';
+import AttendancePeriod from '../models/AttendancePeriod.js';
+import {
+  REMINDER_TYPE,
+  REVIEW_REMINDER_KIND,
+  buildReminderCopy,
+  formatTimeInZone,
+} from '../services/attendance/attendanceReminderRules.js';
+import { EVENT_TYPE } from '../services/attendance/attendancePolicyRules.js';
 import {
   revalidateReminder,
   ensurePortalLink,
@@ -56,6 +69,14 @@ import { formatInterviewSchedule } from '../utils/interviewDateTime.js';
 import { normalizeCandidateStage } from '../services/candidatePipelineService.js';
 
 // ─── Payload validation (strict, per job) ───────────────────────
+
+// 31.13: attendance email kinds (employee delayed-job types +
+// reconcile-direct reviewer kinds). Declared before use in
+// validateEmailJobPayload.
+const ATTENDANCE_EMAIL_TYPES = new Set([
+  ...Object.values(REMINDER_TYPE),
+  ...Object.values(REVIEW_REMINDER_KIND),
+]);
 
 const OBJECT_ID_FIELDS = new Set([
   'candidateId',
@@ -89,6 +110,18 @@ const EMAIL_JOB_KEYS = {
   [JOB_NAMES.EMAIL_BGV_REMINDER]: [...COMMON_KEYS, 'caseId', 'reminderType', 'stateVersionIso'],
   // 30.11 — references only (ids + kind + bucket); no tokens/PII/HTML.
   [JOB_NAMES.EMAIL_BGV30_REMINDER]: [...COMMON_KEYS, 'orderId', 'kind', 'checkType', 'requestId', 'bucket'],
+  // 31.13: attendance reminders. References only — the recipient,
+  // the schedule state, and the copy are re-derived from Mongo.
+  // Optional keys are omitted (never null) when not applicable.
+  [JOB_NAMES.EMAIL_ATTENDANCE_REMINDER]: [
+    ...COMMON_KEYS,
+    'employeeId',
+    'reminderType',
+    'attendanceDate',
+    'anchorIso',
+    'month',
+    'requestId',
+  ],
   [JOB_NAMES.EMAIL_PREONBOARDING_DOC_DECISION]: [
     ...COMMON_KEYS,
     'preOnboardingId',
@@ -131,6 +164,12 @@ export const validateEmailJobPayload = (jobName, data) => {
   }
   if (data.eventType && !INTERVIEW_EVENT_TYPES.has(data.eventType)) {
     return { valid: false, reason: 'invalid eventType' };
+  }
+  if (
+    jobName === JOB_NAMES.EMAIL_ATTENDANCE_REMINDER &&
+    !ATTENDANCE_EMAIL_TYPES.has(data.reminderType)
+  ) {
+    return { valid: false, reason: 'invalid reminderType' };
   }
   if (jobName === JOB_NAMES.EMAIL_OFFER_DECISION && !OFFER_DECISIONS.has(data.decision)) {
     return { valid: false, reason: 'invalid decision' };
@@ -878,6 +917,147 @@ const emailBgv30Reminder = async ({ value }) => {
   return finishSend({ value, result });
 };
 
+// ── 31.13: attendance reminders ─────────────────────────────────
+// The scheduled worker (or reconcile) already validated the condition;
+// this handler re-checks belt-and-braces because the email queue can
+// lag behind the triggering state. Recipient + copy are re-derived
+// from Mongo — the payload carries references only.
+
+const escapeAttendanceHtml = (value) =>
+  String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+const attendanceReminderEmail = ({ copy }) => {
+  const subject = `[Crewly Attendance] ${copy.title}`;
+  const text = `${copy.title}\n\n${copy.message}\n\nOpen Crewly to review.`;
+  const html =
+    `<p><strong>${escapeAttendanceHtml(copy.title)}</strong></p>` +
+    `<p>${escapeAttendanceHtml(copy.message)}</p>` +
+    `<p>Open Crewly to review.</p>`;
+  return { subject, text, html };
+};
+
+// true = the reminder is no longer valid (resolved/decided/stale).
+const isAttendanceReminderStale = async (value) => {
+  const { companyId, employeeId, reminderType, attendanceDate, anchorIso, month, requestId } = value;
+  switch (reminderType) {
+    case REMINDER_TYPE.SHIFT_START:
+    case REMINDER_TYPE.MISSING_CLOCK_IN: {
+      if (!attendanceDate) return true;
+      const day = await Attendance.findOne({ companyId, user: employeeId, date: attendanceDate })
+        .select('punchIn')
+        .lean();
+      return Boolean(day?.punchIn);
+    }
+    case REMINDER_TYPE.MISSING_CLOCK_OUT: {
+      if (!attendanceDate) return true;
+      const day = await Attendance.findOne({ companyId, user: employeeId, date: attendanceDate })
+        .select('punchIn punchOut')
+        .lean();
+      return !day?.punchIn || Boolean(day?.punchOut);
+    }
+    case REMINDER_TYPE.INCOMPLETE_BREAK: {
+      if (!attendanceDate || !anchorIso) return true;
+      const latest = await AttendanceEvent.find({
+        companyId,
+        user: employeeId,
+        date: attendanceDate,
+        type: { $in: [EVENT_TYPE.BREAK_START, EVENT_TYPE.BREAK_END] },
+      })
+        .sort({ seq: -1 })
+        .limit(1)
+        .select('type at')
+        .lean();
+      if (!latest?.length || latest[0].type !== EVENT_TYPE.BREAK_START) return true;
+      return toMsOrNull(latest[0].at) !== toMsOrNull(anchorIso);
+    }
+    case REVIEW_REMINDER_KIND.REG_REVIEW: {
+      if (!mongoose.isValidObjectId(requestId)) return true;
+      const request = await AttendanceRegularization.findOne({ _id: requestId, companyId })
+        .select('status')
+        .lean();
+      return !request || request.status !== 'PENDING';
+    }
+    case REVIEW_REMINDER_KIND.OT_REVIEW: {
+      if (!mongoose.isValidObjectId(requestId)) return true;
+      const request = await AttendanceOvertimeRequest.findOne({ _id: requestId, companyId })
+        .select('status')
+        .lean();
+      return !request || request.status !== 'PENDING';
+    }
+    case REVIEW_REMINDER_KIND.FINALIZATION_PENDING: {
+      if (!month) return true;
+      const period = await AttendancePeriod.findOne({ companyId, month }).select('status').lean();
+      return !period || !['OPEN', 'REOPENED'].includes(period.status);
+    }
+    default:
+      return true;
+  }
+};
+
+const toMsOrNull = (value) => {
+  if (value === null || value === undefined || value === '') return null;
+  const ms = value instanceof Date ? value.getTime() : Date.parse(value);
+  return Number.isFinite(ms) && ms > 0 ? Math.trunc(ms) : null;
+};
+
+const emailAttendanceReminder = async (value) => {
+  if (!ATTENDANCE_EMAIL_TYPES.has(value.reminderType)) {
+    await failTerminal({ value, category: 'STALE_STATE' });
+    return { skipped: true, reason: 'STALE_STATE', deliveryId: value.deliveryId };
+  }
+  if (!mongoose.isValidObjectId(value.employeeId)) {
+    await failTerminal({ value, category: 'ENTITY_NOT_FOUND' });
+    return { sent: false, reason: 'ENTITY_NOT_FOUND', deliveryId: value.deliveryId };
+  }
+  const user = await User.findOne({
+    _id: value.employeeId,
+    companyId: value.companyId,
+    status: 'ACTIVE',
+  })
+    .select('_id email')
+    .lean();
+  if (!user) {
+    await failTerminal({ value, category: 'ENTITY_NOT_FOUND' });
+    return { sent: false, reason: 'ENTITY_NOT_FOUND', deliveryId: value.deliveryId };
+  }
+  if (await isAttendanceReminderStale(value)) {
+    await skipStale(value);
+    return { skipped: true, reason: 'STALE_STATE', deliveryId: value.deliveryId };
+  }
+  if (!user.email) {
+    await failTerminal({ value, category: 'ENTITY_NOT_FOUND' });
+    return { sent: false, reason: 'ENTITY_NOT_FOUND', deliveryId: value.deliveryId };
+  }
+  const policy = await AttendancePolicy.findOne({ companyId: value.companyId, isCurrent: true })
+    .select('timezone')
+    .lean();
+  const timeZone = policy?.timezone || 'Asia/Kolkata';
+  const facts = {};
+  if (value.reminderType === REMINDER_TYPE.SHIFT_START && value.anchorIso) {
+    facts.timeLabel = formatTimeInZone(value.anchorIso, timeZone);
+  }
+  if (value.reminderType === REMINDER_TYPE.INCOMPLETE_BREAK && value.anchorIso) {
+    facts.minutesOpen = Math.max(
+      1,
+      Math.floor((Date.now() - Date.parse(value.anchorIso)) / 60000)
+    );
+  }
+  if (value.reminderType === REVIEW_REMINDER_KIND.FINALIZATION_PENDING && value.month) {
+    facts.month = value.month;
+  }
+  const copy = buildReminderCopy(value.reminderType, facts);
+  const result = await sendMail({
+    to: user.email,
+    ...attendanceReminderEmail({ copy }),
+    sensitive: false,
+  });
+  return finishSend({ value, result });
+};
+
 const EMAIL_HANDLERS = {
   [JOB_NAMES.EMAIL_APPLICATION_RECEIVED]: emailApplicationReceived,
   [JOB_NAMES.EMAIL_PIPELINE_UPDATE]: emailPipelineUpdate,
@@ -890,6 +1070,7 @@ const EMAIL_HANDLERS = {
   [JOB_NAMES.EMAIL_BGV_REMINDER]: emailBgvReminder,
   [JOB_NAMES.EMAIL_BGV30_REMINDER]: emailBgv30Reminder,
   [JOB_NAMES.EMAIL_PREONBOARDING_DOC_DECISION]: emailPreOnboardingDocDecision,
+  [JOB_NAMES.EMAIL_ATTENDANCE_REMINDER]: emailAttendanceReminder,
 };
 
 // Registers all email processors into the 28.2 job registry.

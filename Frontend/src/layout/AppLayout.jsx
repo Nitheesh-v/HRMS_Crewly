@@ -423,8 +423,75 @@ const AppLayout = () => {
       : []),
   ];
 
+  // Phase 31.1 — Attendance Policy entry, permission-driven like payroll.
+  const attendancePolicyMenu = hasAnyPermission([
+    'ATTENDANCE_POLICY_READ',
+    'ATTENDANCE_POLICY_MANAGE',
+    'ATTENDANCE_POLICY_ACTIVATE',
+  ])
+    ? [{ to: '/app/attendance/policy', label: 'Attendance Policy' }]
+    : [];
+
+  // Phase 31.4 — Work Mode Requests entry (one item; the page splits
+  // My requests / Pending approvals by permission internally).
+  const workModeMenu = hasAnyPermission([
+    'ATTENDANCE_WORK_MODE_REQUEST',
+    'ATTENDANCE_WORK_MODE_REVIEW',
+  ])
+    ? [{ to: '/app/attendance/work-modes', label: 'Work Mode Requests' }]
+    : [];
+
+  // Phase 31.5 — Attendance Regularization entry (one item; the page
+  // splits My requests / Exception center by permission internally).
+  const regularizationMenu = hasAnyPermission([
+    'ATTENDANCE_REGULARIZATION_REQUEST',
+    'ATTENDANCE_REGULARIZATION_REVIEW',
+  ])
+    ? [{ to: '/app/attendance/regularizations', label: 'Regularizations' }]
+    : [];
+
+  // Phase 31.8 — Overtime & Comp-Off entry (one item; the page
+  // splits My overtime / Review queue by permission internally).
+  const overtimeMenu = hasAnyPermission([
+    'ATTENDANCE_OVERTIME_REQUEST',
+    'ATTENDANCE_OVERTIME_REVIEW',
+  ])
+    ? [{ to: '/app/attendance/overtime', label: 'Overtime & Comp-Off' }]
+    : [];
+
+  // Phase 31.9 — Who's Working live board (one item; holders of the
+  // existing scoped attendance-read permission, i.e. managers, team
+  // leads and HR — the backend derives company vs team scope).
+  const teamMenu = hasAnyPermission(['ATTENDANCE_READ'])
+    ? [{ to: '/app/attendance/team', label: "Who's Working" }]
+    : [];
+
+  // Phase 31.10 — My Timesheet entry (every employee with the
+  // self-service attendance read; seniors hold it too) plus the
+  // scoped Team Timesheets table for the oversight audience.
+  const timesheetMenu = hasAnyPermission(['ATTENDANCE_READ_SELF', 'ATTENDANCE_READ'])
+    ? [{ to: '/app/attendance/timesheet', label: 'My Timesheet' }]
+    : [];
+  const teamTimesheetsMenu = hasAnyPermission(['ATTENDANCE_READ'])
+    ? [{ to: '/app/attendance/team-timesheets', label: 'Team Timesheets' }]
+    : [];
+
+  // Phase 31.12 — Attendance Operations entry (HR/Admin holders of the
+  // operations permission; one item inside the Time & Leave group).
+  const operationsMenu = hasAnyPermission(['ATTENDANCE_OPERATIONS_READ'])
+    ? [{ to: '/app/attendance/operations', label: 'Attendance Operations' }]
+    : [];
+
   const menu = [
     ...baseMenu,
+    ...attendancePolicyMenu,
+    ...workModeMenu,
+    ...regularizationMenu,
+    ...overtimeMenu,
+    ...teamMenu,
+    ...timesheetMenu,
+    ...teamTimesheetsMenu,
+    ...operationsMenu,
     ...payrollMenu,
     ...recruitmentDashboardMenu,
     ...candidateMenu,

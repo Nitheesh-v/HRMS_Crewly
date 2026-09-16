@@ -75,6 +75,9 @@ export const makeMonthlyInputService = ({
   HolidayModel = null,
   ShiftModel = null,
   PayrollSetupModel = null,
+  // 31.11 — when wired, the legacy import refuses to reinterpret
+  // live attendance after it was finalized + sent to payroll.
+  AttendancePeriodModel = null,
   cache = {},
   audit = async () => null,
   notify = async () => null,
@@ -260,6 +263,19 @@ export const makeMonthlyInputService = ({
     const period = await ensurePeriod({ companyId, month, actor, req });
     if (period.status === 'LOCKED' || period.status === 'SENT_TO_PAYROLL') {
       throw ApiError.badRequest('This payroll month is locked. Reopen it before importing.');
+    }
+
+    // 31.11 — finalized attendance is the authority: once the month
+    // was sent to payroll from a snapshot, the legacy live-attendance
+    // import must not silently reinterpret mutable attendance behind
+    // it. Reopen attendance (new version) to change the facts.
+    if (AttendancePeriodModel) {
+      const attendancePeriod = await AttendancePeriodModel.findOne({ companyId, month }).lean();
+      if (attendancePeriod?.status === 'SENT_TO_PAYROLL') {
+        throw ApiError.badRequest(
+          'Attendance for this month was finalized and sent to payroll. Reopen attendance to change its facts.',
+        );
+      }
     }
 
     const employees = await UserModel.find({ companyId, status: 'ACTIVE' })
@@ -904,6 +920,7 @@ export const makeMonthlyInputService = ({
 };
 
 import Attendance from '../../models/Attendance.js';
+import AttendancePeriod from '../../models/AttendancePeriod.js';
 import EmployeeMonthlyInput from '../../models/EmployeeMonthlyInput.js';
 import EmployeePayrollProfile from '../../models/EmployeePayrollProfile.js';
 import Holiday from '../../models/Holiday.js';
@@ -932,6 +949,7 @@ const monthlyInputService = makeMonthlyInputService({
   HolidayModel: Holiday,
   ShiftModel: Shift,
   PayrollSetupModel: PayrollSetup,
+  AttendancePeriodModel: AttendancePeriod,
   cache: {
     buildKey: buildTenantCacheKey,
     getOrSet: getOrSetCache,

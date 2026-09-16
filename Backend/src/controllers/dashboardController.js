@@ -47,12 +47,49 @@ const employeeOverview = asyncHandler(async (req, res) => {
   const workingDaysElapsed = countWorkingDays(monthStart, todayStr);
   const absent = Math.max(0, workingDaysElapsed - marked);
 
-  // Leave balance — APPROVED days this year vs LEAVE_TYPES[type].yearly
-  const approvedLeaves = await Leave.find({
-    user: me,
-    status: 'APPROVED',
-    startDate: { $gte: yearStart },
-  }).lean();
+  // Perf: these five reads are fully independent (same me/companyId/
+  // todayStr inputs, no query consumes another's result), so they run
+  // concurrently — 5 sequential Atlas round-trips → 1.
+  const [
+    approvedLeaves,
+    pendingTasks,
+    upcomingMeetings,
+    latestPayslip,
+    announcements,
+  ] = await Promise.all([
+    // Leave balance — APPROVED days this year vs LEAVE_TYPES[type].yearly
+    Leave.find({
+      user: me,
+      status: 'APPROVED',
+      startDate: { $gte: yearStart },
+    }).lean(),
+    Task.find({
+      assignedTo: me,
+      status: { $nin: ['DONE', 'COMPLETED'] },
+    })
+      .select('title status priority dueDate')
+      .sort({ dueDate: 1, createdAt: -1 })
+      .limit(6)
+      .lean(),
+    Meeting.find({
+      companyId,
+      date: { $gte: todayStr },
+      $or: [{ attendees: me }, { createdBy: me }],
+    })
+      .select('title date startTime endTime meetingLink')
+      .sort({ date: 1, startTime: 1 })
+      .limit(5)
+      .lean(),
+    Payroll.findOne({ user: me })
+      .select('month netPay status')
+      .sort({ month: -1 })
+      .lean(),
+    Announcement.find({ companyId })
+      .populate('postedBy', 'name role')
+      .sort({ pinned: -1, createdAt: -1 })
+      .limit(4)
+      .lean(),
+  ]);
   const usedByType = {};
   approvedLeaves.forEach((l) => {
     const t = String(l.type || '').toUpperCase();
@@ -65,36 +102,6 @@ const employeeOverview = asyncHandler(async (req, res) => {
       const used = usedByType[type] || 0;
       return { type, total, used, remaining: Math.max(0, total - used) };
     });
-
-  const pendingTasks = await Task.find({
-    assignedTo: me,
-    status: { $nin: ['DONE', 'COMPLETED'] },
-  })
-    .select('title status priority dueDate')
-    .sort({ dueDate: 1, createdAt: -1 })
-    .limit(6)
-    .lean();
-
-  const upcomingMeetings = await Meeting.find({
-    companyId,
-    date: { $gte: todayStr },
-    $or: [{ attendees: me }, { createdBy: me }],
-  })
-    .select('title date startTime endTime meetingLink')
-    .sort({ date: 1, startTime: 1 })
-    .limit(5)
-    .lean();
-
-  const latestPayslip = await Payroll.findOne({ user: me })
-    .select('month netPay status')
-    .sort({ month: -1 })
-    .lean();
-
-  const announcements = await Announcement.find({ companyId })
-    .populate('postedBy', 'name role')
-    .sort({ pinned: -1, createdAt: -1 })
-    .limit(4)
-    .lean();
 
   // Data to frontend - response to frontend
   ApiResponse.success(res, {

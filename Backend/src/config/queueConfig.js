@@ -54,6 +54,8 @@ export const JOB_NAMES = {
   // SLA/QA). Reference-only payloads; worker revalidates Mongo + rotates
   // portal tokens synchronously at dispatch (never in the queue).
   EMAIL_BGV30_REMINDER: 'email-bgv30-reminder',
+  // 31.13: attendance reminder emails (28.3 delivery).
+  EMAIL_ATTENDANCE_REMINDER: 'email-attendance-reminder',
   // 29.6: payroll calculation run (background, progress-tracked).
   PAYROLL_RUN: 'payroll-run',
   // 29.7: payroll review export generation (same queue, own job name).
@@ -102,6 +104,8 @@ export const JOB_NAMES = {
   // 28.6: scheduled reminders (SCHEDULED queue, 28.5 architecture).
   PREONBOARDING_REMINDER: 'preonboarding-reminder',
   BGV_REMINDER: 'bgv-reminder',
+  // 31.13: attendance reminders (SCHEDULED queue, 28.5/28.6 architecture).
+  ATTENDANCE_REMINDER: 'attendance-reminder',
 };
 
 export const EMAIL_JOB_NAMES = Object.values(JOB_NAMES).filter((name) =>
@@ -122,6 +126,8 @@ export const SCHEDULED_JOB_NAMES = Object.freeze([
   // 28.6: pre-onboarding + BGV reminders ride the same architecture.
   JOB_NAMES.PREONBOARDING_REMINDER,
   JOB_NAMES.BGV_REMINDER,
+  // 31.13: attendance reminders ride the same architecture.
+  JOB_NAMES.ATTENDANCE_REMINDER,
 ]);
 
 // 29.6 payroll job names (the payroll queue).

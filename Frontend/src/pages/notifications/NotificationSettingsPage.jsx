@@ -12,6 +12,7 @@ const LABELS = {
   BILLING: ['💳', 'Billing'],
   SUPPORT: ['🎫', 'Support'],
   SYSTEM: ['⚙️', 'System'],
+  ATTENDANCE: ['⏰', 'Attendance'], // 31.13
 };
 
 const Toggle = ({ on, onClick }) => (

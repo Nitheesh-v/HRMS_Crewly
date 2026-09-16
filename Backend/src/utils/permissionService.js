@@ -31,6 +31,59 @@ export const invalidatePermissionCache = ({ companyId, userId = null }) => {
   }
 };
 
+// Perf RCA — short-TTL in-process cache for the Permission metadata doc
+// that requirePermission() reads on EVERY guarded request (1 Atlas RTT).
+//
+// Why safe:
+// - Permission docs are GLOBAL metadata (not tenant data); they change at
+//   deploy/migration time, and deploys restart the process anyway.
+// - The grant decision itself (resolveUserPermissions) already caches for
+//   5 minutes, so a 15s metadata TTL is strictly fresher than the grant
+//   it guards. A runtime deactivation propagates within one TTL.
+// - Mongo stays the source of truth; only lean reads are cached, and a
+//   missing permission (null) caches as null so unknown names keep 403ing.
+const permissionMetaCache = new Map();
+
+const PERM_META_MIN_TTL_MS = 5000;
+const PERM_META_MAX_TTL_MS = 60000;
+const PERM_META_DEFAULT_TTL_MS = 15000;
+
+export const getPermissionMetaCacheTtlMs = (source = process.env) => {
+  const parsed = Math.trunc(Number(source?.PERMISSION_METADATA_CACHE_TTL_MS));
+  if (!Number.isFinite(parsed) || parsed <= 0) return PERM_META_DEFAULT_TTL_MS;
+  return Math.min(PERM_META_MAX_TTL_MS, Math.max(PERM_META_MIN_TTL_MS, parsed));
+};
+
+export const getPermissionByName = async (
+  name,
+  { PermissionModel = Permission } = {},
+) => {
+  const key = String(name || '');
+  if (!key) return null;
+
+  const entry = permissionMetaCache.get(key);
+
+  if (entry && Date.now() - entry.at <= getPermissionMetaCacheTtlMs()) {
+    return entry.value;
+  }
+
+  const doc = await PermissionModel.findOne({
+    name: key,
+    isActive: true,
+  }).lean();
+
+  permissionMetaCache.set(key, { at: Date.now(), value: doc || null });
+
+  if (permissionMetaCache.size > 500) {
+    permissionMetaCache.delete(permissionMetaCache.keys().next().value);
+  }
+
+  return doc || null;
+};
+
+export const _resetPermissionMetaCacheForTests = () =>
+  permissionMetaCache.clear();
+
 export const ensurePermissions = async () => {
   if (!ensurePermissionsPromise) {
     ensurePermissionsPromise = (async () => {
@@ -63,17 +116,36 @@ export const ensurePermissions = async () => {
 //   22 → 23 : 29.9 gave HR_MANAGER and FINANCE_MANAGER PAYSLIP_READ
 //   23 → 24 : 29.10 added PAYROLL_STATUTORY_FILING and gave
 //             PAYROLL_ADMIN / FINANCE_MANAGER the statutory duties
-const SYSTEM_PERMISSION_VERSION = 26;
-export const ensureCompanyRoles = async (companyId, createdBy = null) => {
+//   26 → 27 : 31.1 added ATTENDANCE_POLICY_READ/_MANAGE/_ACTIVATE and gave
+//             HR_MANAGER READ + MANAGE (activation stays admin-only)
+//   27 → 28 : 31.3 added ATTENDANCE_LOCATION_READ/_MANAGE and gave
+//             HR_MANAGER both
+//   28 → 29 : 31.4 added ATTENDANCE_WORK_MODE_REQUEST (self-service)
+//             and _REVIEW (MANAGER + HR_MANAGER scoped queue)
+//   29 → 30 : 31.5 added ATTENDANCE_REGULARIZATION_REQUEST (self-service)
+//             and _REVIEW (MANAGER + HR_MANAGER scoped queue)
+//   30 → 31 : 31.8 added ATTENDANCE_OVERTIME_REQUEST (self-service)
+//             and _REVIEW (MANAGER + HR_MANAGER scoped queue)
+//   31 → 32 : 31.11 added ATTENDANCE_FINALIZATION_READ / _MANAGE /
+//             _REOPEN (COMPANY_ADMIN + HR_MANAGER, company-level)
+const SYSTEM_PERMISSION_VERSION = 33;
+export const ensureCompanyRoles = async (
+  companyId,
+  createdBy = null,
+  { fetchRoles = true } = {},
+) => {
   const permissions = await ensurePermissions();
 
   const permissionMap = Object.fromEntries(
     permissions.map((permission) => [permission.name, permission._id]),
   );
 
-  let migrated = false;
-
-  for (const roleKey of SYSTEM_COMPANY_ROLES) {
+  // Perf: each role touches only its own document, so the five
+  // upsert+migrate pairs run concurrently (~10 sequential Atlas
+  // round-trips → ~2). Every write stays individually atomic and the
+  // whole function stays idempotent, so a retry completes any role a
+  // failed run did not reach — same guarantee as the old loop.
+  const migrateRole = async (roleKey) => {
     const defaultNames = DEFAULT_ROLE_MATRIX[roleKey] || [];
 
     const defaultPermissionIds = defaultNames
@@ -131,7 +203,7 @@ export const ensureCompanyRoles = async (companyId, createdBy = null) => {
       });
     }
 
-    if (!role) continue;
+    if (!role) return false;
 
     const migrationSet = {
       permissionVersion: SYSTEM_PERMISSION_VERSION,
@@ -176,16 +248,24 @@ export const ensureCompanyRoles = async (companyId, createdBy = null) => {
       },
     );
 
-    if (result.modifiedCount > 0) {
-      migrated = true;
-    }
-  }
+    return result.modifiedCount > 0;
+  };
 
-  if (migrated) {
+  const migratedFlags = await Promise.all(
+    SYSTEM_COMPANY_ROLES.map((roleKey) => migrateRole(roleKey)),
+  );
+
+  if (migratedFlags.some(Boolean)) {
     invalidatePermissionCache({
       companyId,
     });
   }
+
+  // Perf: resolveUserPermissions (the hot caller) ignores this return
+  // value and re-reads the single user role itself, so it passes
+  // fetchRoles:false and skips the find-all-roles + populate-everything
+  // round-trips entirely. List endpoints keep the default.
+  if (!fetchRoles) return null;
 
   return CompanyRole.find({
     companyId,
@@ -312,7 +392,9 @@ export const resolveUserPermissions = async (userOrId) => {
     return cached.value;
   }
 
-  await ensureCompanyRoles(user.companyId);
+  // fetchRoles:false — the return value was always discarded here;
+  // findUserRole below loads the one role this user needs.
+  await ensureCompanyRoles(user.companyId, null, { fetchRoles: false });
 
   const role = await findUserRole(user);
 
