@@ -128,6 +128,9 @@ export const ensurePermissions = async () => {
 //             and _REVIEW (MANAGER + HR_MANAGER scoped queue)
 //   31 → 32 : 31.11 added ATTENDANCE_FINALIZATION_READ / _MANAGE /
 //             _REOPEN (COMPANY_ADMIN + HR_MANAGER, company-level)
+//   32 → 33 : 31.12 added ATTENDANCE_OPERATIONS_READ (HR_MANAGER, HR-only dashboard)
+//   33 → 34 : 31.14 added ATTENDANCE_CAPTURE_MANAGE (HR_MANAGER, kiosk/QR/import)
+//   34 → 35 : 31.15 added ATTENDANCE_ANALYTICS_READ (HR_MANAGER, reports & analytics)
 const SYSTEM_PERMISSION_VERSION = 35;
 export const ensureCompanyRoles = async (
   companyId,
