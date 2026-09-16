@@ -4,6 +4,7 @@ import SecuritySession from '../models/SecuritySession.js';
 import User from '../models/User.js';
 import ApiError from '../utils/ApiError.js';
 import asyncHandler from '../utils/asyncHandler.js';
+import { markPerf } from './perfTiming.js';
 
 const PLATFORM_ROLES = [
   'SUPER_ADMIN',
@@ -51,7 +52,25 @@ export const protect = asyncHandler(async (req, res, next) => {
     throw ApiError.unauthorized('Invalid token for this portal');
   }
 
-  const user = await User.findById(userId);
+  // Perf: the user + session reads are independent once keyed by the
+  // verified token claims, so they run concurrently (2 sequential Atlas
+  // round-trips → 1). Security order is UNCHANGED: every check below
+  // runs in the same sequence with identical errors. Platform tokens
+  // carry no sessionId, so they still pay exactly one query; a platform
+  // token that does carry one fetches a session row that is ignored —
+  // platform sessions are validated by superAdminSession, as before.
+  const [user, securitySession] = await Promise.all([
+    User.findById(userId),
+    decoded.sessionId
+      ? SecuritySession.findOne({
+          sessionId: decoded.sessionId,
+          user: userId,
+          companyId: decoded.companyId || null,
+          revokedAt: null,
+          expiresAt: { $gt: new Date() },
+        })
+      : null,
+  ]);
 
   if (!user) {
     throw ApiError.unauthorized('Account no longer exists');
@@ -70,6 +89,7 @@ export const protect = asyncHandler(async (req, res, next) => {
     req.companyId = null;
     req.sessionId = decoded.sessionId || null;
 
+    markPerf(req, 'auth');
     return next();
   }
 
@@ -89,14 +109,6 @@ export const protect = asyncHandler(async (req, res, next) => {
     );
   }
 
-  const securitySession = await SecuritySession.findOne({
-    sessionId: decoded.sessionId,
-    user: user._id,
-    companyId: user.companyId,
-    revokedAt: null,
-    expiresAt: { $gt: new Date() },
-  });
-
   if (!securitySession) {
     throw ApiError.unauthorized('Session expired or revoked');
   }
@@ -105,6 +117,7 @@ export const protect = asyncHandler(async (req, res, next) => {
   req.companyId = user.companyId;
   req.sessionId = securitySession.sessionId;
   req.securitySession = securitySession;
+  markPerf(req, 'auth');
 
   // Avoid a database write on every API request.
   if (

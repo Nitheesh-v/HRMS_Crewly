@@ -129,6 +129,16 @@ const SuperAdminCommercePage = ({ mode }) => {
     try {
       const form = new FormData(event.currentTarget);
 
+      // Empty inputs send nothing: creates fall back to schema
+      // defaults and edits preserve the stored value (the backend
+      // merges limits instead of replacing them).
+      const num = (value) => {
+        if (value === "" || value === null || value === undefined) {
+          return undefined;
+        }
+        return Number(value);
+      };
+
       const body = {
         key: form.get("key"),
         name: form.get("name"),
@@ -142,12 +152,22 @@ const SuperAdminCommercePage = ({ mode }) => {
         },
 
         limits: {
-          employees: Number(form.get("employees")),
-          storageMB: Number(form.get("storageMB")),
-          administrators: Number(form.get("administrators")),
-          departments: Number(form.get("departments")),
-          branches: Number(form.get("branches")),
-          apiRequestsMonthly: Number(form.get("apiRequestsMonthly")),
+          employees: num(form.get("employees")),
+          storageMB: num(form.get("storageMB")),
+          administrators: num(form.get("administrators")),
+          departments: num(form.get("departments")),
+          branches: num(form.get("branches")),
+          users: num(form.get("users")),
+          managers: num(form.get("managers")),
+          teamLeads: num(form.get("teamLeads")),
+          hrManagers: num(form.get("hrManagers")),
+          fileUploadsMonthly: num(form.get("fileUploadsMonthly")),
+          reportsMonthly: num(form.get("reportsMonthly")),
+          recruitmentCandidatesMonthly: num(
+            form.get("recruitmentCandidatesMonthly")
+          ),
+          jobPostingsMonthly: num(form.get("jobPostingsMonthly")),
+          apiRequestsMonthly: num(form.get("apiRequestsMonthly")),
         },
 
         enabledModules: String(form.get("enabledModules") || "")
@@ -155,6 +175,12 @@ const SuperAdminCommercePage = ({ mode }) => {
           .map((item) => item.trim().toUpperCase())
           .filter(Boolean),
       };
+
+      Object.keys(body.limits).forEach((limitKey) => {
+        if (body.limits[limitKey] === undefined) {
+          delete body.limits[limitKey];
+        }
+      });
 
       await superAdminService.savePlan(body);
 
@@ -517,6 +543,30 @@ const SuperAdminCommercePage = ({ mode }) => {
                 ],
                 ["departments", "Departments", planForm.limits?.departments],
                 ["branches", "Branches", planForm.limits?.branches],
+                ["users", "Total users", planForm.limits?.users],
+                ["managers", "Managers", planForm.limits?.managers],
+                ["teamLeads", "Team leads", planForm.limits?.teamLeads],
+                ["hrManagers", "HR managers", planForm.limits?.hrManagers],
+                [
+                  "fileUploadsMonthly",
+                  "Monthly file uploads",
+                  planForm.limits?.fileUploadsMonthly,
+                ],
+                [
+                  "reportsMonthly",
+                  "Monthly reports",
+                  planForm.limits?.reportsMonthly,
+                ],
+                [
+                  "recruitmentCandidatesMonthly",
+                  "Monthly candidates",
+                  planForm.limits?.recruitmentCandidatesMonthly,
+                ],
+                [
+                  "jobPostingsMonthly",
+                  "Monthly job postings",
+                  planForm.limits?.jobPostingsMonthly,
+                ],
                 [
                   "apiRequestsMonthly",
                   "Monthly API limit",

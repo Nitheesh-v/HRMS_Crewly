@@ -231,11 +231,9 @@ export const listPermissions = async (req, res) => {
 export const myPermissions = async (req, res) => {
   try {
     // DB Logic - DB logics
-    await ensureCompanyRoles(
-      // Data from frontend - requests from frontend
-      req.companyId
-    );
-
+    // Perf: no explicit ensureCompanyRoles() — getPermissionPayload →
+    // resolveUserPermissions already runs the migration on a cache miss.
+    // The old code ran the whole ~11-query migration TWICE on cold login.
     const data =
       await getPermissionPayload(
         req.user

@@ -9,6 +9,11 @@ import companyRoutes from "./companyRoutes.js";
 import departmentRoutes from "./departmentRoutes.js";
 import userRoutes from "./userRoutes.js";
 import attendanceRoutes from "./attendanceRoutes.js";
+import attendancePolicyRoutes from "./attendancePolicyRoutes.js";
+import attendanceLocationRoutes from "./attendanceLocationRoutes.js";
+import attendanceWorkModeRoutes from "./attendanceWorkModeRoutes.js";
+import attendanceRegularizationRoutes from "./attendanceRegularizationRoutes.js";
+import attendanceOvertimeRoutes from "./attendanceOvertimeRoutes.js";
 import leaveRoutes from "./leaveRoutes.js";
 import projectRoutes from "./projectRoutes.js";
 import taskRoutes from "./taskRoutes.js";
@@ -121,6 +126,22 @@ router.use("/companies", companyRoutes);
 router.use("/departments", departmentRoutes);
 
 router.use("/users", userRoutes);
+
+// Phase 31.1 — mounted before /attendance so policy reads never fall
+// through to the punch routers.
+router.use("/attendance/policy", attendancePolicyRoutes);
+
+// Phase 31.3 — same ordering for the same reason.
+router.use("/attendance/locations", attendanceLocationRoutes);
+// Phase 31.4 — mounted before /attendance so work-mode reads never
+// fall through to the generic attendance router.
+router.use("/attendance/work-mode-requests", attendanceWorkModeRoutes);
+// Phase 31.5 — mounted before /attendance so regularization reads
+// never fall through to the generic attendance router.
+router.use("/attendance/regularizations", attendanceRegularizationRoutes);
+// Phase 31.8 — mounted before /attendance so overtime reads never
+// fall through to the generic attendance router.
+router.use("/attendance/overtime", attendanceOvertimeRoutes);
 
 router.use("/attendance", attendanceRoutes);
 

@@ -13,6 +13,7 @@
 // ─────────────────────────────────────────────────────────────
 import User from '../models/User.js';
 import { canReadEmployeePayroll } from '../services/payroll/payrollAccessService.js';
+import { markPerf } from './perfTiming.js';
 
 const deny = (res, message = 'You cannot access this payroll profile.') =>
   res.status(403).json({ statusCode: 403, success: false, code: 'PAYROLL_ACCESS_DENIED', message });
@@ -55,6 +56,7 @@ export const requirePayrollProfileAccess = async (req, res, next) => {
     // Hand the resolved employee to the controller so it never re-reads.
     req.payrollSubject = subject;
 
+    markPerf(req, 'scope');
     return next();
   } catch (error) {
     return res.status(500).json({

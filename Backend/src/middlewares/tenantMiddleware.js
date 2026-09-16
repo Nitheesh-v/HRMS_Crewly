@@ -1,14 +1,21 @@
 import Company from '../models/Company.js';
 import ApiError from '../utils/ApiError.js';
 import asyncHandler from '../utils/asyncHandler.js';
+import { markPerf } from './perfTiming.js';
 
 // Company isolation: loads the user's company + subscription onto req.company.
 // Every module (Phase 2+) scopes its queries to req.companyId — cross-company
 // data leak is impossible.
 export const tenantContext = asyncHandler(async (req, res, next) => {
-  if (!req.companyId) return next(); // SUPER_ADMIN — platform-wide, no tenant
+  if (!req.companyId) {
+    markPerf(req, 'tenant');
+    return next(); // SUPER_ADMIN — platform-wide, no tenant
+  }
 
-  const company = await Company.findById(req.companyId).populate('subscription');
+  // Perf: lean — every req.company consumer is read-only (name/code for
+  // emails + PDFs, subscription status for gates). No .save(), methods,
+  // or virtuals are used, so the plain object is equivalent.
+  const company = await Company.findById(req.companyId).populate('subscription').lean();
   if (!company) throw ApiError.forbidden('Company not found');
   if (
     [
@@ -24,6 +31,7 @@ export const tenantContext = asyncHandler(async (req, res, next) => {
     );
   }
   req.company = company;
+  markPerf(req, 'tenant');
   next();
 });
 

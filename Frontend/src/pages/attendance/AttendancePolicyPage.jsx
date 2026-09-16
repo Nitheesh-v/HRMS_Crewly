@@ -1,0 +1,997 @@
+import { useCallback, useEffect, useState } from 'react';
+import {
+  AlarmClock,
+  BellOff,
+  Briefcase,
+  Coffee,
+  Hourglass,
+  MapPin,
+  MoonStar,
+  Save,
+  ShieldCheck,
+} from 'lucide-react';
+import usePermission from '../../hooks/usePermission.js';
+import attendancePolicyService from '../../services/attendancePolicyService.js';
+import attendanceLocationService from '../../services/attendanceLocationService.js';
+
+const DEFAULT_FORM = {
+  name: 'Attendance Policy',
+  description: '',
+  timezone: 'Asia/Kolkata',
+  thresholds: { fullDayMinutes: 480, halfDayMinutes: 240 },
+  grace: { lateInMinutes: 15, earlyOutMinutes: 15 },
+  breaks: { enabled: true, includeInWorkedTime: false, dailyLimitMinutes: '' },
+  missingPunch: { keepUnresolved: true, allowRegularization: true, regularizationWindowDays: 7 },
+  overtime: {
+    trackingEnabled: false,
+    minimumExtraMinutes: 30,
+    approvalRequired: true,
+    weekendEligible: false,
+    holidayEligible: false,
+    normalDayBenefit: 'OVERTIME',
+    weeklyOffBenefit: 'NONE',
+    holidayBenefit: 'NONE',
+    compOffMinutesPerDay: 480,
+  },
+  weekendHoliday: { allowWorkOnWeeklyOff: true, allowWorkOnHoliday: true },
+  workModes: { office: true, wfh: false, field: false, clientSite: false, businessTravel: false },
+  workModeApproval: { wfh: true, field: true, clientSite: true, businessTravel: true },
+  locationEnforcement: 'DISABLED',
+};
+
+const toForm = (policy) => {
+  if (!policy) return structuredClone(DEFAULT_FORM);
+
+  return {
+    name: policy.name || 'Attendance Policy',
+    description: policy.description || '',
+    timezone: policy.timezone || 'Asia/Kolkata',
+    thresholds: {
+      fullDayMinutes: policy.thresholds?.fullDayMinutes ?? 480,
+      halfDayMinutes: policy.thresholds?.halfDayMinutes ?? 240,
+    },
+    grace: {
+      lateInMinutes: policy.grace?.lateInMinutes ?? 15,
+      earlyOutMinutes: policy.grace?.earlyOutMinutes ?? 15,
+    },
+    breaks: {
+      enabled: policy.breaks?.enabled ?? true,
+      includeInWorkedTime: policy.breaks?.includeInWorkedTime ?? false,
+      dailyLimitMinutes: policy.breaks?.dailyLimitMinutes ?? '',
+    },
+    missingPunch: {
+      keepUnresolved: policy.missingPunch?.keepUnresolved ?? true,
+      allowRegularization: policy.missingPunch?.allowRegularization ?? true,
+      regularizationWindowDays: policy.missingPunch?.regularizationWindowDays ?? 7,
+    },
+    overtime: {
+      trackingEnabled: policy.overtime?.trackingEnabled ?? false,
+      minimumExtraMinutes: policy.overtime?.minimumExtraMinutes ?? 30,
+      approvalRequired: policy.overtime?.approvalRequired ?? true,
+      weekendEligible: policy.overtime?.weekendEligible ?? false,
+      holidayEligible: policy.overtime?.holidayEligible ?? false,
+      normalDayBenefit: policy.overtime?.normalDayBenefit ?? 'OVERTIME',
+      weeklyOffBenefit: policy.overtime?.weeklyOffBenefit ?? 'NONE',
+      holidayBenefit: policy.overtime?.holidayBenefit ?? 'NONE',
+      compOffMinutesPerDay: policy.overtime?.compOffMinutesPerDay ?? 480,
+    },
+    weekendHoliday: {
+      allowWorkOnWeeklyOff: policy.weekendHoliday?.allowWorkOnWeeklyOff ?? true,
+      allowWorkOnHoliday: policy.weekendHoliday?.allowWorkOnHoliday ?? true,
+    },
+    workModes: {
+      office: policy.workModes?.office ?? true,
+      wfh: policy.workModes?.wfh ?? false,
+      field: policy.workModes?.field ?? false,
+      clientSite: policy.workModes?.clientSite ?? false,
+      businessTravel: policy.workModes?.businessTravel ?? false,
+    },
+    workModeApproval: {
+      wfh: policy.workModeApproval?.wfh ?? true,
+      field: policy.workModeApproval?.field ?? true,
+      clientSite: policy.workModeApproval?.clientSite ?? true,
+      businessTravel: policy.workModeApproval?.businessTravel ?? true,
+    },
+    locationEnforcement: policy.locationEnforcement || 'DISABLED',
+  };
+};
+
+const toPayload = (form, expectedConfigVersion) => ({
+  // Omit the token on first save — the API treats a missing token as "no check".
+  ...(expectedConfigVersion == null ? {} : { expectedConfigVersion }),
+  name: form.name.trim(),
+  description: form.description.trim(),
+  timezone: form.timezone.trim(),
+  thresholds: {
+    fullDayMinutes: Number(form.thresholds.fullDayMinutes),
+    halfDayMinutes: Number(form.thresholds.halfDayMinutes),
+  },
+  grace: {
+    lateInMinutes: Number(form.grace.lateInMinutes),
+    earlyOutMinutes: Number(form.grace.earlyOutMinutes),
+  },
+  breaks: {
+    enabled: Boolean(form.breaks.enabled),
+    includeInWorkedTime: Boolean(form.breaks.includeInWorkedTime),
+    dailyLimitMinutes:
+      form.breaks.dailyLimitMinutes === '' || form.breaks.dailyLimitMinutes === null
+        ? null
+        : Number(form.breaks.dailyLimitMinutes),
+  },
+  missingPunch: {
+    keepUnresolved: Boolean(form.missingPunch.keepUnresolved),
+    allowRegularization: Boolean(form.missingPunch.allowRegularization),
+    regularizationWindowDays: Number(form.missingPunch.regularizationWindowDays),
+  },
+  overtime: {
+    trackingEnabled: Boolean(form.overtime.trackingEnabled),
+    minimumExtraMinutes: Number(form.overtime.minimumExtraMinutes),
+    approvalRequired: Boolean(form.overtime.approvalRequired),
+    weekendEligible: Boolean(form.overtime.weekendEligible),
+    holidayEligible: Boolean(form.overtime.holidayEligible),
+    normalDayBenefit: form.overtime.normalDayBenefit || 'OVERTIME',
+    weeklyOffBenefit: form.overtime.weeklyOffBenefit || 'NONE',
+    holidayBenefit: form.overtime.holidayBenefit || 'NONE',
+    compOffMinutesPerDay: Number(form.overtime.compOffMinutesPerDay) || 480,
+  },
+  weekendHoliday: {
+    allowWorkOnWeeklyOff: Boolean(form.weekendHoliday.allowWorkOnWeeklyOff),
+    allowWorkOnHoliday: Boolean(form.weekendHoliday.allowWorkOnHoliday),
+  },
+  workModes: {
+    office: Boolean(form.workModes.office),
+    wfh: Boolean(form.workModes.wfh),
+    field: Boolean(form.workModes.field),
+    clientSite: Boolean(form.workModes.clientSite),
+    businessTravel: Boolean(form.workModes.businessTravel),
+  },
+  workModeApproval: {
+    wfh: Boolean(form.workModeApproval.wfh),
+    field: Boolean(form.workModeApproval.field),
+    clientSite: Boolean(form.workModeApproval.clientSite),
+    businessTravel: Boolean(form.workModeApproval.businessTravel),
+  },
+  locationEnforcement: form.locationEnforcement,
+});
+
+const formatMinutes = (value) => {
+  const total = Math.max(0, Math.trunc(Number(value) || 0));
+  const hours = Math.floor(total / 60);
+  const minutes = total % 60;
+  return `${hours}h ${String(minutes).padStart(2, '0')}m`;
+};
+
+const NumberField = ({ label, value, onChange, hint, disabled, min = 0, max = 1440 }) => (
+  <div>
+    <label className="label">{label}</label>
+    <input
+      type="number"
+      className="input w-full"
+      value={value}
+      min={min}
+      max={max}
+      disabled={disabled}
+      onChange={(event) => onChange(event.target.value)}
+    />
+    {hint && <p className="mt-1 text-xs text-crewly-dim">{hint}</p>}
+  </div>
+);
+
+const Toggle = ({ label, checked, onChange, disabled, hint }) => (
+  <label className="flex cursor-pointer items-start gap-3">
+    <input
+      type="checkbox"
+      className="mt-1 h-4 w-4 accent-emerald-500"
+      checked={Boolean(checked)}
+      disabled={disabled}
+      onChange={(event) => onChange(event.target.checked)}
+    />
+    <span>
+      <span className="text-sm font-medium">{label}</span>
+      {hint && <span className="block text-xs text-crewly-dim">{hint}</span>}
+    </span>
+  </label>
+);
+
+const Section = ({ icon: Icon, title, children }) => (
+  <section className="card space-y-4 p-5">
+    <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-crewly-dim">
+      <Icon size={16} />
+      {title}
+    </h2>
+    {children}
+  </section>
+);
+
+const AttendancePolicyPage = () => {
+  const { hasPermission, loading: permissionsLoading } = usePermission();
+
+  const canRead = hasPermission('ATTENDANCE_POLICY_READ');
+  const canManage =
+    hasPermission('ATTENDANCE_POLICY_MANAGE') || hasPermission('ATTENDANCE_POLICY_ACTIVATE');
+  const canActivate = hasPermission('ATTENDANCE_POLICY_ACTIVATE');
+  const canReadLocations = hasPermission('ATTENDANCE_LOCATION_READ');
+  const canManageLocations = hasPermission('ATTENDANCE_LOCATION_MANAGE');
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [activating, setActivating] = useState(false);
+  const [policy, setPolicy] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [form, setForm] = useState(() => structuredClone(DEFAULT_FORM));
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  // Phase 31.3 — office locations share this page (no extra route).
+  const [locations, setLocations] = useState([]);
+  const [locForm, setLocForm] = useState({
+    id: null,
+    name: '',
+    code: '',
+    displayAddress: '',
+    latitude: '',
+    longitude: '',
+    radiusMeters: 200,
+    isActive: true,
+  });
+  const [locBusy, setLocBusy] = useState(false);
+  const [locError, setLocError] = useState('');
+
+  const loadLocations = useCallback(async () => {
+    if (!canReadLocations && !canManageLocations) return;
+    try {
+      const result = await attendanceLocationService.list();
+      const rows = result?.data;
+      setLocations(Array.isArray(rows) ? rows : []);
+    } catch (loadError) {
+      setLocError(loadError?.message || 'Could not load the office locations');
+    }
+  }, [canReadLocations, canManageLocations]);
+
+  useEffect(() => {
+    if (!permissionsLoading) loadLocations();
+  }, [permissionsLoading, loadLocations]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+
+    try {
+      const [current, past] = await Promise.all([
+        attendancePolicyService.get(),
+        attendancePolicyService.history({ limit: 10 }).catch(() => ({ data: [] })),
+      ]);
+
+      setPolicy(current?.data || null);
+      setForm(toForm(current?.data));
+      setHistory(Array.isArray(past?.data) ? past.data : []);
+    } catch (loadError) {
+      setError(loadError?.message || 'Could not load the attendance policy');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!permissionsLoading && canRead) {
+      load();
+    }
+
+    if (!permissionsLoading && !canRead) {
+      setLoading(false);
+    }
+  }, [permissionsLoading, canRead, load]);
+
+  const setSection = (section, field, value) =>
+    setForm((previous) => ({
+      ...previous,
+      [section]: { ...previous[section], [field]: value },
+    }));
+
+  const save = async () => {
+    setSaving(true);
+    setMessage('');
+    setError('');
+
+    try {
+      const result = await attendancePolicyService.saveDraft(
+        toPayload(form, policy?.configVersion ?? null),
+      );
+
+      setPolicy(result?.data || null);
+      setForm(toForm(result?.data));
+      setMessage(result?.message || 'Draft saved');
+      const past = await attendancePolicyService.history({ limit: 10 }).catch(() => null);
+      if (past) setHistory(Array.isArray(past.data) ? past.data : []);
+    } catch (saveError) {
+      setError(saveError?.message || 'Could not save the draft');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const activate = async () => {
+    if (
+      !window.confirm(
+        'Activate this attendance policy? It becomes the company rule for future evaluation. History is preserved.',
+      )
+    ) {
+      return;
+    }
+
+    setActivating(true);
+    setMessage('');
+    setError('');
+
+    try {
+      const result = await attendancePolicyService.activate(policy?.configVersion ?? null);
+
+      setPolicy(result?.data || null);
+      setForm(toForm(result?.data));
+      setMessage(result?.message || 'Policy activated');
+      const past = await attendancePolicyService.history({ limit: 10 }).catch(() => null);
+      if (past) setHistory(Array.isArray(past.data) ? past.data : []);
+    } catch (activationError) {
+      setError(activationError?.message || 'Could not activate the policy');
+    } finally {
+      setActivating(false);
+    }
+  };
+
+  const resetLocForm = () =>
+    setLocForm({
+      id: null,
+      name: '',
+      code: '',
+      displayAddress: '',
+      latitude: '',
+      longitude: '',
+      radiusMeters: 200,
+      isActive: true,
+    });
+
+  const saveLocation = async () => {
+    setLocBusy(true);
+    setLocError('');
+    setMessage('');
+
+    try {
+      const payload = {
+        name: locForm.name.trim(),
+        code: locForm.code.trim() || null,
+        displayAddress: locForm.displayAddress.trim() || null,
+        latitude: Number(locForm.latitude),
+        longitude: Number(locForm.longitude),
+        radiusMeters: Number(locForm.radiusMeters),
+        isActive: locForm.isActive,
+      };
+      if (locForm.id) {
+        await attendanceLocationService.update(locForm.id, payload);
+      } else {
+        await attendanceLocationService.create(payload);
+      }
+      setMessage(locForm.id ? 'Location updated' : 'Location created');
+      resetLocForm();
+      await loadLocations();
+    } catch (saveError) {
+      setLocError(saveError?.message || 'Could not save the location');
+    } finally {
+      setLocBusy(false);
+    }
+  };
+
+  const toggleLocationActive = async (row) => {
+    setLocBusy(true);
+    setLocError('');
+
+    try {
+      if (row.isActive) {
+        await attendanceLocationService.deactivate(row.id);
+      } else {
+        await attendanceLocationService.activate(row.id);
+      }
+      await loadLocations();
+    } catch (toggleError) {
+      setLocError(toggleError?.message || 'Could not update the location');
+    } finally {
+      setLocBusy(false);
+    }
+  };
+
+  if (permissionsLoading || loading) {
+    return <p className="text-crewly-dim">Loading attendance policy…</p>;
+  }
+
+  if (!canRead) {
+    return (
+      <div className="card p-6">
+        <h1 className="text-xl font-bold">Attendance Policy</h1>
+        <p className="mt-2 text-crewly-dim">
+          You do not have permission to view the company attendance policy.
+        </p>
+      </div>
+    );
+  }
+
+  const readOnly = !canManage;
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-[0.2em] text-crewly-dim">Time &amp; Leave</p>
+          <h1 className="text-2xl font-black">Attendance Policy</h1>
+          <p className="text-sm text-crewly-dim">
+            Company rules for how attendance is evaluated. Punch In / Punch Out keeps
+            working as today.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {policy && (
+            <span className="badge">
+              {policy.status}
+              {policy.version > 0 ? ` · v${policy.version}` : ''}
+            </span>
+          )}
+          {!policy && <span className="badge">Not configured</span>}
+        </div>
+      </div>
+
+      {message && (
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-emerald-200">
+          {message}
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-red-200">
+          {error}
+        </div>
+      )}
+
+      <Section icon={Briefcase} title="General">
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="label">Policy name</label>
+            <input
+              className="input w-full"
+              value={form.name}
+              disabled={readOnly}
+              maxLength={80}
+              onChange={(event) => setForm((previous) => ({ ...previous, name: event.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="label">Timezone (IANA)</label>
+            <input
+              className="input w-full"
+              value={form.timezone}
+              disabled={readOnly}
+              placeholder="Asia/Kolkata"
+              onChange={(event) =>
+                setForm((previous) => ({ ...previous, timezone: event.target.value }))
+              }
+            />
+            <p className="mt-1 text-xs text-crewly-dim">
+              Business-day boundaries are evaluated in this zone.
+            </p>
+          </div>
+        </div>
+        <div>
+          <label className="label">Description</label>
+          <textarea
+            className="input w-full"
+            rows={2}
+            value={form.description}
+            disabled={readOnly}
+            maxLength={500}
+            onChange={(event) =>
+              setForm((previous) => ({ ...previous, description: event.target.value }))
+            }
+          />
+        </div>
+      </Section>
+
+      <Section icon={Hourglass} title="Working hours">
+        <div className="grid gap-4 md:grid-cols-2">
+          <NumberField
+            label="Full-day minimum (minutes)"
+            value={form.thresholds.fullDayMinutes}
+            disabled={readOnly}
+            hint={`Worked ${formatMinutes(form.thresholds.fullDayMinutes)} or more counts as a full day.`}
+            onChange={(value) => setSection('thresholds', 'fullDayMinutes', value)}
+          />
+          <NumberField
+            label="Half-day minimum (minutes)"
+            value={form.thresholds.halfDayMinutes}
+            disabled={readOnly}
+            hint={`At least ${formatMinutes(form.thresholds.halfDayMinutes)} counts as a half day. Must stay below the full-day minimum.`}
+            onChange={(value) => setSection('thresholds', 'halfDayMinutes', value)}
+          />
+        </div>
+      </Section>
+
+      <Section icon={AlarmClock} title="Grace period">
+        <div className="grid gap-4 md:grid-cols-2">
+          <NumberField
+            label="Late arrival grace (minutes)"
+            value={form.grace.lateInMinutes}
+            disabled={readOnly}
+            max={120}
+            onChange={(value) => setSection('grace', 'lateInMinutes', value)}
+          />
+          <NumberField
+            label="Early departure grace (minutes)"
+            value={form.grace.earlyOutMinutes}
+            disabled={readOnly}
+            max={120}
+            onChange={(value) => setSection('grace', 'earlyOutMinutes', value)}
+          />
+        </div>
+      </Section>
+
+      <Section icon={Coffee} title="Break rules">
+        <div className="space-y-3">
+          <Toggle
+            label="Breaks enabled"
+            checked={form.breaks.enabled}
+            disabled={readOnly}
+            hint="Break punching arrives in a later phase; this only configures the rule."
+            onChange={(value) => setSection('breaks', 'enabled', value)}
+          />
+          <Toggle
+            label="Break time counts as worked time"
+            checked={form.breaks.includeInWorkedTime}
+            disabled={readOnly || !form.breaks.enabled}
+            onChange={(value) => setSection('breaks', 'includeInWorkedTime', value)}
+          />
+          <div className="max-w-xs">
+            <NumberField
+              label="Daily counted-break cap (minutes, empty = uncapped)"
+              value={form.breaks.dailyLimitMinutes}
+              disabled={readOnly || !form.breaks.enabled || !form.breaks.includeInWorkedTime}
+              onChange={(value) => setSection('breaks', 'dailyLimitMinutes', value)}
+            />
+          </div>
+        </div>
+      </Section>
+
+      <Section icon={BellOff} title="Missing punch">
+        <p className="text-sm text-crewly-dim">
+          Incomplete days stay visible as exceptions — the system never invents a
+          punch or a silent checkout.
+        </p>
+        <div className="space-y-3">
+          <Toggle
+            label="Keep incomplete days unresolved until reviewed"
+            checked={form.missingPunch.keepUnresolved}
+            disabled={readOnly}
+            onChange={(value) => setSection('missingPunch', 'keepUnresolved', value)}
+          />
+          <Toggle
+            label="Allow regularization requests (later phase)"
+            checked={form.missingPunch.allowRegularization}
+            disabled={readOnly}
+            onChange={(value) => setSection('missingPunch', 'allowRegularization', value)}
+          />
+          <div className="max-w-xs">
+            <NumberField
+              label="Regularization window (days)"
+              value={form.missingPunch.regularizationWindowDays}
+              disabled={readOnly}
+              max={31}
+              onChange={(value) => setSection('missingPunch', 'regularizationWindowDays', value)}
+            />
+          </div>
+        </div>
+      </Section>
+
+      <Section icon={MoonStar} title="Overtime (time only, never money)">
+        <div className="space-y-3">
+          <Toggle
+            label="Track overtime minutes"
+            checked={form.overtime.trackingEnabled}
+            disabled={readOnly}
+            hint="Eligibility in minutes. Salary math stays in Payroll."
+            onChange={(value) => setSection('overtime', 'trackingEnabled', value)}
+          />
+          <div className="max-w-xs">
+            <NumberField
+              label="Minimum extra minutes before OT is eligible"
+              value={form.overtime.minimumExtraMinutes}
+              disabled={readOnly || !form.overtime.trackingEnabled}
+              onChange={(value) => setSection('overtime', 'minimumExtraMinutes', value)}
+            />
+          </div>
+          <Toggle
+            label="OT requires approval"
+            checked={form.overtime.approvalRequired}
+            disabled={readOnly || !form.overtime.trackingEnabled}
+            onChange={(value) => setSection('overtime', 'approvalRequired', value)}
+          />
+          <Toggle
+            label="Weekend work is OT-eligible"
+            checked={form.overtime.weekendEligible}
+            disabled={readOnly || !form.overtime.trackingEnabled}
+            onChange={(value) => setSection('overtime', 'weekendEligible', value)}
+          />
+          <Toggle
+            label="Holiday work is OT-eligible"
+            checked={form.overtime.holidayEligible}
+            disabled={readOnly || !form.overtime.trackingEnabled}
+            onChange={(value) => setSection('overtime', 'holidayEligible', value)}
+          />
+          {/* Phase 31.8 — one benefit disposition per approved block. */}
+          <div className="max-w-xs">
+            <label className="label">Normal extra hours become</label>
+            <select
+              className="input w-full"
+              value={form.overtime.normalDayBenefit}
+              disabled={readOnly || !form.overtime.trackingEnabled}
+              onChange={(event) => setSection('overtime', 'normalDayBenefit', event.target.value)}
+            >
+              <option value="OVERTIME">Overtime (payable minutes)</option>
+              <option value="NONE">Nothing</option>
+            </select>
+          </div>
+          <div className="max-w-xs">
+            <label className="label">Weekly-off work becomes</label>
+            <select
+              className="input w-full"
+              value={form.overtime.weeklyOffBenefit}
+              disabled={readOnly || !form.overtime.trackingEnabled || !form.overtime.weekendEligible}
+              onChange={(event) => setSection('overtime', 'weeklyOffBenefit', event.target.value)}
+            >
+              <option value="NONE">Nothing</option>
+              <option value="OVERTIME">Overtime (payable minutes)</option>
+              <option value="COMP_OFF">Comp-off (leave days)</option>
+            </select>
+            <p className="mt-1 text-xs text-crewly-dim">Needs “Weekend work is OT-eligible” above.</p>
+          </div>
+          <div className="max-w-xs">
+            <label className="label">Holiday work becomes</label>
+            <select
+              className="input w-full"
+              value={form.overtime.holidayBenefit}
+              disabled={readOnly || !form.overtime.trackingEnabled || !form.overtime.holidayEligible}
+              onChange={(event) => setSection('overtime', 'holidayBenefit', event.target.value)}
+            >
+              <option value="NONE">Nothing</option>
+              <option value="OVERTIME">Overtime (payable minutes)</option>
+              <option value="COMP_OFF">Comp-off (leave days)</option>
+            </select>
+            <p className="mt-1 text-xs text-crewly-dim">Needs “Holiday work is OT-eligible” above.</p>
+          </div>
+          <div className="max-w-xs">
+            <NumberField
+              label="Comp-off minutes that earn one leave day"
+              value={form.overtime.compOffMinutesPerDay}
+              min={1}
+              disabled={readOnly || !form.overtime.trackingEnabled}
+              onChange={(value) => setSection('overtime', 'compOffMinutesPerDay', value)}
+            />
+          </div>
+        </div>
+      </Section>
+
+      <Section icon={Briefcase} title="Weekend & holiday work">
+        <div className="space-y-3">
+          <Toggle
+            label="Accept punches on weekly offs"
+            checked={form.weekendHoliday.allowWorkOnWeeklyOff}
+            disabled={readOnly}
+            hint="Which days are offs/holidays is still decided by Work Schedule and Holidays."
+            onChange={(value) => setSection('weekendHoliday', 'allowWorkOnWeeklyOff', value)}
+          />
+          <Toggle
+            label="Accept punches on holidays"
+            checked={form.weekendHoliday.allowWorkOnHoliday}
+            disabled={readOnly}
+            onChange={(value) => setSection('weekendHoliday', 'allowWorkOnHoliday', value)}
+          />
+        </div>
+      </Section>
+
+      <Section icon={MapPin} title="Work modes & location">
+        <div className="grid gap-3 md:grid-cols-2">
+          <Toggle
+            label="Office"
+            checked={form.workModes.office}
+            disabled
+            hint="Office stays available."
+            onChange={() => {}}
+          />
+          <Toggle
+            label="Work from home"
+            checked={form.workModes.wfh}
+            disabled={readOnly}
+            hint="Approval workflows arrive in a later phase."
+            onChange={(value) => setSection('workModes', 'wfh', value)}
+          />
+          <Toggle
+            label="Field"
+            checked={form.workModes.field}
+            disabled={readOnly}
+            onChange={(value) => setSection('workModes', 'field', value)}
+          />
+          <Toggle
+            label="Client site"
+            checked={form.workModes.clientSite}
+            disabled={readOnly}
+            onChange={(value) => setSection('workModes', 'clientSite', value)}
+          />
+          <Toggle
+            label="Business travel"
+            checked={form.workModes.businessTravel}
+            disabled={readOnly}
+            onChange={(value) => setSection('workModes', 'businessTravel', value)}
+          />
+        </div>
+        <div className="max-w-xs space-y-2">
+          <p className="label">Approval required to clock in</p>
+          <Toggle
+            label="WFH needs approval"
+            checked={form.workModeApproval.wfh}
+            disabled={readOnly}
+            onChange={(value) => setSection('workModeApproval', 'wfh', value)}
+          />
+          <Toggle
+            label="Field needs approval"
+            checked={form.workModeApproval.field}
+            disabled={readOnly}
+            onChange={(value) => setSection('workModeApproval', 'field', value)}
+          />
+          <Toggle
+            label="Client site needs approval"
+            checked={form.workModeApproval.clientSite}
+            disabled={readOnly}
+            onChange={(value) => setSection('workModeApproval', 'clientSite', value)}
+          />
+          <Toggle
+            label="Business travel needs approval"
+            checked={form.workModeApproval.businessTravel}
+            disabled={readOnly}
+            onChange={(value) => setSection('workModeApproval', 'businessTravel', value)}
+          />
+          <p className="text-xs text-crewly-dim">
+            When on, clock-in under the mode needs an APPROVED work-mode
+            request covering the day. OFFICE never needs a request.
+          </p>
+        </div>
+        <div className="max-w-xs">
+          <label className="label">Location enforcement</label>
+          <select
+            className="input w-full"
+            value={form.locationEnforcement}
+            disabled={readOnly}
+            onChange={(event) =>
+              setForm((previous) => ({ ...previous, locationEnforcement: event.target.value }))
+            }
+          >
+            <option value="DISABLED">Disabled</option>
+            <option value="OPTIONAL">Optional</option>
+            <option value="REQUIRED">Required</option>
+          </select>
+          <p className="mt-1 text-xs text-crewly-dim">
+            Applies to OFFICE clock-ins; offices are configured in the section
+            below. This page never requests device location.
+          </p>
+        </div>
+      </Section>
+
+      {(canReadLocations || canManageLocations) && (
+        <Section icon={MapPin} title="Office locations">
+          <p className="text-xs text-crewly-dim">
+            Company premises an OFFICE clock-in can be verified against.
+            Coordinates describe offices — employee positions are checked once
+            per clock-in and never stored. Deactivate instead of deleting:
+            history stays interpretable.
+          </p>
+          {form.locationEnforcement === 'REQUIRED' &&
+            locations.filter((row) => row.isActive).length === 0 && (
+              <p className="text-sm text-crewly-orange">
+                Enforcement is REQUIRED but no location is active — OFFICE
+                clock-ins will be refused until one exists.
+              </p>
+            )}
+          {locError && <p className="text-sm text-crewly-red">{locError}</p>}
+          <div className="space-y-2">
+            {locations.map((row) => (
+              <div
+                key={row.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-crewly-border px-3 py-2 text-sm"
+              >
+                <span>
+                  {row.name}
+                  {row.code ? ` · ${row.code}` : ''} · {row.radiusMeters}m
+                  {!row.isActive && <span className="badge ml-2">Inactive</span>}
+                </span>
+                {canManageLocations && (
+                  <span className="flex gap-2">
+                    <button
+                      type="button"
+                      className="btn-ghost px-3 py-1 text-sm"
+                      disabled={locBusy}
+                      onClick={() =>
+                        setLocForm({
+                          id: row.id,
+                          name: row.name,
+                          code: row.code || '',
+                          displayAddress: row.displayAddress || '',
+                          latitude: row.latitude,
+                          longitude: row.longitude,
+                          radiusMeters: row.radiusMeters,
+                          isActive: row.isActive,
+                        })
+                      }
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost px-3 py-1 text-sm"
+                      disabled={locBusy}
+                      onClick={() => toggleLocationActive(row)}
+                    >
+                      {row.isActive ? 'Deactivate' : 'Activate'}
+                    </button>
+                  </span>
+                )}
+              </div>
+            ))}
+            {locations.length === 0 && (
+              <p className="text-sm text-crewly-dim">No locations yet.</p>
+            )}
+          </div>
+          {canManageLocations && (
+            <div className="grid max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="label">Name</label>
+                <input
+                  className="input w-full"
+                  value={locForm.name}
+                  disabled={locBusy}
+                  onChange={(event) => setLocForm((previous) => ({ ...previous, name: event.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="label">Code (optional)</label>
+                <input
+                  className="input w-full"
+                  value={locForm.code}
+                  disabled={locBusy}
+                  onChange={(event) => setLocForm((previous) => ({ ...previous, code: event.target.value }))}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="label">Address / description (optional)</label>
+                <input
+                  className="input w-full"
+                  value={locForm.displayAddress}
+                  disabled={locBusy}
+                  onChange={(event) =>
+                    setLocForm((previous) => ({ ...previous, displayAddress: event.target.value }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="label">Latitude (−90…90)</label>
+                <input
+                  className="input w-full"
+                  type="number"
+                  step="any"
+                  value={locForm.latitude}
+                  disabled={locBusy}
+                  onChange={(event) =>
+                    setLocForm((previous) => ({ ...previous, latitude: event.target.value }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="label">Longitude (−180…180)</label>
+                <input
+                  className="input w-full"
+                  type="number"
+                  step="any"
+                  value={locForm.longitude}
+                  disabled={locBusy}
+                  onChange={(event) =>
+                    setLocForm((previous) => ({ ...previous, longitude: event.target.value }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="label">Radius in meters (10…100000)</label>
+                <input
+                  className="input w-full"
+                  type="number"
+                  step="1"
+                  value={locForm.radiusMeters}
+                  disabled={locBusy}
+                  onChange={(event) =>
+                    setLocForm((previous) => ({ ...previous, radiusMeters: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="flex items-end gap-2 pb-1">
+                <button
+                  type="button"
+                  className="btn-primary px-4 py-2"
+                  disabled={locBusy}
+                  onClick={saveLocation}
+                >
+                  {locBusy ? 'Saving…' : locForm.id ? 'Update location' : 'Add location'}
+                </button>
+                {locForm.id && (
+                  <button
+                    type="button"
+                    className="btn-ghost px-4 py-2"
+                    disabled={locBusy}
+                    onClick={resetLocForm}
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </Section>
+      )}
+
+      <Section icon={ShieldCheck} title="Policy state">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="badge">{policy?.status || 'NOT CONFIGURED'}</span>
+          {policy?.version > 0 && <span className="badge">v{policy.version}</span>}
+          {policy?.activatedAt && (
+            <span className="text-xs text-crewly-dim">
+              Active since {new Date(policy.activatedAt).toLocaleString('en-IN')}
+            </span>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            className="btn-primary flex items-center gap-2 px-4 py-2"
+            disabled={readOnly || saving}
+            onClick={save}
+          >
+            <Save size={16} />
+            {saving ? 'Saving…' : 'Save draft'}
+          </button>
+          <button
+            type="button"
+            className="btn-ghost px-4 py-2"
+            disabled={!canActivate || activating || policy?.status === 'ACTIVE'}
+            onClick={activate}
+          >
+            {activating ? 'Activating…' : 'Activate policy'}
+          </button>
+        </div>
+        {history.length > 0 && (
+          <div>
+            <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-crewly-dim">
+              Version history
+            </h3>
+            <div className="space-y-2">
+              {history.map((row) => (
+                <div
+                  key={row.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-crewly-border px-3 py-2 text-sm"
+                >
+                  <span>
+                    {row.name} · v{row.version} · {row.status}
+                  </span>
+                  <span className="text-xs text-crewly-dim">
+                    {row.updatedAt ? new Date(row.updatedAt).toLocaleString('en-IN') : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </Section>
+    </div>
+  );
+};
+
+export default AttendancePolicyPage;

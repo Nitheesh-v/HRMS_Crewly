@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import env from './config/env.js';
 import requestLogger from './middlewares/requestLogger.js';
+import { initPerfTiming, perfTiming } from './middlewares/perfTiming.js';
 import notFound from './middlewares/notFound.js';
 import errorHandler from './middlewares/errorHandler.js';
 import routes from './routes/index.js';
@@ -164,6 +165,12 @@ app.use(
     limit: '10kb',
   }),
 );
+
+// Perf RCA instrumentation (PERF_TIMING=true). No-op unless enabled —
+// see middlewares/perfTiming.js. Mounted first so totalMs covers the
+// whole in-app path.
+initPerfTiming();
+app.use(perfTiming);
 
 app.use(requestSecurity);
 app.use(requestLogger);

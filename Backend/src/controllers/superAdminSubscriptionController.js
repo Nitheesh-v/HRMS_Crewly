@@ -367,6 +367,42 @@ export const savePlan = async (req, res) => {
       key,
     }).lean();
 
+    // Seat/quota limits merge with the stored plan: editors (UI/API)
+    // send only the fields they manage, and unmentioned limits
+    // (managers, teamLeads, users, hrManagers, …) must survive a
+    // save instead of being wiped by a wholesale replace.
+    const LIMIT_KEYS = [
+      'employees',
+      'storageMB',
+      'administrators',
+      'departments',
+      'branches',
+      'users',
+      'managers',
+      'teamLeads',
+      'hrManagers',
+      'fileUploadsMonthly',
+      'reportsMonthly',
+      'recruitmentCandidatesMonthly',
+      'jobPostingsMonthly',
+      'apiRequestsMonthly',
+    ];
+    const incoming =
+      req.body.limits && typeof req.body.limits === 'object'
+        ? req.body.limits
+        : {};
+    const cleanLimits = {};
+    for (const limitKey of LIMIT_KEYS) {
+      const raw = incoming[limitKey];
+      if (raw === undefined || raw === null || raw === '') continue;
+      const numeric = Number(raw);
+      if (!Number.isFinite(numeric) || numeric < 0) {
+        return fail(res, 400, `Invalid limit for ${limitKey}`);
+      }
+      cleanLimits[limitKey] = numeric;
+    }
+    const mergedLimits = { ...(previous?.limits || {}), ...cleanLimits };
+
     const plan = await SubscriptionPlan.findOneAndUpdate(
       { key },
       {
@@ -374,7 +410,7 @@ export const savePlan = async (req, res) => {
           name: req.body.name || key,
           description: req.body.description || '',
           prices: req.body.prices,
-          limits: req.body.limits,
+          limits: mergedLimits,
           enabledModules: req.body.enabledModules || [],
           supportLevel: req.body.supportLevel,
           isActive: req.body.isActive !== false,

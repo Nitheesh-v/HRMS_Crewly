@@ -1,7 +1,59 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
+import {
+  Briefcase,
+  CheckCircle2,
+  Clock,
+  Coffee,
+  History,
+  LogIn,
+  LogOut,
+  MapPin,
+  Play,
+  X,
+} from 'lucide-react';
 import attendanceService from '../../services/attendanceService.js';
+import attendanceLocationService from '../../services/attendanceLocationService.js';
+import attendanceOvertimeService from '../../services/attendanceOvertimeService.js';
 
-const fmtTime = (d) => (d ? new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—');
+// One-shot browser position for the explicit Clock-In click. Resolves
+// { latitude, longitude, accuracy? } or throws an employee-safe Error.
+// getCurrentPosition ONLY — watchPosition must never appear in this file.
+const readSinglePosition = () =>
+  new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('Location is not available in this browser'));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude, accuracy } = position.coords;
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+          reject(new Error('Could not determine your location — please retry'));
+          return;
+        }
+        resolve({
+          latitude,
+          longitude,
+          ...(Number.isFinite(accuracy) ? { accuracy } : {}),
+        });
+      },
+      (failure) => {
+        // GeolocationPositionError codes: 1 denied, 2 unavailable, 3 timeout.
+        if (failure?.code === 1) {
+          reject(new Error('Location permission was denied'));
+        } else if (failure?.code === 3) {
+          reject(new Error('Location request timed out — please retry'));
+        } else {
+          reject(new Error('Could not determine your location — please retry'));
+        }
+      },
+      { timeout: 10000, maximumAge: 0 },
+    );
+  });
+
+const fmtTime = (d) =>
+  d ? new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
 const currentMonth = () => new Date().toISOString().slice(0, 7);
 
 const STATUS_STYLE = {
@@ -10,89 +62,556 @@ const STATUS_STYLE = {
   HALF_DAY: 'bg-blue-400/15 text-blue-300',
 };
 
+const LIVE_STYLE = {
+  NOT_IN: 'bg-crewly-dim/15 text-crewly-dim',
+  WORKING: 'bg-crewly-green/15 text-crewly-green',
+  ON_BREAK: 'bg-crewly-orange/15 text-crewly-orange',
+  COMPLETED: 'bg-blue-400/15 text-blue-300',
+};
+
+const LIVE_LABEL = {
+  NOT_IN: 'Not clocked in',
+  WORKING: 'Working',
+  ON_BREAK: 'On break',
+  COMPLETED: 'Completed',
+};
+
+const MODE_LABEL = {
+  OFFICE: 'Office',
+  WFH: 'Work from home',
+  FIELD: 'Field',
+  CLIENT_SITE: 'Client site',
+  BUSINESS_TRAVEL: 'Business travel',
+};
+
+const TIMELINE_LABEL = {
+  CLOCK_IN: 'Clocked in',
+  BREAK_START: 'Break started',
+  BREAK_END: 'Break ended',
+  CLOCK_OUT: 'Clocked out',
+};
+
+const fmtElapsed = (s) =>
+  `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+
+const newIdempotencyKey = () =>
+  typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `web-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+
 const AttendancePage = () => {
-  const [today, setToday] = useState(null);
-  const [now, setNow] = useState(new Date());
+  const [live, setLive] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [now, setNow] = useState(() => Date.now());
   const [month, setMonth] = useState(currentMonth());
   const [data, setData] = useState({ records: [], summary: null });
+  const [workMode, setWorkMode] = useState('OFFICE');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const fetchedAtRef = useRef(Date.now());
+  // Synchronous double-submit guard: React state updates async, so two
+  // rapid clicks can both pass the `busy` check and fire duplicate
+  // requests (each with its own idempotency key). The ref closes that.
+  const busyRef = useRef(false);
 
-  // live clock tick
+  // Phase 31.3 — geofenced Clock In. Eligible offices load only when the
+  // policy enforces location for OFFICE; the browser position is sampled
+  // one-shot inside the explicit Clock-In click — never on load, tick
+  // or break. No watchPosition anywhere in this file, by design.
+  const [locations, setLocations] = useState([]);
+  const [locationId, setLocationId] = useState('');
+  const [locNote, setLocNote] = useState('');
+  // Phase 31.8 — overtime / comp-off state per visible day (date →
+  // eligibility day). Fails silent: the page works without it.
+  const [otDays, setOtDays] = useState({});
+
+  const geofenceRule = live?.locationEnforcement || 'DISABLED';
+  const needsGeofencePick =
+    (geofenceRule === 'REQUIRED' || geofenceRule === 'OPTIONAL') &&
+    workMode === 'OFFICE' &&
+    live?.liveState === 'NOT_IN';
+
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
+    if (!needsGeofencePick) return;
+    attendanceLocationService
+      .eligible()
+      .then((result) => {
+        const rows = result?.data;
+        const list = Array.isArray(rows) ? rows : [];
+        setLocations(list);
+        setLocationId((current) =>
+          list.some((row) => row.id === current) ? current : list[0]?.id || '',
+        );
+      })
+      .catch(() => {});
+  }, [needsGeofencePick]);
+
+  // Builds the CLOCK_IN location payload (or throws an employee-safe
+  // error that aborts the click without posting). REQUIRED blocks on
+  // any gap; OPTIONAL degrades to unverified.
+  const resolveClockInLocation = async () => {
+    if (!needsGeofencePick) return null;
+    const strict = geofenceRule === 'REQUIRED';
+    if (!locations.length) {
+      if (strict) {
+        throw new Error('No active attendance locations are configured — please contact your administrator');
+      }
+      return null;
+    }
+    if (!locationId) {
+      if (strict) throw new Error('Choose your attendance location to clock in');
+      return null;
+    }
+    try {
+      const position = await readSinglePosition();
+      return { locationId, position };
+    } catch (err) {
+      if (strict) {
+        throw new Error(
+          `${err.message}. Your company's attendance policy requires location verification for this clock-in.`,
+        );
+      }
+      return null;
+    }
+  };
+
+  // 1s local tick — the display derives from server-authoritative
+  // timestamps; no per-second backend traffic happens here.
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
 
-  const loadToday = () => attendanceService.today().then(setToday).catch((e) => setError(e.message));
-  const loadMonth = () =>
-    attendanceService.my(month).then(setData).catch((e) => setError(e.message));
-
-  useEffect(() => { loadToday(); }, []);
-  useEffect(() => { loadMonth(); }, [month]);
-
-  const doPunch = async (kind) => {
-    setError(''); setBusy(true);
+  const loadLive = useCallback(async () => {
     try {
-      if (kind === 'in') await attendanceService.punchIn();
-      else await attendanceService.punchOut();
-      await loadToday();
+      const snapshot = await attendanceService.todayLive();
+      setLive(snapshot);
+      fetchedAtRef.current = Date.now();
+      if (snapshot?.enabledWorkModes?.length) {
+        setWorkMode((current) =>
+          snapshot.enabledWorkModes.includes(current)
+            ? current
+            : snapshot.enabledWorkModes[0],
+        );
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const loadMonth = useCallback(
+    () => attendanceService.my(month).then(setData).catch((e) => setError(e.message)),
+    [month],
+  );
+
+  // Phase 31.8 — eligibility for the visible month (read-only; a
+  // 403 or network gap leaves the map empty, never an error).
+  const loadOt = useCallback(() => {
+    const [year, mon] = String(month || '').split('-').map(Number);
+    if (!year || !mon) return;
+    const last = new Date(Date.UTC(year, mon, 0)).getUTCDate();
+    const from = `${month}-01`;
+    const to = `${month}-${String(last).padStart(2, '0')}`;
+    attendanceOvertimeService
+      .eligibility(from, to)
+      .then((result) => {
+        const rows = result?.data?.days;
+        const map = {};
+        (Array.isArray(rows) ? rows : []).forEach((day) => {
+          map[day.attendanceDate] = day;
+        });
+        setOtDays(map);
+      })
+      .catch(() => {});
+  }, [month]);
+
+  useEffect(() => { loadLive(); }, [loadLive]);
+  useEffect(() => { loadMonth(); }, [loadMonth]);
+  useEffect(() => { loadOt(); }, [loadOt]);
+
+  // Reconcile to authoritative state whenever the tab regains focus.
+  useEffect(() => {
+    window.addEventListener('focus', loadLive);
+    return () => window.removeEventListener('focus', loadLive);
+  }, [loadLive]);
+
+  const doAction = async (action, extra = {}) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setError('');
+    setLocNote('');
+    setBusy(true);
+    try {
+      // Geofence sampling happens inside the guarded click: aborts here
+      // (REQUIRED gaps) post nothing.
+      const location = action === 'CLOCK_IN' ? await resolveClockInLocation() : null;
+      const result = await attendanceService.recordEvent({
+        action,
+        ...(action === 'CLOCK_IN' ? { workMode } : {}),
+        idempotencyKey: newIdempotencyKey(),
+        ...(location ? { location } : {}),
+        ...extra,
+      });
+      // Employee-safe verification note from the server's own snapshot.
+      const verdict = result?.event?.location;
+      if (action === 'CLOCK_IN' && verdict?.result === 'VERIFIED') {
+        setLocNote(`Verified at ${verdict.locationName}`);
+      } else if (action === 'CLOCK_IN' && verdict?.result === 'OUTSIDE') {
+        setLocNote(`Outside the ${verdict.locationName} radius — recorded as unverified`);
+      } else if (action === 'CLOCK_IN' && needsGeofencePick && !location) {
+        setLocNote('Clocked in without location verification');
+      }
+      if (result?.snapshot) {
+        setLive(result.snapshot);
+        fetchedAtRef.current = Date.now();
+      } else {
+        await loadLive();
+      }
+      await loadMonth();
+      loadOt();
+    } catch (err) {
+      setError(err.message);
+      // Backend is authoritative — refresh even on failure (a 409 means
+      // state moved under us).
+      loadLive();
       loadMonth();
-    } catch (err) { setError(err.message); } finally { setBusy(false); }
+      loadOt();
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
   };
 
-  // live elapsed timer while on duty
-  const elapsed =
-    today?.punchIn && !today?.punchOut
-      ? Math.max(0, Math.floor((now - new Date(today.punchIn)) / 1000))
-      : null;
-  const fmtElapsed = (s) =>
-    `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+  const can = (action) => live?.allowedActions?.includes(action);
+
+  // Live counters: server "so far" base + wall-clock since fetch, but
+  // only the RUNNING interval ticks — the other one stays frozen.
+  const sinceFetch = Math.max(0, Math.floor((now - fetchedAtRef.current) / 1000));
+  const openKind = live?.openInterval?.kind || null;
+  const workSeconds = (live?.workedSecondsSoFar || 0) + (openKind === 'WORK' ? sinceFetch : 0);
+  const breakSeconds = (live?.breakSecondsSoFar || 0) + (openKind === 'BREAK' ? sinceFetch : 0);
 
   const s = data.summary;
 
+  // Phase 31.8 — one additive OT / comp-off badge per day. Never
+  // replaces the underlying Holiday / Weekly Off / Leave badges.
+  const otChipFor = (date) => {
+    const day = otDays[date];
+    if (!day) return null;
+    const existing = day.existingRequest;
+    if (existing?.status === 'APPROVED' && existing.type === 'OVERTIME') {
+      return <span className="badge ml-1 bg-crewly-green/15 text-crewly-green">OT approved</span>;
+    }
+    if (existing?.status === 'PENDING' && existing.type === 'OVERTIME') {
+      return <span className="badge ml-1 bg-crewly-orange/15 text-crewly-orange">OT pending</span>;
+    }
+    if (existing?.status === 'APPROVED' && existing.type === 'COMP_OFF') {
+      return <span className="badge ml-1 bg-crewly-green/15 text-crewly-green">Comp-off earned</span>;
+    }
+    if (existing?.status === 'PENDING' && existing.type === 'COMP_OFF') {
+      return <span className="badge ml-1 bg-crewly-orange/15 text-crewly-orange">Comp-off pending</span>;
+    }
+    if (day.requestable && day.type === 'OVERTIME') {
+      return (
+        <span
+          className="badge ml-1 bg-blue-400/15 text-blue-300"
+          title={`${day.eligibleMinutes}m eligible — request it from Overtime & Comp-Off`}
+        >
+          OT candidate
+        </span>
+      );
+    }
+    if (day.requestable && day.type === 'COMP_OFF') {
+      return (
+        <span
+          className="badge ml-1 bg-blue-400/15 text-blue-300"
+          title={`Earns ${day.compOffDaysAtEligible} leave day(s) — request it from Overtime & Comp-Off`}
+        >
+          Comp-off candidate
+        </span>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="space-y-5">
-      <h1 className="text-2xl font-bold">🕒 My Attendance</h1>
+      <h1 className="flex items-center gap-2 text-2xl font-bold">
+        <Clock className="h-6 w-6 text-crewly-green" /> My Attendance
+      </h1>
 
-      {error && <div className="rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">{error}</div>}
-
-      {/* Punch card */}
-      <div className="card flex flex-col items-center gap-4 py-10 text-center">
-        <div className="text-4xl font-bold tabular-nums tracking-wide">
-          {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-        </div>
-        <div className="text-sm text-crewly-dim">
-          {now.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-        </div>
-
-     {!today?.punchIn &&  (
-          <button onClick={() => doPunch('in')} disabled={busy} className="btn-primary mt-3 px-10 py-3 text-lg">
-            ● Punch In
+      {error && (
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">
+          <span>{error}</span>
+          <button
+            onClick={() => setError('')}
+            aria-label="Dismiss error"
+            className="rounded p-0.5 transition hover:bg-crewly-red/20"
+          >
+            <X className="h-4 w-4" />
           </button>
-        )}
+        </div>
+      )}
 
-       {today?.punchIn && !today?.punchOut && (
+      {locNote && !error && (
+        <div className="rounded-lg border border-crewly-green/40 bg-crewly-green/10 px-4 py-3 text-sm text-crewly-green">
+          {locNote}
+        </div>
+      )}
+
+      {/* Today / live card */}
+      <div className="card flex flex-col items-center gap-3 py-8 text-center">
+        {loading || !live ? (
+          <p className="py-6 text-sm text-crewly-dim">Loading today's attendance…</p>
+        ) : (
           <>
-            <p className="text-sm text-crewly-dim">
-              On duty since <span className="text-crewly-green">{fmtTime(today.punchIn)}</span>
-              {today.status === 'LATE' && <span className="badge ml-2 bg-crewly-orange/15 text-crewly-orange">LATE</span>}
-              {' · '}
-              <span className="font-mono text-crewly-text">{fmtElapsed(elapsed)}</span>
-            </p>
-            <button onClick={() => doPunch('out')} disabled={busy} className="mt-2 inline-flex items-center justify-center rounded-lg bg-crewly-red px-10 py-3 text-lg font-semibold text-white transition hover:opacity-90 disabled:opacity-50">
-              ■ Punch Out
-            </button>
+            <span className={`badge ${LIVE_STYLE[live.liveState] || LIVE_STYLE.NOT_IN}`}>
+              {LIVE_LABEL[live.liveState] || live.liveState}
+            </span>
+
+            <div className="text-4xl font-bold tabular-nums tracking-wide">
+              {new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </div>
+            <div className="text-sm text-crewly-dim">
+              {new Date(now).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            </div>
+
+            {/* Phase 31.7 — derived day notice: leave / holiday / conflict. */}
+            {live.reconciliation?.leave?.portion && live.reconciliation.leave.portion !== 'NONE' && (
+              <p className="rounded-lg bg-blue-400/10 px-4 py-2 text-sm text-blue-300">
+                On approved {live.reconciliation.leave.portion === 'FULL_DAY' ? 'leave' : 'half-day leave'}
+                {live.reconciliation.leave.label ? ` (${live.reconciliation.leave.label})` : ''}
+              </p>
+            )}
+            {live.reconciliation?.calendar?.primary === 'HOLIDAY' && live.reconciliation.calendar.holiday && (
+              <p className="rounded-lg bg-crewly-orange/10 px-4 py-2 text-sm text-crewly-orange">
+                Holiday{live.reconciliation.calendar.holiday.name ? `: ${live.reconciliation.calendar.holiday.name}` : ''}
+              </p>
+            )}
+            {live.reconciliation?.conflicts?.length > 0 && (
+              <p className="rounded-lg bg-crewly-red/10 px-4 py-2 text-sm text-crewly-red" title={live.reconciliation.conflicts.join(', ')}>
+                This day needs review — attendance overlaps approved leave.
+              </p>
+            )}
+
+            {/* Phase 31.8 — OT / comp-off state for the shown day. */}
+            {live.date && otChipFor(live.date)}
+
+            {!live.isToday && (
+              <p className="rounded-lg bg-crewly-orange/10 px-4 py-2 text-sm text-crewly-orange">
+                Showing your open session from {live.date} — close it to start a new day.
+              </p>
+            )}
+
+            {live.otherOpenSession && (
+              <div className="flex flex-col items-center gap-2 rounded-lg border border-crewly-orange/40 bg-crewly-orange/10 px-4 py-3 text-sm">
+                <span className="text-crewly-orange">
+                  You also have an open session from {live.otherOpenSession.date}.
+                </span>
+                <button
+                  onClick={() => doAction('CLOCK_OUT', { date: live.otherOpenSession.date })}
+                  disabled={busy}
+                  className="btn-ghost px-4 py-2 text-sm"
+                >
+                  Clock out {live.otherOpenSession.date}
+                </button>
+              </div>
+            )}
+
+            {live.liveState === 'NOT_IN' && (
+              <>
+                {/* Phase 31.6 — resolved roster context: shift name,
+                    overnight-aware window, weekly-off/holiday note. */}
+                {live.schedule && live.schedule.source !== 'DEFAULT' && live.schedule.source !== 'UNRESOLVED' && (
+                  <p className="text-sm text-crewly-dim">
+                    {live.schedule.shiftName || live.schedule.scheduleName || live.schedule.name}
+                    {live.schedule.windowLabel
+                      ? ` · ${live.schedule.windowLabel}`
+                      : live.schedule.startTime && live.schedule.endTime
+                        ? ` · ${live.schedule.startTime}–${live.schedule.endTime}`
+                        : ''}
+                    {live.schedule.dayType === 'WEEKLY_OFF' && ' · Weekly off'}
+                    {live.schedule.dayType === 'HOLIDAY' && ` · ${live.schedule.holiday?.name || 'Holiday'}`}
+                  </p>
+                )}
+                <label className="label mt-1 flex items-center gap-2" htmlFor="work-mode">
+                  <Briefcase className="h-4 w-4" /> Work mode
+                </label>
+                <select
+                  id="work-mode"
+                  className="input w-56 text-center"
+                  value={workMode}
+                  onChange={(e) => setWorkMode(e.target.value)}
+                  disabled={busy}
+                >
+                  {(live.enabledWorkModes || ['OFFICE']).map((mode) => (
+                    <option key={mode} value={mode}>{MODE_LABEL[mode] || mode}</option>
+                  ))}
+                </select>
+                {needsGeofencePick && (
+                  <>
+                    <label className="label mt-1 flex items-center gap-2" htmlFor="attendance-location">
+                      <MapPin className="h-4 w-4" /> Attendance location
+                    </label>
+                    {locations.length === 0 ? (
+                      <p className="max-w-xs text-sm text-crewly-orange">
+                        No active attendance locations are configured — please contact your administrator.
+                      </p>
+                    ) : (
+                      <select
+                        id="attendance-location"
+                        className="input w-56 text-center"
+                        value={locationId}
+                        onChange={(e) => setLocationId(e.target.value)}
+                        disabled={busy}
+                      >
+                        {locations.map((row) => (
+                          <option key={row.id} value={row.id}>{row.name}</option>
+                        ))}
+                      </select>
+                    )}
+                    <p className="max-w-xs text-xs text-crewly-dim">
+                      Your location is checked once, only for this clock-in — Crewly never tracks you continuously.
+                    </p>
+                  </>
+                )}
+                {workMode !== 'OFFICE' &&
+                  live.workModeAuthorization &&
+                  live.workModeAuthorization[workMode] === false && (
+                    <p className="max-w-xs text-sm text-crewly-red">
+                      Approved {MODE_LABEL[workMode] || workMode} request required for today.
+                    </p>
+                  )}
+                {can('CLOCK_IN') && (
+                  <button
+                    onClick={() => doAction('CLOCK_IN')}
+                    disabled={busy}
+                    className="btn-primary mt-2 inline-flex items-center gap-2 px-10 py-3 text-lg"
+                  >
+                    <LogIn className="h-5 w-5" /> Clock In
+                  </button>
+                )}
+              </>
+            )}
+
+            {live.liveState === 'WORKING' && (
+              <>
+                <p className="text-sm text-crewly-dim">
+                  On duty since <span className="text-crewly-green">{fmtTime(live.clockInAt)}</span>
+                  {live.workMode && (
+                    <span className="text-crewly-dim"> · {MODE_LABEL[live.workMode] || live.workMode}</span>
+                  )}
+                  {live.schedule?.windowLabel && (
+                    <span className="text-crewly-dim"> · Shift {live.schedule.windowLabel}</span>
+                  )}
+                  {live.status === 'LATE' && (
+                    <span className="badge ml-2 bg-crewly-orange/15 text-crewly-orange">LATE</span>
+                  )}
+                </p>
+                <p className="text-sm text-crewly-dim">
+                  Worked <span className="font-mono text-lg text-crewly-text">{fmtElapsed(workSeconds)}</span>
+                  {live.breakSecondsSoFar > 0 && (
+                    <span> · Breaks {fmtElapsed(breakSeconds)}</span>
+                  )}
+                </p>
+                <div className="mt-1 flex flex-wrap items-center justify-center gap-3">
+                  {can('BREAK_START') && (
+                    <button
+                      onClick={() => doAction('BREAK_START')}
+                      disabled={busy}
+                      className="btn-ghost inline-flex items-center gap-2 px-6 py-3"
+                    >
+                      <Coffee className="h-5 w-5" /> Start Break
+                    </button>
+                  )}
+                  {can('CLOCK_OUT') && (
+                    <button
+                      onClick={() => doAction('CLOCK_OUT')}
+                      disabled={busy}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg bg-crewly-red px-8 py-3 text-lg font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+                    >
+                      <LogOut className="h-5 w-5" /> Clock Out
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+
+            {live.liveState === 'ON_BREAK' && (
+              <>
+                <p className="text-sm text-crewly-dim">
+                  On break since{' '}
+                  <span className="text-crewly-orange">{fmtTime(live.openInterval?.startedAt)}</span>
+                </p>
+                <p className="text-sm text-crewly-dim">
+                  Break <span className="font-mono text-lg text-crewly-text">{fmtElapsed(breakSeconds)}</span>
+                  <span> · Worked {fmtElapsed(workSeconds)}</span>
+                </p>
+                {can('BREAK_END') && (
+                  <button
+                    onClick={() => doAction('BREAK_END')}
+                    disabled={busy}
+                    className="btn-primary mt-1 inline-flex items-center gap-2 px-8 py-3 text-lg"
+                  >
+                    <Play className="h-5 w-5" /> End Break
+                  </button>
+                )}
+              </>
+            )}
+
+            {live.liveState === 'COMPLETED' && (
+              <>
+                <p className="text-sm text-crewly-dim">
+                  <CheckCircle2 className="mr-1 inline h-4 w-4 text-crewly-green" />
+                  Done for {live.date === live.today ? 'today' : live.date}:{' '}
+                  <span className="text-crewly-text">
+                    {fmtTime(live.clockInAt)} → {fmtTime(live.clockOutAt)}
+                  </span>
+                </p>
+                <p className="text-sm text-crewly-dim">
+                  Worked <span className="text-crewly-text">{(live.workedMinutes / 60).toFixed(1)}h</span>
+                  {live.breakMinutes > 0 && (
+                    <span> · Breaks {live.breakMinutes}m</span>
+                  )}
+                  {live.schedule?.windowLabel && (
+                    <span> · Scheduled {live.schedule.windowLabel}</span>
+                  )}
+                  {live.status && (
+                    <span className={`badge ml-2 ${STATUS_STYLE[live.status] || ''}`}>
+                      {live.status.replace('_', ' ')}
+                    </span>
+                  )}
+                </p>
+              </>
+            )}
           </>
         )}
-
-        {today?.punchOut && (
-          <p className="mt-2 text-sm text-crewly-dim">
-            ✅ Done for today: <span className="text-crewly-text">{fmtTime(today.punchIn)} → {fmtTime(today.punchOut)}</span>
-            {' · '}{(today.workMinutes / 60).toFixed(1)}h worked
-          </p>
-        )}
       </div>
+
+      {/* Today's timeline */}
+      {live?.timeline?.length > 0 && (
+        <div className="card p-0">
+          <div className="flex items-center gap-2 border-b border-crewly-border px-5 py-3">
+            <History className="h-4 w-4 text-crewly-dim" />
+            <h2 className="font-semibold">Today's timeline</h2>
+          </div>
+          <ul className="divide-y divide-crewly-border/50">
+            {live.timeline.map((row) => (
+              <li key={row.seq} className="flex items-center gap-3 px-5 py-2.5 text-sm">
+                <span className="w-16 shrink-0 font-mono text-crewly-dim">{fmtTime(row.at)}</span>
+                <span className="text-crewly-text">{TIMELINE_LABEL[row.type] || row.type}</span>
+                {row.type === 'CLOCK_IN' && row.workMode && (
+                  <span className="badge bg-crewly-dim/15 text-crewly-dim">
+                    {MODE_LABEL[row.workMode] || row.workMode}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Month summary chips */}
       {s && (
@@ -125,22 +644,92 @@ const AttendancePage = () => {
                 <th className="px-5 py-3">Date</th>
                 <th className="px-5 py-3">Punch In</th>
                 <th className="px-5 py-3">Punch Out</th>
+                <th className="px-5 py-3">Scheduled</th>
                 <th className="px-5 py-3">Hours</th>
                 <th className="px-5 py-3">Status</th>
+                <th className="px-5 py-3"><span className="sr-only">Correction</span></th>
               </tr>
             </thead>
             <tbody>
               {[...data.records].reverse().map((r) => (
                 <tr key={r._id} className="border-b border-crewly-border/50 last:border-0">
                   <td className="px-5 py-3">{new Date(`${r.date}T00:00:00`).toLocaleDateString([], { day: 'numeric', month: 'short', weekday: 'short' })}</td>
-                  <td className="px-5 py-3">{fmtTime(r.punchIn)}</td>
-                  <td className="px-5 py-3">{fmtTime(r.punchOut)}</td>
+                  {/* Phase 31.5 — effective times win for display; the
+                      recorded punch stays one hover away. */}
+                  <td className="px-5 py-3">
+                    {fmtTime(r.regularization?.correctedIn || r.punchIn)}
+                    {r.regularization?.correctedIn && (
+                      <span className="ml-1 text-crewly-green" title={`Recorded: ${fmtTime(r.punchIn)}`}>*</span>
+                    )}
+                  </td>
+                  <td className="px-5 py-3">
+                    {fmtTime(r.regularization?.correctedOut || r.punchOut)}
+                    {r.regularization?.correctedOut && (
+                      <span className="ml-1 text-crewly-green" title={`Recorded: ${fmtTime(r.punchOut)}`}>*</span>
+                    )}
+                  </td>
+                  {/* Phase 31.6 — the versioned schedule behind the
+                      verdict; legacy rows predate snapshots. */}
+                  <td className="px-5 py-3 text-crewly-dim" title={r.scheduleSnapshot ? (r.scheduleSnapshot.shiftName || r.scheduleSnapshot.scheduleName || '') : ''}>
+                    {r.scheduleSnapshot?.startTime
+                      ? `${r.scheduleSnapshot.startTime}–${r.scheduleSnapshot.endTime}${r.scheduleSnapshot.crossesMidnight ? ' +1' : ''}`
+                      : '—'}
+                  </td>
                   <td className="px-5 py-3">{r.workMinutes ? `${(r.workMinutes / 60).toFixed(1)}h` : '—'}</td>
-                  <td className="px-5 py-3"><span className={`badge ${STATUS_STYLE[r.status]}`}>{r.status.replace('_', ' ')}</span></td>
+                  <td className="px-5 py-3">
+                    {r.status ? (
+                      <span className={`badge ${STATUS_STYLE[r.status]}`}>{r.status.replace('_', ' ')}</span>
+                    ) : r.derived === 'LEAVE' ? (
+                      <span className="badge bg-blue-400/15 text-blue-300" title={r.reconciliation?.leave?.label || ''}>Leave</span>
+                    ) : null}
+                    {r.regularized && (
+                      <span className="badge ml-1 bg-crewly-green/15 text-crewly-green" title="An approved correction overlays this day">Regularized</span>
+                    )}
+                    {/* Phase 31.7 — derived dimensions stay separate badges. */}
+                    {r.reconciliation?.conflicts?.length > 0 && (
+                      <span className="badge ml-1 bg-crewly-red/15 text-crewly-red" title={r.reconciliation.conflicts.join(', ')}>Needs review</span>
+                    )}
+                    {r.status && r.reconciliation?.leave?.portion === 'FULL_DAY' && (
+                      <span className="badge ml-1 bg-blue-400/15 text-blue-300" title={r.reconciliation.leave.label || ''}>Leave</span>
+                    )}
+                    {r.reconciliation?.halves && (
+                      <span
+                        className="badge ml-1 bg-blue-400/15 text-blue-300"
+                        title={`First half: ${r.reconciliation.halves.first}, second half: ${r.reconciliation.halves.second}`}
+                      >
+                        1st {r.reconciliation.halves.first} · 2nd {r.reconciliation.halves.second}
+                      </span>
+                    )}
+                    {r.reconciliation?.nonWorkingDayWorked && r.reconciliation.calendar?.primary === 'HOLIDAY' && (
+                      <span className="badge ml-1 bg-crewly-orange/15 text-crewly-orange" title={r.reconciliation.calendar.holiday?.name || ''}>Worked on holiday</span>
+                    )}
+                    {r.reconciliation?.nonWorkingDayWorked && r.reconciliation.calendar?.primary === 'WEEKLY_OFF' && (
+                      <span className="badge ml-1 bg-crewly-orange/15 text-crewly-orange">Worked on weekly off</span>
+                    )}
+                    {/* Phase 31.8 — OT / comp-off state, additive. */}
+                    {otChipFor(r.date)}
+                  </td>
+                  <td className="px-5 py-3 text-right">
+                    {r.derived === 'LEAVE' ? (
+                      <span className="text-xs text-crewly-dim">{r.reconciliation?.leave?.label || 'Leave'}</span>
+                    ) : (
+                      <>
+                        <Link className="text-xs text-crewly-green underline" to={`/app/attendance/regularizations?date=${r.date}`}>
+                          Request correction
+                        </Link>
+                        {/* Phase 31.8 — deep link into the OT request form. */}
+                        {otDays[r.date]?.requestable && (
+                          <Link className="ml-2 text-xs text-crewly-green underline" to={`/app/attendance/overtime?date=${r.date}`}>
+                            {otDays[r.date]?.type === 'COMP_OFF' ? 'Request comp-off' : 'Request OT'}
+                          </Link>
+                        )}
+                      </>
+                    )}
+                  </td>
                 </tr>
               ))}
               {data.records.length === 0 && (
-                <tr><td colSpan={5} className="px-5 py-8 text-center text-crewly-dim">No records this month.</td></tr>
+                <tr><td colSpan={7} className="px-5 py-8 text-center text-crewly-dim">No records this month.</td></tr>
               )}
             </tbody>
           </table>
