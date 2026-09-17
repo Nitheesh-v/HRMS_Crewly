@@ -102,12 +102,30 @@ export const kioskSessionValidator = [
 // 31.14 completion — the punch trusts ONLY the verified employee
 // context: a client-supplied employeeCode alongside it is refused
 // outright (it must never silently override the verified user).
+// The fence is the station binding: locationId is server-decided,
+// the terminal contributes only its GPS position when policy
+// demands verification — never a verdict or measurement.
 const noKioskIdentityOverride = body().custom((value, { req }) => {
   const payload = req.body || {};
-  for (const field of ['employeeCode', 'employeeId', 'userId', 'user']) {
+  for (const field of [
+    'employeeCode',
+    'employeeId',
+    'userId',
+    'user',
+    'locationId',
+    'location',
+    'locationVerification',
+    'insideGeofence',
+    'distanceMeters',
+    'radiusMeters',
+    'verified',
+  ]) {
     if (payload[field] !== undefined) {
       throw new Error(`${field} is decided by employee verification and must not be supplied`);
     }
+  }
+  if (payload.position !== undefined && payload.position !== null && typeof payload.position !== 'object') {
+    throw new Error('position must be an object');
   }
   return true;
 });
@@ -128,6 +146,21 @@ export const kioskPunchValidator = [
   body('employeeToken').isString().isLength({ min: 1, max: 2000 }).withMessage('Employee verification is required'),
   body('action').isIn(Object.values(EVENT_TYPE)).withMessage('Unknown attendance action'),
   body('idempotencyKey').optional({ nullable: true }).isString().trim().isLength({ min: 1, max: 120 }).withMessage('idempotencyKey is too long'),
+  // One-shot terminal GPS, sent ONLY when the geofence gate demands
+  // verification (strict policy); consumed only by CLOCK_IN.
+  body('position').optional({ nullable: true }).isObject().withMessage('position must be an object'),
+  body('position.latitude')
+    .optional()
+    .isFloat()
+    .withMessage('position.latitude must be a number'),
+  body('position.longitude')
+    .optional()
+    .isFloat()
+    .withMessage('position.longitude must be a number'),
+  body('position.accuracy')
+    .optional({ nullable: true })
+    .isFloat()
+    .withMessage('position.accuracy must be a number'),
   validate,
 ];
 

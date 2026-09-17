@@ -39,6 +39,44 @@ const newIdempotencyKey = () =>
     ? crypto.randomUUID()
     : `web-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
 
+// One-shot terminal GPS, sampled ONLY when the geofence gate
+// demands verification (strict policy) — never speculatively.
+// Resolves { latitude, longitude, accuracy? } or throws an
+// employee-safe Error. getCurrentPosition ONLY — watchPosition
+// must never appear in this file.
+const readSinglePosition = () =>
+  new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('Location is not available on this terminal'));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude, accuracy } = position.coords;
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+          reject(new Error('Could not determine the terminal location — please retry'));
+          return;
+        }
+        resolve({
+          latitude,
+          longitude,
+          ...(Number.isFinite(accuracy) ? { accuracy } : {}),
+        });
+      },
+      (failure) => {
+        // GeolocationPositionError codes: 1 denied, 2 unavailable, 3 timeout.
+        if (failure?.code === 1) {
+          reject(new Error('Location permission was denied on this terminal'));
+        } else if (failure?.code === 3) {
+          reject(new Error('Location request timed out — please retry'));
+        } else {
+          reject(new Error('Could not determine the terminal location — please retry'));
+        }
+      },
+      { timeout: 10000, maximumAge: 0 },
+    );
+  });
+
 const readStoredSession = () => {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
@@ -167,12 +205,38 @@ const KioskTerminalPage = () => {
   const handlePunch = async (action) => {
     setBusy(action);
     setError('');
-    try {
-      const res = await attendanceCaptureService.punchKiosk(stored.token, {
+    // One logical action, one idempotency key — shared by the
+    // first attempt and any verification-demanded GPS retry (the
+    // refused first attempt writes nothing).
+    const idempotencyKey = newIdempotencyKey();
+    const attempt = (position) =>
+      attendanceCaptureService.punchKiosk(stored.token, {
         employeeToken: verified.employeeToken,
         action,
-        idempotencyKey: newIdempotencyKey(),
+        idempotencyKey,
+        ...(position ? { position } : {}),
       });
+    try {
+      let res;
+      try {
+        // CLOCK_IN first tries WITHOUT GPS: lax policies record
+        // immediately and the terminal never prompts for location.
+        // Break/out actions never carry GPS (never collected).
+        res = await attempt(null);
+      } catch (firstError) {
+        const firstMessage = firstError?.message || '';
+        const verificationDemanded =
+          action === 'CLOCK_IN' &&
+          firstError?.status === 400 &&
+          /verification is required by company policy/i.test(firstMessage);
+        if (!verificationDemanded) throw firstError;
+        // Strict policy: sample the terminal position once and
+        // retry — the server verifies it against the station fence.
+        setBusy(`${action}:locating`);
+        const position = await readSinglePosition();
+        setBusy(action);
+        res = await attempt(position);
+      }
       setSuccess({
         action,
         replayed: Boolean(res.meta?.idempotentReplay || res.data?.replayed),
@@ -325,7 +389,7 @@ const KioskTerminalPage = () => {
                   onClick={() => handlePunch(action)}
                   className="w-full rounded-lg bg-crewly-accent px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
                 >
-                  {busy === action ? 'Recording…' : ACTION_LABELS[action] || action}
+                  {busy === `${action}:locating` ? 'Locating…' : busy === action ? 'Recording…' : ACTION_LABELS[action] || action}
                 </button>
               ))}
               {!(verified.allowedActions || []).length && (

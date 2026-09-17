@@ -426,6 +426,11 @@ export const punchEmployee = async ({
   employeeToken,
   action,
   idempotencyKey = null,
+  // One-shot terminal GPS { latitude, longitude, accuracy? }, sent
+  // ONLY when the geofence gate demands verification (strict
+  // policy). The locationId half is ALWAYS server-decided from the
+  // station binding — the terminal never chooses its own fence.
+  position = null,
   deps = {},
 } = {}) => {
   const deny = () => {
@@ -458,6 +463,19 @@ export const punchEmployee = async ({
   // die with the credential that minted them.
   if (!user || (user.kioskPinVersion || 0) !== claims.pv) deny();
 
+  // The fence is the page the terminal stands on: the station
+  // binding supplies locationId, the terminal supplies GPS only
+  // when the gate demands it. recordEvent consumes location for
+  // CLOCK_IN only, so break/out punches pass it through untouched.
+  const stationPlace = station.location && typeof station.location === 'object' ? station.location : null;
+  const boundLocationId = stationPlace
+    ? String(stationPlace._id)
+    : (station.location ? String(station.location) : null);
+  if (position && !boundLocationId) {
+    throw ApiError.badRequest('This station is not bound to a verifiable location');
+  }
+  const gateLocation = boundLocationId || position ? { locationId: boundLocationId, position } : null;
+
   // Finalized-month protection (kiosk punches are current-day, but
   // the guard is uniform and cheap).
   const getPolicy = deps.getCurrentPolicy || getCurrentPolicy;
@@ -481,6 +499,7 @@ export const punchEmployee = async ({
     // server-decided (never from the shared screen).
     workMode: action === EVENT_TYPE.CLOCK_IN ? 'OFFICE' : null,
     idempotencyKey: idempotencyKey || null,
+    location: gateLocation,
     ingest: {
       source: EVENT_SOURCE.KIOSK,
       provenance: {

@@ -705,6 +705,47 @@ test('31.14 completion: break/out punches reuse the machine with null workMode',
   assert.equal(recorded[0].ingest.provenance.stationName, 'Lobby');
 });
 
+// ── 31.14 completion: terminal GPS for strict policies ───────
+// The terminal sends position ONLY when the gate demands it; the
+// fence always comes from the station binding, never the client.
+
+test('31.14 completion: punch forwards station fence + terminal GPS to recordEvent', async () => {
+  const { deps, recorded } = buildWorld();
+  const { station } = await createStation({ companyId: COMPANY, name: 'Lobby', locationId: LOC, deps });
+  const verified = await identifyEmployee({ companyId: COMPANY, stationId: station.id, employeeCode: 'EMP001', pin: '1234', deps });
+  const position = { latitude: 10.7175, longitude: 77.0555, accuracy: 150 };
+  await punchEmployee({
+    companyId: COMPANY, stationId: station.id, employeeToken: verified.employeeToken,
+    action: 'CLOCK_IN', position, deps,
+  });
+  assert.equal(recorded.length, 1);
+  assert.deepEqual(recorded[0].location, { locationId: LOC, position });
+});
+
+test('31.14 completion: punch without GPS still names the bound fence', async () => {
+  const { deps, recorded } = buildWorld();
+  const { station } = await createStation({ companyId: COMPANY, name: 'Lobby', locationId: LOC, deps });
+  const verified = await identifyEmployee({ companyId: COMPANY, stationId: station.id, employeeCode: 'EMP001', pin: '1234', deps });
+  await punchEmployee({
+    companyId: COMPANY, stationId: station.id, employeeToken: verified.employeeToken, action: 'CLOCK_IN', deps,
+  });
+  assert.deepEqual(recorded[0].location, { locationId: LOC, position: null });
+});
+
+test('31.14 completion: GPS with an unbound station is refused honestly', async () => {
+  const { deps } = buildWorld();
+  const { station } = await createStation({ companyId: COMPANY, name: 'Lobby', deps });
+  const verified = await identifyEmployee({ companyId: COMPANY, stationId: station.id, employeeCode: 'EMP001', pin: '1234', deps });
+  const position = { latitude: 10.7175, longitude: 77.0555, accuracy: 150 };
+  await assert.rejects(
+    punchEmployee({
+      companyId: COMPANY, stationId: station.id, employeeToken: verified.employeeToken,
+      action: 'CLOCK_IN', position, deps,
+    }),
+    /not bound to a verifiable location/
+  );
+});
+
 // ── Static integrity ─────────────────────────────────────────
 
 test('31.14 kiosk: routes + middleware enforce the trust boundary', () => {
@@ -742,11 +783,13 @@ test('31.14 kiosk: punch path never reads source/provenance from the client', ()
 
 test('31.14 completion: punch identity comes only from the verified context', () => {
   const controller = readSource('src/controllers/attendanceKioskController.js');
-  assert.match(controller, /const \{ employeeToken, action, idempotencyKey = null \} = req\.body/);
+  assert.match(controller, /const \{ employeeToken, action, idempotencyKey = null, position = null \} = req\.body/);
   assert.ok(!/employeeCode,\s*action/.test(controller));
   const validator = readSource('src/validators/attendanceCaptureValidator.js');
   assert.match(validator, /noKioskIdentityOverride/);
   assert.match(validator, /employeeToken/);
+  assert.match(validator, /position\.latitude/);
+  assert.ok(/kioskPunchValidator = \[[\s\S]*?body\('position'\)/.test(validator));
   assert.match(validator, /kioskPinSetValidator/);
   assert.match(validator, /kioskPinClearValidator/);
   const routes = readSource('src/routes/attendanceRoutes.js');

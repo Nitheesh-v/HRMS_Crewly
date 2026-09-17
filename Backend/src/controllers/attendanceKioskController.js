@@ -143,9 +143,12 @@ export const postKioskIdentify = asyncHandler(async (req, res) => {
 // POST /api/kiosk/punch — one punch for the VERIFIED employee.
 // Identity comes only from the employee context (bound to this
 // station + tenant); the terminal supplies no employee identity.
+// position is the one-shot terminal GPS, sent only when the
+// geofence gate demands verification (strict policy); locationId
+// stays server-decided from the station binding.
 export const postKioskPunch = asyncHandler(async (req, res) => {
   // Data from frontend - requests from frontend
-  const { employeeToken, action, idempotencyKey = null } = req.body || {};
+  const { employeeToken, action, idempotencyKey = null, position = null } = req.body || {};
 
   // DB Logic - DB logics
   const result = await punchEmployee({
@@ -154,6 +157,7 @@ export const postKioskPunch = asyncHandler(async (req, res) => {
     employeeToken,
     action,
     idempotencyKey,
+    position,
   });
 
   // Data to frontend - response to frontend

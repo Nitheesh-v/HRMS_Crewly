@@ -82,8 +82,12 @@ const attendanceCaptureService = {
   identifyKioskEmployee: (kioskJwt, { employeeCode, pin }) =>
     envelope(kioskApi.post('/kiosk/identify', { employeeCode, pin }, kioskHeaders(kioskJwt))),
 
-  punchKiosk: (kioskJwt, { employeeToken, action, idempotencyKey }) =>
-    envelope(kioskApi.post('/kiosk/punch', { employeeToken, action, idempotencyKey }, kioskHeaders(kioskJwt))),
+  punchKiosk: (kioskJwt, { employeeToken, action, idempotencyKey, position = null }) =>
+    envelope(kioskApi.post(
+      '/kiosk/punch',
+      position ? { employeeToken, action, idempotencyKey, position } : { employeeToken, action, idempotencyKey },
+      kioskHeaders(kioskJwt)
+    )),
 
   // ── Kiosk PIN self-service (employee session) ──
   getKioskPinStatus: () => envelope(api.get('/attendance/kiosk-pin')),
