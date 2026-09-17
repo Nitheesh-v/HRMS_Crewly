@@ -94,7 +94,11 @@ export const getScopedEmployeeTimesheet = asyncHandler(async (req, res) => {
 const fileResponse = (res, { filename, contentType, content }) => {
   res.setHeader("Content-Type", contentType || "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-  res.setHeader("Content-Length", String(content?.length || 0));
+  // 31.16 D-09 — Content-Length is BYTES: CSV strings carry a BOM +
+  // multibyte data, so char .length under-declares and poisons the
+  // keep-alive socket for the next response. Buffers pass through.
+  const bodyLength = Buffer.isBuffer(content) ? content.length : Buffer.byteLength(content ?? '', 'utf8');
+  res.setHeader("Content-Length", String(bodyLength));
   return res.end(content);
 };
 

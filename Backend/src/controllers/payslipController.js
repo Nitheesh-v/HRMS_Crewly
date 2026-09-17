@@ -20,14 +20,18 @@ const scopeOf = (req) => req.payrollEmployeeIds || null;
 const pdfResponse = (res, { filename, content, message = 'Payslip PDF' }) => {
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-  res.setHeader('Content-Length', String(content?.length || 0));
+  // 31.16 D-09 — Content-Length is BYTES, never chars.
+  const bodyLength = Buffer.isBuffer(content) ? content.length : Buffer.byteLength(content ?? '', 'utf8');
+  res.setHeader('Content-Length', String(bodyLength));
   return res.end(content);
 };
 
 const zipResponse = (res, { filename, content }) => {
   res.setHeader('Content-Type', 'application/zip');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-  res.setHeader('Content-Length', String(content?.length || 0));
+  // 31.16 D-09 — Content-Length is BYTES, never chars.
+  const bodyLength = Buffer.isBuffer(content) ? content.length : Buffer.byteLength(content ?? '', 'utf8');
+  res.setHeader('Content-Length', String(bodyLength));
   return res.end(content);
 };
 

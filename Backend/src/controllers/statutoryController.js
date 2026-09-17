@@ -15,7 +15,10 @@ import asyncHandler from '../utils/asyncHandler.js';
 const fileResponse = (res, { filename, contentType, content }) => {
   res.setHeader('Content-Type', contentType || 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-  res.setHeader('Content-Length', String(content?.length || 0));
+  // 31.16 D-09 — Content-Length is BYTES, never chars (multibyte
+  // strings under-declare and poison the keep-alive socket).
+  const bodyLength = Buffer.isBuffer(content) ? content.length : Buffer.byteLength(content ?? '', 'utf8');
+  res.setHeader('Content-Length', String(bodyLength));
   return res.end(content);
 };
 
