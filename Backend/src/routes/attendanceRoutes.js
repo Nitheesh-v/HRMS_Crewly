@@ -40,8 +40,11 @@ import {
   postImportPreview,
 } from '../controllers/attendanceImportController.js';
 import {
+  getKioskPin,
   getStations,
   patchStation,
+  postKioskPin,
+  postKioskPinClear,
   postStation,
   postStationRotate,
 } from '../controllers/attendanceKioskController.js';
@@ -62,6 +65,7 @@ import {
   qrTokenValidator,
 } from '../validators/attendanceCaptureValidator.js';
 import { csvUpload } from '../middlewares/uploadMiddleware.js';
+import { securityRateLimit } from '../middlewares/securityRateLimit.js';
 import {
   getAnalyticsEmployees,
   getAnalyticsExport,
