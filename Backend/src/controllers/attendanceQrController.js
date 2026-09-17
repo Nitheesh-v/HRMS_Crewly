@@ -55,7 +55,10 @@ export const postResolve = asyncHandler(async (req, res) => {
 // POST /api/attendance/qr/redeem — consume the challenge, punch once.
 export const postRedeem = asyncHandler(async (req, res) => {
   // Data from frontend - requests from frontend
-  const { token, action, idempotencyKey = null } = req.body || {};
+  // 31.16 D-08 — position is the employee's one-shot GPS for CLOCK_IN
+  // geofence verification; locationId stays server-decided (validator
+  // refuses it) from the challenge binding.
+  const { token, action, idempotencyKey = null, position = null } = req.body || {};
 
   // DB Logic - DB logics
   const result = await redeemChallenge({
@@ -64,6 +67,7 @@ export const postRedeem = asyncHandler(async (req, res) => {
     token,
     action,
     idempotencyKey,
+    position,
   });
 
   // Data to frontend - response to frontend

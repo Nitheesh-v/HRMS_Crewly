@@ -15,12 +15,51 @@ const ACTION_LABELS = {
   CLOCK_OUT: 'Clock out',
 };
 
+// 31.16 D-08 — one-shot browser position for the explicit Clock-In tap
+// (the fence is the page the QR hangs in; the server decides which
+// locationId this position is verified against). Resolves
+// { latitude, longitude, accuracy? } or throws an employee-safe Error.
+// getCurrentPosition ONLY — watchPosition must never appear in this file.
+const readSinglePosition = () =>
+  new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('Location is not available in this browser'));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude, accuracy } = position.coords;
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+          reject(new Error('Could not determine your location — please retry'));
+          return;
+        }
+        resolve({
+          latitude,
+          longitude,
+          ...(Number.isFinite(accuracy) ? { accuracy } : {}),
+        });
+      },
+      (failure) => {
+        // GeolocationPositionError codes: 1 denied, 2 unavailable, 3 timeout.
+        if (failure?.code === 1) {
+          reject(new Error('Location permission was denied'));
+        } else if (failure?.code === 3) {
+          reject(new Error('Location request timed out — please retry'));
+        } else {
+          reject(new Error('Could not determine your location — please retry'));
+        }
+      },
+      { timeout: 10000, maximumAge: 0 },
+    );
+  });
+
 const QrPunchPage = () => {
   const { token } = useParams();
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [redeeming, setRedeeming] = useState('');
+  const [locating, setLocating] = useState(false);
   const [done, setDone] = useState(null);
 
   const resolve = useCallback(async () => {
@@ -50,11 +89,28 @@ const QrPunchPage = () => {
   const handleRedeem = async (action) => {
     setRedeeming(action);
     setError('');
+    // 31.16 D-08 — CLOCK_IN redeems carry the one-shot GPS fix the
+    // geofence gate verifies against the challenge's bound location.
+    // Break/out redeems send no position (never collected, by design).
+    let position = null;
+    if (action === 'CLOCK_IN') {
+      setLocating(true);
+      try {
+        position = await readSinglePosition();
+      } catch (positionError) {
+        setError(positionError?.message || 'Could not determine your location — please retry');
+        setLocating(false);
+        setRedeeming('');
+        return;
+      }
+      setLocating(false);
+    }
     try {
       const res = await attendanceCaptureService.redeemChallenge({
         token,
         action,
         idempotencyKey: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`,
+        ...(position ? { position } : {}),
       });
       setDone({ action, event: res.data?.event || res.data });
     } catch (redeemError) {
@@ -121,7 +177,7 @@ const QrPunchPage = () => {
               onClick={() => handleRedeem(action)}
               className="w-full rounded-lg bg-crewly-accent px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
             >
-              {redeeming === action ? 'Recording…' : ACTION_LABELS[action] || action}
+              {redeeming === action ? (locating ? 'Locating…' : 'Recording…') : ACTION_LABELS[action] || action}
             </button>
           ))}
           {!(preview.allowedActions || []).length && (
