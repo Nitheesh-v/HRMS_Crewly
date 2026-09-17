@@ -54,6 +54,8 @@ import publicBgvCollectionRoutes from "./publicBgvCollectionRoutes.js";
 import bgvVerifierAuthRoutes from "./bgvVerifierAuthRoutes.js";
 import bgvVerifierWorkRoutes from "./bgvVerifierWorkRoutes.js";
 import publicCandidatePreOnboardingRoutes from "./publicCandidatePreOnboardingRoutes.js";
+import insightsAnalyticsRoutes from "./insightsAnalyticsRoutes.js";
+import reportBuilderRoutes from "./reportBuilderRoutes.js";
 
 const router = Router();
 
@@ -207,5 +209,12 @@ router.use(scheduleRoutes);
 
 // Analytics routes already contain their /analytics paths.
 router.use(analyticsRoutes);
+
+// Insights hub (/analytics/*, /saas/overview) + Report Builder
+// (/report-builder/*) already contain their full paths. Mounted AFTER
+// the payroll analytics router: its root-level /:reportKey only matches
+// single-segment paths, so it can never shadow these two-segment routes.
+router.use(insightsAnalyticsRoutes);
+router.use(reportBuilderRoutes);
 
 export default router;
