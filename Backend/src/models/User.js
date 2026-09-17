@@ -231,6 +231,15 @@ mfa: {
       maxlength: 11,
       default: "",
     },
+    // ── 31.14 completion — Kiosk PIN (shared-terminal credential) ──
+    // Dedicated attendance-terminal secret: NOT the login password.
+    // Hash-only (bcrypt, select:false); plaintext is never assigned
+    // to a persisted path, never logged, never audited, never
+    // returned. kioskPinVersion invalidates outstanding kiosk
+    // employee contexts on set/change/clear.
+    kioskPinHash: { type: String, default: null, select: false },
+    kioskPinSetAt: { type: Date, default: null },
+    kioskPinVersion: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true },
 );

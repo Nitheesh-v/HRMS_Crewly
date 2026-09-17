@@ -8,6 +8,9 @@ import {
   openSession,
   identifyEmployee,
   punchEmployee,
+  getKioskPinStatus,
+  setKioskPin,
+  clearKioskPin,
 } from '../services/attendance/attendanceKioskService.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -115,16 +118,19 @@ export const postKioskSession = asyncHandler(async (req, res) => {
   });
 });
 
-// POST /api/kiosk/identify — masked lookup for the shared screen.
+// POST /api/kiosk/identify — code + PIN verification for the
+// shared screen. Returns the short-lived employee context the
+// punch trusts; failures are one generic 401 (never which half).
 export const postKioskIdentify = asyncHandler(async (req, res) => {
   // Data from frontend - requests from frontend
-  const { employeeCode } = req.body || {};
+  const { employeeCode, pin } = req.body || {};
 
   // DB Logic - DB logics
   const result = await identifyEmployee({
     companyId: req.kiosk.companyId,
     stationId: req.kiosk.stationId,
     employeeCode,
+    pin,
   });
 
   // Data to frontend - response to frontend
@@ -134,16 +140,18 @@ export const postKioskIdentify = asyncHandler(async (req, res) => {
   });
 });
 
-// POST /api/kiosk/punch — one punch for the identified employee.
+// POST /api/kiosk/punch — one punch for the VERIFIED employee.
+// Identity comes only from the employee context (bound to this
+// station + tenant); the terminal supplies no employee identity.
 export const postKioskPunch = asyncHandler(async (req, res) => {
   // Data from frontend - requests from frontend
-  const { employeeCode, action, idempotencyKey = null } = req.body || {};
+  const { employeeToken, action, idempotencyKey = null } = req.body || {};
 
   // DB Logic - DB logics
   const result = await punchEmployee({
     companyId: req.kiosk.companyId,
     stationId: req.kiosk.stationId,
-    employeeCode,
+    employeeToken,
     action,
     idempotencyKey,
   });
@@ -158,6 +166,69 @@ export const postKioskPunch = asyncHandler(async (req, res) => {
   }
   return ApiResponse.created(res, {
     message: 'Attendance recorded',
+    data: result,
+  });
+});
+
+// ── Kiosk PIN self-service (employee session) ────────────────
+// Identity is ALWAYS req.user (own PIN only). The hash is never
+// selected, never returned — only { configured }.
+
+// GET /api/attendance/kiosk-pin — is my PIN configured?
+export const getKioskPin = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const userId = req.user._id;
+
+  // DB Logic - DB logics
+  const result = await getKioskPinStatus({ companyId: req.companyId, userId });
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, {
+    message: 'Kiosk PIN status',
+    data: result,
+  });
+});
+
+// POST /api/attendance/kiosk-pin — set (first time) or change
+// (current PIN required) my Kiosk PIN.
+export const postKioskPin = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const { pin, currentPin = null } = req.body || {};
+
+  // DB Logic - DB logics
+  const result = await setKioskPin({
+    companyId: req.companyId,
+    userId: req.user._id,
+    pin,
+    currentPin,
+    actor: req.user,
+    req,
+  });
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, {
+    message: 'Kiosk PIN saved',
+    data: result,
+  });
+});
+
+// POST /api/attendance/kiosk-pin/clear — HR clears an
+// employee's PIN (forces a fresh setup; plaintext never visible).
+export const postKioskPinClear = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const { targetUserId } = req.body || {};
+
+  // DB Logic - DB logics
+  const result = await clearKioskPin({
+    companyId: req.companyId,
+    targetUserId,
+    actor: req.user,
+    req,
+  });
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, {
+    message: 'Kiosk PIN cleared. The employee can set a fresh PIN.',
     data: result,
   });
 });

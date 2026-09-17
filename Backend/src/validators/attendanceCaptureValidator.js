@@ -99,18 +99,52 @@ export const kioskSessionValidator = [
   validate,
 ];
 
+// 31.14 completion — the punch trusts ONLY the verified employee
+// context: a client-supplied employeeCode alongside it is refused
+// outright (it must never silently override the verified user).
+const noKioskIdentityOverride = body().custom((value, { req }) => {
+  const payload = req.body || {};
+  for (const field of ['employeeCode', 'employeeId', 'userId', 'user']) {
+    if (payload[field] !== undefined) {
+      throw new Error(`${field} is decided by employee verification and must not be supplied`);
+    }
+  }
+  return true;
+});
+
 export const kioskIdentifyValidator = [
   noIdentityOverride,
   body('employeeCode').isString().trim().isLength({ min: 1, max: 32 }).withMessage('employeeCode is required'),
+  // Presence only — exact shape is enforced by the service behind
+  // the generic 401 so failure detail never leaks which half failed.
+  body('pin').isString().isLength({ min: 1, max: 32 }).withMessage('Kiosk PIN is required'),
   validate,
 ];
 
 export const kioskPunchValidator = [
   noIdentityOverride,
   noSourceOverride,
-  body('employeeCode').isString().trim().isLength({ min: 1, max: 32 }).withMessage('employeeCode is required'),
+  noKioskIdentityOverride,
+  body('employeeToken').isString().isLength({ min: 1, max: 2000 }).withMessage('Employee verification is required'),
   body('action').isIn(Object.values(EVENT_TYPE)).withMessage('Unknown attendance action'),
   body('idempotencyKey').optional({ nullable: true }).isString().trim().isLength({ min: 1, max: 120 }).withMessage('idempotencyKey is too long'),
+  validate,
+];
+
+// ── Kiosk PIN self-service (employee session) ────────────────
+// Own-session writes: the service returns specific guidance here
+// (no oracle concern — the caller proved identity via login).
+
+export const kioskPinSetValidator = [
+  noIdentityOverride,
+  body('pin').isString().isLength({ min: 1, max: 32 }).withMessage('Kiosk PIN is required'),
+  body('currentPin').optional({ nullable: true }).isString().isLength({ min: 1, max: 32 }).withMessage('Current Kiosk PIN is invalid'),
+  validate,
+];
+
+export const kioskPinClearValidator = [
+  noIdentityOverride,
+  body('targetUserId').isMongoId().withMessage('targetUserId must be an ObjectId string'),
   validate,
 ];
 

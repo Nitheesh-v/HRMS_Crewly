@@ -2,16 +2,12 @@
 // Phase 31.14 — kiosk stations, sessions, and punches.
 //
 // Trust model: the station secret authenticates the SHARED DEVICE
-// (a trusted workplace terminal); the employee code identifies the
-// employee PER PUNCH. Secrets are shown once and stored sha256;
-// sessions are short kiosk-scoped JWTs (see kioskAuth).
-//
-// Honest limitation (no PIN in 31.14): a code alone cannot
-// strongly prove physical identity. Forgery requires physical
-// access to a trusted ACTIVE station plus the victim's code, and
-// every punch is station-attributed in immutable provenance.
-// The QR path (authenticated session + challenge) is the strong
-// alternative for high-assurance workplaces.
+// (a trusted workplace terminal); employeeCode + Kiosk PIN verify
+// the employee PER VISIT (31.14 completion — the original code-only
+// identification is closed). Secrets are shown once and stored
+// sha256; device sessions are 8-hour kiosk JWTs (see kioskAuth);
+// verified visits mint a 3-minute employee context the punch
+// trusts INSTEAD of any client-supplied employee identity.
 //
 // All punches converge on recordEvent with server-decided
 // ingest { source: KIOSK, provenance }. Kiosk punches are OFFICE
@@ -22,11 +18,16 @@
 import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
 import ApiError from '../../utils/ApiError.js';
 import { recordAudit } from '../../utils/securityauditService.js';
 import {
+  KIOSK_EMPLOYEE_CONTEXT_PURPOSE,
+  KIOSK_EMPLOYEE_CONTEXT_TTL_MS,
   KIOSK_SESSION_TTL_MS,
   maskEmployeeName,
+  validateKioskEmployeeClaims,
+  validateKioskPinShape,
 } from './attendanceSourceRules.js';
 import { EVENT_TYPE, EVENT_SOURCE } from './attendancePolicyRules.js';
 import { recordEvent, getLiveAttendance } from './attendanceEventService.js';
@@ -38,8 +39,11 @@ import {
 } from './attendanceIngestSupport.js';
 import AttendanceKiosk from '../../models/AttendanceKiosk.js';
 import AttendanceLocation from '../../models/AttendanceLocation.js';
+import User from '../../models/User.js';
 
 export const KIOSK_SECRET_BYTES = 32;
+// bcrypt cost mirrors the login-password precedent (User model).
+export const KIOSK_PIN_BCRYPT_COST = 10;
 
 export const hashStationSecret = (secret) => {
   if (typeof secret !== 'string' || !secret) return '';
@@ -217,6 +221,94 @@ export const rotateStationSecret = async ({ companyId, stationId, actor = null, 
   return { secret, secretVersion: station.secretVersion };
 };
 
+// ── Kiosk PIN (self-service terminal credential) ─────────────
+// Dedicated attendance-terminal secret: hash-only (bcrypt,
+// select:false on the model), never logged / audited / returned.
+// Set + change run in the employee's OWN authenticated session
+// (identity = req.user — nobody sets another person's PIN). HR can
+// only CLEAR (force a fresh setup), never view. Every set/change/
+// clear bumps kioskPinVersion, which kills outstanding employee
+// contexts minted under the previous credential.
+
+const loadPinIdentity = async ({ companyId, userId, deps }) => {
+  if (!mongoose.isValidObjectId(companyId) || !mongoose.isValidObjectId(userId)) return null;
+  const UserModel = deps.UserModel || User;
+  return UserModel.findOne({ _id: userId, companyId })
+    .select('_id companyId status kioskPinHash kioskPinVersion kioskPinSetAt')
+    .lean();
+};
+
+export const getKioskPinStatus = async ({ companyId, userId, deps = {} } = {}) => {
+  const identity = await loadPinIdentity({ companyId, userId, deps });
+  if (!identity) throw ApiError.notFound('Employee not found');
+  return { configured: Boolean(identity.kioskPinHash) };
+};
+
+export const setKioskPin = async ({
+  companyId,
+  userId,
+  pin,
+  currentPin = null,
+  actor = null,
+  req = null,
+  deps = {},
+} = {}) => {
+  const shapeError = validateKioskPinShape(pin);
+  if (shapeError) throw ApiError.badRequest(shapeError);
+  const identity = await loadPinIdentity({ companyId, userId, deps });
+  if (!identity) throw ApiError.notFound('Employee not found');
+  if (identity.status !== 'ACTIVE') throw ApiError.forbidden('Only active employees can set a Kiosk PIN');
+  const compare = deps.comparePin || bcrypt.compare;
+  if (identity.kioskPinHash) {
+    if (validateKioskPinShape(currentPin)) {
+      throw ApiError.badRequest('Current Kiosk PIN is required to change it');
+    }
+    if (!(await compare(String(currentPin), identity.kioskPinHash))) {
+      throw ApiError.unauthorized('Current Kiosk PIN is incorrect');
+    }
+  }
+  const hash = deps.hashPin || ((value) => bcrypt.hash(value, KIOSK_PIN_BCRYPT_COST));
+  const UserModel = deps.UserModel || User;
+  const now = deps.now ? new Date(deps.now()) : new Date();
+  const updated = await UserModel.findOneAndUpdate(
+    { _id: identity._id, companyId },
+    { $set: { kioskPinHash: await hash(String(pin)), kioskPinSetAt: now }, $inc: { kioskPinVersion: 1 } },
+    { returnDocument: 'after' }
+  ).lean();
+  await runAudit(deps, {
+    req,
+    action: 'ATTENDANCE_KIOSK_PIN_SET',
+    companyId,
+    actorId: actor?._id || userId,
+    resource: 'User',
+    resourceId: String(identity._id),
+    newValue: { kioskPinVersion: updated?.kioskPinVersion ?? null },
+  });
+  return { configured: true };
+};
+
+export const clearKioskPin = async ({ companyId, targetUserId, actor = null, req = null, deps = {} } = {}) => {
+  if (!mongoose.isValidObjectId(targetUserId)) throw ApiError.badRequest('targetUserId must be an ObjectId string');
+  const UserModel = deps.UserModel || User;
+  const updated = await UserModel.findOneAndUpdate(
+    { _id: targetUserId, companyId },
+    { $set: { kioskPinHash: null, kioskPinSetAt: null }, $inc: { kioskPinVersion: 1 } },
+    { returnDocument: 'after' }
+  ).lean();
+  if (!updated) throw ApiError.notFound('Employee not found');
+  await runAudit(deps, {
+    req,
+    action: 'ATTENDANCE_KIOSK_PIN_CLEARED',
+    companyId,
+    actorId: actor?._id || null,
+    resource: 'User',
+    resourceId: String(updated._id),
+    targetUserId: String(updated._id),
+    newValue: { kioskPinVersion: updated.kioskPinVersion },
+  });
+  return { configured: false };
+};
+
 // ── Kiosk session (shared device sign-in) ────────────────────
 // Generic failures everywhere: no station enumeration, no status
 // oracle — a disabled station looks identical to a wrong secret.
@@ -274,11 +366,43 @@ const loadActiveStation = async ({ companyId, stationId, deps }) => {
   return station;
 };
 
-export const identifyEmployee = async ({ companyId, stationId, employeeCode, deps = {} } = {}) => {
+// 31.14 completion — one generic denial for EVERY identify
+// failure (unknown code, inactive employee, unset PIN, wrong PIN):
+// the rate-limited kiosk must not become an enumeration oracle.
+const GENERIC_IDENTIFY_ERROR = 'Employee code or PIN is incorrect';
+// Real bcrypt hash of a random secret: unknown-code / unset-PIN
+// failures still pay one comparison so failure timing reveals
+// nothing about which half was wrong.
+const DUMMY_PIN_HASH = '$2b$10$68ZlzjIEcWJ2flvNClReOOdUT9YOayBiwPfZIqDSRfud2Wj4HYIke';
+
+export const identifyEmployee = async ({ companyId, stationId, employeeCode, pin, deps = {} } = {}) => {
+  const deny = () => {
+    throw ApiError.unauthorized(GENERIC_IDENTIFY_ERROR);
+  };
+  if (validateKioskPinShape(pin)) deny();
   await loadActiveStation({ companyId, stationId, deps });
+  const compare = deps.comparePin || bcrypt.compare;
   const user = await resolveEmployeeByCode({ companyId, employeeCode, deps });
-  // Generic: the rate-limited kiosk must not become a code oracle.
-  if (!user) throw ApiError.notFound('Employee not found or inactive');
+  const UserModel = deps.UserModel || User;
+  const credential = user
+    ? await UserModel.findOne({ _id: user._id, companyId }).select('kioskPinHash kioskPinVersion').lean()
+    : null;
+  const ok = await compare(String(pin), credential?.kioskPinHash || DUMMY_PIN_HASH);
+  if (!user || !credential?.kioskPinHash || !ok) deny();
+  // Verified visit: mint the short-lived employee context the
+  // punch trusts INSTEAD of any client-supplied identity.
+  const sign = deps.signEmployeeToken || (async (claims) => {
+    const { default: env } = await import('../../config/env.js');
+    return jwt.sign(claims, env.JWT_SECRET, { expiresIn: KIOSK_EMPLOYEE_CONTEXT_TTL_MS / 1000 });
+  });
+  const employeeToken = await sign({
+    typ: 'kiosk-employee',
+    companyId: String(companyId),
+    stationId: String(stationId),
+    userId: String(user._id),
+    pv: credential.kioskPinVersion || 0,
+    purpose: KIOSK_EMPLOYEE_CONTEXT_PURPOSE,
+  });
   const live = deps.getLiveAttendance || getLiveAttendance;
   const snapshot = await live({ companyId, userId: user._id });
   return {
@@ -286,23 +410,53 @@ export const identifyEmployee = async ({ companyId, stationId, employeeCode, dep
     maskedName: maskEmployeeName(user.name),
     liveState: snapshot?.liveState || 'NOT_IN',
     allowedActions: snapshot?.allowedActions || [],
+    employeeToken,
+    expiresAt: new Date((deps.now ? deps.now() : Date.now()) + KIOSK_EMPLOYEE_CONTEXT_TTL_MS).toISOString(),
   };
 };
+
+// One generic denial for EVERY context failure (bad signature,
+// expiry, wrong station/tenant, deactivated employee, rotated
+// PIN): failure detail would only aid token juggling.
+const GENERIC_CONTEXT_ERROR = 'Employee verification is invalid or expired';
 
 export const punchEmployee = async ({
   companyId,
   stationId,
-  employeeCode,
+  employeeToken,
   action,
   idempotencyKey = null,
   deps = {},
 } = {}) => {
+  const deny = () => {
+    throw ApiError.unauthorized(GENERIC_CONTEXT_ERROR);
+  };
   if (!Object.values(EVENT_TYPE).includes(action)) {
     throw ApiError.badRequest('Unknown attendance action');
   }
+  if (typeof employeeToken !== 'string' || !employeeToken) deny();
+  const verify = deps.verifyEmployeeToken || (async (token) => {
+    const { default: env } = await import('../../config/env.js');
+    return jwt.verify(token, env.JWT_SECRET);
+  });
+  let claims = null;
+  try {
+    claims = await verify(employeeToken);
+  } catch {
+    deny();
+  }
+  if (validateKioskEmployeeClaims(claims).length) deny();
+  // The context is bound to THIS terminal + tenant: a token
+  // carried from another station (or tenant) is worthless here.
+  if (String(claims.companyId) !== String(companyId) || String(claims.stationId) !== String(stationId)) deny();
   const station = await loadActiveStation({ companyId, stationId, deps });
-  const user = await resolveEmployeeByCode({ companyId, employeeCode, deps });
-  if (!user) throw ApiError.notFound('Employee not found or inactive');
+  const UserModel = deps.UserModel || User;
+  const user = await UserModel.findOne({ _id: claims.userId, companyId, status: 'ACTIVE' })
+    .select('_id kioskPinVersion')
+    .lean();
+  // PIN set/change/clear bumps the version: outstanding contexts
+  // die with the credential that minted them.
+  if (!user || (user.kioskPinVersion || 0) !== claims.pv) deny();
 
   // Finalized-month protection (kiosk punches are current-day, but
   // the guard is uniform and cheap).

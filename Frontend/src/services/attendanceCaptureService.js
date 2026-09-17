@@ -1,3 +1,4 @@
+import axios from 'axios';
 import api from './api.js';
 
 // Phase 31.14 — alternate attendance capture: kiosk stations, QR
@@ -27,6 +28,41 @@ const multipart = (file) => {
   return form;
 };
 
+// ── Kiosk terminal client (shared device; NO employee session) ──
+// 31.14 completion — the main api client is unusable here: its
+// request interceptor would attach any ambient employee token
+// (kioskAuth rejects non-kiosk JWTs) and its response interceptor
+// auto-refreshes on 401 (kiosk 401s are meaningful — bad secret,
+// bad PIN, expired context — and must surface, never retry).
+// Bearer-only: no cookies, no refresh, explicit station JWT.
+const kioskApi = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || '/api',
+  withCredentials: false,
+  headers: { 'Content-Type': 'application/json' },
+});
+
+kioskApi.interceptors.response.use(
+  (response) => {
+    const body = response.data;
+    if (body && typeof body === 'object' && !(body instanceof Blob) && 'data' in body) {
+      return body.meta ? body : body.data;
+    }
+    return body;
+  },
+  (error) => {
+    const message = error.response?.data?.message || error.message || 'Something went wrong';
+    const normalized = new Error(message);
+    normalized.status = error.response?.status;
+    normalized.code = error.response?.data?.code;
+    normalized.data = error.response?.data;
+    return Promise.reject(normalized);
+  }
+);
+
+const kioskHeaders = (kioskJwt) => ({
+  headers: { Authorization: `Bearer ${kioskJwt}` },
+});
+
 const attendanceCaptureService = {
   // ── Kiosk stations (HR) ──
   listStations: () => envelope(api.get('/attendance/kiosks')),
@@ -38,6 +74,27 @@ const attendanceCaptureService = {
 
   rotateStationSecret: (stationId) =>
     envelope(api.post(`/attendance/kiosks/${stationId}/rotate-secret`)),
+
+  // ── Kiosk terminal (shared device; station JWT per call) ──
+  openKioskSession: ({ stationId, secret }) =>
+    envelope(kioskApi.post('/kiosk/session', { stationId, secret })),
+
+  identifyKioskEmployee: (kioskJwt, { employeeCode, pin }) =>
+    envelope(kioskApi.post('/kiosk/identify', { employeeCode, pin }, kioskHeaders(kioskJwt))),
+
+  punchKiosk: (kioskJwt, { employeeToken, action, idempotencyKey }) =>
+    envelope(kioskApi.post('/kiosk/punch', { employeeToken, action, idempotencyKey }, kioskHeaders(kioskJwt))),
+
+  // ── Kiosk PIN self-service (employee session) ──
+  getKioskPinStatus: () => envelope(api.get('/attendance/kiosk-pin')),
+
+  setKioskPin: ({ pin, currentPin = null }) =>
+    envelope(api.post('/attendance/kiosk-pin', currentPin ? { pin, currentPin } : { pin })),
+
+  // HR clear (forces fresh setup; no plaintext ever visible).
+  // Backend + audit ready; no HR UI in this build (see docs).
+  clearKioskPin: (targetUserId) =>
+    envelope(api.post('/attendance/kiosk-pin/clear', { targetUserId })),
 
   // ── QR challenges ──
   createChallenge: (payload) => envelope(api.post('/attendance/qr/challenges', payload)),

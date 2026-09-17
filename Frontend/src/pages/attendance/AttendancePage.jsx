@@ -15,6 +15,7 @@ import {
 import attendanceService from '../../services/attendanceService.js';
 import attendanceLocationService from '../../services/attendanceLocationService.js';
 import attendanceOvertimeService from '../../services/attendanceOvertimeService.js';
+import KioskPinCard from '../../components/attendance/KioskPinCard.jsx';
 
 // One-shot browser position for the explicit Clock-In click. Resolves
 // { latitude, longitude, accuracy? } or throws an employee-safe Error.
@@ -735,6 +736,9 @@ const AttendancePage = () => {
           </table>
         </div>
       </div>
+
+      {/* 31.14 completion — Kiosk PIN self-service. */}
+      <KioskPinCard />
     </div>
   );
 };

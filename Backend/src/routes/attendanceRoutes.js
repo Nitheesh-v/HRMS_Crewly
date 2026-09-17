@@ -52,6 +52,8 @@ import {
 } from '../controllers/attendanceQrController.js';
 import {
   importIdValidator,
+  kioskPinClearValidator,
+  kioskPinSetValidator,
   kioskStationIdValidator,
   kioskStationPatchValidator,
   kioskStationValidator,
@@ -330,6 +332,46 @@ router.post(
   ),
   kioskStationIdValidator,
   postStationRotate
+);
+
+// ── 31.14 completion — Kiosk PIN self-service ────────────────
+// Set/change ride the employee's own session (self-punch
+// permission — whoever can punch can enroll a terminal PIN).
+// HR can only CLEAR (force fresh setup), never view.
+const kioskPinRateLimit = securityRateLimit({
+  windowMs: 60000,
+  maximum: 10,
+  keyGenerator: (req) => `${req.ip}:kiosk-pin:${req.companyId}:${req.user?._id || ''}`,
+  message: 'Too many Kiosk PIN attempts. Please try again shortly.',
+});
+
+router.get(
+  '/kiosk-pin',
+  requirePermission(
+    'ATTENDANCE_CREATE_SELF'
+  ),
+  getKioskPin
+);
+
+router.post(
+  '/kiosk-pin',
+  checkWriteAccess,
+  requirePermission(
+    'ATTENDANCE_CREATE_SELF'
+  ),
+  kioskPinRateLimit,
+  kioskPinSetValidator,
+  postKioskPin
+);
+
+router.post(
+  '/kiosk-pin/clear',
+  checkWriteAccess,
+  requirePermission(
+    'ATTENDANCE_CAPTURE_MANAGE'
+  ),
+  kioskPinClearValidator,
+  postKioskPinClear
 );
 
 // QR challenges (HR issues; employees resolve + redeem).

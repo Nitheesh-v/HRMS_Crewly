@@ -231,6 +231,16 @@ const KioskStationsPage = () => {
         </div>
       </form>
 
+      <div className="rounded-xl border border-crewly-line bg-crewly-card p-4 text-sm text-crewly-dim">
+        <div className="font-semibold text-crewly-ink">Provision a shared terminal</div>
+        <ol className="mt-2 list-decimal space-y-1 pl-5">
+          <li>On the company tablet/PC, open <code className="rounded bg-black/40 px-1 font-mono text-crewly-ink">/kiosk</code>.</li>
+          <li>Paste the station ID (Copy station ID below) and the one-time secret shown at register/rotate.</li>
+          <li>The terminal stays signed in for one shift — employees only ever type code + Kiosk PIN.</li>
+        </ol>
+        <p className="mt-2 text-xs">Rotating the secret or deactivating the station signs the terminal out immediately.</p>
+      </div>
+
       <div className="overflow-hidden rounded-xl border border-crewly-line">
         <table className="w-full text-left text-sm">
           <thead className="bg-crewly-card text-crewly-dim">
@@ -280,6 +290,20 @@ const KioskStationsPage = () => {
                       className="rounded-lg border border-crewly-line px-3 py-1.5 text-xs text-crewly-ink hover:bg-crewly-card"
                     >
                       Rotate secret
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(station.id);
+                          setNotice(`Station ID for "${station.name}" copied — paste it on the terminal.`);
+                        } catch {
+                          setError('Copy failed — the station ID is shown in the address of its row.');
+                        }
+                      }}
+                      className="rounded-lg border border-crewly-line px-3 py-1.5 text-xs text-crewly-ink hover:bg-crewly-card"
+                    >
+                      Copy station ID
                     </button>
                   </div>
                 </td>

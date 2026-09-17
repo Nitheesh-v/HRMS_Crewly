@@ -134,6 +134,44 @@ export const validateKioskClaims = (claims) => {
   return errors;
 };
 
+// ── Kiosk PIN + employee context (pure) ──────────────────────
+// 31.14 completion — the shared terminal verifies employeeCode +
+// Kiosk PIN (a dedicated attendance-terminal credential, never the
+// login password). Success mints a SHORT-LIVED employee context
+// (3 minutes, single purpose) that the punch trusts INSTEAD of any
+// client-supplied employee identity.
+
+export const KIOSK_PIN_MIN_LENGTH = 4;
+export const KIOSK_PIN_MAX_LENGTH = 12;
+export const KIOSK_EMPLOYEE_CONTEXT_TTL_MS = 3 * 60 * 1000;
+export const KIOSK_EMPLOYEE_CONTEXT_PURPOSE = 'kiosk-punch';
+
+// Structural shape only (digits + length); hashing/comparison live
+// in the service. Returns an error string or null.
+export const validateKioskPinShape = (pin) => {
+  if (typeof pin !== 'string' || !pin) return 'Kiosk PIN is required';
+  if (!/^\d+$/.test(pin)) return 'Kiosk PIN must be digits only';
+  if (pin.length < KIOSK_PIN_MIN_LENGTH || pin.length > KIOSK_PIN_MAX_LENGTH) {
+    return `Kiosk PIN must be ${KIOSK_PIN_MIN_LENGTH}–${KIOSK_PIN_MAX_LENGTH} digits`;
+  }
+  return null;
+};
+
+// Decoded-claim shape for the short-lived employee context; crypto
+// verification lives in the kiosk service (same lazy-signer seam
+// as the device session).
+export const validateKioskEmployeeClaims = (claims) => {
+  const errors = [];
+  if (!claims || typeof claims !== 'object') return ['kiosk employee claims must be an object'];
+  if (claims.typ !== 'kiosk-employee') errors.push('token is not a kiosk employee context');
+  if (!isObjectIdString(claims.companyId)) errors.push('kiosk employee companyId must be an ObjectId string');
+  if (!isObjectIdString(claims.stationId)) errors.push('kiosk employee stationId must be an ObjectId string');
+  if (!isObjectIdString(claims.userId)) errors.push('kiosk employee userId must be an ObjectId string');
+  if (claims.purpose !== KIOSK_EMPLOYEE_CONTEXT_PURPOSE) errors.push('kiosk employee purpose is invalid');
+  if (!Number.isInteger(claims.pv) || claims.pv < 0) errors.push('kiosk employee PIN version must be a non-negative integer');
+  return errors;
+};
+
 // ── Kiosk privacy (pure) ─────────────────────────────────────
 // Shared screens show the minimum needed to catch a typo'd code:
 // first name + last initial. Nothing else.
