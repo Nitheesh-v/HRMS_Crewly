@@ -1179,7 +1179,7 @@ export const makeAnalyticsService = ({
 
   const loadCompany = async ({ companyId }) => {
     if (!CompanyModel) return null;
-    return CompanyModel.findById(companyId).select('name address logoUrl').lean().catch(() => null);
+    return CompanyModel.findById(companyId).select('name address logoUrl branding documentBranding').lean().catch(() => null);
   };
 
   const exportReport = async ({ companyId, reportKey, format = 'CSV', filters = {}, actor = null, req = null, canSeeFinancial = true, allowedEmployeeIds = null }) => {

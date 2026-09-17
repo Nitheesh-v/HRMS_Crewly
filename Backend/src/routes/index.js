@@ -6,6 +6,7 @@ import { getRedisHealth } from "../config/redis.js";
 
 import authRoutes from "./authRoutes.js";
 import companyRoutes from "./companyRoutes.js";
+import companyBrandingRoutes from "./companyBrandingRoutes.js";
 import departmentRoutes from "./departmentRoutes.js";
 import userRoutes from "./userRoutes.js";
 import attendanceRoutes from "./attendanceRoutes.js";
@@ -123,6 +124,7 @@ router.use(rolePermissionRoutes);
 
 // Tenant modules.
 router.use("/companies", companyRoutes);
+router.use("/companies/my/branding", companyBrandingRoutes);
 
 router.use("/departments", departmentRoutes);
 

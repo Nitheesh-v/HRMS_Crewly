@@ -47,6 +47,21 @@ const addHeader = (doc, offer) => {
     .fontSize(9)
     .fillColor('#cad3df')
     .text(offer.companySnapshot.name, 48, 57);
+  // Company Branding — tenant mark captured at approval (the stored PDF
+  // freezes it; old offers without one keep this text-only header).
+  const brandLogo =
+    offer?.brandingLogo && Buffer.isBuffer(offer.brandingLogo) ? offer.brandingLogo : null;
+  if (brandLogo && brandLogo.length) {
+    try {
+      doc.image(brandLogo, doc.page.width - 48 - 72, 16, {
+        fit: [72, 54],
+        align: 'center',
+        valign: 'center',
+      });
+    } catch {
+      // Text-only header — a logo never breaks an offer.
+    }
+  }
 };
 
 const addFooter = (doc, offer) => {

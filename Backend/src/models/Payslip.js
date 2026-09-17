@@ -30,6 +30,19 @@ const snapshotSchema = new Schema(
       pan: { type: String, default: '' },
       tan: { type: String, default: '' },
       logoUrl: { type: String, default: '' },
+      // Company Branding — captured at generation; old snapshots lacking it
+      // render with CLASSIC_CORPORATE + default layout (immutable history).
+      brandingSnapshot: {
+        logoVersion: { type: Number, default: 0 },
+        hasLogo: { type: Boolean, default: false },
+        templateId: { type: String, default: 'CLASSIC_CORPORATE' },
+        layout: {
+          width: { type: Number, default: 34 },
+          maxHeight: { type: Number, default: 30 },
+          fit: { type: String, default: 'CONTAIN' },
+          alignment: { type: String, default: 'LEFT' },
+        },
+      },
     },
     employee: {
       employeeId: { type: String, default: '' },

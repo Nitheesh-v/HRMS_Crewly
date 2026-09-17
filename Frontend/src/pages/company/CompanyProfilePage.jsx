@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, Copy, ExternalLink, Globe2 } from 'lucide-react';
+import { Check, Copy, ExternalLink, Globe2, ImagePlus, Trash2, Eye, Loader2 } from 'lucide-react';
 import companyService from '../../services/companyService';
 import useAuth from '../../hooks/useAuth';
 import { ROLES } from '../../utils/roles';
@@ -30,6 +30,12 @@ const CompanyProfilePage = () => {
   const [saving, setSaving] = useState(false);
   const [banner, setBanner] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [branding, setBranding] = useState(null);
+  const [layoutForm, setLayoutForm] = useState({ width: 34, maxHeight: 30, fit: 'CONTAIN', alignment: 'LEFT' });
+  const [templateId, setTemplateId] = useState('CLASSIC_CORPORATE');
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const [previewBusy, setPreviewBusy] = useState(false);
 
   const flash = (type, text) => {
     setBanner({ type, text });
@@ -53,6 +59,16 @@ const CompanyProfilePage = () => {
           careerLocation: company.careerLocation || '',
         });
         setCode(company.code || '');
+        try {
+          const loaded = await companyService.getBranding();
+          setBranding(loaded);
+          if (loaded?.layout) setLayoutForm({ ...loaded.layout });
+          if (loaded?.documentBranding?.payslip?.templateId) {
+            setTemplateId(loaded.documentBranding.payslip.templateId);
+          }
+        } catch {
+          setBranding({ hasLogo: false });
+        }
       } catch (err) {
         flash('error', err?.message || 'Could not load company profile');
       } finally {
@@ -99,6 +115,94 @@ const CompanyProfilePage = () => {
       setTimeout(() => setCopied(false), 2000);
     } catch {
       flash('error', 'Could not copy the career portal URL');
+    }
+  };
+
+  const onLogoFile = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!/^image\/(png|jpe?g)$/i.test(file.type)) {
+      flash('error', 'Logo must be a PNG or JPG image');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      flash('error', 'Logo must be 2 MB or smaller');
+      return;
+    }
+    setLogoBusy(true);
+    try {
+      const updated = await companyService.uploadLogo(file);
+      setBranding(updated);
+      flash('success', 'Company logo updated. New documents use it; old PDFs are unchanged.');
+    } catch (err) {
+      flash('error', err?.message || 'Could not upload the logo');
+    } finally {
+      setLogoBusy(false);
+    }
+  };
+
+  const onRemoveLogo = async () => {
+    if (!window.confirm('Remove the company logo? New documents will use the initials fallback. Old PDFs stay unchanged.')) return;
+    setLogoBusy(true);
+    try {
+      const updated = await companyService.removeLogo();
+      setBranding(updated);
+      flash('success', 'Company logo removed.');
+    } catch (err) {
+      flash('error', err?.message || 'Could not remove the logo');
+    } finally {
+      setLogoBusy(false);
+    }
+  };
+
+  const setLayout = (key) => (event) =>
+    setLayoutForm((current) => ({ ...current, [key]: event.target.value }));
+
+  const saveBrandingSettings = async () => {
+    setSettingsBusy(true);
+    try {
+      const updated = await companyService.updateBranding({
+        layout: {
+          width: Number(layoutForm.width),
+          maxHeight: Number(layoutForm.maxHeight),
+          fit: layoutForm.fit,
+          alignment: layoutForm.alignment,
+        },
+        documentBranding: { payslip: { templateId } },
+      });
+      setBranding(updated);
+      if (updated?.layout) setLayoutForm({ ...updated.layout });
+      flash('success', 'Branding settings saved. Applies to newly generated documents.');
+    } catch (err) {
+      flash('error', err?.message || 'Could not save branding settings');
+    } finally {
+      setSettingsBusy(false);
+    }
+  };
+
+  const downloadPreview = async () => {
+    setPreviewBusy(true);
+    try {
+      const blob = await companyService.previewPayslip({
+        templateId,
+        layout: {
+          width: Number(layoutForm.width),
+          maxHeight: Number(layoutForm.maxHeight),
+          fit: layoutForm.fit,
+          alignment: layoutForm.alignment,
+        },
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `payslip-preview-${templateId}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      flash('error', 'Could not generate the template preview');
+    } finally {
+      setPreviewBusy(false);
     }
   };
 
@@ -161,9 +265,17 @@ const CompanyProfilePage = () => {
           <h2 className="text-sm font-semibold">📄 Payslip header preview</h2>
           <div className="bg-white text-gray-900 rounded-lg p-4">
             <div className="flex items-start gap-3">
-              <div className="w-10 h-9 rounded-md bg-[#16324f] text-white flex items-center justify-center font-bold text-sm">
-                {initials}
-              </div>
+              {branding?.hasLogo && branding?.logo?.deliveryUrl ? (
+                <img
+                  src={branding.logo.deliveryUrl}
+                  alt="Company logo"
+                  className="h-9 w-10 rounded-md bg-white object-contain"
+                />
+              ) : (
+                <div className="w-10 h-9 rounded-md bg-[#16324f] text-white flex items-center justify-center font-bold text-sm">
+                  {initials}
+                </div>
+              )}
               <div className="flex-1">
                 <div className="font-bold text-[13px] text-[#16324f] leading-tight">
                   {(form.name || 'Company Name').toUpperCase()}
@@ -186,6 +298,105 @@ const CompanyProfilePage = () => {
           </p>
         </div>
       </div>
+
+      <section className="card p-5 space-y-5">
+        <div>
+          <h2 className="text-sm font-semibold">Company Branding</h2>
+          <p className="mt-1 text-xs text-crewly-dim">
+            Your logo and document style. New payslips, offers and reports use this branding;
+            previously generated PDFs are never changed.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex h-20 w-28 items-center justify-center overflow-hidden rounded-lg bg-white p-2">
+            {logoBusy ? (
+              <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+            ) : branding?.hasLogo && branding?.logo?.deliveryUrl ? (
+              <img src={branding.logo.deliveryUrl} alt="Company logo" className="max-h-full max-w-full object-contain" />
+            ) : (
+              <span className="text-2xl font-bold text-[#16324f]">{initials}</span>
+            )}
+          </div>
+          <div className="space-y-1 text-xs text-crewly-dim">
+            <p className="font-medium text-crewly-text">{form.name || 'Company Name'}</p>
+            <p>PNG or JPG only · 2 MB max · best under 2000px on either side</p>
+            <p>SVG, remote URLs and other formats are not accepted.</p>
+          </div>
+          {isAdmin && (
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <label className={`btn-ghost cursor-pointer ${logoBusy ? 'pointer-events-none opacity-60' : ''}`}>
+                <ImagePlus className="h-4 w-4" />
+                {branding?.hasLogo ? 'Replace logo' : 'Upload logo'}
+                <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={onLogoFile} disabled={logoBusy} />
+              </label>
+              {branding?.hasLogo && (
+                <button type="button" className="btn-ghost" onClick={onRemoveLogo} disabled={logoBusy}>
+                  <Trash2 className="h-4 w-4" /> Remove
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-4">
+          <div>
+            <label className="label">Logo width (16–120)</label>
+            <input type="number" min={16} max={120} className="input" value={layoutForm.width} onChange={setLayout('width')} disabled={!isAdmin} />
+          </div>
+          <div>
+            <label className="label">Logo max height (12–80)</label>
+            <input type="number" min={12} max={80} className="input" value={layoutForm.maxHeight} onChange={setLayout('maxHeight')} disabled={!isAdmin} />
+          </div>
+          <div>
+            <label className="label">Image fit</label>
+            <select className="input" value={layoutForm.fit} onChange={setLayout('fit')} disabled={!isAdmin}>
+              <option value="CONTAIN">Contain (never crops)</option>
+              <option value="COVER">Cover (fills box, may crop)</option>
+            </select>
+          </div>
+          <div>
+            <label className="label">Logo alignment</label>
+            <select className="input" value={layoutForm.alignment} onChange={setLayout('alignment')} disabled={!isAdmin}>
+              <option value="LEFT">Left</option>
+              <option value="CENTER">Center</option>
+              <option value="RIGHT">Right</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-crewly-dim">Payslip template</h3>
+          <div className="mt-2 grid gap-2 lg:grid-cols-2">
+            {[
+              { id: 'CLASSIC_CORPORATE', name: 'Classic Corporate', hint: 'Traditional formal layout with bordered header' },
+              { id: 'MINIMAL', name: 'Minimal', hint: 'Printer-friendly grayscale, economical ink' },
+            ].map((entry) => (
+              <label key={entry.id} className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm ${templateId === entry.id ? 'border-indigo-500 bg-indigo-500/10' : 'border-white/10 bg-white/5'} ${!isAdmin ? 'pointer-events-none opacity-70' : ''}`}>
+                <input type="radio" name="payslip-template" className="mt-1" checked={templateId === entry.id} onChange={() => setTemplateId(entry.id)} disabled={!isAdmin} />
+                <span>
+                  <span className="block font-medium">{entry.name}</span>
+                  <span className="block text-xs text-crewly-dim">{entry.hint}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {isAdmin ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="btn-primary" onClick={saveBrandingSettings} disabled={settingsBusy}>
+              {settingsBusy ? 'Saving…' : 'Save branding settings'}
+            </button>
+            <button type="button" className="btn-ghost" onClick={downloadPreview} disabled={previewBusy}>
+              <Eye className="h-4 w-4" /> {previewBusy ? 'Generating…' : 'Preview payslip template'}
+            </button>
+            <span className="text-[11px] text-crewly-dim">Preview uses sample data and is watermarked SAMPLE.</span>
+          </div>
+        ) : (
+          <p className="text-xs text-crewly-dim">Only the Company Admin can change branding.</p>
+        )}
+      </section>
 
       <section className="card p-5 space-y-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

@@ -46,6 +46,53 @@ const companySchema = new mongoose.Schema(
       default: '',
     },
 
+    // Company Branding — the ONE tenant branding authority. `logoUrl`
+    // above is service-maintained (the current logo delivery URL) for
+    // backwards compatibility and is never written directly by tenants.
+    branding: {
+      logo: {
+        provider: { type: String, default: '' }, // CLOUDINARY | INLINE
+        publicId: { type: String, default: '' },
+        deliveryUrl: { type: String, default: '' },
+        mimeType: { type: String, default: '' },
+        bytes: { type: Number, default: 0 },
+        width: { type: Number, default: 0 },
+        height: { type: Number, default: 0 },
+        version: { type: Number, default: 0 },
+        uploadedAt: { type: Date, default: null },
+        uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+      },
+      layout: {
+        width: { type: Number, default: 34 },
+        maxHeight: { type: Number, default: 30 },
+        fit: { type: String, enum: ['CONTAIN', 'COVER'], default: 'CONTAIN' },
+        alignment: { type: String, enum: ['LEFT', 'CENTER', 'RIGHT'], default: 'LEFT' },
+      },
+    },
+
+    // Per-document settings REFERENCE the shared branding above — the logo
+    // itself is never duplicated here. Only document types with a real
+    // tenant-facing setting exist; everything else consumes shared branding
+    // or stays platform-branded.
+    documentBranding: {
+      payslip: {
+        templateId: {
+          type: String,
+          enum: ['CLASSIC_CORPORATE', 'MINIMAL'],
+          default: 'CLASSIC_CORPORATE',
+        },
+        logo: {
+          width: { type: Number, default: null },
+          maxHeight: { type: Number, default: null },
+          fit: { type: String, enum: ['CONTAIN', 'COVER'], default: null },
+          alignment: { type: String, enum: ['LEFT', 'CENTER', 'RIGHT'], default: null },
+        },
+      },
+      offer: {
+        useCompanyLogo: { type: Boolean, default: true },
+      },
+    },
+
     careerSlug: {
       type: String,
       unique: true,

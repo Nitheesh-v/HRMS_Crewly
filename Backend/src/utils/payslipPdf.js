@@ -8,6 +8,14 @@
 // This file only DRAWS — all data is prepared by the controller.
 // ─────────────────────────────────────────────────────────────
 import PDFDocument from 'pdfkit';
+import {
+  drawCompanyLogo,
+  drawPreviewWatermark,
+  logoBoxX,
+  renderMinimalPayslip,
+  resolvePayslipTemplate,
+} from './payslipTemplates.js';
+import { sanitizeLogoLayout } from '../services/companyBrandingRules.js';
 
 const C = {
   ink: '#111827',        // amounts / strong text
@@ -41,7 +49,7 @@ const inr = (n) => {
 };
 
 // dd/mm/yyyy (dates arrive as UTC-midnight Date objects)
-const fmtDate = (d) => {
+export const fmtDate = (d) => {
   if (!d) return '—';
   const dt = new Date(d);
   if (Number.isNaN(dt.getTime())) return '—';
@@ -236,11 +244,11 @@ export const streamPayslipPdf = ({ payroll, employee, company, leaveBalance }, r
 //  pre-29.9 Payroll records.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const M = { left: 40, top: 44, right: 40 };
+export const M = { left: 40, top: 44, right: 40 };
 const PAGE_WIDTH = 595.28; // A4 points
-const CONTENT_WIDTH = PAGE_WIDTH - M.left - M.right;
+export const CONTENT_WIDTH = PAGE_WIDTH - M.left - M.right;
 
-const initialsOf = (name) =>
+export const initialsOf = (name) =>
   String(name || 'C')
     .split(/\s+/)
     .filter(Boolean)
@@ -249,9 +257,9 @@ const initialsOf = (name) =>
     .join('')
     .toUpperCase();
 
-const rupees = (value) => `Rs ${inr(value)}`;
+export const rupees = (value) => `Rs ${inr(value)}`;
 
-const ensureSpace = (doc, y, needed) => {
+export const ensureSpace = (doc, y, needed) => {
   if (y + needed <= 780) return y;
   doc.addPage();
   return M.top;
@@ -351,8 +359,13 @@ const moneyTable = (doc, { title, subtitle, rows, totalLabel, total, accent, sta
  * @param {object} snapshot  the frozen 29.9 snapshot (see payslipRules)
  * @returns {Promise<Buffer>}
  */
-export const buildPayslipPdf = (snapshot = {}, options = {}) =>
-  new Promise((resolve, reject) => {
+export const buildPayslipPdf = (snapshot = {}, options = {}) => {
+  // Company Branding — template dispatch. Explicit option wins, then the
+  // snapshot capture (immutable history), then CLASSIC_CORPORATE.
+  if (resolvePayslipTemplate(snapshot, options) === 'MINIMAL') {
+    return renderMinimalPayslip(snapshot, options);
+  }
+  return new Promise((resolve, reject) => {
     try {
       const company = snapshot.company || {};
       const employee = snapshot.employee || {};
@@ -379,24 +392,27 @@ export const buildPayslipPdf = (snapshot = {}, options = {}) =>
       // §8 asks for the company LOGO. The snapshot stores the URL; the bytes
       // are resolved by the caller (utils/companyLogo.js) and passed in, so a
       // payslip never blocks on the network. No logo → the initials badge.
+      // Company Branding — logo box from the snapshot layout (or option
+      // override); defaults reproduce the historical 34x30 left mark exactly.
+      const brandingLayout = sanitizeLogoLayout(
+        options?.layout || snapshot?.company?.brandingSnapshot?.layout
+      );
+      const boxW = brandingLayout.width;
+      const boxH = brandingLayout.maxHeight;
+      const boxX = logoBoxX(brandingLayout.alignment, boxW, M.left, CONTENT_WIDTH);
       const logo = options?.logo && Buffer.isBuffer(options.logo.buffer) ? options.logo.buffer : null;
-      let logoDrawn = false;
-      if (logo && logo.length) {
-        try {
-          doc.image(logo, M.left, M.top, { fit: [34, 30], align: 'center', valign: 'center' });
-          logoDrawn = true;
-        } catch {
-          logoDrawn = false; // unsupported or corrupt image → badge
-        }
-      }
+      const logoDrawn =
+        logo && logo.length
+          ? drawCompanyLogo(doc, logo, boxX, M.top, boxW, boxH, brandingLayout.fit)
+          : false;
 
       if (!logoDrawn) {
-        doc.save().roundedRect(M.left, M.top, 34, 30, 6).fill(C.navy).restore();
+        doc.save().roundedRect(boxX, M.top, boxW, boxH, 6).fill(C.navy).restore();
         doc
           .font('Helvetica-Bold')
           .fontSize(12)
           .fillColor('#ffffff')
-          .text(initialsOf(company.name), M.left, M.top, { width: 34, height: 30, align: 'center', valign: 'center' });
+          .text(initialsOf(company.name), boxX, M.top, { width: boxW, height: boxH, align: 'center', valign: 'center' });
       }
 
       doc.font('Helvetica-Bold').fontSize(11).fillColor(C.navy).text(String(company.name || 'Company').toUpperCase(), M.left + 42, M.top - 2, { width: 330 });
@@ -425,6 +441,11 @@ export const buildPayslipPdf = (snapshot = {}, options = {}) =>
 
       let y = M.top + 40;
       doc.save().moveTo(M.left, y).lineTo(M.left + CONTENT_WIDTH, y).lineWidth(1).stroke(C.divider).restore();
+      if (options?.preview) {
+        y += 10;
+        doc.font('Helvetica-Bold').fontSize(9).fillColor('#b42318').text('SAMPLE PREVIEW — NOT A REAL PAYSLIP', M.left, y, { width: CONTENT_WIDTH, align: 'center' });
+        y += 8;
+      }
 
       // ── 2. employee details (§8) ────────────────────────────────────────
       y += 12;
@@ -574,10 +595,12 @@ export const buildPayslipPdf = (snapshot = {}, options = {}) =>
           align: 'right',
         });
 
+      if (options?.preview) drawPreviewWatermark(doc);
       doc.end();
     } catch (error) {
       reject(error);
     }
   });
+};
 
 export default { streamPayslipPdf, buildPayslipPdf };

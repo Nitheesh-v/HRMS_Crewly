@@ -17,6 +17,8 @@
 
 // ── statuses (§21) ─────────────────────────────────────────────────────────
 
+import { snapshotBranding } from '../companyBrandingRules.js';
+
 export const PAYSLIP_STATUSES = ['PENDING', 'GENERATED', 'EMAILED', 'DOWNLOADED', 'FAILED'];
 
 export const PAYSLIP_STATUS_LABELS = {
@@ -161,6 +163,8 @@ export const buildPayslipSnapshot = ({
       pan: legal.pan || '',
       tan: legal.tan || '',
       logoUrl: company.logoUrl || '',
+      // Company Branding — generation-time capture (immutable history).
+      brandingSnapshot: snapshotBranding(company, 'PAYSLIP'),
     },
 
     // ── employee (§6) — masked bank details only (§13 / §26) ───────────────

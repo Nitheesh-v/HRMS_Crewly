@@ -1135,9 +1135,14 @@ const defaultService = makePayslipService({
 
   // §8 — the header shows the company logo. The bytes are resolved here (and
   // cached), never inside the PDF module, so a render stays a pure function
-  // of its inputs and a bulk run fetches each logo once.
+  // of its inputs and a bulk run fetches each logo once. Template + layout
+  // come from the snapshot's branding capture (immutable history).
   renderPdf: async (snapshot) =>
-    buildPayslipPdf(snapshot, { logo: await resolveCompanyLogo(snapshot?.company?.logoUrl) }),
+    buildPayslipPdf(snapshot, {
+      logo: await resolveCompanyLogo(snapshot?.company?.logoUrl),
+      templateId: snapshot?.company?.brandingSnapshot?.templateId,
+      layout: snapshot?.company?.brandingSnapshot?.layout,
+    }),
   buildZip,
   hash: (value) =>
     createHash('sha256')

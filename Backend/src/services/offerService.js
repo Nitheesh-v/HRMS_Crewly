@@ -18,6 +18,7 @@ import {
   renderOfferTemplate,
 } from '../utils/offerTemplateRenderer.js';
 import { generateOfferPdf } from '../utils/offerPdfService.js';
+import { resolveCompanyLogo } from '../utils/companyLogo.js';
 import { randomToken, hashToken } from '../utils/securityPolicy.js';
 import { recordAudit } from '../utils/securityauditService.js';
 import { bumpRecruitmentAnalyticsGeneration } from './analyticsCacheInvalidation.js';
@@ -877,8 +878,24 @@ export const approveOffer = async ({ companyId, actor, offerId }) => {
   offer.approval.approvedAt = approvedAt;
   offer.approval.approvedBy = actor.id;
   assertReady(offer);
+  // Company Branding — approval-time capture (immutable history). The
+  // stored PDF below freezes this branding; later logo changes never
+  // touch an approved offer.
+  const brandingCompany = await Company.findOne({ _id: companyId })
+    .select('branding documentBranding')
+    .lean()
+    .catch(() => null);
+  const useOfferLogo = brandingCompany?.documentBranding?.offer?.useCompanyLogo !== false;
+  const approvalLogoUrl = useOfferLogo ? brandingCompany?.branding?.logo?.deliveryUrl || '' : '';
+  const approvalLogo = approvalLogoUrl ? await resolveCompanyLogo(approvalLogoUrl) : null;
+  offer.companySnapshot.logoUrl = approvalLogoUrl;
+  offer.companySnapshot.brandingSnapshot = {
+    logoVersion: brandingCompany?.branding?.logo?.version || 0,
+    hasLogo: Boolean(approvalLogoUrl),
+  };
   const buffer = await generateOfferPdf({
     ...offer.toObject(),
+    brandingLogo: approvalLogo?.buffer || null,
     approvalSignatory: {
       name: actor.name,
       role: actor.role,
@@ -912,6 +929,8 @@ export const approveOffer = async ({ companyId, actor, offerId }) => {
           unresolvedVariables: [],
           'approval.approvedBy': actor.id,
           'approval.approvedAt': approvedAt,
+          'companySnapshot.logoUrl': offer.companySnapshot.logoUrl,
+          'companySnapshot.brandingSnapshot': offer.companySnapshot.brandingSnapshot,
           document,
           updatedBy: actor.id,
         },

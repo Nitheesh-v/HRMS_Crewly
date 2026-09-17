@@ -618,11 +618,13 @@ export const updateCompany = async (req, res) => {
 
     const previous = company.toObject();
 
+    // Company Branding: logoUrl is service-maintained via the tenant logo
+    // upload flow — never set as an arbitrary string (SSRF rule). Reads of
+    // company.logoUrl elsewhere in this controller are unchanged.
     const allowedFields = [
       'name',
       'email',
       'phone',
-      'logoUrl',
       'country',
       'timezone',
       'currency',

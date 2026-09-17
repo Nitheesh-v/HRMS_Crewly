@@ -111,6 +111,13 @@ const offerLetterSchema = new mongoose.Schema(
     companySnapshot: {
       name: { type: String, required: true, maxlength: 180 },
       address: { type: String, default: '', maxlength: 1000 },
+      // Company Branding — captured at approval; old offers lacking these
+      // render the text-only header exactly as before (immutable history).
+      logoUrl: { type: String, default: '', maxlength: 2000 },
+      brandingSnapshot: {
+        logoVersion: { type: Number, default: 0 },
+        hasLogo: { type: Boolean, default: false },
+      },
     },
     terms: {
       designation: { type: String, required: true, trim: true, maxlength: 180 },
