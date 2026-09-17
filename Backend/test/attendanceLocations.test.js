@@ -31,6 +31,7 @@ const {
   validateLongitude,
   validateRadiusMeters,
   validateAccuracyMeters,
+  isAccuracyUsable,
   validateLocationInput,
   haversineMeters,
   isInsideGeofence,
@@ -299,16 +300,26 @@ test('rules: radius accepts the fenced integer range only', () => {
   assert.match(validateRadiusMeters('500'), /integer/);
 });
 
-test('rules: accuracy is optional, finite and capped when present', () => {
+test('rules: accuracy shape accepts any real non-negative reading', () => {
   assert.equal(validateAccuracyMeters(undefined), null);
   assert.equal(validateAccuracyMeters(null), null);
   assert.equal(validateAccuracyMeters(0), null);
   assert.equal(validateAccuracyMeters(25), null);
+  // 31.16 D-03 — imprecise-but-real is well-formed (desktop IP fixes
+  // routinely exceed the cap); usability is a verdict question.
   assert.equal(validateAccuracyMeters(100000), null);
-  assert.match(validateAccuracyMeters(-1), /between/);
-  assert.match(validateAccuracyMeters(100001), /between/);
+  assert.equal(validateAccuracyMeters(250000), null);
+  assert.match(validateAccuracyMeters(-1), /0 or greater/);
   assert.match(validateAccuracyMeters(Number.NaN), /finite/);
   assert.match(validateAccuracyMeters(Infinity), /finite/);
+});
+
+test('rules: accuracy usability gates verification, not request shape', () => {
+  assert.equal(isAccuracyUsable(undefined), true);
+  assert.equal(isAccuracyUsable(null), true);
+  assert.equal(isAccuracyUsable(100000), true);
+  assert.equal(isAccuracyUsable(100001), false);
+  assert.equal(isAccuracyUsable(2500000), false);
 });
 
 test('rules: same point measures near-zero distance', () => {
@@ -590,6 +601,36 @@ test('clock-in: REQUIRED + outside radius is refused, nothing written', async ()
   assert.match(err.message, /outside the allowed radius for Head Office/);
   assert.equal(ctx.AttendanceModel.rows.length, 0);
   assert.equal(ctx.AttendanceEventModel.rows.length, 0);
+});
+
+test('clock-in: REQUIRED + imprecise fix fails verification (never a 400), nothing written', async () => {
+  const ctx = makeGeoCtx();
+  const err = await punch(ctx, 'CLOCK_IN', {
+    workMode: 'OFFICE',
+    // Center point is exactly the office — but a 250 km error radius
+    // proves nothing, so this must fail as OUTSIDE, not as malformed.
+    location: { locationId: LOC_OFFICE, position: { ...INSIDE, accuracy: 250000 } },
+  }).then(
+    () => null,
+    (caught) => caught,
+  );
+  assert.ok(err);
+  assert.equal(err.statusCode, 403);
+  assert.match(err.message, /outside the allowed radius for Head Office/);
+  assert.equal(ctx.AttendanceModel.rows.length, 0);
+  assert.equal(ctx.AttendanceEventModel.rows.length, 0);
+});
+
+test('clock-in: OPTIONAL + imprecise fix proceeds with OUTSIDE evidence (raw value kept)', async () => {
+  const ctx = makeGeoCtx({ enforcement: 'OPTIONAL' });
+  const result = await punch(ctx, 'CLOCK_IN', {
+    workMode: 'OFFICE',
+    idempotencyKey: 'geo-opt-imprecise',
+    location: { locationId: LOC_OFFICE, position: { ...INSIDE, accuracy: 250000 } },
+  });
+  assert.equal(result.snapshot.liveState, 'WORKING');
+  assert.equal(result.event.location.result, 'OUTSIDE');
+  assert.equal(result.event.location.accuracyMeters, 250000);
 });
 
 test('clock-in: REQUIRED + inactive/foreign/unknown location is refused', async () => {

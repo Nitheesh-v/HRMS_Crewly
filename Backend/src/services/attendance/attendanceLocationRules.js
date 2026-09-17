@@ -67,15 +67,24 @@ export const validateRadiusMeters = (value) => {
   return null;
 };
 
-// Accuracy is optional metadata. Absent is fine; present must be sane.
+// Accuracy is optional metadata. Absent is fine; present must be a
+// real non-negative reading. An imprecise-but-real reading (beyond
+// the cap) is NOT malformed — 31.16 D-03: desktop browsers routinely
+// report IP/WiFi fixes less precise than 100 km, and 400ing the whole
+// punch for that is a defect. Callers route over-cap readings through
+// isAccuracyUsable into the failed-verification path instead.
 export const validateAccuracyMeters = (value) => {
   if (value === undefined || value === null) return null;
   if (!isFiniteNumber(value)) return 'accuracy must be a finite number';
-  if (value < 0 || value > ACCURACY_MAX_METERS) {
-    return `accuracy must be between 0 and ${ACCURACY_MAX_METERS}`;
-  }
+  if (value < 0) return 'accuracy must be 0 or greater';
   return null;
 };
+
+// A fix less precise than the cap cannot prove presence — but the
+// request itself is well-formed. Absent accuracy (legacy clients)
+// keeps the historical distance-only behavior.
+export const isAccuracyUsable = (value) =>
+  value === undefined || value === null || value <= ACCURACY_MAX_METERS;
 
 // Full location-input validation for create/update (service passes the
 // merged document shape; every caller is protected equally).

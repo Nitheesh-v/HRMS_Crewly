@@ -19,6 +19,7 @@ import {
   buildVerificationSnapshot,
   geofenceRequirement,
   haversineMeters,
+  isAccuracyUsable,
   isInsideGeofence,
   validateAccuracyMeters,
   validateLatitude,
@@ -260,7 +261,13 @@ export const verifyClockInLocation = async ({
     place.latitude,
     place.longitude,
   );
-  const inside = isInsideGeofence(distanceMeters, place.radiusMeters);
+  // 31.16 D-03 — an imprecise fix can never VERIFY (the center point
+  // proves nothing when the error radius dwarfs the geofence), but it
+  // is failed verification, not a malformed request: REQUIRED refuses
+  // with the standard outside-radius message, OPTIONAL proceeds with
+  // OUTSIDE evidence. The raw reported value is preserved below.
+  const inside = isAccuracyUsable(position.accuracy)
+    && isInsideGeofence(distanceMeters, place.radiusMeters);
   if (!inside && requirement === 'REQUIRED') {
     throw ApiError.forbidden(`You are outside the allowed radius for ${place.name}`);
   }
