@@ -367,6 +367,10 @@ const MODULES = {
   },
 };
 
+// Test seam: the registry is exported (read-only by convention) so the
+// hermetic suite can prove every module's model file actually imports.
+export const REPORT_BUILDER_MODULES = MODULES;
+
 // ============================================================
 // GET /api/report-builder/meta
 // ============================================================
