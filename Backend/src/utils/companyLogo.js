@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-//  Company logo resolver (Phase 29.9, §6 / §8)
+//  Company logo resolver (Phase 29.9, §6 / §8 — hardened by Company Branding)
 //
 //  A payslip header shows the company logo. The snapshot stores the URL, not
 //  the bytes, so the bytes are resolved at render time — but never at the
@@ -12,6 +12,12 @@
 //                         run renders thousands of payslips from the SAME
 //                         logo and must not hit the network each time
 //    · offline-safe     — no network call at all when there is no logo
+//    · allowlisted (§33)— ONLY Crewly-controlled references resolve: inline
+//                         data: PNG/JPEG (dev fallback) and https delivery
+//                         URLs from Crewly's Cloudinary cloud. Arbitrary
+//                         tenant/pasted URLs are refused (SSRF rule), so a
+//                         hostile logoUrl can never make the server fetch an
+//                         internal resource. Refusals fall back to initials.
 //
 //  Nothing here is awaited by a request the employee is waiting on unless a
 //  PDF is actually being produced.
@@ -24,7 +30,20 @@ const CACHE_LIMIT = 200;
 
 const cache = new Map();
 
-const isHttpUrl = (value) => /^https?:\/\//i.test(String(value || '').trim());
+// Crewly-controlled delivery only: inline dev-fallback bytes, or https from
+// Crewly's own Cloudinary cloud (branding uploads land there and nowhere else).
+export const isCrewlyControlledLogoUrl = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return false;
+  if (/^data:image\/(png|jpe?g);base64,/i.test(raw)) return true;
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== 'https:') return false;
+    return parsed.hostname.toLowerCase() === 'res.cloudinary.com';
+  } catch {
+    return false;
+  }
+};
 
 const prune = () => {
   const now = Date.now();
@@ -42,15 +61,16 @@ const prune = () => {
 export const clearCompanyLogoCache = () => cache.clear();
 
 /**
- * @param {string} url  company logo URL (http/https) or a data: image URL
+ * @param {string} url  Crewly-controlled logo reference (data: image or
+ *                      https Cloudinary delivery URL). Anything else → null.
  * @returns {Promise<{ buffer: Buffer, contentType: string } | null>}
  */
 export const resolveCompanyLogo = async (url) => {
   const raw = String(url || '').trim();
-  if (!raw) return null;
+  if (!raw || !isCrewlyControlledLogoUrl(raw)) return null;
 
   // A data URL is already inline — no network, no risk.
-  if (/^data:image\/(png|jpe?g|gif|webp);base64,/i.test(raw)) {
+  if (/^data:image\/(png|jpe?g);base64,/i.test(raw)) {
     try {
       const base64 = raw.slice(raw.indexOf(',') + 1);
       const buffer = Buffer.from(base64, 'base64');
@@ -61,8 +81,6 @@ export const resolveCompanyLogo = async (url) => {
       return null;
     }
   }
-
-  if (!isHttpUrl(raw)) return null;
 
   const cached = cache.get(raw);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) {

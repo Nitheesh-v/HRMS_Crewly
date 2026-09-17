@@ -61,6 +61,7 @@ const AttendanceOperationsPage = lazy(() => import("../pages/attendance/Attendan
 const KioskStationsPage = lazy(() => import("../pages/attendance/KioskStationsPage.jsx"));
 const QrChallengesPage = lazy(() => import("../pages/attendance/QrChallengesPage.jsx"));
 const QrPunchPage = lazy(() => import("../pages/attendance/QrPunchPage.jsx"));
+const KioskTerminalPage = lazy(() => import("../pages/kiosk/KioskTerminalPage.jsx"));
 const AttendanceImportPage = lazy(() => import("../pages/attendance/AttendanceImportPage.jsx"));
 const AttendanceAnalyticsPage = lazy(() => import("../pages/attendance/AttendanceAnalyticsPage.jsx"));
 
@@ -207,6 +208,14 @@ const COMPANY_ADMIN = [
 const AppRoutes = () => (
   <Suspense fallback={<div className="p-6 text-crewly-dim">Loading…</div>}>
   <Routes>
+    {/* 31.14 completion — shared Kiosk terminal. Deliberately
+        layout-less (no sidebar/nav/admin chrome): the company's
+        shared tablet renders ONLY this screen. */}
+    <Route
+      path="/kiosk"
+      element={<KioskTerminalPage />}
+    />
+
     {/* Public customer routes */}
     <Route element={<PublicLayout />}>
       <Route

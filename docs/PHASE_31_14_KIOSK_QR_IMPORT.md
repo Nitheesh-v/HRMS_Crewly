@@ -28,10 +28,13 @@ vendor SDK. DEVICE is a pinned contract + docs only.
 
 ## 2. Kiosk (§5–§11)
 
-Trust model: the station secret authenticates the SHARED DEVICE; the
-employee code identifies the employee PER PUNCH. Secrets are 256-bit,
-shown once, stored sha256. Sessions are 8-hour kiosk JWTs
-(`typ/kiosk`, `stationId`, `companyId`, `sv`).
+Trust model: the station secret authenticates the SHARED DEVICE;
+employeeCode + Kiosk PIN verify the employee PER VISIT (31.14
+completion — the original code-only identification is closed).
+Secrets are 256-bit, shown once, stored sha256. Device sessions
+are 8-hour kiosk JWTs (`typ/kiosk`, `stationId`, `companyId`, `sv`);
+verified visits mint a 3-minute employee context the punch trusts
+instead of any client-supplied identity.
 
 - Stations: HR registers (`POST /attendance/kiosks`), renames,
   relocates, deactivates, rotates. Names unique per tenant.
@@ -39,21 +42,28 @@ shown once, stored sha256. Sessions are 8-hour kiosk JWTs
   rotation/deactivation kill sessions immediately. It mounts ONLY on
   `/api/kiosk/*`; employee JWTs are rejected there (no `typ:'kiosk'`),
   and kiosk JWTs reach nowhere else (no other router mounts it).
-- Screen: `POST /kiosk/identify` returns the masked name
-  (`Asha V.`), live state, and backend-derived allowed actions —
-  never timelines, durations, or full names.
-- Punch: `POST /kiosk/punch` → `recordEvent` with
-  `source: KIOSK`, `workMode: OFFICE` (server-decided — the station
-  IS the workplace), server time, station+location provenance.
+- Verify: `POST /kiosk/identify` checks code + PIN and returns the
+  masked name (`Asha V.`), live state, backend-derived allowed
+  actions, and the employee context — never timelines, durations,
+  full names, or directory data. Every failure mode is one
+  generic 401 (`Employee code or PIN is incorrect`).
+- Punch: `POST /kiosk/punch` trusts ONLY the employee context
+  (bound to this company + station; client `employeeCode` is
+  refused) → `recordEvent` with `source: KIOSK`,
+  `workMode: OFFICE` (server-decided — the station IS the
+  workplace), server time, station+location provenance.
   No browser GPS is collected or claimed.
-- Rate limits: 5/min per IP+station on `/session`; 120/min per
-  IP+station on identify/punch (single-instance semantics — see §9).
-
-Honest limitation (no PIN in 31.14): a code alone cannot strongly
-prove identity. Forgery needs physical access to a trusted ACTIVE
-station plus the victim's code, and every punch carries immutable
-station provenance. QR (authenticated session + challenge) is the
-strong alternative for high-assurance workplaces.
+- PIN: digits-only 4–12, bcrypt (cost 10, same as passwords),
+  `select:false`, never logged/audited/returned. Self-service
+  set/change in My Attendance (change needs the current PIN);
+  HR can only CLEAR via API (forces fresh setup; audited).
+  Set/change/clear bump `kioskPinVersion`, killing outstanding
+  contexts minted under the previous credential.
+- Rate limits: 5/min per IP+station on `/session`; 10 per 10 min
+  per IP+company+station+code on `/identify` (PIN-aware — one
+  attacked code never locks the terminal); 120/min per
+  IP+station on `/punch`; 10/min per user on PIN set/change
+  (single-instance in-memory semantics — see §8).
 
 ## 3. QR challenges (§12–§18)
 
@@ -117,28 +127,38 @@ vendor names in the codebase.
 ## 6. API + permissions + UI
 
 Permissions: one new — `ATTENDANCE_CAPTURE_MANAGE` (HR/Admin; registry
-v34). QR redemption reuses `ATTENDANCE_READ_SELF` /
-`ATTENDANCE_CREATE_SELF`; employees gain nothing else.
+v34 at 31.14, v35 current). QR redemption reuses `ATTENDANCE_READ_SELF` /
+`ATTENDANCE_CREATE_SELF`; the completion adds NO permissions
+(PIN self-service rides CREATE_SELF; HR PIN clear rides
+CAPTURE_MANAGE) — no version bump.
 
 | Endpoint | Auth | Permission |
 |---|---|---|
 | `POST /attendance/kiosks` (+GET, PATCH, rotate) | employee JWT | CAPTURE_MANAGE |
 | `POST /kiosk/session` | public + strict limit | — |
-| `POST /kiosk/identify`, `POST /kiosk/punch` | kiosk JWT | — |
+| `POST /kiosk/identify`, `POST /kiosk/punch` | kiosk JWT (+ PIN / context) | — |
+| `GET /attendance/kiosk-pin`, `POST /attendance/kiosk-pin` | employee JWT (self) | CREATE_SELF |
+| `POST /attendance/kiosk-pin/clear` | employee JWT (HR) | CAPTURE_MANAGE |
 | `POST /attendance/qr/challenges` | employee JWT | CAPTURE_MANAGE |
 | `POST /attendance/qr/resolve` | employee JWT | READ_SELF |
 | `POST /attendance/qr/redeem` | employee JWT | CREATE_SELF |
 | `POST /attendance/imports/preview\|confirm` | employee JWT (multipart) | CAPTURE_MANAGE |
 | `GET /attendance/imports[/:id\|/template.csv]` | employee JWT | CAPTURE_MANAGE |
 
-UI: Kiosk Stations, QR Challenges, QR Punch (`/app/attendance/qr/:token`),
-Attendance Import — all under Time & Leave, permission-gated.
+UI: Kiosk Stations (+ provisioning helper), QR Challenges, QR Punch
+(`/app/attendance/qr/:token`), Attendance Import — all under Time &
+Leave, permission-gated — plus the layout-less terminal screen
+`/kiosk` (no sidebar/nav/chrome) and the Kiosk PIN card on
+My Attendance.
 
 ## 7. Out of scope (explicit)
 
-No biometrics, NFC/RFID, presence tracking, continuous location, PIN
-management, vendor SDKs, DEVICE write path, MANUAL source, payroll
-math, new policy toggles, or 31.15/31.16/32 scaffolding.
+No biometrics, NFC/RFID, presence tracking, continuous location,
+vendor SDKs, DEVICE write path, MANUAL source, payroll math, new
+policy toggles, or 31.15/31.16/32 scaffolding. (PIN management was
+out of scope in 31.14 proper; the direct-Kiosk completion builds
+exactly that — code + PIN verify, self-service set/change, HR
+clear-by-API. No HR clear UI, no default/emailed PINs.)
 
 ## 8. Integrity notes
 
@@ -153,3 +173,33 @@ math, new policy toggles, or 31.15/31.16/32 scaffolding.
   standard policy error.
 - Import backdating rides `recordEvent(date)` rules — including any
   lookback limits the engine enforces for WEB.
+- Kiosk PIN hashes live on User (`select:false`, bcrypt cost 10);
+  unknown-code / unset-PIN identify failures still pay one bcrypt
+  comparison against a dummy hash so failure timing reveals
+  nothing. The terminal keeps ONLY the device JWT in
+  localStorage (8h, server-revocable); employee code/PIN/name/
+  context live in memory and wipe on success, Done, 60s idle
+  (90s on the half-typed form), or context expiry.
+
+## 9. Three independent capture methods (completion)
+
+WEB — the ordinary authenticated Crewly session punches from My
+Attendance → `source: WEB`.
+
+KIOSK — the shared company terminal: station authentication (device
+secret → 8h kiosk JWT) → employee verification (code + Kiosk PIN →
+3-minute bound context) → `source: KIOSK` with station + location
+provenance. The fence is the page the terminal stands on — no GPS
+is collected, and KIOSK evidence never claims geofence verification.
+
+QR — a short-lived workplace challenge scanned with the employee's
+OWN authenticated device → `source: QR`, even when the challenge
+was issued against a kiosk station (station provenance may still
+name the station — that never makes the source KIOSK).
+
+Analytics Capture Source derives from event data — no counters are
+incremented anywhere. Known limitations: rate limits are
+per-instance in-memory (multi-instance needs a shared store);
+physical access to a provisioned terminal is trusted-device access
+by definition (mitigate with rotation/deactivation + shift-length
+sessions); no biometric identity is claimed anywhere.

@@ -100,6 +100,25 @@ export const ISSUE_WORKFLOW = Object.freeze({
   COMP_OFF_EARNED: 'overtime',
 });
 
+// 31.16 D-06 — human labels for the finalization report. The panel
+// renders `label`; without it every blocker/warning row was blank.
+export const ISSUE_LABEL = Object.freeze({
+  OPEN_SESSION: 'Session left open',
+  MISSING_PUNCH: 'Missing punch',
+  REGULARIZATION_PENDING: 'Regularization pending review',
+  ATTENDANCE_ON_LEAVE: 'Punched on approved leave',
+  PENDING_OT: 'Overtime pending review',
+  INVALID_FRACTIONS: 'Invalid day fractions',
+  UNRESOLVED_DAY: 'Unresolved day',
+  DOUBLE_BENEFIT: 'Double benefit (overtime + comp-off)',
+  INVALID_PROJECTION: 'Invalid attendance record',
+  LATE_ARRIVAL: 'Late arrival',
+  EARLY_EXIT: 'Early exit',
+  WORKED_HOLIDAY: 'Worked on holiday',
+  WORKED_WEEKLY_OFF: 'Worked on weekly off',
+  COMP_OFF_EARNED: 'Comp-off earned',
+});
+
 // 31.7 fraction integrity: each dimension in [0,1], combined day
 // units never exceed one full day (float dust tolerated). A
 // full-day Present(1) + Leave(1) without conflict shape is the

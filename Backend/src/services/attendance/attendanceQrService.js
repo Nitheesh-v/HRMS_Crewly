@@ -190,6 +190,11 @@ export const redeemChallenge = async ({
   token,
   action,
   idempotencyKey = null,
+  // 31.16 D-08 — one-shot client GPS { latitude, longitude, accuracy? }
+  // for CLOCK_IN geofence verification. The locationId half is ALWAYS
+  // server-decided from the challenge binding below; the client can
+  // never choose which fence it is measured against.
+  position = null,
   deps = {},
 } = {}) => {
   if (!Object.values(EVENT_TYPE).includes(action)) {
@@ -241,6 +246,25 @@ export const redeemChallenge = async ({
   const location = full?.location && typeof full.location === 'object' ? full.location : null;
   const station = full?.station && typeof full.station === 'object' ? full.station : null;
 
+  // 31.16 D-08 — the fence is the page the code hangs in. A
+  // location-bound challenge supplies its own locationId; a
+  // station-only challenge resolves the bound station's location
+  // (only when a position arrived — without GPS there is nothing to
+  // verify). recordEvent consumes location for CLOCK_IN only, so
+  // break/out redeems pass it through untouched.
+  let boundLocationId = claimed.location ? String(claimed.location) : null;
+  if (!boundLocationId && claimed.station && position) {
+    const StationModel = deps.StationModel || AttendanceKiosk;
+    const stationDoc = await StationModel.findOne({ _id: claimed.station, companyId })
+      .select('location')
+      .lean();
+    if (stationDoc?.location) boundLocationId = String(stationDoc.location);
+  }
+  if (position && !boundLocationId) {
+    throw ApiError.badRequest('This QR code is not bound to a verifiable location');
+  }
+  const gateLocation = boundLocationId || position ? { locationId: boundLocationId, position } : null;
+
   const record = deps.recordEvent || recordEvent;
   return record({
     companyId,
@@ -250,6 +274,7 @@ export const redeemChallenge = async ({
     // OFFICE by definition, server-decided.
     workMode: action === EVENT_TYPE.CLOCK_IN ? 'OFFICE' : null,
     idempotencyKey: idempotencyKey || null,
+    location: gateLocation,
     ingest: {
       source: EVENT_SOURCE.QR,
       provenance: {

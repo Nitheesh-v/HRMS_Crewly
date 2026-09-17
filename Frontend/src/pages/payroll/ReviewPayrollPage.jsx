@@ -206,7 +206,9 @@ const ReviewPayrollPage = () => {
       setKpis(data.kpis || {});
       setSummary(data.summary || {});
       setChecklist(data.checklist || {});
-      setChecklistProgress(data.checklistProgress || checklistProgress);
+      // Functional update + stable deps: this loader must not depend on state it
+      // sets itself, otherwise reload() -> effect -> reload() refetches forever.
+      setChecklistProgress((prev) => data.checklistProgress || prev);
       setErrorSummary(data.errors || {});
       setCanLockNow(Boolean(data.canLock));
       setAccessDenied(false);
@@ -214,19 +216,19 @@ const ReviewPayrollPage = () => {
       if (error?.status === 403) setAccessDenied(true);
       else flash('error', error?.message || 'Unable to load the payroll review');
     }
-  }, [month, flash, checklistProgress]);
+  }, [month, flash]);
 
   const loadEmployees = useCallback(async () => {
     try {
-      const response = await payrollReviewService.employees(month, {
-        state: filters.state === 'ALL' ? undefined : filters.state,
-        search: filters.search || undefined,
-      });
+      // The employees endpoint answers the whole month (it ignores state/search
+      // params); filtering stays client-side in `visible`, so this loader depends
+      // on month only — otherwise every keystroke refetches the whole page.
+      const response = await payrollReviewService.employees(month);
       setRows(Array.isArray(response) ? response : response?.data || []);
     } catch (error) {
       if (error?.status !== 403) flash('error', error?.message || 'Unable to load employees');
     }
-  }, [month, filters.state, filters.search, flash]);
+  }, [month, flash]);
 
   const loadErrors = useCallback(async () => {
     try {

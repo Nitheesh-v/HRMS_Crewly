@@ -197,8 +197,10 @@ const AttendanceAnalyticsPage = () => {
 
   useEffect(() => {
     departmentService.getAll().then(setDepartments).catch(() => {});
-    scheduleService.listShifts().then(setShifts).catch(() => {});
-    attendanceLocationService.list().then(setLocations).catch(() => {});
+    // 31.16 D-07 — both services resolve envelopes, not bare arrays;
+    // setting the envelope object crashed .map and blanked the page.
+    scheduleService.listShifts().then((res) => setShifts(res?.shifts || res?.data?.shifts || res?.data || [])).catch(() => setShifts([]));
+    attendanceLocationService.list().then((res) => setLocations(res?.data?.locations || res?.data || [])).catch(() => setLocations([]));
   }, []);
 
   useEffect(() => {
@@ -304,13 +306,13 @@ const AttendanceAnalyticsPage = () => {
           </select>
           <select className="input max-w-[12rem]" value={shiftId} onChange={(event) => setShiftId(event.target.value)} aria-label="Shift">
             <option value="">All shifts</option>
-            {shifts.map((shift) => (
+            {(shifts || []).map((shift) => (
               <option key={shift._id || shift.id} value={shift._id || shift.id}>{shift.name}</option>
             ))}
           </select>
           <select className="input max-w-[12rem]" value={locationId} onChange={(event) => setLocationId(event.target.value)} aria-label="Location">
             <option value="">All locations</option>
-            {locations.map((loc) => (
+            {(locations || []).map((loc) => (
               <option key={loc._id || loc.id} value={loc._id || loc.id}>{loc.name}</option>
             ))}
           </select>

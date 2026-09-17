@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import {
   FINALIZATION_ISSUE,
   FINALIZATION_STATUS,
+  ISSUE_LABEL,
   aggregateMonth,
   buildAutoFromSnapshot,
   canTransition,
@@ -723,6 +724,9 @@ test('31.11 each blocker surfaces with identity + workflow', async () => {
   const first = report.blockers[0];
   assert.equal(first.employeeName, 'Riya Shah');
   assert.ok(first.workflow);
+  // 31.16 D-06 — every reported issue carries a human label.
+  assert.ok(report.blockers.every((issue) => typeof issue.label === 'string' && issue.label.length > 0));
+  assert.ok(Object.values(FINALIZATION_ISSUE).every((code) => typeof ISSUE_LABEL[code] === 'string' && ISSUE_LABEL[code].length > 0));
   assert.ok(report.blockers.every((issue) => !('reason' in issue) && !('reasonText' in issue)));
 });
 

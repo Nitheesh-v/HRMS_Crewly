@@ -64,6 +64,7 @@ import {
   FINALIZATION_ISSUE,
   FINALIZATION_STATUS,
   ISSUE_SEVERITY,
+  ISSUE_LABEL,
   ISSUE_WORKFLOW,
   aggregateMonth,
   buildAutoFromSnapshot,
@@ -253,6 +254,7 @@ const deriveCompanyFacts = async ({ companyId, month, full }) => {
           employeeCode: person.employeeCode || '',
           date: day.date,
           code: issue.code,
+          label: ISSUE_LABEL[issue.code] || issue.code,
           severity: issue.severity,
           workflow: ISSUE_WORKFLOW[issue.code] || 'attendance',
         });

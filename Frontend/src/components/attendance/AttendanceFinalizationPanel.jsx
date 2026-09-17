@@ -31,6 +31,7 @@ const AttendanceFinalizationPanel = ({ month }) => {
 
   const [status, setStatus] = useState(null);
   const [report, setReport] = useState(null);
+  const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
@@ -42,15 +43,19 @@ const AttendanceFinalizationPanel = ({ month }) => {
     setLoading(true);
     setError('');
     try {
-      const [statusRes, validateRes] = await Promise.all([
+      // 31.16 D-05 — summary lives on preview, not validate.
+      const [statusRes, validateRes, previewRes] = await Promise.all([
         attendanceService.finalizationStatus(month),
         attendanceService.finalizationValidate(month),
+        attendanceService.finalizationPreview(month),
       ]);
       setStatus(statusRes);
       setReport(validateRes);
+      setPreview(previewRes);
     } catch (err) {
       setStatus(null);
       setReport(null);
+      setPreview(null);
       setError(err?.response?.data?.message || err.message || 'Failed to load finalization');
     } finally {
       setLoading(false);
@@ -74,16 +79,17 @@ const AttendanceFinalizationPanel = ({ month }) => {
   };
 
   const readiness = report?.readiness || { ready: false, blockers: 0, warnings: 0 };
-  const summary = report?.summary || {};
-  const canFinalize = canManage
-    && ['OPEN', 'REOPENED'].includes(status?.status)
-    && readiness.ready
-    && !report?.payrollGates
-    && !status?.payrollGates;
-  const gates = report?.payrollGates || status?.payrollGates || {};
+  // 31.16 D-05 — the backend names these `summary` (on preview) and
+  // `gates` (on all three reads), not `report.summary` / `payrollGates`.
+  const summary = preview?.summary || {};
+  const gates = report?.gates || status?.gates || preview?.gates || {};
   const finalizeBlocked = gates?.finalize && gates.finalize.allowed === false;
   const sendBlocked = gates?.send && gates.send.allowed === false;
   const reopenBlocked = gates?.reopen && gates.reopen.allowed === false;
+  const canFinalize = canManage
+    && ['OPEN', 'REOPENED'].includes(status?.status)
+    && readiness.ready
+    && !finalizeBlocked;
   const canSend = canManage && status?.status === 'FINALIZED' && !sendBlocked;
   const canReopenNow = canReopen
     && ['FINALIZED', 'SENT_TO_PAYROLL'].includes(status?.status)
@@ -140,7 +146,7 @@ const AttendanceFinalizationPanel = ({ month }) => {
             <div className="card inline-flex items-start gap-2 text-sm text-crewly-orange">
               <Lock size={16} className="mt-0.5" />
               <span>
-                Payroll gate: {[gates.finalize, gates.send, gates.reopen].filter((gate) => gate && gate.allowed === false).map((gate) => gate.reason).join(' · ')}
+                Payroll gate: {[gates.finalize, gates.send, gates.reopen].filter((gate) => gate && gate.allowed === false).map((gate) => (gate.reasons || []).join('; ')).filter(Boolean).join(' · ')}
               </span>
             </div>
           )}
@@ -185,7 +191,7 @@ const AttendanceFinalizationPanel = ({ month }) => {
                         <div className="font-medium">{issue.employeeName}</div>
                         <div className="text-xs text-crewly-dim">{issue.employeeCode}</div>
                       </td>
-                      <td className="py-2 pr-3">{issue.label}</td>
+                      <td className="py-2 pr-3">{issue.label || issue.code}</td>
                       <td className="py-2 text-crewly-dim">{issue.workflow}</td>
                     </tr>
                   ))}
@@ -202,7 +208,7 @@ const AttendanceFinalizationPanel = ({ month }) => {
               <ul className="space-y-1 text-sm">
                 {report.warnings.slice(0, 20).map((issue, index) => (
                   <li key={`${issue.code}-${issue.employeeId}-${issue.date || index}`} className="text-crewly-dim">
-                    {issue.date || ''} · {issue.employeeName} · {issue.label}
+                    {issue.date || ''} · {issue.employeeName} · {issue.label || issue.code}
                   </li>
                 ))}
               </ul>

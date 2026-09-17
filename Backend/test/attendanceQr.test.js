@@ -288,6 +288,57 @@ test('31.14 QR: redeem refuses finalized months', async () => {
   );
 });
 
+// ── 31.16 D-08: redeem carries GPS to the geofence gate ───────
+// A location-bound challenge supplies its own locationId; the client
+// contributes only its one-shot position. Without this pairing the
+// 31.3 REQUIRED gate refused every QR clock-in.
+
+test('31.16 D-08: redeem forwards challenge location + client position to recordEvent', async () => {
+  const { deps, recorded } = buildWorld();
+  const issued = await createChallenge({ companyId: COMPANY, locationId: LOC, stationId: STATION, deps });
+  const position = { latitude: 10.7175, longitude: 77.0555, accuracy: 150 };
+  await redeemChallenge({ companyId: COMPANY, userId: U_EMP, token: issued.token, action: 'CLOCK_IN', position, deps });
+  assert.equal(recorded.length, 1);
+  assert.deepEqual(recorded[0].location, { locationId: LOC, position });
+});
+
+test('31.16 D-08: redeem without GPS still names the bound fence (gate decides)', async () => {
+  const { deps, recorded } = buildWorld();
+  const issued = await createChallenge({ companyId: COMPANY, locationId: LOC, deps });
+  await redeemChallenge({ companyId: COMPANY, userId: U_EMP, token: issued.token, action: 'CLOCK_IN', deps });
+  assert.equal(recorded.length, 1);
+  assert.deepEqual(recorded[0].location, { locationId: LOC, position: null });
+});
+
+test('31.16 D-08: station-only challenge resolves the bound station location', async () => {
+  const { deps, recorded } = buildWorld();
+  deps.StationModel = {
+    findOne: () => chain({ _id: STATION, name: 'Lobby Kiosk', location: LOC }),
+  };
+  const issued = await createChallenge({ companyId: COMPANY, stationId: STATION, deps });
+  const position = { latitude: 10.7175, longitude: 77.0555, accuracy: 150 };
+  await redeemChallenge({ companyId: COMPANY, userId: U_EMP, token: issued.token, action: 'CLOCK_IN', position, deps });
+  assert.equal(recorded.length, 1);
+  assert.deepEqual(recorded[0].location, { locationId: LOC, position });
+});
+
+test('31.16 D-08: GPS with no verifiable binding is refused honestly', async () => {
+  const { deps } = buildWorld();
+  const issued = await createChallenge({ companyId: COMPANY, stationId: STATION, deps });
+  const position = { latitude: 10.7175, longitude: 77.0555, accuracy: 150 };
+  await assert.rejects(
+    redeemChallenge({ companyId: COMPANY, userId: U_EMP, token: issued.token, action: 'CLOCK_IN', position, deps }),
+    /not bound to a verifiable location/
+  );
+});
+
+test('31.16 D-08: client locationId never reaches redeem (server decides)', async () => {
+  const validator = readSource('src/validators/attendanceCaptureValidator.js');
+  assert.match(validator, /noQrLocationOverride/);
+  const controller = readSource('src/controllers/attendanceQrController.js');
+  assert.ok(!/req\.body\.locationId/.test(controller));
+});
+
 // ── Static integrity ─────────────────────────────────────────
 
 test('31.14 QR: POST-only routes, no GET punch path', () => {

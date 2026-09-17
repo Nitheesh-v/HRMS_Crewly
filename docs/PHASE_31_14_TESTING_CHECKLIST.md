@@ -1,9 +1,8 @@
 # Phase 31.14 — Testing Checklist (localhost acceptance)
 
-Backend suites: `attendanceKiosk` (18), `attendanceQr` (10),
-`attendanceImport` (19) — 47 hermetic tests. Neighbors re-verified:
-`attendanceEvents` + `attendanceFinalization` + `attendanceOperations`
-(120 green). Frontend `npm run build` green.
+Backend suites: `attendanceKiosk` (37), `attendanceQr` (15),
+`attendanceImport` (19) — 71 hermetic tests. Neighbors re-verified
+via `npm run test:phase31`. Frontend `npm run build` green.
 
 ## Kiosk
 
@@ -13,11 +12,26 @@ Backend suites: `attendanceKiosk` (18), `attendanceQr` (10),
 - [ ] Rotate → new secret shown once; old kiosk session stops working.
 - [ ] Deactivate → kiosk sign-in fails exactly like a wrong secret.
 - [ ] `POST /kiosk/session` with wrong secret ×6 in a minute → 429.
-- [ ] Identify with valid code → masked name (`Asha V.`), allowed actions only.
-- [ ] Identify with unknown code → generic error (no code oracle).
+- [ ] Identify with valid code + PIN → masked name (`Asha V.`), allowed actions only.
+- [ ] Identify with unknown code / wrong PIN / unset PIN → ONE generic 401 (no oracle).
 - [ ] Punch CLOCK_IN → event `source: KIOSK`, workMode OFFICE, station provenance.
 - [ ] Punch in a FINALIZED month → 409 with reopen guidance.
 - [ ] Employee JWT on `/kiosk/*` → 401; kiosk JWT on `/attendance/*` → 401/403.
+
+## Kiosk completion (direct terminal)
+
+- [ ] My Attendance → set Kiosk PIN → confirm mismatch + short PIN refused locally.
+- [ ] Change PIN needs the current PIN; wrong current → 401.
+- [ ] Open `/kiosk` → no sidebar/nav; provision with station ID + secret.
+- [ ] Code + PIN → first-name greeting + backend-derived actions only.
+- [ ] Clock In → KIOSK event; screen auto-clears in ~8s.
+- [ ] Wrong PIN ×11 in 10 min for one code → 429; other codes still work.
+- [ ] Company B code on company A terminal → generic 401.
+- [ ] Verified screen idle 60s → employee wiped; Done/Clear wipes instantly.
+- [ ] Rotate secret → terminal drops to provisioning on next action.
+- [ ] Deactivate → terminal stops; reactivate + reprovision works.
+- [ ] `POST /kiosk/punch` with `employeeCode` instead of context → 400 refused.
+- [ ] Analytics Capture Source: KIOSK +1, QR unchanged; QR punch still `source: QR`.
 
 ## QR
 

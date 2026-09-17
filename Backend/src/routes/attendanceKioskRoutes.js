@@ -48,6 +48,19 @@ const punchRateLimit = securityRateLimit({
   message: 'Too many kiosk requests. Please try again shortly.',
 });
 
+// 31.14 completion — PIN guessing: strict per-code cap inside the
+// authenticated station (kioskAuth already ran, so req.kiosk is
+// trusted). Per-code keying means one attacked code never locks
+// the whole terminal, and the company+station segments stop
+// cross-tenant / cross-station bypass.
+const identifyRateLimit = securityRateLimit({
+  windowMs: 10 * 60000,
+  maximum: 10,
+  keyGenerator: (req) =>
+    `${req.ip}:kiosk-pin:${req.kiosk?.companyId || ''}:${req.kiosk?.stationId || ''}:${String(req.body?.employeeCode || '').trim().toUpperCase()}`,
+  message: 'Too many verification attempts for this employee code. Please wait ten minutes.',
+});
+
 // Shared-device sign-in (public + rate-limited).
 router.post('/session', sessionRateLimit, kioskSessionValidator, postKioskSession);
 

@@ -36,6 +36,12 @@ const AttendanceTeamTimesheetsPage = () => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState('');
   const [exporting, setExporting] = useState(false);
+  // 31.16 D-04 — these were referenced by the 31.11 finalization tabs
+  // but never declared (ReferenceError = blank page). Tab visibility
+  // is read-gated; the panel gates its own actions by MANAGE/REOPEN.
+  const [tab, setTab] = useState('timesheets');
+  const { hasPermission } = usePermission();
+  const canSeeFinalization = hasPermission('ATTENDANCE_FINALIZATION_READ');
 
   const load = useCallback(async () => {
     setLoading(true);

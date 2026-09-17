@@ -339,6 +339,31 @@ test('export: reconciliation XLSX rides the dep-free writer', async () => {
   assert.ok(result.content.length > 0);
 });
 
+// ── 31.16 D-09: downloads declare byte length ────────────────
+// A CSV string's char .length under-counts its UTF-8 bytes (BOM +
+// multibyte data); the trailing bytes poison the keep-alive socket
+// and kill the NEXT proxied response (vite proxy parse error).
+
+test('31.16 D-09: every download helper declares byte length, never char length', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const here = dirname(fileURLToPath(import.meta.url));
+  const files = [
+    'attendanceAnalyticsController.js',
+    'attendanceTimesheetController.js',
+    'fnfController.js',
+    'payslipController.js',
+    'statutoryController.js',
+  ];
+  for (const file of files) {
+    const source = readFileSync(join(here, '..', 'src', 'controllers', file), 'utf8');
+    assert.match(source, /Buffer\.byteLength\(content \?\? '', 'utf8'\)/, `${file} must compute byte length`);
+    assert.ok(!/Content-Length', String\(content\?\.length/.test(source), `${file} must not declare char length`);
+    assert.ok(!/Content-Length", String\(content\?\.length/.test(source), `${file} must not declare char length`);
+  }
+});
+
 test('export: unknown report or format is rejected', async () => {
   const { full } = makeDeps();
   await assert.rejects(

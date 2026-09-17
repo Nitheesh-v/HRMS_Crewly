@@ -43,6 +43,31 @@ const noSourceOverride = body().custom((value, { req }) => {
   return true;
 });
 
+// 31.16 D-08 — the fence is the page the code hangs in: locationId is
+// ALWAYS server-decided from the challenge binding (or the bound
+// station's location). The client contributes only its GPS position,
+// and never a verdict or measurement.
+const noQrLocationOverride = body().custom((value, { req }) => {
+  const payload = req.body || {};
+  for (const field of [
+    'locationId',
+    'location',
+    'locationVerification',
+    'insideGeofence',
+    'distanceMeters',
+    'radiusMeters',
+    'verified',
+  ]) {
+    if (payload[field] !== undefined) {
+      throw new Error(`${field} is decided by the server and must not be supplied`);
+    }
+  }
+  if (payload.position !== undefined && payload.position !== null && typeof payload.position !== 'object') {
+    throw new Error('position must be an object');
+  }
+  return true;
+});
+
 // ── Station management (HR) ──────────────────────────────────
 
 export const kioskStationValidator = [
@@ -74,18 +99,85 @@ export const kioskSessionValidator = [
   validate,
 ];
 
+// 31.14 completion — the punch trusts ONLY the verified employee
+// context: a client-supplied employeeCode alongside it is refused
+// outright (it must never silently override the verified user).
+// The fence is the station binding: locationId is server-decided,
+// the terminal contributes only its GPS position when policy
+// demands verification — never a verdict or measurement.
+const noKioskIdentityOverride = body().custom((value, { req }) => {
+  const payload = req.body || {};
+  for (const field of [
+    'employeeCode',
+    'employeeId',
+    'userId',
+    'user',
+    'locationId',
+    'location',
+    'locationVerification',
+    'insideGeofence',
+    'distanceMeters',
+    'radiusMeters',
+    'verified',
+  ]) {
+    if (payload[field] !== undefined) {
+      throw new Error(`${field} is decided by employee verification and must not be supplied`);
+    }
+  }
+  if (payload.position !== undefined && payload.position !== null && typeof payload.position !== 'object') {
+    throw new Error('position must be an object');
+  }
+  return true;
+});
+
 export const kioskIdentifyValidator = [
   noIdentityOverride,
   body('employeeCode').isString().trim().isLength({ min: 1, max: 32 }).withMessage('employeeCode is required'),
+  // Presence only — exact shape is enforced by the service behind
+  // the generic 401 so failure detail never leaks which half failed.
+  body('pin').isString().isLength({ min: 1, max: 32 }).withMessage('Kiosk PIN is required'),
   validate,
 ];
 
 export const kioskPunchValidator = [
   noIdentityOverride,
   noSourceOverride,
-  body('employeeCode').isString().trim().isLength({ min: 1, max: 32 }).withMessage('employeeCode is required'),
+  noKioskIdentityOverride,
+  body('employeeToken').isString().isLength({ min: 1, max: 2000 }).withMessage('Employee verification is required'),
   body('action').isIn(Object.values(EVENT_TYPE)).withMessage('Unknown attendance action'),
   body('idempotencyKey').optional({ nullable: true }).isString().trim().isLength({ min: 1, max: 120 }).withMessage('idempotencyKey is too long'),
+  // One-shot terminal GPS, sent ONLY when the geofence gate demands
+  // verification (strict policy); consumed only by CLOCK_IN.
+  body('position').optional({ nullable: true }).isObject().withMessage('position must be an object'),
+  body('position.latitude')
+    .optional()
+    .isFloat()
+    .withMessage('position.latitude must be a number'),
+  body('position.longitude')
+    .optional()
+    .isFloat()
+    .withMessage('position.longitude must be a number'),
+  body('position.accuracy')
+    .optional({ nullable: true })
+    .isFloat()
+    .withMessage('position.accuracy must be a number'),
+  validate,
+];
+
+// ── Kiosk PIN self-service (employee session) ────────────────
+// Own-session writes: the service returns specific guidance here
+// (no oracle concern — the caller proved identity via login).
+
+export const kioskPinSetValidator = [
+  noIdentityOverride,
+  body('pin').isString().isLength({ min: 1, max: 32 }).withMessage('Kiosk PIN is required'),
+  body('currentPin').optional({ nullable: true }).isString().isLength({ min: 1, max: 32 }).withMessage('Current Kiosk PIN is invalid'),
+  validate,
+];
+
+export const kioskPinClearValidator = [
+  noIdentityOverride,
+  body('targetUserId').isMongoId().withMessage('targetUserId must be an ObjectId string'),
   validate,
 ];
 
@@ -108,9 +200,25 @@ export const qrTokenValidator = [
 export const qrRedeemValidator = [
   noIdentityOverride,
   noSourceOverride,
+  noQrLocationOverride,
   body('token').isString().trim().isLength({ min: 1, max: 500 }).withMessage('QR token is required'),
   body('action').isIn(Object.values(EVENT_TYPE)).withMessage('Unknown attendance action'),
   body('idempotencyKey').optional({ nullable: true }).isString().trim().isLength({ min: 1, max: 120 }).withMessage('idempotencyKey is too long'),
+  // 31.16 D-08 — one-shot GPS for CLOCK_IN geofence verification
+  // (consumed only by CLOCK_IN; exact ranges enforced by the service).
+  body('position').optional({ nullable: true }).isObject().withMessage('position must be an object'),
+  body('position.latitude')
+    .optional()
+    .isFloat()
+    .withMessage('position.latitude must be a number'),
+  body('position.longitude')
+    .optional()
+    .isFloat()
+    .withMessage('position.longitude must be a number'),
+  body('position.accuracy')
+    .optional({ nullable: true })
+    .isFloat()
+    .withMessage('position.accuracy must be a number'),
   validate,
 ];
 

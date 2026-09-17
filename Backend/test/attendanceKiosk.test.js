@@ -18,6 +18,10 @@ import {
   DEVICE_EVENT_CONTRACT_KEYS,
   INGESTIBLE_SOURCE,
   INGEST_LOCKED_MONTH_STATUS,
+  KIOSK_EMPLOYEE_CONTEXT_PURPOSE,
+  KIOSK_EMPLOYEE_CONTEXT_TTL_MS,
+  KIOSK_PIN_MAX_LENGTH,
+  KIOSK_PIN_MIN_LENGTH,
   KIOSK_SESSION_TTL_MS,
   RESERVED_SOURCE,
   isMonthLockedForIngest,
@@ -25,15 +29,20 @@ import {
   normalizeDeviceEvent,
   validateIngestContext,
   validateKioskClaims,
+  validateKioskEmployeeClaims,
+  validateKioskPinShape,
 } from '../src/services/attendance/attendanceSourceRules.js';
 import {
+  clearKioskPin,
   createStation,
+  getKioskPinStatus,
   hashStationSecret,
   identifyEmployee,
   listStations,
   openSession,
   punchEmployee,
   rotateStationSecret,
+  setKioskPin,
   updateStation,
 } from '../src/services/attendance/attendanceKioskService.js';
 
@@ -67,7 +76,7 @@ const buildWorld = () => {
     [LOC, { _id: LOC, companyId: COMPANY, name: 'HQ Lobby', isActive: true }],
   ]);
   const users = new Map([
-    [U_EMP, { _id: U_EMP, companyId: COMPANY, name: 'Asha Verma', employeeCode: 'EMP001', status: 'ACTIVE', role: 'EMPLOYEE' }],
+    [U_EMP, { _id: U_EMP, companyId: COMPANY, name: 'Asha Verma', employeeCode: 'EMP001', status: 'ACTIVE', role: 'EMPLOYEE', kioskPinHash: 'HASHED-1234', kioskPinVersion: 1, kioskPinSetAt: new Date('2026-09-01T00:00:00.000Z') }],
   ]);
   const audits = [];
   const recorded = [];
@@ -150,12 +159,24 @@ const buildWorld = () => {
     UserModel: {
       findOne: (filter = {}) => {
         const user = [...users.values()].find((u) => {
+          if (filter._id && String(u._id) !== String(filter._id)) return false;
           if (filter.companyId && String(u.companyId) !== String(filter.companyId)) return false;
           if (filter.employeeCode && String(u.employeeCode).toUpperCase() !== String(filter.employeeCode).toUpperCase()) return false;
           if (filter.status && u.status !== filter.status) return false;
           return true;
         });
         return chain(user ? { ...user } : null);
+      },
+      findOneAndUpdate: (filter, update) => {
+        const user = [...users.values()].find((u) => {
+          if (filter._id && String(u._id) !== String(filter._id)) return false;
+          if (filter.companyId && String(u.companyId) !== String(filter.companyId)) return false;
+          return true;
+        });
+        if (!user) return chain(null);
+        Object.assign(user, update.$set || {});
+        if (update.$inc?.kioskPinVersion) user.kioskPinVersion += update.$inc.kioskPinVersion;
+        return chain({ ...user });
       },
     },
     PeriodModel: { findOne: () => chain(null) },
@@ -166,6 +187,22 @@ const buildWorld = () => {
     },
     getCurrentPolicy: async () => ({ policy: { timezone: 'Asia/Kolkata' } }),
     signKioskToken: (claims) => `kiosk.${claims.stationId}.${claims.sv}`,
+    // Deterministic PIN hashing contract (mirrors the bcrypt seam:
+    // hashPin output is the only input comparePin ever accepts).
+    hashPin: async (pin) => `HASHED-${pin}`,
+    comparePin: async (pin, hash) => hash === `HASHED-${pin}`,
+    signEmployeeToken: (claims) => `emp.${claims.userId}.${claims.stationId}.${claims.pv}`,
+    verifyEmployeeToken: (token) => {
+      const [, userId, stationId, pv] = String(token).split('.');
+      return {
+        typ: 'kiosk-employee',
+        companyId: COMPANY,
+        stationId,
+        userId,
+        pv: Number(pv),
+        purpose: KIOSK_EMPLOYEE_CONTEXT_PURPOSE,
+      };
+    },
     audit: async (payload) => { audits.push(payload); return null; },
   };
 
@@ -352,28 +389,31 @@ test('31.14 kiosk: deactivated stations fail exactly like wrong secrets', async 
 test('31.14 kiosk: identify masks the name and returns backend-derived actions', async () => {
   const { deps } = buildWorld();
   const { station } = await createStation({ companyId: COMPANY, name: 'Lobby', deps });
-  const result = await identifyEmployee({ companyId: COMPANY, stationId: station.id, employeeCode: 'emp001', deps });
+  const result = await identifyEmployee({ companyId: COMPANY, stationId: station.id, employeeCode: 'emp001', pin: '1234', deps });
   assert.equal(result.employeeCode, 'EMP001');
   assert.equal(result.maskedName, 'Asha V.');
   assert.equal(result.liveState, 'NOT_IN');
   assert.deepEqual(result.allowedActions, ['CLOCK_IN']);
   assert.equal(result.name, undefined);
+  assert.ok(result.employeeToken.startsWith('emp.'));
+  assert.ok(Date.parse(result.expiresAt) > Date.now());
 });
 
 test('31.14 kiosk: identify is generic for unknown codes', async () => {
   const { deps } = buildWorld();
   const { station } = await createStation({ companyId: COMPANY, name: 'Lobby', deps });
   await assert.rejects(
-    identifyEmployee({ companyId: COMPANY, stationId: station.id, employeeCode: 'NOPE', deps }),
-    /not found or inactive/
+    identifyEmployee({ companyId: COMPANY, stationId: station.id, employeeCode: 'NOPE', pin: '1234', deps }),
+    (error) => error.statusCode === 401 && /Employee code or PIN is incorrect/.test(error.message)
   );
 });
 
 test('31.14 kiosk: punch converges on recordEvent with server-decided KIOSK ingest', async () => {
   const { deps, recorded } = buildWorld();
   const { station } = await createStation({ companyId: COMPANY, name: 'Lobby', locationId: LOC, deps });
+  const verified = await identifyEmployee({ companyId: COMPANY, stationId: station.id, employeeCode: 'EMP001', pin: '1234', deps });
   await punchEmployee({
-    companyId: COMPANY, stationId: station.id, employeeCode: 'EMP001', action: 'CLOCK_IN', deps,
+    companyId: COMPANY, stationId: station.id, employeeToken: verified.employeeToken, action: 'CLOCK_IN', deps,
   });
   assert.equal(recorded.length, 1);
   const call = recorded[0];
@@ -391,9 +431,318 @@ test('31.14 kiosk: punch refuses finalized months with reopen guidance', async (
   const { deps } = buildWorld();
   deps.PeriodModel = { findOne: () => chain({ status: 'FINALIZED' }) };
   const { station } = await createStation({ companyId: COMPANY, name: 'Lobby', deps });
+  const verified = await identifyEmployee({ companyId: COMPANY, stationId: station.id, employeeCode: 'EMP001', pin: '1234', deps });
   await assert.rejects(
-    punchEmployee({ companyId: COMPANY, stationId: station.id, employeeCode: 'EMP001', action: 'CLOCK_IN', deps }),
+    punchEmployee({ companyId: COMPANY, stationId: station.id, employeeToken: verified.employeeToken, action: 'CLOCK_IN', deps }),
     /Reopen it through Attendance Finalization/
+  );
+});
+
+// ── 31.14 completion: PIN rules ──────────────────────────────
+
+test('31.14 completion: Kiosk PIN shape vocabulary', () => {
+  assert.equal(KIOSK_PIN_MIN_LENGTH, 4);
+  assert.equal(KIOSK_PIN_MAX_LENGTH, 12);
+  assert.equal(validateKioskPinShape('1234'), null);
+  assert.equal(validateKioskPinShape('123456789012'), null);
+  assert.match(validateKioskPinShape(''), /required/);
+  assert.match(validateKioskPinShape(null), /required/);
+  assert.match(validateKioskPinShape('123'), /4–12/);
+  assert.match(validateKioskPinShape('1234567890123'), /4–12/);
+  assert.match(validateKioskPinShape('12a4'), /digits only/);
+  assert.match(validateKioskPinShape(' 1234'), /digits only/);
+});
+
+test('31.14 completion: employee-context claim vocabulary', () => {
+  assert.equal(KIOSK_EMPLOYEE_CONTEXT_TTL_MS, 3 * 60 * 1000);
+  assert.equal(KIOSK_EMPLOYEE_CONTEXT_PURPOSE, 'kiosk-punch');
+  const good = {
+    typ: 'kiosk-employee',
+    companyId: COMPANY,
+    stationId: '400000000000000000000001',
+    userId: U_EMP,
+    pv: 1,
+    purpose: 'kiosk-punch',
+  };
+  assert.deepEqual(validateKioskEmployeeClaims(good), []);
+  assert.ok(validateKioskEmployeeClaims(null).length > 0);
+  assert.ok(validateKioskEmployeeClaims({ ...good, typ: 'kiosk' }).length > 0);
+  assert.ok(validateKioskEmployeeClaims({ ...good, typ: 'employee' }).length > 0);
+  assert.ok(validateKioskEmployeeClaims({ ...good, companyId: 'nope' }).length > 0);
+  assert.ok(validateKioskEmployeeClaims({ ...good, stationId: 'nope' }).length > 0);
+  assert.ok(validateKioskEmployeeClaims({ ...good, userId: 'nope' }).length > 0);
+  assert.ok(validateKioskEmployeeClaims({ ...good, purpose: 'kiosk-admin' }).length > 0);
+  assert.ok(validateKioskEmployeeClaims({ ...good, pv: -1 }).length > 0);
+  assert.ok(validateKioskEmployeeClaims({ ...good, pv: 1.5 }).length > 0);
+});
+
+// ── 31.14 completion: PIN lifecycle ──────────────────────────
+
+test('31.14 completion: PIN status/set cycle in the employee session', async () => {
+  const { deps } = buildWorld();
+  const before = await getKioskPinStatus({ companyId: COMPANY, userId: U_EMP, deps });
+  assert.deepEqual(before, { configured: true });
+  await assert.rejects(
+    getKioskPinStatus({ companyId: COMPANY, userId: '100000000000000000000099', deps }),
+    /Employee not found/
+  );
+});
+
+test('31.14 completion: first set needs no current PIN, then change requires it', async () => {
+  const { deps, users } = buildWorld();
+  users.get(U_EMP).kioskPinHash = null;
+  users.get(U_EMP).kioskPinVersion = 0;
+  const set = await setKioskPin({ companyId: COMPANY, userId: U_EMP, pin: '5678', actor: { _id: U_EMP }, deps });
+  assert.deepEqual(set, { configured: true });
+  assert.equal(users.get(U_EMP).kioskPinHash, 'HASHED-5678');
+  assert.equal(users.get(U_EMP).kioskPinVersion, 1);
+  assert.ok(users.get(U_EMP).kioskPinSetAt instanceof Date);
+
+  await assert.rejects(
+    setKioskPin({ companyId: COMPANY, userId: U_EMP, pin: '9999', deps }),
+    /Current Kiosk PIN is required/
+  );
+  await assert.rejects(
+    setKioskPin({ companyId: COMPANY, userId: U_EMP, pin: '9999', currentPin: '0000', deps }),
+    (error) => error.statusCode === 401 && /Current Kiosk PIN is incorrect/.test(error.message)
+  );
+  const changed = await setKioskPin({ companyId: COMPANY, userId: U_EMP, pin: '9999', currentPin: '5678', deps });
+  assert.deepEqual(changed, { configured: true });
+  assert.equal(users.get(U_EMP).kioskPinVersion, 2);
+});
+
+test('31.14 completion: PIN set refuses bad shapes, inactive users, strangers', async () => {
+  const { deps, users } = buildWorld();
+  await assert.rejects(setKioskPin({ companyId: COMPANY, userId: U_EMP, pin: '12', deps }), /4–12/);
+  await assert.rejects(
+    setKioskPin({ companyId: COMPANY, userId: '100000000000000000000099', pin: '1234', deps }),
+    /Employee not found/
+  );
+  users.get(U_EMP).status = 'INACTIVE';
+  await assert.rejects(
+    setKioskPin({ companyId: COMPANY, userId: U_EMP, pin: '1234', currentPin: '1234', deps }),
+    (error) => error.statusCode === 403 && /Only active employees/.test(error.message)
+  );
+});
+
+test('31.14 completion: HR clear forces fresh setup, never reveals the PIN', async () => {
+  const { deps, users, audits } = buildWorld();
+  const cleared = await clearKioskPin({ companyId: COMPANY, targetUserId: U_EMP, actor: { _id: '200000000000000000000001' }, deps });
+  assert.deepEqual(cleared, { configured: false });
+  assert.equal(users.get(U_EMP).kioskPinHash, null);
+  assert.equal(users.get(U_EMP).kioskPinVersion, 2);
+  await assert.rejects(
+    clearKioskPin({ companyId: COMPANY, targetUserId: '100000000000000000000099', deps }),
+    /Employee not found/
+  );
+  await assert.rejects(
+    clearKioskPin({ companyId: COMPANY, targetUserId: 'nope', deps }),
+    /targetUserId must be an ObjectId/
+  );
+  const pinAudit = audits.find((a) => a.action === 'ATTENDANCE_KIOSK_PIN_CLEARED');
+  assert.ok(pinAudit);
+  assert.equal(pinAudit.targetUserId, U_EMP);
+});
+
+test('31.14 completion: no PIN material ever reaches the audit trail', async () => {
+  const { deps, users, audits } = buildWorld();
+  users.get(U_EMP).kioskPinHash = null;
+  await setKioskPin({ companyId: COMPANY, userId: U_EMP, pin: '5678', deps });
+  await setKioskPin({ companyId: COMPANY, userId: U_EMP, pin: '9999', currentPin: '5678', deps });
+  await clearKioskPin({ companyId: COMPANY, targetUserId: U_EMP, deps });
+  const trail = JSON.stringify(audits);
+  assert.ok(!trail.includes('5678'));
+  assert.ok(!trail.includes('9999'));
+  assert.ok(!trail.includes('HASHED'));
+});
+
+// ── 31.14 completion: identify matrix ────────────────────────
+
+test('31.14 completion: wrong PIN fails exactly like an unknown code', async () => {
+  const { deps } = buildWorld();
+  const { station } = await createStation({ companyId: COMPANY, name: 'Lobby', deps });
+  await assert.rejects(
+    identifyEmployee({ companyId: COMPANY, stationId: station.id, employeeCode: 'EMP001', pin: '0000', deps }),
+    (error) => error.statusCode === 401 && /Employee code or PIN is incorrect/.test(error.message)
+  );
+});
+
+test('31.14 completion: unset PIN and inactive employee fail generically', async () => {
+  const { deps, users } = buildWorld();
+  const { station } = await createStation({ companyId: COMPANY, name: 'Lobby', deps });
+  users.get(U_EMP).kioskPinHash = null;
+  await assert.rejects(
+    identifyEmployee({ companyId: COMPANY, stationId: station.id, employeeCode: 'EMP001', pin: '1234', deps }),
+    /Employee code or PIN is incorrect/
+  );
+  users.get(U_EMP).kioskPinHash = 'HASHED-1234';
+  users.get(U_EMP).status = 'INACTIVE';
+  await assert.rejects(
+    identifyEmployee({ companyId: COMPANY, stationId: station.id, employeeCode: 'EMP001', pin: '1234', deps }),
+    /Employee code or PIN is incorrect/
+  );
+});
+
+test('31.14 completion: malformed PIN fails generically, never 400', async () => {
+  const { deps } = buildWorld();
+  const { station } = await createStation({ companyId: COMPANY, name: 'Lobby', deps });
+  for (const pin of ['abcd', '', null]) {
+    await assert.rejects(
+      identifyEmployee({ companyId: COMPANY, stationId: station.id, employeeCode: 'EMP001', pin, deps }),
+      (error) => error.statusCode === 401 && /Employee code or PIN is incorrect/.test(error.message)
+    );
+  }
+});
+
+test('31.14 completion: cross-tenant employees cannot be identified', async () => {
+  const { deps, users } = buildWorld();
+  users.set('100000000000000000000002', {
+    _id: '100000000000000000000002', companyId: COMPANY_B, name: 'Bala Other', employeeCode: 'B999',
+    status: 'ACTIVE', role: 'EMPLOYEE', kioskPinHash: 'HASHED-1111', kioskPinVersion: 1,
+  });
+  const { station } = await createStation({ companyId: COMPANY, name: 'Lobby', deps });
+  await assert.rejects(
+    identifyEmployee({ companyId: COMPANY, stationId: station.id, employeeCode: 'B999', pin: '1111', deps }),
+    /Employee code or PIN is incorrect/
+  );
+});
+
+test('31.14 completion: identify returns exactly the safe shared-screen keys', async () => {
+  const { deps } = buildWorld();
+  const { station } = await createStation({ companyId: COMPANY, name: 'Lobby', deps });
+  const result = await identifyEmployee({ companyId: COMPANY, stationId: station.id, employeeCode: 'EMP001', pin: '1234', deps });
+  assert.deepEqual(
+    Object.keys(result).sort(),
+    ['allowedActions', 'employeeCode', 'employeeToken', 'expiresAt', 'liveState', 'maskedName']
+  );
+});
+
+// ── 31.14 completion: punch trusts the context only ──────────
+
+test('31.14 completion: forged, carried, and stale contexts are refused generically', async () => {
+  const { deps } = buildWorld();
+  const a = await createStation({ companyId: COMPANY, name: 'Lobby', deps });
+  const b = await createStation({ companyId: COMPANY, name: 'Gate', deps });
+  const verified = await identifyEmployee({ companyId: COMPANY, stationId: a.station.id, employeeCode: 'EMP001', pin: '1234', deps });
+
+  deps.verifyEmployeeToken = () => { throw new Error('bad signature'); };
+  await assert.rejects(
+    punchEmployee({ companyId: COMPANY, stationId: a.station.id, employeeToken: 'emp.forged', action: 'CLOCK_IN', deps }),
+    /invalid or expired/
+  );
+  delete deps.verifyEmployeeToken;
+
+  // Carried to another station.
+  await assert.rejects(
+    punchEmployee({ companyId: COMPANY, stationId: b.station.id, employeeToken: verified.employeeToken, action: 'CLOCK_IN', deps }),
+    /invalid or expired/
+  );
+  // Carried to another tenant.
+  await assert.rejects(
+    punchEmployee({ companyId: COMPANY_B, stationId: a.station.id, employeeToken: verified.employeeToken, action: 'CLOCK_IN', deps }),
+    /invalid or expired/
+  );
+  // Missing entirely.
+  await assert.rejects(
+    punchEmployee({ companyId: COMPANY, stationId: a.station.id, employeeToken: '', action: 'CLOCK_IN', deps }),
+    /invalid or expired/
+  );
+});
+
+test('31.14 completion: wrong-purpose and version-stale contexts are refused', async () => {
+  const { deps } = buildWorld();
+  const { station } = await createStation({ companyId: COMPANY, name: 'Lobby', deps });
+  deps.verifyEmployeeToken = () => ({
+    typ: 'kiosk-employee', companyId: COMPANY, stationId: station.id, userId: U_EMP, pv: 1, purpose: 'kiosk-admin',
+  });
+  await assert.rejects(
+    punchEmployee({ companyId: COMPANY, stationId: station.id, employeeToken: 'emp.x', action: 'CLOCK_IN', deps }),
+    /invalid or expired/
+  );
+  // PIN rotated after the context was minted.
+  const verified = await identifyEmployee({ companyId: COMPANY, stationId: station.id, employeeCode: 'EMP001', pin: '1234', deps });
+  delete deps.verifyEmployeeToken;
+  await setKioskPin({ companyId: COMPANY, userId: U_EMP, pin: '9999', currentPin: '1234', deps });
+  await assert.rejects(
+    punchEmployee({ companyId: COMPANY, stationId: station.id, employeeToken: verified.employeeToken, action: 'CLOCK_IN', deps }),
+    /invalid or expired/
+  );
+});
+
+test('31.14 completion: deactivated employees cannot punch on old contexts', async () => {
+  const { deps, users } = buildWorld();
+  const { station } = await createStation({ companyId: COMPANY, name: 'Lobby', deps });
+  const verified = await identifyEmployee({ companyId: COMPANY, stationId: station.id, employeeCode: 'EMP001', pin: '1234', deps });
+  users.get(U_EMP).status = 'INACTIVE';
+  await assert.rejects(
+    punchEmployee({ companyId: COMPANY, stationId: station.id, employeeToken: verified.employeeToken, action: 'CLOCK_IN', deps }),
+    /invalid or expired/
+  );
+});
+
+test('31.14 completion: unknown actions still 400 before context checks', async () => {
+  const { deps } = buildWorld();
+  const { station } = await createStation({ companyId: COMPANY, name: 'Lobby', deps });
+  await assert.rejects(
+    punchEmployee({ companyId: COMPANY, stationId: station.id, employeeToken: 'emp.x', action: 'NAPTIME', deps }),
+    /Unknown attendance action/
+  );
+});
+
+test('31.14 completion: break/out punches reuse the machine with null workMode', async () => {
+  const { deps, recorded } = buildWorld();
+  const { station } = await createStation({ companyId: COMPANY, name: 'Lobby', deps });
+  const verified = await identifyEmployee({ companyId: COMPANY, stationId: station.id, employeeCode: 'EMP001', pin: '1234', deps });
+  await punchEmployee({
+    companyId: COMPANY, stationId: station.id, employeeToken: verified.employeeToken,
+    action: 'BREAK_START', idempotencyKey: 'k1', deps,
+  });
+  assert.equal(recorded.length, 1);
+  assert.equal(recorded[0].action, 'BREAK_START');
+  assert.equal(recorded[0].workMode, null);
+  assert.equal(recorded[0].ingest.source, 'KIOSK');
+  assert.equal(recorded[0].idempotencyKey, 'k1');
+  assert.equal(recorded[0].ingest.provenance.stationName, 'Lobby');
+});
+
+// ── 31.14 completion: terminal GPS for strict policies ───────
+// The terminal sends position ONLY when the gate demands it; the
+// fence always comes from the station binding, never the client.
+
+test('31.14 completion: punch forwards station fence + terminal GPS to recordEvent', async () => {
+  const { deps, recorded } = buildWorld();
+  const { station } = await createStation({ companyId: COMPANY, name: 'Lobby', locationId: LOC, deps });
+  const verified = await identifyEmployee({ companyId: COMPANY, stationId: station.id, employeeCode: 'EMP001', pin: '1234', deps });
+  const position = { latitude: 10.7175, longitude: 77.0555, accuracy: 150 };
+  await punchEmployee({
+    companyId: COMPANY, stationId: station.id, employeeToken: verified.employeeToken,
+    action: 'CLOCK_IN', position, deps,
+  });
+  assert.equal(recorded.length, 1);
+  assert.deepEqual(recorded[0].location, { locationId: LOC, position });
+});
+
+test('31.14 completion: punch without GPS still names the bound fence', async () => {
+  const { deps, recorded } = buildWorld();
+  const { station } = await createStation({ companyId: COMPANY, name: 'Lobby', locationId: LOC, deps });
+  const verified = await identifyEmployee({ companyId: COMPANY, stationId: station.id, employeeCode: 'EMP001', pin: '1234', deps });
+  await punchEmployee({
+    companyId: COMPANY, stationId: station.id, employeeToken: verified.employeeToken, action: 'CLOCK_IN', deps,
+  });
+  assert.deepEqual(recorded[0].location, { locationId: LOC, position: null });
+});
+
+test('31.14 completion: GPS with an unbound station is refused honestly', async () => {
+  const { deps } = buildWorld();
+  const { station } = await createStation({ companyId: COMPANY, name: 'Lobby', deps });
+  const verified = await identifyEmployee({ companyId: COMPANY, stationId: station.id, employeeCode: 'EMP001', pin: '1234', deps });
+  const position = { latitude: 10.7175, longitude: 77.0555, accuracy: 150 };
+  await assert.rejects(
+    punchEmployee({
+      companyId: COMPANY, stationId: station.id, employeeToken: verified.employeeToken,
+      action: 'CLOCK_IN', position, deps,
+    }),
+    /not bound to a verifiable location/
   );
 });
 
@@ -430,4 +779,31 @@ test('31.14 kiosk: punch path never reads source/provenance from the client', ()
   const validator = readSource('src/validators/attendanceCaptureValidator.js');
   assert.match(validator, /noSourceOverride/);
   assert.match(validator, /kioskPunchValidator/);
+});
+
+test('31.14 completion: punch identity comes only from the verified context', () => {
+  const controller = readSource('src/controllers/attendanceKioskController.js');
+  assert.match(controller, /const \{ employeeToken, action, idempotencyKey = null, position = null \} = req\.body/);
+  assert.ok(!/employeeCode,\s*action/.test(controller));
+  const validator = readSource('src/validators/attendanceCaptureValidator.js');
+  assert.match(validator, /noKioskIdentityOverride/);
+  assert.match(validator, /employeeToken/);
+  assert.match(validator, /position\.latitude/);
+  assert.ok(/kioskPunchValidator = \[[\s\S]*?body\('position'\)/.test(validator));
+  assert.match(validator, /kioskPinSetValidator/);
+  assert.match(validator, /kioskPinClearValidator/);
+  const routes = readSource('src/routes/attendanceRoutes.js');
+  assert.match(routes, /\/kiosk-pin/);
+  assert.match(routes, /ATTENDANCE_CREATE_SELF/);
+});
+
+test('31.14 completion: PIN hash is select:false and never serialized', () => {
+  const user = readSource('src/models/User.js');
+  assert.match(user, /kioskPinHash:\s*\{\s*type:\s*String[^}]*select:\s*false/s);
+  assert.match(user, /kioskPinVersion/);
+  assert.match(user, /kioskPinSetAt/);
+  const controller = readSource('src/controllers/attendanceKioskController.js');
+  assert.ok(!/kioskPinHash/.test(controller));
+  const service = readSource('src/services/attendance/attendanceKioskService.js');
+  assert.ok(!/console\.log.*[Pp]in/.test(service));
 });
