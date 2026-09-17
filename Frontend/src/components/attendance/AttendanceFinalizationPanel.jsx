@@ -191,7 +191,7 @@ const AttendanceFinalizationPanel = ({ month }) => {
                         <div className="font-medium">{issue.employeeName}</div>
                         <div className="text-xs text-crewly-dim">{issue.employeeCode}</div>
                       </td>
-                      <td className="py-2 pr-3">{issue.label}</td>
+                      <td className="py-2 pr-3">{issue.label || issue.code}</td>
                       <td className="py-2 text-crewly-dim">{issue.workflow}</td>
                     </tr>
                   ))}
@@ -208,7 +208,7 @@ const AttendanceFinalizationPanel = ({ month }) => {
               <ul className="space-y-1 text-sm">
                 {report.warnings.slice(0, 20).map((issue, index) => (
                   <li key={`${issue.code}-${issue.employeeId}-${issue.date || index}`} className="text-crewly-dim">
-                    {issue.date || ''} · {issue.employeeName} · {issue.label}
+                    {issue.date || ''} · {issue.employeeName} · {issue.label || issue.code}
                   </li>
                 ))}
               </ul>
