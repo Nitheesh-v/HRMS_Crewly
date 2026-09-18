@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { CalendarDays, CheckCircle2, FolderOpen, Hourglass, Paperclip, PartyPopper, Pencil, Repeat, Send, Trash2, X } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import {
   getTask, updateTaskStatus, addComment, uploadAttachment, deleteTask, obj,
@@ -22,12 +23,12 @@ export const PRIORITY_META = {
 const SENIOR_ROLES = ['COMPANY_ADMIN', 'HR_MANAGER', 'MANAGER', 'TEAM_LEAD'];
 
 const EMP_NEXT = {
-  TODO: [{ to: 'IN_PROGRESS', label: '▶ Start work' }],
+  TODO: [{ to: 'IN_PROGRESS', label: 'Start work' }],
   IN_PROGRESS: [
-    { to: 'IN_REVIEW', label: '📤 Submit for review', primary: true },
-    { to: 'BLOCKED', label: '🚧 Mark blocked' },
+    { to: 'IN_REVIEW', label: 'Submit for review', primary: true },
+    { to: 'BLOCKED', label: 'Mark blocked' },
   ],
-  BLOCKED: [{ to: 'IN_PROGRESS', label: '▶ Resume' }],
+  BLOCKED: [{ to: 'IN_PROGRESS', label: 'Resume' }],
   IN_REVIEW: [],
   COMPLETED: [],
 };
@@ -135,12 +136,12 @@ export default function TaskDetailModal({ taskId, onClose, onChanged }) {
               <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
                 <span className={`rounded-full px-2 py-0.5 font-semibold ${meta.cls}`}>{meta.label}</span>
                 <span className={`rounded-full px-2 py-0.5 font-semibold ${PRIORITY_META[task.priority] || ''}`}>{task.priority}</span>
-                {task.project?.name && <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 font-semibold text-indigo-300">📁 {task.project.name}</span>}
-                <span className="text-slate-400">📅 Due: {fmtDate(task.dueDate)}</span>
+                {task.project?.name && <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 font-semibold text-indigo-300"><FolderOpen className="mr-1 inline h-3 w-3" />{task.project.name}</span>}
+                <span className="flex items-center gap-1 text-slate-400"><CalendarDays className="h-3.5 w-3.5" />Due: {fmtDate(task.dueDate)}</span>
               </div>
             )}
           </div>
-          <button onClick={onClose} className="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-700 hover:text-slate-200">✖</button>
+          <button onClick={onClose} title="Close" className="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-700 hover:text-slate-200"><X className="h-4 w-4" /></button>
         </div>
 
         {/* body */}
@@ -191,17 +192,17 @@ export default function TaskDetailModal({ taskId, onClose, onChanged }) {
                   </div>
                 )}
                 {isAssignee && task.status === 'IN_REVIEW' && (
-                  <p className="text-sm text-amber-400">⏳ Waiting for your reviewer…</p>
+                  <p className="flex items-center gap-1.5 text-sm text-amber-400"><Hourglass className="h-4 w-4" />Waiting for your reviewer…</p>
                 )}
                 {isAssignee && task.status === 'COMPLETED' && (
-                  <p className="text-sm text-green-400">🎉 Completed{task.reviewedBy?.name ? ` — approved by ${task.reviewedBy.name}` : ''}</p>
+                  <p className="flex items-center gap-1.5 text-sm text-green-400"><PartyPopper className="h-4 w-4" />Completed{task.reviewedBy?.name ? ` — approved by ${task.reviewedBy.name}` : ''}</p>
                 )}
 
                 {canReview && (
                   <div className={isAssignee ? 'mt-3 border-t border-slate-700 pt-3' : ''}>
                     {task.status === 'IN_REVIEW' && (
                       <div className="mb-2 rounded-lg bg-amber-500/10 p-3">
-                        <p className="mb-2 text-sm font-semibold text-amber-300">📤 Submitted for your review</p>
+                        <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-amber-300"><Send className="h-4 w-4" />Submitted for your review</p>
                         <textarea
                           value={note}
                           onChange={(e) => setNote(e.target.value)}
@@ -210,8 +211,8 @@ export default function TaskDetailModal({ taskId, onClose, onChanged }) {
                           className={`${inp2} mb-2`}
                         />
                         <div className="flex gap-2">
-                          <button disabled={busy} onClick={() => doStatus('COMPLETED', note)} className="rounded-lg bg-green-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-green-500 disabled:opacity-50">✅ Approve &amp; Complete</button>
-                          <button disabled={busy} onClick={() => doStatus('IN_PROGRESS', note)} className="rounded-lg bg-slate-600 px-3 py-1.5 text-sm font-semibold text-slate-100 hover:bg-slate-500 disabled:opacity-50">🔁 Send back</button>
+                          <button disabled={busy} onClick={() => doStatus('COMPLETED', note)} className="rounded-lg bg-green-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-green-500 disabled:opacity-50"><CheckCircle2 className="mr-1 inline h-4 w-4" />Approve &amp; Complete</button>
+                          <button disabled={busy} onClick={() => doStatus('IN_PROGRESS', note)} className="rounded-lg bg-slate-600 px-3 py-1.5 text-sm font-semibold text-slate-100 hover:bg-slate-500 disabled:opacity-50"><Repeat className="mr-1 inline h-4 w-4" />Send back</button>
                         </div>
                       </div>
                     )}
@@ -233,7 +234,7 @@ export default function TaskDetailModal({ taskId, onClose, onChanged }) {
                 )}
 
                 {task.reviewNote && (
-                  <p className="mt-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-300">🗒️ Review note: {task.reviewNote}</p>
+                  <p className="mt-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-300"><Pencil className="mr-1 inline h-3 w-3" />Review note: {task.reviewNote}</p>
                 )}
               </div>
 
@@ -242,7 +243,7 @@ export default function TaskDetailModal({ taskId, onClose, onChanged }) {
                 <div className="mb-1 flex items-center justify-between">
                   <p className="text-xs font-semibold uppercase text-slate-400">Attachments ({task.attachments?.length || 0})</p>
                   <label className="cursor-pointer rounded-lg bg-slate-700 px-2 py-1 text-xs font-semibold text-slate-300 hover:bg-slate-600">
-                    📎 Upload
+                    <Paperclip className="mr-1 inline h-3.5 w-3.5" />Upload
                     <input type="file" className="hidden" onChange={sendFile} />
                   </label>
                 </div>
@@ -250,7 +251,7 @@ export default function TaskDetailModal({ taskId, onClose, onChanged }) {
                 <ul className="space-y-1">
                   {(task.attachments || []).map((a) => (
                     <li key={a._id} className="flex items-center justify-between rounded-lg bg-slate-700/40 px-3 py-1.5 text-sm">
-                      <a href={a.url} target="_blank" rel="noreferrer" className="truncate text-indigo-400 hover:underline">📎 {a.name}</a>
+                      <a href={a.url} target="_blank" rel="noreferrer" className="truncate text-indigo-400 hover:underline"><Paperclip className="mr-1 inline h-3 w-3" />{a.name}</a>
                       <span className="ml-2 shrink-0 text-xs text-slate-400">{a.uploadedBy?.name || ''}</span>
                     </li>
                   ))}
@@ -283,7 +284,7 @@ export default function TaskDetailModal({ taskId, onClose, onChanged }) {
               </div>
 
               {(isCreator || canReview) && (
-                <button onClick={removeTask} className="text-xs font-semibold text-red-400 hover:text-red-300">🗑 Delete task</button>
+                <button onClick={removeTask} className="text-xs font-semibold text-red-400 hover:text-red-300"><Trash2 className="mr-1 inline h-3.5 w-3.5" />Delete task</button>
               )}
             </>
           )}

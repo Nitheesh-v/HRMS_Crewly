@@ -125,7 +125,7 @@ const NAV_ICON_BY_PATH = {
 
 /*
  * Removes the existing emoji prefix from labels.
- * Example: "🏠 Dashboard" becomes "Dashboard".
+ * Example: "Dashboard" stays "Dashboard" (no emoji prefixes).
  */
 const cleanNavLabel = (label = "") =>
   String(label).replace(/^[^A-Za-z0-9]+/, "").trim();
@@ -459,14 +459,15 @@ const Sidebar = ({ menu = [] }) => {
             type="button"
             title="Expand sidebar"
             onClick={() => setCollapsed(false)}
-            className="mx-auto text-lg font-extrabold tracking-wide text-crewly-green"
+            className="mx-auto text-lg font-extrabold tracking-wide text-violet-400"
           >
             C
           </button>
         ) : (
           <>
-            <div className="text-lg font-extrabold tracking-wide text-crewly-green">
-              Crewly <span className="text-crewly-orange">HRMS</span>
+            <div className="flex items-center gap-1.5">
+              <img src="/logo-crewly.png" alt="Crewly" className="h-9 w-auto mix-blend-screen" />
+              <span className="text-sm font-extrabold tracking-widest text-slate-400">HRMS</span>
             </div>
 
             <button
@@ -597,7 +598,7 @@ const Sidebar = ({ menu = [] }) => {
             <ChevronsRight aria-hidden="true" className="h-4 w-4" />
           </button>
         ) : (
-          <span>Crewly HRMS · Phase 29</span>
+          <span>Crewly HRMS</span>
         )}
       </div>
     </aside>

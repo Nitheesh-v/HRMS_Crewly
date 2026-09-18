@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Banknote, CheckCircle2, ReceiptText, Settings } from 'lucide-react';
 import payrollService from '../../services/payrollService.js';
 import userService from '../../services/userService.js';
 import Modal from '../../components/Modal.jsx';
@@ -73,12 +74,12 @@ const PayrollPage = () => {
 
   return (
     <div className="space-y-5">
-      <h1 className="text-2xl font-bold">💰 Payroll</h1>
+      <h1 className="flex items-center gap-2 text-2xl font-bold"><Banknote className="h-6 w-6" />Payroll</h1>
 
       {error && <div className="rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">{error}</div>}
       {genResult && (
         <div className="rounded-lg border border-crewly-green/40 bg-crewly-green/10 px-4 py-3 text-sm text-crewly-green">
-          ✅ Generated for {genResult.generated.length} employee(s)
+          <CheckCircle2 className="mr-1 inline h-4 w-4" />Generated for {genResult.generated.length} employee(s)
           {genResult.skipped.length > 0 && (
             <span className="text-crewly-orange"> · Skipped: {genResult.skipped.map((s) => `${s.name} (${s.reason})`).join(', ')}</span>
           )}
@@ -86,7 +87,7 @@ const PayrollPage = () => {
       )}
 
       <div className="flex gap-2">
-        {[['run', '🧾 Payroll Run'], ['structures', '⚙️ Salary Structures']].map(([key, label]) => (
+        {[['run', <><ReceiptText className="mr-1 inline h-4 w-4" />Payroll Run</>], ['structures', <><Settings className="mr-1 inline h-4 w-4" />Salary Structures</>]].map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)}
             className={`rounded-lg px-4 py-2 text-sm transition ${tab === key ? 'bg-crewly-green/15 text-crewly-green' : 'border border-crewly-border text-crewly-dim hover:text-crewly-text'}`}>
             {label}
@@ -103,7 +104,7 @@ const PayrollPage = () => {
               <input type="month" className="input" value={month} onChange={(e) => setMonth(e.target.value)} />
             </div>
             <button className="btn-primary" onClick={runGenerate} disabled={busy}>
-              {busy ? 'Generating…' : '⚙️ Generate Payroll'}
+              {busy ? 'Generating…' : <><Settings className="mr-1 inline h-4 w-4" />Generate Payroll</>}
             </button>
             <span className="pb-2 text-xs text-crewly-dim">Uses attendance + approved leaves for LOP deductions. Safe to re-run (PAID records are locked).</span>
           </div>

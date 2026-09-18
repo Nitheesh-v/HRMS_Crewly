@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { AlertTriangle, FolderOpen, ListTodo, Send, Sparkles, User } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { listTasks, arr } from '../../services/workService.js';
 import TaskDetailModal, { STATUS_META, PRIORITY_META } from '../../components/TaskDetailModal.jsx';
@@ -25,6 +26,7 @@ export default function TasksPage() {
   const [openId, setOpenId] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [msg, setMsg] = useState('');
+  const [msgOk, setMsgOk] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -36,7 +38,8 @@ export default function TasksPage() {
       if (q) params.q = q;
       setTasks(arr(await listTasks(params)));
     } catch (e) {
-      setMsg('❌ Could not load tasks');
+      setMsg('Could not load tasks');
+      setMsgOk(false);
     }
     setLoading(false);
   }, [view, status, priority, q]);
@@ -55,13 +58,13 @@ export default function TasksPage() {
     </button>
   );
 
-  const okMsg = msg.startsWith('✅');
+  const okMsg = msgOk;
 
   return (
     <div className="mx-auto max-w-6xl p-4 sm:p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-100">📝 Tasks</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-100"><ListTodo className="h-6 w-6 text-indigo-400" />Tasks</h1>
           <p className="text-sm text-slate-400">
             {role === 'EMPLOYEE' ? 'Your assigned work — submit for review when done.' : 'Everything inside your team scope.'}
           </p>
@@ -75,8 +78,8 @@ export default function TasksPage() {
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {tab('all', 'All in scope')}
-        {tab('mine', '👤 My tasks')}
-        {canAssign && tab('created', '📤 Assigned by me')}
+        {tab('mine', <span className="flex items-center gap-1.5"><User className="h-3.5 w-3.5" />My tasks</span>)}
+        {canAssign && tab('created', <span className="flex items-center gap-1.5"><Send className="h-3.5 w-3.5" />Assigned by me</span>)}
         <select value={status} onChange={(e) => setStatus(e.target.value)} className={inpSm}>
           <option value="">All statuses</option>
           {Object.keys(STATUS_META).map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
@@ -85,7 +88,7 @@ export default function TasksPage() {
           <option value="">All priorities</option>
           {['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].map((p) => <option key={p} value={p}>{p}</option>)}
         </select>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 Search…" className={inpSm} />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className={inpSm} />
       </div>
 
       {msg && (
@@ -96,7 +99,7 @@ export default function TasksPage() {
       {loading && <p className="text-sm text-slate-500">Loading tasks…</p>}
       {!loading && tasks.length === 0 && (
         <div className="rounded-2xl border border-dashed border-slate-700 p-10 text-center text-slate-400">
-          <p className="text-3xl">✨</p>
+          <p className="flex justify-center text-slate-600"><Sparkles className="h-8 w-8" /></p>
           <p className="mt-2 text-sm">No tasks here.</p>
         </div>
       )}
@@ -120,13 +123,13 @@ export default function TasksPage() {
                   <tr key={t._id} onClick={() => setOpenId(t._id)} className="cursor-pointer border-t border-slate-700 hover:bg-slate-700/40">
                     <td className="px-4 py-2.5">
                       <p className="font-semibold text-slate-100">{t.title}</p>
-                      {t.project?.name && <p className="text-xs text-indigo-400">📁 {t.project.name}</p>}
+                      {t.project?.name && <p className="flex items-center gap-1 text-xs text-indigo-400"><FolderOpen className="h-3 w-3" />{t.project.name}</p>}
                     </td>
                     <td className="px-4 py-2.5">
                       <span className="flex items-center gap-1.5 text-slate-300">
                         {t.assignedTo?.avatarUrl
                           ? <img src={t.assignedTo.avatarUrl} alt="" className="h-5 w-5 rounded-full object-cover" />
-                          : '👤'}
+                          : <User className="h-5 w-5 rounded-full bg-slate-700 p-0.5 text-slate-400" />}
                         {t.assignedTo?.name || '—'}
                       </span>
                     </td>
@@ -134,7 +137,7 @@ export default function TasksPage() {
                       <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${PRIORITY_META[t.priority] || ''}`}>{t.priority}</span>
                     </td>
                     <td className={`px-4 py-2.5 ${isOverdue(t) ? 'font-bold text-red-400' : 'text-slate-400'}`}>
-                      {fmtDate(t.dueDate)}{isOverdue(t) ? ' ⚠️' : ''}
+                      {fmtDate(t.dueDate)}{isOverdue(t) ? <AlertTriangle className="ml-1 inline h-3.5 w-3.5" /> : null}
                     </td>
                     <td className="px-4 py-2.5">
                       <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${sm.cls}`}>{sm.label}</span>
@@ -151,7 +154,7 @@ export default function TasksPage() {
       {showCreate && (
         <CreateTaskModal
           onClose={() => setShowCreate(false)}
-          onCreated={(n) => { setMsg(n > 1 ? `✅ ${n} tasks created` : '✅ Task created'); load(); setTimeout(() => setMsg(''), 4000); }}
+          onCreated={(n) => { setMsg(n > 1 ? `${n} tasks created` : 'Task created'); setMsgOk(true); load(); setTimeout(() => setMsg(''), 4000); }}
         />
       )}
     </div>

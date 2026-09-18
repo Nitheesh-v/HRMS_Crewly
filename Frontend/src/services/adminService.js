@@ -1,5 +1,5 @@
 // ============================================================
-// 👑 ADMIN SERVICE — super admin platform APIs (/api/admin-api/*)
+// ADMIN SERVICE — super admin platform APIs (/api/admin-api/*)
 // ============================================================
 import api from './api';
 

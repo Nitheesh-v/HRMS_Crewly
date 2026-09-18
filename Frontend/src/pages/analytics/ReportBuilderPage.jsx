@@ -2,6 +2,7 @@
 // Then export the SAME result as CSV / Excel, or print to PDF.
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { BarChart3, Download, FileText, Play, Printer } from 'lucide-react';
 import analyticsService from '../../services/analyticsService';
 
 const inp = 'rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500';
@@ -88,7 +89,7 @@ export default function ReportBuilderPage() {
       link.download = `${module}-report.${format === 'xls' ? 'xls' : 'csv'}`;
       link.click();
       URL.revokeObjectURL(link.href);
-      flash(`Exported ${format.toUpperCase()} ✔ (logged in audit)`);
+      flash(`Exported ${format.toUpperCase()} (logged in audit)`);
     } catch (e) {
       flash(e?.response?.data?.message || 'Export failed');
     }
@@ -100,10 +101,10 @@ export default function ReportBuilderPage() {
     <div className="p-6 space-y-5 text-slate-100">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">📑 Report Builder</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-bold"><FileText className="h-6 w-6 text-indigo-400" />Report Builder</h1>
           <p className="text-sm text-slate-400">Module → fields → filters → generate → export · every run is audited</p>
         </div>
-        <Link to="/app/analytics" className={ghost}>📊 Analytics</Link>
+        <Link to="/app/analytics" className={ghost}><BarChart3 className="mr-1 inline h-4 w-4" />Analytics</Link>
       </div>
 
       {toast && <div className="rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-4 py-2 text-sm text-indigo-200">{toast}</div>}
@@ -134,10 +135,10 @@ export default function ReportBuilderPage() {
             <input className={inp} placeholder="APPROVED / ACTIVE…" value={status} onChange={(e) => setStatus(e.target.value)} />
           </div>
           <div className="ml-auto flex gap-2">
-            <button className={primary} disabled={busy || !module} onClick={() => run(1)}>{busy ? 'Running…' : '▶ Generate'}</button>
-            <button className={ghost} disabled={!result} onClick={() => download('csv')}>⬇ CSV</button>
-            <button className={ghost} disabled={!result} onClick={() => download('xls')}>⬇ Excel</button>
-            <button className={ghost} disabled={!result} onClick={() => window.print()}>🖨 PDF / Print</button>
+            <button className={primary} disabled={busy || !module} onClick={() => run(1)}>{busy ? 'Running…' : <><Play className="mr-1 inline h-4 w-4" />Generate</>}</button>
+            <button className={ghost} disabled={!result} onClick={() => download('csv')}><Download className="mr-1 inline h-4 w-4" />CSV</button>
+            <button className={ghost} disabled={!result} onClick={() => download('xls')}><Download className="mr-1 inline h-4 w-4" />Excel</button>
+            <button className={ghost} disabled={!result} onClick={() => window.print()}><Printer className="mr-1 inline h-4 w-4" />PDF / Print</button>
           </div>
         </div>
 

@@ -425,11 +425,11 @@ const SecurityDashboardPage = () => {
 
               <div className="mt-3 flex gap-4 text-xs text-crewly-dim">
                 <span>
-                  ■ Indigo: all events
+                  <span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm bg-indigo-400" />Indigo: all events
                 </span>
 
                 <span className="text-red-300">
-                  ■ Red: failed events
+                  <span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm bg-red-400" />Red: failed events
                 </span>
               </div>
             </section>

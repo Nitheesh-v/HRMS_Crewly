@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { BarChart3, Building2, Clock, DoorOpen, Palmtree, Pin, Users } from 'lucide-react';
 import systemService from '../../services/systemService';
 import useAuth from '../../hooks/useAuth';
 import { roleLabel } from '../../utils/roles';
@@ -33,7 +34,7 @@ const BarChart = ({ title, data, formatY = (v) => v, color = '#3fb950', labelKey
 const StatCard = ({ icon, label, value }) => {
   return (
     <div className="card p-4">
-      <div className="text-xl">{icon}</div>
+      <div className="text-crewly-dim">{icon}</div>
       <div className="mt-1 text-2xl font-bold">{value}</div>
       <div className="text-xs text-crewly-dim">{label}</div>
     </div>
@@ -74,22 +75,22 @@ export default function AnalyticsPage() {
   return (
     <div className="p-6 space-y-5">
       <div>
-        <h1 className="text-xl font-bold">📊 Analytics</h1>
+        <h1 className="flex items-center gap-2 text-xl font-bold"><BarChart3 className="h-5 w-5 text-crewly-green" />Analytics</h1>
         <p className="text-sm text-crewly-dim">Company health at a glance — live from your data.</p>
       </div>
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-        <StatCard icon="👥" label="Employees" value={counts.employees} />
-        <StatCard icon="🏗️" label="Departments" value={counts.departments} />
-        <StatCard icon="🌴" label="Pending leaves" value={counts.pendingLeaves} />
-        <StatCard icon="🚪" label="Pending exits" value={counts.pendingExits} />
-        <StatCard icon="📌" label="Open jobs" value={counts.openJobs} />
+        <StatCard icon={<Users className="h-5 w-5" />} label="Employees" value={counts.employees} />
+        <StatCard icon={<Building2 className="h-5 w-5" />} label="Departments" value={counts.departments} />
+        <StatCard icon={<Palmtree className="h-5 w-5" />} label="Pending leaves" value={counts.pendingLeaves} />
+        <StatCard icon={<DoorOpen className="h-5 w-5" />} label="Pending exits" value={counts.pendingExits} />
+        <StatCard icon={<Pin className="h-5 w-5" />} label="Open jobs" value={counts.openJobs} />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* attendance rate */}
         <div className="card p-5">
-          <div className="text-sm font-semibold">🕒 Attendance Rate (this month)</div>
+          <div className="flex items-center gap-1.5 text-sm font-semibold"><Clock className="h-4 w-4 text-crewly-dim" />Attendance Rate (this month)</div>
           <div className="mt-3 text-4xl font-bold text-crewly-green">{attendance.rate}%</div>
           <div className="mt-2 h-2 rounded-full bg-crewly-border/40">
             <div className="h-2 rounded-full bg-crewly-green" style={{ width: `${attendance.rate}%` }} />
@@ -99,7 +100,7 @@ export default function AnalyticsPage() {
 
         {/* headcount donut */}
         <div className="card p-5">
-          <div className="text-sm font-semibold">👥 Headcount by Role</div>
+          <div className="flex items-center gap-1.5 text-sm font-semibold"><Users className="h-4 w-4 text-crewly-dim" />Headcount by Role</div>
           <div className="mt-3 flex items-center gap-4">
             <div className="relative h-24 w-24 rounded-full" style={{ background: donut }}>
               <div className="absolute inset-3 flex items-center justify-center rounded-full bg-crewly-card text-sm font-bold">{total}</div>
@@ -116,13 +117,13 @@ export default function AnalyticsPage() {
         </div>
 
         {/* payroll trend */}
-        <BarChart title="💰 Payroll Trend (net pay)" sub="last 6 months"
+        <BarChart title="Payroll Trend (net pay)" sub="last 6 months"
           data={payrollTrend.map((p) => ({ ...p, value: p.netPay }))}
           formatY={moneyK} color="#3fb950" />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-1">
-        <BarChart title="🌴 Leave Requests Trend" sub="last 6 months"
+        <BarChart title="Leave Requests Trend" sub="last 6 months"
           data={leaveTrend.map((l) => ({ ...l, value: l.count }))}
           formatY={(v) => `${v} req`} color="#58a6ff" />
       </div>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { AlertTriangle, CheckCircle2, DoorOpen, FileText, Files, UserCircle, XCircle } from 'lucide-react';
 import exitService from '../../services/exitService';
 import Modal from '../../components/Modal';
 import useAuth from '../../hooks/useAuth';
@@ -59,7 +60,7 @@ export default function ExitProcessPage() {
     setBusy(true);
     try {
       await exitService.resign(form);
-      flash('success', 'Resignation submitted. HR will review it. 📨');
+      flash('success', 'Resignation submitted. HR will review it.');
       setResignModal(false);
       setForm({ reason: '', lastWorkingDate: '' });
       loadMine();
@@ -95,11 +96,11 @@ export default function ExitProcessPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold">🚪 Exit Process</h1>
+          <h1 className="flex items-center gap-2 text-xl font-bold"><DoorOpen className="h-5 w-5" />Exit Process</h1>
           <p className="text-sm text-crewly-dim">Resignations, approvals and account deactivation.</p>
         </div>
         {!activeResignation && (
-          <button className="btn-primary" onClick={() => setResignModal(true)}>📝 Submit Resignation</button>
+          <button className="btn-primary" onClick={() => setResignModal(true)}><FileText className="mr-1 inline h-4 w-4" />Submit Resignation</button>
         )}
       </div>
 
@@ -109,11 +110,11 @@ export default function ExitProcessPage() {
 
       {/* ── my resignation ── */}
       <div className="card p-5 space-y-3">
-        <h2 className="text-sm font-semibold">🙋 My Resignation</h2>
+        <h2 className="flex items-center gap-1.5 text-sm font-semibold"><UserCircle className="h-4 w-4" />My Resignation</h2>
         {loading ? (
           <p className="text-sm text-crewly-dim">Loading…</p>
         ) : mine.length === 0 ? (
-          <p className="text-sm text-crewly-dim">No resignation submitted. We hope it stays that way 💚</p>
+          <p className="text-sm text-crewly-dim">No resignation submitted. We hope it stays that way.</p>
         ) : (
           <div className="space-y-2">
             {mine.map((r) => (
@@ -141,7 +142,7 @@ export default function ExitProcessPage() {
       {isHR && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold">🗂️ Team Requests</h2>
+            <h2 className="flex items-center gap-1.5 text-sm font-semibold"><Files className="h-4 w-4" />Team Requests</h2>
             <div className="flex gap-2">
               {[['PENDING', 'Pending'], ['ALL', 'All']].map(([key, label]) => (
                 <button key={key} onClick={() => setTab(key)}
@@ -167,7 +168,7 @@ export default function ExitProcessPage() {
               </thead>
               <tbody>
                 {requests.length === 0 ? (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-crewly-dim">No resignation requests 🎉</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-crewly-dim">No resignation requests</td></tr>
                 ) : requests.map((r) => (
                   <tr key={r._id} className="border-b border-crewly-border/50 last:border-0">
                     <td className="px-4 py-3">
@@ -187,13 +188,13 @@ export default function ExitProcessPage() {
                       {r.status === 'PENDING' && String(r.user?._id) !== myId && (
                         <div className="flex justify-end gap-2">
                           <button className="rounded-lg border border-crewly-green/40 px-2 py-1 text-[11px] text-crewly-green hover:bg-crewly-green/10"
-                            onClick={() => setDecideModal({ resignation: r, action: 'APPROVE' })}>✅ Approve</button>
+                            onClick={() => setDecideModal({ resignation: r, action: 'APPROVE' })}><CheckCircle2 className="mr-1 inline h-3.5 w-3.5" />Approve</button>
                           <button className="rounded-lg border border-crewly-red/40 px-2 py-1 text-[11px] text-crewly-red hover:bg-crewly-red/10"
-                            onClick={() => setDecideModal({ resignation: r, action: 'REJECT' })}>❌ Reject</button>
+                            onClick={() => setDecideModal({ resignation: r, action: 'REJECT' })}><XCircle className="mr-1 inline h-3.5 w-3.5" />Reject</button>
                         </div>
                       )}
                       {r.status !== 'PENDING' && r.decisionNote && (
-                        <span className="text-[11px] text-crewly-dim" title={r.decisionNote}>📝 {r.decisionNote}</span>
+                        <span className="text-[11px] text-crewly-dim" title={r.decisionNote}><FileText className="mr-1 inline h-3 w-3" />{r.decisionNote}</span>
                       )}
                     </td>
                   </tr>
@@ -206,7 +207,7 @@ export default function ExitProcessPage() {
 
       {/* ── resign modal ── */}
       {resignModal && (
-        <Modal onClose={() => setResignModal(false)} title="📝 Submit Resignation">
+        <Modal onClose={() => setResignModal(false)} title="Submit Resignation">
           <form onSubmit={submitResign} className="space-y-3">
             <div>
               <label className="label">Reason *</label>
@@ -231,7 +232,7 @@ export default function ExitProcessPage() {
       {/* ── decide modal ── */}
       {decideModal && (
         <Modal onClose={() => setDecideModal(null)}
-          title={`${decideModal.action === 'APPROVE' ? '✅ Approve' : '❌ Reject'} — ${decideModal.resignation.user?.name}`}>
+          title={`${decideModal.action === 'APPROVE' ? 'Approve' : 'Reject'} — ${decideModal.resignation.user?.name}`}>
           <div className="space-y-3">
             <div className="rounded-lg border border-crewly-border p-3 text-sm">
               <p>{decideModal.resignation.reason}</p>
@@ -239,7 +240,7 @@ export default function ExitProcessPage() {
             </div>
             {decideModal.action === 'APPROVE' && (
               <p className="text-xs text-crewly-orange">
-                ⚠️ Approving will deactivate this account on/after the last working date.
+                <AlertTriangle className="mr-1 inline h-3.5 w-3.5" />Approving will deactivate this account on/after the last working date.
               </p>
             )}
             <div>

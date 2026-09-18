@@ -1,5 +1,5 @@
 // ============================================================
-// 🧬 lifecycleService — Phase 15
+// lifecycleService — Phase 15
 // ============================================================
 import * as apiNS from './api.js';
 const api = apiNS.default || apiNS.api || apiNS;

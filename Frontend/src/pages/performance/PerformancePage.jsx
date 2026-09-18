@@ -1,9 +1,10 @@
 // ============================================================
-// 🎯 Performance Management
+// Performance Management
 // Employee: goals → progress → self review → final rating + history
 // Seniors: team review board · HR: cycle controls
 // ============================================================
 import React, { useEffect, useMemo, useState } from 'react';
+import { Briefcase, Check, ClipboardList, FileText, History, Hourglass, Lock, Plus, Save, Scale, SkipForward, Star, Target, Trash2, User, UserPlus, Users } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import {
   getCycles, getMyAppraisal, getTeamBoard, createCycle, transitionCycle,
@@ -16,7 +17,7 @@ const primary = `${btn} bg-indigo-600 text-white hover:bg-indigo-500`;
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
 
 const PHASES = ['GOAL_SETTING', 'ACTIVE', 'SELF_REVIEW', 'REVIEW', 'CLOSED'];
-const PHASE_LABEL = { GOAL_SETTING: '🎯 Set goals', ACTIVE: '💼 Work period', SELF_REVIEW: '📝 Self review', REVIEW: '🧑‍⚖️ TL + Manager review', CLOSED: '⭐ Final rating published' };
+const PHASE_LABEL = { GOAL_SETTING: 'Set goals', ACTIVE: 'Work period', SELF_REVIEW: 'Self review', REVIEW: 'TL + Manager review', CLOSED: 'Final rating published' };
 const STATUS_CHIP = {
   GOALS: 'bg-slate-500/20 text-slate-300', IN_PROGRESS: 'bg-sky-400/15 text-sky-300',
   SELF_SUBMITTED: 'bg-amber-400/15 text-amber-300', TL_DONE: 'bg-indigo-400/15 text-indigo-300',
@@ -24,15 +25,15 @@ const STATUS_CHIP = {
 };
 const chip = (txt, cls) => <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${cls}`}>{txt}</span>;
 
-const Stars = ({ value, onChange, size = 'text-xl' }) => (
-  <span className={`inline-flex gap-1 ${size}`}>
+const Stars = ({ value, onChange, size = 'h-6 w-6', className = '' }) => (
+  <span className={`inline-flex gap-1 ${className}`}>
     {[1, 2, 3, 4, 5].map((n) => (
       <button
         key={n} type="button"
         onClick={() => onChange && onChange(n)}
         className={`${onChange ? 'cursor-pointer' : 'cursor-default'} transition ${value >= n ? 'text-amber-400' : 'text-slate-600'}`}
       >
-        ★
+        <Star className={size} fill="currentColor" strokeWidth={0} />
       </button>
     ))}
   </span>
@@ -119,7 +120,7 @@ export default function PerformancePage() {
     try {
       await createCycle(cycleForm);
       setShowNewCycle(false); setCycleForm({ name: '', startDate: '', endDate: '' });
-      flash(true, 'Cycle started — everyone got a 🔔');
+      flash(true, 'Cycle started — everyone got notified');
       await loadAll();
     } catch (e) { flash(false, e?.response?.data?.message || 'Failed'); }
     finally { setBusy(false); }
@@ -139,7 +140,7 @@ export default function PerformancePage() {
     setBusy(true);
     try {
       await saveGoals(app._id, goalsDraft);
-      flash(true, 'Goals saved 🎯');
+      flash(true, 'Goals saved');
       await loadAll();
     } catch (e) { flash(false, e?.response?.data?.message || 'Failed'); }
     finally { setBusy(false); }
@@ -155,7 +156,7 @@ export default function PerformancePage() {
     setBusy(true);
     try {
       await submitSelfReview(app._id, selfForm);
-      flash(true, 'Self-review submitted ✅');
+      flash(true, 'Self-review submitted');
       await loadAll();
     } catch (e) { flash(false, e?.response?.data?.message || 'Failed'); }
     finally { setBusy(false); }
@@ -167,7 +168,7 @@ export default function PerformancePage() {
     try {
       await submitReview(reviewTarget._id, reviewForm);
       setReviewTarget(null); setReviewForm({ rating: 0, feedback: '' });
-      flash(true, 'Review saved ✅');
+      flash(true, 'Review saved');
       await loadAll();
     } catch (e) { flash(false, e?.response?.data?.message || 'Failed'); }
     finally { setBusy(false); }
@@ -178,7 +179,7 @@ export default function PerformancePage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-bold text-slate-100">🎯 Performance</h1>
+        <h1 className="text-2xl font-bold text-slate-100"><Target className="mr-2 inline h-6 w-6 text-indigo-400" />Performance</h1>
         {cycle && <span className="text-sm text-slate-400">{cycle.name} {cycle.startDate ? `· ${fmtDate(cycle.startDate)} → ${fmtDate(cycle.endDate)}` : ''}</span>}
       </div>
 
@@ -186,7 +187,7 @@ export default function PerformancePage() {
 
       {!cycle ? (
         <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-8 text-center text-sm text-slate-400">
-          No performance cycle yet.{isHR ? ' Start one below 👇' : ' HR will start one soon.'}
+          No performance cycle yet.{isHR ? ' Start one below.' : ' HR will start one soon.'}
           {isHR && (
             <div className="mt-3"><button onClick={() => setShowNewCycle(true)} className={primary}>＋ Start a cycle</button></div>
           )}
@@ -199,11 +200,11 @@ export default function PerformancePage() {
               <div className="min-w-0 flex-1"><PhaseStepper status={phase} /></div>
               {isHR && phase !== 'CLOSED' && (
                 <button disabled={busy} onClick={doAdvance} className={primary}>
-                  ⏭ Move to: {PHASE_LABEL[PHASES[PHASES.indexOf(phase) + 1]]}
+                  <SkipForward className="mr-1 inline h-4 w-4" />Move to: {PHASE_LABEL[PHASES[PHASES.indexOf(phase) + 1]]}
                 </button>
               )}
-              {isHR && <button onClick={() => setShowNewCycle(true)} className={`${btn} border border-slate-600 text-slate-300 hover:bg-slate-700`}>＋ New cycle</button>}
-              {isHR && <button onClick={async () => { await enrollMissing(cycle._id); flash(true, 'New joiners enrolled'); }} className={`${btn} border border-slate-600 text-slate-300 hover:bg-slate-700`}>↻ Enroll joiners</button>}
+              {isHR && <button onClick={() => setShowNewCycle(true)} className={`${btn} border border-slate-600 text-slate-300 hover:bg-slate-700`}><Plus className="mr-1 inline h-3.5 w-3.5" />New cycle</button>}
+              {isHR && <button onClick={async () => { await enrollMissing(cycle._id); flash(true, 'New joiners enrolled'); }} className={`${btn} border border-slate-600 text-slate-300 hover:bg-slate-700`}><UserPlus className="mr-1 inline h-3.5 w-3.5" />Enroll joiners</button>}
             </div>
           </section>
 
@@ -211,20 +212,20 @@ export default function PerformancePage() {
           {app && (
             <section className="rounded-xl border border-slate-700 bg-slate-800/60 p-4 space-y-4">
               <div className="flex items-center gap-3">
-                <h2 className="text-sm font-bold uppercase tracking-wide text-slate-300">📋 My appraisal</h2>
+                <h2 className="text-sm font-bold uppercase tracking-wide text-slate-300"><ClipboardList className="mr-1.5 inline h-4 w-4" />My appraisal</h2>
                 {chip(app.status.replaceAll('_', ' '), STATUS_CHIP[app.status])}
                 {phase === 'CLOSED' && app.finalRating != null && (
                   <span className="ml-auto text-right">
                     <span className="text-2xl font-extrabold text-amber-400">{app.finalRating}</span>
                     <span className="text-sm text-slate-400"> /5</span>
-                    <Stars value={Math.round(app.finalRating)} size="ml-2 text-base" />
+                    <Stars value={Math.round(app.finalRating)} size="h-4 w-4" className="ml-2" />
                   </span>
                 )}
               </div>
 
               {/* goals */}
               <div className="space-y-2">
-                <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Goals & KPIs {goalsEditable ? '' : '🔒'}</p>
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Goals & KPIs {goalsEditable ? null : <Lock className="ml-1 inline h-3.5 w-3.5" />}</p>
                 {goalsDraft.map((g, i) => (
                   <div key={g._id || i} className="rounded-lg border border-slate-700 bg-slate-900/40 p-3 space-y-2">
                     <div className="flex flex-wrap gap-2">
@@ -235,7 +236,7 @@ export default function PerformancePage() {
                       <input className={`${inp} w-24`} type="number" min="0" max="100" placeholder="Weight %" value={g.weight}
                         disabled={!goalsEditable} onChange={(e) => setGoal(i, { weight: e.target.value })} />
                       {goalsEditable && (
-                        <button onClick={() => setGoalsDraft((x) => x.filter((_, j) => j !== i))} className={`${btn} border border-red-500/40 text-red-300 hover:bg-red-500/10`}>🗑</button>
+                        <button onClick={() => setGoalsDraft((x) => x.filter((_, j) => j !== i))} className={`${btn} border border-red-500/40 text-red-300 hover:bg-red-500/10`} title="Remove"><Trash2 className="h-3.5 w-3.5" /></button>
                       )}
                     </div>
                     {(phase === 'ACTIVE' || g.progress > 0) && (
@@ -255,14 +256,14 @@ export default function PerformancePage() {
                     className={`${btn} border border-dashed border-slate-500 text-slate-300 hover:bg-slate-700/40`}>＋ Add goal</button>
                 )}
                 {goalsEditable && goalsDraft.length > 0 && (
-                  <button disabled={busy} onClick={doSaveGoals} className={primary}>💾 Save goals</button>
+                  <button disabled={busy} onClick={doSaveGoals} className={primary}><Save className="mr-1 inline h-3.5 w-3.5" />Save goals</button>
                 )}
               </div>
 
               {/* self review */}
               {phase === 'SELF_REVIEW' && (
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
-                  <p className="text-xs font-bold uppercase tracking-wide text-amber-300">📝 Self review {app.selfReview?.submittedAt ? '— submitted ✅' : '— open now'}</p>
+                  <p className="text-xs font-bold uppercase tracking-wide text-amber-300"><FileText className="mr-1 inline h-3.5 w-3.5" />Self review {app.selfReview?.submittedAt ? '— submitted' : '— open now'}</p>
                   {!app.selfReview?.submittedAt ? (
                     <>
                       <textarea className={`${inp} min-h-[90px]`} placeholder="What did you achieve this cycle? Highlights, numbers, blockers…"
@@ -274,23 +275,23 @@ export default function PerformancePage() {
                       </div>
                     </>
                   ) : (
-                    <p className="text-sm text-slate-300">"{app.selfReview.summary}" <Stars value={app.selfReview.rating} size="ml-2 text-sm" /></p>
+                    <p className="text-sm text-slate-300">"{app.selfReview.summary}" <Stars value={app.selfReview.rating} size="h-3.5 w-3.5" className="ml-2" /></p>
                   )}
                 </div>
               )}
               {phase === 'REVIEW' && app.selfReview?.submittedAt && (
-                <p className="text-xs text-slate-400">✅ Your self-review is in — TL/Manager reviews are running{app.tlReview?.submitted ? ' · TL review done' : ''}{app.mgrReview?.submitted ? ' · Manager review done' : ''}</p>
+                <p className="text-xs text-slate-400"><Check className="mr-1 inline h-3 w-3 text-emerald-400" />Your self-review is in — TL/Manager reviews are running{app.tlReview?.submitted ? ' · TL review done' : ''}{app.mgrReview?.submitted ? ' · Manager review done' : ''}</p>
               )}
 
               {/* revealed after close */}
               {phase === 'CLOSED' && (
                 <div className="grid gap-3 sm:grid-cols-3">
-                  {[['🧑‍🤝‍🧑 Self', app.selfReview], ['👥 Team Lead', app.tlReview], ['🧑‍💼 Manager', app.mgrReview]].map(([label, r]) => (
+                  {[{ label: 'Self', Icon: User, r: app.selfReview }, { label: 'Team Lead', Icon: Users, r: app.tlReview }, { label: 'Manager', Icon: Briefcase, r: app.mgrReview }].map(({ label, Icon, r }) => (
                     <div key={label} className="rounded-lg border border-slate-700 bg-slate-900/40 p-3">
-                      <p className="text-xs font-bold text-slate-300">{label}</p>
+                      <p className="flex items-center gap-1 text-xs font-bold text-slate-300"><Icon className="h-3.5 w-3.5" />{label}</p>
                       {r?.at || r?.submittedAt ? (
                         <>
-                          <Stars value={r.rating || 0} size="text-base" />
+                          <Stars value={r.rating || 0} size="h-4 w-4" />
                           <p className="mt-1 text-xs text-slate-400">{r.feedback || r.summary || '—'}</p>
                         </>
                       ) : <p className="mt-1 text-xs text-slate-500">not submitted</p>}
@@ -304,7 +305,7 @@ export default function PerformancePage() {
           {/* TEAM BOARD (seniors) */}
           {isSenior && (
             <section className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">
-              <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-300">👥 Team board ({team.length})</h2>
+              <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-300"><Users className="mr-1.5 inline h-4 w-4" />Team board ({team.length})</h2>
               {team.length === 0 ? (
                 <p className="rounded-lg border border-dashed border-slate-600 p-4 text-center text-xs text-slate-500">Nobody in your review scope for this cycle.</p>
               ) : (
@@ -320,12 +321,12 @@ export default function PerformancePage() {
                         </div>
                         {chip(a.status.replaceAll('_', ' '), STATUS_CHIP[a.status])}
                         <span className="text-[11px] text-slate-500">
-                          self {a.selfReview?.submittedAt ? '✅' : '⏳'} · TL {a.tlReview?.at ? '✅' : '⏳'} · Mgr {a.mgrReview?.at ? '✅' : '⏳'}
+                          self {a.selfReview?.submittedAt ? <Check className="inline h-3 w-3 text-emerald-400" /> : <Hourglass className="inline h-3 w-3 text-amber-400" />} · TL {a.tlReview?.at ? <Check className="inline h-3 w-3 text-emerald-400" /> : <Hourglass className="inline h-3 w-3 text-amber-400" />} · Mgr {a.mgrReview?.at ? <Check className="inline h-3 w-3 text-emerald-400" /> : <Hourglass className="inline h-3 w-3 text-amber-400" />}
                         </span>
-                        {phase === 'CLOSED' && a.finalRating != null && <span className="text-sm font-extrabold text-amber-400">{a.finalRating}★</span>}
+                        {phase === 'CLOSED' && a.finalRating != null && <span className="text-sm font-extrabold text-amber-400">{a.finalRating}<Star className="ml-0.5 inline h-3.5 w-3.5" fill="currentColor" strokeWidth={0} /></span>}
                         {canReview && (
                           <button onClick={() => { setReviewTarget(a); setReviewForm({ rating: 0, feedback: '' }); }} className={primary}>
-                            🧑‍⚖️ Review
+                            <Scale className="mr-1 inline h-3.5 w-3.5" />Review
                           </button>
                         )}
                       </div>
@@ -338,7 +339,7 @@ export default function PerformancePage() {
 
           {/* HISTORY */}
           <section className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">
-            <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-300">🕓 Performance history</h2>
+            <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-300"><History className="mr-1.5 inline h-4 w-4" />Performance history</h2>
             {historyRows.length === 0 ? (
               <p className="text-xs text-slate-500">Nothing yet — history builds after the first closed cycle.</p>
             ) : (
@@ -348,7 +349,7 @@ export default function PerformancePage() {
                     <span className="flex-1 font-semibold text-slate-200">{h.cycle?.name || 'Cycle'}</span>
                     <span className="text-xs text-slate-500">{fmtDate(h.cycle?.closedAt)}</span>
                     {h.finalRating != null ? (
-                      <span className="font-extrabold text-amber-400">{h.finalRating}★</span>
+                      <span className="font-extrabold text-amber-400">{h.finalRating}<Star className="ml-0.5 inline h-3.5 w-3.5" fill="currentColor" strokeWidth={0} /></span>
                     ) : chip('no rating', 'bg-slate-600/30 text-slate-400')}
                   </div>
                 ))}
@@ -362,7 +363,7 @@ export default function PerformancePage() {
       {showNewCycle && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowNewCycle(false)}>
           <div className="w-full max-w-md space-y-3 rounded-xl border border-slate-600 bg-slate-800 p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-base font-bold text-slate-100">🎯 Start performance cycle</h3>
+            <h3 className="text-base font-bold text-slate-100"><Target className="mr-1.5 inline h-4 w-4" />Start performance cycle</h3>
             <input className={inp} placeholder='Name — e.g. "H2 2026"' value={cycleForm.name} onChange={(e) => setCycleForm({ ...cycleForm, name: e.target.value })} />
             <div className="grid grid-cols-2 gap-2">
               <div><label className="mb-1 block text-xs text-slate-400">Start</label><input type="date" className={inp} value={cycleForm.startDate} onChange={(e) => setCycleForm({ ...cycleForm, startDate: e.target.value })} /></div>
@@ -370,7 +371,7 @@ export default function PerformancePage() {
             </div>
             <div className="flex justify-end gap-2 pt-1">
               <button onClick={() => setShowNewCycle(false)} className={`${btn} border border-slate-600 text-slate-300 hover:bg-slate-700`}>Cancel</button>
-              <button onClick={doCreateCycle} disabled={busy} className={primary}>{busy ? 'Starting…' : 'Start + notify everyone 🔔'}</button>
+              <button onClick={doCreateCycle} disabled={busy} className={primary}>{busy ? 'Starting…' : 'Start + notify everyone'}</button>
             </div>
           </div>
         </div>
@@ -381,7 +382,7 @@ export default function PerformancePage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setReviewTarget(null)}>
           <div className="w-full max-w-md space-y-3 rounded-xl border border-slate-600 bg-slate-800 p-5" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-base font-bold text-slate-100">
-              🧑‍⚖️ Review — {reviewTarget.user?.name} <span className="text-xs font-normal text-slate-400">({me?.role === 'TEAM_LEAD' ? 'Team Lead review' : 'Manager review'})</span>
+              <Scale className="mr-1 inline h-4 w-4" />Review — {reviewTarget.user?.name} <span className="text-xs font-normal text-slate-400">({me?.role === 'TEAM_LEAD' ? 'Team Lead review' : 'Manager review'})</span>
             </h3>
             <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-slate-700 bg-slate-900/40 p-2">
               {(reviewTarget.goals || []).map((g, i) => (
@@ -389,7 +390,7 @@ export default function PerformancePage() {
               ))}
               {(!reviewTarget.goals || !reviewTarget.goals.length) && <p className="text-xs text-slate-500">No goals recorded.</p>}
               {reviewTarget.selfReview?.summary && (
-                <p className="border-t border-slate-700 pt-1 text-xs text-slate-400">📝 Self: "{reviewTarget.selfReview.summary}" <Stars value={reviewTarget.selfReview.rating || 0} size="text-xs" /></p>
+                <p className="border-t border-slate-700 pt-1 text-xs text-slate-400"><FileText className="mr-1 inline h-3 w-3" />Self: "{reviewTarget.selfReview.summary}" <Stars value={reviewTarget.selfReview.rating || 0} size="h-3 w-3" /></p>
               )}
             </div>
             <div className="flex items-center gap-3">

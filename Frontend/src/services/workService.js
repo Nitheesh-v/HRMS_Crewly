@@ -23,6 +23,6 @@ export const uploadAttachment = (id, formData) =>
 export const deleteAttachment = (taskId, attachmentId) => api.delete(`/tasks/${taskId}/attachments/${attachmentId}`);
 export const deleteTask = (id) => api.delete(`/tasks/${id}`);
 
-// 🔔 Phase 13 — notification preferences
+// Phase 13 — notification preferences
 export const getNotifyPrefs = () => api.get('/notification-prefs');
 export const saveNotifyPrefs = (payload) => api.put('/notification-prefs', payload);

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { ClipboardList, Gauge, ReceiptText, ShieldCheck, UserCheck } from "lucide-react";
+import { Banknote, Bell, Building2, ClipboardList, Gauge, Layers, LayoutDashboard, LogOut, Menu, Package, ReceiptText, RefreshCw, Search, Settings, ShieldCheck, Stethoscope, Ticket, TrendingUp, UserCheck, Users } from "lucide-react";
 import useAuth from "../hooks/useAuth.jsx";
 import superAdminService from "../services/superAdminService.js";
 
@@ -8,37 +8,37 @@ const MENU = [
   {
     to: "/super-admin/dashboard",
     label: "Dashboard",
-    icon: "📊",
+    icon: <LayoutDashboard className="h-4 w-4" />,
     roles: ["ALL"],
   },
   {
     to: "/super-admin/companies",
     label: "Companies",
-    icon: "🏢",
+    icon: <Building2 className="h-4 w-4" />,
     roles: ["ALL"],
   },
   {
     to: "/super-admin/users",
     label: "Users",
-    icon: "👥",
+    icon: <Users className="h-4 w-4" />,
     roles: ["SUPER_ADMIN", "PLATFORM_ADMIN", "SUPPORT_ADMIN"],
   },
   {
     to: "/super-admin/subscriptions",
     label: "Subscriptions",
-    icon: "🔄",
+    icon: <RefreshCw className="h-4 w-4" />,
     roles: ["SUPER_ADMIN", "BILLING_ADMIN"],
   },
   {
     to: "/super-admin/plans",
     label: "Plans",
-    icon: "📦",
+    icon: <Package className="h-4 w-4" />,
     roles: ["SUPER_ADMIN", "BILLING_ADMIN"],
   },
   {
     to: "/super-admin/billing",
     label: "Billing",
-    icon: "🧾",
+    icon: <ReceiptText className="h-4 w-4" />,
     roles: ["SUPER_ADMIN", "BILLING_ADMIN"],
   },
   {
@@ -78,49 +78,49 @@ const MENU = [
   {
     to: "/super-admin/bgv-services",
     label: "BGV Services",
-    icon: "🔍",
+    icon: <Search className="h-4 w-4" />,
     roles: ["SUPER_ADMIN", "BILLING_ADMIN"],
   },
   {
     to: "/super-admin/revenue",
     label: "Revenue",
-    icon: "💰",
+    icon: <Banknote className="h-4 w-4" />,
     roles: ["SUPER_ADMIN", "BILLING_ADMIN", "PLATFORM_ADMIN"],
   },
   {
     to: "/super-admin/usage",
     label: "Usage",
-    icon: "📈",
+    icon: <TrendingUp className="h-4 w-4" />,
     roles: ["SUPER_ADMIN", "PLATFORM_ADMIN"],
   },
   {
     to: "/super-admin/support",
     label: "Support",
-    icon: "🎫",
+    icon: <Ticket className="h-4 w-4" />,
     roles: ["SUPER_ADMIN", "SUPPORT_ADMIN"],
   },
   {
     to: "/super-admin/system-health",
     label: "System Health",
-    icon: "🩺",
+    icon: <Stethoscope className="h-4 w-4" />,
     roles: ["SUPER_ADMIN", "PLATFORM_ADMIN"],
   },
   {
     to: "/super-admin/background-operations",
     label: "Background Operations",
-    icon: "🗂️",
+    icon: <Layers className="h-4 w-4" />,
     roles: ["SUPER_ADMIN", "PLATFORM_ADMIN"],
   },
   {
     to: "/super-admin/audit-logs",
     label: "Audit Logs",
-    icon: "🛡️",
+    icon: <ShieldCheck className="h-4 w-4" />,
     roles: ["SUPER_ADMIN", "PLATFORM_ADMIN"],
   },
   {
     to: "/super-admin/settings",
     label: "Settings",
-    icon: "⚙️",
+    icon: <Settings className="h-4 w-4" />,
     roles: ["SUPER_ADMIN", "PLATFORM_ADMIN"],
   },
 ];
@@ -263,7 +263,7 @@ const SuperAdminLayout = () => {
           onClick={handleLogout}
           className="mt-3 w-full rounded-lg bg-slate-900 px-3 py-2 text-left text-sm text-slate-300 hover:text-red-300"
         >
-          🚪 Logout
+          <LogOut className="mr-2 inline h-4 w-4" />Logout
         </button>
       </div>
     </aside>
@@ -295,7 +295,7 @@ const SuperAdminLayout = () => {
             className="rounded-lg border border-slate-700 px-3 py-2 lg:hidden"
             onClick={() => setMobileOpen(true)}
           >
-            ☰
+            <Menu className="h-4 w-4" />
           </button>
 
           <form onSubmit={submitSearch} className="relative max-w-xl flex-1">
@@ -357,7 +357,7 @@ const SuperAdminLayout = () => {
                   : "bg-amber-500/15 text-amber-300"
             }`}
           >
-            ● {systemStatus}
+            <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-current" />{systemStatus}
           </span>
 
           <div className="relative">
@@ -366,7 +366,7 @@ const SuperAdminLayout = () => {
               onClick={() => setShowNotifications((value) => !value)}
               className="relative rounded-lg border border-slate-700 px-3 py-2"
             >
-              🔔
+              <Bell className="h-4 w-4" />
               {notifications.unread > 0 && (
                 <span className="absolute -right-1 -top-1 rounded-full bg-orange-500 px-1.5 text-[10px]">
                   {notifications.unread}

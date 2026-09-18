@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AlarmClock, Building2, CalendarDays, Coffee, Lock, MapPin, Pencil, Shuffle, Target, Trash2, Users } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import scheduleService from '../../services/scheduleService';
 
@@ -29,7 +30,7 @@ export default function SchedulesPage() {
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
-  if (!isHR) return <div className="p-6 text-slate-300">🔒 Only Admin/HR manage work schedules. Check your schedule under 🔀 Shifts → My current shift.</div>;
+  if (!isHR) return <div className="p-6 text-slate-300"><Lock className="mr-1 inline h-4 w-4" />Only Admin/HR manage work schedules. Check your schedule under <Shuffle className="mx-1 inline h-4 w-4" />Shifts → My current shift.</div>;
 
   const save = async () => {
     setSaving(true);
@@ -37,7 +38,7 @@ export default function SchedulesPage() {
       const f = modal.form;
       const payload = { name: f.name, workingDays: f.workingDays, startTime: f.startTime, endTime: f.endTime, breakMinutes: +f.breakMinutes, graceMinutes: +f.graceMinutes, minWorkingHours: +f.minWorkingHours, halfDayHours: +f.halfDayHours, overtimeEligible: !!f.overtimeEligible, branch: f.branch, departments: f.departments || [], lateRule: { graceMinutes: +f.lateGrace, maxLatePerMonth: +f.maxLatePerMonth }, earlyCheckoutRule: { graceMinutes: +f.earlyGrace } };
       const r = modal.mode === 'create' ? await scheduleService.createSchedule(payload) : await scheduleService.updateSchedule(modal.id, payload);
-      flash(r.message || 'Saved ✅'); setModal(null); load();
+      flash(r.message || 'Saved'); setModal(null); load();
     } catch (e) { flash(e?.response?.data?.message || e.message); }
     setSaving(false);
   };
@@ -46,7 +47,7 @@ export default function SchedulesPage() {
     <div className="p-6 space-y-5 text-slate-100">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">🗓 Work Schedules</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-bold"><CalendarDays className="h-6 w-6" />Work Schedules</h1>
           <p className="text-sm text-slate-400">Reusable working-day patterns — never hard-coded Mon–Fri</p>
         </div>
         <button onClick={() => setModal({ mode: 'create', form: { ...emptyForm, departments: [] } })} className={primary}>＋ New Schedule</button>
@@ -60,9 +61,9 @@ export default function SchedulesPage() {
             <div className="flex items-start justify-between">
               <div>
                 <div className="font-semibold">{s.name} {!s.isActive && <span className="text-xs text-slate-500">(inactive)</span>}</div>
-                <div className="text-xs text-slate-400">{s.startTime} → {s.endTime} · ☕ {s.breakMinutes}m · ⏰ grace {s.lateRule?.graceMinutes ?? s.graceMinutes}m</div>
+                <div className="text-xs text-slate-400">{s.startTime} → {s.endTime} · <Coffee className="inline h-3 w-3" /> {s.breakMinutes}m · <AlarmClock className="inline h-3 w-3" /> grace {s.lateRule?.graceMinutes ?? s.graceMinutes}m</div>
               </div>
-              <span className="text-xs text-slate-400">🎯 {s.minWorkingHours}h/day</span>
+              <span className="flex items-center gap-1 text-xs text-slate-400"><Target className="h-3 w-3" />{s.minWorkingHours}h/day</span>
             </div>
             <div className="mt-2 flex flex-wrap gap-1">
               {DAYS.map((d) => (
@@ -70,11 +71,11 @@ export default function SchedulesPage() {
               ))}
             </div>
             <div className="mt-2 text-[11px] text-slate-500">
-              {s.branch && <>📍 {s.branch} · </>}🏬 {s.departments.map((d) => d.name).join(', ') || '—'} · 👥 {s.employees.length} direct
+              {s.branch && <><MapPin className="mr-1 inline h-3 w-3" />{s.branch} · </>}<Building2 className="mr-1 inline h-3 w-3" />{s.departments.map((d) => d.name).join(', ') || '—'} · <Users className="mx-1 inline h-3 w-3" />{s.employees.length} direct
             </div>
             <div className="mt-3 flex gap-2">
-              <button onClick={() => setModal({ mode: 'edit', id: s.id, form: { name: s.name, workingDays: s.workingDays, startTime: s.startTime, endTime: s.endTime, breakMinutes: s.breakMinutes, graceMinutes: s.graceMinutes, minWorkingHours: s.minWorkingHours, halfDayHours: s.halfDayHours, overtimeEligible: s.overtimeEligible, lateGrace: s.lateRule?.graceMinutes ?? 10, maxLatePerMonth: s.lateRule?.maxLatePerMonth ?? 3, earlyGrace: s.earlyCheckoutRule?.graceMinutes ?? 10, branch: s.branch || '', departments: s.departments.map((d) => d.id) } })} className={`${ghost} text-xs`}>✏️ Edit</button>
-              {s.isActive && <button onClick={async () => { if (window.confirm(`Deactivate "${s.name}"?`)) { await scheduleService.deleteSchedule(s.id); load(); } }} className="rounded-lg bg-rose-600/70 hover:bg-rose-600 px-3 py-1 text-xs text-white">🗑</button>}
+              <button onClick={() => setModal({ mode: 'edit', id: s.id, form: { name: s.name, workingDays: s.workingDays, startTime: s.startTime, endTime: s.endTime, breakMinutes: s.breakMinutes, graceMinutes: s.graceMinutes, minWorkingHours: s.minWorkingHours, halfDayHours: s.halfDayHours, overtimeEligible: s.overtimeEligible, lateGrace: s.lateRule?.graceMinutes ?? 10, maxLatePerMonth: s.lateRule?.maxLatePerMonth ?? 3, earlyGrace: s.earlyCheckoutRule?.graceMinutes ?? 10, branch: s.branch || '', departments: s.departments.map((d) => d.id) } })} className={`${ghost} text-xs`}><Pencil className="mr-1 inline h-3.5 w-3.5" />Edit</button>
+              {s.isActive && <button onClick={async () => { if (window.confirm(`Deactivate "${s.name}"?`)) { await scheduleService.deleteSchedule(s.id); load(); } }} className="rounded-lg bg-rose-600/70 hover:bg-rose-600 px-3 py-1 text-xs text-white" title="Deactivate"><Trash2 className="h-3.5 w-3.5" /></button>}
             </div>
           </div>
         ))}
@@ -84,7 +85,7 @@ export default function SchedulesPage() {
       {modal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setModal(null)}>
           <div className="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-900 p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-4 text-lg font-semibold">{modal.mode === 'create' ? '＋ New Schedule' : '✏️ Edit Schedule'}</h3>
+            <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold">{modal.mode === 'create' ? <>New Schedule</> : <><Pencil className="h-5 w-5" />Edit Schedule</>}</h3>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2">
                 <label className="mb-1 block text-xs text-slate-400">Name</label>
@@ -112,7 +113,7 @@ export default function SchedulesPage() {
                 <label className="mb-1 block text-xs text-slate-400">End</label>
                 <input type="time" className={inp} value={modal.form.endTime} onChange={(e) => setModal({ ...modal, form: { ...modal.form, endTime: e.target.value } })} />
               </div>
-              {[['breakMinutes', '☕ Break (min)'], ['graceMinutes', '⏰ Grace (min)'], ['minWorkingHours', '🎯 Min hours/day'], ['halfDayHours', '🌗 Half-day hours'], ['lateGrace', '⚠️ Late grace (min)'], ['earlyGrace', '🏃 Early-out grace (min)']].map(([k, label]) => (
+              {[['breakMinutes', 'Break (min)'], ['graceMinutes', 'Grace (min)'], ['minWorkingHours', 'Min hours/day'], ['halfDayHours', 'Half-day hours'], ['lateGrace', 'Late grace (min)'], ['earlyGrace', 'Early-out grace (min)']].map(([k, label]) => (
                 <div key={k}>
                   <label className="mb-1 block text-xs text-slate-400">{label}</label>
                   <input type="number" min="0" step="0.5" className={inp} value={modal.form[k]} onChange={(e) => setModal({ ...modal, form: { ...modal.form, [k]: e.target.value } })} />

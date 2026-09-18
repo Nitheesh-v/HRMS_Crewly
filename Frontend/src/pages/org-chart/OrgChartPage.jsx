@@ -1,11 +1,12 @@
 // ============================================================
-// 🌳 ORGANIZATION STRUCTURE — recursive tree (v2)
+// ORGANIZATION STRUCTURE — recursive tree (v2)
 // Data: GET /api/users/hierarchy → data: [rootNodes]
 // Each node: { _id, name, email, role, designation, department,
 //              employeeCode, avatarUrl, children: [...] }
 // Backend already scopes: admin/HR → whole company · others → own dept
 // ============================================================
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Building2, ChevronDown, ChevronRight, Lock, Network } from 'lucide-react';
 import api from '../../services/api';
 import useAuth from '../../hooks/useAuth';
 
@@ -56,7 +57,7 @@ const PersonNode = ({ node, depth, openMap, toggle }) => {
           </p>
           <p className="truncate text-xs text-crewly-dim">
             {node.designation || '—'}
-            {node.department ? ` · 🏬 ${node.department}` : ''}
+            {node.department ? <> · <Building2 className="inline h-3 w-3" /> {node.department}</> : null}
             {node.employeeCode ? ` · ${node.employeeCode}` : ''}
           </p>
         </div>
@@ -68,7 +69,7 @@ const PersonNode = ({ node, depth, openMap, toggle }) => {
             className="btn-ghost shrink-0 px-3 py-1.5 text-xs"
             title={open ? 'Collapse' : 'Expand'}
           >
-            {open ? '▾' : '▸'} {kids.length} report{kids.length > 1 ? 's' : ''}
+            {open ? <ChevronDown className="mr-1 inline h-3.5 w-3.5" /> : <ChevronRight className="mr-1 inline h-3.5 w-3.5" />}{kids.length} report{kids.length > 1 ? 's' : ''}
           </button>
         )}
       </div>
@@ -117,11 +118,11 @@ const OrgChartPage = () => {
       {/* header */}
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">🌳 Organization Structure</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-bold"><Network className="h-6 w-6" />Organization Structure</h1>
           <p className="mt-1 text-sm text-crewly-dim">
             {fullAccess
               ? 'Whole company view — every department.'
-              : 'Scoped view — your department only. 🔒'}
+              : <>Scoped view — your department only. <Lock className="ml-1 inline h-3.5 w-3.5" /></>}
           </p>
         </div>
         <span className="badge bg-crewly-green/15 text-crewly-green">{totalPeople} people</span>
