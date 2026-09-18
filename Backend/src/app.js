@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import env from './config/env.js';
+import { isDraining } from './config/lifecycle.js';
 import requestLogger from './middlewares/requestLogger.js';
 import { initPerfTiming, perfTiming } from './middlewares/perfTiming.js';
 import notFound from './middlewares/notFound.js';
@@ -174,6 +175,26 @@ app.use(perfTiming);
 
 app.use(requestSecurity);
 app.use(requestLogger);
+
+// Phase 32.2 — drain gate. Once THIS process begins shutting down it
+// answers 503 SHUTTING_DOWN for every business route: a load balancer
+// that missed the readiness flip (or a keep-alive socket racing the
+// close) gets a clean, standard, retry-elsewhere response instead of a
+// hanging/reset connection. Health probes stay exempt so infrastructure
+// can observe the drain truthfully. Process-local by design: API #1
+// draining never affects API #2.
+app.use((req, res, next) => {
+  if (isDraining() && !req.path.startsWith('/api/health')) {
+    return res.status(503).json({
+      statusCode: 503,
+      success: false,
+      code: 'SHUTTING_DOWN',
+      message: 'Server is shutting down. Please retry.',
+    });
+  }
+
+  next();
+});
 
 // Every backend route is mounted under /api.
 app.use('/api', routes);

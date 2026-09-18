@@ -1,5 +1,108 @@
 # PHASE 32 — PRODUCTION INFRASTRUCTURE, SCALABILITY & PERFORMANCE
 
+# 32.2 — Health, Readiness & Graceful Lifecycle
+
+Status: **32.2 implemented** (awaiting localhost acceptance). This section
+extends the 32.1 architecture record. IMPLEMENTED / TESTED / DEFERRED are
+labeled explicitly. No load balancer integration exists yet — 32.2 only
+provides the signals infrastructure will consume.
+
+## LIVENESS — `GET /api/health/live`
+
+"Is this process alive?" Always **200** `{"success":true,"status":"ok"}`
+while the process can respond. **Never checks dependencies** — Mongo,
+Redis, SMTP or storage outages must not cause orchestrator restart storms.
+No I/O (safe to poll frequently).
+
+## READINESS — `GET /api/health/ready`
+
+"Should THIS instance receive new traffic?" **200** `{"status":"ready",
+"dependencies":{"database":"up","cache":"up|degraded|disabled"}}` only when
+the process lifecycle is `READY` **and** MongoDB is connected
+(`readyState === 1`, cached state — no query). **503** `{"status":
+"unready","reason":...}` during `STARTING`, Mongo outage, or `DRAINING`.
+Redis **never** flips readiness (fail-open/degraded architecture); it is
+reported as the `cache` label only. SMTP/storage are never readiness inputs.
+
+### Dependency policy (authoritative)
+
+| Dependency | Liveness | API readiness | Rationale |
+| --- | --- | --- | --- |
+| MongoDB | never | **required** | sole authoritative business state |
+| Redis | never | never (label only: `up`/`down`/`disabled`) | optimization/coordination; degraded mode is by design |
+| BullMQ producers | never | never | outbox/reconciliation recovery exists |
+| SMTP / object storage | never | never | subsystem-scoped failures only |
+
+## LEGACY `GET /api/health` (Phase 28 contract preserved exactly)
+
+Identical to Phase 28: **always HTTP 200**, the body `status` field
+(`ok|degraded|unhealthy`) is the signal — pinned by the Phase 28
+`redisFoundation` suite. Infrastructure routing decisions MUST use
+`/api/health/ready` (proper 503 semantics); the legacy probe is for
+existing dashboards/scripts and humans only.
+
+## WORKER HEALTH (semantics; no new endpoints)
+
+The worker's health signal is the existing 28.8 ops heartbeat:
+`ONLINE` (beat ≤ TTL 60 s), `SHUTTING_DOWN` (graceful close window, 10 s
+TTL), `OFFLINE` (key expired — crash or clean exit). Classification is
+pinned by hermetic tests (`classifyWorkerState`). Workers require Redis +
+Mongo at startup (fail-fast) — API readiness semantics deliberately do NOT
+apply to workers. Worker horizontal scaling remains 32.7.
+
+## PROCESS LIFECYCLE (API)
+
+```
+STARTING ──listen──▶ READY ──SIGTERM/SIGINT──▶ DRAINING ──resources closed──▶ STOPPED
+                     ▲ markReady()              ▲ beginDrain():                exit 0
+                     (readiness 200)            readiness 503 + drain gate     (timeout → exit 1)
+```
+
+- Process-local by design (32.1 law): API #1 draining never affects API #2.
+- Graceful sequence (`utils/gracefulShutdown.js`, idempotent, bounded):
+  drain flag → `server.close()` → `closeIdleConnections()` (guarded,
+  Node ≥ 18.2) → BullMQ producers → Redis → Mongo → `markStopped` → exit 0.
+  Hard-stop timer forces `exit(1)` at `GRACEFUL_SHUTDOWN_TIMEOUT_MS`
+  (name-only env; default 10000 ms; clamped 1000–60000; commented optional
+  in `.env.example`). Repeated signals are logged and ignored; the bound
+  governs. `unhandledRejection` uses the same bounded path (exit 1).
+- Drain gate (app-level): while draining, every non-health route answers
+  **503 `SHUTTING_DOWN`** — clean retry-elsewhere for keep-alive races.
+
+## STATUS CODE SEMANTICS
+
+Liveness healthy = 200. Readiness ready = 200. Readiness not-ready = 503.
+Legacy combined probe: always 200 (Phase 28 contract). Load balancers/
+orchestrators poll `/api/health/ready` for routing and `/api/health/live`
+for restart decisions (standard HTTP semantics on the routing probe).
+
+## ROLLING DEPLOYMENT LIFECYCLE (conceptual; no LB built yet)
+
+start new instance → it turns READY → infrastructure routes to it →
+SIGTERM old instance → old instance turns unready (503) → drains bounded →
+exits → repeat. Worker replacement is identical via SIGTERM +
+SHUTTING_DOWN heartbeat → OFFLINE.
+
+## PROBES: security & performance rules
+
+Public, unauthenticated, mounted before the audit trail (no per-probe
+writes), no business queries, no Redis I/O (cached state), read-only.
+Bodies contain status labels and safe reason words only — never URIs,
+hosts, database names, worker ids, stack traces or credentials.
+
+## 32.2 — IMPLEMENTED / TESTED / DEFERRED
+
+- **Implemented:** lifecycle FSM, `/live`, `/ready`, drain gate, extracted bounded shutdown (+ timeout env),
+  `markReady` on listen, unhandledRejection cleanup, worker heartbeat
+  test pins. Tests: `npm run test:health-lifecycle` (hermetic).
+- **Deferred:** reverse-proxy/trust-proxy hardening → **32.3**;
+  distributed rate limiting → **32.4**; cache hardening → **32.6**;
+  multi-worker scaling program → **32.7**; observability/correlation →
+  **32.12**; failure injection (Mongo/Redis outage drills) → **32.14**;
+  deployment architecture/rollout → **32.15**.
+
+---
+
 # 32.1 — Production Architecture & Multi-Instance Readiness
 
 Status: **32.1 implemented** (awaiting localhost acceptance). This document is

@@ -26,6 +26,12 @@ import {
 import {
   ensurePermissions,
 } from './utils/permissionService.js';
+import {
+  markReady,
+} from './config/lifecycle.js';
+import {
+  createGracefulShutdown,
+} from './utils/gracefulShutdown.js';
 import { closeAllQueues } from './queues/queueFactory.js';
 
 const startServer = async () => {
@@ -74,6 +80,10 @@ const startServer = async () => {
     const server = app.listen(
       env.PORT,
       () => {
+        // Phase 32.2 — startup complete: this instance now reports
+        // READY to /api/health/ready (infrastructure may route traffic).
+        markReady();
+
         logger.info(
           `🚀 Crewly HRMS API running in ${env.NODE_ENV} mode on port ${env.PORT}`
         );
@@ -83,61 +93,25 @@ const startServer = async () => {
     // Start the daily subscription lifecycle worker.
     startSubscriptionLifecycle();
 
-    let shuttingDown = false;
+    // Phase 32.2 — graceful lifecycle: drain first (readiness 503 +
+    // app-level gate), bounded close of HTTP + owned resources.
+    // Idempotent across repeated signals; SIGINT (local Ctrl+C) uses
+    // the identical safe path.
+    const shutdown = createGracefulShutdown({
+      server,
 
-    const shutdown = (
-      signal
-    ) => {
-      if (shuttingDown) return;
-      shuttingDown = true;
+      closeQueues: closeAllQueues,
 
-      logger.info(
-        `${signal} received. Shutting down gracefully...`
-      );
+      closeRedis,
 
-      // Hard stop so shutdown can never hang the process.
-      const hardStop = setTimeout(
-        () => {
-          logger.error(
-            'Graceful shutdown timed out after 10s — forcing exit.'
-          );
-          process.exit(1);
-        },
-        10000
-      );
-      hardStop.unref();
-
-      server.close(async () => {
-        logger.info(
-          'HTTP server closed.'
-        );
-
-        // Phase 28.3/28.4 — the API opens producer-side queues
-        // (email + processing dispatch). Close BullMQ queues first,
-        // then the shared 28.1 client. Safe when Redis is disabled.
-        await closeAllQueues().catch(() => {});
-        await closeRedis();
-
-        await mongoose.disconnect().catch(() => {});
-        clearTimeout(hardStop);
-
-        logger.info(
-          'Databases closed. Bye.'
-        );
-
-        process.exit(0);
-      });
-    };
+      disconnectMongo: () => mongoose.disconnect(),
+    });
 
     [
       'SIGTERM',
       'SIGINT',
     ].forEach((signal) => {
-      process.on(
-        signal,
-        () =>
-          shutdown(signal)
-      );
+      process.on(signal, () => shutdown(signal));
     });
 
     process.on(
@@ -147,9 +121,9 @@ const startServer = async () => {
           `Unhandled Rejection: ${reason}`
         );
 
-        server.close(() => {
-          process.exit(1);
-        });
+        // Same bounded drain path as a signal — owned resources are
+        // closed instead of abandoned (exit code 1: failure).
+        shutdown('unhandledRejection');
       }
     );
   } catch (error) {
