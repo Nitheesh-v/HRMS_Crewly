@@ -125,7 +125,7 @@ const NAV_ICON_BY_PATH = {
 
 /*
  * Removes the existing emoji prefix from labels.
- * Example: "🏠 Dashboard" becomes "Dashboard".
+ * Example: "Dashboard" stays "Dashboard" (no emoji prefixes).
  */
 const cleanNavLabel = (label = "") =>
   String(label).replace(/^[^A-Za-z0-9]+/, "").trim();

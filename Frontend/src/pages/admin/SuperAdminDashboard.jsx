@@ -1,9 +1,10 @@
 // ============================================================
-// 👑 SUPER ADMIN DASHBOARD — live platform control center
+// SUPER ADMIN DASHBOARD — live platform control center
 // Standalone page (no tenant sidebar) — super admin has no company.
 // Data: GET /admin-api/overview + /companies + /revenue
 // ============================================================
 import { useCallback, useEffect, useState } from 'react';
+import { Ban, Building2, Gem, Hourglass, Landmark, RefreshCw, TrendingUp } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import useAuth from '../../hooks/useAuth.jsx';
 import adminService from '../../services/adminService';
@@ -70,7 +71,7 @@ const SuperAdminDashboard = () => {
   const toggleStatus = async (c) => {
     const next = c.status === 'SUSPENDED' ? 'ACTIVE' : 'SUSPENDED';
     const ok = window.confirm(
-      `${next === 'SUSPENDED' ? '⛔ Suspend' : '✅ Activate'} ${c.name}?\n\n` +
+      `${next === 'SUSPENDED' ? 'Suspend' : 'Activate'} ${c.name}?\n\n` +
       (next === 'SUSPENDED'
         ? 'Every user of this company will be blocked from logging in.'
         : 'Users of this company will be able to log in again.')
@@ -107,7 +108,7 @@ const SuperAdminDashboard = () => {
         </span>
         <div className="flex items-center gap-4">
           <button className="btn-ghost px-4 py-2 text-sm" onClick={() => load()} disabled={loading}>
-            {loading ? 'Refreshing…' : '🔄 Refresh'}
+            {loading ? 'Refreshing…' : <><RefreshCw className="mr-1 inline h-4 w-4" />Refresh</>}
           </button>
           <span className="text-sm text-crewly-dim">
             {user?.name} <span className="badge bg-crewly-orange/15 text-crewly-orange">SUPER ADMIN</span>
@@ -140,17 +141,17 @@ const SuperAdminDashboard = () => {
           <>
             {/* ── Headline stats ─────────────────────────────────── */}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-              <StatCard icon="🏢" label="Companies" value={overview?.totalCompanies ?? 0} />
-              <StatCard icon="⏳" label="On Trial" value={overview?.trialing ?? 0} accent="text-crewly-dim" />
-              <StatCard icon="💎" label="Paying" value={overview?.activePaid ?? 0} accent="text-crewly-green" />
-              <StatCard icon="⛔" label="Suspended" value={overview?.suspended ?? 0} accent="text-crewly-red" />
-              <StatCard icon="💰" label="Live MRR" value={money(overview?.mrr ?? 0)} accent="text-crewly-green" />
+              <StatCard icon={<Building2 className="h-7 w-7" />} label="Companies" value={overview?.totalCompanies ?? 0} />
+              <StatCard icon={<Hourglass className="h-7 w-7" />} label="On Trial" value={overview?.trialing ?? 0} accent="text-crewly-dim" />
+              <StatCard icon={<Gem className="h-7 w-7" />} label="Paying" value={overview?.activePaid ?? 0} accent="text-crewly-green" />
+              <StatCard icon={<Ban className="h-7 w-7" />} label="Suspended" value={overview?.suspended ?? 0} accent="text-crewly-red" />
+              <StatCard icon={<Landmark className="h-7 w-7" />} label="Live MRR" value={money(overview?.mrr ?? 0)} accent="text-crewly-green" />
             </div>
 
             {/* ── Revenue chart ──────────────────────────────────── */}
             <section className="card mt-6">
               <div className="mb-4 flex items-center justify-between">
-                <h2 className="font-semibold">📈 Revenue — last 12 months</h2>
+                <h2 className="flex items-center gap-2 font-semibold"><TrendingUp className="h-4 w-4" />Revenue — last 12 months</h2>
                 <span className="text-xs text-crewly-dim">Total {money(totalRev)}</span>
               </div>
               <div className="flex h-44 items-end gap-2">
@@ -171,7 +172,7 @@ const SuperAdminDashboard = () => {
             {/* ── Companies table ────────────────────────────────── */}
             <section className="card mt-6 overflow-hidden p-0">
               <div className="flex items-center justify-between px-5 py-4">
-                <h2 className="font-semibold">🏢 Customer Companies</h2>
+                <h2 className="flex items-center gap-2 font-semibold"><Building2 className="h-4 w-4" />Customer Companies</h2>
                 <span className="text-xs text-crewly-dim">{companies.length} total</span>
               </div>
               <div className="overflow-x-auto">

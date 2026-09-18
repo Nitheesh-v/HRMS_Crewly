@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Check, ScrollText, ShieldCheck } from 'lucide-react';
 import systemService from '../../services/systemService';
 import { ROLES, roleLabel } from '../../utils/roles';
 
@@ -49,14 +50,14 @@ export default function GovernancePage() {
   return (
     <div className="p-6 space-y-5">
       <div>
-        <h1 className="text-xl font-bold">🛡️ Governance</h1>
+        <h1 className="flex items-center gap-2 text-xl font-bold"><ShieldCheck className="h-5 w-5" />Governance</h1>
         <p className="text-sm text-crewly-dim">Who did what, when — and what every role is allowed to do.</p>
       </div>
 
       {error && <div className="card px-4 py-3 text-sm text-crewly-red">{error}</div>}
 
       <div className="flex gap-2">
-        {[['audit', '📜 Audit Logs'], ['matrix', '🔐 Role Permissions']].map(([key, label]) => (
+        {[['audit', <><ScrollText className="mr-1 inline h-4 w-4" />Audit Logs</>], ['matrix', <><ShieldCheck className="mr-1 inline h-4 w-4" />Role Permissions</>]].map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)}
             className={`rounded-lg px-4 py-2 text-sm transition ${tab === key ? 'bg-crewly-green/15 text-crewly-green' : 'border border-crewly-border text-crewly-dim hover:text-crewly-text'}`}>
             {label}
@@ -72,8 +73,8 @@ export default function GovernancePage() {
               value={search} onChange={(e) => { setPage(1); setSearch(e.target.value); }} />
             <select className="input" value={status} onChange={(e) => { setPage(1); setStatus(e.target.value); }}>
               <option value="">All results</option>
-              <option value="success">✅ Success only</option>
-              <option value="failed">❌ Failed only</option>
+              <option value="success">Success only</option>
+              <option value="failed">Failed only</option>
             </select>
           </div>
 
@@ -137,7 +138,7 @@ export default function GovernancePage() {
                   <td className="px-4 py-3">{row.feature}</td>
                   {ROLE_COLS.map((r) => (
                     <td key={r} className="px-4 py-3 text-center">
-                      {row.roles.includes(r) ? '✅' : <span className="text-crewly-dim">—</span>}
+                      {row.roles.includes(r) ? <Check className="mx-auto h-4 w-4 text-crewly-green" /> : <span className="text-crewly-dim">—</span>}
                     </td>
                   ))}
                 </tr>

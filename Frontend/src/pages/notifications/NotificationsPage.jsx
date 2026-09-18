@@ -1,6 +1,7 @@
-// 🔔 NOTIFICATIONS — full history (the bell shows recent; this is everything)
+// NOTIFICATIONS — full history (the bell shows recent; this is everything)
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Bell, Check } from 'lucide-react';
 import systemService from '../../services/systemService';
 
 const errMsg = (err, fb) => err?.response?.data?.message || err?.data?.message || err?.message || fb;
@@ -40,10 +41,10 @@ const NotificationsPage = () => {
     <div className="max-w-3xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">🔔 Notifications</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-bold"><Bell className="h-6 w-6 text-crewly-green" />Notifications</h1>
           <p className="mt-1 text-sm text-crewly-dim">{unread ? `${unread} unread` : 'All caught up!'}</p>
         </div>
-        {unread > 0 && <button className="btn-ghost px-4 py-2 text-sm" onClick={markAll}>✓ Mark all read</button>}
+        {unread > 0 && <button className="btn-ghost px-4 py-2 text-sm" onClick={markAll}><Check className="mr-1 inline h-4 w-4" />Mark all read</button>}
       </div>
 
       {error && <div className="mt-4 rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">{error}</div>}

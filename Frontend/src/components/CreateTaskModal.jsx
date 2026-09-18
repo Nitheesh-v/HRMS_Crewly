@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
+import { FileText, Users, X } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import api from '../services/api';
 import { listProjects, createTask, arr } from '../services/workService.js';
 
-// 🎨 dark-theme input (all fields share this one constant — edit here to recolor everything)
+// dark-theme input (all fields share this one constant — edit here to recolor everything)
 const inp = 'w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-1.5 text-sm text-slate-100 placeholder-slate-500 outline-none focus:border-indigo-400';
 
 export default function CreateTaskModal({ presetProjectId = '', onClose, onCreated }) {
@@ -57,8 +58,8 @@ export default function CreateTaskModal({ presetProjectId = '', onClose, onCreat
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
       <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-800 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-slate-700 px-6 py-4">
-          <h2 className="text-lg font-bold text-slate-100">📝 Create Task</h2>
-          <button onClick={onClose} className="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-700 hover:text-slate-200">✖</button>
+          <h2 className="flex items-center gap-2 text-lg font-bold text-slate-100"><FileText className="h-5 w-5" />Create Task</h2>
+          <button onClick={onClose} title="Close" className="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-700 hover:text-slate-200"><X className="h-4 w-4" /></button>
         </div>
 
         <div className="flex-1 space-y-3 overflow-y-auto px-6 py-4">
@@ -86,7 +87,7 @@ export default function CreateTaskModal({ presetProjectId = '', onClose, onCreat
             <div className="mb-1 flex items-center justify-between">
               <p className="text-xs font-semibold uppercase text-slate-400">Assign to ({assignees.length})</p>
               <div className="flex gap-2 text-xs font-semibold">
-                <button type="button" onClick={() => setAssignees(pickable.map((u) => u._id))} className="text-indigo-400 hover:underline">👥 Select whole team</button>
+                <button type="button" onClick={() => setAssignees(pickable.map((u) => u._id))} className="text-indigo-400 hover:underline"><Users className="mr-1 inline h-3.5 w-3.5" />Select whole team</button>
                 <button type="button" onClick={() => setAssignees([])} className="text-slate-400 hover:underline">Clear</button>
               </div>
             </div>

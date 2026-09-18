@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Bell } from 'lucide-react';
 import systemService from '../services/systemService';
 
 const timeAgo = (d) => {
@@ -68,7 +69,7 @@ export default function NotificationBell() {
   return (
     <div className="relative" ref={boxRef}>
       <button onClick={toggle} className="relative rounded-lg p-2 text-crewly-dim hover:text-crewly-text" title="Notifications">
-        🔔
+        <Bell className="h-5 w-5" />
         {count > 0 && (
           <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-crewly-red px-1 text-[10px] font-bold text-white">
             {count > 99 ? '99+' : count}
@@ -79,7 +80,7 @@ export default function NotificationBell() {
       {open && (
         <div className="card absolute right-0 z-50 mt-2 w-80 max-h-96 overflow-y-auto p-2 shadow-xl">
           <div className="flex items-center justify-between px-2 py-1">
-            <span className="text-xs font-semibold">🔔 Notifications</span>
+            <span className="flex items-center gap-1.5 text-xs font-semibold"><Bell className="h-3.5 w-3.5" />Notifications</span>
             {count > 0 && (
               <button className="text-[11px] text-crewly-green hover:underline" onClick={markAll}>Mark all read</button>
             )}

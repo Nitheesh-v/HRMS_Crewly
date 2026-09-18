@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Check, CheckCircle2, FileText, X } from 'lucide-react';
 import leaveService from '../../services/leaveService.js';
 import Modal from '../../components/Modal.jsx';
 import { ROLE_STYLES, roleLabel } from '../../utils/roles.js';
@@ -42,7 +43,7 @@ const LeaveApprovalsPage = () => {
 
   return (
     <div className="space-y-5">
-      <h1 className="text-2xl font-bold">✅ Leave Approvals</h1>
+      <h1 className="flex items-center gap-2 text-2xl font-bold"><CheckCircle2 className="h-6 w-6 text-crewly-green" />Leave Approvals</h1>
 
       {error && <div className="rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">{error}</div>}
 
@@ -73,17 +74,17 @@ const LeaveApprovalsPage = () => {
                 <div className="mt-1 text-sm text-crewly-dim">"{l.reason}"</div>
               </div>
               <div className="flex gap-2">
-                <button className="btn-primary px-4 py-2 text-sm" onClick={() => { setDeciding({ leave: l, action: 'APPROVE' }); setNote(''); }}>
-                  ✓ Approve
+                <button className="btn-primary flex items-center gap-1 px-4 py-2 text-sm" onClick={() => { setDeciding({ leave: l, action: 'APPROVE' }); setNote(''); }}>
+                  <Check className="h-4 w-4" />Approve
                 </button>
                 <button className="rounded-lg border border-crewly-red/40 px-4 py-2 text-sm text-crewly-red hover:bg-crewly-red/10"
                   onClick={() => { setDeciding({ leave: l, action: 'REJECT' }); setNote(''); }}>
-                  ✕ Reject
+                  <X className="mr-1 inline h-4 w-4" />Reject
                 </button>
               </div>
             </div>
           ))}
-          {pending.length === 0 && <div className="card py-10 text-center text-crewly-dim">🎉 No pending requests — queue is clear.</div>}
+          {pending.length === 0 && <div className="card py-10 text-center text-crewly-dim">No pending requests — queue is clear.</div>}
         </div>
       )}
 
@@ -111,7 +112,7 @@ const LeaveApprovalsPage = () => {
                   <td className="px-5 py-3"><span className={`badge ${STATUS_STYLE[l.status]}`}>{l.status}</span></td>
                   <td className="px-5 py-3 text-crewly-dim">
                     {l.approver?.name || '—'}
-                    {l.approverNote && <div className="text-xs">📝 {l.approverNote}</div>}
+                    {l.approverNote && <div className="flex items-center gap-1 text-xs"><FileText className="h-3 w-3 shrink-0" />{l.approverNote}</div>}
                   </td>
                 </tr>
               ))}
@@ -126,7 +127,7 @@ const LeaveApprovalsPage = () => {
       {/* DECIDE MODAL */}
       {deciding && (
         <Modal
-          title={`${deciding.action === 'APPROVE' ? '✓ Approve' : '✕ Reject'} — ${deciding.leave.user?.name}`}
+          title={`${deciding.action === 'APPROVE' ? 'Approve' : 'Reject'} — ${deciding.leave.user?.name}`}
           onClose={() => setDeciding(null)}
         >
           <div className="space-y-3">

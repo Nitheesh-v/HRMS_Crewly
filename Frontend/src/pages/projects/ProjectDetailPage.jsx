@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { AlertTriangle, CalendarDays, Pencil, Trash2, User, Users, X } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import api from '../../services/api';
@@ -76,8 +77,8 @@ const EditProjectModal = ({ project, isAdmin, onClose, onSaved }) => {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
       <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-800 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-slate-700 px-6 py-4">
-          <h2 className="text-lg font-bold text-slate-100">✏️ Manage Project</h2>
-          <button onClick={onClose} className="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-700 hover:text-slate-200">✖</button>
+          <h2 className="flex items-center gap-2 text-lg font-bold text-slate-100"><Pencil className="h-5 w-5" />Manage Project</h2>
+          <button onClick={onClose} title="Close" className="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-700 hover:text-slate-200"><X className="h-4 w-4" /></button>
         </div>
 
         <div className="flex-1 space-y-3 overflow-y-auto px-6 py-4">
@@ -108,7 +109,7 @@ const EditProjectModal = ({ project, isAdmin, onClose, onSaved }) => {
 
           {isAdmin && (
             <div>
-              <p className="mb-1 text-xs font-semibold uppercase text-slate-400">👤 Project Manager</p>
+              <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase text-slate-400"><User className="h-3.5 w-3.5" />Project Manager</p>
               <select className={inp} value={form.managerId} onChange={set('managerId')}>
                 {users.filter((u) => ['MANAGER', 'COMPANY_ADMIN', 'HR_MANAGER'].includes(u.role)).map((u) => (
                   <option key={u._id} value={u._id}>{u.name} · {u.designation || u.role}</option>
@@ -118,7 +119,7 @@ const EditProjectModal = ({ project, isAdmin, onClose, onSaved }) => {
           )}
 
           <div>
-            <p className="mb-1 text-xs font-semibold uppercase text-slate-400">🧑‍🤝‍🧑 Team Leads ({teamLeads.length})</p>
+            <p className="mb-1 text-xs font-semibold uppercase text-slate-400">Team Leads ({teamLeads.length})</p>
             <div className="max-h-32 overflow-y-auto rounded-xl border border-slate-700">
               {tlCandidates.length === 0 && <p className="px-3 py-2 text-xs text-slate-500">No Team Leads in your department yet.</p>}
               {tlCandidates.map((u) => (
@@ -128,7 +129,7 @@ const EditProjectModal = ({ project, isAdmin, onClose, onSaved }) => {
                 </label>
               ))}
             </div>
-            <p className="mt-1 text-xs text-slate-500">Team Leads get a 🔔 and become the task-assigners for their teams.</p>
+            <p className="mt-1 text-xs text-slate-500">Team Leads get notified and become the task-assigners for their teams.</p>
           </div>
 
           <div>
@@ -225,10 +226,10 @@ export default function ProjectDetailPage() {
             </div>
             {project.description && <p className="mt-2 max-w-2xl text-sm text-slate-400">{project.description}</p>}
             <p className="mt-2 text-xs text-slate-400">
-              👤 Manager: <b className="text-slate-200">{project.manager?.name || '—'}</b>
-              {tlCount > 0 && <> · 🧑‍🤝‍🧑 TL: <b className="text-slate-200">{project.teamLeads.map((t) => t.name).join(', ')}</b></>}
-              {' '}· 📅 {fmtDate(project.startDate) || '—'} → {fmtDate(project.endDate) || '—'}
-              {' '}· 👥 {project.members?.length || 0} members
+              <User className="mr-1 inline h-3.5 w-3.5" />Manager: <b className="text-slate-200">{project.manager?.name || '—'}</b>
+              {tlCount > 0 && <> · <Users className="mr-1 inline h-3.5 w-3.5" />TL: <b className="text-slate-200">{project.teamLeads.map((t) => t.name).join(', ')}</b></>}
+              {' '}· <CalendarDays className="mr-1 inline h-3.5 w-3.5" />{fmtDate(project.startDate) || '—'} → {fmtDate(project.endDate) || '—'}
+              {' '}· <Users className="mr-1 inline h-3.5 w-3.5" />{project.members?.length || 0} members
             </p>
           </div>
 
@@ -241,15 +242,15 @@ export default function ProjectDetailPage() {
               )}
               {canEdit && (
                 <button onClick={() => setShowEdit(true)} className="rounded-xl bg-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-600">
-                  ✏️ Manage
+                  <Pencil className="mr-1 inline h-3.5 w-3.5" />Manage
                 </button>
               )}
             </div>
             {managerBlocked && (
-              <p className="max-w-[220px] text-right text-xs text-slate-500">🧑‍🤝‍🧑 Team Leads assign tasks here — you monitor 📊</p>
+              <p className="max-w-[220px] text-right text-xs text-slate-500">Team Leads assign tasks here — you monitor</p>
             )}
             {isAdmin && (
-              <button onClick={remove} className="text-xs font-semibold text-red-400 hover:text-red-300">🗑 Delete project</button>
+              <button onClick={remove} className="text-xs font-semibold text-red-400 hover:text-red-300"><Trash2 className="mr-1 inline h-3.5 w-3.5" />Delete project</button>
             )}
           </div>
         </div>
@@ -260,7 +261,7 @@ export default function ProjectDetailPage() {
             <span>
               {stats.done || 0}/{stats.total || 0} completed
               {stats.inReview ? ` · ${stats.inReview} in review` : ''}
-              {stats.blocked ? ` · 🚧 ${stats.blocked} blocked` : ''}
+              {stats.blocked ? ` · ${stats.blocked} blocked` : ''}
             </span>
             <span className="font-bold text-slate-200">{progress}%</span>
           </div>
@@ -293,14 +294,14 @@ export default function ProjectDetailPage() {
                       <span className={`rounded-full px-1.5 py-0.5 font-semibold ${PRIORITY_META[t.priority] || ''}`}>{t.priority}</span>
                       {t.dueDate && (
                         <span className={isOverdue(t) ? 'font-bold text-red-400' : 'text-slate-400'}>
-                          📅 {fmtDate(t.dueDate)}{isOverdue(t) ? ' ⚠️' : ''}
+                          <CalendarDays className="mr-1 inline h-3 w-3" />{fmtDate(t.dueDate)}{isOverdue(t) ? <AlertTriangle className="ml-1 inline h-3 w-3" /> : null}
                         </span>
                       )}
                     </div>
                     <p className="mt-1.5 flex items-center gap-1 text-xs text-slate-400">
                       {t.assignedTo?.avatarUrl
                         ? <img src={t.assignedTo.avatarUrl} alt="" className="h-4 w-4 rounded-full object-cover" />
-                        : '👤'}
+                        : <User className="h-4 w-4 rounded-full bg-slate-700 p-0.5 text-slate-400" />}
                       {t.assignedTo?.name || '—'}
                     </p>
                   </div>

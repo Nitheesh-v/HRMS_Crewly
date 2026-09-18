@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Building2, KeyRound, Landmark, Pencil, Users } from 'lucide-react';
 import api from '../../services/api';
 import Modal from '../../components/Modal';
 import useAuth from '../../hooks/useAuth';
@@ -144,14 +145,14 @@ export default function UsersPage() {
         payload.email = form.email.trim();
         payload.password = form.password;
         await api.post('/users', payload);
-        flash('success', `User ${payload.name} created 🎉`);
+        flash('success', `User ${payload.name} created`);
       } else {
         const u = modal.user;
         const isSelf = String(u._id) === myId;
         if (isSelf) delete payload.role;                             // never change your own role
         if (!isSelf && manages(u.role)) payload.status = form.status; // status only when allowed
         await api.patch(`/users/${u._id}`, payload);
-        flash('success', 'User updated ✅');
+        flash('success', 'User updated');
       }
       setModal({ open: false, mode: 'create', user: null });
       loadUsers();
@@ -169,7 +170,7 @@ export default function UsersPage() {
     setPwSaving(true);
     try {
       await api.post(`/users/${pwModal.user._id}/reset-password`, { newPassword: pwModal.password });
-      flash('success', `Password reset for ${pwModal.user.name} 🔑`);
+      flash('success', `Password reset for ${pwModal.user.name}`);
       setPwModal({ open: false, user: null, password: '', confirm: '' });
     } catch (err) {
       flash('error', errText(err));
@@ -187,7 +188,7 @@ export default function UsersPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold">👥 User Management</h1>
+          <h1 className="flex items-center gap-2 text-xl font-bold"><Users className="h-5 w-5" />User Management</h1>
           <p className="text-sm text-crewly-dim">{meta.total} people in your company</p>
         </div>
         {creatable.length > 0 && (
@@ -261,10 +262,10 @@ export default function UsersPage() {
                 </td>
                 <td className="p-3 text-right space-x-2">
                   {(manages(u.role) || String(u._id) === myId) && (
-                    <button className="btn-ghost text-xs" onClick={() => openEdit(u)}>✏️ Edit</button>
+                    <button className="btn-ghost text-xs" onClick={() => openEdit(u)}><Pencil className="mr-1 inline h-3 w-3" />Edit</button>
                   )}
                   {manages(u.role) && String(u._id) !== myId && (
-                    <button className="btn-ghost text-xs" onClick={() => setPwModal({ open: true, user: u, password: '', confirm: '' })}>🔑 Reset PW</button>
+                    <button className="btn-ghost text-xs" onClick={() => setPwModal({ open: true, user: u, password: '', confirm: '' })}><KeyRound className="mr-1 inline h-3 w-3" />Reset PW</button>
                   )}
                 </td>
               </tr>
@@ -287,10 +288,10 @@ export default function UsersPage() {
           the footer buttons stay pinned & visible at the bottom. */}
       {modal.open && (
         <Modal onClose={() => setModal({ open: false, mode: 'create', user: null })}
-          title={modal.mode === 'create' ? '➕ Add User' : `✏️ Edit ${modal.user?.name}`}>
+          title={modal.mode === 'create' ? 'Add User' : `Edit ${modal.user?.name}`}>
           <form onSubmit={submit} className="flex flex-col max-h-[70vh]">
 
-            {/* ↕ scrollable fields area */}
+            {/* scrollable fields area */}
             <div className="space-y-5 overflow-y-auto pr-2 flex-1 min-h-0">
               {/* basic */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -322,7 +323,7 @@ export default function UsersPage() {
 
               {/* organization */}
               <div>
-                <p className="text-xs font-semibold text-crewly-dim mb-2">🏗️ ORGANIZATION</p>
+                <p className="text-xs font-semibold text-crewly-dim mb-2 flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5" />ORGANIZATION</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="label">Department</label>
@@ -354,7 +355,7 @@ export default function UsersPage() {
 
               {/* payroll & statutory */}
               <div>
-                <p className="text-xs font-semibold text-crewly-dim mb-1">💰 PAYROLL &amp; STATUTORY <span className="font-normal">(optional — printed on payslips)</span></p>
+                <p className="text-xs font-semibold text-crewly-dim mb-1 flex items-center gap-1.5"><Landmark className="h-3.5 w-3.5" />PAYROLL &amp; STATUTORY <span className="font-normal">(optional — printed on payslips)</span></p>
                 <p className="text-[11px] text-crewly-dim mb-2">
                   Real formats required → PAN <b>ABCDE1234F</b> · UAN <b>12 digits</b> · IFSC like <b>KKBK0008655</b> (4th char is the digit 0)
                 </p>
@@ -399,7 +400,7 @@ export default function UsersPage() {
               </div>
             </div>
 
-            {/* 📌 pinned footer — always visible */}
+            {/* pinned footer — always visible */}
             <div className="flex justify-end gap-2 pt-3">
               <button type="button" className="btn-ghost" onClick={() => setModal({ open: false, mode: 'create', user: null })}>Cancel</button>
               <button type="submit" className="btn-primary" disabled={saving}>
@@ -413,7 +414,7 @@ export default function UsersPage() {
       {/* ── Reset password modal (short — no scroll needed) ── */}
       {pwModal.open && (
         <Modal onClose={() => setPwModal({ open: false, user: null, password: '', confirm: '' })}
-          title={`🔑 Reset Password — ${pwModal.user?.name}`}>
+          title={`Reset Password — ${pwModal.user?.name}`}>
           <form onSubmit={submitPassword} className="space-y-4">
             <div>
               <label className="label">New Password</label>

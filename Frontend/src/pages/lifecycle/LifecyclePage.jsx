@@ -1,8 +1,9 @@
 // ============================================================
-// 🧬 Employee Lifecycle (Phase 15)
+// Employee Lifecycle (Phase 15)
 // HR: stage console + promote/transfer · Employee: journey + timeline
 // ============================================================
 import React, { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, Briefcase, Check, CheckCircle2, Dna, DoorOpen, FileText, GraduationCap, History, Hourglass, Inbox, PartyPopper, Repeat, Rocket } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import {
   getMyJourney, getCompanyLifecycles, getUserJourney,
@@ -13,20 +14,24 @@ const inp = 'w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
 
 const STAGE_META = {
-  PRE_JOINING: { label: 'Pre-joining', emoji: '📨', cls: 'bg-sky-400/15 text-sky-300' },
-  ONBOARDING: { label: 'Onboarding', emoji: '🧳', cls: 'bg-indigo-400/15 text-indigo-300' },
-  PROBATION: { label: 'Probation', emoji: '⏳', cls: 'bg-amber-400/15 text-amber-300' },
-  CONFIRMED: { label: 'Confirmed', emoji: '✅', cls: 'bg-emerald-400/15 text-emerald-300' },
-  NOTICE_PERIOD: { label: 'Notice period', emoji: '📄', cls: 'bg-orange-400/15 text-orange-300' },
-  EXITED: { label: 'Exited', emoji: '🚪', cls: 'bg-red-400/15 text-red-300' },
-  ALUMNI: { label: 'Alumni', emoji: '🎓', cls: 'bg-purple-400/15 text-purple-300' },
+  PRE_JOINING: { label: 'Pre-joining', Icon: Inbox, cls: 'bg-sky-400/15 text-sky-300' },
+  ONBOARDING: { label: 'Onboarding', Icon: Briefcase, cls: 'bg-indigo-400/15 text-indigo-300' },
+  PROBATION: { label: 'Probation', Icon: Hourglass, cls: 'bg-amber-400/15 text-amber-300' },
+  CONFIRMED: { label: 'Confirmed', Icon: CheckCircle2, cls: 'bg-emerald-400/15 text-emerald-300' },
+  NOTICE_PERIOD: { label: 'Notice period', Icon: FileText, cls: 'bg-orange-400/15 text-orange-300' },
+  EXITED: { label: 'Exited', Icon: DoorOpen, cls: 'bg-red-400/15 text-red-300' },
+  ALUMNI: { label: 'Alumni', Icon: GraduationCap, cls: 'bg-purple-400/15 text-purple-300' },
 };
 const STEPPER = ['ONBOARDING', 'PROBATION', 'CONFIRMED', 'NOTICE_PERIOD', 'EXITED', 'ALUMNI'];
-const EVENT_EMOJI = { PROMOTED: '🚀', TRANSFERRED: '🔄', JOINED: '🤝', CONFIRMED: '🎉' };
+const EVENT_ICONS = { PROMOTED: Rocket, TRANSFERRED: Repeat, JOINED: Inbox, CONFIRMED: PartyPopper };
+const EventIcon = ({ type }) => {
+  const Icon = EVENT_ICONS[type];
+  return Icon ? <Icon className="mr-1.5 inline h-4 w-4 text-slate-400" /> : null;
+};
 
 const StageBadge = ({ stage }) => {
   const m = STAGE_META[stage] || STAGE_META.CONFIRMED;
-  return <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${m.cls}`}>{m.emoji} {m.label}</span>;
+  return <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${m.cls}`}><m.Icon className="mr-1 inline h-3 w-3" />{m.label}</span>;
 };
 
 const Stepper = ({ stage }) => {
@@ -47,7 +52,7 @@ const Stepper = ({ stage }) => {
                 : done ? 'border-emerald-400/50 bg-emerald-500/10' : 'border-slate-600 bg-slate-800/60 opacity-50'
               }`}
             >
-              {done ? '✓' : m.emoji}
+              {done ? <Check className="h-4 w-4 text-emerald-300" /> : <m.Icon className="h-4 w-4" />}
             </span>
           </React.Fragment>
         );
@@ -62,7 +67,7 @@ const Timeline = ({ events = [] }) => (
     {[...events].sort((a, b) => new Date(b.at) - new Date(a.at)).map((e) => (
       <div key={e._id} className="relative border-l-2 border-slate-700 pb-4 pl-5">
         <span className="absolute -left-[9px] top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-slate-700 text-[10px]" />
-        <p className="text-sm font-semibold text-slate-100">{EVENT_EMOJI[e.type] ? `${EVENT_EMOJI[e.type]} ` : ''}{e.title}</p>
+        <p className="text-sm font-semibold text-slate-100"><EventIcon type={e.type} />{e.title}</p>
         {e.note ? <p className="text-xs text-slate-400">"{e.note}"</p> : null}
         <p className="text-[11px] text-slate-500">{fmtDate(e.at)}{e.by?.name ? ` · by ${e.by.name}` : ''}</p>
       </div>
@@ -85,16 +90,16 @@ const JourneyCard = ({ journey, actionsSlot }) => {
         </div>
         <Stepper stage={journey.stage} />
         <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-400 sm:grid-cols-3">
-          {journey.probationEndsOn && <p>⏳ Probation ends: <span className="text-slate-200">{fmtDate(journey.probationEndsOn)}</span></p>}
-          {journey.confirmedOn && <p>✅ Confirmed: <span className="text-slate-200">{fmtDate(journey.confirmedOn)}</span></p>}
-          {journey.noticeEndsOn && <p>📄 Notice ends: <span className="text-slate-200">{fmtDate(journey.noticeEndsOn)}</span></p>}
-          {journey.exitedOn && <p>🚪 Exited: <span className="text-slate-200">{fmtDate(journey.exitedOn)}</span></p>}
-          {journey.alumniSince && <p>🎓 Alumni since: <span className="text-slate-200">{fmtDate(journey.alumniSince)}</span></p>}
+          {journey.probationEndsOn && <p><Hourglass className="mr-1 inline h-3 w-3" />Probation ends: <span className="text-slate-200">{fmtDate(journey.probationEndsOn)}</span></p>}
+          {journey.confirmedOn && <p><CheckCircle2 className="mr-1 inline h-3 w-3" />Confirmed: <span className="text-slate-200">{fmtDate(journey.confirmedOn)}</span></p>}
+          {journey.noticeEndsOn && <p><FileText className="mr-1 inline h-3 w-3" />Notice ends: <span className="text-slate-200">{fmtDate(journey.noticeEndsOn)}</span></p>}
+          {journey.exitedOn && <p><DoorOpen className="mr-1 inline h-3 w-3" />Exited: <span className="text-slate-200">{fmtDate(journey.exitedOn)}</span></p>}
+          {journey.alumniSince && <p><GraduationCap className="mr-1 inline h-3 w-3" />Alumni since: <span className="text-slate-200">{fmtDate(journey.alumniSince)}</span></p>}
         </div>
       </div>
       {actionsSlot}
       <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">
-        <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-300">🕓 Timeline</h3>
+        <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-300"><History className="mr-1 inline h-4 w-4" />Timeline</h3>
         <Timeline events={journey.events} />
       </div>
     </div>
@@ -148,7 +153,7 @@ export default function LifecyclePage() {
       setJourney((data?.data ?? data) || journey);
       setAction(null);
       setForm({ note: '', probationMonths: 3, noticeDays: 30, designation: '', role: '', departmentId: '' });
-      flash(true, 'Done ✅ — employee notified 🔔');
+      flash(true, 'Done — employee notified');
       loadList();
     } catch (e) {
       flash(false, e?.response?.data?.message || 'Action failed');
@@ -160,16 +165,16 @@ export default function LifecyclePage() {
     if (!journey) return [];
     const s = journey.stage;
     const A = [];
-    if (['ONBOARDING', 'CONFIRMED'].includes(s)) A.push({ id: 'probation', label: '⏳ Start probation', cls: 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25' });
-    if (['ONBOARDING', 'PROBATION'].includes(s)) A.push({ id: 'confirm', label: '🎉 Confirm employment', cls: 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25' });
-    if (s === 'PROBATION') A.push({ id: 'extend', label: '⏳ Extend probation', cls: 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25' });
+    if (['ONBOARDING', 'CONFIRMED'].includes(s)) A.push({ id: 'probation', label: 'Start probation', Icon: Hourglass, cls: 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25' });
+    if (['ONBOARDING', 'PROBATION'].includes(s)) A.push({ id: 'confirm', label: 'Confirm employment', Icon: PartyPopper, cls: 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25' });
+    if (s === 'PROBATION') A.push({ id: 'extend', label: 'Extend probation', Icon: Hourglass, cls: 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25' });
     if (['ONBOARDING', 'PROBATION', 'CONFIRMED'].includes(s)) {
-      A.push({ id: 'promote', label: '🚀 Promote', cls: 'bg-indigo-600 text-white hover:bg-indigo-500' });
-      A.push({ id: 'transfer', label: '🔄 Transfer', cls: 'bg-sky-500/15 text-sky-300 hover:bg-sky-500/25' });
-      A.push({ id: 'notice', label: '📄 Start notice', cls: 'bg-orange-500/15 text-orange-300 hover:bg-orange-500/25' });
+      A.push({ id: 'promote', label: 'Promote', Icon: Rocket, cls: 'bg-indigo-600 text-white hover:bg-indigo-500' });
+      A.push({ id: 'transfer', label: 'Transfer', Icon: Repeat, cls: 'bg-sky-500/15 text-sky-300 hover:bg-sky-500/25' });
+      A.push({ id: 'notice', label: 'Start notice', Icon: FileText, cls: 'bg-orange-500/15 text-orange-300 hover:bg-orange-500/25' });
     }
-    if (['NOTICE_PERIOD', 'ONBOARDING', 'PROBATION', 'CONFIRMED'].includes(s)) A.push({ id: 'exit', label: '🚪 Complete exit', cls: 'bg-red-500/15 text-red-300 hover:bg-red-500/25' });
-    if (s === 'EXITED') A.push({ id: 'alumni', label: '🎓 Mark alumni (FnF done)', cls: 'bg-purple-500/15 text-purple-300 hover:bg-purple-500/25' });
+    if (['NOTICE_PERIOD', 'ONBOARDING', 'PROBATION', 'CONFIRMED'].includes(s)) A.push({ id: 'exit', label: 'Complete exit', Icon: DoorOpen, cls: 'bg-red-500/15 text-red-300 hover:bg-red-500/25' });
+    if (s === 'EXITED') A.push({ id: 'alumni', label: 'Mark alumni (FnF done)', Icon: GraduationCap, cls: 'bg-purple-500/15 text-purple-300 hover:bg-purple-500/25' });
     return A;
   }, [journey]);
 
@@ -181,7 +186,7 @@ export default function LifecyclePage() {
   if (!isHR) {
     return (
       <div className="max-w-3xl space-y-5">
-        <h1 className="text-2xl font-bold text-slate-100">🧬 My Journey</h1>
+        <h1 className="text-2xl font-bold text-slate-100"><Dna className="mr-2 inline h-6 w-6 text-indigo-400" />My Journey</h1>
         {banner && <div className={`rounded-lg px-4 py-2.5 text-sm font-medium ${banner.ok ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'}`}>{banner.text}</div>}
         {journey ? <JourneyCard journey={journey} /> : <p className="rounded-xl border border-slate-700 bg-slate-800/40 p-8 text-center text-sm text-slate-400">Loading your journey…</p>}
       </div>
@@ -192,7 +197,7 @@ export default function LifecyclePage() {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-bold text-slate-100">🧬 Employee Lifecycle</h1>
+        <h1 className="text-2xl font-bold text-slate-100"><Dna className="mr-2 inline h-6 w-6 text-indigo-400" />Employee Lifecycle</h1>
         <span className="text-sm text-slate-400">{list.length} record(s)</span>
       </div>
 
@@ -200,7 +205,7 @@ export default function LifecyclePage() {
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[320px,1fr]">
         <aside className="rounded-xl border border-slate-700 bg-slate-800/60 p-3">
-          <input className={`${inp} mb-2`} placeholder="🔎 Search employees…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input className={`${inp} mb-2`} placeholder="Search employees…" value={search} onChange={(e) => setSearch(e.target.value)} />
           <select className={`${inp} mb-3`} value={stageFilter} onChange={(e) => setStageFilter(e.target.value)}>
             <option value="">All stages</option>
             {Object.entries(STAGE_META).map(([v, m]) => <option key={v} value={v}>{m.emoji} {m.label}</option>)}
@@ -229,7 +234,7 @@ export default function LifecyclePage() {
 
         <section>
           {!journey ? (
-            <p className="rounded-xl border border-slate-700 bg-slate-800/40 p-10 text-center text-sm text-slate-400">👈 Pick an employee to open their journey</p>
+            <p className="rounded-xl border border-slate-700 bg-slate-800/40 p-10 text-center text-sm text-slate-400">Pick an employee to open their journey</p>
           ) : (
             <JourneyCard
               journey={journey}
@@ -237,9 +242,9 @@ export default function LifecyclePage() {
                 <div className="flex flex-wrap gap-2 rounded-xl border border-slate-700 bg-slate-800/60 p-3">
                   <span className="mr-1 self-center text-xs font-bold uppercase tracking-wide text-slate-400">Actions:</span>
                   {actions.map((a) => (
-                    <button key={a.id} disabled={busy} onClick={() => setAction(a.id)} className={`${btn} ${a.cls}`}>{a.label}</button>
+                    <button key={a.id} disabled={busy} onClick={() => setAction(a.id)} className={`${btn} ${a.cls}`}><a.Icon className="mr-1 inline h-3.5 w-3.5" />{a.label}</button>
                   ))}
-                  {actions.length === 0 && <span className="text-xs text-slate-500">No actions available at this stage 🎓</span>}
+                  {actions.length === 0 && <span className="text-xs text-slate-500">No actions available at this stage</span>}
                 </div>
               }
             />
@@ -287,7 +292,7 @@ export default function LifecyclePage() {
             )}
             {action === 'exit' && (
               <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
-                ⚠️ This deactivates the account (login stops). Best done on their last working day.
+                <AlertTriangle className="mr-1 inline h-3.5 w-3.5" />This deactivates the account (login stops). Best done on their last working day.
               </p>
             )}
             <textarea className={`${inp} min-h-[70px]`} placeholder="Note (optional — shows in the timeline + notification)" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />

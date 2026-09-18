@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import permissionService from "../../services/permissionService.js";
 import usePermission from "../../hooks/usePermission.js";
 import Can from "../../components/Can.jsx";
-import { Save } from "lucide-react";
+import { Save, ShieldCheck, X } from "lucide-react";
 
 const panel = "rounded-xl border border-slate-700 bg-slate-900 p-4";
 
@@ -411,7 +411,7 @@ const RolesPermissionsPage = () => {
   return (
     <div className="space-y-5 p-6 text-slate-100">
       <div>
-        <h1 className="text-2xl font-bold">🛡️ Roles & Permissions</h1>
+        <h1 className="flex items-center gap-2 text-2xl font-bold"><ShieldCheck className="h-6 w-6" />Roles & Permissions</h1>
 
         <p className="text-sm text-slate-400">
           Configure company roles, permission matrices and user-specific
@@ -789,9 +789,9 @@ const RolesPermissionsPage = () => {
               </div>
               <button
                 onClick={() => setTemplatePickerOpen(false)}
-                className="text-slate-400 hover:text-slate-100"
+                className="text-slate-400 hover:text-slate-100" title="Close"
               >
-                ✕
+                <X className="h-4 w-4" />
               </button>
             </div>
 

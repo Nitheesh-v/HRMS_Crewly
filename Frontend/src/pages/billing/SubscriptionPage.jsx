@@ -5,6 +5,7 @@ import {
   Link,
   useNavigate,
 } from 'react-router-dom';
+import { Check, CreditCard, X } from 'lucide-react';
 import useAuth from '../../hooks/useAuth.jsx';
 import subscriptionService from '../../services/subscriptionService.js';
 
@@ -379,7 +380,7 @@ const SubscriptionPage = () => {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">
-            💳 Subscription
+            <CreditCard className="mr-2 inline h-6 w-6" />Subscription
           </h1>
 
           <p className="text-sm text-slate-400">
@@ -546,8 +547,8 @@ const SubscriptionPage = () => {
                 }`}
               >
                 {enabled
-                  ? '✓'
-                  : '✕'}{' '}
+                  ? <Check className="mr-1 inline h-4 w-4 text-emerald-400" />
+                  : <X className="mr-1 inline h-4 w-4 text-slate-500" />}{''}
                 {featureName}
               </div>
             )

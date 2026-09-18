@@ -2,7 +2,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
+  AlertTriangle,
   BadgeCheck,
+  Ban,
   BriefcaseBusiness,
   Building2,
   CalendarDays,
@@ -11,6 +13,8 @@ import {
   ExternalLink,
   FilePlus2,
   Globe2,
+  PartyPopper,
+  Pin,
   Users,
 } from 'lucide-react';
 import Modal from '../../components/Modal.jsx';
@@ -416,7 +420,7 @@ const RecruitmentPage = () => {
     setBusy(true);
     try {
       await recruitmentService.addCandidate({ ...candForm, job: selectedId });
-      flash('success', `${candForm.name} added to pipeline 👤`);
+      flash('success', `${candForm.name} added to pipeline`);
       setCandModal(false);
       setCandForm(emptyCandForm);
       loadCandidates();
@@ -476,7 +480,7 @@ const RecruitmentPage = () => {
   };
 
   if (!isHR) {
-    return <div className="p-6"><div className="card p-6">🚫 Recruitment is managed by Company Admin &amp; HR Manager only.</div></div>;
+    return <div className="p-6"><div className="card p-6"><Ban className="mr-2 inline h-4 w-4" />Recruitment is managed by Company Admin &amp; HR Manager only.</div></div>;
   }
 
   return (
@@ -533,7 +537,7 @@ const RecruitmentPage = () => {
       {loading ? (
         <div className="card p-4 text-crewly-dim">Loading jobs…</div>
       ) : jobs.length === 0 ? (
-        <div className="card p-8 text-center text-crewly-dim">No jobs yet — click <b>+ Post Job</b> to open your first position 🚀</div>
+        <div className="card p-8 text-center text-crewly-dim">No jobs yet — click <b>+ Post Job</b> to open your first position</div>
       ) : (
         <div className="flex flex-wrap gap-2">
           {jobs.map((j) => (
@@ -543,7 +547,7 @@ const RecruitmentPage = () => {
                   ? 'border-crewly-green bg-crewly-green/10 text-crewly-green'
                   : 'border-crewly-border text-crewly-dim hover:text-crewly-text'
               }`}>
-              📌 {j.title}
+              <Pin className="mr-1 inline h-3.5 w-3.5" />{j.title}
               <span className="ml-1 text-xs">({j.candidateCount})</span>
               {j.status === 'CLOSED' && <span className="ml-1 text-[10px] text-crewly-red">CLOSED</span>}
             </button>
@@ -1138,7 +1142,7 @@ const RecruitmentPage = () => {
 
       {/* ── add candidate modal ── */}
       {candModal && (
-        <Modal onClose={() => setCandModal(false)} title={`👤 Add Candidate — ${selected?.title}`}>
+        <Modal onClose={() => setCandModal(false)} title={`Add Candidate — ${selected?.title}`}>
           <form onSubmit={saveCandidate} className="space-y-3">
             <div>
               <label className="label">Full Name *</label>
@@ -1172,7 +1176,7 @@ const RecruitmentPage = () => {
 
       {/* ── convert modal ── */}
       {convModal && (
-        <Modal onClose={() => setConvModal(null)} title={`🎉 Convert — ${convModal.candidate.name}`}>
+        <Modal onClose={() => setConvModal(null)} title={`Convert — ${convModal.candidate.name}`}>
           {!convModal.result ? (
             <div className="space-y-3">
               <p className="text-sm text-crewly-dim">
@@ -1182,13 +1186,13 @@ const RecruitmentPage = () => {
               </p>
               <div className="flex justify-end gap-2">
                 <button className="btn-ghost" onClick={() => setConvModal(null)}>Cancel</button>
-                <button className="btn-primary" disabled={busy} onClick={doConvert}>{busy ? 'Converting…' : '🎉 Convert to Employee'}</button>
+                <button className="btn-primary" disabled={busy} onClick={doConvert}>{busy ? 'Converting…' : <><PartyPopper className="mr-1 inline h-4 w-4" />Convert to Employee</>}</button>
               </div>
             </div>
           ) : (
             <div className="space-y-3">
               <div className="rounded-lg border border-crewly-green/40 bg-crewly-green/10 px-3 py-2 text-sm text-crewly-green">
-                Employee account created! 🎉
+                Employee account created! <PartyPopper className="ml-1 inline h-4 w-4" />
               </div>
               <div className="card p-3 space-y-1 text-sm">
                 <div><span className="text-crewly-dim">Name:</span> {convModal.result.user?.name}</div>
@@ -1206,11 +1210,11 @@ const RecruitmentPage = () => {
                     const text = `Crewly HRMS login → email: ${convModal.result.user?.email} | password: ${convModal.result.tempPassword}`;
                     try { navigator.clipboard.writeText(text); } catch { /* clipboard blocked */ }
                   }}>
-                  📋 Copy credentials
+                  <Copy className="mr-1 inline h-4 w-4" />Copy credentials
                 </button>
                 <button className="btn-primary flex-1" onClick={() => setConvModal(null)}>Done</button>
               </div>
-              <p className="text-xs text-crewly-dim">⚠️ Shown once — share it now. Password can be reset later via Users → Reset PW.</p>
+              <p className="text-xs text-crewly-dim"><AlertTriangle className="mr-1 inline h-3 w-3" />Shown once — share it now. Password can be reset later via Users → Reset PW.</p>
             </div>
           )}
         </Modal>

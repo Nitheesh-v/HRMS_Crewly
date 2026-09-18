@@ -7,6 +7,43 @@
 import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import { Link } from "react-router-dom";
+import {
+  AlarmClock,
+  AlertTriangle,
+  Banknote,
+  BarChart3,
+  Briefcase,
+  Building2,
+  CalendarDays,
+  CheckCircle2,
+  Clock,
+  CreditCard,
+  DoorOpen,
+  FileText,
+  FlaskConical,
+  Flame,
+  FolderOpen,
+  Handshake,
+  Hourglass,
+  Inbox,
+  LayoutDashboard,
+  Magnet,
+  Mic,
+  Minus,
+  Palmtree,
+  PieChart,
+  ReceiptText,
+  Search,
+  Shuffle,
+  Sparkles,
+  Star,
+  TrendingDown,
+  TrendingUp,
+  User,
+  Users,
+  UserX,
+  XCircle,
+} from "lucide-react";
 import analyticsService from "../../services/analyticsService";
 
 const panel = "rounded-xl border border-slate-700 bg-slate-900 p-4";
@@ -32,7 +69,7 @@ const PRESETS = [
 
 const KPI = ({ icon, label, value, sub, tone = "text-slate-100" }) => (
   <div className={panel}>
-    <div className="text-xs text-slate-400">
+    <div className="flex items-center gap-1.5 text-xs text-slate-400">
       {icon} {label}
     </div>
     <div className={`mt-1 text-2xl font-bold ${tone}`}>{value ?? "—"}</div>
@@ -234,25 +271,25 @@ const AnalyticsHubPage = () => {
   const isTeamRole = role === "MANAGER" || role === "TEAM_LEAD";
   const isSenior = isHR || isTeamRole;
 
-  let tabs = [["my", "📊 My Stats"]];
+  let tabs = [["my", LayoutDashboard, "My Stats"]];
 
   if (isSuperAdmin) {
-    tabs = [["platform", "🏢 Platform"]];
+    tabs = [["platform", Building2, "Platform"]];
   } else if (isHR) {
     tabs = [
-      ["overview", "📊 Overview"],
-      ["attendance", "🕒 Attendance"],
-      ["leaves", "🌴 Leaves"],
-      ["payroll", "💰 Payroll"],
-      ["work", "✅ Work"],
-      ["recruitment", "🧲 Hiring"],
+      ["overview", BarChart3, "Overview"],
+      ["attendance", Clock, "Attendance"],
+      ["leaves", Palmtree, "Leaves"],
+      ["payroll", Banknote, "Payroll"],
+      ["work", Briefcase, "Work"],
+      ["recruitment", Magnet, "Hiring"],
     ];
   } else if (isTeamRole) {
     tabs = [
-      ["overview", "📊 Team"],
-      ["attendance", "🕒 Attendance"],
-      ["leaves", "🌴 Leaves"],
-      ["work", "✅ Work"],
+      ["overview", Users, "Team"],
+      ["attendance", Clock, "Attendance"],
+      ["leaves", Palmtree, "Leaves"],
+      ["work", Briefcase, "Work"],
     ];
   }
 
@@ -378,7 +415,7 @@ const AnalyticsHubPage = () => {
     <div className="space-y-5 p-6 text-slate-100">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">📊 Analytics</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-bold"><BarChart3 className="h-6 w-6 text-indigo-400" />Analytics</h1>
           <p className="text-sm text-slate-400">
             Server-side aggregated · RBAC-scoped · export-ready
           </p>
@@ -400,14 +437,14 @@ const AnalyticsHubPage = () => {
               to="/app/reports"
               className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
             >
-              📑 {isTeamRole ? "Team Reports" : "Report Builder"}
+              <FileText className="mr-1 inline h-4 w-4" />{isTeamRole ? "Team Reports" : "Report Builder"}
             </Link>
           )}
         </div>
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {tabs.map(([value, label]) => (
+        {tabs.map(([value, Icon, text]) => (
           <button
             key={value}
             type="button"
@@ -418,18 +455,19 @@ const AnalyticsHubPage = () => {
                 : "rounded-lg bg-slate-800 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700"
             }
           >
-            {label}
+            <Icon className="mr-1.5 inline h-3.5 w-3.5" />
+            {text}
           </button>
         ))}
       </div>
 
       {loading && (
-        <p className="text-sm text-slate-400">Crunching numbers… ⚙️</p>
+        <p className="text-sm text-slate-400">Crunching numbers…</p>
       )}
 
       {!loading && error && (
-        <div className={`${panel} border-rose-800 text-sm text-rose-300`}>
-          ⚠️ {error}
+        <div className={`${panel} flex items-center gap-2 border-rose-800 text-sm text-rose-300`}>
+          <AlertTriangle className="h-4 w-4 shrink-0" />{error}
         </div>
       )}
 
@@ -438,30 +476,28 @@ const AnalyticsHubPage = () => {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
             <KPI
-              icon="👥"
+              icon={<Users className="h-4 w-4" />}
               label={isTeamRole ? "Team members" : "Headcount"}
               value={k.headcount}
-              sub={`${(k.growth ?? 0) >= 0 ? "📈" : "📉"} ${
-                k.growth ?? 0
-              }% vs prev month`}
+              sub={`${k.growth ?? 0}% vs prev month`}
             />
 
             <KPI
-              icon="✅"
+              icon={<CheckCircle2 className="h-4 w-4" />}
               label="Active"
               value={k.active}
               tone="text-emerald-300"
             />
 
             <KPI
-              icon="⏸"
+              icon={<UserX className="h-4 w-4" />}
               label="Inactive"
               value={k.inactive}
               tone="text-slate-400"
             />
 
             <KPI
-              icon="✨"
+              icon={<Sparkles className="h-4 w-4" />}
               label={isTeamRole ? "New team members" : "New hires"}
               value={k.newHires}
               tone="text-indigo-300"
@@ -470,25 +506,25 @@ const AnalyticsHubPage = () => {
             {isTeamRole ? (
               <>
                 <KPI
-                  icon="🌴"
+                  icon={<Palmtree className="h-4 w-4" />}
                   label="Team pending leaves"
                   value={k.pendingLeaves}
                   tone="text-amber-300"
                 />
 
-                <KPI icon="📁" label="Team projects" value={k.activeProjects} />
+                <KPI icon={<FolderOpen className="h-4 w-4" />} label="Team projects" value={k.activeProjects} />
               </>
             ) : (
               <>
                 <KPI
-                  icon="🚪"
+                  icon={<DoorOpen className="h-4 w-4" />}
                   label="Exits"
                   value={k.exits}
                   tone="text-rose-300"
                 />
 
                 <KPI
-                  icon="📉"
+                  icon={<TrendingDown className="h-4 w-4" />}
                   label="Attrition"
                   value={`${k.attritionRate ?? 0}%`}
                   sub="exits ÷ avg headcount"
@@ -501,8 +537,7 @@ const AnalyticsHubPage = () => {
           <div className="grid gap-4 lg:grid-cols-2">
             <div className={panel}>
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
-                📈 {isTeamRole ? "Team headcount trend" : "Headcount trend"} (12
-                months)
+                {isTeamRole ? "Team headcount trend" : "Headcount trend"} (12 months)
               </h3>
               <Trend
                 data={data.headcountTrend || []}
@@ -513,7 +548,6 @@ const AnalyticsHubPage = () => {
 
             <div className={panel}>
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
-                🏬{" "}
                 {isTeamRole
                   ? "Team department distribution"
                   : "Department strength"}
@@ -528,7 +562,7 @@ const AnalyticsHubPage = () => {
 
             <div className={panel}>
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
-                🎖 {isTeamRole ? "Team by designation" : "By designation"}
+                {isTeamRole ? "Team by designation" : "By designation"}
               </h3>
               <Bars
                 data={data.byDesignation || []}
@@ -540,16 +574,16 @@ const AnalyticsHubPage = () => {
 
             {isHR && (
               <div className="grid grid-cols-2 gap-3">
-                <KPI icon="🏬" label="Departments" value={k.departments} />
+                <KPI icon={<Building2 className="h-4 w-4" />} label="Departments" value={k.departments} />
                 <KPI
-                  icon="🌴"
+                  icon={<Palmtree className="h-4 w-4" />}
                   label="Pending leaves"
                   value={k.pendingLeaves}
                   tone="text-amber-300"
                 />
-                <KPI icon="🧲" label="Open jobs" value={k.openJobs} />
+                <KPI icon={<Magnet className="h-4 w-4" />} label="Open jobs" value={k.openJobs} />
                 <KPI
-                  icon="📁"
+                  icon={<FolderOpen className="h-4 w-4" />}
                   label="Active projects"
                   value={k.activeProjects}
                 />
@@ -564,27 +598,27 @@ const AnalyticsHubPage = () => {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
             <KPI
-              icon="✅"
+              icon={<CheckCircle2 className="h-4 w-4" />}
               label="Present"
               value={data.counts?.present ?? 0}
               tone="text-emerald-300"
             />
             <KPI
-              icon="❌"
+              icon={<XCircle className="h-4 w-4" />}
               label="Absent"
               value={data.counts?.absent ?? 0}
               tone="text-rose-300"
             />
             <KPI
-              icon="⏰"
+              icon={<AlarmClock className="h-4 w-4" />}
               label="Late"
               value={data.counts?.late ?? 0}
               tone="text-amber-300"
             />
-            <KPI icon="🌗" label="Half-day" value={data.counts?.halfDay ?? 0} />
-            <KPI icon="🌴" label="On leave" value={data.counts?.leave ?? 0} />
+            <KPI icon={<PieChart className="h-4 w-4" />} label="Half-day" value={data.counts?.halfDay ?? 0} />
+            <KPI icon={<Palmtree className="h-4 w-4" />} label="On leave" value={data.counts?.leave ?? 0} />
             <KPI
-              icon="📊"
+              icon={<BarChart3 className="h-4 w-4" />}
               label="Attendance"
               value={`${data.counts?.attendancePct ?? 0}%`}
               sub="present ÷ (present+absent)"
@@ -595,7 +629,7 @@ const AnalyticsHubPage = () => {
           <div className="grid gap-4 lg:grid-cols-2">
             <div className={panel}>
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
-                📅 Daily presents trend
+                Daily presents trend
               </h3>
               <Trend
                 data={data.dailyTrend || []}
@@ -606,7 +640,7 @@ const AnalyticsHubPage = () => {
 
             <div className={panel}>
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
-                🥧 Status mix
+                Status mix
               </h3>
               <Donut
                 parts={(data.byStatusRaw || []).map((status) => ({
@@ -624,24 +658,24 @@ const AnalyticsHubPage = () => {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <KPI
-              icon="🌴"
+              icon={<Palmtree className="h-4 w-4" />}
               label="Total requests"
               value={data.counts?.total ?? 0}
             />
             <KPI
-              icon="✅"
+              icon={<CheckCircle2 className="h-4 w-4" />}
               label="Approved"
               value={data.counts?.approved ?? 0}
               tone="text-emerald-300"
             />
             <KPI
-              icon="⏳"
+              icon={<Hourglass className="h-4 w-4" />}
               label="Pending"
               value={data.counts?.pending ?? 0}
               tone="text-amber-300"
             />
             <KPI
-              icon="❌"
+              icon={<XCircle className="h-4 w-4" />}
               label="Rejected"
               value={data.counts?.rejected ?? 0}
               tone="text-rose-300"
@@ -651,7 +685,7 @@ const AnalyticsHubPage = () => {
           <div className="grid gap-4 lg:grid-cols-2">
             <div className={panel}>
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
-                🌴 Days used by type
+                Days used by type
               </h3>
               <Bars
                 data={data.byType || []}
@@ -663,7 +697,7 @@ const AnalyticsHubPage = () => {
 
             <div className={panel}>
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
-                📈 Monthly trend
+                Monthly trend
               </h3>
               <Trend
                 data={data.monthlyTrend || []}
@@ -676,7 +710,7 @@ const AnalyticsHubPage = () => {
             {(data.topUsers || []).length > 0 && (
               <div className={panel}>
                 <h3 className="mb-2 text-sm font-semibold text-slate-300">
-                  🏖 Highest leave usage
+                  Highest leave usage
                 </h3>
 
                 <div className="space-y-1 text-sm">
@@ -701,25 +735,25 @@ const AnalyticsHubPage = () => {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <KPI
-              icon="💰"
+              icon={<Banknote className="h-4 w-4" />}
               label="Total net paid"
               value={money(data.totals?.net)}
               tone="text-emerald-300"
             />
-            <KPI icon="🧾" label="Gross" value={money(data.totals?.gross)} />
+            <KPI icon={<ReceiptText className="h-4 w-4" />} label="Gross" value={money(data.totals?.gross)} />
             <KPI
-              icon="➖"
+              icon={<Minus className="h-4 w-4" />}
               label="Deductions"
               value={money(data.totals?.deductions)}
               tone="text-rose-300"
             />
-            <KPI icon="📄" label="Payslips" value={data.totals?.slips ?? 0} />
+            <KPI icon={<FileText className="h-4 w-4" />} label="Payslips" value={data.totals?.slips ?? 0} />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
             <div className={panel}>
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
-                📈 Net payroll trend
+                Net payroll trend
               </h3>
               <Trend
                 data={data.monthly || []}
@@ -730,7 +764,7 @@ const AnalyticsHubPage = () => {
 
             <div className={panel}>
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
-                🏬 Cost by department
+                Cost by department
               </h3>
               <Bars
                 data={(data.byDepartment || []).map((department) => ({
@@ -751,20 +785,20 @@ const AnalyticsHubPage = () => {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
             <KPI
-              icon="✅"
+              icon={<CheckCircle2 className="h-4 w-4" />}
               label={isTeamRole ? "Team tasks done" : "Tasks done"}
               value={`${data.tasks?.done ?? 0}/${data.tasks?.total ?? 0}`}
               sub={`${data.tasks?.completionPct ?? 0}% complete`}
               tone="text-emerald-300"
             />
             <KPI
-              icon="🔥"
+              icon={<Flame className="h-4 w-4" />}
               label={isTeamRole ? "Team overdue" : "Overdue"}
               value={data.tasks?.overdue ?? 0}
               tone="text-rose-300"
             />
             <KPI
-              icon="📁"
+              icon={<FolderOpen className="h-4 w-4" />}
               label={isTeamRole ? "Team projects" : "Projects"}
               value={`${data.projects?.active ?? 0}/${
                 data.projects?.total ?? 0
@@ -772,20 +806,20 @@ const AnalyticsHubPage = () => {
               sub="active / total"
             />
             <KPI
-              icon="⏰"
+              icon={<AlarmClock className="h-4 w-4" />}
               label="Delayed projects"
               value={data.projects?.delayed ?? 0}
               tone="text-amber-300"
             />
             <KPI
-              icon="💸"
+              icon={<Banknote className="h-4 w-4" />}
               label={
                 isTeamRole ? "Team approved expenses" : "Approved expenses"
               }
               value={money(data.expenses?.approvedTotal)}
             />
             <KPI
-              icon="⭐"
+              icon={<Star className="h-4 w-4" />}
               label={isTeamRole ? "Team avg rating" : "Avg rating"}
               value={data.performance?.avgRating || "—"}
               sub={`goals ${data.performance?.goalCompletion ?? 0}%`}
@@ -796,7 +830,7 @@ const AnalyticsHubPage = () => {
           <div className="grid gap-4 lg:grid-cols-2">
             <div className={panel}>
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
-                👤 Tasks per teammate
+                Tasks per teammate
               </h3>
               <Bars
                 data={(data.tasks?.byUser || []).map((member) => ({
@@ -811,7 +845,7 @@ const AnalyticsHubPage = () => {
 
             <div className={panel}>
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
-                🥧 Task status mix
+                Task status mix
               </h3>
               <Donut
                 parts={(data.tasks?.byStatusRaw || []).map((status) => ({
@@ -829,7 +863,7 @@ const AnalyticsHubPage = () => {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
             <KPI
-              icon="🧲"
+              icon={<Magnet className="h-4 w-4" />}
               label="Jobs"
               value={data.jobs?.total ?? 0}
               sub={`${data.jobs?.open ?? 0} open`}
@@ -838,12 +872,12 @@ const AnalyticsHubPage = () => {
             {data.applications ? (
               <>
                 <KPI
-                  icon="📨"
+                  icon={<Inbox className="h-4 w-4" />}
                   label="Applications"
                   value={data.applications?.total ?? 0}
                 />
                 <KPI
-                  icon="🔍"
+                  icon={<Search className="h-4 w-4" />}
                   label="Screening"
                   value={data.applications?.screening ?? 0}
                   sub={`${
@@ -851,7 +885,7 @@ const AnalyticsHubPage = () => {
                   }% of apps`}
                 />
                 <KPI
-                  icon="⭐"
+                  icon={<Star className="h-4 w-4" />}
                   label="Shortlisted"
                   value={data.applications?.shortlisted ?? 0}
                   sub={`${
@@ -859,7 +893,7 @@ const AnalyticsHubPage = () => {
                   }% of screened`}
                 />
                 <KPI
-                  icon="🎤"
+                  icon={<Mic className="h-4 w-4" />}
                   label="Interviews"
                   value={data.applications?.interview ?? 0}
                   sub={`${
@@ -867,7 +901,7 @@ const AnalyticsHubPage = () => {
                   }% → offer`}
                 />
                 <KPI
-                  icon="🤝"
+                  icon={<Handshake className="h-4 w-4" />}
                   label="Hires"
                   value={data.applications?.hires ?? 0}
                   sub={`${
@@ -878,7 +912,7 @@ const AnalyticsHubPage = () => {
               </>
             ) : (
               <KPI
-                icon="📨"
+                icon={<Inbox className="h-4 w-4" />}
                 label="Applications"
                 value="—"
                 sub="No application model is available"
@@ -890,7 +924,7 @@ const AnalyticsHubPage = () => {
             <div className="grid gap-4 lg:grid-cols-2">
               <div className={panel}>
                 <h3 className="mb-2 text-sm font-semibold text-slate-300">
-                  🌐 Applications by source
+                  Applications by source
                 </h3>
                 <Bars
                   data={data.applications.bySource}
@@ -902,7 +936,7 @@ const AnalyticsHubPage = () => {
 
               <div className={panel}>
                 <h3 className="mb-2 text-sm font-semibold text-slate-300">
-                  🤝 Hires by source
+                  Hires by source
                 </h3>
                 <Bars
                   data={data.applications.bySource}
@@ -921,31 +955,31 @@ const AnalyticsHubPage = () => {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
             <KPI
-              icon="🏢"
+              icon={<Building2 className="h-4 w-4" />}
               label="Companies"
               value={data.companies?.total ?? 0}
               sub={`+${data.companies?.newThisMonth ?? 0} this month`}
             />
             <KPI
-              icon="🧪"
+              icon={<FlaskConical className="h-4 w-4" />}
               label="On trial"
               value={data.companies?.trial ?? 0}
               tone="text-amber-300"
             />
             <KPI
-              icon="👤"
+              icon={<User className="h-4 w-4" />}
               label="Platform users"
               value={data.users?.total ?? 0}
               sub={`+${data.users?.newThisMonth ?? 0} new`}
             />
             <KPI
-              icon="💳"
+              icon={<CreditCard className="h-4 w-4" />}
               label="Paying companies"
               value={data.revenue?.payingCompanies ?? 0}
               tone="text-emerald-300"
             />
             <KPI
-              icon="📈"
+              icon={<TrendingUp className="h-4 w-4" />}
               label="MRR"
               value={money(data.revenue?.mrr)}
               sub={`${(data.revenue?.mrrGrowthPct ?? 0) >= 0 ? "+" : ""}${
@@ -954,7 +988,7 @@ const AnalyticsHubPage = () => {
               tone="text-emerald-300"
             />
             <KPI
-              icon="🗓"
+              icon={<CalendarDays className="h-4 w-4" />}
               label="ARR"
               value={money(data.revenue?.arr)}
               tone="text-indigo-300"
@@ -964,7 +998,7 @@ const AnalyticsHubPage = () => {
           <div className="grid gap-4 lg:grid-cols-3">
             <div className={panel}>
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
-                📦 Plan distribution
+                Plan distribution
               </h3>
               <Donut
                 parts={(data.companies?.byPlan || []).map((plan) => ({
@@ -976,7 +1010,7 @@ const AnalyticsHubPage = () => {
 
             <div className={panel}>
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
-                🚦 Status distribution
+                Status distribution
               </h3>
               <Donut
                 parts={(data.companies?.byStatus || []).map((status) => ({
@@ -988,7 +1022,7 @@ const AnalyticsHubPage = () => {
 
             <div className={panel}>
               <h3 className="mb-2 text-sm font-semibold text-slate-300">
-                💰 MRR by plan
+                MRR by plan
               </h3>
               <Bars
                 data={data.revenue?.mrrByPlan || []}
@@ -1006,7 +1040,7 @@ const AnalyticsHubPage = () => {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <KPI
-              icon="🕒"
+              icon={<Clock className="h-4 w-4" />}
               label="Days marked (month)"
               value={(data.attendance || []).reduce(
                 (sum, row) => sum + Number(row?.count || 0),
@@ -1015,7 +1049,7 @@ const AnalyticsHubPage = () => {
             />
 
             <KPI
-              icon="✅"
+              icon={<CheckCircle2 className="h-4 w-4" />}
               label="Tasks done"
               value={
                 (data.tasks || []).find((row) =>
@@ -1027,7 +1061,7 @@ const AnalyticsHubPage = () => {
             />
 
             <KPI
-              icon="🌴"
+              icon={<Palmtree className="h-4 w-4" />}
               label="Leaves approved"
               value={
                 (data.leaves || []).find(
@@ -1037,7 +1071,7 @@ const AnalyticsHubPage = () => {
             />
 
             <KPI
-              icon="🔀"
+              icon={<Shuffle className="h-4 w-4" />}
               label="My shift"
               value={
                 data.roster?.shift
@@ -1050,7 +1084,7 @@ const AnalyticsHubPage = () => {
 
           <div className={panel}>
             <h3 className="mb-2 text-sm font-semibold text-slate-300">
-              🎉 Upcoming holidays
+              Upcoming holidays
             </h3>
 
             <div className="flex flex-wrap gap-2">

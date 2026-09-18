@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AlertTriangle, FileText, Palmtree } from 'lucide-react';
 import leaveService from '../../services/leaveService.js';
 import Modal from '../../components/Modal.jsx';
 
@@ -55,7 +56,7 @@ const LeavesPage = () => {
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">🌴 My Leaves</h1>
+        <h1 className="flex items-center gap-2 text-2xl font-bold"><Palmtree className="h-6 w-6 text-crewly-green" />My Leaves</h1>
         <button className="btn-primary" onClick={() => setShowApply(true)}>+ Apply Leave</button>
       </div>
 
@@ -100,7 +101,7 @@ const LeavesPage = () => {
                   <td className="px-5 py-3">{l.days}</td>
                   <td className="max-w-56 px-5 py-3 text-crewly-dim">
                     <div className="truncate" title={l.reason}>{l.reason}</div>
-                    {l.approverNote && <div className="text-xs text-crewly-dim/70">📝 {l.approverNote}</div>}
+                    {l.approverNote && <div className="flex items-center gap-1 text-xs text-crewly-dim/70"><FileText className="h-3 w-3 shrink-0" />{l.approverNote}</div>}
                   </td>
                   <td className="px-5 py-3">
                     <span className={`badge ${STATUS_STYLE[l.status]}`}>{l.status}</span>
@@ -134,7 +135,7 @@ const LeavesPage = () => {
                 ))}
               </select>
               {availableOf(form.type) === 0 && (
-                <p className="mt-1 text-xs text-crewly-red">⚠️ No balance left in this type</p>
+                <p className="mt-1 flex items-center gap-1 text-xs text-crewly-red"><AlertTriangle className="h-3.5 w-3.5" />No balance left in this type</p>
               )}
             </div>
             <div className="grid gap-3 sm:grid-cols-2">

@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
 import { useEffect, useState } from "react";
+import { X } from "lucide-react";
 import { Link } from "react-router-dom";
 import superAdminService from "../../services/superAdminService.js";
 
@@ -370,8 +371,8 @@ const SuperAdminCompaniesPage = () => {
             <div className="mb-5 flex justify-between">
               <h2 className="text-xl font-bold">Create customer company</h2>
 
-              <button type="button" onClick={() => setShowCreate(false)}>
-                ✕
+              <button type="button" onClick={() => setShowCreate(false)} title="Close">
+                <X className="h-4 w-4" />
               </button>
             </div>
 

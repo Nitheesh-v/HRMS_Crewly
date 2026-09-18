@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AlarmClock, Banknote, Building2, Circle, Coffee, Dumbbell, Moon, Pencil, PersonStanding, ScrollText, Shuffle, Sunrise, Sunset, Trash2, UserPlus, Users, Wrench } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import scheduleService from '../../services/scheduleService';
 import { getEmployees } from '../../services/docsService';
@@ -8,7 +9,11 @@ const primary = 'rounded-lg bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-sm 
 const ghost = 'rounded-lg bg-slate-700 hover:bg-slate-600 px-3 py-2 text-sm text-slate-200';
 const HR = ['COMPANY_ADMIN', 'HR_MANAGER'];
 const SHIFT_TYPES = ['MORNING', 'GENERAL', 'EVENING', 'NIGHT', 'FLEXIBLE', 'CUSTOM'];
-const TYPE_EMOJI = { MORNING: '🌅', GENERAL: '🏢', EVENING: '🌆', NIGHT: '🌙', FLEXIBLE: '🤸', CUSTOM: '🛠' };
+const TYPE_ICONS = { MORNING: Sunrise, GENERAL: Building2, EVENING: Sunset, NIGHT: Moon, FLEXIBLE: PersonStanding, CUSTOM: Wrench };
+const TypeIcon = ({ type, className }) => {
+  const Icon = TYPE_ICONS[type] || Shuffle;
+  return <Icon className={className} />;
+};
 
 const emptyForm = { name: '', type: 'GENERAL', startTime: '09:00', endTime: '18:00', breakMinutes: 60, graceMinutes: 10, overtimeEligible: false, overtimeRatePerHour: 0, shiftAllowance: 0, nightAllowance: 0, lateGrace: 10, maxLatePerMonth: 3, earlyGrace: 10 };
 
@@ -56,7 +61,7 @@ export default function ShiftsPage() {
       const f = modal.form;
       const payload = { name: f.name, type: f.type, startTime: f.startTime, endTime: f.endTime, breakMinutes: +f.breakMinutes, graceMinutes: +f.graceMinutes, overtimeEligible: !!f.overtimeEligible, overtimeRatePerHour: +f.overtimeRatePerHour, shiftAllowance: +f.shiftAllowance, nightAllowance: +f.nightAllowance, lateRule: { graceMinutes: +f.lateGrace, maxLatePerMonth: +f.maxLatePerMonth }, earlyCheckoutRule: { graceMinutes: +f.earlyGrace } };
       const r = modal.mode === 'create' ? await scheduleService.createShift(payload) : await scheduleService.updateShift(modal.id, payload);
-      flash(r.message || 'Saved ✅'); setModal(null); load();
+      flash(r.message || 'Saved'); setModal(null); load();
     } catch (e) { flash(e?.response?.data?.message || e.message); }
     setSaving(false);
   };
@@ -78,8 +83,8 @@ export default function ShiftsPage() {
     <div className="p-6 space-y-5 text-slate-100">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">🔀 Shifts</h1>
-          <p className="text-sm text-slate-400">Morning · general · evening · night 🌙 (cross-midnight safe) · flexible · custom</p>
+          <h1 className="flex items-center gap-2 text-2xl font-bold"><Shuffle className="h-6 w-6" />Shifts</h1>
+          <p className="text-sm text-slate-400">Morning · general · evening · night (cross-midnight safe) · flexible · custom</p>
         </div>
         {isHR && <button onClick={openCreate} className={primary}>＋ New Shift</button>}
       </div>
@@ -91,18 +96,18 @@ export default function ShiftsPage() {
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">My current shift</h2>
         {myCurrent?.shift ? (
           <div className="flex flex-wrap items-center gap-4">
-            <div className="text-3xl">{TYPE_EMOJI[myCurrent.shift.type] || '🔀'}</div>
+            <div className="text-indigo-300"><TypeIcon type={myCurrent.shift.type} className="h-8 w-8" /></div>
             <div>
               <div className="text-lg font-bold">{myCurrent.shift.name}
-                {myCurrent.shift.crossesMidnight && <span className="ml-2 rounded-full bg-indigo-500/20 border border-indigo-500/40 px-2 py-0.5 text-[10px] text-indigo-300">🌙 crosses midnight</span>}
+                {myCurrent.shift.crossesMidnight && <span className="ml-2 rounded-full bg-indigo-500/20 border border-indigo-500/40 px-2 py-0.5 text-[10px] text-indigo-300"><Moon className="mr-1 inline h-3 w-3" />crosses midnight</span>}
               </div>
               <div className="text-sm text-slate-400">{myCurrent.shift.startTime} → {myCurrent.shift.endTime} · break {myCurrent.shift.breakMinutes}m · grace {myCurrent.shift.lateRule?.graceMinutes ?? myCurrent.shift.graceMinutes}m</div>
             </div>
             <span className="rounded-full bg-slate-700 px-3 py-1 text-xs text-slate-300">
-              {myCurrent.source === 'EMPLOYEE_OVERRIDE' ? '👤 personal override' : myCurrent.source === 'DEPARTMENT_DEFAULT' ? '🏬 department default' : '📋 assigned'}
+              {myCurrent.source === 'EMPLOYEE_OVERRIDE' ? <><UserPlus className="mr-1 inline h-3 w-3" />personal override</> : myCurrent.source === 'DEPARTMENT_DEFAULT' ? <><Building2 className="mr-1 inline h-3 w-3" />department default</> : 'assigned'}
             </span>
             {(myCurrent.shift.nightAllowance > 0 || myCurrent.shift.shiftAllowance > 0) && (
-              <span className="text-xs text-emerald-300">💰 allowances: {myCurrent.shift.nightAllowance > 0 ? `night ${money(myCurrent.shift.nightAllowance)}/day` : ''} {myCurrent.shift.shiftAllowance > 0 ? `shift ${money(myCurrent.shift.shiftAllowance)}/day` : ''}</span>
+              <span className="text-xs text-emerald-300"><Banknote className="mr-1 inline h-3 w-3" />allowances: {myCurrent.shift.nightAllowance > 0 ? `night ${money(myCurrent.shift.nightAllowance)}/day` : ''} {myCurrent.shift.shiftAllowance > 0 ? `shift ${money(myCurrent.shift.shiftAllowance)}/day` : ''}</span>
             )}
           </div>
         ) : (
@@ -114,7 +119,7 @@ export default function ShiftsPage() {
             <div className="space-y-1">
               {mine.history.map((h) => (
                 <div key={h.id} className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
-                  <span className={h.current ? 'text-emerald-300' : ''}>{h.current ? '●' : '○'} {h.shift}</span>
+                  <span className={h.current ? 'text-emerald-300' : ''}>{h.current ? <span className="mr-1 inline-block h-2 w-2 rounded-full bg-current" /> : <Circle className="mr-1 inline h-2 w-2" />} {h.shift}</span>
                   <span>{h.effectiveFrom} → {h.effectiveTo || 'present'}</span>
                   {h.prevShift && <span className="text-slate-500">(was: {h.prevShift})</span>}
                   {h.reason && <span className="text-slate-500">· {h.reason}</span>}
@@ -135,22 +140,22 @@ export default function ShiftsPage() {
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="font-semibold">{TYPE_EMOJI[s.type]} {s.name}</div>
-                    <div className="text-xs text-slate-400">{s.type}{s.crossesMidnight ? ' · 🌙 cross-midnight' : ''}</div>
+                    <div className="text-xs text-slate-400">{s.type}{s.crossesMidnight ? <> · <Moon className="inline h-3 w-3" /> cross-midnight</> : ''}</div>
                   </div>
                   <span className="text-sm font-mono text-slate-300">{s.startTime}–{s.endTime}</span>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1 text-[10px] text-slate-400">
-                  <span className="rounded bg-slate-800 px-2 py-0.5">☕ {s.breakMinutes}m</span>
-                  <span className="rounded bg-slate-800 px-2 py-0.5">⏰ grace {s.lateRule?.graceMinutes ?? s.graceMinutes}m</span>
-                  {s.overtimeEligible && <span className="rounded bg-slate-800 px-2 py-0.5">💪 OT {money(s.overtimeRatePerHour)}/hr</span>}
-                  {s.nightAllowance > 0 && <span className="rounded bg-slate-800 px-2 py-0.5">🌙 {money(s.nightAllowance)}/day</span>}
-                  {s.shiftAllowance > 0 && <span className="rounded bg-slate-800 px-2 py-0.5">💰 {money(s.shiftAllowance)}/day</span>}
-                  <span className="rounded bg-slate-800 px-2 py-0.5">👥 {s.employees.length} · 🏬 {s.departments.length}</span>
+                  <span className="rounded bg-slate-800 px-2 py-0.5"><Coffee className="mr-1 inline h-3 w-3" />{s.breakMinutes}m</span>
+                  <span className="rounded bg-slate-800 px-2 py-0.5"><AlarmClock className="mr-1 inline h-3 w-3" />grace {s.lateRule?.graceMinutes ?? s.graceMinutes}m</span>
+                  {s.overtimeEligible && <span className="rounded bg-slate-800 px-2 py-0.5"><Dumbbell className="mr-1 inline h-3 w-3" />OT {money(s.overtimeRatePerHour)}/hr</span>}
+                  {s.nightAllowance > 0 && <span className="rounded bg-slate-800 px-2 py-0.5"><Moon className="mr-1 inline h-3 w-3" />{money(s.nightAllowance)}/day</span>}
+                  {s.shiftAllowance > 0 && <span className="rounded bg-slate-800 px-2 py-0.5"><Banknote className="mr-1 inline h-3 w-3" />{money(s.shiftAllowance)}/day</span>}
+                  <span className="rounded bg-slate-800 px-2 py-0.5"><Users className="mr-1 inline h-3 w-3" />{s.employees.length} · <Building2 className="mx-1 inline h-3 w-3" />{s.departments.length}</span>
                 </div>
                 <div className="mt-3 flex gap-2">
-                  <button onClick={() => setAssignFor({ ...s, mode: 'EMPLOYEE', userIds: [], departmentId: '', effectiveFrom: new Date().toISOString().slice(0, 10), reason: '' })} className={`${ghost} text-xs`}>👤 Assign</button>
-                  <button onClick={() => openEdit(s)} className={`${ghost} text-xs`}>✏️ Edit</button>
-                  <button onClick={() => deactivate(s)} className="rounded-lg bg-rose-600/70 hover:bg-rose-600 px-3 py-1 text-xs text-white">🗑</button>
+                  <button onClick={() => setAssignFor({ ...s, mode: 'EMPLOYEE', userIds: [], departmentId: '', effectiveFrom: new Date().toISOString().slice(0, 10), reason: '' })} className={`${ghost} text-xs`}><UserPlus className="mr-1 inline h-3.5 w-3.5" />Assign</button>
+                  <button onClick={() => openEdit(s)} className={`${ghost} text-xs`}><Pencil className="mr-1 inline h-3.5 w-3.5" />Edit</button>
+                  <button onClick={() => deactivate(s)} className="rounded-lg bg-rose-600/70 hover:bg-rose-600 px-3 py-1 text-xs text-white" title="Deactivate"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
               </div>
             ))}
@@ -159,7 +164,7 @@ export default function ShiftsPage() {
 
           {/* history viewer */}
           <div className="rounded-xl border border-slate-700 bg-slate-900 p-5">
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">📜 Assignment history</h2>
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400"><ScrollText className="mr-1.5 inline h-4 w-4" />Assignment history</h2>
             <div className="flex flex-wrap items-center gap-3">
               <select className={`${inp} w-72`} value={historyFor} onChange={(e) => loadHistory(e.target.value)}>
                 <option value="">Pick an employee…</option>
@@ -171,7 +176,7 @@ export default function ShiftsPage() {
                 {!history.length && <p className="text-xs text-slate-500">No assignment history.</p>}
                 {history.map((h) => (
                   <div key={h.id} className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
-                    <span className={h.current ? 'text-emerald-300' : ''}>{h.current ? '●' : '○'} <b className="text-slate-200">{h.shift?.name || '—'}</b></span>
+                    <span className={h.current ? 'text-emerald-300' : ''}>{h.current ? <span className="mr-1 inline-block h-2 w-2 rounded-full bg-current" /> : <Circle className="mr-1 inline h-2 w-2" />} <b className="text-slate-200">{h.shift?.name || '—'}</b></span>
                     <span>{h.effectiveFrom} → {h.effectiveTo || 'present'}</span>
                     {h.prevShift && <span className="text-slate-500">(was: {h.prevShift})</span>}
                     {h.reason && <span className="text-slate-500">· {h.reason}</span>}
@@ -188,7 +193,7 @@ export default function ShiftsPage() {
       {modal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setModal(null)}>
           <div className="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-900 p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-4 text-lg font-semibold">{modal.mode === 'create' ? '＋ New Shift' : '✏️ Edit Shift'}</h3>
+            <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold">{modal.mode === 'create' ? <>New Shift</> : <><Pencil className="h-5 w-5" />Edit Shift</>}</h3>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="mb-1 block text-xs text-slate-400">Name</label>
@@ -205,10 +210,10 @@ export default function ShiftsPage() {
                 <input type="time" className={inp} value={modal.form.startTime} onChange={(e) => setModal({ ...modal, form: { ...modal.form, startTime: e.target.value } })} />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-slate-400">End (earlier than start = 🌙 next day)</label>
+                <label className="mb-1 block text-xs text-slate-400">End (earlier than start = next day)</label>
                 <input type="time" className={inp} value={modal.form.endTime} onChange={(e) => setModal({ ...modal, form: { ...modal.form, endTime: e.target.value } })} />
               </div>
-              {[['breakMinutes', '☕ Break (min)'], ['lateGrace', '⏰ Late grace (min)'], ['earlyGrace', '🏃 Early-out grace (min)'], ['maxLatePerMonth', '⚠️ Max lates / month'], ['overtimeRatePerHour', '💪 OT ₹/hr'], ['shiftAllowance', '💰 Shift allowance ₹/day'], ['nightAllowance', '🌙 Night allowance ₹/day']].map(([k, label]) => (
+              {[['breakMinutes', 'Break (min)'], ['lateGrace', 'Late grace (min)'], ['earlyGrace', 'Early-out grace (min)'], ['maxLatePerMonth', 'Max lates / month'], ['overtimeRatePerHour', 'OT ₹/hr'], ['shiftAllowance', 'Shift allowance ₹/day'], ['nightAllowance', 'Night allowance ₹/day']].map(([k, label]) => (
                 <div key={k}>
                   <label className="mb-1 block text-xs text-slate-400">{label}</label>
                   <input type="number" min="0" className={inp} value={modal.form[k]} onChange={(e) => setModal({ ...modal, form: { ...modal.form, [k]: e.target.value } })} />
@@ -230,9 +235,9 @@ export default function ShiftsPage() {
       {assignFor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setAssignFor(null)}>
           <div className="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-900 p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-4 text-lg font-semibold">👤 Assign “{assignFor.name}”</h3>
+            <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold"><UserPlus className="h-5 w-5" />Assign “{assignFor.name}”</h3>
             <div className="mb-3 flex gap-2">
-              {[['EMPLOYEE', '👤 Employees / bulk'], ['DEPARTMENT', '🏬 Whole department']].map(([m, l]) => (
+              {[['EMPLOYEE', 'Employees / bulk'], ['DEPARTMENT', 'Whole department']].map(([m, l]) => (
                 <button key={m} onClick={() => setAssignFor({ ...assignFor, mode: m })} className={assignFor.mode === m ? primary : ghost}>{l}</button>
               ))}
             </div>
@@ -265,14 +270,14 @@ export default function ShiftsPage() {
                 <input className={inp} value={assignFor.reason} onChange={(e) => setAssignFor({ ...assignFor, reason: e.target.value })} placeholder="Project requirement" />
               </div>
             </div>
-            <p className="mt-2 text-xs text-slate-500">📜 History is preserved — the previous assignment closes the day before this starts. Employee-level assignment overrides the department default.</p>
+            <p className="mt-2 text-xs text-slate-500">History is preserved — the previous assignment closes the day before this starts. Employee-level assignment overrides the department default.</p>
             <div className="mt-4 flex justify-end gap-2">
               <button className={ghost} onClick={() => setAssignFor(null)}>Cancel</button>
               <button className={primary} onClick={async () => {
                 setSaving(true);
                 try {
                   const r = await scheduleService.assignShift(assignFor.id, { userIds: assignFor.mode === 'EMPLOYEE' ? assignFor.userIds : [], departmentId: assignFor.mode === 'DEPARTMENT' ? assignFor.departmentId : null, effectiveFrom: assignFor.effectiveFrom, reason: assignFor.reason });
-                  flash(r.message || 'Assigned ✅'); setAssignFor(null); load();
+                  flash(r.message || 'Assigned'); setAssignFor(null); load();
                 } catch (e) { flash(e?.response?.data?.message || e.message); }
                 setSaving(false);
               }} disabled={saving || (assignFor.mode === 'EMPLOYEE' ? !assignFor.userIds.length : !assignFor.departmentId)}>

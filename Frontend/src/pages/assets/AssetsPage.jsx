@@ -1,7 +1,8 @@
 // ============================================================
-// 🖥 Assets — HR inventory + assign/return · employees: my assets
+// Assets — HR inventory + assign/return · employees: my assets
 // ============================================================
 import React, { useEffect, useState } from 'react';
+import { Backpack, IdCard, Keyboard, Laptop, Monitor, Mouse, Package, Plus, Send, Smartphone, Trash2, Undo2, UserPlus } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { getMyAssets, getAllAssets, createAsset, assignAsset, returnAsset, deleteAsset } from '../../services/assetService.js';
 import { getEmployees } from '../../services/docsService.js';
@@ -12,8 +13,18 @@ const chip = (txt, cls) => <span className={`rounded-full px-2.5 py-0.5 text-[11
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
 
 const CATS = {
-  LAPTOP: '💻 Laptop', MONITOR: '🖥 Monitor', KEYBOARD: '⌨️ Keyboard',
-  MOUSE: '🖱 Mouse', MOBILE: '📱 Mobile', ID_CARD: '🪪 ID Card', OTHER: '📦 Other',
+  LAPTOP: 'Laptop', MONITOR: 'Monitor', KEYBOARD: 'Keyboard',
+  MOUSE: 'Mouse', MOBILE: 'Mobile', ID_CARD: 'ID Card', OTHER: 'Other',
+};
+
+const CAT_ICONS = {
+  LAPTOP: Laptop, MONITOR: Monitor, KEYBOARD: Keyboard,
+  MOUSE: Mouse, MOBILE: Smartphone, ID_CARD: IdCard, OTHER: Package,
+};
+
+const CatIcon = ({ cat, className }) => {
+  const Icon = CAT_ICONS[cat] || Package;
+  return <Icon className={className} />;
 };
 
 export default function AssetsPage() {
@@ -48,7 +59,7 @@ export default function AssetsPage() {
     try {
       await createAsset(form);
       setForm({ name: '', category: 'LAPTOP', serialNumber: '', note: '' });
-      flash(true, 'Asset added 🖥');
+      flash(true, 'Asset added');
       await load();
     } catch (e) { flash(false, e?.response?.data?.message || 'Failed'); }
     finally { setBusy(false); }
@@ -60,7 +71,7 @@ export default function AssetsPage() {
     try {
       await assignAsset(assignTarget._id, assignForm);
       setAssignTarget(null); setAssignForm({ userId: '', note: '' });
-      flash(true, 'Assigned — employee notified 🔔');
+      flash(true, 'Assigned — employee notified');
       await load();
     } catch (e) { flash(false, e?.response?.data?.message || 'Failed'); }
     finally { setBusy(false); }
@@ -70,26 +81,26 @@ export default function AssetsPage() {
     const note = window.prompt(`Return "${a.name}" from ${a.currentHolder?.name || 'holder'}? Condition note (optional):`) ?? null;
     if (note === null) return;
     setBusy(true);
-    try { await returnAsset(a._id, note); flash(true, 'Returned — asset available ✅'); await load(); }
+    try { await returnAsset(a._id, note); flash(true, 'Returned — asset available'); await load(); }
     catch (e) { flash(false, e?.response?.data?.message || 'Failed'); }
     finally { setBusy(false); }
   };
 
   const doDelete = async (a) => {
     if (!window.confirm(`Delete "${a.name}" permanently?`)) return;
-    try { await deleteAsset(a._id); flash(true, 'Deleted 🗑'); await load(); }
+    try { await deleteAsset(a._id); flash(true, 'Deleted'); await load(); }
     catch (e) { flash(false, e?.response?.data?.message || 'Failed'); }
   };
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-slate-100">🖥 Assets</h1>
+      <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-100"><Monitor className="h-6 w-6 text-indigo-400" />Assets</h1>
 
       {banner && <div className={`rounded-lg px-4 py-2.5 text-sm font-medium ${banner.ok ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'}`}>{banner.text}</div>}
 
       {/* my assets — everyone */}
       <section className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">
-        <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-300">🎒 In my hands ({mine.length})</h2>
+        <h2 className="mb-3 flex items-center gap-1.5 text-sm font-bold uppercase tracking-wide text-slate-300"><Backpack className="h-4 w-4" />In my hands ({mine.length})</h2>
         {mine.length === 0 ? (
           <p className="text-xs text-slate-500">No equipment assigned to you right now.</p>
         ) : (
@@ -98,7 +109,7 @@ export default function AssetsPage() {
               const since = a.assignments?.length ? a.assignments[a.assignments.length - 1].assignedAt : a.updatedAt;
               return (
                 <div key={a._id} className="rounded-xl border border-slate-700 bg-slate-900/40 p-4">
-                  <p className="text-2xl">{(CATS[a.category] || '📦').split(' ')[0]}</p>
+                  <p className="text-slate-400"><CatIcon cat={a.category} className="h-7 w-7" /></p>
                   <p className="mt-1 text-sm font-bold text-slate-100">{a.name}</p>
                   <p className="text-xs text-slate-400">{CATS[a.category]}{a.serialNumber ? ` · S/N ${a.serialNumber}` : ''}</p>
                   <p className="mt-2 text-[11px] text-slate-500">with you since {fmtDate(since)}</p>
@@ -113,7 +124,7 @@ export default function AssetsPage() {
         <>
           {/* create */}
           <section className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">
-            <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-300">➕ Add equipment</h2>
+            <h2 className="mb-3 flex items-center gap-1.5 text-sm font-bold uppercase tracking-wide text-slate-300"><Plus className="h-4 w-4" />Add equipment</h2>
             <div className="flex flex-wrap items-center gap-3">
               <input className={`${inp} min-w-[200px] flex-1`} placeholder="Asset name (MacBook Pro 14…)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
               <select className={`${inp} max-w-[170px]`} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
@@ -127,14 +138,14 @@ export default function AssetsPage() {
 
           {/* inventory */}
           <section className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">
-            <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-300">📦 Inventory ({inventory.length})</h2>
+            <h2 className="mb-3 flex items-center gap-1.5 text-sm font-bold uppercase tracking-wide text-slate-300"><Package className="h-4 w-4" />Inventory ({inventory.length})</h2>
             {inventory.length === 0 ? (
               <p className="text-xs text-slate-500">No assets yet — add the first one above.</p>
             ) : (
               <div className="space-y-2">
                 {inventory.map((a) => (
                   <div key={a._id} className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-700 bg-slate-900/40 px-3 py-2.5">
-                    <span className="text-xl">{(CATS[a.category] || '📦').split(' ')[0]}</span>
+                    <span className="text-slate-400"><CatIcon cat={a.category} className="h-5 w-5" /></span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-slate-100">{a.name} {a.serialNumber ? <span className="font-normal text-slate-400">· {a.serialNumber}</span> : null}</p>
                       <p className="text-xs text-slate-400">
@@ -145,13 +156,13 @@ export default function AssetsPage() {
                       ? chip(`ASSIGNED → ${a.currentHolder?.name || ''}`, 'bg-amber-400/15 text-amber-300')
                       : chip('AVAILABLE', 'bg-emerald-400/15 text-emerald-300')}
                     {a.status === 'AVAILABLE' && (
-                      <button onClick={() => { setAssignTarget(a); setAssignForm({ userId: '', note: '' }); }} className={`${btn} bg-indigo-600 text-white hover:bg-indigo-500`}>📤 Assign</button>
+                      <button onClick={() => { setAssignTarget(a); setAssignForm({ userId: '', note: '' }); }} className={`${btn} bg-indigo-600 text-white hover:bg-indigo-500`}><UserPlus className="mr-1 inline h-3.5 w-3.5" />Assign</button>
                     )}
                     {a.status === 'ASSIGNED' && (
-                      <button onClick={() => doReturn(a)} className={`${btn} bg-sky-600 text-white hover:bg-sky-500`}>↩️ Return</button>
+                      <button onClick={() => doReturn(a)} className={`${btn} bg-sky-600 text-white hover:bg-sky-500`}><Undo2 className="mr-1 inline h-3.5 w-3.5" />Return</button>
                     )}
                     {a.status === 'AVAILABLE' && (
-                      <button onClick={() => doDelete(a)} className={`${btn} border border-red-500/40 text-red-300 hover:bg-red-500/10`}>🗑</button>
+                      <button onClick={() => doDelete(a)} className={`${btn} border border-red-500/40 text-red-300 hover:bg-red-500/10`} title="Delete"><Trash2 className="h-3.5 w-3.5" /></button>
                     )}
                   </div>
                 ))}
@@ -165,7 +176,7 @@ export default function AssetsPage() {
       {assignTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setAssignTarget(null)}>
           <div className="w-full max-w-md space-y-3 rounded-xl border border-slate-600 bg-slate-800 p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-base font-bold text-slate-100">📤 Assign {assignTarget.name}</h3>
+            <h3 className="flex items-center gap-1.5 text-base font-bold text-slate-100"><Send className="h-4 w-4" />Assign {assignTarget.name}</h3>
             <select className={inp} value={assignForm.userId} onChange={(e) => setAssignForm({ ...assignForm, userId: e.target.value })}>
               <option value="">Pick employee…</option>
               {employees.map((e2) => <option key={e2._id} value={e2._id}>{e2.name} — {e2.designation || e2.role}</option>)}
@@ -173,7 +184,7 @@ export default function AssetsPage() {
             <input className={inp} placeholder="Note (charger included, handle with care…)" value={assignForm.note} onChange={(e) => setAssignForm({ ...assignForm, note: e.target.value })} />
             <div className="flex justify-end gap-2 pt-1">
               <button onClick={() => setAssignTarget(null)} className={`${btn} border border-slate-600 text-slate-300 hover:bg-slate-700`}>Cancel</button>
-              <button onClick={doAssign} disabled={busy} className={`${btn} bg-indigo-600 text-white hover:bg-indigo-500`}>{busy ? 'Assigning…' : 'Assign 🔔'}</button>
+              <button onClick={doAssign} disabled={busy} className={`${btn} bg-indigo-600 text-white hover:bg-indigo-500`}>{busy ? 'Assigning…' : 'Assign'}</button>
             </div>
           </div>
         </div>

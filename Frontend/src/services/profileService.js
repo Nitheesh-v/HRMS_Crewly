@@ -1,5 +1,5 @@
 // ============================================================
-// 👤 PROFILE SERVICE — /api/profile/*
+// PROFILE SERVICE — /api/profile/*
 // ============================================================
 import api from './api';
 const profileService = {

@@ -1,5 +1,5 @@
 // ============================================================
-// 🧩 SELF-SERVICE API — documents · meetings · announcements
+// SELF-SERVICE API — documents · meetings · announcements
 // support tickets · dashboards (Phase 9 + 10)
 // ============================================================
 import api from './api';
@@ -38,5 +38,5 @@ export const supportService = {
 
 export const dashboardService = {
   employeeOverview: () => api.get('/dashboard/employee'),
-  managerOverview: () => api.get('/dashboard/manager'), // 👈 Phase 10 line
+  managerOverview: () => api.get('/dashboard/manager'), // Phase 10 line
 };

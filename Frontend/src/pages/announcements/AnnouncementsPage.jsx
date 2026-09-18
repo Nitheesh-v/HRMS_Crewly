@@ -1,5 +1,6 @@
-// 📢 ANNOUNCEMENTS — HR/admin post, everyone reads (incl. dashboard feed)
+// ANNOUNCEMENTS — HR/admin post, everyone reads (incl. dashboard feed)
 import { useCallback, useEffect, useState } from 'react';
+import { Megaphone, Pin, Send } from 'lucide-react';
 import { announcementService } from '../../services/selfService.js';
 import useAuth from '../../hooks/useAuth';
 import Modal from '../../components/Modal.jsx';
@@ -50,7 +51,7 @@ const AnnouncementsPage = () => {
     <div className="max-w-3xl">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">📢 Announcements</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-bold"><Megaphone className="h-6 w-6 text-crewly-green" />Announcements</h1>
           <p className="mt-1 text-sm text-crewly-dim">Company news from HR & leadership.</p>
         </div>
         {canPost && <button className="btn-primary px-5 py-2.5 text-sm" onClick={() => setOpen(true)}>+ New Announcement</button>}
@@ -60,12 +61,12 @@ const AnnouncementsPage = () => {
 
       <div className="mt-5 space-y-3">
         {loading && <p className="text-crewly-dim">Loading…</p>}
-        {!loading && list.length === 0 && <div className="card text-center text-crewly-dim">No announcements yet{canPost ? ' — post the first one! 📣' : '.'}</div>}
+        {!loading && list.length === 0 && <div className="card text-center text-crewly-dim">No announcements yet{canPost ? ' — post the first one!' : '.'}</div>}
         {list.map((a) => (
           <article key={a._id} className={`card ${a.pinned ? 'border-crewly-orange/50' : ''}`}>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="font-semibold">{a.pinned && '📌 '}{a.title}</h3>
+                <h3 className="font-semibold">{a.pinned && <Pin className="mr-1 inline h-3 w-3 text-crewly-orange" />}{a.title}</h3>
                 <p className="mt-0.5 text-xs text-crewly-dim">
                   {a.postedBy?.name || 'HR'} · {new Date(a.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
                 </p>
@@ -80,23 +81,23 @@ const AnnouncementsPage = () => {
       </div>
 
       {open && (
-        <Modal onClose={() => setOpen(false)} title="📢 New Announcement">
+        <Modal onClose={() => setOpen(false)} title="New Announcement">
           <div className="space-y-3">
             <div>
               <label className="label">Title *</label>
-              <input className="input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Office closed on Aug 15 🇮🇳" />
+              <input className="input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Office closed on Aug 15" />
             </div>
             <div>
               <label className="label">Message *</label>
               <textarea className="input" rows="5" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} />
             </div>
             <label className="flex items-center gap-2 text-sm text-crewly-dim">
-              <input type="checkbox" checked={form.pinned} onChange={(e) => setForm({ ...form, pinned: e.target.checked })} /> 📌 Pin to top
+              <input type="checkbox" checked={form.pinned} onChange={(e) => setForm({ ...form, pinned: e.target.checked })} /> <Pin className="mr-1 inline h-3.5 w-3.5" />Pin to top
             </label>
           </div>
           <div className="mt-4 flex justify-end gap-2 border-t border-crewly-border pt-3">
             <button className="btn-ghost px-4 py-2 text-sm" onClick={() => setOpen(false)}>Cancel</button>
-            <button className="btn-primary px-5 py-2 text-sm" onClick={onPost} disabled={saving}>{saving ? 'Posting…' : 'Post 📢'}</button>
+            <button className="btn-primary px-5 py-2 text-sm" onClick={onPost} disabled={saving}>{saving ? 'Posting…' : <><Send className="mr-1 inline h-4 w-4" />Post</>}</button>
           </div>
         </Modal>
       )}

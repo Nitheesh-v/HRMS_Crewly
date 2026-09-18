@@ -1,9 +1,10 @@
 // ============================================================
-// 📄 My Documents (employee) — Phase 14
-// 📥 Requested-by-HR inbox · 📂 my files by category ·
+// My Documents (employee) — Phase 14
+// Requested-by-HR inbox · my files by category ·
 // upload own · view/download · expiry badges
 // ============================================================
 import React, { useEffect, useRef, useState } from 'react';
+import { Download, Eye, FileText, History, Hourglass, Inbox, Paperclip, Upload } from 'lucide-react';
 import {
   getMyDocuments, getMyDocRequests, getDocCategories,
   uploadMyDocument, fulfillDocRequest,
@@ -30,8 +31,8 @@ const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-di
 const ExpiryBadge = ({ expiryDate }) => {
   if (!expiryDate) return null;
   const days = Math.ceil((new Date(expiryDate) - Date.now()) / 86400000);
-  if (days < 0) return chip(`⚠️ Expired ${fmtDate(expiryDate)}`, 'bg-red-400/15 text-red-300');
-  if (days <= 30) return chip(`⏳ Expires in ${days}d`, 'bg-amber-400/15 text-amber-300');
+  if (days < 0) return chip(`Expired ${fmtDate(expiryDate)}`, 'bg-red-400/15 text-red-300');
+  if (days <= 30) return chip(<><Hourglass className="mr-1 inline h-3 w-3" />Expires in {days}d</>, 'bg-amber-400/15 text-amber-300');
   return chip(`Exp ${fmtDate(expiryDate)}`, 'bg-slate-500/20 text-slate-400');
 };
 
@@ -95,7 +96,7 @@ export default function MyDocumentsPage() {
       fd.append('category', cat);
       await uploadMyDocument(fd);
       setDocName(''); setCat('OTHER'); fileRef.current.value = '';
-      flash(true, 'Uploaded ✅');
+      flash(true, 'Uploaded');
       await load();
     } catch (e) {
       flash(false, e?.response?.data?.message || 'Upload failed');
@@ -110,7 +111,7 @@ export default function MyDocumentsPage() {
       fd.append('document', file);
       fd.append('name', file.name);
       await fulfillDocRequest(request._id, fd);
-      flash(true, `"${file.name}" sent to HR ✅`);
+      flash(true, `"${file.name}" sent to HR`);
       await load();
     } catch (e) {
       flash(false, e?.response?.data?.message || 'Upload failed');
@@ -128,7 +129,7 @@ export default function MyDocumentsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-100">📄 My Documents</h1>
+        <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-100"><FileText className="h-6 w-6 text-indigo-400" />My Documents</h1>
         <span className="text-sm text-slate-400">{docs.length} file(s) · {pending.length} pending request(s)</span>
       </div>
 
@@ -138,10 +139,10 @@ export default function MyDocumentsPage() {
         </div>
       )}
 
-      {/* 📥 Requested by HR */}
+      {/* Requested by HR */}
       {pending.length > 0 && (
         <section className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
-          <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-amber-300">📥 Requested by HR — action needed</h2>
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-amber-300"><Inbox className="h-4 w-4" />Requested by HR — action needed</h2>
           <div className="space-y-2">
             {pending.map((r) => (
               <div key={r._id} className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-700 bg-slate-800/70 px-4 py-3">
@@ -157,7 +158,7 @@ export default function MyDocumentsPage() {
                   htmlFor={`req-file-${r._id}`}
                   className={`cursor-pointer rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-500 ${busy ? 'pointer-events-none opacity-50' : ''}`}
                 >
-                  ⬆️ Upload
+                  <Upload className="mr-1 inline h-4 w-4" />Upload
                 </label>
                 <input id={`req-file-${r._id}`} type="file" className="hidden" onChange={(e) => doFulfill(r, e.target.files?.[0])} />
               </div>
@@ -166,9 +167,9 @@ export default function MyDocumentsPage() {
         </section>
       )}
 
-      {/* ⬆️ Upload own */}
+      {/* Upload own */}
       <section className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">
-        <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-300">⬆️ Upload a document</h2>
+        <h2 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-300"><Upload className="h-4 w-4" />Upload a document</h2>
         <div className="flex flex-wrap items-center gap-3">
           <select className={`${inp} max-w-[220px]`} value={cat} onChange={(e) => setCat(e.target.value)}>
             {cats.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
@@ -181,7 +182,7 @@ export default function MyDocumentsPage() {
         </div>
       </section>
 
-      {/* 📂 Files by category */}
+      {/* Files by category */}
       {byCat.length === 0 ? (
         <p className="rounded-xl border border-slate-700 bg-slate-800/40 p-8 text-center text-sm text-slate-400">
           No documents yet — upload above, and anything HR adds for you appears here.
@@ -193,7 +194,7 @@ export default function MyDocumentsPage() {
             <div className="divide-y divide-slate-700/60">
               {g.items.map((d) => (
                 <div key={d._id} className="flex flex-wrap items-center gap-3 py-3">
-                  <span className="text-xl">📎</span>
+                  <span className="text-slate-400"><Paperclip className="h-5 w-5" /></span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-slate-100">{d.name}</p>
                     <p className="text-xs text-slate-400">
@@ -202,8 +203,8 @@ export default function MyDocumentsPage() {
                     </p>
                   </div>
                   <ExpiryBadge expiryDate={d.expiryDate} />
-                  <button onClick={() => window.open(d.fileUrl, '_blank')} className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-slate-700">👁 View</button>
-                  <button onClick={() => download(d)} className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-slate-700">⬇ Download</button>
+                  <button onClick={() => window.open(d.fileUrl, '_blank')} className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-slate-700"><Eye className="mr-1 inline h-3.5 w-3.5" />View</button>
+                  <button onClick={() => download(d)} className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-slate-700"><Download className="mr-1 inline h-3.5 w-3.5" />Download</button>
                 </div>
               ))}
             </div>
@@ -214,7 +215,7 @@ export default function MyDocumentsPage() {
       {/* history of requests */}
       {history.length > 0 && (
         <section className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">
-          <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-300">🕓 Request history</h2>
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-300"><History className="h-4 w-4" />Request history</h2>
           <div className="space-y-2">
             {history.map((r) => (
               <div key={r._id} className="flex items-center gap-3 text-sm">

@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
 import { useEffect, useState } from "react";
+import { X } from "lucide-react";
 import { Link } from "react-router-dom";
 import superAdminService from "../../services/superAdminService.js";
 
@@ -523,8 +524,8 @@ const SuperAdminCommercePage = ({ mode }) => {
             <div className="mb-4 flex justify-between">
               <h2 className="text-xl font-bold">Plan editor</h2>
 
-              <button type="button" onClick={() => setPlanForm(null)}>
-                ✕
+              <button type="button" onClick={() => setPlanForm(null)} title="Close">
+                <X className="h-4 w-4" />
               </button>
             </div>
 
