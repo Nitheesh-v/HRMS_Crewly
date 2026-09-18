@@ -23,12 +23,31 @@ import {
 import {
   ensureCandidatePipelineStages,
 } from './utils/candidatePipelineMigration.js';
+import {
+  ensurePermissions,
+} from './utils/permissionService.js';
 import { closeAllQueues } from './queues/queueFactory.js';
 
 const startServer = async () => {
   try {
     // Connect to MongoDB before accepting requests.
     await connectDB();
+
+    // RBAC bootstrap (fresh-database fix): guarantee the system Permission
+    // catalogue exists BEFORE any traffic is accepted. Without this, the
+    // first guarded request on an empty database 403s at the permission
+    // middleware ("Permission X is not registered.") before the lazy
+    // in-request bootstrap can ever run — a bootstrap deadlock where the
+    // code that would grant authority runs only after the check that
+    // requires it. Idempotent $setOnInsert upserts; concurrent API
+    // instances converge safely (duplicate-key upserts are a no-op win).
+    // A dropped/recreated database requires an API restart so this (and
+    // every other startup ensure + process cache) re-runs against it.
+    const permissionCount = (await ensurePermissions()).length;
+
+    logger.info(
+      `🛡️ System permission catalogue verified: ${permissionCount} permissions (v36)`
+    );
 
     // Phase 28.1 — optional Redis infrastructure. Never throws at the
     // API: unavailability degrades to a safe "down" state with bounded

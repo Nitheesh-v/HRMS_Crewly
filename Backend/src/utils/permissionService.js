@@ -84,23 +84,61 @@ export const getPermissionByName = async (
 export const _resetPermissionMetaCacheForTests = () =>
   permissionMetaCache.clear();
 
-export const ensurePermissions = async () => {
+// Fresh-deployment RBAC bootstrap: pre-bootstrap lookups can cache a
+// null Permission doc (15s TTL) and 403 the first guarded requests even
+// after the catalogue exists. A successful catalogue ensure clears the
+// metadata cache so authorization immediately sees real documents.
+// Mongo stays the source of truth; this only kills stale nulls.
+export const resetPermissionMetaCache = _resetPermissionMetaCacheForTests;
+
+export const ensurePermissions = async (
+  { PermissionModel = Permission } = {},
+) => {
   if (!ensurePermissionsPromise) {
     ensurePermissionsPromise = (async () => {
-      await Permission.bulkWrite(
-        DEFAULT_PERMISSIONS.map((permission) => ({
-          updateOne: {
-            filter: { name: permission.name },
-            update: { $setOnInsert: permission },
-            upsert: true,
-          },
-        })),
-        { ordered: false },
-      );
+      try {
+        await PermissionModel.bulkWrite(
+          DEFAULT_PERMISSIONS.map((permission) => ({
+            updateOne: {
+              filter: { name: permission.name },
+              update: { $setOnInsert: permission },
+              upsert: true,
+            },
+          })),
+          { ordered: false },
+        );
+      } catch (error) {
+        // Multi-instance startup: two API instances may run this exact
+        // bulkWrite against the same empty collection concurrently. With a
+        // unique index on name, the loser's upserts fail with E11000 —
+        // that is CONVERGENCE (the winning instance created the docs),
+        // not a failure. Any other error is real and rethrown.
+        const writeErrors = error?.writeErrors
+          ? [...error.writeErrors]
+          : error?.code === 11000
+            ? []
+            : null;
 
-      return Permission.find({
+        const allDuplicateKeys =
+          writeErrors !== null &&
+          writeErrors.every((writeError) => writeError?.code === 11000) &&
+          (error?.code === 11000 || writeErrors.length > 0);
+
+        if (!allDuplicateKeys) {
+          throw error;
+        }
+      }
+
+      // Always re-read after the write: this function's return value is
+      // the authoritative current catalogue, so a restarted or replacement
+      // database can never leak stale ObjectIds into role provisioning.
+      const catalogue = await PermissionModel.find({
         isActive: true,
       }).lean();
+
+      resetPermissionMetaCache();
+
+      return catalogue;
     })().catch((error) => {
       ensurePermissionsPromise = null;
       throw error;
@@ -108,6 +146,10 @@ export const ensurePermissions = async () => {
   }
 
   return ensurePermissionsPromise;
+};
+
+export const _resetEnsurePermissionsForTests = () => {
+  ensurePermissionsPromise = null;
 };
 
 // Increment only when new default permissions are introduced.
@@ -131,13 +173,38 @@ export const ensurePermissions = async () => {
 //   32 → 33 : 31.12 added ATTENDANCE_OPERATIONS_READ (HR_MANAGER, HR-only dashboard)
 //   33 → 34 : 31.14 added ATTENDANCE_CAPTURE_MANAGE (HR_MANAGER, kiosk/QR/import)
 //   34 → 35 : 31.15 added ATTENDANCE_ANALYTICS_READ (HR_MANAGER, reports & analytics)
-const SYSTEM_PERMISSION_VERSION = 35;
+//   35 → 36 : Fresh-database RBAC bootstrap fix. SUPPORT_UPDATE_SELF was
+//             referenced by the self-service matrices and selfServiceRoutes
+//             but was missing from the catalogue, so it was silently dropped
+//             from every role; the catalogue now carries it and the version
+//             migration $addToSet-grants it once to matrix-holding roles.
+const SYSTEM_PERMISSION_VERSION = 36;
+
+// Exported for bootstrap verification/tests — the value itself is owned
+// by this module; bump it ONLY when the catalogue or default role
+// matrices change (see the migration log above).
+export const getSystemPermissionVersion = () => SYSTEM_PERMISSION_VERSION;
+
 export const ensureCompanyRoles = async (
   companyId,
   createdBy = null,
-  { fetchRoles = true } = {},
+  { fetchRoles = true, PermissionModel = Permission, CompanyRoleModel = CompanyRole } = {},
 ) => {
-  const permissions = await ensurePermissions();
+  // Guarantees the global Permission catalogue exists (idempotent,
+  // multi-instance-safe) before any role provisioning reads it.
+  await ensurePermissions({ PermissionModel });
+
+  // Provisioning NEVER reuses a cached/memoized catalogue snapshot: role
+  // documents must reference the CURRENT live Permission ObjectIds. A
+  // process-lifetime memo can outlive the database it was read from (e.g.
+  // a dropped-and-recreated database under a running API), and role ids
+  // built from that memo dangle silently — populate() drops them and the
+  // role resolves to ZERO effective permissions. One lean indexed read
+  // per ensure call keeps every provisioned id live and correct.
+  const permissions = await PermissionModel.find(
+    { isActive: true },
+    { _id: 1, name: 1 },
+  ).lean();
 
   const permissionMap = Object.fromEntries(
     permissions.map((permission) => [permission.name, permission._id]),
@@ -160,7 +227,7 @@ export const ensureCompanyRoles = async (
     try {
       // Atomic upsert prevents two requests from creating
       // the same protected role simultaneously.
-      role = await CompanyRole.findOneAndUpdate(
+      role = await CompanyRoleModel.findOneAndUpdate(
         {
           companyId,
           code: roleKey,
@@ -200,7 +267,7 @@ export const ensureCompanyRoles = async (
         throw error;
       }
 
-      role = await CompanyRole.findOne({
+      role = await CompanyRoleModel.findOne({
         companyId,
         code: roleKey,
       });
@@ -221,7 +288,7 @@ export const ensureCompanyRoles = async (
     // - no stale __v conflict
     // - existing custom permissions are preserved
     // - missing defaults are added only once
-    const result = await CompanyRole.updateOne(
+    const result = await CompanyRoleModel.updateOne(
       {
         _id: role._id,
         companyId,
@@ -270,7 +337,7 @@ export const ensureCompanyRoles = async (
   // round-trips entirely. List endpoints keep the default.
   if (!fetchRoles) return null;
 
-  return CompanyRole.find({
+  return CompanyRoleModel.find({
     companyId,
     isActive: true,
   })
@@ -353,16 +420,16 @@ export const getPermissionPlanAvailability = async (
   );
 };
 
-const findUserRole = async (user) => {
+const findUserRole = async (user, { CompanyRoleModel = CompanyRole } = {}) => {
   if (user.roleRef) {
-    return CompanyRole.findOne({
+    return CompanyRoleModel.findOne({
       _id: user.roleRef,
       companyId: user.companyId,
       isActive: true,
     }).populate("permissions");
   }
 
-  return CompanyRole.findOne({
+  return CompanyRoleModel.findOne({
     companyId: user.companyId,
 
     systemRoleKey: user.role,
@@ -371,7 +438,87 @@ const findUserRole = async (user) => {
   }).populate("permissions");
 };
 
-export const resolveUserPermissions = async (userOrId) => {
+// Fresh-database bootstrap self-repair.
+//
+// ensureCompanyRoles provisions role documents with the CURRENT live
+// Permission ObjectIds, but a role provisioned by an older buggy path (a
+// catalogue memoized from a database that was later dropped/recreated)
+// can hold DANGLING permission refs: populate() silently drops them, so
+// the role resolves to zero effective permissions while the raw document
+// looks fully populated and its permissionVersion already equals the
+// current version — the normal version-gated migration never repairs it.
+//
+// Detection here is free: findUserRole ALREADY populated the role, so a
+// populated-permission count below the authoritative matrix count proves
+// dead references. Repair is additive-only ($addToSet with fresh ids —
+// dead ids stay but populate to nothing) and touches ONLY system roles
+// that no admin has ever edited (updatedBy === null). Custom roles and
+// admin-tuned system roles are never rewritten.
+const repairSystemRoleIfNeeded = async (
+  role,
+  { PermissionModel = Permission, CompanyRoleModel = CompanyRole } = {},
+) => {
+  if (!role?.isSystemRole || !role.systemRoleKey) return role;
+
+  // An admin-curated permission set on a system role is tenant
+  // customization — respected, never silently rewritten (§13).
+  if (role.updatedBy) return role;
+
+  const defaultNames = DEFAULT_ROLE_MATRIX[role.systemRoleKey] || [];
+
+  if (!defaultNames.length) return role;
+
+  const livePermissions = (role.permissions || []).filter(
+    (permission) => permission?.name,
+  );
+
+  if (livePermissions.length >= defaultNames.length) return role;
+
+  const catalogue = await PermissionModel.find(
+    { isActive: true },
+    { _id: 1, name: 1 },
+  ).lean();
+
+  const permissionMap = new Map(
+    catalogue.map((permission) => [permission.name, permission._id]),
+  );
+
+  const freshIds = defaultNames
+    .map((name) => permissionMap.get(name))
+    .filter(Boolean);
+
+  await CompanyRoleModel.updateOne(
+    {
+      _id: role._id,
+      companyId: role.companyId,
+      isSystemRole: true,
+    },
+    {
+      $addToSet: {
+        permissions: {
+          $each: freshIds,
+        },
+      },
+
+      $set: {
+        permissionVersion: SYSTEM_PERMISSION_VERSION,
+      },
+    },
+  );
+
+  invalidatePermissionCache({ companyId: role.companyId });
+
+  return CompanyRoleModel.findOne({
+    _id: role._id,
+    companyId: role.companyId,
+    isActive: true,
+  }).populate("permissions");
+};
+
+export const resolveUserPermissions = async (
+  userOrId,
+  { PermissionModel = Permission, CompanyRoleModel = CompanyRole } = {},
+) => {
   const user =
     typeof userOrId === "object"
       ? userOrId
@@ -397,9 +544,20 @@ export const resolveUserPermissions = async (userOrId) => {
 
   // fetchRoles:false — the return value was always discarded here;
   // findUserRole below loads the one role this user needs.
-  await ensureCompanyRoles(user.companyId, null, { fetchRoles: false });
+  await ensureCompanyRoles(user.companyId, null, {
+    fetchRoles: false,
+    PermissionModel,
+    CompanyRoleModel,
+  });
 
-  const role = await findUserRole(user);
+  const resolvedRole = await findUserRole(user, { CompanyRoleModel });
+
+  // Bootstrap self-repair (see repairSystemRoleIfNeeded) — normally a
+  // no-op that costs nothing beyond the already-populated role.
+  const role = await repairSystemRoleIfNeeded(resolvedRole, {
+    PermissionModel,
+    CompanyRoleModel,
+  });
 
   const rolePermissions = new Set(
     (role?.permissions || []).map((permission) => permission.name),
@@ -442,32 +600,36 @@ export const resolveUserPermissions = async (userOrId) => {
   return value;
 };
 
-export const hasPermission = async (user, permissionName) => {
-  const resolved = await resolveUserPermissions(user);
+export const hasPermission = async (user, permissionName, options = {}) => {
+  const resolved = await resolveUserPermissions(user, options);
 
   return (
     !resolved.denied.has(permissionName) && resolved.allowed.has(permissionName)
   );
 };
 
-export const hasAnyPermission = async (user, permissionNames) => {
-  const resolved = await resolveUserPermissions(user);
+export const hasAnyPermission = async (user, permissionNames, options = {}) => {
+  const resolved = await resolveUserPermissions(user, options);
 
   return permissionNames.some(
     (name) => !resolved.denied.has(name) && resolved.allowed.has(name),
   );
 };
 
-export const hasAllPermissions = async (user, permissionNames) => {
-  const resolved = await resolveUserPermissions(user);
+export const hasAllPermissions = async (
+  user,
+  permissionNames,
+  options = {},
+) => {
+  const resolved = await resolveUserPermissions(user, options);
 
   return permissionNames.every(
     (name) => !resolved.denied.has(name) && resolved.allowed.has(name),
   );
 };
 
-export const getPermissionPayload = async (user) => {
-  const resolved = await resolveUserPermissions(user);
+export const getPermissionPayload = async (user, options = {}) => {
+  const resolved = await resolveUserPermissions(user, options);
 
   return {
     role: resolved.role
