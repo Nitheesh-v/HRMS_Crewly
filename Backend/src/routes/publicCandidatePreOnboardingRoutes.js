@@ -17,7 +17,6 @@ import {
 const router = Router();
 
 const readLimit = securityRateLimit({
-  sharedName: 'preonb-read',
   windowMs: 15 * 60 * 1000,
   maximum: 80,
   keyGenerator: (req) =>
@@ -26,7 +25,6 @@ const readLimit = securityRateLimit({
 });
 
 const uploadLimit = securityRateLimit({
-  sharedName: 'preonb-upload',
   windowMs: 15 * 60 * 1000,
   maximum: 20,
   keyGenerator: (req) =>

@@ -20,7 +20,6 @@ import { candidateApplicationRules } from '../validators/candidateApplicationVal
 const router = Router();
 
 const publicCareerRateLimit = securityRateLimit({
-  sharedName: 'careers-read',
   windowMs: 60 * 1000,
   maximum: 60,
   keyGenerator: (req) => `${req.ip}:public-careers`,
@@ -28,7 +27,6 @@ const publicCareerRateLimit = securityRateLimit({
 });
 
 const publicApplicationRateLimit = securityRateLimit({
-  sharedName: 'careers-apply',
   windowMs: 15 * 60 * 1000,
   maximum: 5,
   keyGenerator: (req) =>

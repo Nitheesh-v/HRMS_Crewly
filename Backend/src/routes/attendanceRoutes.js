@@ -343,7 +343,6 @@ router.post(
 // permission — whoever can punch can enroll a terminal PIN).
 // HR can only CLEAR (force fresh setup), never view.
 const kioskPinRateLimit = securityRateLimit({
-  sharedName: 'kiosk-pin-manage',
   windowMs: 60000,
   maximum: 10,
   keyGenerator: (req) => `${req.ip}:kiosk-pin:${req.companyId}:${req.user?._id || ''}`,

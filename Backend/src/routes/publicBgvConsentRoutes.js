@@ -20,7 +20,6 @@ const router = Router();
 const consentRateLimitKey = (rawToken) => `bgv-consent:${hashToken(rawToken || '')}`;
 
 const readLimit = securityRateLimit({
-  sharedName: 'bgv-consent-read',
   windowMs: 15 * 60 * 1000,
   maximum: 80,
   keyGenerator: (req) => `${req.ip}:${consentRateLimitKey(req.params.secureToken)}`,
@@ -28,7 +27,6 @@ const readLimit = securityRateLimit({
 });
 
 const decisionLimit = securityRateLimit({
-  sharedName: 'bgv-consent-decision',
   windowMs: 15 * 60 * 1000,
   maximum: 10,
   keyGenerator: (req) =>

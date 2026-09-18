@@ -33,7 +33,6 @@ const router = Router();
 
 // Secret guessing: 5 attempts/minute per IP + station.
 const sessionRateLimit = securityRateLimit({
-  sharedName: 'kiosk-session',
   windowMs: 60000,
   maximum: 5,
   keyGenerator: (req) => `${req.ip}:kiosk-session:${req.body?.stationId || ''}`,
@@ -43,7 +42,6 @@ const sessionRateLimit = securityRateLimit({
 // Punch bursts at shift change: generous per-station cap that
 // still stops automated abuse.
 const punchRateLimit = securityRateLimit({
-  sharedName: 'kiosk-punch',
   windowMs: 60000,
   maximum: 120,
   keyGenerator: (req) => `${req.ip}:kiosk-punch:${req.kiosk?.stationId || ''}`,
@@ -56,7 +54,6 @@ const punchRateLimit = securityRateLimit({
 // the whole terminal, and the company+station segments stop
 // cross-tenant / cross-station bypass.
 const identifyRateLimit = securityRateLimit({
-  sharedName: 'kiosk-identify',
   windowMs: 10 * 60000,
   maximum: 10,
   keyGenerator: (req) =>
