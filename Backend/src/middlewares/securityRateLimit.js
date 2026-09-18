@@ -1,3 +1,10 @@
+import {
+  createRateLimitStore,
+} from '../utils/rateLimitStore.js';
+
+// Phase 32.4 — pre-32.4 process-local buckets remain as the degraded
+// mode fallback for every limiter (bounded, oldest-evicted by the
+// store's shared fallback path; plain limiters keep their own map).
 const buckets = new Map();
 
 const defaultKey = (req) =>
@@ -7,17 +14,67 @@ const defaultKey = (req) =>
     req.body?.email || ''
   ).toLowerCase()}`;
 
+// Phase 32.4 — optional SHARED tier. Passing `sharedName` makes the
+// counter live in Redis (crewly:<env>:rl:<sharedName>:<identity>) so
+// API #1/#2/#N enforce ONE budget; without it the limiter behaves
+// exactly as before (process-local). The 429 contract and headers are
+// identical in both tiers. Degraded Redis → in-process fallback.
 export const securityRateLimit = ({
   windowMs = 60000,
   maximum = 10,
   keyGenerator = defaultKey,
   message =
     'Too many requests. Please try again later.',
-} = {}) =>
-  (req, res, next) => {
+  sharedName = null,
+  store = null,
+} = {}) => {
+  const sharedStore =
+    sharedName && !store
+      ? createRateLimitStore({
+          sharedName,
+          windowMs,
+        })
+      : store;
+
+  return async (req, res, next) => {
     const now = Date.now();
     const key =
       keyGenerator(req);
+
+    if (sharedStore) {
+      const result = await sharedStore.hit(key, maximum);
+
+      res.setHeader(
+        'X-RateLimit-Limit',
+        maximum
+      );
+
+      res.setHeader(
+        'X-RateLimit-Remaining',
+        result.remaining
+      );
+
+      res.setHeader(
+        'X-RateLimit-Reset',
+        Math.ceil(
+          result.resetAt / 1000
+        )
+      );
+
+      if (result.limited) {
+        return res
+          .status(429)
+          .json({
+            statusCode: 429,
+            success: false,
+            code:
+              'RATE_LIMITED',
+            message,
+          });
+      }
+
+      return next();
+    }
 
     const bucket =
       buckets.get(key) || {
@@ -75,9 +132,11 @@ export const securityRateLimit = ({
 
     next();
   };
+};
 
 export const loginRateLimit =
   securityRateLimit({
+    sharedName: 'login',
     windowMs: 60000,
     maximum: 5,
 
@@ -87,6 +146,7 @@ export const loginRateLimit =
 
 export const resetRateLimit =
   securityRateLimit({
+    sharedName: 'password-reset',
     windowMs:
       15 * 60 * 1000,
 
@@ -98,6 +158,7 @@ export const resetRateLimit =
 
 export const refreshRateLimit =
   securityRateLimit({
+    sharedName: 'refresh',
     windowMs: 60000,
     maximum: 30,
 
@@ -110,6 +171,7 @@ export const refreshRateLimit =
 
 export const passwordChangeRateLimit =
   securityRateLimit({
+    sharedName: 'password-change',
     windowMs:
       15 * 60 * 1000,
 

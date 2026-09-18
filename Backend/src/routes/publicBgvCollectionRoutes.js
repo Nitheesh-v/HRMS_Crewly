@@ -44,6 +44,7 @@ const router = Router();
 const collectionKey = (rawToken) => `bgv-collection:${hashToken(rawToken || '')}`;
 
 const readLimit = securityRateLimit({
+  sharedName: 'bgv-coll-read',
   windowMs: 15 * 60 * 1000,
   maximum: 80,
   keyGenerator: (req) => `${req.ip}:${collectionKey(req.params.secureToken)}`,
@@ -51,6 +52,7 @@ const readLimit = securityRateLimit({
 });
 
 const writeLimit = securityRateLimit({
+  sharedName: 'bgv-coll-write',
   windowMs: 15 * 60 * 1000,
   maximum: 40,
   keyGenerator: (req) => `${req.ip}:${collectionKey(req.params.secureToken)}:write`,
@@ -58,6 +60,7 @@ const writeLimit = securityRateLimit({
 });
 
 const uploadLimit = securityRateLimit({
+  sharedName: 'bgv-coll-upload',
   windowMs: 15 * 60 * 1000,
   maximum: 20,
   keyGenerator: (req) => `${req.ip}:${collectionKey(req.params.secureToken)}:upload`,
@@ -65,6 +68,7 @@ const uploadLimit = securityRateLimit({
 });
 
 const submitLimit = securityRateLimit({
+  sharedName: 'bgv-coll-submit',
   windowMs: 15 * 60 * 1000,
   maximum: 10,
   keyGenerator: (req) => `${req.ip}:${collectionKey(req.params.secureToken)}:submit`,
