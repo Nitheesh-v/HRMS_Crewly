@@ -105,9 +105,16 @@ export const createRateLimitStore = ({
         client.incr(key),
       );
 
-      await withTimeout(
-        client.expire(key, ttlSeconds, 'NX'),
-      );
+      // EXPIRE NX (first hit owns the TTL) — Redis ≥ 7. Older
+      // servers answer NX with an error / null; the count===1
+      // branch keeps the window correct either way.
+      if (count === 1) {
+        await withTimeout(
+          client.expire(key, ttlSeconds, 'NX'),
+        ).catch(() =>
+          withTimeout(client.expire(key, ttlSeconds)),
+        );
+      }
 
       return count;
     },
