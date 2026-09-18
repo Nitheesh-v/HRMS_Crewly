@@ -4,93 +4,161 @@ import SystemEvent from "../models/SystemEvent.js";
 import User from "../models/User.js";
 import { recordHistory } from "./subscriptionEngine.js";
 import { notifySmart } from "./notifyPref.js";
+import { invalidateSubscriptionGateCache } from "./subscriptionGateCache.js";
 
 const DAY = 24 * 60 * 60 * 1000;
 
 const DEFAULT_REMINDERS = [30, 15, 7, 3, 1];
 
-const notifyAdmins = async (companyId, payload) => {
-  try {
-    const admins = await User.find({
-      companyId,
-      role: "COMPANY_ADMIN",
-      status: "ACTIVE",
-    })
-      .select("_id")
-      .lean();
+// ============================================================
+//  PHASE 32.1 — MULTI-INSTANCE SAFE SUBSCRIPTION LIFECYCLE.
+//
+//  This scheduler intentionally runs inside EVERY API process
+//  (10s after boot + daily — process-owned by design). With more
+//  than one API instance the runs overlap, so every STATUS
+//  TRANSITION is now an atomic Mongo compare-and-set claim:
+//
+//    findOneAndUpdate({ _id, <old-state guard> }, { $set }, { new: true })
+//
+//  Exactly one instance wins a given transition; the loser reads
+//  `null` and silently skips the side effects (SubscriptionHistory,
+//  admin notifications, SystemEvent). Reminders were already
+//  deduplicated by the unique sparse SubscriptionHistory.eventKey
+//  index and stay unchanged.
+//
+//  Behavioral parity with the previous read-check-save loop is
+//  exact for a single instance: same statuses, same history
+//  events, same notification copy, same ordering. The only
+//  observable difference is that concurrent duplicate runs can no
+//  longer produce duplicate audit rows / notifications.
+//
+//  All collaborators are injectable (hermetic tests); the defaults
+//  are the real production dependencies.
+// ============================================================
 
-    await Promise.all(
-      admins.map((admin) =>
-        notifySmart(admin._id, {
-          category: "BILLING",
+const snapshot = (doc) =>
+  typeof doc?.toObject === "function" ? doc.toObject() : { ...doc };
 
-          ...payload,
-        }),
-      ),
+export const runSubscriptionLifecycle = async (collaborators = {}) => {
+  const {
+    SubscriptionModel = Subscription,
+    PlatformSettingsModel = PlatformSettings,
+    SystemEventModel = SystemEvent,
+    UserModel = User,
+    recordHistoryFn = recordHistory,
+    notifyFn = notifySmart,
+    invalidateGateCacheFn = invalidateSubscriptionGateCache,
+    nowMs = null,
+  } = collaborators;
+
+  const notifyAdmins = async (companyId, payload) => {
+    try {
+      const admins = await UserModel.find({
+        companyId,
+        role: "COMPANY_ADMIN",
+        status: "ACTIVE",
+      })
+        .select("_id")
+        .lean();
+
+      await Promise.all(
+        admins.map((admin) =>
+          notifyFn(admin._id, {
+            category: "BILLING",
+
+            ...payload,
+          }),
+        ),
+      );
+    } catch (error) {
+      console.warn("[subscription-notification]", error.message);
+    }
+  };
+
+  const sendReminder = async (subscription, daysLeft) => {
+    const endDate = new Date(subscription.endDate).toISOString().slice(0, 10);
+
+    const eventKey =
+      `${subscription._id}:` + `EXPIRY:${daysLeft}:` + `${endDate}`;
+
+    const history = await recordHistoryFn({
+      subscription,
+      event: "REMINDER_SENT",
+
+      eventKey,
+
+      reason: `Expiration reminder: ${daysLeft} day(s)`,
+
+      metadata: {
+        daysLeft,
+        endDate,
+      },
+    });
+
+    // Duplicate event key means reminder was already sent.
+    if (!history) return;
+
+    await notifyAdmins(subscription.company, {
+      title: "⏳ Subscription expiring",
+
+      message:
+        `Your ${subscription.plan} ` + `subscription expires in ` +
+        `${daysLeft} day(s).`,
+
+      link: "/app/subscription",
+    });
+
+    await SystemEventModel.create({
+      type: "SUBSCRIPTION_EXPIRING",
+
+      level: daysLeft <= 3 ? "WARNING" : "INFO",
+
+      title: "Subscription expiring",
+
+      message: `${subscription.plan} expires ` + `${daysLeft} day(s)`,
+
+      companyId: subscription.company,
+
+      targetType: "Subscription",
+
+      targetId: subscription._id,
+
+      metadata: {
+        daysLeft,
+        endDate,
+      },
+    });
+  };
+
+  // Atomic transition claim: wins at most once per (subscription,
+  // old-state guard). Returns the updated document for the winner,
+  // null when another instance already performed the transition.
+  const claimTransition = async (subscriptionId, guard, update) => {
+    const claimed = await SubscriptionModel.findOneAndUpdate(
+      {
+        _id: subscriptionId,
+
+        ...guard,
+      },
+      {
+        $set: update,
+      },
+      {
+        new: true,
+      },
     );
-  } catch (error) {
-    console.warn("[subscription-notification]", error.message);
-  }
-};
 
-const sendReminder = async (subscription, daysLeft) => {
-  const endDate = new Date(subscription.endDate).toISOString().slice(0, 10);
+    if (claimed) {
+      // The document-save hook does not fire on query updates, so the
+      // winner re-validates the process gate cache explicitly (same
+      // same-process semantics the previous save() path had).
+      invalidateGateCacheFn(claimed.company);
+    }
 
-  const eventKey =
-    `${subscription._id}:` + `EXPIRY:${daysLeft}:` + `${endDate}`;
+    return claimed;
+  };
 
-  const history = await recordHistory({
-    subscription,
-    event: "REMINDER_SENT",
-
-    eventKey,
-
-    reason: `Expiration reminder: ${daysLeft} day(s)`,
-
-    metadata: {
-      daysLeft,
-      endDate,
-    },
-  });
-
-  // Duplicate event key means reminder was already sent.
-  if (!history) return;
-
-  await notifyAdmins(subscription.company, {
-    title: "⏳ Subscription expiring",
-
-    message:
-      `Your ${subscription.plan} ` +
-      `subscription expires in ` +
-      `${daysLeft} day(s).`,
-
-    link: "/app/subscription",
-  });
-
-  await SystemEvent.create({
-    type: "SUBSCRIPTION_EXPIRING",
-
-    level: daysLeft <= 3 ? "WARNING" : "INFO",
-
-    title: "Subscription expiring",
-
-    message: `${subscription.plan} expires ` + `in ${daysLeft} day(s)`,
-
-    companyId: subscription.company,
-
-    targetType: "Subscription",
-
-    targetId: subscription._id,
-
-    metadata: {
-      daysLeft,
-      endDate,
-    },
-  });
-};
-
-export const runSubscriptionLifecycle = async () => {
-  const settings = await PlatformSettings.findOne({
+  const settings = await PlatformSettingsModel.findOne({
     key: "GLOBAL",
   }).lean();
 
@@ -105,9 +173,9 @@ export const runSubscriptionLifecycle = async () => {
     ? settings.subscription.reminderDays
     : DEFAULT_REMINDERS;
 
-  const now = Date.now();
+  const now = nowMs ?? Date.now();
 
-  const subscriptions = await Subscription.find({
+  const subscriptions = await SubscriptionModel.find({
     status: {
       $nin: ["CANCELLED", "SUSPENDED"],
     },
@@ -127,9 +195,19 @@ export const runSubscriptionLifecycle = async () => {
         daysLeft <= 30 &&
         !["TRIAL", "PAST_DUE"].includes(subscription.status)
       ) {
-        subscription.status = "EXPIRING";
-
-        await subscription.save();
+        // Winner-only write; no history/notification for EXPIRING
+        // (exactly the previous behavior).
+        await claimTransition(
+          subscription._id,
+          {
+            status: {
+              $nin: ["TRIAL", "PAST_DUE", "EXPIRING"],
+            },
+          },
+          {
+            status: "EXPIRING",
+          },
+        );
       }
 
       if (reminders.includes(daysLeft)) {
@@ -144,28 +222,44 @@ export const runSubscriptionLifecycle = async () => {
       subscription.paymentStatus === "FAILED" &&
       subscription.status !== "PAST_DUE"
     ) {
-      const previous = subscription.toObject();
+      const previous = snapshot(subscription);
 
-      subscription.status = "PAST_DUE";
+      const claimed = await claimTransition(
+        subscription._id,
+        {
+          paymentStatus: "FAILED",
 
-      subscription.pastDueAt = new Date();
+          status: {
+            $ne: "PAST_DUE",
+          },
+        },
+        {
+          status: "PAST_DUE",
 
-      subscription.pastDueEndsAt = new Date(now + pastDueDays * DAY);
+          pastDueAt: new Date(now),
 
-      await subscription.save();
+          pastDueEndsAt: new Date(now + pastDueDays * DAY),
+        },
+      );
 
-      await recordHistory({
-        subscription,
+      // Another instance already claimed this transition — its side
+      // effects (history + notification) already happened exactly once.
+      if (!claimed) {
+        continue;
+      }
+
+      await recordHistoryFn({
+        subscription: claimed,
         event: "SUBSCRIPTION_PAST_DUE",
 
         reason: "Recurring payment failed",
 
         previousState: previous,
 
-        newState: subscription.toObject(),
+        newState: snapshot(claimed),
       });
 
-      await notifyAdmins(subscription.company, {
+      await notifyAdmins(claimed.company, {
         title: "⚠️ Payment failed",
 
         message:
@@ -187,31 +281,45 @@ export const runSubscriptionLifecycle = async () => {
     const graceEndsAt =
       subscription.graceEndsAt || new Date(endTime + graceDays * DAY);
 
-    subscription.graceEndsAt = graceEndsAt;
-
-    subscription.expirationBehavior =
+    const expirationBehavior =
       subscription.expirationBehavior || defaultBehavior;
 
     if (graceDays > 0 && now <= new Date(graceEndsAt).getTime()) {
       if (subscription.status !== "GRACE_PERIOD") {
-        const previous = subscription.toObject();
+        const previous = snapshot(subscription);
 
-        subscription.status = "GRACE_PERIOD";
+        const claimed = await claimTransition(
+          subscription._id,
+          {
+            status: {
+              $ne: "GRACE_PERIOD",
+            },
+          },
+          {
+            status: "GRACE_PERIOD",
 
-        await subscription.save();
+            graceEndsAt,
 
-        await recordHistory({
-          subscription,
+            expirationBehavior,
+          },
+        );
+
+        if (!claimed) {
+          continue;
+        }
+
+        await recordHistoryFn({
+          subscription: claimed,
           event: "SUBSCRIPTION_EXPIRED",
 
           reason: "Subscription entered grace period",
 
           previousState: previous,
 
-          newState: subscription.toObject(),
+          newState: snapshot(claimed),
         });
 
-        await notifyAdmins(subscription.company, {
+        await notifyAdmins(claimed.company, {
           title: "⚠️ Grace period",
 
           message:
@@ -227,47 +335,63 @@ export const runSubscriptionLifecycle = async () => {
     }
 
     if (subscription.status !== "EXPIRED") {
-      const previous = subscription.toObject();
+      const previous = snapshot(subscription);
 
-      subscription.status = "EXPIRED";
+      const claimed = await claimTransition(
+        subscription._id,
+        {
+          status: {
+            $ne: "EXPIRED",
+          },
+        },
+        {
+          status: "EXPIRED",
 
-      subscription.readOnly = true;
+          readOnly: true,
 
-      await subscription.save();
+          graceEndsAt,
 
-      await recordHistory({
-        subscription,
+          expirationBehavior,
+        },
+      );
+
+      if (!claimed) {
+        continue;
+      }
+
+      await recordHistoryFn({
+        subscription: claimed,
         event: "SUBSCRIPTION_EXPIRED",
 
         reason: "Grace period ended",
 
         previousState: previous,
 
-        newState: subscription.toObject(),
+        newState: snapshot(claimed),
       });
 
-      await notifyAdmins(subscription.company, {
+      await notifyAdmins(claimed.company, {
         title: "⛔ Subscription expired",
 
         message: "Your company is now in read-only mode.",
 
-        link: "/app/subscription",
+        link: "/app/billing",
       });
 
-      await SystemEvent.create({
+      await SystemEventModel.create({
         type: "SUBSCRIPTION_EXPIRED",
 
         level: "WARNING",
 
         title: "Subscription expired",
 
-        message: `${subscription.plan} ` + `subscription expired`,
+        message: `${claimed.plan} ` + `subscription expired`,
 
-        companyId: subscription.company,
+        companyId: claimed.company,
 
         targetType: "Subscription",
 
-        targetId: subscription._id,
+        targetId: claimed._id,
       });
     }
   }

@@ -1,0 +1,196 @@
+# PHASE 32 — PRODUCTION INFRASTRUCTURE, SCALABILITY & PERFORMANCE
+
+# 32.1 — Production Architecture & Multi-Instance Readiness
+
+Status: **32.1 implemented** (awaiting localhost acceptance). This document is
+the authoritative Phase 32 architecture record required by the 32.1 build
+brief. Repository truth wins over this document at all times — numbers and
+references below were verified against the checkout that introduced them.
+
+Hosting provider is **NOT selected**. Everything in Phase 32 is
+vendor-neutral: no AWS/Azure/GCP/Render/Railway/Fly/Cloudflare/Kubernetes/
+nginx/HAProxy/Traefik decision has been made, and no provider-specific
+configuration exists in the repository.
+
+---
+
+## 1. CURRENT API TOPOLOGY (verified)
+
+- **Express app** (`Backend/src/app.js`): pure application — helmet, CORS
+  allowlist, 10 kB JSON body limits, `trust proxy 1`, request logging with
+  candidate-token redaction. It **never binds a port**; `app.listen` lives
+  only in the server entry point. This makes the app independently
+  instantiable (tests, additional instances).
+- **Server entry** (`Backend/src/server.js`): deterministic startup —
+  `loadEnv → connectDB → ensurePermissions (RBAC catalogue, v36) →
+  initializeRedis → ensureDefaultPlans → career/candidate/pipeline ensures →
+  app.listen → startSubscriptionLifecycle → bounded SIGTERM shutdown`.
+  Startup aborts on failure; the API never serves a half-bootstrapped state.
+- **Independent worker** (`Backend/src/workers/index.js`): requires MongoDB
+  AND Redis (fails fast otherwise), runs per-queue BullMQ workers via a
+  shared job registry, executes idempotent Mongo-authoritative startup
+  reconciles (resume/ATS/scheduled/documents/BGV), publishes an ops
+  heartbeat, sweeps its own local temp files hourly, and drains bounded on
+  SIGTERM. The API never addresses a specific worker — all work flows
+  through shared queues.
+
+## 2. CURRENT WORKER TOPOLOGY (verified)
+
+One worker process per machine today; all job state lives in shared Redis
+(BullMQ) + MongoDB. Worker-local state is: its own BullMQ connection
+instances (intentionally process-owned), its heartbeat identity
+(`crewly:ops:worker:<env>:worker-<uuid>`), and its local temp-file sweep.
+No business truth lives in the worker process. Startup reconciles are
+idempotent (`updateMany` recovery + lease/claim semantics), so overlapping
+worker startups are safe; deep multi-worker scaling verification is **32.7**.
+
+## 3. SHARED DEPENDENCIES
+
+| Dependency | Role | Truth? |
+| --- | --- | --- |
+| MongoDB | All business state (companies, users, roles, attendance events, payroll, subscriptions, SecuritySessions, AdminSessions, payslip/payment file bytes) | **YES — sole authority** |
+| Redis (ioredis) | BullMQ queues, caches with generation invalidation, worker heartbeat/ops signals | No — optimization/coordination only |
+| Object storage (Cloudinary) | Private durable files (resumes, offers, pre-onboarding, BGV evidence, branding) | Reference data; keys in Mongo |
+
+## 4. STATELESS JWT ASSESSMENT (central 32.1 question)
+
+**Customer authentication is stateless-JWT with shared Mongo session
+validation.** `protect` verifies the Bearer token, then validates the
+session id/user/tokenVersion against `SecuritySession` in MongoDB on every
+request. No API process keeps sessions, tokens, or business state in
+memory (`authMiddleware.js` and `tokenService.js` contain no module-level
+session maps — pinned by test). Therefore:
+
+- Request A → API #1, Request B → API #2 works without sticky sessions.
+- Any instance can die without losing authoritative state.
+- Refresh/logout/lockout state is shared Mongo state, visible to all
+  instances immediately.
+
+Kiosk devices use stateless device JWTs + Mongo station validation — same
+conclusion. Platform/Super Admin uses Mongo `AdminSession` (shared) —
+also multi-instance safe; its process-local login-attempt guard is a
+rate-limiting concern only (→ 32.4), not an authentication-truth concern.
+
+**Verified multi-instance validation:** see the localhost procedure — two
+API instances on :5000/:5001 sharing one Mongo/Redis, one token used
+interchangeably.
+
+## 5. PROCESS-LOCAL STATE INVENTORY + CLASSIFICATION
+
+Classification: **A** = safe process-local · **B** = multi-instance unsafe ·
+**C** = intentionally process-owned · **D** = defer to a later 32.x unit.
+
+| # | State | File(s) | Class | Notes |
+| --- | --- | --- | --- | --- |
+| 1 | Subscription lifecycle scheduler (10 s + daily, in every API instance) | `utils/subscriptionLifecycle.js` | was B → **fixed in 32.1** | Status transitions are now atomic CAS claims (`findOneAndUpdate` + state guards) — concurrent instances converge to exactly one winner per transition; no duplicate history/notifications/SystemEvents. Reminders were already `eventKey`-deduped (unique sparse index). Hermetic tests: `test/multiInstanceBaseline.test.js`. |
+| 2 | Startup ensures (permissions v36, plans, career/candidate/pipeline identifiers) | `server.js` + utils | A | Idempotent upserts; concurrent instance starts converge (duplicate-key tolerant). |
+| 3 | Permission caches (resolved grants 5 min; permission metadata 15 s) | `utils/permissionService.js` | D→32.6 | Exact invalidation is same-process; cross-instance staleness is TTL-bounded; Mongo stays truth. |
+| 4 | Subscription gate cache (5–60 s TTL) | `utils/subscriptionGateCache.js` | D→32.6 | Same-process exact invalidation via Subscription post-save hooks; TTL-bounded cross-instance staleness. |
+| 5 | Rate-limit buckets (`Map`) — login/reset/refresh/password-change, kiosk, public careers/offers | `middlewares/securityRateLimit.js` | D→32.4 | Process-local: effective limits multiply by instance count; store is unbounded. Includes `superAdminAuth.js` login-attempt map. |
+| 6 | Cache single-flight (`inFlight` Map) + per-process cache stats | `services/redisCacheService.js` | A | Documented multi-instance limitation; duplicate loads are safe (Mongo-backed loaders); correctness never depends on it. |
+| 7 | Queue producer registry, per-process BullMQ connections | `queues/queueFactory.js`, `config/redis.js` | C | Shared Redis holds the actual queue state. |
+| 8 | Worker heartbeat identity, local temp-file sweep, worker startup reconciles | `workers/index.js`, `workers/workerHeartbeat.js` | C | Process-owned by design; reconciles are idempotent. |
+| 9 | Request-scoped Maps in controllers/services | various | A | Per-request computation, no cross-request meaning. |
+| 10 | `global.__crewlyPhase20Lifecycle` double-start guard | `utils/subscriptionLifecycle.js` | C | Correctness never relies on it across instances — the lifecycle is safe to run in every instance (CAS). |
+
+**Process-memory-is-never-business-truth check (32.1 law §17):** tenant
+identity, permissions, payroll results, attendance events, BGV/recruitment
+decisions, payment state, file ownership and security-token validity are all
+Mongo-backed. The only in-memory authorization-adjacent caches (3, 4) are
+TTL-bounded read-through caches, never the authority. No sticky sessions are
+required or permitted to mask anything.
+
+## 6. FILESYSTEM INVENTORY SUMMARY (full program → 32.8)
+
+| Data | Primary | Fallback | Multi-instance note |
+| --- | --- | --- | --- |
+| Resumes, offers, pre-onboarding docs, BGV evidence, company branding | Cloudinary (private/authenticated) | per-machine private local dir (0700/0600) | Local fallback is instance-local — production multi-instance requires the shared provider (or a future shared object store). Development fallback remains valid. |
+| Payslip PDFs | Stored in MongoDB with the record (`select:false`) | — | Already shared ✔ |
+| Payroll payment files (CSV/XLSX + checksum) | Stored in MongoDB (`content`/`binary`) | — | Already shared ✔ |
+| Worker temp processing files | local disk, hourly sweep | — | Per-process by design ✔ |
+| Frontend static assets | Vite build output, served externally | — | CDN/edge design → 32.16 |
+
+## 7. SCHEDULER / STARTUP / RECONCILIATION INVENTORY
+
+| Mechanism | Process | Concurrency safety |
+| --- | --- | --- |
+| `startSubscriptionLifecycle` (10 s + daily) | every API instance | **Atomic CAS transitions (fixed in 32.1)**; reminders eventKey-deduped |
+| `ensurePermissions` / plans / identifiers ensures | every API instance at boot | Idempotent upserts, duplicate-key tolerant |
+| Worker startup reconciles (resume/ATS/scheduled/documents/BGV) | every worker at boot | Idempotent `updateMany` recovery + lease claims; re-verification under many workers → 32.7 |
+| Ops heartbeat (15 s beat, 60 s TTL) | worker | Process-owned identity; safe |
+| Subscription/queue TTL reaping (Mongo TTL indexes) | MongoDB | Server-side, safe |
+
+## 8. RATE LIMITER ASSESSMENT (record for 32.4)
+
+Existing limits (all process-local bucket maps today): login 5/min
+(ip+url+email), password reset 5/15 min, refresh 30/min (ip),
+password-change 5/15 min (ip+user), kiosk session/punch/identify,
+public careers/applications, candidate offer routes, Super Admin login
+guard. 32.4 must decide per-limit: shared Redis coordination, key scope,
+tenant behavior, degraded/fail-open behavior, store eviction, and prevention
+of account-existence oracles. No work done in 32.1 beyond this inventory.
+
+## 9. CACHE ASSESSMENT (record for 32.6)
+
+28.7 `getOrSetCache`: Redis read-through, tenant-scoped keys, generation
+INCR invalidation, short TTLs, fail-open to Mongo, **in-process
+single-flight** (concurrent same-key misses share one loader per process;
+different instances may load concurrently — safe, Mongo-backed). Cross-instance
+invalidation gaps for the TTL caches (items 3–4 above) are bounded by TTL
+and must be hardened in 32.6 (e.g., shared generation counters for these
+namespaces), only if measured to matter.
+
+## 10. WORKER SCALING FINDINGS (record for 32.7)
+
+API and worker are separate deployables; queues live in shared Redis;
+handlers re-fetch and revalidate Mongo state; delivery is at-least-once
+with idempotent outcomes (email eventKey dedupe, payroll one-attempt runs +
+immutable snapshots, atomic claims). Multi-worker consumption is expected
+to be safe; 32.7 must verify concurrency limits, backpressure, and
+duplicate-execution safety per job family with tests.
+
+## 11. FINDINGS DEFERRED TO LATER 32.x UNITS
+
+- **32.2** Health/readiness endpoints, drain semantics (current shutdowns
+  are already bounded and graceful; readiness differentiation is missing).
+- **32.3** `trust proxy` value review, forwarded-header hardening, req.ip
+  correctness behind real proxies/LBs.
+- **32.4** Distributed rate limiting (item 5 above).
+- **32.5** Mongo index/query performance campaign (evidence-first).
+- **32.6** Cross-instance cache invalidation hardening (items 3–4),
+  distributed stampede protection if justified.
+- **32.7** Multi-worker scaling verification + concurrency/backpressure.
+- **32.8** Object-storage hardening/migration decisions (item: local
+  fallback boundaries).
+- **32.11** Realtime connection state, pub/sub fan-out design (foundation
+  only — no Chat, no employee Presence, no AI).
+- **32.12** Request/correlation IDs, structured diagnostics (request logger
+  has token redaction but no correlation id yet).
+- **32.13/32.14** Load and failure campaigns.
+- **32.15/32.16/32.17/32.18** Environments, CDN/edge, security hardening,
+  close-out runbooks.
+
+## 12. TARGET PRODUCTION TOPOLOGY (conceptual, vendor-neutral)
+
+```
+                 INTERNET → DNS/CDN/EDGE → LOAD BALANCER
+                 /            |            \
+             API #1        API #2 …      API #N      (stateless JWT, no affinity)
+                 \            |            /
+                  +-----+-----+-----+-----+
+                        |           |
+                    MongoDB       Redis (+ BullMQ)         Object storage
+                        |           |
+                 Worker #1 … Worker #N
+```
+
+Realtime (future, 32.11+, foundation only): separate connection gateway
+instances + shared Redis pub/sub; sticky-session requirements to be decided
+there — nothing in 32.x presumes them.
+
+## 13. VERIFICATION (this unit)
+
+- `npm run test:multi-instance` — 11/11 (concurrency convergence,
+  idempotency, eventKey dedupe, entrypoint separation, no-memory-session
+  pins, CAS/double-start-guard pins).
+- Full ladder + build results are reported in the 32.1 handoff message.
