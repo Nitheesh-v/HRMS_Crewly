@@ -216,14 +216,18 @@ export const randomToken = (
     .randomBytes(bytes)
     .toString('base64url');
 
+// Phase 32.3 — client IP identity is Express's req.ip, which respects
+// the ONE configured proxy-trust boundary (config/proxyTrust.js).
+// Hand-parsing X-Forwarded-For here would bypass that boundary and let
+// any direct client forge its audit/security identity. With the safe
+// default (direct), req.ip is the socket address and forwarded headers
+// are inert; with a declared trusted proxy, Express derives the real
+// client address from the trusted chain.
 export const getRequestIp = (
   req
 ) =>
   String(
-    req.headers[
-      'x-forwarded-for'
-    ]?.split(',')[0] ||
-      req.ip ||
+    req.ip ||
       req.socket
         ?.remoteAddress ||
       ''

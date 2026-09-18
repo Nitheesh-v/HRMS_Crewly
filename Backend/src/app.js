@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import env from './config/env.js';
+import { applyProxyTrust } from './config/proxyTrust.js';
 import { isDraining } from './config/lifecycle.js';
 import requestLogger from './middlewares/requestLogger.js';
 import { initPerfTiming, perfTiming } from './middlewares/perfTiming.js';
@@ -126,8 +127,13 @@ const requestSecurity = (req, res, next) => {
   }
 };
 
-// Required for correct IP addresses behind Render, Nginx or cPanel.
-app.set('trust proxy', 1);
+// Phase 32.3 — reverse-proxy trust boundary (see config/proxyTrust.js).
+// Default TRUST_PROXY_MODE=direct: client identity is the socket address
+// and X-Forwarded-* headers are INERT (an internet client can never forge
+// req.ip / req.secure). Deployments behind a real proxy declare their
+// boundary explicitly (loopback | hop | cidr) via environment variables.
+// Misconfiguration fails startup — never a silently weakened identity.
+applyProxyTrust(app);
 app.disable('x-powered-by');
 
 app.use(helmet());

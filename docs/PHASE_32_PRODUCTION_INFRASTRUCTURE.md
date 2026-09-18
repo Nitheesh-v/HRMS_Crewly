@@ -1,6 +1,89 @@
 # PHASE 32 — PRODUCTION INFRASTRUCTURE, SCALABILITY & PERFORMANCE
 
+# 32.3 — Load Balancer & Reverse Proxy Readiness
+
+Status: **32.3 implemented** (awaiting localhost acceptance). No load
+balancer is deployed — 32.3 makes the application behave CORRECTLY and
+SECURELY behind one, vendor-neutral.
+
+## TRUST MODEL (the one authoritative boundary)
+
+`Backend/src/config/proxyTrust.js` — Express `trust proxy` is configured
+ONLY here, driven by `TRUST_PROXY_MODE` (strict parsing; bad config fails
+startup):
+
+| Mode | trust value | Use case |
+| --- | --- | --- |
+| `direct` (DEFAULT) | `false` | direct/localhost exposure. `req.ip` = socket address; **X-Forwarded-For / X-Forwarded-Proto from clients are INERT** — identity spoofing is impossible |
+| `loopback` | `'loopback'` | local proxy simulation (nginx on 127.0.0.1, tunnels) |
+| `hop` | clamped int `TRUST_PROXY_HOPS` (1–10) | exactly N proxies between client and API, counting the proxy attached to the API's socket first (Render/nginx single proxy → 1; CDN+LB → 2). `req.ip` = Nth XFF entry from the right (proxies append the address they received from) |
+| `cidr` | validated `TRUST_PROXY_CIDRS` (IPv4/IPv6/CIDR, or named `loopback\|linklocal\|uniquelocal`) | SAFEST production declaration — trust only the LB/CDN network boundary; safe for multi-hop chains |
+
+Historical note: the previous hard-coded `trust proxy 1` made a direct
+client's forged `X-Forwarded-For` become `req.ip` — the v-fix removes that
+by default; deployments behind proxies MUST declare the boundary
+(deployment configuration is 32.15; `.env.example` carries commented
+operator recipes).
+
+## CLIENT IP DESIGN
+
+`getRequestIp()` now returns `req.ip` (socket fallback only) — hand-parsed
+X-Forwarded-For is removed, so every consumer (login/reset SecurityEvents,
+AuditLog, SecuritySession records, ALL rate limiters, kiosk/BGV/Super-Admin
+limiters) derives identity through the ONE trust boundary. No other module
+reads forwarded headers (pinned by test).
+
+## PROTOCOL / HTTPS TERMINATION
+
+No production code reads `req.protocol`/`req.secure` today. Express
+semantics apply when they do: forwarded proto is honored ONLY from within
+the declared trusted boundary (TEST E/F prove forged-proto is inert in
+direct mode). Refresh-cookie flags are NODE_ENV-based, not req.secure-based
+(reviewed; revisit in 32.17).
+
+## CORS / ORIGIN
+
+Unchanged and pinned by tests: allowlist from `CLIENT_URL`
+(+ dev-only e2b preview regex), `credentials: true`, narrow
+methods/headers; disallowed origins get NO permissive CORS headers and
+403 preflight. Origin ≠ client IP — never derived from each other.
+
+## HEALTH BEHIND A PROXY
+
+`/api/health/live` and `/api/health/ready` are public, cheap, unthrottled
+— a load balancer polling frequently can never lock itself out. Response
+bodies unchanged (secret-free).
+
+## NO STICKY SESSIONS
+
+Normal JWT traffic remains stateless (32.1 proof + 32.3 integration tests
+run the real app fresh per request). Realtime (32.11) may decide
+differently — nothing here presumes it.
+
+## DEPLOYMENT ASSUMPTION (for 32.15)
+
+When a trust boundary is declared, the API must NOT be directly reachable
+from the internet bypassing the trusted proxy path; application config
+cannot compensate for network-topology mistakes.
+
+## 32.3 — IMPLEMENTED / TESTED / DEFERRED
+
+- **Implemented:** proxyTrust config (4 modes, fail-fast), app.js wiring,
+  trust-aware `getRequestIp`, `.env.example` names, full test matrix.
+- **Tested:** `npm run test:proxy-readiness` (16 hermetic tests — matrix
+  A–K: direct/forged-IP/forged-proto, loopback/hop/cidr trust, multi-hop,
+  getRequestIp boundary, real-app health+CORS, config determinism, wiring
+  pins).
+- **Deferred:** distributed rate-limit *storage* → **32.4**; Mongo perf →
+  **32.5**; cache → **32.6**; worker scale → **32.7**; realtime proxy
+  behavior (upgrades, sticky decisions) → **32.11**; observability →
+  **32.12**; deployment/network topology + proxy timeouts → **32.15**;
+  header/cookie hardening (HSTS etc.) → **32.17**.
+
+---
+
 # 32.2 — Health, Readiness & Graceful Lifecycle
+
 
 Status: **32.2 implemented** (awaiting localhost acceptance). This section
 extends the 32.1 architecture record. IMPLEMENTED / TESTED / DEFERRED are
