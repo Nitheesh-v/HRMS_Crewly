@@ -1,5 +1,6 @@
-// 🎫 SUPPORT — raise tickets, track thread; HR manages all tickets
+// SUPPORT — raise tickets, track thread; HR manages all tickets
 import { useCallback, useEffect, useState } from 'react';
+import { MessageCircle, Plus, Ticket, Wrench } from 'lucide-react';
 import { supportService } from '../../services/selfService';
 import useAuth from '../../hooks/useAuth';
 import Modal from '../../components/Modal';
@@ -70,7 +71,7 @@ const SupportPage = () => {
     <div className="max-w-4xl">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">🎫 Support</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-bold"><Ticket className="h-6 w-6 text-crewly-green" />Support</h1>
           <p className="mt-1 text-sm text-crewly-dim">Raise a ticket — HR gets notified instantly and replies here.</p>
         </div>
         <button className="btn-primary px-5 py-2.5 text-sm" onClick={() => setCreateOpen(true)}>+ Raise Ticket</button>
@@ -80,7 +81,7 @@ const SupportPage = () => {
 
       {isHR && (
         <div className="mt-5 flex gap-2">
-          {[['my', 'My Tickets'], ['all', '🛠️ All Tickets (HR)']].map(([k, label]) => (
+          {[['my', 'My Tickets'], ['all', <span key="hr" className="flex items-center gap-1.5"><Wrench className="h-3.5 w-3.5" />All Tickets (HR)</span>]].map(([k, label]) => (
             <button key={k} onClick={() => setView(k)} className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${view === k ? 'bg-crewly-green/15 text-crewly-green' : 'text-crewly-dim hover:bg-crewly-card'}`}>{label}</button>
           ))}
         </div>
@@ -88,13 +89,13 @@ const SupportPage = () => {
 
       <div className="mt-4 space-y-2">
         {loading && <p className="text-crewly-dim">Loading…</p>}
-        {!loading && tickets.length === 0 && <div className="card text-center text-crewly-dim">No tickets here. Need help? Raise one! 🙋</div>}
+        {!loading && tickets.length === 0 && <div className="card text-center text-crewly-dim">No tickets here. Need help? Raise one!</div>}
         {tickets.map((t) => (
           <button key={t._id} onClick={() => { setActive(t); setReply(''); }} className="card flex w-full items-center gap-4 py-3 text-left transition hover:border-crewly-green/40">
             <div className="min-w-0 flex-1">
               <p className="truncate font-semibold">{t.subject}</p>
               <p className="text-xs text-crewly-dim">
-                {t.category} · {view === 'all' ? `${t.user?.name || ''} · ` : ''}{new Date(t.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} · 💬 {t.replies?.length || 0}
+                {t.category} · {view === 'all' ? `${t.user?.name || ''} · ` : ''}{new Date(t.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} · <MessageCircle className="mr-0.5 inline h-3 w-3" />{t.replies?.length || 0}
               </p>
             </div>
             <span className={`badge ${STATUS_STYLE[t.status]}`}>{t.status.replace('_', ' ')}</span>
@@ -104,7 +105,7 @@ const SupportPage = () => {
 
       {/* ── Create modal ── */}
       {createOpen && (
-        <Modal onClose={() => setCreateOpen(false)} title="🎫 Raise a Ticket">
+        <Modal onClose={() => setCreateOpen(false)} title="Raise a Ticket">
           <div className="space-y-3">
             <div>
               <label className="label">Subject *</label>
@@ -123,14 +124,14 @@ const SupportPage = () => {
           </div>
           <div className="mt-4 flex justify-end gap-2 border-t border-crewly-border pt-3">
             <button className="btn-ghost px-4 py-2 text-sm" onClick={() => setCreateOpen(false)}>Cancel</button>
-            <button className="btn-primary px-5 py-2 text-sm" onClick={onCreate} disabled={busy}>{busy ? 'Raising…' : 'Raise 🎫'}</button>
+            <button className="btn-primary px-5 py-2 text-sm" onClick={onCreate} disabled={busy}>{busy ? 'Raising…' : <><Plus className="mr-1 inline h-4 w-4" />Raise</>}</button>
           </div>
         </Modal>
       )}
 
       {/* ── Thread modal ── */}
       {active && (
-        <Modal onClose={() => setActive(null)} title={`🎫 ${active.subject}`}>
+        <Modal onClose={() => setActive(null)} title={`${active.subject}`}>
           <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
             <div className="flex items-center gap-2 text-xs text-crewly-dim">
               <span className={`badge ${STATUS_STYLE[active.status]}`}>{active.status.replace('_', ' ')}</span>

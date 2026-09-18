@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Download, TrendingUp } from 'lucide-react';
 import attendanceService from '../../services/attendanceService.js';
 import departmentService from '../../services/departmentService.js';
 import { ROLE_STYLES, roleLabel } from '../../utils/roles.js';
@@ -45,8 +46,8 @@ const AttendanceReportPage = () => {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">📈 Attendance Report</h1>
-        {tab === 'monthly' && report && <button className="btn-ghost" onClick={exportCSV}>⬇ Export CSV</button>}
+        <h1 className="flex items-center gap-2 text-2xl font-bold"><TrendingUp className="h-6 w-6 text-crewly-green" />Attendance Report</h1>
+        {tab === 'monthly' && report && <button className="btn-ghost" onClick={exportCSV}><Download className="mr-1 inline h-4 w-4" />Export CSV</button>}
       </div>
 
       {error && <div className="rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">{error}</div>}

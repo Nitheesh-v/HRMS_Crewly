@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CalendarDays, Clock, History, Link2, Pencil, Repeat, Trash2, User, Users, X, XCircle } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import api from '../../services/api';
 import {
@@ -15,7 +16,7 @@ const TYPE_META = {
   TEAM: { label: 'Team', cls: 'bg-green-500/15 text-green-300 border-green-500/30' },
   PRIVATE: { label: 'Private', cls: 'bg-amber-500/15 text-amber-300 border-amber-500/30' },
 };
-const RECUR_LABEL = { NONE: '', DAILY: '🔁 Daily', WEEKLY: '🔁 Weekly', MONTHLY: '🔁 Monthly' };
+const RECUR_LABEL = { NONE: '', DAILY: 'Daily', WEEKLY: 'Weekly', MONTHLY: 'Monthly' };
 
 const inp = 'w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-1.5 text-sm text-slate-100 placeholder-slate-500 outline-none focus:border-indigo-400';
 const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
@@ -48,7 +49,7 @@ const Chip = ({ m, onClick, dense }) => {
       className={`w-full truncate rounded-md border px-1.5 py-0.5 text-left text-xs font-semibold ${tm.cls} ${cancelled ? 'opacity-40 line-through' : ''}`}
       title={m.title}
     >
-      {!dense && `${fmtHM(m.occStart || m.startAt)} · `}{m.title}{m.recurrence !== 'NONE' ? ' 🔁' : ''}
+      {!dense && `${fmtHM(m.occStart || m.startAt)} · `}{m.title}{m.recurrence !== 'NONE' && <Repeat className="ml-1 inline h-3 w-3" />}
     </button>
   );
 };
@@ -128,8 +129,8 @@ const MeetingFormModal = ({ initial, me, role, onClose, onSaved }) => {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
       <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-800 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-slate-700 px-6 py-4">
-          <h2 className="text-lg font-bold text-slate-100">{isEdit ? '✏️ Edit Meeting' : '📅 Create Meeting'}</h2>
-          <button onClick={onClose} className="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-700 hover:text-slate-200">✖</button>
+          <h2 className="flex items-center gap-2 text-lg font-bold text-slate-100">{isEdit ? <><Pencil className="h-5 w-5" />Edit Meeting</> : <><CalendarDays className="h-5 w-5" />Create Meeting</>}</h2>
+          <button onClick={onClose} title="Close" className="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-700 hover:text-slate-200"><X className="h-4 w-4" /></button>
         </div>
 
         <div className="flex-1 space-y-3 overflow-y-auto px-6 py-4">
@@ -140,10 +141,10 @@ const MeetingFormModal = ({ initial, me, role, onClose, onSaved }) => {
 
           <div className="grid grid-cols-2 gap-3">
             <select className={inp} value={form.type} onChange={set('type')}>
-              <option value="TEAM">👥 Team meeting</option>
-              <option value="DEPARTMENT">🏢 Department meeting</option>
-              <option value="PRIVATE">🔒 Private meeting</option>
-              {role === 'COMPANY_ADMIN' && <option value="COMPANY">📢 Company-wide</option>}
+              <option value="TEAM">Team meeting</option>
+              <option value="DEPARTMENT">Department meeting</option>
+              <option value="PRIVATE">Private meeting</option>
+              {role === 'COMPANY_ADMIN' && <option value="COMPANY">Company-wide</option>}
             </select>
             <input className={inp} placeholder="Meeting link (Zoom/Meet…)" value={form.link} onChange={set('link')} />
           </div>
@@ -155,7 +156,7 @@ const MeetingFormModal = ({ initial, me, role, onClose, onSaved }) => {
             </select>
           )}
           {form.type === 'TEAM' && (
-            <p className="rounded-lg bg-green-500/10 px-3 py-1.5 text-xs text-green-300">👥 Your whole team is added automatically — just add any extras below.</p>
+            <p className="rounded-lg bg-green-500/10 px-3 py-1.5 text-xs text-green-300"><Users className="mr-1 inline h-3.5 w-3.5" />Your whole team is added automatically — just add any extras below.</p>
           )}
 
           <div className="grid grid-cols-3 gap-3">
@@ -245,7 +246,7 @@ export default function MeetingsPage() {
         setMeetings(arr(await listMeetings({ from: from.toISOString(), to: to.toISOString() })));
       }
     } catch (e) {
-      setMsg('❌ Could not load meetings');
+      setMsg('Could not load meetings');
     }
     setLoading(false);
   }, [view, cursor]);
@@ -312,8 +313,8 @@ export default function MeetingsPage() {
     <div className="mx-auto max-w-7xl p-4 sm:p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-100">📅 Meetings</h1>
-          <p className="text-sm text-slate-400">You only see meetings meant for you. 🛡️</p>
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-100"><CalendarDays className="h-6 w-6 text-indigo-400" />Meetings</h1>
+          <p className="text-sm text-slate-400">You only see meetings meant for you.</p>
         </div>
         {canCreate && (
           <button onClick={() => { setEditTarget(null); setShowForm(true); }} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
@@ -323,11 +324,11 @@ export default function MeetingsPage() {
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        {tabBtn('month', '🗓 Month')}
-        {tabBtn('week', '📆 Week')}
-        {tabBtn('day', '📌 Day')}
-        {tabBtn('agenda', '📋 Agenda')}
-        {tabBtn('history', '🕰 History')}
+        {tabBtn('month', 'Month')}
+        {tabBtn('week', 'Week')}
+        {tabBtn('day', 'Day')}
+        {tabBtn('agenda', 'Agenda')}
+        {tabBtn('history', 'History')}
         {['month', 'week', 'day'].includes(view) && (
           <div className="ml-auto flex items-center gap-2">
             <button onClick={() => shift(-1)} className="rounded-lg bg-slate-800 px-3 py-1 text-sm text-slate-300 hover:bg-slate-700">←</button>
@@ -410,13 +411,13 @@ export default function MeetingsPage() {
                   <span className="w-24 shrink-0 text-sm font-bold text-slate-200">{fmtHM(m.occStart)}<span className="block text-xs font-normal text-slate-400">→ {fmtHM(m.occEnd)}</span></span>
                   <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${tm.cls}`}>{tm.label}</span>
                   <span className="min-w-0">
-                    <span className="block truncate font-semibold text-slate-100">{m.title} {m.recurrence !== 'NONE' && '🔁'}</span>
-                    <span className="block text-xs text-slate-400">👥 {m.participants?.length || 0} · by {m.createdBy?.name || '—'}</span>
+                    <span className="block truncate font-semibold text-slate-100">{m.title} {m.recurrence !== 'NONE' && <Repeat className="ml-1 inline h-3 w-3" />}</span>
+                    <span className="flex items-center gap-1 text-xs text-slate-400"><Users className="h-3 w-3" />{m.participants?.length || 0} · by {m.createdBy?.name || '—'}</span>
                   </span>
                 </button>
               );
             })}
-            {onDay(cursor).length === 0 && <p className="py-6 text-center text-sm text-slate-500">No meetings this day. 🌴</p>}
+            {onDay(cursor).length === 0 && <p className="py-6 text-center text-sm text-slate-500">No meetings this day.</p>}
           </div>
         </div>
       )}
@@ -439,15 +440,15 @@ export default function MeetingsPage() {
                 <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${tm.cls}`}>{tm.label}</span>
                 <span className="min-w-0 flex-1">
                   <span className={`block truncate font-semibold text-slate-100 ${cancelled ? 'line-through' : ''}`}>{m.title} {m.recurrence !== 'NONE' && `· ${RECUR_LABEL[m.recurrence]}`}</span>
-                  <span className="block text-xs text-slate-400">👥 {m.participants?.length || 0} participants · by {m.createdBy?.name || '—'}{cancelled ? ` · ❌ cancelled${m.cancelReason ? `: ${m.cancelReason}` : ''}` : ''}</span>
+                  <span className="text-xs text-slate-400"><Users className="mr-1 inline h-3 w-3" />{m.participants?.length || 0} participants · by {m.createdBy?.name || '—'}{cancelled ? ` · cancelled${m.cancelReason ? `: ${m.cancelReason}` : ''}` : ''}</span>
                 </span>
-                {m.link && <span className="shrink-0 rounded-lg bg-indigo-500/15 px-2 py-1 text-xs font-semibold text-indigo-300">🔗 Link</span>}
+                {m.link && <span className="shrink-0 rounded-lg bg-indigo-500/15 px-2 py-1 text-xs font-semibold text-indigo-300"><Link2 className="mr-1 inline h-3 w-3" />Link</span>}
               </button>
             );
           })}
           {(view === 'agenda' ? meetings : history).length === 0 && (
             <div className="rounded-2xl border border-dashed border-slate-700 p-10 text-center text-slate-400">
-              <p className="text-3xl">{view === 'agenda' ? '🌴' : '🕰'}</p>
+              <p className="flex justify-center text-slate-600">{view === 'agenda' ? <CalendarDays className="h-8 w-8" /> : <History className="h-8 w-8" />}</p>
               <p className="mt-2 text-sm">{view === 'agenda' ? 'Nothing upcoming in the next 30 days.' : 'No past or cancelled meetings yet.'}</p>
             </div>
           )}
@@ -464,21 +465,21 @@ export default function MeetingsPage() {
                 <div className="mt-1 flex flex-wrap gap-2 text-xs">
                   <span className={`rounded-full border px-2 py-0.5 font-semibold ${(TYPE_META[selected.type] || TYPE_META.PRIVATE).cls}`}>{(TYPE_META[selected.type] || TYPE_META.PRIVATE).label}</span>
                   {selected.recurrence !== 'NONE' && <span className="rounded-full bg-slate-700 px-2 py-0.5 font-semibold text-slate-300">{RECUR_LABEL[selected.recurrence]}</span>}
-                  {selected.status === 'CANCELLED' && <span className="rounded-full bg-red-500/15 px-2 py-0.5 font-semibold text-red-300">❌ Cancelled</span>}
+                  {selected.status === 'CANCELLED' && <span className="rounded-full bg-red-500/15 px-2 py-0.5 font-semibold text-red-300"><XCircle className="mr-1 inline h-3 w-3" />Cancelled</span>}
                 </div>
               </div>
-              <button onClick={() => setSelected(null)} className="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-700 hover:text-slate-200">✖</button>
+              <button onClick={() => setSelected(null)} title="Close" className="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-700 hover:text-slate-200"><X className="h-4 w-4" /></button>
             </div>
 
             <div className="space-y-3 px-6 py-4 text-sm">
-              <p className="text-slate-300">🕐 {fmtDM(selected.occStart || selected.startAt)} · {fmtHM(selected.occStart || selected.startAt)} → {fmtHM(selected.occEnd || selected.endAt)}</p>
-              <p className="text-slate-400">👤 Organizer: <b className="text-slate-200">{selected.createdBy?.name || '—'}</b></p>
+              <p className="text-slate-300"><Clock className="mr-1 inline h-3.5 w-3.5" />{fmtDM(selected.occStart || selected.startAt)} · {fmtHM(selected.occStart || selected.startAt)} → {fmtHM(selected.occEnd || selected.endAt)}</p>
+              <p className="text-slate-400"><User className="mr-1 inline h-3.5 w-3.5" />Organizer: <b className="text-slate-200">{selected.createdBy?.name || '—'}</b></p>
               {selected.description && <p className="whitespace-pre-wrap text-slate-300">{selected.description}</p>}
               {selected.cancelReason && <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-300">Cancel reason: {selected.cancelReason}</p>}
 
               {selected.link && (
                 <a href={selected.link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
-                  🔗 Join Meeting
+                  <Link2 className="h-4 w-4" />Join Meeting
                 </a>
               )}
 
@@ -497,9 +498,9 @@ export default function MeetingsPage() {
 
             {selManageable && selected.status !== 'CANCELLED' && (
               <div className="flex justify-end gap-2 border-t border-slate-700 px-6 py-3">
-                <button onClick={() => doDelete(selected)} className="rounded-lg px-3 py-1.5 text-sm font-semibold text-red-400 hover:bg-red-500/10">🗑 Delete</button>
-                <button onClick={() => doCancel(selected)} className="rounded-lg bg-slate-700 px-3 py-1.5 text-sm font-semibold text-slate-200 hover:bg-slate-600">❌ Cancel meeting</button>
-                <button onClick={() => { setEditTarget(selected); setShowForm(true); setSelected(null); }} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-500">✏️ Edit</button>
+                <button onClick={() => doDelete(selected)} className="rounded-lg px-3 py-1.5 text-sm font-semibold text-red-400 hover:bg-red-500/10"><Trash2 className="mr-1 inline h-3.5 w-3.5" />Delete</button>
+                <button onClick={() => doCancel(selected)} className="rounded-lg bg-slate-700 px-3 py-1.5 text-sm font-semibold text-slate-200 hover:bg-slate-600"><XCircle className="mr-1 inline h-3.5 w-3.5" />Cancel meeting</button>
+                <button onClick={() => { setEditTarget(selected); setShowForm(true); setSelected(null); }} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-500"><Pencil className="mr-1 inline h-3.5 w-3.5" />Edit</button>
               </div>
             )}
           </div>

@@ -1,3 +1,5 @@
+import { X } from 'lucide-react';
+
 const Modal = ({ title, onClose, children, wide = false }) => {
   return (
     <div
@@ -10,7 +12,7 @@ const Modal = ({ title, onClose, children, wide = false }) => {
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold">{title}</h2>
-          <button onClick={onClose} className="text-crewly-dim hover:text-crewly-text">✕</button>
+          <button onClick={onClose} title="Close" className="text-crewly-dim hover:text-crewly-text"><X className="h-4 w-4" /></button>
         </div>
         {children}
       </div>

@@ -1,7 +1,8 @@
 // ============================================================
-// 💸 Expenses — submit · approvals (manager) · finance (HR) · reimburse
+// Expenses — submit · approvals (manager) · finance (HR) · reimburse
 // ============================================================
 import React, { useEffect, useRef, useState } from 'react';
+import { Banknote, Briefcase, Check, CheckCircle2, Paperclip, Plus, ReceiptText, Users, Wallet, X } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import {
   submitExpense, getMyExpenses, getApprovals,
@@ -15,8 +16,8 @@ const money = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
 
 const CATS = [
-  ['TRAVEL', '✈️ Travel'], ['FOOD', '🍱 Food'], ['ACCOMMODATION', '🏨 Accommodation'],
-  ['CLIENT_MEETING', '🤝 Client Meeting'], ['TRANSPORT', '🚕 Transport'], ['OTHER', '📦 Other'],
+  ['TRAVEL', 'Travel'], ['FOOD', 'Food'], ['ACCOMMODATION', 'Accommodation'],
+  ['CLIENT_MEETING', 'Client Meeting'], ['TRANSPORT', 'Transport'], ['OTHER', 'Other'],
 ];
 const catLabel = (v) => CATS.find(([k]) => k === v)?.[1] || v;
 const STATUS_CHIP = {
@@ -33,7 +34,7 @@ const Row = ({ e, children }) => (
       <p className="text-xs text-slate-400">
         {e.expenseDate || fmtDate(e.createdAt)}
         {e.user?.name ? ` · ${e.user.name}` : ''}
-        {e.receiptUrl ? <> · <a href={e.receiptUrl} target="_blank" rel="noreferrer" className="text-indigo-300 underline">📎 receipt</a></> : ''}
+        {e.receiptUrl ? <> · <a href={e.receiptUrl} target="_blank" rel="noreferrer" className="text-indigo-300 underline"><Paperclip className="mr-0.5 inline h-3 w-3" />receipt</a></> : ''}
         {e.rejectNote ? <span className="text-red-300"> · "{e.rejectNote}"</span> : ''}
       </p>
     </div>
@@ -83,7 +84,7 @@ export default function ExpensesPage() {
       await submitExpense(fd);
       setForm({ category: 'TRAVEL', amount: '', expenseDate: '', description: '' });
       if (fileRef.current) fileRef.current.value = '';
-      flash(true, 'Expense submitted ✅ — approver notified 🔔');
+      flash(true, 'Expense submitted — approver notified');
       await load();
     } catch (e) { flash(false, e?.response?.data?.message || 'Submit failed'); }
     finally { setBusy(false); }
@@ -99,7 +100,7 @@ export default function ExpensesPage() {
     try {
       const fn = stage === 'manager' ? managerDecide : financeDecide;
       await fn(e._id, action, note);
-      flash(true, `Expense ${action === 'APPROVE' ? 'approved ✅' : 'rejected ❌'}`);
+      flash(true, `Expense ${action === 'APPROVE' ? 'approved' : 'rejected'}`);
       await load();
     } catch (err) { flash(false, err?.response?.data?.message || 'Failed'); }
     finally { setBusy(false); }
@@ -107,7 +108,7 @@ export default function ExpensesPage() {
 
   const doReimburse = async (e) => {
     setBusy(true);
-    try { await markReimbursed(e._id); flash(true, `${money(e.amount)} reimbursed 💸`); await load(); }
+    try { await markReimbursed(e._id); flash(true, `${money(e.amount)} reimbursed`); await load(); }
     catch (err) { flash(false, err?.response?.data?.message || 'Failed'); }
     finally { setBusy(false); }
   };
@@ -121,13 +122,13 @@ export default function ExpensesPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-slate-100">💸 Expenses</h1>
+      <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-100"><Wallet className="h-6 w-6 text-indigo-400" />Expenses</h1>
 
       {banner && <div className={`rounded-lg px-4 py-2.5 text-sm font-medium ${banner.ok ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'}`}>{banner.text}</div>}
 
       {/* submit */}
       <section className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">
-        <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-300">➕ Submit an expense</h2>
+        <h2 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-300"><Plus className="h-4 w-4" />Submit an expense</h2>
         <div className="flex flex-wrap items-center gap-3">
           <select className={`${inp} max-w-[190px]`} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
             {CATS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -144,16 +145,16 @@ export default function ExpensesPage() {
       {isSenior && (
         <section className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
           <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-amber-300">
-            {isHR ? '💼 Finance queue' : '👥 Team approvals'} ({queue.length})
+            {isHR ? <span className="flex items-center gap-1.5"><Briefcase className="h-4 w-4" />Finance queue</span> : <span className="flex items-center gap-1.5"><Users className="h-4 w-4" />Team approvals</span>} ({queue.length})
           </h2>
           {queue.length === 0 ? (
-            <p className="text-xs text-slate-500">Queue is clear. ☕</p>
+            <p className="text-xs text-slate-500">Queue is clear.</p>
           ) : (
             <div className="space-y-2">
               {queue.map((e) => (
                 <Row key={e._id} e={e}>
-                  <button disabled={busy} onClick={() => decide(e, 'APPROVE', isHR ? 'finance' : 'manager')} className={`${btn} bg-emerald-600 text-white hover:bg-emerald-500`}>✓ Approve</button>
-                  <button disabled={busy} onClick={() => decide(e, 'REJECT', isHR ? 'finance' : 'manager')} className={`${btn} border border-red-500/40 text-red-300 hover:bg-red-500/10`}>✕ Reject</button>
+                  <button disabled={busy} onClick={() => decide(e, 'APPROVE', isHR ? 'finance' : 'manager')} className={`${btn} bg-emerald-600 text-white hover:bg-emerald-500`}><Check className="mr-1 inline h-3.5 w-3.5" />Approve</button>
+                  <button disabled={busy} onClick={() => decide(e, 'REJECT', isHR ? 'finance' : 'manager')} className={`${btn} border border-red-500/40 text-red-300 hover:bg-red-500/10`}><X className="mr-1 inline h-3.5 w-3.5" />Reject</button>
                 </Row>
               ))}
             </div>
@@ -164,11 +165,11 @@ export default function ExpensesPage() {
       {/* HR: approved → reimburse */}
       {isHR && approvedAwaiting.length > 0 && (
         <section className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
-          <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-emerald-300">✅ Approved — awaiting reimbursement ({approvedAwaiting.length})</h2>
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-emerald-300"><CheckCircle2 className="h-4 w-4" />Approved — awaiting reimbursement ({approvedAwaiting.length})</h2>
           <div className="space-y-2">
             {approvedAwaiting.map((e) => (
               <Row key={e._id} e={e}>
-                <button disabled={busy} onClick={() => doReimburse(e)} className={`${btn} bg-sky-600 text-white hover:bg-sky-500`}>💸 Mark reimbursed</button>
+                <button disabled={busy} onClick={() => doReimburse(e)} className={`${btn} bg-sky-600 text-white hover:bg-sky-500`}><Banknote className="mr-1 inline h-3.5 w-3.5" />Mark reimbursed</button>
               </Row>
             ))}
           </div>
@@ -188,7 +189,7 @@ export default function ExpensesPage() {
 
       {/* my expenses */}
       <section className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">
-        <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-300">🧾 My expenses ({mine.length})</h2>
+        <h2 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-300"><ReceiptText className="h-4 w-4" />My expenses ({mine.length})</h2>
         {mine.length === 0 ? (
           <p className="text-xs text-slate-500">Nothing submitted yet.</p>
         ) : (

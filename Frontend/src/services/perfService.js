@@ -1,4 +1,4 @@
-// 🎯 perfService — Performance Management
+// perfService — Performance Management
 import * as apiNS from './api.js';
 const api = apiNS.default || apiNS.api || apiNS;
 

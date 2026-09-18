@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { AlertTriangle, FolderOpen, User, Users, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import api from '../../services/api';
@@ -73,8 +74,8 @@ const CreateProjectModal = ({ onClose, onCreated }) => {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
       <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-800 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-slate-700 px-6 py-4">
-          <h2 className="text-lg font-bold text-slate-100">📁 Create Project</h2>
-          <button onClick={onClose} className="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-700 hover:text-slate-200">✖</button>
+          <h2 className="flex items-center gap-2 text-lg font-bold text-slate-100"><FolderOpen className="h-5 w-5" />Create Project</h2>
+          <button onClick={onClose} title="Close" className="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-700 hover:text-slate-200"><X className="h-4 w-4" /></button>
         </div>
 
         <div className="flex-1 space-y-3 overflow-y-auto px-6 py-4">
@@ -105,16 +106,16 @@ const CreateProjectModal = ({ onClose, onCreated }) => {
           </div>
 
           <div>
-            <p className="mb-1 text-xs font-semibold uppercase text-slate-400">👤 Project Manager *</p>
+            <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase text-slate-400"><Users className="h-3.5 w-3.5" />Project Manager *</p>
             <select className={inp} value={form.managerId} onChange={set('managerId')}>
               <option value="">— Pick a Manager —</option>
               {managers.map((u) => <option key={u._id} value={u._id}>{u.name}{u.designation ? ` · ${u.designation}` : ''}</option>)}
             </select>
             <p className="mt-1 text-xs text-slate-500">
-              The Manager takes it from here — they assign Team Leads &amp; the team. You don't pick them here. 🛡️
+              The Manager takes it from here — they assign Team Leads &amp; the team. You don't pick them here.
             </p>
             {managers.length === 0 && (
-              <p className="mt-1 text-xs text-amber-400">⚠️ No MANAGER-role users found — promote someone in User Management first.</p>
+              <p className="mt-1 flex items-center gap-1 text-xs text-amber-400"><AlertTriangle className="h-3.5 w-3.5" />No MANAGER-role users found — promote someone in User Management first.</p>
             )}
           </div>
         </div>
@@ -151,7 +152,7 @@ export default function ProjectsPage() {
       if (q) params.q = q;
       setProjects(arr(await listProjects(params)));
     } catch (e) {
-      setMsg('❌ Could not load projects');
+      setMsg('Could not load projects');
     }
     setLoading(false);
   }, [status, q]);
@@ -162,7 +163,7 @@ export default function ProjectsPage() {
     <div className="mx-auto max-w-6xl p-4 sm:p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-100">📁 Projects</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-100"><FolderOpen className="h-6 w-6 text-indigo-400" />Projects</h1>
           <p className="text-sm text-slate-400">Only projects inside your visibility are shown.</p>
         </div>
         {canCreate && (
@@ -177,14 +178,14 @@ export default function ProjectsPage() {
           <option value="">All statuses</option>
           {Object.keys(STATUS_META).map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
         </select>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 Search projects…" className={inpSm} />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search projects…" className={inpSm} />
       </div>
 
       {msg && <div className="mb-3 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300">{msg}</div>}
       {loading && <p className="text-sm text-slate-500">Loading projects…</p>}
       {!loading && projects.length === 0 && (
         <div className="rounded-2xl border border-dashed border-slate-700 p-10 text-center text-slate-400">
-          <p className="text-3xl">🗂️</p>
+          <p className="flex justify-center text-slate-600"><FolderOpen className="h-8 w-8" /></p>
           <p className="mt-2 text-sm">No projects in your scope yet{canCreate ? ' — create the first one!' : '.'}</p>
         </div>
       )}
@@ -217,7 +218,7 @@ export default function ProjectsPage() {
               </div>
 
               <div className="mt-3 flex items-center justify-between border-t border-slate-700 pt-2 text-xs text-slate-400">
-                <span>👤 {p.manager?.name || '—'} · 🧑‍🤝‍🧑 {p.teamLeads?.length || 0} TL</span>
+                <span><User className="mr-1 inline h-3 w-3" />{p.manager?.name || '—'} · <Users className="mx-1 inline h-3 w-3" />{p.teamLeads?.length || 0} TL</span>
                 <span>{fmtDate(p.startDate)} → {fmtDate(p.endDate)}</span>
               </div>
             </div>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Building2, CalendarClock, Circle, MapPin, PartyPopper, Pencil, Plus, Repeat, Trash2 } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import scheduleService from '../../services/scheduleService';
 
@@ -62,7 +63,7 @@ export default function HolidaysPage() {
         (map[k] = map[k] || []).push(h);
       }))
     );
-    console.log('📅 [holidays] count:', holidays.length, '| byDate keys:', Object.keys(map), '| feed sample:', holidays[0]);
+    console.log('[holidays] count:', holidays.length, '| byDate keys:', Object.keys(map), '| feed sample:', holidays[0]);
     return map;
   }, [holidays]);
 
@@ -92,7 +93,7 @@ export default function HolidaysPage() {
       const f = modal.form;
       const payload = { ...f, endDate: f.endDate || f.date };
       const r = modal.mode === 'create' ? await scheduleService.createHoliday(payload) : await scheduleService.updateHoliday(modal.id, payload);
-      flash(r.message || 'Saved ✅'); setModal(null); load();
+      flash(r.message || 'Saved'); setModal(null); load();
     } catch (e) { flash(e?.response?.data?.message || e.message); }
     setSaving(false);
   };
@@ -118,12 +119,12 @@ export default function HolidaysPage() {
     <div className="p-6 space-y-5 text-slate-100">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">🎉 Holidays</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-bold"><PartyPopper className="h-6 w-6 text-crewly-green" />Holidays</h1>
           <p className="text-sm text-slate-400">Company · branch · department · optional & public holidays</p>
         </div>
         <div className="flex items-center gap-2">
           {['month', 'year', 'list'].map((v) => (
-            <button key={v} onClick={() => setView(v)} className={view === v ? primary : ghost}>{v === 'month' ? '📆 Month' : v === 'year' ? '🗓 Year' : '📋 List'}</button>
+            <button key={v} onClick={() => setView(v)} className={view === v ? primary : ghost}>{v === 'month' ? 'Month' : v === 'year' ? 'Year' : 'List'}</button>
           ))}
           <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className={`${inp} w-auto`}>
             <option value="">All types</option>
@@ -139,7 +140,7 @@ export default function HolidaysPage() {
         <div className="flex flex-wrap gap-2">
           {upcoming.map((h) => (
             <span key={h.id + h.date} className="rounded-full bg-slate-800 border border-slate-700 px-3 py-1 text-xs text-slate-300">
-              ⏭ <b className="text-slate-100">{h.name}</b> · {h.date}{h.endDate !== h.date ? ` → ${h.endDate}` : ''} <span className={badge(h.type)}>{h.type}</span>
+              <CalendarClock className="mr-1 inline h-3.5 w-3.5" /><b className="text-slate-100">{h.name}</b> · {h.date}{h.endDate !== h.date ? ` → ${h.endDate}` : ''} <span className={badge(h.type)}>{h.type}</span>
             </span>
           ))}
         </div>
@@ -164,7 +165,7 @@ export default function HolidaysPage() {
                     <div className="mt-0.5 space-y-0.5">
                       {(byDate[c] || []).slice(0, 3).map((h) => (
                         <div key={h.id + c} title={`${h.name} (${h.type})${isHR ? ' — click to edit' : ''}`} onClick={() => { if (isHR) openEdit(h); }} className={`truncate rounded px-1 text-[10px] border ${TYPE_STYLE[h.type]} ${isHR ? 'cursor-pointer hover:opacity-80' : ''}`}>
-                          {h.isOptional && !h.picked ? '○ ' : ''}{h.name}
+                          {h.isOptional && !h.picked ? <Circle className="mr-1 inline h-2.5 w-2.5" /> : null}{h.name}
                         </div>
                       ))}
                       {(byDate[c] || []).length > 3 && <div className="text-[10px] text-slate-500">+{byDate[c].length - 3} more</div>}
@@ -176,7 +177,7 @@ export default function HolidaysPage() {
           </div>
           <div className="mt-3 flex flex-wrap gap-2 text-[10px] text-slate-400">
             {TYPES.map((t) => <span key={t} className={badge(t)}>{t}</span>)}
-            <span>○ = optional, not picked yet</span>
+            <span><Circle className="mr-1 inline h-2.5 w-2.5" />= optional, not picked yet</span>
           </div>
         </div>
       )}
@@ -204,19 +205,19 @@ export default function HolidaysPage() {
                       <span className="w-44 text-slate-400">{h.date}{h.endDate !== h.date ? ` → ${h.endDate}` : ''}</span>
                       <span className="font-medium">{h.name}</span>
                       <span className={badge(h.type)}>{h.type}</span>
-                      {h.recurringYearly && <span className="text-xs text-slate-500">🔁 yearly</span>}
-                      {h.branch && <span className="text-xs text-slate-500">📍 {h.branch}</span>}
-                      {(h.departments || []).map((d) => <span key={d.id || d} className="text-xs text-amber-300/80">🏬 {d.name || d}</span>)}
+                      {h.recurringYearly && <span className="flex items-center gap-1 text-xs text-slate-500"><Repeat className="h-3 w-3" />yearly</span>}
+                      {h.branch && <span className="flex items-center gap-1 text-xs text-slate-500"><MapPin className="h-3 w-3" />{h.branch}</span>}
+                      {(h.departments || []).map((d) => <span key={d.id || d} className="flex items-center gap-1 text-xs text-amber-300/80"><Building2 className="h-3 w-3" />{d.name || d}</span>)}
                       <span className="flex-1" />
                       {h.isOptional && (
                         <button onClick={() => togglePick(h)} className={h.picked ? 'rounded-lg bg-violet-600/80 hover:bg-violet-600 px-3 py-1 text-xs text-white' : 'rounded-lg border border-violet-500/50 px-3 py-1 text-xs text-violet-300 hover:bg-violet-500/10'}>
-                          {h.picked ? '✔ Picked' : 'Pick'}
+                          {h.picked ? 'Picked' : 'Pick'}
                         </button>
                       )}
                       {isHR && (
                         <>
-                          <button onClick={() => openEdit(h)} className="rounded-lg bg-slate-700 px-3 py-1 text-xs hover:bg-slate-600">✏️ Edit</button>
-                          <button onClick={() => deactivate(h)} className="rounded-lg bg-rose-600/70 px-3 py-1 text-xs hover:bg-rose-600">🗑</button>
+                          <button onClick={() => openEdit(h)} className="rounded-lg bg-slate-700 px-3 py-1 text-xs hover:bg-slate-600"><Pencil className="mr-1 inline h-3 w-3" />Edit</button>
+                          <button onClick={() => deactivate(h)} title="Delete" className="rounded-lg bg-rose-600/70 px-3 py-1 text-xs hover:bg-rose-600"><Trash2 className="h-3 w-3" /></button>
                         </>
                       )}
                     </div>
@@ -231,11 +232,11 @@ export default function HolidaysPage() {
       {modal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setModal(null)}>
           <div className="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-900 p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-4 text-lg font-semibold">{modal.mode === 'create' ? '＋ Add Holiday' : '✏️ Edit Holiday'}</h3>
+            <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold">{modal.mode === 'create' ? <Plus className="h-5 w-5" /> : <Pencil className="h-5 w-5" />}{modal.mode === 'create' ? 'Add Holiday' : 'Edit Holiday'}</h3>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2">
                 <label className="mb-1 block text-xs text-slate-400">Name</label>
-                <input className={inp} value={modal.form.name} onChange={(e) => setModal({ ...modal, form: { ...modal.form, name: e.target.value } })} placeholder="Diwali 🪔" />
+                <input className={inp} value={modal.form.name} onChange={(e) => setModal({ ...modal, form: { ...modal.form, name: e.target.value } })} placeholder="Diwali" />
               </div>
               <div>
                 <label className="mb-1 block text-xs text-slate-400">Type</label>
@@ -281,7 +282,7 @@ export default function HolidaysPage() {
                 <input type="checkbox" checked={modal.form.isOptional} onChange={(e) => setModal({ ...modal, form: { ...modal.form, isOptional: e.target.checked } })} /> Optional holiday (employees pick)
               </label>
               <label className="flex items-center gap-2 text-sm text-slate-300">
-                <input type="checkbox" checked={modal.form.recurringYearly} onChange={(e) => setModal({ ...modal, form: { ...modal.form, recurringYearly: e.target.checked } })} /> 🔁 Recurs every year
+                <input type="checkbox" checked={modal.form.recurringYearly} onChange={(e) => setModal({ ...modal, form: { ...modal.form, recurringYearly: e.target.checked } })} /> <Repeat className="mr-1 inline h-3.5 w-3.5" />Recurs every year
               </label>
             </div>
             <div className="mt-5 flex justify-end gap-2">

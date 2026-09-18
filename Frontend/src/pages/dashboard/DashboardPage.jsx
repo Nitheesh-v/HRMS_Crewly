@@ -1,9 +1,22 @@
 // ============================================================
-// 🏠 DASHBOARD — self widgets for everyone + 👥 My Team panel
+// DASHBOARD — self widgets for everyone + My Team panel
 // for MANAGER / TEAM_LEAD / COMPANY_ADMIN / HR_MANAGER (Phase 10)
 // ============================================================
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import {
+  CalendarDays,
+  CheckCircle2,
+  ClipboardList,
+  LayoutDashboard,
+  Megaphone,
+  Palmtree,
+  Pin,
+  ReceiptText,
+  Timer,
+  Users,
+  XCircle,
+} from "lucide-react";
 import { dashboardService } from "../../services/selfService";
 import useAuth from "../../hooks/useAuth";
 
@@ -25,23 +38,39 @@ const TODAY_STYLE = {
   ABSENT: "bg-crewly-red/15 text-crewly-red",
 };
 
-const StatCard = ({ icon, label, value, sub, accent = "text-crewly-text" }) => (
-  <div className="card">
-    <div className="flex items-center justify-between">
-      <span className="text-xl">{icon}</span>
+const StatCard = ({ icon, label, value, sub, accent = "text-crewly-text", to }) => {
+  const body = (
+    <>
+      <div className="flex items-center justify-between">
+        <span className="text-crewly-dim">{icon}</span>
       <span className={`text-2xl font-extrabold ${accent}`}>{value}</span>
     </div>
-    <p className="mt-1 text-xs uppercase tracking-wide text-crewly-dim">
-      {label}
-    </p>
-    {sub && <p className="mt-0.5 text-[11px] text-crewly-dim">{sub}</p>}
-  </div>
-);
+      <p className="mt-1 text-xs uppercase tracking-wide text-crewly-dim">
+        {label}
+      </p>
+      {sub && <p className="mt-0.5 text-[11px] text-crewly-dim">{sub}</p>}
+    </>
+  );
+  if (to) {
+    return (
+      <Link
+        to={to}
+        className="card transition hover:border-crewly-green/50 hover:shadow-lg"
+      >
+        {body}
+      </Link>
+    );
+  }
+  return <div className="card">{body}</div>;
+};
 
-const Panel = ({ title, action, children }) => (
+const Panel = ({ icon, title, action, children }) => (
   <section className="card flex min-h-44 flex-col">
     <div className="mb-3 flex items-center justify-between">
-      <h3 className="font-semibold">{title}</h3>
+      <h3 className="flex items-center gap-2 font-semibold">
+        {icon && <span className="text-crewly-dim">{icon}</span>}
+        {title}
+      </h3>
       {action}
     </div>
     <div className="flex-1">{children}</div>
@@ -49,7 +78,7 @@ const Panel = ({ title, action, children }) => (
 );
 
 const DashboardPage = () => {
-  // 🛡️ Meeting date/time that survives BOTH old (date/startTime) and new (startAt) field shapes
+  // Meeting date/time that survives BOTH old (date/startTime) and new (startAt) field shapes
   const fmtMeetDay = (m) => {
     const raw = m.date || m.occStart || m.startAt;
     if (!raw) return "—";
@@ -110,14 +139,16 @@ const DashboardPage = () => {
   return (
     <div>
       <div className="mb-1 flex items-end justify-between">
-        <h1 className="text-2xl font-bold">🏠 My Dashboard</h1>
+        <h1 className="flex items-center gap-2 text-2xl font-bold">
+          <LayoutDashboard className="h-6 w-6 text-crewly-green" />
+          My Dashboard
+        </h1>
         <span className="text-xs text-crewly-dim">
           {monthLabel(data?.month)}
         </span>
       </div>
       <p className="mb-5 text-sm text-crewly-dim">
         Everything about you{isSenior ? " — and your people" : ""}, at a glance.
-        💪
       </p>
 
       {error && (
@@ -126,12 +157,13 @@ const DashboardPage = () => {
         </div>
       )}
 
-      {/* ── 👥 MY TEAM panel (Phase 10 — seniors only) ── */}
+      {/* ── MY TEAM panel (Phase 10 — seniors only) ── */}
       {isSenior && team && (
         <section className="card mb-5 border-crewly-green/30">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-semibold">
-              👥 My Team{" "}
+            <h2 className="flex items-center gap-2 font-semibold">
+              <Users className="h-4 w-4 text-crewly-green" />
+              My Team{" "}
               <span className="ml-1 text-xs font-normal text-crewly-dim">
                 ({team.scopeLabel} · {team.memberCount} people)
               </span>
@@ -229,21 +261,21 @@ const DashboardPage = () => {
       {/* ── self stat cards ── */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          icon="✅"
+          icon={<CheckCircle2 className="h-5 w-5 text-crewly-green" />}
           label={`Present · ${monthLabel(data?.month)}`}
           value={(a.present || 0) + (a.late || 0)}
           sub={a.late ? `incl. ${a.late} late` : "on time streak!"}
           accent="text-crewly-green"
         />
         <StatCard
-          icon="❌"
+          icon={<XCircle className="h-5 w-5 text-crewly-red" />}
           label="Absent days"
           value={a.absent || 0}
           sub={a.halfDay ? `${a.halfDay} half-day(s)` : ""}
           accent={a.absent ? "text-crewly-red" : "text-crewly-text"}
         />
         <StatCard
-          icon="🌴"
+          icon={<Palmtree className="h-5 w-5 text-crewly-orange" />}
           label="Leave balance"
           value={totalRemaining}
           sub={balances
@@ -252,13 +284,14 @@ const DashboardPage = () => {
           accent="text-crewly-orange"
         />
         <StatCard
-          icon="🕒"
+          to="/app/attendance"
+          icon={<Timer className="h-5 w-5 text-crewly-green" />}
           label="Today's attendance"
           value={today ? today.status?.replace("_", " ") : "Not marked"}
           sub={
             today?.checkIn
               ? `checked in ${today.checkIn}`
-              : "mark it from Attendance →"
+              : "tap here to mark attendance"
           }
           accent={
             today
@@ -273,7 +306,8 @@ const DashboardPage = () => {
       {/* ── self panels ── */}
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
         <Panel
-          title={`📋 Pending Tasks (${data?.pendingTasks?.count || 0})`}
+          icon={<ClipboardList className="h-4 w-4" />}
+          title={`Pending Tasks (${data?.pendingTasks?.count || 0})`}
           action={
             <Link
               to="/app/tasks"
@@ -301,13 +335,14 @@ const DashboardPage = () => {
             </ul>
           ) : (
             <p className="mt-6 text-center text-sm text-crewly-dim">
-              All clear — no pending tasks 🎉
+              All clear — no pending tasks
             </p>
           )}
         </Panel>
 
         <Panel
-          title="📅 Upcoming Meetings"
+          icon={<CalendarDays className="h-4 w-4" />}
+          title="Upcoming Meetings"
           action={
             <Link
               to="/app/meetings"
@@ -333,13 +368,14 @@ const DashboardPage = () => {
             </ul>
           ) : (
             <p className="mt-6 text-center text-sm text-crewly-dim">
-              No meetings scheduled — enjoy the focus time 🧘
+              No meetings scheduled — enjoy the focus time
             </p>
           )}
         </Panel>
 
         <Panel
-          title="🧾 Latest Payslip"
+          icon={<ReceiptText className="h-4 w-4" />}
+          title="Latest Payslip"
           action={
             <Link
               to="/app/payslips"
@@ -367,13 +403,14 @@ const DashboardPage = () => {
             </div>
           ) : (
             <p className="mt-6 text-center text-sm text-crewly-dim">
-              No payslip yet — payroll runs monthly 💸
+              No payslip yet — payroll runs monthly
             </p>
           )}
         </Panel>
 
         <Panel
-          title="📢 Announcements"
+          icon={<Megaphone className="h-4 w-4" />}
+          title="Announcements"
           action={
             <Link
               to="/app/announcements"
@@ -388,7 +425,7 @@ const DashboardPage = () => {
               {data.announcements.map((ann) => (
                 <li key={ann._id} className="rounded-lg bg-crewly-bg px-3 py-2">
                   <p className="text-sm font-medium">
-                    {ann.pinned && "📌 "}
+                    {ann.pinned && <Pin className="mr-1 inline h-3 w-3 text-crewly-orange" />}
                     {ann.title}
                   </p>
                   <p className="text-[11px] text-crewly-dim">
@@ -403,7 +440,7 @@ const DashboardPage = () => {
             </ul>
           ) : (
             <p className="mt-6 text-center text-sm text-crewly-dim">
-              Quiet day — no announcements 📭
+              Quiet day — no announcements
             </p>
           )}
         </Panel>

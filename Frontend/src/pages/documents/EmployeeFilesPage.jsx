@@ -1,9 +1,10 @@
 // ============================================================
-// 🗂 Employee Files (HR/Admin) — Phase 14 file cabinet
+// Employee Files (HR/Admin) — Phase 14 file cabinet
 // pick employee → upload (category + expiry) · view/download/delete
 // · request a document · track request status
 // ============================================================
 import React, { useEffect, useRef, useState } from 'react';
+import { Download, Eye, Files, FolderOpen, Hourglass, Inbox, Lock, Paperclip, Trash2, Upload } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import {
   getEmployees, getEmployeeCabinet, getDocCategories,
@@ -37,8 +38,8 @@ const REQ_CHIP = {
 const ExpiryBadge = ({ expiryDate }) => {
   if (!expiryDate) return null;
   const days = Math.ceil((new Date(expiryDate) - Date.now()) / 86400000);
-  if (days < 0) return chip(`⚠️ Expired`, 'bg-red-400/15 text-red-300');
-  if (days <= 30) return chip(`⏳ ${days}d left`, 'bg-amber-400/15 text-amber-300');
+  if (days < 0) return chip(`Expired`, 'bg-red-400/15 text-red-300');
+  if (days <= 30) return chip(<><Hourglass className="mr-1 inline h-3 w-3" />{days}d left</>, 'bg-amber-400/15 text-amber-300');
   return chip(`Exp ${fmtDate(expiryDate)}`, 'bg-slate-500/20 text-slate-400');
 };
 
@@ -115,7 +116,7 @@ export default function EmployeeFilesPage() {
       await hrUploadDocument(empId, fd);
       setShowUpload(false);
       setForm({ name: '', category: 'OTHER', expiryDate: '', note: '' });
-      flash(true, 'Document uploaded ✅ — employee notified 🔔');
+      flash(true, 'Document uploaded — employee notified');
       await openCabinet(cabinet.employee);
     } catch (e) {
       flash(false, e?.response?.data?.message || 'Upload failed');
@@ -133,7 +134,7 @@ export default function EmployeeFilesPage() {
       });
       setShowRequest(false);
       setReqForm({ category: 'AADHAAR_ID', note: '', dueDate: '' });
-      flash(true, 'Request sent 📥 — employee notified 🔔');
+      flash(true, 'Request sent — employee notified');
       await openCabinet(cabinet.employee);
     } catch (e) {
       flash(false, e?.response?.data?.message || 'Could not create request');
@@ -144,7 +145,7 @@ export default function EmployeeFilesPage() {
     if (!window.confirm(`Delete "${doc.name}"? This cannot be undone.`)) return;
     try {
       await deleteDocument(doc._id);
-      flash(true, 'Deleted 🗑');
+      flash(true, 'Deleted');
       await openCabinet(cabinet.employee);
     } catch (e) {
       flash(false, e?.response?.data?.message || 'Delete failed');
@@ -164,7 +165,7 @@ export default function EmployeeFilesPage() {
   if (!allowed) {
     return (
       <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-8 text-center text-sm text-slate-300">
-        🔒 Only HR or the company admin can open employee files.
+        <Lock className="mr-1 inline h-4 w-4" />Only HR or the company admin can open employee files.
       </div>
     );
   }
@@ -176,7 +177,7 @@ export default function EmployeeFilesPage() {
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-100">🗂 Employee Files</h1>
+        <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-100"><Files className="h-6 w-6 text-indigo-400" />Employee Files</h1>
         <span className="text-sm text-slate-400">{employees.length} employees</span>
       </div>
 
@@ -187,9 +188,9 @@ export default function EmployeeFilesPage() {
       )}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[300px,1fr]">
-        {/* 👥 employee picker */}
+        {/* employee picker */}
         <aside className="rounded-xl border border-slate-700 bg-slate-800/60 p-3">
-          <input className={`${inp} mb-3`} placeholder="🔎 Search employees…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input className={`${inp} mb-3`} placeholder="Search employees…" value={search} onChange={(e) => setSearch(e.target.value)} />
           <div className="max-h-[60vh] space-y-1 overflow-y-auto">
             {filtered.map((e) => (
               <button
@@ -209,10 +210,10 @@ export default function EmployeeFilesPage() {
           </div>
         </aside>
 
-        {/* 🗂 cabinet */}
+        {/* cabinet */}
         <section className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">
           {!cabinet.employee ? (
-            <p className="p-10 text-center text-sm text-slate-400">👈 Pick an employee to open their file cabinet</p>
+            <p className="p-10 text-center text-sm text-slate-400">Pick an employee to open their file cabinet</p>
           ) : (
             <>
               <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -220,19 +221,19 @@ export default function EmployeeFilesPage() {
                   <h2 className="text-lg font-bold text-slate-100">{cabinet.employee.name}</h2>
                   <p className="text-xs text-slate-400">{cabinet.employee.designation || cabinet.employee.role} · {cabinet.employee.email}</p>
                 </div>
-                <button onClick={() => setShowUpload(true)} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-500">⬆️ Upload document</button>
-                <button onClick={() => setShowRequest(true)} className="rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-300 hover:bg-amber-500/20">📥 Request document</button>
+                <button onClick={() => setShowUpload(true)} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-500"><Upload className="mr-1 inline h-3.5 w-3.5" />Upload document</button>
+                <button onClick={() => setShowRequest(true)} className="rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-300 hover:bg-amber-500/20"><Inbox className="mr-1 inline h-3.5 w-3.5" />Request document</button>
               </div>
 
               {/* documents */}
-              <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">📂 Documents ({cabinet.documents.length})</h3>
+              <h3 className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-400"><FolderOpen className="h-3.5 w-3.5" />Documents ({cabinet.documents.length})</h3>
               {cabinet.documents.length === 0 ? (
                 <p className="mb-4 rounded-lg border border-dashed border-slate-600 p-4 text-center text-xs text-slate-500">Nothing on file yet — upload or request one above.</p>
               ) : (
                 <div className="mb-4 divide-y divide-slate-700/60">
                   {cabinet.documents.map((d) => (
                     <div key={d._id} className="flex flex-wrap items-center gap-3 py-2.5">
-                      <span className="text-lg">📎</span>
+                      <span className="text-slate-400"><Paperclip className="h-4 w-4" /></span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-slate-100">{d.name}</p>
                         <p className="text-xs text-slate-400">
@@ -243,16 +244,16 @@ export default function EmployeeFilesPage() {
                       </div>
                       {chip(labelOf(d.category || 'OTHER'), 'bg-indigo-400/15 text-indigo-300')}
                       <ExpiryBadge expiryDate={d.expiryDate} />
-                      <button onClick={() => window.open(d.fileUrl, '_blank')} className="rounded-lg border border-slate-600 px-2.5 py-1 text-[11px] font-bold text-slate-200 hover:bg-slate-700">👁</button>
-                      <button onClick={() => download(d)} className="rounded-lg border border-slate-600 px-2.5 py-1 text-[11px] font-bold text-slate-200 hover:bg-slate-700">⬇</button>
-                      <button onClick={() => doDelete(d)} className="rounded-lg border border-red-500/40 px-2.5 py-1 text-[11px] font-bold text-red-300 hover:bg-red-500/10">🗑</button>
+                      <button onClick={() => window.open(d.fileUrl, '_blank')} className="rounded-lg border border-slate-600 px-2.5 py-1 text-[11px] font-bold text-slate-200 hover:bg-slate-700" title="View"><Eye className="h-3 w-3" /></button>
+                      <button onClick={() => download(d)} className="rounded-lg border border-slate-600 px-2.5 py-1 text-[11px] font-bold text-slate-200 hover:bg-slate-700" title="Download"><Download className="h-3 w-3" /></button>
+                      <button onClick={() => doDelete(d)} className="rounded-lg border border-red-500/40 px-2.5 py-1 text-[11px] font-bold text-red-300 hover:bg-red-500/10" title="Delete"><Trash2 className="h-3 w-3" /></button>
                     </div>
                   ))}
                 </div>
               )}
 
               {/* requests */}
-              <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">📥 Requests ({cabinet.requests.length})</h3>
+              <h3 className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-400"><Inbox className="h-3.5 w-3.5" />Requests ({cabinet.requests.length})</h3>
               {cabinet.requests.length === 0 ? (
                 <p className="rounded-lg border border-dashed border-slate-600 p-4 text-center text-xs text-slate-500">No requests yet.</p>
               ) : (
@@ -278,11 +279,11 @@ export default function EmployeeFilesPage() {
         </section>
       </div>
 
-      {/* ⬆️ upload modal */}
+      {/* upload modal */}
       {showUpload && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowUpload(false)}>
           <div className="w-full max-w-md space-y-3 rounded-xl border border-slate-600 bg-slate-800 p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-base font-bold text-slate-100">⬆️ Upload for {cabinet.employee?.name}</h3>
+            <h3 className="flex items-center gap-2 text-base font-bold text-slate-100"><Upload className="h-4 w-4" />Upload for {cabinet.employee?.name}</h3>
             <select className={inp} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
               {cats.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
@@ -301,11 +302,11 @@ export default function EmployeeFilesPage() {
         </div>
       )}
 
-      {/* 📥 request modal */}
+      {/* request modal */}
       {showRequest && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowRequest(false)}>
           <div className="w-full max-w-md space-y-3 rounded-xl border border-slate-600 bg-slate-800 p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-base font-bold text-slate-100">📥 Request from {cabinet.employee?.name}</h3>
+            <h3 className="flex items-center gap-2 text-base font-bold text-slate-100"><Inbox className="h-4 w-4" />Request from {cabinet.employee?.name}</h3>
             <select className={inp} value={reqForm.category} onChange={(e) => setReqForm({ ...reqForm, category: e.target.value })}>
               {cats.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
@@ -316,7 +317,7 @@ export default function EmployeeFilesPage() {
             </div>
             <div className="flex justify-end gap-2 pt-1">
               <button onClick={() => setShowRequest(false)} className="rounded-lg border border-slate-600 px-4 py-2 text-sm font-bold text-slate-300 hover:bg-slate-700">Cancel</button>
-              <button onClick={doRequest} disabled={busy} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-bold text-white hover:bg-amber-500 disabled:opacity-50">{busy ? 'Sending…' : 'Send request 🔔'}</button>
+              <button onClick={doRequest} disabled={busy} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-bold text-white hover:bg-amber-500 disabled:opacity-50">{busy ? 'Sending…' : 'Send request'}</button>
             </div>
           </div>
         </div>

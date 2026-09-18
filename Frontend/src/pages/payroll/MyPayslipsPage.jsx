@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Download, ReceiptText } from 'lucide-react';
 import payrollService from '../../services/payrollService.js';
 import Modal from '../../components/Modal.jsx';
 
@@ -16,7 +17,7 @@ const MyPayslipsPage = () => {
 
   return (
     <div className="space-y-5">
-      <h1 className="text-2xl font-bold">🧾 My Payslips</h1>
+      <h1 className="flex items-center gap-2 text-2xl font-bold"><ReceiptText className="h-6 w-6" />My Payslips</h1>
 
       {error && <div className="rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">{error}</div>}
 
@@ -35,7 +36,7 @@ const MyPayslipsPage = () => {
             </div>
             <div className="mt-4 flex gap-2">
               <button className="btn-ghost flex-1 py-2 text-sm" onClick={() => setViewing(r)}>View Breakdown</button>
-              <button className="btn-primary flex-1 py-2 text-sm" onClick={() => payrollService.openPayslip(r._id)}>⬇ Download</button>
+              <button className="btn-primary flex-1 py-2 text-sm" onClick={() => payrollService.openPayslip(r._id)}><Download className="mr-1 inline h-4 w-4" />Download</button>
             </div>
           </div>
         ))}

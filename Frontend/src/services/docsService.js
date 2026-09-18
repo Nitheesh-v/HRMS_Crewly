@@ -1,6 +1,6 @@
 // ============================================================
-// 📁 docsService — Phase 14 (employee documents + requests)
-// 🩹 hardened: uploads ALWAYS go out as real multipart,
+// docsService — Phase 14 (employee documents + requests)
+// hardened: uploads ALWAYS go out as real multipart,
 //    no matter what the shared axios instance defaults to.
 // ============================================================
 import * as apiNS from './api.js';
@@ -15,7 +15,7 @@ export const arr = (x) => {
   return [];
 };
 
-// 🩹 FormData must travel as multipart/form-data — never JSON
+// FormData must travel as multipart/form-data — never JSON
 const postForm = (url, fd) =>
   api.post(url, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
 

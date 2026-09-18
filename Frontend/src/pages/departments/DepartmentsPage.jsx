@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Building2 } from 'lucide-react';
 import departmentService from '../../services/departmentService.js';
 import Modal from '../../components/Modal.jsx';
 import useAuth from '../../hooks/useAuth.jsx';
@@ -50,7 +51,7 @@ const DepartmentsPage = () => {
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">🏢 Departments</h1>
+        <h1 className="flex items-center gap-2 text-2xl font-bold"><Building2 className="h-6 w-6" />Departments</h1>
         <span className="text-sm text-crewly-dim">{departments.length} total</span>
       </div>
 

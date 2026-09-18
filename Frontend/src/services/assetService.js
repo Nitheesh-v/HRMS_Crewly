@@ -1,4 +1,4 @@
-// 🖥 assetService
+// assetService
 import * as apiNS from './api.js';
 const api = apiNS.default || apiNS.api || apiNS;
 
