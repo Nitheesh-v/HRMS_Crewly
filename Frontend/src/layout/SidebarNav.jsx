@@ -459,14 +459,15 @@ const Sidebar = ({ menu = [] }) => {
             type="button"
             title="Expand sidebar"
             onClick={() => setCollapsed(false)}
-            className="mx-auto text-lg font-extrabold tracking-wide text-crewly-green"
+            className="mx-auto text-lg font-extrabold tracking-wide text-violet-400"
           >
             C
           </button>
         ) : (
           <>
-            <div className="text-lg font-extrabold tracking-wide text-crewly-green">
-              Crewly <span className="text-crewly-orange">HRMS</span>
+            <div className="flex items-center gap-1.5">
+              <img src="/logo-crewly.png" alt="Crewly" className="h-9 w-auto mix-blend-screen" />
+              <span className="text-sm font-extrabold tracking-widest text-slate-400">HRMS</span>
             </div>
 
             <button
