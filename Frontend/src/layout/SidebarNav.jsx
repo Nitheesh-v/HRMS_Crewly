@@ -597,7 +597,7 @@ const Sidebar = ({ menu = [] }) => {
             <ChevronsRight aria-hidden="true" className="h-4 w-4" />
           </button>
         ) : (
-          <span>Crewly HRMS · Phase 29</span>
+          <span>Crewly HRMS</span>
         )}
       </div>
     </aside>
