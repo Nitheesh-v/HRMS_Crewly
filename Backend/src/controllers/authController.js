@@ -25,6 +25,7 @@ import {
   recordAudit,
   recordSecurityEvent,
 } from "../utils/securityauditService.js"
+import { ensureCompanyRoles } from "../utils/permissionService.js";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -257,6 +258,21 @@ export const registerCompany = asyncHandler(async (req, res) => {
   } finally {
     session.endSession();
   }
+
+  // Default tenant-role provisioning (fresh-database RBAC fix). The
+  // registration transaction above commits Company + Subscription + User
+  // only — without this step a brand-new company had ZERO CompanyRole
+  // documents and the founder's entire authority depended on a lazy
+  // in-request path that the permission middleware could deny before it
+  // ever ran (bootstrap deadlock on /app/roles-permissions).
+  //
+  // Idempotent + atomic per role (unique {companyId, code} upserts), so a
+  // retry (login) completes any partial run. Failure semantics (§ no
+  // false success): if provisioning throws, NO session/token is issued —
+  // registration never reports success while the founder has unusable
+  // RBAC. The committed company/user are kept (no casual deletes); the
+  // founder simply signs in again, which re-runs the idempotent ensure.
+  await ensureCompanyRoles(company._id, admin._id);
 
   SystemEvent.create({
     type: "COMPANY_REGISTERED",

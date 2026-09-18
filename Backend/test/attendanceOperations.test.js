@@ -932,7 +932,7 @@ test('31.12 route + permission gate HR-only operations', () => {
   );
   assert.ok(!managerBlock.includes('ATTENDANCE_OPERATIONS'));
   const permService = readSource('src/utils/permissionService.js');
-  assert.match(permService, /SYSTEM_PERMISSION_VERSION = 35/);
+  assert.match(permService, /SYSTEM_PERMISSION_VERSION = 36/);
 });
 
 

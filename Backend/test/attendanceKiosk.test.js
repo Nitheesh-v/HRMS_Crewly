@@ -770,7 +770,7 @@ test('31.14 kiosk: routes + middleware enforce the trust boundary', () => {
   const registry = readSource('src/utils/permissionRegistry.js');
   assert.match(registry, /ATTENDANCE_CAPTURE/);
   const permService = readSource('src/utils/permissionService.js');
-  assert.match(permService, /SYSTEM_PERMISSION_VERSION = 35/);
+  assert.match(permService, /SYSTEM_PERMISSION_VERSION = 36/);
 });
 
 test('31.14 kiosk: punch path never reads source/provenance from the client', () => {

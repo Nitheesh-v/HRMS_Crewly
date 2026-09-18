@@ -336,6 +336,12 @@ export const DEFAULT_PERMISSIONS = [
 
   ...actions("SUPPORT", ["READ"], "SELF"),
 
+  // Fresh-DB bootstrap fix (v36): SUPPORT_UPDATE_SELF is referenced by the
+  // self-service role matrices and selfServiceRoutes ("/support/:id/reply")
+  // but was missing from this catalogue, so it was silently dropped from
+  // every role. Employees can again update their own support tickets.
+  ...actions("SUPPORT", ["UPDATE"], "SELF"),
+
   // Scope-aware permissions.
   ...actions("EMPLOYEE", ["READ"], "DEPARTMENT"),
 
