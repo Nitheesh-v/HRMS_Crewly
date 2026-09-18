@@ -17,6 +17,7 @@ import {
 const router = Router();
 
 const readLimit = securityRateLimit({
+  sharedName: 'offer-read',
   windowMs: 15 * 60 * 1000,
   maximum: 80,
   keyGenerator: (req) => `${req.ip}:${offerTokenRateLimitKey(req.params.secureToken)}`,
@@ -24,6 +25,7 @@ const readLimit = securityRateLimit({
 });
 
 const decisionLimit = securityRateLimit({
+  sharedName: 'offer-decision',
   windowMs: 15 * 60 * 1000,
   maximum: 10,
   keyGenerator: (req) => `${req.ip}:${offerTokenRateLimitKey(req.params.secureToken)}:decision`,

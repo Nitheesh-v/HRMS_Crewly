@@ -29,6 +29,7 @@ import {
 const router = Router();
 
 const workLimit = securityRateLimit({
+  sharedName: 'bgv-verifier-work',
   windowMs: 10 * 60 * 1000,
   maximum: 240,
   keyGenerator: (req) => `${req.verifier?._id || req.ip}:bgv-verifier-work`,

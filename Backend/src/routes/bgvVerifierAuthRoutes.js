@@ -17,6 +17,7 @@ import {
 const router = Router();
 
 const loginLimit = securityRateLimit({
+  sharedName: 'bgv-verifier-login',
   windowMs: 15 * 60 * 1000,
   maximum: 10,
   keyGenerator: (req) => `${req.ip}:bgv-verifier-login`,
@@ -24,6 +25,7 @@ const loginLimit = securityRateLimit({
 });
 
 const recoveryLimit = securityRateLimit({
+  sharedName: 'bgv-verifier-recovery',
   windowMs: 15 * 60 * 1000,
   maximum: 5,
   keyGenerator: (req) => `${req.ip}:bgv-verifier-recovery`,

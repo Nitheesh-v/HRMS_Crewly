@@ -14,6 +14,7 @@ import { Router } from 'express';
 
 import { kioskAuth } from '../middlewares/kioskAuth.js';
 import { securityRateLimit } from '../middlewares/securityRateLimit.js';
+import { hashToken } from '../utils/securityPolicy.js';
 import {
   checkSubscriptionStatus,
   checkWriteAccess,
@@ -33,6 +34,7 @@ const router = Router();
 
 // Secret guessing: 5 attempts/minute per IP + station.
 const sessionRateLimit = securityRateLimit({
+  sharedName: 'kiosk-session',
   windowMs: 60000,
   maximum: 5,
   keyGenerator: (req) => `${req.ip}:kiosk-session:${req.body?.stationId || ''}`,
@@ -42,6 +44,7 @@ const sessionRateLimit = securityRateLimit({
 // Punch bursts at shift change: generous per-station cap that
 // still stops automated abuse.
 const punchRateLimit = securityRateLimit({
+  sharedName: 'kiosk-punch',
   windowMs: 60000,
   maximum: 120,
   keyGenerator: (req) => `${req.ip}:kiosk-punch:${req.kiosk?.stationId || ''}`,
@@ -54,10 +57,13 @@ const punchRateLimit = securityRateLimit({
 // the whole terminal, and the company+station segments stop
 // cross-tenant / cross-station bypass.
 const identifyRateLimit = securityRateLimit({
+  sharedName: 'kiosk-pin-identify',
   windowMs: 10 * 60000,
   maximum: 10,
   keyGenerator: (req) =>
-    `${req.ip}:kiosk-pin:${req.kiosk?.companyId || ''}:${req.kiosk?.stationId || ''}:${String(req.body?.employeeCode || '').trim().toUpperCase()}`,
+    // Phase 32.4 §13 — employee codes are personal dimensions:
+    // digested in limiter keys (per-code bucketing preserved).
+    `${req.ip}:kiosk-pin:${req.kiosk?.companyId || ''}:${req.kiosk?.stationId || ''}:${hashToken(String(req.body?.employeeCode || '').trim().toUpperCase()).slice(0, 16)}`,
   message: 'Too many verification attempts for this employee code. Please wait ten minutes.',
 });
 

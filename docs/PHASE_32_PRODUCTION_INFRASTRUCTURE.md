@@ -1,5 +1,140 @@
 # PHASE 32 — PRODUCTION INFRASTRUCTURE, SCALABILITY & PERFORMANCE
 
+# 32.4 — Distributed Rate Limiting & Abuse Protection
+
+Status: **32.4 implemented** (awaiting localhost acceptance). Phase 32.3
+made limiter identity honest; 32.4 makes security-sensitive limits keep
+their intended MEANING when traffic is spread across API #1/#2/#N. This
+is a security-correctness concern: 3 instances × 5 login attempts must
+never mean 15 attempts.
+
+## LIMITER INVENTORY & CLASSIFICATION (repository truth after 32.3)
+
+All limiters were process-local `Map`s in `securityRateLimit.js` (one
+module-level map) plus the Super Admin guard's own map.
+
+| Surface | Window/Max | Key dimensions | Class |
+| --- | --- | --- | --- |
+| customer login (`/api/auth/login`, `/register-company`) | 60s/5 | effective IP + url + email digest | **A — distributed required** |
+| password forgot/reset (`resetRateLimit`) | 15m/5 | effective IP + url + email digest | **A** |
+| token refresh | 60s/30 | effective IP | **A** |
+| password change | 15m/5 | effective IP + userId | **A** |
+| Super Admin login guard | 5 fails/15m block | effective IP + email digest | **A** |
+| kiosk session (station sign-in) | 60s/5 | effective IP + stationId | **A** |
+| kiosk identify (PIN guess, per-code) | 10m/10 | IP + companyId + stationId + code digest | **A** |
+| kiosk PIN management (staff) | 60s/10 | IP + companyId + userId | **A** |
+| BGV verifier login / recovery | 15m/10 & 5 | effective IP | **A** |
+| BGV verifier work | 10m/240 | verifierId / IP | **A** |
+| BGV consent read/decision | 15m/80 & 10 | IP + token hash | **A** |
+| BGV collection read/write/upload/submit | 15m/80/40/20/10 | IP + token hash | **A** |
+| candidate offer read/decision | 15m/80 & 10 | IP + token hash | **A** |
+| pre-onboarding read/upload | 15m/80 & 20 | IP + token hash | **A** |
+| careers application submit | 15m/5 | IP + slug + jobCode | **A** |
+| careers portal read | 60s/60 | effective IP | **B — shared preferred** |
+| kiosk punch (burst) | 60s/120 | IP + stationId | **B** |
+| recruitment ×5 (resume/ATS reprocess, pipeline bulk, interview/evaluation writes) | 15m/5–20 | companyId + userId + ref | **C — local acceptable** (authenticated load-shedding) |
+| Super Admin ops read/mutate | 60s/60 & 20 | effective IP | **C — local** (RBAC'd ops) |
+| QR challenge/redeem | none exists | — | **D — no change** (atomic single-use + hash-only already; supplementary limiter deferred) |
+| health probes | limiter-free by design | — | untouched (LB polling never throttled) |
+
+## DISTRIBUTED ARCHITECTURE
+
+- **Store (the ONE):** `utils/rateLimitStore.js` —
+  `createRateLimitStore({ sharedName, windowMs, io? })` →
+  `hit(identity, maximum) → { limited, count, remaining, resetAt, tier }`,
+  `peek`, `clear`. Default backend is the repository's own ioredis
+  client (`getRedisClient()`); tests inject an in-memory IO. No new
+  packages, no `redis` client, no second Redis architecture.
+- **Window/atomicity:** fixed window via one atomic `INCR` (never
+  GET-then-SET). `EXPIRE NX` on the window's first hit (Redis ≥ 7);
+  pre-Redis-7 servers fall back to plain `EXPIRE` on `count === 1`.
+  TTL = window → no permanent key accumulation. Existing
+  thresholds/windows are byte-preserved (§16: storage change only).
+- **Namespace:** `crewly:<env>:rl:<family>:<identity>` via
+  `getQueuePrefix()` — isolated from caches/queues/heartbeats/other
+  envs. Exact keys only; **no KEYS/SCAN/FLUSH** anywhere (test-pinned).
+- **Effective IP:** every key dimension is 32.3's trust-aware `req.ip`
+  — no limiter parses `X-Forwarded-For` (test-pinned); under `direct`
+  mode a client cannot choose its bucket by injecting headers.
+- **Tenant scoping:** pre-auth routes key only server-known dimensions
+  (effective IP, hashed secure token, stationId, slug); authenticated
+  keys keep `req.companyId`/`req.user._id`. `req.companyId` remains the
+  only tenant authority; frontend-supplied ids are never trusted into
+  keys. Cross-tenant isolation is test-pinned.
+- **Secret/PII keying (§12/§13):** secure tokens were ALREADY hashed in
+  keys (`hashToken`, sha256) — unchanged. NEW: emails (login/reset/
+  Super Admin guard) and kiosk employee codes are digested
+  (`sha256`, 16-hex slice) so no raw PII enters Redis or logs. Honest
+  caveat: hashing low-entropy data is not encryption — this prevents
+  raw exposure in operational keys, not guessing.
+
+## REDIS FAILURE POLICY (explicit, per §18)
+
+| State | Behavior |
+| --- | --- |
+| `REDIS_ENABLED` false (strict parser, §20) | quiet **local buckets** — documented deployment shape, identical to pre-32.4; no warnings, no circuit |
+| Redis down / erroring / op > 250 ms | **bounded local fallback** + 30 s process-local circuit; ONE warn per open naming only the family (no keys, no identities); requests NEVER fail |
+| circuit cooldown elapsed | shared tier resumes automatically |
+
+Policy choice: degraded-local for every shared family (never
+fail-closed — a limiter outage must not take down platform login;
+never silently weaker — the fallback still enforces the same
+contract per process, and docs state plainly that with Redis down
+AND multiple instances, protection is per-process, i.e. weaker than
+the shared budget).
+
+## RESPONSE SEMANTICS
+
+429 + frozen body (`statusCode, success:false, code:'RATE_LIMITED'`,
+route message) + existing `X-RateLimit-Limit/-Remaining/-Reset`
+headers — byte-identical in both tiers. **Additive:** shared-tier 429s
+carry exact `Retry-After` (TTL-derived seconds). No Redis state, key
+material, topology, or account existence is ever exposed; sensitive
+routes keep their generic messages (enumeration safety untouched).
+Super Admin guard 429 body unchanged.
+
+## MULTI-INSTANCE BEHAVIOR (the 32.4 acceptance property)
+
+API #1 and API #2 enforce ONE counter per family: a client alternating
+instances cannot multiply its allowance. Proven by tests against TWO
+independent middleware/store instances on one backend, including a
+10-concurrent race vs max 5 → exactly 5 pass (atomic INCR — no race
+overage). Not a claim against botnet-scale distributed abuse (§64).
+
+## HEALTH ENDPOINTS
+
+Probes (32.2) are mounted before limiter surfaces and remain
+limiter-free — infrastructure polling can never be throttled.
+
+## NOT AUTHENTICATION
+
+Distributed rate limiting is abuse protection only. It does not
+authenticate, authorize, or replace session validation, RBAC, kiosk
+station validation, QR single-use claims, or any Mongo-authoritative
+security state.
+
+## TESTS
+
+`npm run test:rate-limit` — 13 hermetic tests: shared budget across two
+instances, 429 semantics + Retry-After, concurrency race, namespace/
+family isolation, secret-safety (runtime key inspection), identity
+scoping, disabled-vs-down, circuit + recovery, window expiry/reset,
+Super Admin shared block/clear + key digest, wiring pins (A/B shared,
+C local), safety pins (no KEYS/SCAN/FLUSH, bounded fallback constants,
+frozen contracts, 32.3 identity law).
+
+## IMPLEMENTED / TESTED / DEFERRED
+
+- IMPLEMENTED + TESTED: store, dual-tier middleware, Super Admin
+  factory, 19 route wirings + 4 exported + guard, degradation ladder,
+  PII digesting, hermetic suite.
+- DEFERRED: QR supplementary limiter (D-class finding → candidate for
+  a later security unit); sliding-window/token-bucket upgrade (fixed
+  window is the preserved semantics); Redis-side atomic Lua script
+  (INCR+EXPIRE NX is already atomic enough — single INCR decides);
+  per-account global quotas; CAPTCHA/WAF/edge defenses (§37 — never in
+  32.4); detailed observability (→ 32.12).
+
 # 32.3 — Load Balancer & Reverse Proxy Readiness
 
 Status: **32.3 implemented** (awaiting localhost acceptance). No load

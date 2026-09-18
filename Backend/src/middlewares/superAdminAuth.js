@@ -163,53 +163,70 @@ export const permit =
   };
 
 // Simple dependency-free login attempt protection.
-// For multi-server production deployment this can later
-// move to Redis without changing the controller.
-const attempts = new Map();
+// Phase 32.4 — platform login-attempt protection is SHARED: counters
+// live in Redis (crewly:<env>:rl:super-admin-login:<ip:email-digest>)
+// via the ONE rate-limit store, so API #1/#2/#N enforce a single
+// budget. Degraded Redis → identical bounded in-process semantics.
+// Contract preserved: 5 failures block the ip+email pair for a
+// 15-minute window; successful login clears. No raw email in keys
+// (§13 digest); the account-lockout product boundary is untouched —
+// this remains the same attempt guard, now multi-instance honest.
+import {
+  createRateLimitStore,
+} from '../utils/rateLimitStore.js';
 
-export const superAdminLoginGuard = (
-  req,
-  res,
-  next
-) => {
-  const key =
-    `${req.ip}:` +
-    `${String(
-      req.body?.email || ''
-    ).toLowerCase()}`;
+import { hashToken } from '../utils/securityPolicy.js';
 
-  const current =
-    attempts.get(key) || {
-      count: 0,
-      blockedUntil: 0,
-    };
+const LOGIN_FAILURE_MAXIMUM = 5;
 
-  if (
-    current.blockedUntil >
-    Date.now()
-  ) {
-    return res.status(429).json({
-      statusCode: 429,
-      success: false,
-      message:
-        'Too many login attempts. Try again later.',
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+
+const adminEmailFingerprint = (email) =>
+  hashToken(String(email || '').trim().toLowerCase()).slice(0, 16);
+
+export const createSuperAdminLoginGuard = ({ store = null } = {}) => {
+  const sharedStore =
+    store ||
+    createRateLimitStore({
+      sharedName: 'super-admin-login',
+
+      windowMs: LOGIN_WINDOW_MS,
     });
-  }
 
-  req.recordAdminLoginFailure = () => {
-    current.count += 1;
+  const guard = async (req, res, next) => {
+    const key =
+      `${req.ip}:` +
+      `${adminEmailFingerprint(req.body?.email)}`;
 
-    if (current.count >= 5) {
-      current.blockedUntil =
-        Date.now() +
-        15 * 60 * 1000;
+    try {
+      const failures = await sharedStore.peek(key);
+
+      if ((failures || 0) >= LOGIN_FAILURE_MAXIMUM) {
+        return res.status(429).json({
+          statusCode: 429,
+          success: false,
+          message:
+            'Too many login attempts. Try again later.',
+        });
+      }
+
+      req.recordAdminLoginFailure = () => {
+        void sharedStore
+          .hit(key, LOGIN_FAILURE_MAXIMUM - 1)
+          .catch(() => {});
+      };
+
+      req.clearAdminLoginAttempts = () => {
+        void sharedStore.clear(key).catch(() => {});
+      };
+    } catch {
+      // A broken counter must never take the login route down.
     }
 
-    attempts.set(key, current);
+    next();
   };
 
-  req.clearAdminLoginAttempts = () =>
-    attempts.delete(key);
-
-  next();
+  return guard;
 };
+
+export const superAdminLoginGuard = createSuperAdminLoginGuard();
