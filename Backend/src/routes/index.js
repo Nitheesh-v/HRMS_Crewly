@@ -54,6 +54,7 @@ import publicBgvCollectionRoutes from "./publicBgvCollectionRoutes.js";
 import bgvVerifierAuthRoutes from "./bgvVerifierAuthRoutes.js";
 import bgvVerifierWorkRoutes from "./bgvVerifierWorkRoutes.js";
 import publicCandidatePreOnboardingRoutes from "./publicCandidatePreOnboardingRoutes.js";
+import publicRoutes from "./publicRoutes.js";
 import insightsAnalyticsRoutes from "./insightsAnalyticsRoutes.js";
 import reportBuilderRoutes from "./reportBuilderRoutes.js";
 
@@ -94,6 +95,9 @@ router.get("/health", (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+// Public marketing stats + testimonials — anonymized, no auth, for the SaaS landing page
+router.use("/public", publicRoutes);
 
 // Public career reads are intentionally mounted before authenticated
 // tenant middleware. This router contains its own rate limiting and validation.

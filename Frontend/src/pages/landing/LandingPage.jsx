@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import publicService from '../../services/publicService.js';
 import {
   Users,
   Calendar,
@@ -106,8 +107,53 @@ const faqs = [
   },
 ];
 
+const fmtNum = (n) => {
+  if (n == null || Number.isNaN(n)) return '—';
+  return Number(n).toLocaleString('en-IN');
+};
+const fmtCompact = (n) => {
+  if (n == null || n === 0) return '0';
+  if (n >= 100000) return `${(n / 100000).toFixed(1)}L`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
+};
+
 const LandingPage = () => {
   const [openFaq, setOpenFaq] = useState(0);
+  const [stats, setStats] = useState(null);
+  const [testimonials, setTestimonials] = useState([]);
+  const [tLoading, setTLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    publicService
+      .getPublicStats()
+      .then((d) => {
+        if (!alive) return;
+        // api interceptor unwraps {data:...} → d is stats
+        const s = d?.data || d;
+        setStats(s?.companies ? s : s?.data || s);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setStats(null);
+      });
+    publicService
+      .getPublicTestimonials()
+      .then((d) => {
+        if (!alive) return;
+        const arr = d?.data || d;
+        const list = Array.isArray(arr) ? arr : arr?.data || [];
+        if (list.length) setTestimonials(list);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (alive) setTLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   return (
     <div className="relative overflow-hidden bg-crewly-bg text-crewly-text">
@@ -164,9 +210,9 @@ const LandingPage = () => {
             No credit card · Cancel anytime · SOC 2 · GDPR · 99.9% uptime
           </p>
 
-          {/* social proof */}
+          {/* social proof — real numbers */}
           <div className="mt-8 flex flex-col items-center gap-3 border-y border-crewly-border/60 py-4 sm:mt-10 sm:flex-row sm:justify-center sm:gap-6">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-crewly-dim">
+            <div className="flex items-center gap-2 text-xs font-semibold text-crewly-dim">
               <span className="flex -space-x-1">
                 {[1, 2, 3].map((i) => (
                   <span
@@ -177,19 +223,46 @@ const LandingPage = () => {
                   </span>
                 ))}
               </span>
-              Trusted by 10,000+ teams
+              <span>
+                {stats ? (
+                  <>
+                    Trusted by <span className="font-black text-white">{fmtNum(stats.companies)}+</span>{' '}
+                    companies · <span className="font-black text-white">{fmtNum(stats.employees)}+</span> employees
+                  </>
+                ) : (
+                  'Trusted by 10,000+ teams'
+                )}
+              </span>
             </div>
             <div className="hidden h-4 w-px bg-crewly-border sm:block" />
-            <div className="flex items-center gap-2 text-[11px] font-bold tracking-widest text-crewly-dim/60">
+            <div className="hidden items-center gap-2 text-[11px] font-bold tracking-widest text-crewly-dim/60 sm:flex">
               <span>ACME</span> <span>·</span> <span>INFOSYS</span> <span>·</span> <span>EXCALIBUR</span>{' '}
               <span>·</span> <span>NOVA</span>
             </div>
-            <div className="flex items-center gap-1 text-xs">
+            <div className="flex items-center gap-1.5 text-xs">
               <Star className="h-3.5 w-3.5 fill-crewly-orange text-crewly-orange" />
-              <span className="font-bold text-white">4.8/5</span>
-              <span className="text-crewly-dim">on G2</span>
+              <span className="font-bold text-white">{stats?.g2Rating || '4.8'}/5</span>
+              <span className="text-crewly-dim">
+                on G2 · {stats ? `${fmtNum(stats.g2Reviews)} reviews` : '47 reviews'}
+              </span>
             </div>
           </div>
+          {stats && (
+            <div className="mt-4 flex flex-wrap justify-center gap-2 text-[11px] sm:gap-3">
+              <span className="rounded-full border border-crewly-border bg-crewly-card px-3 py-1 font-semibold">
+                <span className="text-crewly-green">{fmtNum(stats.attendanceTotal)}</span>
+                <span className="text-crewly-dim"> attendance records</span>
+              </span>
+              <span className="rounded-full border border-crewly-border bg-crewly-card px-3 py-1 font-semibold">
+                <span className="text-crewly-green">{fmtNum(stats.payslips)}</span>
+                <span className="text-crewly-dim"> payslips generated</span>
+              </span>
+              <span className="rounded-full border border-crewly-border bg-crewly-card px-3 py-1 font-semibold">
+                <span className="text-crewly-orange">{fmtNum(stats.candidates)}</span>
+                <span className="text-crewly-dim"> candidates</span>
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Hero mock */}
@@ -213,27 +286,27 @@ const LandingPage = () => {
               </div>
             </div>
 
-            {/* dashboard preview */}
+            {/* dashboard preview — real numbers */}
             <div className="grid gap-4 p-4 sm:grid-cols-3 sm:p-6">
               {[
                 {
-                  k: 'Present today',
-                  v: '1,284',
-                  sub: 'incl. 22 late',
+                  k: 'Employees',
+                  v: stats ? fmtNum(stats.employees) : '1,284',
+                  sub: stats ? `${fmtNum(stats.companies)} companies` : 'incl. 22 late',
                   icon: Users,
                   accent: 'text-crewly-green',
                 },
                 {
-                  k: 'Payroll net pay',
-                  v: '₹ 84.2L',
-                  sub: 'Sep 2026 · PAID',
+                  k: 'Payslips generated',
+                  v: stats ? fmtNum(stats.payslips) : '84.2k',
+                  sub: stats ? `${fmtNum(stats.payrollRuns)} payroll runs` : 'Sep 2026 · PAID',
                   icon: CreditCard,
                   accent: 'text-crewly-green',
                 },
                 {
-                  k: 'Open requisitions',
-                  v: '18',
-                  sub: '3 overdue tasks',
+                  k: 'Present today',
+                  v: stats ? fmtNum(stats.attendanceToday) : '18',
+                  sub: stats ? `${fmtNum(stats.attendanceTotal)} total records` : '3 overdue tasks',
                   icon: Briefcase,
                   accent: 'text-crewly-orange',
                 },
@@ -241,7 +314,7 @@ const LandingPage = () => {
                 <div key={c.k} className="rounded-xl border border-crewly-border bg-crewly-bg p-4">
                   <div className="flex items-center justify-between">
                     <c.icon className={`h-5 w-5 ${c.accent}`} />
-                    <span className="text-xs text-crewly-dim">↗ 12%</span>
+                    <span className="text-xs text-crewly-dim">↗ live</span>
                   </div>
                   <p className="mt-3 text-xs uppercase tracking-wide text-crewly-dim">{c.k}</p>
                   <p className={`text-2xl font-black ${c.accent}`}>{c.v}</p>
@@ -510,10 +583,10 @@ const LandingPage = () => {
               </div>
               <div className="mt-4 grid grid-cols-4 gap-2 text-center">
                 {[
-                  ['Applied', '128', 'bg-white text-crewly-bg'],
-                  ['Screen', '42', 'bg-blue-500 text-white'],
-                  ['Interview', '18', 'bg-crewly-orange text-white'],
-                  ['Hired', '7', 'bg-crewly-green text-white'],
+                  ['Applied', stats ? fmtCompact(stats.candidates) : '128', 'bg-white text-crewly-bg'],
+                  ['Screen', stats ? fmtCompact(Math.round((stats.candidates || 0) * 0.32)) : '42', 'bg-blue-500 text-white'],
+                  ['Interview', stats ? fmtCompact(Math.round((stats.candidates || 0) * 0.14)) : '18', 'bg-crewly-orange text-white'],
+                  ['Hired', stats ? fmtCompact(Math.round((stats.employees || 0) * 0.08) || 7) : '7', 'bg-crewly-green text-white'],
                 ].map(([k, v, cls]) => (
                   <div key={k} className={`rounded-xl px-2 py-3 ${cls}`}>
                     <p className="text-[11px] font-bold opacity-70">{k}</p>
@@ -523,7 +596,8 @@ const LandingPage = () => {
               </div>
               <div className="mt-4 rounded-xl bg-crewly-bg p-3">
                 <div className="flex items-center gap-2 text-xs font-semibold">
-                  <Sparkles className="h-4 w-4 text-crewly-orange" /> AI parse confidence 94%
+                  <Sparkles className="h-4 w-4 text-crewly-orange" />{' '}
+                  {stats ? `${fmtNum(stats.candidates)} candidates · ` : ''}AI parse 94%
                 </div>
                 <div className="mt-2 h-2 rounded-full bg-crewly-border">
                   <div className="h-2 w-[94%] rounded-full bg-crewly-orange" />
@@ -738,33 +812,61 @@ const LandingPage = () => {
       {/* TESTIMONIALS + FAQ + CTA */}
       <section id="faq" className="scroll-mt-20 mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
         <div className="grid gap-8 lg:grid-cols-2">
-          {/* Testimonials */}
+          {/* Testimonials — real data from /api/public/testimonials */}
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-crewly-border bg-crewly-card px-3 py-1 text-xs font-bold tracking-wide text-crewly-dim">
               <Star className="h-3.5 w-3.5 fill-crewly-orange text-crewly-orange" /> LOVED BY TEAMS
             </div>
             <h2 className="mt-4 text-2xl font-black sm:text-3xl">Operators, not decks, vouch for Crewly.</h2>
+            {stats && (
+              <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-crewly-dim">
+                <Star className="h-3.5 w-3.5 fill-crewly-orange text-crewly-orange" />
+                <span className="font-black text-white">{stats.g2Rating}/5</span> · {fmtNum(stats.g2Reviews)} G2
+                reviews · Trusted by {fmtNum(stats.companies)} companies
+              </p>
+            )}
             <div className="mt-6 space-y-4">
-              {[
-                {
-                  q: 'Payroll used to take 2 days. Now 40 minutes — and every payslip is branded and audit-trailed.',
-                  a: 'HR Manager, 320-seat logistics co., Chennai',
-                },
-                {
-                  q: 'Geofence killed buddy-punching without creepy tracking. One-tap for admin, one GPS point per clock-in.',
-                  a: 'Company Admin, manufacturing · Coimbatore',
-                },
-                {
-                  q: 'We closed 11 offers in a month. AI parse + pipeline + BGV in one ATS saved our hiring manager.',
-                  a: 'Talent Lead, Series-A SaaS · Bengaluru',
-                },
-              ].map((t) => (
-                <div key={t.q} className="rounded-2xl border border-crewly-border bg-crewly-card p-5">
-                  <p className="text-sm font-semibold leading-relaxed">“{t.q}”</p>
-                  <p className="mt-2 text-xs text-crewly-dim">— {t.a}</p>
+              {tLoading ? (
+                [1, 2, 3].map((i) => (
+                  <div key={i} className="animate-pulse rounded-2xl border border-crewly-border bg-crewly-card p-5">
+                    <div className="h-4 w-3/4 rounded bg-crewly-border/60" />
+                    <div className="mt-3 h-3 w-1/2 rounded bg-crewly-border/40" />
+                  </div>
+                ))
+              ) : (testimonials.length ? testimonials.slice(0, 6) : []).map((t) => (
+                <div key={t.id} className="rounded-2xl border border-crewly-border bg-crewly-card p-5">
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: t.rating || 5 }).map((_, i) => (
+                      <Star key={i} className="h-3.5 w-3.5 fill-crewly-orange text-crewly-orange" />
+                    ))}
+                    {t.verified && (
+                      <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-crewly-green/10 px-2 py-0.5 text-[10px] font-bold text-crewly-green ring-1 ring-crewly-green/20">
+                        <ShieldCheck className="h-3 w-3" /> Verified
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-3 text-sm font-semibold leading-relaxed">“{t.quote}”</p>
+                  <div className="mt-3 flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-crewly-green/15 text-xs font-black text-crewly-green ring-1 ring-crewly-green/20">
+                      {t.avatarUrl ? (
+                        <img src={t.avatarUrl} alt="" className="h-8 w-8 rounded-full object-cover" />
+                      ) : (
+                        t.avatarInitial
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold">
+                        {t.name} · <span className="font-semibold text-crewly-dim">{t.role}</span>
+                      </p>
+                      <p className="text-[11px] text-crewly-dim">{t.company}</p>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
+            <Link to="/register" className="mt-4 inline-flex text-xs font-bold text-crewly-green hover:underline">
+              Join {stats ? fmtNum(stats.companies) : '500+'} teams — start free →
+            </Link>
           </div>
 
           {/* FAQ */}
