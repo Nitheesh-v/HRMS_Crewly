@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   AlarmClock,
+  AlertTriangle,
   Bell,
   BellOff,
   Briefcase,
+  CheckCircle2,
+  ChevronDown,
   Coffee,
+  Crosshair,
   Hourglass,
+  Loader2,
   MapPin,
   MoonStar,
   Save,
@@ -280,6 +285,56 @@ const AttendancePolicyPage = () => {
   });
   const [locBusy, setLocBusy] = useState(false);
   const [locError, setLocError] = useState('');
+  // Phase 31 — geofence UX: Use Current Location (one-shot only, never watchPosition)
+  const [locGeo, setLocGeo] = useState({ status: 'idle', message: '', accuracy: null });
+
+  const handleUseCurrentLocation = useCallback(() => {
+    setLocError('');
+    // Insecure context (HTTP) blocks geolocation on most browsers except localhost
+    if (typeof window !== 'undefined' && window.isSecureContext === false) {
+      const host = window.location.hostname || '';
+      const isLocalhost = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+      if (!isLocalhost) {
+        setLocGeo({ status: 'error', message: 'Location requires HTTPS or localhost. Please use HTTPS or enter the office coordinates manually under Advanced.', accuracy: null });
+        return;
+      }
+    }
+    if (!navigator.geolocation || typeof navigator.geolocation.getCurrentPosition !== 'function') {
+      setLocGeo({ status: 'error', message: 'Location is not available in this browser. Please enter the office coordinates manually under Advanced.', accuracy: null });
+      return;
+    }
+    setLocGeo({ status: 'loading', message: 'Getting your location…', accuracy: null });
+    // One-shot only — never watchPosition, never on page load, only on explicit click
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude, accuracy } = pos.coords || {};
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+          setLocGeo({ status: 'error', message: 'Could not determine your location — please retry or enter coordinates manually.', accuracy: null });
+          return;
+        }
+        if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+          setLocGeo({ status: 'error', message: 'Location returned invalid coordinates — please retry or enter manually.', accuracy: null });
+          return;
+        }
+        setLocForm((prev) => ({ ...prev, latitude: String(latitude), longitude: String(longitude) }));
+        setLocGeo({
+          status: 'success',
+          message: 'Location captured',
+          accuracy: Number.isFinite(accuracy) ? accuracy : null,
+        });
+      },
+      (err) => {
+        const code = err?.code;
+        let msg = 'Could not determine your location — please retry or enter the office coordinates manually.';
+        if (code === 1) msg = 'Location permission was denied. Allow location access in your browser or enter the office coordinates manually.';
+        else if (code === 2) msg = 'Location is unavailable. Your device could not determine its location — enter the office coordinates manually.';
+        else if (code === 3) msg = 'Location request timed out — please retry or enter the office coordinates manually.';
+        else if (err?.message && /secure/i.test(err.message)) msg = 'Location requires HTTPS or localhost. Please use HTTPS or enter the office coordinates manually.';
+        setLocGeo({ status: 'error', message: msg, accuracy: null });
+      },
+      { timeout: 10000, maximumAge: 0 }
+    );
+  }, []);
 
   const loadLocations = useCallback(async () => {
     if (!canReadLocations && !canManageLocations) return;
@@ -392,7 +447,7 @@ const AttendancePolicyPage = () => {
     }
   };
 
-  const resetLocForm = () =>
+  const resetLocForm = () => {
     setLocForm({
       id: null,
       name: '',
@@ -403,6 +458,8 @@ const AttendancePolicyPage = () => {
       radiusMeters: 200,
       isActive: true,
     });
+    setLocGeo({ status: 'idle', message: '', accuracy: null });
+  };
 
   const saveLocation = async () => {
     setLocBusy(true);
@@ -902,8 +959,7 @@ const AttendancePolicyPage = () => {
             <option value="REQUIRED">Required</option>
           </select>
           <p className="mt-1 text-xs text-crewly-dim">
-            Applies to OFFICE clock-ins; offices are configured in the section
-            below. This page never requests device location.
+            Applies to OFFICE clock-ins; offices are configured below. This page only requests your location when you explicitly click “Use Current Location” — never on load.
           </p>
         </div>
       </Section>
@@ -941,7 +997,7 @@ const AttendancePolicyPage = () => {
                       type="button"
                       className="btn-ghost px-3 py-1 text-sm"
                       disabled={locBusy}
-                      onClick={() =>
+                      onClick={() => {
                         setLocForm({
                           id: row.id,
                           name: row.name,
@@ -951,8 +1007,10 @@ const AttendancePolicyPage = () => {
                           longitude: row.longitude,
                           radiusMeters: row.radiusMeters,
                           isActive: row.isActive,
-                        })
-                      }
+                        });
+                        setLocGeo({ status: 'idle', message: '', accuracy: null });
+                        setLocError('');
+                      }}
                     >
                       Edit
                     </button>
@@ -973,29 +1031,36 @@ const AttendancePolicyPage = () => {
             )}
           </div>
           {canManageLocations && (
-            <div className="grid max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label className="label">Name</label>
-                <input
-                  className="input w-full"
-                  value={locForm.name}
-                  disabled={locBusy}
-                  onChange={(event) => setLocForm((previous) => ({ ...previous, name: event.target.value }))}
-                />
+            <div className="max-w-2xl space-y-3">
+              {/* Primary fields: Name / Code */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="label">Location Name</label>
+                  <input
+                    className="input w-full"
+                    placeholder="e.g. Chennai HQ"
+                    value={locForm.name}
+                    disabled={locBusy}
+                    onChange={(event) => setLocForm((previous) => ({ ...previous, name: event.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="label">Code (optional)</label>
+                  <input
+                    className="input w-full"
+                    placeholder="CHN-HQ"
+                    value={locForm.code}
+                    disabled={locBusy}
+                    onChange={(event) => setLocForm((previous) => ({ ...previous, code: event.target.value }))}
+                  />
+                </div>
               </div>
+
               <div>
-                <label className="label">Code (optional)</label>
+                <label className="label">Address</label>
                 <input
                   className="input w-full"
-                  value={locForm.code}
-                  disabled={locBusy}
-                  onChange={(event) => setLocForm((previous) => ({ ...previous, code: event.target.value }))}
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="label">Address / description (optional)</label>
-                <input
-                  className="input w-full"
+                  placeholder="Office address / building"
                   value={locForm.displayAddress}
                   disabled={locBusy}
                   onChange={(event) =>
@@ -1003,32 +1068,64 @@ const AttendancePolicyPage = () => {
                   }
                 />
               </div>
-              <div>
-                <label className="label">Latitude (−90…90)</label>
-                <input
-                  className="input w-full"
-                  type="number"
-                  step="any"
-                  value={locForm.latitude}
-                  disabled={locBusy}
-                  onChange={(event) =>
-                    setLocForm((previous) => ({ ...previous, latitude: event.target.value }))
-                  }
-                />
+
+              {/* Use Current Location — one-shot, never watchPosition, never on load */}
+              <div className="rounded-lg border border-crewly-border bg-crewly-bg/40 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className="btn-primary inline-flex items-center gap-2 px-4 py-2"
+                    disabled={locBusy || locGeo.status === 'loading'}
+                    onClick={handleUseCurrentLocation}
+                  >
+                    {locGeo.status === 'loading' ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" /> Getting your location…
+                      </>
+                    ) : (
+                      <>
+                        <Crosshair className="h-4 w-4" /> Use Current Location
+                      </>
+                    )}
+                  </button>
+                  <span className="text-xs text-crewly-dim">Uses your browser location once to fill latitude/longitude. You can review before saving.</span>
+                </div>
+
+                {/* Feedback */}
+                {locGeo.status === 'loading' && (
+                  <p className="mt-2 flex items-center gap-2 text-sm text-crewly-dim">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Getting your location…
+                  </p>
+                )}
+                {locGeo.status === 'success' && (
+                  <div className="mt-2 flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                    <div>
+                      <p className="font-medium">Location captured</p>
+                      <p className="text-xs opacity-80">
+                        Latitude: {Number(locForm.latitude).toFixed(6)}, Longitude: {Number(locForm.longitude).toFixed(6)}
+                        {locGeo.accuracy != null && ` · Accuracy: approximately ${Math.round(locGeo.accuracy)} m`}
+                      </p>
+                      <p className="mt-1 text-xs opacity-60">Coordinates are shown for review. Accuracy is not proof of presence — backend verifies the geofence.</p>
+                    </div>
+                  </div>
+                )}
+                {locGeo.status === 'error' && (
+                  <div className="mt-2 flex items-start gap-2 rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-3 py-2 text-sm text-crewly-red">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>{locGeo.message}</span>
+                  </div>
+                )}
+
+                {/* Preview of auto-populated coordinates (review before save) */}
+                {locForm.latitude !== '' && locForm.longitude !== '' && Number.isFinite(Number(locForm.latitude)) && Number.isFinite(Number(locForm.longitude)) && locGeo.status !== 'loading' && (
+                  <div className="mt-2 rounded-lg border border-crewly-border bg-crewly-card px-3 py-2 text-sm">
+                    <p className="flex items-center gap-1.5 text-crewly-dim"><MapPin className="h-3.5 w-3.5" /> Captured coordinates (review)</p>
+                    <p className="font-mono text-xs">Lat {String(Number(locForm.latitude).toFixed(6))}, Lng {String(Number(locForm.longitude).toFixed(6))} {locGeo.accuracy != null ? `· Accuracy ~${Math.round(locGeo.accuracy)}m` : ''}</p>
+                  </div>
+                )}
               </div>
-              <div>
-                <label className="label">Longitude (−180…180)</label>
-                <input
-                  className="input w-full"
-                  type="number"
-                  step="any"
-                  value={locForm.longitude}
-                  disabled={locBusy}
-                  onChange={(event) =>
-                    setLocForm((previous) => ({ ...previous, longitude: event.target.value }))
-                  }
-                />
-              </div>
+
               <div>
                 <label className="label">Radius in meters (10…100000)</label>
                 <input
@@ -1041,8 +1138,48 @@ const AttendancePolicyPage = () => {
                     setLocForm((previous) => ({ ...previous, radiusMeters: event.target.value }))
                   }
                 />
+                <p className="mt-1 text-xs text-crewly-dim">Allowed distance from the office point. Employees outside this radius are refused when enforcement is REQUIRED.</p>
               </div>
-              <div className="flex items-end gap-2 pb-1">
+
+              {/* Manual fallback — for remote admin (Chennai configuring Bengaluru) */}
+              <details className="rounded-lg border border-crewly-border bg-crewly-bg/20">
+                <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-sm font-medium text-crewly-dim">
+                  <ChevronDown className="h-4 w-4" /> Advanced / Enter coordinates manually
+                </summary>
+                <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2">
+                  <div>
+                    <label className="label">Latitude (−90…90)</label>
+                    <input
+                      className="input w-full font-mono text-sm"
+                      type="number"
+                      step="any"
+                      value={locForm.latitude}
+                      disabled={locBusy}
+                      onChange={(event) =>
+                        setLocForm((previous) => ({ ...previous, latitude: event.target.value }))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Longitude (−180…180)</label>
+                    <input
+                      className="input w-full font-mono text-sm"
+                      type="number"
+                      step="any"
+                      value={locForm.longitude}
+                      disabled={locBusy}
+                      onChange={(event) =>
+                        setLocForm((previous) => ({ ...previous, longitude: event.target.value }))
+                      }
+                    />
+                  </div>
+                  <p className="sm:col-span-2 text-xs text-crewly-dim">
+                    Use this when you are configuring another office remotely (e.g. in Chennai adding a Bengaluru branch) and cannot capture location on-site.
+                  </p>
+                </div>
+              </details>
+
+              <div className="flex items-end gap-2 pt-1">
                 <button
                   type="button"
                   className="btn-primary px-4 py-2"
@@ -1062,6 +1199,10 @@ const AttendancePolicyPage = () => {
                   </button>
                 )}
               </div>
+
+              <p className="text-xs text-crewly-dim">
+                Note: Chrome DevTools → Sensors is only a developer testing mechanism for simulating inside/outside a geofence. Production employees do not use Sensors — on HTTPS, the browser/OS provides location after the employee allows permission.
+              </p>
             </div>
           )}
         </Section>
