@@ -1,5 +1,111 @@
 # PHASE 32 — PRODUCTION INFRASTRUCTURE, SCALABILITY & PERFORMANCE
 
+# 32.7 — BullMQ, Workers & Heavy-Task Scaling (Multi-Worker Safety Hardening)
+
+Status: **32.7 implemented** (awaiting localhost acceptance). MongoDB
+remains the sole authority; Redis/BullMQ is coordination. **Delivery is
+AT-LEAST-ONCE — never exactly-once.** Correctness comes from Mongo
+idempotency (atomic claims, unique constraints, version checks,
+revalidation), never from delivery assumptions. This unit HARDENED the
+existing Phase 28+ queue/worker infrastructure for horizontal worker
+scaling; it did NOT rebuild it.
+
+## QUEUE / JOB INVENTORY (audited)
+
+9 queues (`src/config/queueConfig.js`): system, email, resume, ats,
+scheduled, documents, bgv, payroll, analytics (RESERVED — 0 producers,
+verified by exhaustive `enqueueJob` call-site sweep: 21 call sites
+across 14 files, none target analytics). 40 declared job names → 40
+registered processors (verified live: declared 40 / registered 40 /
+missing 0 / undeclared 0) via the 7 `register*Processors` modules
+(email 13, scheduled 6, payroll 14, BGV 3, resume+ATS 2, documents 1,
+system 2). Defaults: 3 attempts, exponential backoff ×1s,
+keep-completed 100 / keep-failed 500; concurrency env-driven, clamped
+1–50 (default 2), parsed+logged per worker start. Retention is current
+truth; env-separated queue prefix preserved; `analytics` intentionally
+NOT constructed in `src/workers/index.js`.
+
+## THE 32.7 CHANGE (one producer-side addition — everything else audited, not changed)
+
+**Producer payload guard** (`src/queues/queueFactory.js`):
+`assertReferencesOnlyPayload` runs FIRST in `enqueueJob` and rejects
+(with `[Queue] payload rejected (references-only law)` — values are
+NEVER logged) any payload whose keys — recursively, arrays included —
+match the forbidden-key pattern: password/secret/token/jwt/credential/
+pin/otp/base64/binary/buffer/pdf/attachment/latitude/longitude/gps/
+coordinates/bankaccount/accountnumber/ifsc/salaryrow/resumetext/
+filecontent/documentcontent. This is §45 defense-in-depth at the
+producer boundary; the per-processor payload allowlists (e.g.
+`validateEmailJobPayload`) remain the second wall. Verified zero
+collisions with all 19 legitimate payload keys observed in the repo
+(candidateId, companyId, correlationId, deliveryId, offerId,
+expiryDateIso, caseId, checkType, documentVersionId, processingVersion,
+interviewId, scheduleVersion, …). Reference-only payloads were already
+the practice; now the factory ENFORCES it.
+
+## AUDIT VERDICTS (A/B classes; C–H no-change by design)
+
+- **A / H (no change, correct as built):** Mongo atomic claims and
+  leases (email `claimEmailDelivery` status-guard, resume processing
+  lease with expiry, document version-scoped lease, BGV
+  set-if-empty-on-submit, payroll duplicate-version /
+  batch-exists / never-pay-twice guards, payslip unique-index
+  sequence), failure classification (`classifyJobFailure`,
+  `classifyEmailSendFailure`), reconciliation scripts, concurrency
+  clamps, heartbeat identity (`worker-<randomUUID>` — unique per
+  PROCESS, TTL 60s, beat 15s), graceful shutdown (SIGINT+SIGTERM,
+  allSettled + 10s force-exit), retention, env prefix, heavy-task
+  boundaries (all heavy operations already run async through the
+  queues; token-bearing emails REMAIN SYNCHRONOUS by policy).
+- **B → fixed in 32.7:** `enqueueJob` had NO payload validation — the
+  references-only law now has a producer-side gate (above).
+- **D (measured later, not changed):** cross-instance cache stampede —
+  measurement scheduled 32.13.
+- **F (reconciliation):** duplicate reconciliation is safe-by-design —
+  deterministic jobIds (`bgv-check-<caseId>`,
+  `email-<deliveryId>`,
+  `document-process-<docVerId>-<processingVersion>` — V1 ≠ V2, ATS
+  epoch-based) + BullMQ job-id dedupe + `prepareJobSlot` (re-add only
+  after removing a FAILED slot; BullMQ never re-creates a used jobId).
+- **Analytics queue:** reserved, 0 producers — documented, not changed.
+
+## MULTI-WORKER SAFETY MATRIX (`test/multiWorkerSafety.test.js`, 11 tests — the §53 set)
+
+Two independent worker instances (separate local registries wired with
+the REAL `register*Processors`): (1) every declared job name registered
+on BOTH instances — no partial worker; (2) unknown job = LOUD config
+fault via real `dispatchJob` (`No processor registered…`); (3)
+duplicate delivery: claim → send → terminal-mark → redelivery claim is
+null → ALREADY_FINAL skip → exactly ONE send, with the in-flight
+re-claim window PINNED as deliberate at-least-once; (4) concurrent
+claim race: atomic `attemptCount` increments [1,2] — no lost or doubled
+increments — and post-terminal convergence (both late claims null);
+(5) cross-tenant claim refusal (Company B identity claims nothing);
+(6) retryable vs terminal failure classification (real classifier);
+(7) stale schedule/version detection via real `isInterviewEventStale`
+(SKIP semantics); (8)+(9) producer guard rejects every forbidden key
+shape and passes every legitimate payload shape; (10) deterministic
+jobIds collapse two API instances' enqueues of the same logical job;
+(11) shared-queue smoke: 12 mixed jobs drained by two workers over one
+registry, zero starvation. Stub models faithfully emulate the real
+claim/mark Mongo shapes ($in/$nin guards, $set, $inc, returnDocument).
+
+## VERIFICATION (this sandbox)
+
+- `npm run worker:scale-check` (NEW hermetic auditor,
+  `scripts/worker-scale-check.js`): 9 queues, 0 analytics producers,
+  40/40 registry, defaults pinned, unknown-job dispatch fails LOUD,
+  guard source pinned, idempotency markers present in all 7 domains →
+  exit 0.
+- `npm run test:worker-safety` (NEW): 11/11.
+- Regressions: bullmq 16/16, processing 13/13, scheduled 48/48,
+  background-jobs 42/42, email 16/16.
+- **Full `npm run test:all`: 1950/1950 pass, 0 fail, 0 blocked**
+  (32.6 baseline 1939 + 11 new = 1950 — exact delta).
+- Zero new dependencies; no queue added; no Kafka/RabbitMQ/SQS/NATS;
+  no leader election (no evidence requirement); Redis-off fallbacks
+  audited, untouched.
+
 # 32.6 — Redis & Multi-Instance Cache Hardening
 
 Status: **32.6 implemented** (awaiting localhost acceptance). MongoDB
