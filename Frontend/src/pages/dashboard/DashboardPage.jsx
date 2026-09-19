@@ -151,6 +151,49 @@ const DashboardPage = () => {
         Everything about you{isSenior ? " — and your people" : ""}, at a glance.
       </p>
 
+      {/* ── Attendance Quick Action (Phase 31 — one-tap CTA) ── */}
+      <div className="card mb-5 border-crewly-green/30 bg-gradient-to-br from-crewly-green/10 via-crewly-card to-crewly-card">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-crewly-green/15 ring-1 ring-crewly-green/20">
+              <Timer className="h-6 w-6 text-crewly-green" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-base font-bold sm:text-lg">
+                Attendance
+              </h2>
+              <p className="text-xs text-crewly-dim sm:text-sm">
+                {today ? (
+                  <>
+                    Checked in at{" "}
+                    <span className="font-semibold text-crewly-text">
+                      {today.checkIn}
+                    </span>{" "}
+                    ·{" "}
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold ${TODAY_STYLE[today.status] || "bg-crewly-green/15 text-crewly-green"}`}
+                    >
+                      {today.status.replace("_", " ")}
+                    </span>
+                  </>
+                ) : (
+                  "You haven't marked attendance yet today"
+                )}
+              </p>
+              <p className="mt-0.5 hidden text-[11px] text-crewly-dim sm:block">
+                Tap below to clock in / out, start break & view today&apos;s timeline.
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/app/attendance"
+            className="btn-primary w-full shrink-0 justify-center px-6 py-3 text-sm font-bold sm:w-auto sm:text-[15px]"
+          >
+            {today ? "Go to Attendance →" : "Mark Attendance →"}
+          </Link>
+        </div>
+      </div>
+
       {error && (
         <div className="mb-5 rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">
           {error}
