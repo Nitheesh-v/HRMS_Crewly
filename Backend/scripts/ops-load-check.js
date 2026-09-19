@@ -32,6 +32,17 @@ const flag = (name, fallback) => {
 const JOBS = Math.min(1000, Math.max(10, flag('--jobs', 100)));
 const CONCURRENCY = Math.min(16, Math.max(1, flag('--concurrency', 4)));
 const TIMEOUT_MS = Math.min(600000, Math.max(10000, flag('--timeout', 120000)));
+// Phase 32.13 — multi-worker scaling comparison (§50): N in-process
+// workers drain the SAME isolated prefix. Same-machine contention
+// applies; never interpreted as production scaling truth (§48/§51).
+const WORKERS = Math.min(4, Math.max(1, flag('--workers', 1)));
+
+// Phase 32.13 — environment guard (§2/§31): a load tool never runs
+// inside a production process, whatever its target isolation.
+if (String(process.env.NODE_ENV || '').toLowerCase() === 'production') {
+  console.error('✗ REFUSED: NODE_ENV=production — load tooling must never run in production.');
+  process.exit(2);
+}
 
 const { getRedisConfig } = await import('../src/config/redis.js');
 const { getQueuePrefix } = await import('../src/config/queueConfig.js');
@@ -50,7 +61,7 @@ const loadPrefix = `crewly:test:load-${randomUUID().slice(0, 8)}`;
 process.env.BULLMQ_PREFIX = loadPrefix;
 process.env.NODE_ENV = 'test';
 
-console.log(`📈 Load check: ${JOBS} safe jobs, concurrency ${CONCURRENCY}, isolated prefix ${loadPrefix}`);
+console.log(`📈 Load check: ${JOBS} safe jobs, ${WORKERS} worker(s) × concurrency ${CONCURRENCY}, isolated prefix ${loadPrefix}`);
 
 const Redis = (await import('ioredis')).default;
 const { Worker } = await import('bullmq');
@@ -67,7 +78,7 @@ const connection = new Redis(String(process.env.REDIS_URL).trim(), {
   connectionName: 'crewly-load-check-worker',
 });
 
-let worker;
+let workers = [];
 try {
   // Enqueue the full batch FIRST (backpressure: the backlog builds
   // while the worker drains it).
@@ -95,14 +106,17 @@ try {
   }, 250);
   sampler.unref();
 
-  worker = new Worker(QUEUE_NAMES.SYSTEM, dispatchJob, {
-    connection,
-    prefix: loadPrefix,
-    concurrency: CONCURRENCY,
+  workers = Array.from({ length: WORKERS }, () => {
+    const instance = new Worker(QUEUE_NAMES.SYSTEM, dispatchJob, {
+      connection,
+      prefix: loadPrefix,
+      concurrency: CONCURRENCY,
+    });
+    instance.on('completed', () => (completed += 1));
+    instance.on('failed', () => (failed += 1));
+    return instance;
   });
-  worker.on('completed', () => (completed += 1));
-  worker.on('failed', () => (failed += 1));
-  await worker.waitUntilReady();
+  await Promise.all(workers.map((instance) => instance.waitUntilReady()));
 
   // Bounded drain wait.
   const deadline = Date.now() + TIMEOUT_MS;
@@ -129,7 +143,7 @@ try {
   console.log('──────────────────────────────────────────────');
   console.log(`  Completed : ${completed}/${JOBS}`);
   console.log(`  Failed    : ${failed}`);
-  console.log(`  Drain time: ${drainMs}ms (${(drainMs / JOBS).toFixed(1)}ms/job avg)`);
+  console.log(`  Drain time: ${drainMs}ms (${(drainMs / JOBS).toFixed(1)}ms/job avg, ${WORKERS} worker(s))`);
   console.log(`  Peak backlog: ${peakBacklog} waiting`);
   console.log(`  RSS before/after: ${Math.round(rssBefore / 1024 / 1024)}MB → ${Math.round(rssAfter / 1024 / 1024)}MB (Δ ${rssDeltaKb}KB — one measurement, NOT a leak claim)`);
   console.log('──────────────────────────────────────────────');
@@ -149,7 +163,7 @@ try {
   process.exitCode = 1;
 } finally {
   try {
-    if (worker) await worker.close();
+    await Promise.allSettled(workers.map((instance) => instance.close()));
   } catch {
     /* ignore */
   }

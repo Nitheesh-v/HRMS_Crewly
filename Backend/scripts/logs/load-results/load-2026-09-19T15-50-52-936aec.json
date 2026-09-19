@@ -1,0 +1,57 @@
+{
+  "runId": "load-2026-09-19T15-50-52-936aec",
+  "gitHead": "b7b3b0a",
+  "startedAt": "2026-09-19T15:50:52.429Z",
+  "environment": "development",
+  "targets": [
+    "http://127.0.0.1:45085"
+  ],
+  "scenario": "health-read",
+  "mutating": false,
+  "requestsPlanned": 30,
+  "ramp": [
+    5
+  ],
+  "warmup": {
+    "attempted": 3,
+    "failed": 0,
+    "p50": 4,
+    "p95": 4.1
+  },
+  "stages": [
+    {
+      "concurrency": 5,
+      "requested": 30,
+      "attempted": 30,
+      "success": 30,
+      "failed": 0,
+      "failures": {},
+      "rps": 857.14,
+      "elapsedMs": 35,
+      "count": 30,
+      "min": 2,
+      "max": 10.9,
+      "mean": 5.6,
+      "p50": 4.8,
+      "p95": 10.6,
+      "p99": 10.9
+    }
+  ],
+  "overall": {
+    "count": 30,
+    "min": 2,
+    "max": 10.9,
+    "mean": 5.6,
+    "p50": 4.8,
+    "p95": 10.6,
+    "p99": 10.9
+  },
+  "totals": {
+    "attempted": 30,
+    "success": 30,
+    "failed": 0
+  },
+  "elapsedTotalMs": 39,
+  "datasetNote": "dataset scale not captured by the runner — record it in the run notes (§33)",
+  "disclaimer": "Measurements apply to the tested environment only; not a production capacity guarantee."
+}

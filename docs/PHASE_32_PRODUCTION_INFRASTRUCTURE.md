@@ -1,5 +1,117 @@
 # PHASE 32 — PRODUCTION INFRASTRUCTURE, SCALABILITY & PERFORMANCE
 
+# 32.13 — Load Testing & Capacity Validation
+
+Status: **32.13 implemented** (awaiting localhost acceptance).
+Evidence over claims: a dependency-free, safety-guarded load harness
+extends Crewly's existing tooling (`ops:load-check` — NOT replaced) to
+measure how the system behaves under bounded, read-only, ramped
+concurrency on a developer machine. **Every result is an observation of
+the tested environment — never a production capacity guarantee.**
+
+## SAFETY MODEL (§2/§31/§32 — tested, not promised)
+
+- `scripts/load/targetGuard.js`: loopback hosts (localhost/127.0.0.0-8/
+  [::1]/*.localhost) are unconditionally safe; ANY other host requires
+  an explicit `--target` PLUS `--confirm-remote-is-safe-staging
+  <exact-host>` matching it; ambiguity resolves to REFUSAL; the guard
+  is pure string logic (testing refusal cannot contact anyone).
+- `NODE_ENV=production` refuses at startup in ALL THREE tools
+  (api-load, realtime-load, ops-load-check).
+- **No `--force`/`skipAuth`/bypass switch exists anywhere** — pinned by
+  test over the whole `scripts/load/` directory.
+- Read-only by law (§82): the scenario registry contains ONLY real,
+  verified GET routes (`/api/health/live|ready`, attendance
+  today-live/presence/my, public careers jobs). Mutating load
+  (attendance punch, payroll, BGV, applications) is deliberately NOT
+  registrable — isolated synthetic tenants cannot be guaranteed by this
+  harness and Crewly law forbids seed data (E-class decision). Phase 31
+  hermetic tests remain the attendance-idempotency evidence (§11).
+- Auth = ONE legitimate pre-supplied token via `LOAD_TEST_TOKEN` (name
+  documented, value never committed/printed — tested with a synthetic
+  token that must never appear in output). No limiter bypass: public
+  careers 429s are an expected, honest finding (bottleneck: rate limit).
+- Bounded everything (§53/§66/§67/§84): concurrency ≤200, requests
+  ≤20,000, duration ≤5min, timeout 500ms–30s (default 10s), warm-up
+  ≤200, ramp stages ≤6, targets ≤4; stop conditions: >20% stage error
+  rate, readiness failure between stages, generator RSS guard (realtime),
+  Ctrl+C. No silent retries (§68).
+
+## CAPACITY TEST MATRIX (implemented ⊁ deferred)
+
+| Scenario | Subsystem | Type | Concurrency | Stop/cleanup |
+| --- | --- | --- | --- | --- |
+| health-read | HTTP+process floor | read | 1→ramp | bounded ops; none needed |
+| health-ready | cached infra state | read | ramp | none needed |
+| attendance-today-live | Phase 31 live board | read (auth) | ramp | token only |
+| attendance-presence | Who's Working (§12) | read (auth) | ramp | token only |
+| attendance-my | employee page load | read (auth) | ramp | token only |
+| careers-jobs | public + 32.4 limiter | read (public) | small | 429 expected |
+| ops:load-check (28.9+32.13) | BullMQ drain, `--workers 1..4` (§50) | isolated system jobs | worker×concurrency | scoped obliterate of own prefix |
+| load:realtime | 32.11 SSE foundation (§26) | neutral infra events | ramp ≤200 conns | RSS guard; ALL sockets closed on exit/Ctrl+C |
+
+Deferred (explicit): attendance MUTATION load, payroll/payslip/BGV/email
+worker load (F-class — require isolated data/mock providers; worker
+capacity evidence today = ops:load-check on the SYSTEM queue + 32.7
+hermetic multi-worker pins). Chaos/failure injection = 32.14. No
+external tools (k6/Artillery) — future option documented, not installed.
+
+## FOLDER STRUCTURE (as built)
+
+```
+Backend/scripts/load/          # NEW — load tooling, separate from runtime
+  targetGuard.js               # pure target safety (§79-tested)
+  metrics.js                   # percentiles / classification / clamps (pure)
+  runnerConfig.js              # CLI parsing + safe clamps + multi-target
+  scenarios.js                 # read-only registry of REAL routes
+  api-load.js                  # CLI HTTP runner (warm-up, ramp, summary)
+  realtime-load.js             # SSE connection harness (D-class)
+Backend/scripts/ops-load-check.js  # EXTENDED: --workers 1..4 (same isolation)
+Backend/test/loadTooling.test.js   # 27 tests — the tool itself is tested
+Backend/logs/load-results/         # gitignored JSON artifacts (§72)
+```
+
+## METHODOLOGY & METRICS (§39–§42/§65/§66)
+
+WARM-UP (default 10 ops) is measured separately and excluded from stage
+percentiles — never silently discarded. Stages run concurrency
+`--ramp a,b,c…` or a single value; report BOTH total operations and
+per-stage concurrency. Latency = monotonic `performance.now()` per
+request; p50/p95/p99 = nearest-rank over the full bounded sample
+(≤20k stored values — documented limitation, not a reservoir). Output
+includes RPS, per-class failures (2xx/4xx/429/5xx/timeout/
+conn-refused/aborted), runId, git HEAD, targets — plus the mandatory
+environment-only disclaimer. JSON artifacts go to gitignored
+`logs/load-results/`.
+
+## RUNNER VALIDATION (this sandbox — measures the RUNNER, not Crewly)
+
+- `test/loadTooling.test.js`: **27/27** — production-refusal matrix
+  (loopback accept; remote refused with guidance; exact-host
+  declaration accept/mismatch-refuse; NODE_ENV refusal; no-force pin),
+  clamps, nearest-rank percentile correctness, full error taxonomy,
+  config-never-read secret safety, scenario registry pins against the
+  REAL route files, mock-origin runner runs (bounded success with JSON
+  artifact; unhealthy-target refusal generating NO load; tokenless auth
+  refusal naming only the env var; synthetic token never in output),
+  ops-load-check `--workers`/production-guard/scoped-cleanup pins,
+  realtime harness caps/closes pins.
+- Runner demo vs a local mock (labeled): 399/399 ops, 1425 RPS,
+  p50=5.3ms p95=16.3ms p99=25.7ms — proves the harness, NOT Crewly.
+- **LIVE Crewly load runs: BLOCKED in this sandbox** (no mongod/Redis —
+  established environment fact). The developer executes them via
+  `docs/PHASE_32_13_LOCALHOST_ACCEPTANCE_GUIDE.md`; no numbers are
+  claimed here (§59/§89 — BLOCKED ≠ PASS).
+- **Full `npm run test:all`: 2075/2075 pass, 0 fail — two consecutive
+  runs** (32.12 baseline 2048 + 27 = 2075 exact).
+
+## NO-CHANGE / DEFERRED
+
+Product runtime untouched (scripts + one gitignore line + two package
+scripts). No optimization campaigns triggered (§62). Findings for
+32.14: none yet — localhost runs may surface recovery defects to
+document there.
+
 # 32.12 — Observability & Production Diagnostics
 
 Status: **32.12 implemented** (awaiting localhost acceptance).
