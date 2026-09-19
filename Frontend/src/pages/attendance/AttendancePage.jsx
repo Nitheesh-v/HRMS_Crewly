@@ -632,14 +632,14 @@ const AttendancePage = () => {
         </div>
       )}
 
-      {/* History */}
-      <div className="card p-0">
-        <div className="flex items-center justify-between border-b border-crewly-border px-5 py-3">
+      {/* History — responsive: header stacks, table scrolls */}
+      <div className="card p-0 overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-crewly-border px-3 sm:px-5 py-3">
           <h2 className="font-semibold">Attendance History</h2>
-          <input type="month" className="input w-44" value={month} onChange={(e) => setMonth(e.target.value)} />
+          <input type="month" className="input w-full sm:w-44" value={month} onChange={(e) => setMonth(e.target.value)} />
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+        <div className="overflow-x-auto -mx-0">
+          <table className="w-full min-w-[640px] text-left text-sm">
             <thead>
               <tr className="border-b border-crewly-border text-crewly-dim">
                 <th className="px-5 py-3">Date</th>
