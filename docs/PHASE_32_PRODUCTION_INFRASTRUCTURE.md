@@ -1,5 +1,122 @@
 # PHASE 32 — PRODUCTION INFRASTRUCTURE, SCALABILITY & PERFORMANCE
 
+# 32.5 — MongoDB Performance & Index Hardening (Evidence-First)
+
+Status: **32.5 implemented** (awaiting localhost acceptance). Central
+rule honored: MEASURE/INSPECT FIRST, CHANGE SECOND. The audit found the
+index architecture (built up through phases 27–31) fundamentally sound;
+the ONE proven hot-path defect — the BGV verifier work queue — is fixed.
+**Zero new indexes, zero removed indexes, zero unique/TTL changes, zero
+new env variables, zero new dependencies.**
+
+## GROUND TRUTH (machine-assisted inventory, §47)
+
+`npm run index:check` loads all **124 models with zero DB connections**
+and reports: **615 declared indexes across 124/124 collections (unique:
+105, TTL: 11, partial: 25, sparse: 3) — zero index-free collections.**
+It then evaluates the **hot-query catalog** (18 pinned query families,
+each citing file:line) under documented conservative rules (index-prefix
+equality; `findOne` point-served when any equality key is UNIQUE-led).
+Exit 1 on any GAP. `npm run test:index-coverage` (12 hermetic guards)
+pins the verdicts, crown-jewel index definitions, tenant-first law, TTL
+housekeeping, and query↔index source shapes.
+
+## THE ONE CODE FIX — BGV verifier work queue (B-class, proven)
+
+BEFORE (`verifierWorkQueue`): read the platform's ENTIRE CURRENT-assignment
+table (`find({activeKey:'CURRENT'})`, unbounded §21), filter to the
+verifier in memory, then per-row loads — **1 + M + 3M queries** (N+1, §22).
+AFTER: the authorization predicate moved INTO the read —
+`find({verifier, activeKey:'CURRENT'})` (served by the EXISTING
+`{verifier}` index; no new index per §49 write-amplification law) — plus
+ONE `$in` read per collection (orders, companies, cases, verifications,
+the latter keeping `companyId: {$in}` tenant dimension). **Flat 5-6
+queries for any queue size.** Rows are byte-identical; the client never
+supplies a verifierId (unchanged law); the queue test pins the exact
+collaborator-call list, so the N+1 cannot return. Assignment-as-
+authorization is now ALSO enforced at the DB read (strictly narrower).
+
+## INDEXES ADDED / MODIFIED / REMOVED
+
+**None.** Every candidate was evaluated and rejected with reasons:
+
+| Candidate | Verdict | Why |
+| --- | --- | --- |
+| Attendance `{companyId, liveState}` (Who's-Working OPEN_STATES `$or` branch has no date bound) | MEASURE ONLY → 32.13 | branch is index-bounded per user via `{companyId,user,date}` prefix; partial index not expressible (`$in` unsupported in `partialFilterExpression`); full compound duplicates existing data volume + writes on the morning-critical collection. Decide with `$indexStats` under real load |
+| BgvCheckAssignment `{verifier, activeKey}` compound | NOT NEEDED | per-verifier assignment set is tiny; single-field `{verifier}` already serves the scoped read |
+| Unused `User` text index (name/email/employeeCode) | KEEP | removal policy (§32): no strong evidence; note recorded for 32.10 |
+| BGV ops dashboard whole-collection working sets | DEFER | platform Super-Admin console, 30.x security-reviewed projections (sensitive subdocs excluded); row-count bounding is a 32.13/32.12 concern |
+
+## AUDIT VERDICTS (A — already appropriate, verified not assumed)
+
+- **Attendance (morning-spike priority, §6/§7):** every event/control
+  read is `{companyId,user,date}` + `seq` sort → unique compound serves
+  filter AND sort; idempotent replay rides the sparse unique
+  `{companyId,user,requestId}`; writes append-only via control
+  `eventSeq` counter — write amplification unchanged (no new indexes).
+- **Who's Working / Operations:** batched `$in` design (31.x) verified
+  intact — Promise.all + in-memory maps, no per-user queries.
+- **Payroll (§11/§12):** tenant-unique compounds everywhere;
+  PayrollResult's 29.13 ESR set (month-window + per-employee history +
+  version uniqueness) verified; lists server-paged.
+- **Recruitment (§13):** board/stage/source compounds; inbox paged ≤100,
+  projected selects, tenant-matched populates; bulk ops re-verify tenant
+  counts (cross-tenant guard).
+- **BGV (§14):** verifier queue fixed above; tenant admin paths and
+  verifier paths remain separate reads; nothing widened.
+- **Workers (§43):** atomic `_id`+`companyId` claims; reconciler sweeps
+  have purpose-built indexes (`EmailDelivery{status,createdAt}`,
+  `AnalyticsReportFile{status,expiresAt}` — documented in-model).
+- **Users/org (§15):** login, employee-code (partial unique), role,
+  activity compounds verified.
+- **Pagination (§20/§45):** caps verified server-side (careers 24,
+  interviews 50, inbox 100, ops reconcile 100). Exports unchanged.
+
+## CONNECTION-POOL STRATEGY (§29/§30)
+
+Current: Mongoose 9 driver defaults + `serverSelectionTimeoutMS: 10000`.
+Default `maxPoolSize` (100/instance) is a CEILING, not preallocation.
+Budget principle: **N API instances × pool + W workers × pool** potential
+connections (e.g. 3×100 + 2×100 = up to ~500) — document, don't tune:
+no workload evidence justifies new tuning env vars today; sizing
+integration belongs to **32.15** with real deployment numbers.
+
+## EVIDENCE LIMITATIONS (§37, honest)
+
+The sandbox has no `mongod`: live `explain("executionStats")` /
+`$indexStats` baselines run on developer localhost / staging — recipes
+below. Structural evidence (shape ↔ index-prefix match) is complete;
+timing claims are deliberately NOT made. Capacity claims belong to
+**32.13**.
+
+## OPERATOR RECIPES (developer localhost only — read-only)
+
+```js
+// mongosh — winning plan for the pinned session-validation path:
+db.securitysessions.explain("executionStats").findOne(
+  { sessionId: "<id>", user: ObjectId("…"),
+    companyId: ObjectId("…"), revokedAt: null,
+    expiresAt: { $gt: new Date() } })
+// expect: IXSCAN sessionId_unique, totalDocsExamined ≤ 1
+
+// Which indexes real traffic uses (run over a busy day):
+db.attendanceevents.aggregate([{ $indexStats: {} }])
+```
+
+No destructive commands are part of acceptance: never `dropIndex`/
+`syncIndexes` casually — Mongoose autoIndex (default ON) creates
+declared-only indexes at startup; production rollout planning → **32.15**.
+
+## IMPLEMENTED / TESTED / DEFERRED
+
+- IMPLEMENTED + TESTED: verifier-queue scoped+batched rewrite (14/14 in
+  `test/bgvAssignment.test.js` incl. exact query-count pin), inventory
+  auditor + hot-query catalog (`npm run index:check`, 18 entries, exit
+  code contract), 12 hermetic index/shape guards, docs.
+- DEFERRED: OPEN_STATES branch measurement → 32.13 ($indexStats); BGV
+  ops working-set bounding → 32.13/32.12; pool sizing → 32.15; response
+  payload tuning → 32.10; production index rollout strategy → 32.15.
+
 # 32.4 — Distributed Rate Limiting & Abuse Protection
 
 Status: **32.4 implemented** (awaiting localhost acceptance). Phase 32.3

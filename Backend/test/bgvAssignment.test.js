@@ -96,6 +96,18 @@ const makeWorld = (overrides = {}) => {
 
   const deps = {
     loadOrderById: async ({ orderId }) => (String(orderId) === ORDER_ID ? { ...order, status: state.orderStatus } : null),
+    // Phase 32.5 batched collaborators (verifierWorkQueue now uses these).
+    listAssignmentsForVerifier: async ({ verifierId }) =>
+      state.assignments
+        .filter((a) => a.activeKey === 'CURRENT' && String(a.verifier) === String(verifierId))
+        .map((a) => ({ ...a })),
+    loadOrdersByIds: async ({ orderIds }) =>
+      orderIds.map(String).includes(ORDER_ID) ? [{ ...order, status: state.orderStatus }] : [],
+    loadCompaniesByIds: async () => [{ _id: COMPANY_ID, name: 'Infolexus Tech' }],
+    loadCasesForOrders: async ({ orderIds, companyIds }) =>
+      orderIds.map(String).includes(ORDER_ID) && companyIds.map(String).includes(COMPANY_ID)
+        ? [{ ...collectionCase, status: state.caseStatus }]
+        : [],
     loadCompany: async () => ({ name: 'Infolexus Tech' }),
     loadCandidate: async () => ({ name: 'Priya Raman', candidateCode: 'C-001' }),
     loadLatestToken: async () => ({ finalDecision: state.consentDecision }),
@@ -643,4 +655,69 @@ test('30.7 #47-53 structural: model index/history, route guards, no seeds, no fo
     assert.ok((source.match(/DB Logic/g) || []).length >= 4);
     assert.ok((source.match(/Data to frontend/g) || []).length >= 4);
   }
+});
+
+// ── Phase 32.5 — bounded queries (N+1 regression pin) ─────────────
+test('32.5 queue batching: verifier-scoped assignment read + exactly ONE batched read per collection', async () => {
+  const world = makeWorld();
+  await assignCheck({ actorId: ADMIN, orderId: ORDER_ID, checkType: 'IDENTITY', verifierId: V_ID, deps: world.deps });
+  await assignCheck({ actorId: ADMIN, orderId: ORDER_ID, checkType: 'ADDRESS', verifierId: V_ID, deps: world.deps });
+
+  const calls = [];
+  const count = (name) => calls.push(name);
+  const countingDeps = {
+    ...world.deps,
+    listAssignmentsForVerifier: async (args) => {
+      count('assignments:verifier-scoped');
+      return world.deps.listAssignmentsForVerifier(args);
+    },
+    loadOrderById: async (args) => {
+      count('loadOrderById:FORBIDDEN-IN-QUEUE');
+      return world.deps.loadOrderById(args);
+    },
+    loadOrdersByIds: async (args) => {
+      count('orders:$in');
+      return world.deps.loadOrdersByIds(args);
+    },
+    loadCompaniesByIds: async (args) => {
+      count('companies:$in');
+      return world.deps.loadCompaniesByIds(args);
+    },
+    loadCasesForOrders: async (args) => {
+      count(`cases:$in:${args.orderIds.length}orders:${args.companyIds.length}companies`);
+      return world.deps.loadCasesForOrders(args);
+    },
+    loadVerificationsForOrders: async (args) => {
+      count('verifications:$in');
+      return world.deps.loadVerificationsForOrders(args);
+    },
+  };
+
+  const queue = await verifierWorkQueue({ verifierId: V_ID, deps: countingDeps });
+  assert.equal(queue.rows.length, 2, 'both of this verifier\u2019s checks are returned');
+
+  // EXACTLY one read per collection — flat query count for any queue size.
+  assert.deepEqual(
+    [...calls].sort(),
+    [
+      'assignments:verifier-scoped',
+      'cases:$in:1orders:1companies',
+      'companies:$in',
+      'orders:$in',
+      'verifications:$in',
+    ],
+  );
+
+  // The N+1 path is gone: the per-row order loader must never fire.
+  assert.equal(
+    calls.filter((name) => name === 'loadOrderById:FORBIDDEN-IN-QUEUE').length,
+    0,
+    'queue must batch order reads (\u0024in), never loop per-row loads',
+  );
+
+  // Authorization moved INTO the read: assignments queried BY verifier,
+  // and the batched case read keeps the tenant dimension.
+  assert.equal(calls[0], 'assignments:verifier-scoped');
+  assert.ok(calls.some((name) => name === 'cases:$in:1orders:1companies'),
+    'batched case read carries order ids AND the companyId dimension');
 });
