@@ -1,5 +1,126 @@
 # PHASE 32 — PRODUCTION INFRASTRUCTURE, SCALABILITY & PERFORMANCE
 
+# 32.6 — Redis & Multi-Instance Cache Hardening
+
+Status: **32.6 implemented** (awaiting localhost acceptance). MongoDB
+remains the sole authority; Redis is coordination. This unit closes the
+exact invalidation gap Phase 32.1 deferred to 32.6 (architecture record
+§5 items 3–4 / §9): the two PROCESS-LOCAL caches — the subscription
+feature gate and the permission caches — now also carry a SHARED Redis
+generation as the cross-instance invalidation signal.
+
+## CACHE INVENTORY (audited, A–F classified)
+
+| Cache | Scope / storage | Invalidation | Verdict |
+| --- | --- | --- | --- |
+| Recruitment analytics | tenant+filterHash, shared Redis (gen-embedded keys, TTL) | shared generation INCR on mutations (6+ sites) | **A** — multi-instance safe |
+| Attendance analytics | tenant+scope, shared Redis (same pattern) | shared generation INCR (events, regularization, OT, finalization, leave) | **A** |
+| Payroll caches (setup/engine/review/payment/payslip/statutory/salaries/inputs/F&F) | tenant keys, shared Redis, TTL | exact-key DEL after mutations | **A** — shared-Redis DEL is cross-instance; DEL-failure bounded by TTL |
+| Attendance policy | tenant key, shared Redis, TTL | exact DEL on activate/update | **A** (stale window = TTL) |
+| Subscription gate (`subscriptionGateCache`) | tenant, process-local Map, 5–60s TTL | same-process hooks + **NEW shared generation** | **B → FIXED in 32.6** |
+| Permission grants (5-min) + metadata (15s) | process-local Maps | same-process controllers/hooks + **NEW shared generation** | **B → FIXED in 32.6** |
+
+## THE 32.6 CHANGE — shared-generation overlay (`utils/cacheGeneration.js`)
+
+Key: `crewly:cache:company:<companyId>:<namespace>:generation` (same
+shape as the 28.7 analytics generations; namespaces `subscription:gate`
+and `security:permissions`). Read = fail-open GET, 100ms-tight op bound,
+Redis-down short-circuited by the health flag at zero cost:
+
+- shared generation **null** (Redis unusable) → local-TTL behavior
+  EXACTLY as pre-32.6 (bounded staleness, documented honestly: while
+  Redis is down, invalidation is per-process and staleness is bounded
+  only by the local TTL — 60s worst case);
+- integer generation → authoritative: a local entry stamped with an
+  older generation is reloaded from Mongo; equal = hit.
+
+Bump = `INCR` + refreshed 24h TTL inside the EXISTING invalidation
+functions (`invalidateSubscriptionGateCache`,
+`invalidatePermissionCache`) — fire-and-forget, never throws, never
+blocks or rolls back a valid Mongo write (§12). Invalidation coverage
+is unchanged-and-pinned: the same Subscription post-save/delete hooks
+and role-controller call sites now emit the cross-instance signal.
+
+## MULTI-INSTANCE SEMANTICS
+
+API #1 mutation → hook → shared generation INCR → API #2's next read
+observes the new generation → its old entry is stale → fresh Mongo
+read. Proven with TWO independent cache-consumer instances over ONE
+injected backend, in both directions, including a simulated
+external-process bump (`test/cacheMultiInstance.test.js`, 15 tests).
+Tenant generations are tenant-scoped: Company B's bump can never
+revoke/validate Company A's entries (test-pinned).
+
+## SINGLE-FLIGHT / STAMPEDE DECISION
+
+**KEEP PROCESS-LOCAL.** Cross-instance duplicate misses are bounded
+Mongo-backed loads — a performance duplication, never a correctness
+issue; no evidence of synchronized-miss pressure on expensive rebuilds
+was found (analytics reads are bounded aggregates; rebuild cost is
+modest). The §15 high bar for distributed lock/lease coordination is
+NOT met; introducing one would add fragility for no measured benefit.
+32.13 load testing may revisit with evidence.
+
+## TTL / STALENESS
+
+Gate TTL 5–60s (env-clamped, default 15s); permission grants 5-min,
+metadata 5–60s; analytics value TTLs unchanged; generation counters
+carry a refreshed 24h TTL (bounded orphans, no permanent keys). Worst
+stale windows: healthy Redis → next request after a mutation; Redis
+down → local TTL only.
+
+## NAMESPACE SEPARATION (rate limits / cache / queues)
+
+`crewly:<env>:rl:<family>:` (32.4 limiters) · `crewly:cache:company:…`
+(all caches incl. generations) · `crewly:<env>:` BullMQ keyspace —
+prefix-disjoint (test-pinned). Cache operations touch only exact
+self-built keys: no cache clear can ever reset a limiter, and no
+invalidation can touch queue keys. No KEYS/SCAN/FLUSH anywhere; no
+generic cache-clear endpoint exists (by design, §53).
+
+## SENSITIVE-DATA POLICY
+
+Cached payloads remain: gate booleans/module lists, permission id-set
+summaries, bounded analytics aggregates, payroll config summaries —
+field-encrypted values stay encrypted (setup cache stores ciphertext).
+Never cached: passwords, raw tokens, resumes/binaries, BGV evidence,
+bank details, GPS. 256KB payload guard sits in `setCache` before any
+write (test-pinned); corrupt envelopes fail safely to the source.
+
+## CONNECTION ARCHITECTURE
+
+One shared ioredis client for cache + rate limiting + generations
+(exact-key commands only); BullMQ keeps its dedicated connections —
+no lifecycle merging performed (§27).
+
+## FOLDER STRUCTURE
+
+Added: `src/utils/cacheGeneration.js` — placed beside its two consumers
+(`subscriptionGateCache.js`, `permissionService.js`). Files moved:
+none. Deleted: none. Import changes: `subscriptionEngine.js` (2-line
+await of the now-async gate read/write). Repo-wide structural debt
+(flat `utils/`, `services/` growth) remains documented for **32.18**.
+
+## REDIS FAILURE BEHAVIOR (pinned by tests)
+
+GET-failure → null generation → local-TTL mode (per-process, weaker —
+documented) · bump-failure → `false`, business write unaffected ·
+SET-failure → source result returned (existing 28.7 contract) · corrupt
+value → exact-key delete + source read.
+
+## IMPLEMENTED / TESTED / DEFERRED
+
+- IMPLEMENTED + TESTED: shared-generation overlay, both cache wirings,
+  A/B multi-instance suite (15/15), namespace pins, failure pins,
+  regressions (full `test:all` 1939/1939 at implementation time).
+- DEFERRED: cache-key environment prefixing (`crewly:cache:` is NOT
+  env-scoped while queues/RL are — real collision needs two envs
+  sharing one Redis AND identical ObjectIds; align when a deployment
+  actually does this → **32.15**) · distributed stampede coordination
+  (evidence-gated → **32.13**) · broader observability of cache
+  behavior (**32.12**; per-process stats already exist, documented
+  process-local).
+
 # 32.5 — MongoDB Performance & Index Hardening (Evidence-First)
 
 Status: **32.5 implemented** (awaiting localhost acceptance). Central
