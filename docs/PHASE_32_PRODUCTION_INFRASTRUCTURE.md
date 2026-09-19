@@ -1,5 +1,123 @@
 # PHASE 32 — PRODUCTION INFRASTRUCTURE, SCALABILITY & PERFORMANCE
 
+# 32.8 — Object Storage, Upload & Static Asset Scaling
+
+Status: **32.8 implemented** (awaiting localhost acceptance). MongoDB
+remains the sole authority; Cloudinary remains the sole production file
+provider (NOT replaced, NOT extended with a second vendor — zero new
+dependencies). **No existing file was migrated** (§81 report below).
+
+## STORAGE INVENTORY (audited, §6 classes)
+
+| # | Flow | Storage | Class |
+|---|------|---------|-------|
+| 1 | Resumes (candidate upload, parse-worker retrieval, self-heal) | `resumeStorageService` — Cloudinary `authenticated` raw / dev-only local | **B** + E fallback |
+| 2 | Offer documents | `offerDocumentStorageService` (same pattern) | **B** + E |
+| 3 | Pre-onboarding documents | `preOnboardingDocumentStorageService`, key `select:false` | **B** + E |
+| 4 | BGV evidence + final reports | `bgvEvidenceStorageService` / `BgvFinalReport.storageKey select:false` | **B** + E |
+| 5 | Payslip PDFs | `Payslip.pdf` Mongo Buffer `select:false` (snapshot, immutable) | **B (G)** |
+| 6 | Bulk payslip ZIPs | `PayslipFile.binary select:false` + checksum + progress | **B (G)** |
+| 7 | Payroll payment files | Mongo content/binary + checksum, encrypted bank snapshot source | **B (G)** |
+| 8 | Payroll exports (inline + queued XLSX/CSV) | `AnalyticsReportFile.binary select:false` + `expiresAt` retention | **B (G)** |
+| 9 | Statutory exports / F&F files | `StatutoryExport.binary` / `FinalSettlementFile.binary select:false` | **B (G)** |
+| 10 | Scheduled reports (worker-generated) | worker → `AnalyticsReportFile` (`lastFileId`) — **never worker-local disk** | **B (G)** |
+| 11 | Attendance CSV import | multer memory 2MB + 5000-row / 2M-char caps; never persisted | **D (G)** |
+| 12 | Attendance exports | on-demand streamed, stateless, formula-injection-safe | **G** |
+| 13 | Company logo / branding | Cloudinary image, public **by product design** (career pages); SSRF-allowlisted bounded fetch for PDF headers | **A** (documented) |
+| 14 | User avatars | Cloudinary public image / ≤2MB inline fallback | **A** (product-public; flagged, unchanged) |
+| 15–17 | **Employee documents / expense receipts / task attachments** | **WAS: public Cloudinary `upload` + permanent public URL in Mongo + hotlinked** | **F → FIXED in 32.8** |
+| 18 | Frontend static assets | Vite hashed bundle; Backend serves **zero** `express.static` | **A** (CDN → 32.16) |
+| 19 | Temp files | none on disk anywhere (memory-storage everywhere) | **D (G)** |
+
+## THE 32.8 CHANGE (private-by-default employee files + gated delivery)
+
+The four hardened storage services and all Mongo-buffer payroll files
+were **audited and left untouched** (§4: repository truth wins). The fix
+targets the Phase 9–13 era controllers whose employee files — categories
+include `AADHAAR_ID` and `SALARY_DOCUMENT` — were PUBLIC Cloudinary
+resources reachable by anyone holding the URL (§8/§22/§23 violation):
+
+1. **`src/infrastructure/storage/privateCloudinaryAsset.js` (NEW)** — ONE
+   provider adapter for private objects: `type:'authenticated'`,
+   `overwrite:false`, uuid keys, provider-detail-free loud 503 on
+   failure, signed URLs **bounded ≤ 5 min** issued ONLY after Crewly
+   authorization, best-effort destroy. Provider-injectable for tests.
+2. **`src/services/privateFileDelivery.js` (NEW)** — the gated delivery
+   resolver: private row → bounded signed URL; legacy public row → 302
+   reachable ONLY through the authorized endpoint; dev inline row →
+   decoded bytes; anything unknown → 404.
+3. **`src/middlewares/documentFilePolicy.js` (NEW)** — the shared
+   extension+MIME cross-checked allowlist (PDF/JPG/JPEG/PNG/WEBP,
+   mirroring `preOnboardingUpload`). Previously `selfServiceRoutes`
+   (10MB) and `taskRoutes` (5MB) accepted **ANY** file type; caps are
+   UNCHANGED, type validation is new. Filter errors map to 400 like
+   every other uploader.
+4. **Uploads flipped** in documentController (My Documents),
+   employeeDocsController (HR file cabinet), expenseController
+   (receipts), taskController (attachments): new rows are private
+   Cloudinary objects with `storageProvider` + `storageKey (select:false)`
+   (schemas extended; legacy fields preserved). Dev inline fallback
+   preserved (never-500 law, bounded 5–10MB); **production provider
+   failure = loud 503 before the Mongo write** — the DB never claims a
+   durable file that was not stored (§40/§41).
+5. **Authorized download endpoints (NEW)** — `GET /api/documents/:id/file`
+   (owner or same-company HR), `GET /api/expenses/:id/receipt/file`
+   (owner or HR/Finance), `GET /api/tasks/:id/attachments/:attachmentId/file`
+   (exact task-visibility rule via the existing `canViewTask`). A known
+   id/storage key/URL grants NOTHING (§63 predicates exported + tested).
+   Responses set `Cache-Control: private, no-store`.
+6. **Frontend** — documents pages, expenses page, task modal now fetch
+   bytes through the gated endpoints with the caller's authentication
+   (blob + save). Upload behavior untouched (multipart, same fields).
+
+## MULTI-INSTANCE / MULTI-WORKER (the §45 question)
+
+If API #1 stores a durable file, API #2/Worker #2 retrieve it from the
+shared provider or Mongo — **no durable state lives on any process's
+local disk in production** (the dev local fallback is an explicit,
+documented non-production exception; production without a provider
+refuses 503). Worker file payloads remain reference-only.
+
+## §81 DATA MIGRATION REPORT (NO migration performed)
+
+Pre-32.8 rows (public Cloudinary `upload` objects + stored URLs; also
+base64 data: URIs from old dev fallbacks) still exist. NEW rows are
+private; legacy rows are served ONLY through the gated endpoints
+(302-redirect after authorization). A one-time production migration
+(Cloudinary `type` change upload→authenticated per resource, rollback =
+reverse per resource) **requires explicit developer approval** and is
+NOT part of 32.8. Until then, legacy public URLs remain theoretically
+valid for anyone who captured them before 32.8 — bounded residual risk,
+documented honestly.
+
+## VERIFICATION (this sandbox)
+
+- NEW `test/privateStorageServices.test.js` (8): the four services'
+  local-fallback paths — roundtrip, **traversal matrix** (`../`, nested,
+  absolute, backslash, encoded), production 503, provider mismatch, size
+  caps, uniqueness. First automated coverage these services ever had.
+- NEW `test/privateFileAccess.test.js` (21): adapter (authenticated
+  options, loud provider-free 503, TTL clamp, best-effort destroy),
+  delivery branches, policy matrix, **§63 predicates** (owner / same-HR /
+  peer-employee / cross-tenant / anonymous).
+- Route smoke-imports (selfService, task) after every route edit.
+- Regressions: preOnboarding 10/10, bgvCollection 28/28,
+  companyBranding 14/14, documentProcessing 15/15, emailDelivery 16/16,
+  processingQueue 13/13, scheduledJobs 48/48, bullmqFoundation 16/16,
+  **test:payroll 447/447**.
+- **Full `npm run test:all`: 1979/1979 pass, 0 fail, 0 blocked**
+  (32.7 baseline 1950 + 29 new = exact delta).
+
+## NON-GOALS / DEFERRED
+
+Scanner status remains truthfully NOT_CONFIGURED (no fake claims).
+CDN/cache-control → 32.16 (assets recorded: logo = CDN-eligible public;
+employee files = NEVER CDN-eligible). Failure chaos campaign → 32.14.
+Production security hardening → 32.17. Avatars stay product-public
+(flagged for 32.16/32.17 decision). No range requests, no
+direct-to-storage uploads, no storage vendor changes. Structural debt
+(4 flat storage services, legacy controller grouping) → 32.18.
+
 # 32.7 — BullMQ, Workers & Heavy-Task Scaling (Multi-Worker Safety Hardening)
 
 Status: **32.7 implemented** (awaiting localhost acceptance). MongoDB

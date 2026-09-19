@@ -10,7 +10,9 @@ import * as UserNS from '../models/User.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { notifySmart } from '../utils/notifyPref.js';
 import { cloudinaryReady } from '../config/cloudinary.js';
-import cloudinary from '../config/cloudinary.js';
+import crypto from 'node:crypto';
+import { uploadPrivateAsset } from '../infrastructure/storage/privateCloudinaryAsset.js';
+import ApiError from '../utils/ApiError.js';
 
 const pickModel = (ns) => (typeof ns.default === 'function' ? ns.default : ns.default || ns);
 const Document = pickModel(DocumentNS);
@@ -47,23 +49,45 @@ const notifyDoc = async (userId, payload) => {
   } catch {}
 };
 
-// ☁️ hardened upload path (cloud → inline fallback)
+// Phase 32.8 — PRIVATE upload path (Cloudinary `authenticated`, no public
+// URL). Same provider mechanics as every hardened storage service; dev
+// keeps the inline fallback (never a 500), production fails loud. The
+// returned shape feeds Document.create in hrUploadDocument and
+// fulfillDocRequest; bytes are delivered via the gated
+// GET /api/documents/:id/file endpoint (owner-or-HR).
 const uploadBuffer = async (companyId, file) => {
   const isImage = /^image\//.test(file.mimetype);
   const resourceType = isImage ? 'image' : 'raw';
+
   if (cloudinaryReady) {
     try {
-      const result = await new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-          { folder: `crewly/documents/${companyId}`, resource_type: resourceType },
-          (err, r) => (err ? reject(err) : resolve(r))
-        );
-        stream.end(file.buffer);
+      const stored = await uploadPrivateAsset({
+        buffer: file.buffer,
+        storageKey: `crewly-private-documents/${companyId}/${crypto.randomUUID()}`,
+        resourceType,
       });
-      return { url: result.secure_url, publicId: result.public_id };
-    } catch { /* fall back to inline */ }
+      return {
+        url: '',
+        publicId: '',
+        storageProvider: stored.storageProvider,
+        storageKey: stored.storageKey,
+      };
+    } catch (cloudErr) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new ApiError(503, 'Secure document storage is temporarily unavailable');
+      }
+      console.warn('☁️  Private document upload failed, inline fallback used:', cloudErr?.message || cloudErr);
+    }
+  } else if (process.env.NODE_ENV === 'production') {
+    throw new ApiError(503, 'Secure document storage is unavailable');
   }
-  return { url: `data:${file.mimetype};base64,${file.buffer.toString('base64')}`, publicId: '' };
+
+  return {
+    url: `data:${file.mimetype};base64,${file.buffer.toString('base64')}`,
+    publicId: '',
+    storageProvider: 'INLINE_DEV_FALLBACK',
+    storageKey: '',
+  };
 };
 
 const safeDate = (v) => {
@@ -120,7 +144,7 @@ if (!file) {
   if (!employee) return fail(res, 404, 'Employee not found in your company');
 
   const { name, category = 'OTHER', expiryDate = null, note = '' } = req.body;
-  const { url, publicId } = await uploadBuffer(req.companyId, file);
+  const { url, publicId, storageProvider, storageKey } = await uploadBuffer(req.companyId, file);
 
   const doc = await Document.create({
     companyId: req.companyId,
@@ -129,6 +153,8 @@ if (!file) {
     category: DOC_CATEGORIES.includes(category) ? category : 'OTHER',
     fileUrl: url,
     publicId,
+    storageProvider,
+    storageKey,
     mimeType: file.mimetype,
     size: file.size,
     expiryDate: safeDate(expiryDate),
@@ -219,7 +245,7 @@ export const fulfillDocRequest = asyncHandler(async (req, res) => {
   const file = getFile(req);
   if (!file) return fail(res, 400, 'No file received by the server');
 
-  const { url, publicId } = await uploadBuffer(req.companyId, file);
+  const { url, publicId, storageProvider, storageKey } = await uploadBuffer(req.companyId, file);
 
   const doc = await Document.create({
     companyId: req.companyId,
@@ -228,6 +254,8 @@ export const fulfillDocRequest = asyncHandler(async (req, res) => {
     category: request.category,
     fileUrl: url,
     publicId,
+    storageProvider,
+    storageKey,
     mimeType: file.mimetype,
     size: file.size,
     uploadedBy: req.user._id,

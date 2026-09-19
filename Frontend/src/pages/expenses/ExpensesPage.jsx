@@ -6,7 +6,7 @@ import { Banknote, Briefcase, Check, CheckCircle2, Paperclip, Plus, ReceiptText,
 import { useSelector } from 'react-redux';
 import {
   submitExpense, getMyExpenses, getApprovals,
-  managerDecide, financeDecide, markReimbursed, cancelExpense, getAllExpenses,
+  managerDecide, financeDecide, markReimbursed, cancelExpense, getAllExpenses, downloadReceipt,
 } from '../../services/expenseService.js';
 
 const inp = 'w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500';
@@ -14,6 +14,24 @@ const btn = 'rounded-lg px-3 py-1.5 text-xs font-bold transition disabled:opacit
 const chip = (txt, cls) => <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${cls}`}>{txt}</span>;
 const money = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
+// Phase 32.8 — receipts are private: legacy rows carry a public URL, new
+// rows a private storage reference; BOTH are fetched through the gated
+// endpoint with the caller's authentication.
+const hasReceipt = (e) => Boolean(e?.receiptUrl || e?.receiptStorageProvider);
+const grabReceipt = async (e) => {
+  try {
+    const res = await downloadReceipt(e._id);
+    const blob = res?.data ?? res;
+    const url = URL.createObjectURL(blob instanceof Blob ? blob : new Blob([blob]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `receipt-${e._id}`;
+    link.click();
+    URL.revokeObjectURL(url);
+  } catch {
+    alert('This receipt could not be downloaded. You may not have access to it.');
+  }
+};
 
 const CATS = [
   ['TRAVEL', 'Travel'], ['FOOD', 'Food'], ['ACCOMMODATION', 'Accommodation'],
@@ -34,7 +52,7 @@ const Row = ({ e, children }) => (
       <p className="text-xs text-slate-400">
         {e.expenseDate || fmtDate(e.createdAt)}
         {e.user?.name ? ` · ${e.user.name}` : ''}
-        {e.receiptUrl ? <> · <a href={e.receiptUrl} target="_blank" rel="noreferrer" className="text-indigo-300 underline"><Paperclip className="mr-0.5 inline h-3 w-3" />receipt</a></> : ''}
+        {hasReceipt(e) ? <> · <button type="button" onClick={() => grabReceipt(e)} className="text-indigo-300 underline"><Paperclip className="mr-0.5 inline h-3 w-3" />receipt</button></> : ''}
         {e.rejectNote ? <span className="text-red-300"> · "{e.rejectNote}"</span> : ''}
       </p>
     </div>

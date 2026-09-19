@@ -13,6 +13,10 @@ const arr = (x) => {
 export const submitExpense = (formData) =>
   api.post('/expenses', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
 export const getMyExpenses = async () => arr(await api.get('/expenses/my'));
+
+// Phase 32.8 — gated receipt delivery (owner or HR/Finance on the backend).
+export const downloadReceipt = (expenseId) =>
+  api.get(`/expenses/${expenseId}/receipt/file`, { responseType: 'blob' });
 export const getApprovals = async () => arr(await api.get('/expenses/approvals'));
 export const managerDecide = (id, action, note) => api.post(`/expenses/${id}/manager-decide`, { action, note });
 export const financeDecide = (id, action, note) => api.post(`/expenses/${id}/finance-decide`, { action, note });

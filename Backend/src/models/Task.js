@@ -14,11 +14,17 @@ const commentSchema = new mongoose.Schema(
 const attachmentSchema = new mongoose.Schema(
   {
     name: { type: String, default: 'file' },
-    url: { type: String, required: true },
+    url: { type: String, default: '' }, // '' for 32.8 private rows
     publicId: { type: String, default: null },
     resourceType: { type: String, default: 'raw' },
     size: { type: Number, default: 0 },
     uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    // Phase 32.8 — private storage reference for NEW attachments (see
+    // models/Document.js note). Delivery:
+    // GET /api/tasks/:id/attachments/:attachmentId/file (task-visibility
+    // gated). Keys inside subdocuments are select:false too.
+    storageProvider: { type: String, default: '' },
+    storageKey: { type: String, default: '', select: false },
   },
   { timestamps: true }
 );

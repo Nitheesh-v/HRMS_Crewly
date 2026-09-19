@@ -21,6 +21,11 @@ export const addComment = (id, text) => api.post(`/tasks/${id}/comments`, { text
 export const uploadAttachment = (id, formData) =>
   api.post(`/tasks/${id}/attachments`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
 export const deleteAttachment = (taskId, attachmentId) => api.delete(`/tasks/${taskId}/attachments/${attachmentId}`);
+// Phase 32.8 — attachments are PRIVATE: bytes come through the gated
+// GET /tasks/:id/attachments/:attachmentId/file endpoint (task visibility
+// is checked backend-side; storage keys/URLs grant nothing).
+export const downloadAttachment = (taskId, attachmentId) =>
+  api.get(`/tasks/${taskId}/attachments/${attachmentId}/file`, { responseType: 'blob' });
 export const deleteTask = (id) => api.delete(`/tasks/${id}`);
 
 // Phase 13 — notification preferences
