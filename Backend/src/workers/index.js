@@ -105,18 +105,18 @@ const attachEventHandlers = (worker, label) => {
   });
 
   worker.on('active', (job) => {
-    logger.info(`[Worker] active: ${job.name} (id=${job.id}, attempt=${job.attemptsStarted})`);
+    logger.info(`[Worker] active: ${job.name} (id=${job.id}, attempt=${job.attemptsStarted}${corrSuffix(job)})`);
   });
 
   worker.on('completed', (job) => {
-    logger.info(`[Worker] completed: ${job.name} (id=${job.id}, attempts=${job.attemptsStarted})`);
+    logger.info(`[Worker] completed: ${job.name} (id=${job.id}, attempts=${job.attemptsStarted}${corrSuffix(job)})`);
   });
 
   worker.on('failed', (job, error) => {
     logger.warn(
       `[Worker] failed: ${job?.name || 'unknown'} (id=${job?.id || 'n/a'}, ` +
-        `attempt=${job?.attemptsStarted || 'n/a'}, reason=${classifyJobFailure(error)}, ` +
-        `detail=${safeErrorText(error)})`
+        `attempt=${job?.attemptsStarted || 'n/a'}, reason=${classifyJobFailure(error)}` +
+        `${corrSuffix(job)}, detail=${safeErrorText(error)})`
     );
     // When an email job exhausts its retries, persist the terminal
     // state on the delivery record (Mongo is the audit of record).
@@ -163,6 +163,15 @@ const attachEventHandlers = (worker, label) => {
   worker.on('closing', () => {
     logger.info(`[Worker] ${label} closing (stopping acceptance, finishing active jobs)`);
   });
+};
+
+// 32.12 — bounded correlation suffix for job logs: only the validated
+// id stamped at enqueue time (opts metadata — never the job payload).
+const corrSuffix = (job) => {
+  const correlationId = job?.opts?.correlationId;
+  return typeof correlationId === 'string' && correlationId.length <= 64
+    ? `, corr=${correlationId}`
+    : '';
 };
 
 const startWorker = async () => {

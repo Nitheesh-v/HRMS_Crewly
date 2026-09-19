@@ -209,7 +209,7 @@ test('public portal routes are scanner-safe and token paths are redacted', async
       new URL('../src/routes/publicCandidatePreOnboardingRoutes.js', import.meta.url),
       'utf8'
     ),
-    readFile(new URL('../src/middlewares/requestLogger.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/infrastructure/observability/redaction.js', import.meta.url), 'utf8'),
     readFile(
       new URL('../src/utils/securityauditService.js', import.meta.url),
       'utf8'

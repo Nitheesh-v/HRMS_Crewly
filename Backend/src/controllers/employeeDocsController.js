@@ -5,6 +5,8 @@
 // Storage: Cloudinary (object storage) → Mongo keeps URL+metadata only.
 // ============================================================
 import * as DocumentNS from '../models/Document.js';
+import logger from '../config/logger.js';
+import { sanitizeText as safeErrorText } from '../infrastructure/observability/redaction.js';
 import * as DocumentRequestNS from '../models/DocumentRequest.js';
 import * as UserNS from '../models/User.js';
 import asyncHandler from '../utils/asyncHandler.js';
@@ -76,7 +78,7 @@ const uploadBuffer = async (companyId, file) => {
       if (process.env.NODE_ENV === 'production') {
         throw new ApiError(503, 'Secure document storage is temporarily unavailable');
       }
-      console.warn('☁️  Private document upload failed, inline fallback used:', cloudErr?.message || cloudErr);
+            logger.warn(`[storage] private document upload failed, inline fallback used (${safeErrorText(cloudErr)})`);
     }
   } else if (process.env.NODE_ENV === 'production') {
     throw new ApiError(503, 'Secure document storage is unavailable');
@@ -135,7 +137,8 @@ export const hrUploadDocument = asyncHandler(async (req, res) => {
 
   const file = getFile(req);
 if (!file) {
-      console.warn('📁 [docs] no file — content-type:', req.headers['content-type'], '| body keys:', Object.keys(req.body || {}), '| files:', Array.isArray(req.files) ? req.files.length : 0);
+      // 32.12: bounded, body-free diagnostic (never body keys/content-type details)
+      logger.warn(`[docs] upload rejected: no file (parts=${Array.isArray(req.files) ? req.files.length : 0})`);
       return fail(res, 400, 'No file received by the server');
     }
 

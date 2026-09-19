@@ -1,4 +1,6 @@
 import Task, { TASK_STATUS } from '../models/Task.js';
+import logger from '../config/logger.js';
+import { sanitizeText as safeErrorText } from '../infrastructure/observability/redaction.js';
 import Project from '../models/Project.js';
 import User from '../models/User.js';
 import ApiError from '../utils/ApiError.js';
@@ -343,7 +345,7 @@ export const uploadAttachment = asyncHandler(async (req, res) => {
       if (process.env.NODE_ENV === 'production') {
         throw new ApiError(503, 'Secure attachment storage is temporarily unavailable');
       }
-      console.warn('☁️  Private attachment upload failed, inline fallback used:', e?.message || e);
+      logger.warn(`[storage] attachment upload failed, inline fallback used (${safeErrorText(e?.message || e)})`);
     }
   } else if (process.env.NODE_ENV === 'production') {
     throw new ApiError(503, 'Secure attachment storage is unavailable');

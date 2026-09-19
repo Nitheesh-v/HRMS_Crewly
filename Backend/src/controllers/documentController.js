@@ -8,6 +8,8 @@
 // Phase 13: Admin/HR 🔔 on upload + 📧 via queue (fire & forget)
 // ============================================================
 import * as DocumentNS from '../models/Document.js';
+import logger from '../config/logger.js';
+import { sanitizeText as safeErrorText } from '../infrastructure/observability/redaction.js';
 import cloudinary, { cloudinaryReady } from '../config/cloudinary.js';
 import * as asyncHandlerNS from '../utils/asyncHandler.js';
 import User from '../models/User.js';
@@ -62,7 +64,7 @@ const uploadDocument = asyncHandler(async (req, res) => {
       if (process.env.NODE_ENV === 'production') {
         throw new ApiError(503, 'Secure document storage is temporarily unavailable');
       }
-      console.warn('☁️  Private document upload failed, inline fallback used:', cloudErr?.message || cloudErr);
+      logger.warn(`[storage] private document upload failed, inline fallback used (${safeErrorText(cloudErr)})`);
       return null;
     });
   } else if (process.env.NODE_ENV === 'production') {

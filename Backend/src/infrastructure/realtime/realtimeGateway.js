@@ -26,6 +26,7 @@ import { getQueuePrefix } from '../../config/queueConfig.js';
 import { parseRealtimeEnabled, REALTIME_HEARTBEAT_MS, realtimeChannelName } from './realtimeConfig.js';
 import { createRealtimeRegistry } from './realtimeRegistry.js';
 import { buildRealtimeEnvelope, parseRealtimeEnvelope, formatSseFrame, SSE_HEARTBEAT_FRAME } from './realtimeProtocol.js';
+import { createMetricsRegistry } from '../observability/metricsRegistry.js';
 
 export const createRealtimeGateway = ({
   enabled = false,
@@ -35,9 +36,14 @@ export const createRealtimeGateway = ({
   publisher = null, // injectable (tests); default: dedicated ioredis connection
   subscriber = null, // injectable (tests); default: dedicated ioredis connection
   log = logger,
-} = {}) => {
+  } = {}) => {
   let started = false;
   let heartbeatTimer = null;
+
+  // Phase 32.12 — aggregate counters (bounded cardinality; see §40).
+  const metrics = createMetricsRegistry();
+  const notePublished = (kind) => metrics.increment('realtime.events_published', { kind });
+  const noteRefused = (reason) => metrics.increment('realtime.connections_refused', { reason });
 
   const writeFrame = (stream, frame) => {
     try {
@@ -166,6 +172,7 @@ export const createRealtimeGateway = ({
         // Bounded refusal — the client backs off and retries later.
         res.status(503);
         res.end();
+        noteRefused(String(admission.reason || 'unknown').slice(0, 40));
         return { ok: false, reason: admission.reason };
       }
 
@@ -196,7 +203,10 @@ export const createRealtimeGateway = ({
       if (publisher) {
         try {
           const receivers = await publisher.publish(channel, raw);
-          if (receivers > 0) return { delivered: 'pubsub', receivers };
+          if (receivers > 0) {
+            notePublished(envelope.type);
+            return { delivered: 'pubsub', receivers };
+          }
         } catch {
           /* fall through to local delivery */
         }
@@ -204,12 +214,28 @@ export const createRealtimeGateway = ({
 
       // Redis unavailable → local-only degraded delivery (documented §22).
       const locals = deliverLocal(envelope);
+      if (locals > 0) notePublished(envelope.type);
       return { delivered: 'local', receivers: locals };
     },
 
     /** Test/inspection seam — identities only, never responses/tokens. */
     describeConnections() {
       return registry.describe();
+    },
+
+    /**
+     * Phase 32.12 — bounded AGGREGATE diagnostics for the protected
+     * operations surface. Connection COUNTS only — never a user list,
+     * never presence or employee state, never per-user activity (§40/§41).
+     * Counters are process-local (§74 multi-instance law).
+     */
+    describeDiagnostics() {
+      return {
+        enabled: Boolean(enabled),
+        started: started,
+        localConnections: registry.size(),
+        counters: metrics.snapshot(),
+      };
     },
   };
 };

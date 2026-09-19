@@ -1,5 +1,176 @@
 # PHASE 32 — PRODUCTION INFRASTRUCTURE, SCALABILITY & PERFORMANCE
 
+# 32.12 — Observability & Production Diagnostics
+
+Status: **32.12 implemented** (awaiting localhost acceptance).
+Diagnosability WITHOUT data leakage: every normal HTTP request gets a
+safe request ID; completion/slow/error events are structured; secure
+tokens can never reach a log; Mongo/Redis/queue/worker/realtime state is
+observable through ONE protected platform endpoint. **No observability
+vendor was installed or selected** (§2/§78 — explicit approval required
+first); **zero new dependencies** (morgan was REMOVED as unused).
+
+## AUDIT VERDICTS (A–H, condensed)
+
+- **A (already good):** winston (reused, not replaced), worker failure
+  classification + throttling (32.7), worker heartbeat (28.8),
+  `opsQueueService` overview/health, Redis state machine (32.6),
+  minimal 32.2 health probes, AuditLog/SecurityEvent/SystemEvent
+  separation, `redactSensitiveText` ops serializer, PERF_TIMING RCA
+  (32.10, opt-in ALS + mongoose counting).
+- **B (built here):** request/correlation IDs, structured completion +
+  slow-request events, safe error serializer, redaction centralization,
+  token-route normalization for ALL families, process diagnostics,
+  bounded counters, realtime aggregates, safe instance ID.
+- **C (privacy risks fixed):** BGV consent/collection/verifier token
+  URLs previously reached prod access logs raw (redaction covered only
+  offers + pre-onboarding); `employeeDocsController` logged body key
+  names; `CastError` echoed raw user values into responses/logs;
+  14 controller-level `console.*` sites bypassed the logger with raw
+  error objects.
+- **D (existing surface reused):** queue/worker diagnostics remain in
+  Background Operations (`/api/super-admin/operations` architecture);
+  the new diagnostics endpoint joins the SAME platform permission gate.
+- **E/F/G/H:** no vendor (future exporter = integration boundary);
+  CPU-under-load and backpressure campaigns deferred to 32.13/32.14;
+  remaining deep-service `console.*` sites = 32.18 debt; health probes,
+  audit semantics, payload validators, realtime core: untouched.
+
+## REQUEST ID & CORRELATION (§6–§9/§51–§53)
+
+- **Generation:** `crypto.randomUUID()` server-side. **Inbound trust
+  policy (documented, strict):** a client `X-Request-ID` is accepted
+  ONLY if it matches `^[A-Za-z0-9_-]{8,64}$`; anything else (short,
+  long, spaces, dots, control chars, token-shaped) is REPLACED by a
+  server ID — reject-and-replace, never sanitized echo. Proxy trust
+  (32.3) is irrelevant to this contract.
+- **Response header:** `X-Request-ID` on every response (support can
+  quote it; it grants nothing).
+- **Propagation:** `AsyncLocalStorage` (Node built-in) carries
+  `{ requestId }` as DIAGNOSTICS-ONLY context — no business state
+  enters the store. `errorHandler`, completion logs, and `enqueueJob`
+  read it without touching controllers.
+- **Correlation semantics (one ID, not three):** requestId ===
+  correlationId for HTTP; a logical operation that crosses into a
+  queue keeps the SAME id via `job.opts.correlationId` (stamped ONLY
+  by `enqueueJob` when the value passes the strict contract). It is
+  opts metadata — payload references-only law, per-queue validators,
+  and idempotency jobIds are untouched. Workers do not inherit HTTP
+  async context; they read the stamp.
+
+## STRUCTURED LOGGING (§10/§24/§56–§57)
+
+- winston REUSED. File transports and the production console now emit
+  JSON records (message + metadata + bounded stacks); development
+  console keeps the human line format. Levels: ERROR = unexpected
+  failure, WARN = degraded/slow/4xx-class, INFO = lifecycle +
+  completion, DEBUG = development only.
+- Morgan removed (unused). Events: `http.request.complete` (info),
+  `http.request.slow` (warn), `http.request.error` (error),
+  `http.request.rejected` (warn, 4xx) — fields: requestId, method
+  (allowlisted), route TEMPLATE, status, durationMs, bytes, and
+  server-derived `userId`/`companyId` only when auth already attached
+  them. **Never:** bodies, query strings, authorization headers, GPS,
+  salary/attendance/BGV content (§12–§22).
+
+## REDACTION / TOKENIZED ROUTES (§15/§17/§54–§55)
+
+- `redactForLog`: deep, bounded (depth 4 / 50 keys / 512 chars),
+  cycle-safe; sensitive KEY names (password, secret, token, auth,
+  cookie, pin, bank, salary, lat/lng, … — fail-closed on unknown
+  secret-shaped keys) → `[REDACTED]`.
+- `sanitizeText` (all leaf strings + free text): control chars → `?`
+  (log-injection law), `Bearer …` and raw JWT segments redacted,
+  **connection URIs with credentials** (`mongodb://…`, `redis://…`,
+  `smtp://…`) → `[REDACTED_URI]`, secure-token path segments
+  (offers/pre-onboarding/bgv-consent/bgv-collection/setup/reset) →
+  `[REDACTED]`.
+- `redactRequestUrl`: strips query strings ENTIRELY and redacts the
+  five token route families (fixes the C-class gap where BGV
+  consent/collection/verifier tokens hit access logs).
+- `routeTemplateOf`: `/api/users/:id` style templates (bounded
+  cardinality); redacted-URL fallback only for unmatched routes.
+- Safe error serializer (`serializeError`): name/message(bounded)/
+  code/statusCode/one-hop cause/redacted details/sanitized 12-line
+  stack — server-side only; clients never see stacks outside
+  development (unchanged contract). `CastError` no longer echoes raw
+  values ("wrong format", not the value).
+
+## SLOW REQUESTS & TIMING (§26–§27/§64/§86)
+
+- Monotonic `performance.now()` deltas. Slow threshold: env
+  `OBSERVABILITY_SLOW_REQUEST_MS`, strict parse, clamped 100–60000,
+  default 1500 — ONE knob; everything else is code-owned. Slow events
+  carry the same safe fields + thresholdMs. No sampling engine, no APM.
+
+## DEPENDENCY / PROCESS / REALTIME DIAGNOSTICS (§31–§36/§40–§45)
+
+- **Mongo:** connection state only (`connected` boolean from
+  readyState). Never URIs/hosts/queries/documents.
+- **Redis:** `getRedisHealth()` mapping (disabled/up/down+safe reason)
+  — cached state, no I/O per diagnostics call, no keys/values.
+- **Queues/workers:** unchanged and still served by the existing
+  operations overview (D-class decision — no second surface).
+- **Realtime:** `describeDiagnostics()` = enabled/started/
+  localConnections + event-published & connection-refused counters.
+  Connection COUNTS only — never an employee list, never presence,
+  never activity history (§40/§41 pins tested).
+- **Process:** RSS/heap MB, uptime, CPU utilization delta, event-loop
+  lag (`perf_hooks.monitorEventLoopDelay`) — one 30s unref'd sampler,
+  explicit start/stop in server.js. No heap dumps (forbidden —
+  secrets/PII), no restart policies, no native profilers.
+
+## OPERATIONS EXPOSURE & SECURITY (§29/§30/§70–§72)
+
+- `GET /api/super-admin/diagnostics` — same `permit("health:read")`
+  platform gate as `/system-health`; bounded JSON (process, mongo,
+  redis, realtime, counters, thresholds, environment label, safe
+  instance id); NO queue enumeration, NO raw logs, NO env dump, NO
+  secrets/hosts. Tenant admins have no path to it. Health probes stay
+  minimal (pinned by test).
+
+## MULTI-INSTANCE & CARDINALITY (§47/§48/§61/§74–§76)
+
+- Counters and process diagnostics are PROCESS-LOCAL truth — never
+  claimed globally aggregated; a future vendor-neutral exporter is the
+  documented aggregation boundary. Every startup line carries a safe
+  random instance id (`inst-xxxxxxxx`) — operational only.
+- Metric labels: fixed allowlist per metric (method/statusClass/route
+  template/kind/reason); status classes are buckets; unknown metrics
+  or label keys are refused; 300-series cap with overflow counting.
+
+## VERIFICATION (this sandbox; hermetic)
+
+- `test/observabilityFoundation.test.js`: **35/35** — request-ID
+  lifecycle + malformed/overlong/hostile replacement + 12-way
+  concurrency ALS isolation + raw-socket injection refusal;
+  adversarial redaction over the full synthetic secret list;
+  token-route normalization for all five families; safe error
+  serialization (nested config/cause/stack); completion/slow timing
+  (no bodies/queries, threshold floor enforced); bounded metrics
+  (label allowlist + series cap); process diagnostics shape +
+  secret-free; realtime aggregates (no user list/presence); queue
+  correlation pins (payload law untouched); diagnostics endpoint
+  bounded + platform-gated; structural pins (no vendor packages,
+  morgan removed, sampler lifecycle, observability imports no models).
+- **Full `npm run test:all`: 2048/2048 pass, 0 fail — two consecutive
+  runs** (32.11 baseline 2013 + 35 new = 2048 exact). Two pre-existing
+  token-redaction pins (`offerManagement`, `preOnboarding`) repointed
+  from the deleted `requestLogger.js` to `redaction.js` — assertions
+  unchanged. Route modules smoke-imported.
+- Frontend: ZERO changes this phase (the support header is available
+  for future adoption; no telemetry SDK, no UI).
+
+## NO-CHANGE REGISTRY / DEFERRED
+
+- AuditLog/SecurityEvent/SystemEvent semantics untouched; no per-request
+  Mongo/Redis writes (§92 overhead: one UUID + one monotonic read + one
+  counter + one log line per request); health probe responses untouched;
+  BullMQ payload contracts untouched; realtime core untouched.
+- Deferred: vendor export (E), CPU-under-load + backpressure campaigns
+  (32.13/32.14), remaining deep-service `console.*` sites (32.18),
+  frontend request-ID display (only if a future phase needs it).
+
 # 32.11 — Realtime Infrastructure Foundation
 
 Status: **32.11 implemented** (awaiting localhost acceptance).

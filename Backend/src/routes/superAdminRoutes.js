@@ -217,6 +217,8 @@ router.patch(
   operations.updateSupport,
 );
 router.get("/system-health", permit("health:read"), operations.health);
+// Phase 32.12 — bounded platform diagnostics (same platform gate, §30).
+router.get("/diagnostics", permit("health:read"), operations.diagnostics);
 router.get("/audit-logs", permit("audit:read"), operations.auditLogs);
 
 // ============================================================

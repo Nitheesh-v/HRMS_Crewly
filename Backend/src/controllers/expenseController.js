@@ -4,6 +4,8 @@
 // Receipts: Cloudinary (field-name agnostic, same as Phase 14).
 // ============================================================
 import * as ExpenseNS from '../models/Expense.js';
+import logger from '../config/logger.js';
+import { sanitizeText as safeErrorText } from '../infrastructure/observability/redaction.js';
 import * as UserNS from '../models/User.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { getSubtreeIds } from '../utils/orgHelpers.js';
@@ -59,7 +61,7 @@ const uploadBuffer = async (companyId, file) => {
       if (process.env.NODE_ENV === 'production') {
         throw new ApiError(503, 'Secure receipt storage is temporarily unavailable');
       }
-      console.warn('☁️  Private receipt upload failed, inline fallback used:', cloudErr?.message || cloudErr);
+            logger.warn(`[storage] private receipt upload failed, inline fallback used (${safeErrorText(cloudErr)})`);
     }
   } else if (process.env.NODE_ENV === 'production') {
     throw new ApiError(503, 'Secure receipt storage is unavailable');

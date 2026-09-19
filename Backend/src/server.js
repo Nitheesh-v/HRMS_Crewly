@@ -37,6 +37,11 @@ import { closeAllQueues } from './queues/queueFactory.js';
 import {
   getRealtimeGateway,
 } from './infrastructure/realtime/realtimeGateway.js';
+import {
+  startProcessDiagnostics,
+  stopProcessDiagnostics,
+  getInstanceId,
+} from './infrastructure/observability/processDiagnostics.js';
 
 const startServer = async () => {
   try {
@@ -89,7 +94,7 @@ const startServer = async () => {
         markReady();
 
         logger.info(
-          `🚀 Crewly HRMS API running in ${env.NODE_ENV} mode on port ${env.PORT}`
+          `🚀 Crewly HRMS API running in ${env.NODE_ENV} mode on port ${env.PORT} (${getInstanceId()})`
         );
       }
     );
@@ -102,6 +107,10 @@ const startServer = async () => {
     // Integrated topology: realtime rides this API process and scales
     // with it (multi-instance fan-out is shared Redis pub/sub).
     await getRealtimeGateway().start();
+
+    // Phase 32.12 — coarse process diagnostics sampler (unref'd,
+    // explicit lifecycle; never holds the process open).
+    startProcessDiagnostics();
 
     // Phase 32.2 — graceful lifecycle: drain first (readiness 503 +
     // app-level gate), bounded close of HTTP + owned resources.
@@ -124,7 +133,10 @@ const startServer = async () => {
     const shutdownWithRealtime = (signal) => {
       beginDrain(`realtime-drain:${signal}`);
       Promise.resolve()
-        .then(() => getRealtimeGateway().stop())
+        .then(() => {
+          stopProcessDiagnostics();
+          return getRealtimeGateway().stop();
+        })
         .catch(() => {})
         .finally(() => shutdown(signal));
     };

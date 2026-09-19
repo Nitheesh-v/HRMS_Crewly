@@ -15,6 +15,8 @@
 //   /saas/overview             → SUPER_ADMIN only, platform-wide
 // ============================================================
 import mongoose from 'mongoose';
+import logger from '../config/logger.js';
+import { sanitizeText as safeErrorText } from '../infrastructure/observability/redaction.js';
 import * as core from '../utils/reportingCore.js';
 import { getSubtreeIds } from '../utils/orgHelpers.js';
 
@@ -276,7 +278,7 @@ export const analyticsOverview = async (req, res) => {
       'Analytics overview'
     );
   } catch (error) {
-    console.error('[analytics/overview]', error);
+    logger.error(`[analytics/overview] ${safeErrorText(error?.message || error)}`);
     return fail(res, 500, 'Could not load analytics overview');
   }
 };
@@ -375,7 +377,7 @@ export const analyticsAttendance = async (req, res) => {
       'Analytics attendance'
     );
   } catch (error) {
-    console.error('[analytics/attendance]', error);
+    logger.error(`[analytics/attendance] ${safeErrorText(error?.message || error)}`);
     return fail(res, 500, 'Could not load attendance analytics');
   }
 };
@@ -486,7 +488,7 @@ export const analyticsLeaves = async (req, res) => {
       'Analytics leaves'
     );
   } catch (error) {
-    console.error('[analytics/leaves]', error);
+    logger.error(`[analytics/leaves] ${safeErrorText(error?.message || error)}`);
     return fail(res, 500, 'Could not load leave analytics');
   }
 };
@@ -612,7 +614,7 @@ export const analyticsPayroll = async (req, res) => {
     // Data to frontend.
     return ok(res, 200, { totals, monthly, byDepartment }, 'Analytics payroll');
   } catch (error) {
-    console.error('[analytics/payroll]', error);
+    logger.error(`[analytics/payroll] ${safeErrorText(error?.message || error)}`);
     return fail(res, 500, 'Could not load payroll analytics');
   }
 };
@@ -774,7 +776,7 @@ export const analyticsWork = async (req, res) => {
       'Analytics work'
     );
   } catch (error) {
-    console.error('[analytics/work]', error);
+    logger.error(`[analytics/work] ${safeErrorText(error?.message || error)}`);
     return fail(res, 500, 'Could not load work analytics');
   }
 };
@@ -889,7 +891,7 @@ export const analyticsRecruitment = async (req, res) => {
       'Analytics recruitment'
     );
   } catch (error) {
-    console.error('[analytics/recruitment]', error);
+    logger.error(`[analytics/recruitment] ${safeErrorText(error?.message || error)}`);
     return fail(res, 500, 'Could not load recruitment analytics');
   }
 };
@@ -1004,7 +1006,7 @@ export const analyticsMy = async (req, res) => {
       'My stats'
     );
   } catch (error) {
-    console.error('[analytics/my]', error);
+    logger.error(`[analytics/my] ${safeErrorText(error?.message || error)}`);
     return fail(res, 500, 'Could not load my stats');
   }
 };
@@ -1103,7 +1105,7 @@ export const saasOverview = async (req, res) => {
       'Platform overview'
     );
   } catch (error) {
-    console.error('[saas/overview]', error);
+    logger.error(`[saas/overview] ${safeErrorText(error?.message || error)}`);
     return fail(res, 500, 'Could not load platform overview');
   }
 };

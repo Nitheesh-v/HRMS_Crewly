@@ -312,7 +312,7 @@ test('public GET is scanner-safe, decisions use compare-and-set, and token paths
   const [publicService, routes, logger, audit, recruitmentRoutes] = await Promise.all([
     readFile(new URL('../src/services/publicOfferService.js', import.meta.url), 'utf8'),
     readFile(new URL('../src/routes/publicCandidateOfferRoutes.js', import.meta.url), 'utf8'),
-    readFile(new URL('../src/middlewares/requestLogger.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/infrastructure/observability/redaction.js', import.meta.url), 'utf8'),
     readFile(new URL('../src/utils/securityauditService.js', import.meta.url), 'utf8'),
     readFile(new URL('../src/routes/recruitmentRoutes.js', import.meta.url), 'utf8'),
   ]);

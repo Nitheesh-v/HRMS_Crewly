@@ -28,6 +28,7 @@ import {
   getQueuePrefix,
   isKnownQueueName,
 } from '../config/queueConfig.js';
+import { getCurrentRequestId, isValidRequestId } from '../infrastructure/observability/requestContext.js';
 
 const queues = new Map(); // name -> { queue, connection }
 let closing = false;
@@ -129,6 +130,17 @@ export const enqueueJob = async (queueName, jobName, data, options = {}) => {
     ...getDefaultJobOptions(),
     ...options,
   };
+
+  // Phase 32.12 — diagnostics correlation: the HTTP request ID rides as
+  // BullMQ opts metadata (NOT payload — the references-only payload law
+  // and every per-queue validator are untouched; idempotency jobId is
+  // untouched). Workers do not inherit HTTP async context (ALS), so the
+  // stamp here is the ONLY bridge. Bounded/validated: only a strict
+  // [A-Za-z0-9_-]{8,64} value is ever attached — no PII, no tokens.
+  if (jobOptions.correlationId === undefined) {
+    const requestId = getCurrentRequestId();
+    if (isValidRequestId(requestId)) jobOptions.correlationId = requestId;
+  }
   const job = await queue.add(jobName, data ?? {}, jobOptions);
   logger.info(
     `[Queue] ${jobName} enqueued (queue=${queueName}, id=${job.id ?? 'auto'}, ` +

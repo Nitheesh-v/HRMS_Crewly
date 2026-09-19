@@ -4,7 +4,8 @@ import helmet from 'helmet';
 import env from './config/env.js';
 import { applyProxyTrust } from './config/proxyTrust.js';
 import { isDraining } from './config/lifecycle.js';
-import requestLogger from './middlewares/requestLogger.js';
+import { requestIdMiddleware } from './infrastructure/observability/requestContext.js';
+import { httpObservabilityMiddleware } from './infrastructure/observability/httpObservability.js';
 import { initPerfTiming, perfTiming } from './middlewares/perfTiming.js';
 import notFound from './middlewares/notFound.js';
 import errorHandler from './middlewares/errorHandler.js';
@@ -180,7 +181,11 @@ initPerfTiming();
 app.use(perfTiming);
 
 app.use(requestSecurity);
-app.use(requestLogger);
+// Phase 32.12 — request/correlation IDs + structured completion/slow
+// logging (replaces the legacy access logger; safe redaction inside). See
+// infrastructure/observability/.
+app.use(requestIdMiddleware);
+app.use(httpObservabilityMiddleware);
 
 // Phase 32.2 — drain gate. Once THIS process begins shutting down it
 // answers 503 SHUTTING_DOWN for every business route: a load balancer

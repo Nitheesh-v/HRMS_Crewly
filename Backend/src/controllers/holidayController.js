@@ -1,4 +1,6 @@
 import Holiday from '../models/Holiday.js';
+import logger from '../config/logger.js';
+import { sanitizeText as safeErrorText } from '../infrastructure/observability/redaction.js';
 import * as engine from '../utils/scheduleEngine.js';
 
 const ok = (res, status, data, message) => res.status(status).json({ statusCode: status, success: true, data, message });
@@ -50,7 +52,7 @@ export const listHolidays = async (req, res) => {
     // Data to frontend - response to frontend
     return ok(res, 200, { holidays: filtered }, 'Holidays');
   } catch (e) {
-    console.error('❌ [holidays]', e?.message || e);
+    logger.error(`[holidays] ${safeErrorText(e?.message || e)}`);
     if (e?.name === 'ValidationError' || e?.name === 'CastError') return fail(res, 400, e.message);
     return fail(res, 500, e.message);
   }
@@ -86,7 +88,7 @@ export const createHoliday = async (req, res) => {
     // Data to frontend - response to frontend
     return ok(res, 201, { id: String(doc._id) }, `Holiday "${doc.name}" created 🎉`);
   } catch (e) {
-    console.error('❌ [holidays]', e?.message || e);
+    logger.error(`[holidays] ${safeErrorText(e?.message || e)}`);
     if (e?.name === 'ValidationError' || e?.name === 'CastError') return fail(res, 400, e.message);
     return fail(res, 500, e.message);
   }
@@ -116,7 +118,7 @@ export const updateHoliday = async (req, res) => {
     // Data to frontend - response to frontend
     return ok(res, 200, { id: String(doc._id) }, 'Holiday updated ✅');
   } catch (e) {
-    console.error('❌ [holidays]', e?.message || e);
+    logger.error(`[holidays] ${safeErrorText(e?.message || e)}`);
     if (e?.name === 'ValidationError' || e?.name === 'CastError') return fail(res, 400, e.message);
     return fail(res, 500, e.message);
   }
@@ -136,7 +138,7 @@ export const deleteHoliday = async (req, res) => {
     // Data to frontend - response to frontend
     return ok(res, 200, { id: String(doc._id) }, 'Holiday deactivated 🗑');
   } catch (e) {
-    console.error('❌ [holidays]', e?.message || e);
+    logger.error(`[holidays] ${safeErrorText(e?.message || e)}`);
     if (e?.name === 'ValidationError' || e?.name === 'CastError') return fail(res, 400, e.message);
     return fail(res, 500, e.message);
   }
@@ -164,7 +166,7 @@ export const pickOptional = async (req, res) => {
     // Data to frontend - response to frontend
     return ok(res, 200, { used: used + 1, limit: OPTIONAL_HOLIDAY_LIMIT }, `Picked "${doc.name}" 🎉 (${used + 1}/${OPTIONAL_HOLIDAY_LIMIT})`);
   } catch (e) {
-    console.error('❌ [holidays]', e?.message || e);
+    logger.error(`[holidays] ${safeErrorText(e?.message || e)}`);
     if (e?.name === 'ValidationError' || e?.name === 'CastError') return fail(res, 400, e.message);
     return fail(res, 500, e.message);
   }
@@ -184,7 +186,7 @@ export const unpickOptional = async (req, res) => {
     // Data to frontend - response to frontend
     return ok(res, 200, {}, 'Optional holiday removed');
   } catch (e) {
-    console.error('❌ [holidays]', e?.message || e);
+    logger.error(`[holidays] ${safeErrorText(e?.message || e)}`);
     if (e?.name === 'ValidationError' || e?.name === 'CastError') return fail(res, 400, e.message);
     return fail(res, 500, e.message);
   }
@@ -202,7 +204,7 @@ export const upcomingHolidays = async (req, res) => {
     // Data to frontend - response to frontend
     return ok(res, 200, { holidays: holidays.filter((h) => !(h.isOptional && !h.picked)) }, 'Upcoming holidays');
   } catch (e) {
-    console.error('❌ [holidays]', e?.message || e);
+    logger.error(`[holidays] ${safeErrorText(e?.message || e)}`);
     if (e?.name === 'ValidationError' || e?.name === 'CastError') return fail(res, 400, e.message);
     return fail(res, 500, e.message);
   }

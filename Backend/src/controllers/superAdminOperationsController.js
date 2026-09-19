@@ -1,4 +1,10 @@
 import mongoose from 'mongoose';
+// Phase 32.12 — bounded diagnostics aggregates (secret-free by construction).
+import { getRedisHealth } from '../config/redis.js';
+import { getRealtimeGateway } from '../infrastructure/realtime/realtimeGateway.js';
+import { processDiagnosticsSnapshot } from '../infrastructure/observability/processDiagnostics.js';
+import { getMetricsRegistry } from '../infrastructure/observability/metricsRegistry.js';
+import { parseSlowRequestThresholdMs } from '../infrastructure/observability/observabilityConfig.js';
 import User from '../models/User.js';
 import Company from '../models/Company.js';
 import UsageMetric from '../models/UsageMetric.js';
@@ -937,5 +943,35 @@ export const platformAdmins = async (req, res) => {
     );
   } catch (error) {
     return fail(res, 500, error.message);
+  }
+};
+// ============================================================
+// PHASE 32.12 — PLATFORM DIAGNOSTICS (bounded, secret-free)
+//
+// Cheap aggregate signals for platform operators: process gauges,
+// Mongo/Redis connection STATE (never URIs/hosts), realtime
+// connection COUNTS (never a user list — infrastructure is not a
+// Presence product), and bounded process-local counters. No Redis
+// I/O, no Mongo queries, no queue enumeration (the Background
+// Operations overview remains the queue/worker surface — §29/§35).
+// Platform-scope only: mounted under the same permit("health:read")
+// gate as /system-health (§30 — tenant admins have no access).
+// ============================================================
+export const diagnostics = async (req, res) => {
+  try {
+    const realtime = getRealtimeGateway();
+
+    return ok(res, 200, {
+      generatedAt: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development',
+      process: processDiagnosticsSnapshot(),
+      mongo: { connected: mongoose.connection.readyState === 1 },
+      redis: getRedisHealth(),
+      realtime: realtime.describeDiagnostics(),
+      counters: getMetricsRegistry().snapshot(),
+      thresholds: { slowRequestMs: parseSlowRequestThresholdMs() },
+    }, 'Platform diagnostics');
+  } catch (error) {
+    return fail(res, 500, 'Diagnostics unavailable');
   }
 };
