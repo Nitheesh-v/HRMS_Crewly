@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* ---- Crewly brand theme (use as: bg-crewly-bg, text-crewly-green, border-crewly-border, ...) ---- */
+/* ---- Crewly brand theme ---- */
 @theme {
   --color-crewly-bg: #0d1117;
   --color-crewly-card: #161b22;
@@ -12,7 +12,34 @@
   --color-crewly-red: #f85149;
 }
 
-/* ---- Base responsive resets ---- */
+/* Light theme overrides — Figma Visual Design Light (green primary) */
+html[data-theme='light'] {
+  --color-crewly-bg: #f5f7fb;
+  --color-crewly-card: #ffffff;
+  --color-crewly-border: #e7eaf1;
+  --color-crewly-text: #121826;
+  --color-crewly-dim: #6b7280;
+  --color-crewly-green: #10b981;
+  --color-crewly-orange: #f97316;
+  --color-crewly-red: #ef4444;
+}
+html[data-theme='light'] body {
+  background-color: #f5f7fb;
+  color: #121826;
+}
+html[data-theme='light'] .card {
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06), 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+html[data-theme='light'] header {
+  background: rgba(255,255,255,0.85) !important;
+  backdrop-filter: blur(12px);
+}
+html[data-theme='light'] aside {
+  background: #ffffff !important;
+  border-color: #e7eaf1 !important;
+}
+
+/* ---- Base resets ---- */
 *,
 *::before,
 *::after {
@@ -43,13 +70,11 @@ canvas {
   height: auto;
 }
 
-/* Prevent 100vw overflow from absolute/fixed toasts */
 #root {
   min-width: 0;
   overflow-x: clip;
 }
 
-/* ---- Responsive typography scale ---- */
 h1 {
   @apply text-xl sm:text-2xl lg:text-3xl;
 }
@@ -60,16 +85,18 @@ h3 {
   @apply text-base sm:text-lg;
 }
 
-/* ---- Reusable building blocks (fully responsive) ---- */
 @layer components {
   .btn-primary {
-    @apply inline-flex items-center justify-center rounded-lg bg-crewly-green px-4 py-2 sm:px-5 sm:py-2.5 text-sm sm:text-[15px] font-semibold text-crewly-bg transition hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center rounded-lg bg-crewly-green px-4 py-2 sm:px-5 sm:py-2.5 text-sm sm:text-[15px] font-semibold text-white transition hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-ghost {
     @apply inline-flex items-center justify-center rounded-lg border border-crewly-border px-4 py-2 sm:px-5 sm:py-2.5 text-sm sm:text-[15px] text-crewly-text transition hover:border-crewly-green hover:bg-crewly-bg active:scale-[0.98];
   }
   .input {
-    @apply w-full rounded-lg border border-crewly-border bg-crewly-bg px-3 py-2 sm:px-4 sm:py-2.5 text-sm sm:text-[15px] text-crewly-text placeholder-crewly-dim outline-none transition focus:border-crewly-green focus:ring-2 focus:ring-crewly-green/20;
+    @apply w-full rounded-lg border border-crewly-border bg-crewly-card px-3 py-2 sm:px-4 sm:py-2.5 text-sm sm:text-[15px] text-crewly-text placeholder-crewly-dim outline-none transition focus:border-crewly-green focus:ring-2 focus:ring-crewly-green/20;
+  }
+  html[data-theme='light'] .input {
+    @apply bg-white;
   }
   .label {
     @apply mb-1.5 block text-xs sm:text-sm text-crewly-dim;
@@ -80,24 +107,18 @@ h3 {
   .badge {
     @apply inline-block rounded-full px-2.5 py-1 sm:px-3 text-[11px] sm:text-xs font-semibold;
   }
-
-  /* Responsive table wrapper - use .table-wrap around any table */
   .table-wrap {
     @apply -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0;
   }
   .table-wrap table {
     @apply min-w-[520px] sm:min-w-full;
   }
-
-  /* Responsive grid helpers */
   .grid-responsive {
     @apply grid gap-3 sm:gap-4;
   }
 }
 
-/* ---- Global responsive overrides (FAST fix for legacy fixed widths) ---- */
-
-/* 1) Any card/table container that forces overflow on mobile -> make scrollable */
+/* Global responsive overrides */
 .overflow-x-auto {
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
@@ -109,20 +130,16 @@ h3 {
   background: var(--color-crewly-border);
   border-radius: 9999px;
 }
-/* Tables inside scroll containers must keep min-width so they scroll instead of squishing to vertical letters */
 .overflow-x-auto table,
 .card.overflow-x-auto table {
   min-width: 640px;
 }
-/* On phones, allow the card's scroll area to edge-to-edge for better swipe */
 @media (max-width: 640px) {
   .card.p-0 .overflow-x-auto {
     margin-left: 0;
     margin-right: 0;
   }
 }
-
-/* 1b) Tighten legacy spacing on small — p-6/p-7/px-7 becomes fluid */
 @media (max-width: 640px) {
   .p-6 {
     padding: 1rem !important;
@@ -145,7 +162,6 @@ h3 {
     padding-left: 1rem !important;
     padding-right: 1rem !important;
   }
-  /* any flex-wrap filter bar on xs -> full-width inputs */
   .flex.flex-wrap > .input,
   .flex.flex-wrap > select.input,
   .card.flex.flex-wrap > .input {
@@ -161,14 +177,10 @@ h3 {
     padding-right: 1.25rem !important;
   }
 }
-
-/* 2) On very small screens, prevent flex rows from blowing out */
 @media (max-width: 640px) {
-  /* Top bars that use justify-between without wrap -> allow wrap */
   .flex.justify-between {
     flex-wrap: wrap;
   }
-  /* Card headers that contain filters (h2 + input/select) should stack, not sit side-by-side */
   .card > .flex.justify-between,
   .card > div.flex.justify-between {
     flex-direction: column;
@@ -181,18 +193,15 @@ h3 {
   .card > div.flex.justify-between select {
     width: 100% !important;
   }
-  /* 2-col grids without breakpoint -> stack to 1 col on xs */
   .grid.grid-cols-2:not(.sm\:grid-cols-2):not(.md\:grid-cols-2):not(.lg\:grid-cols-2) {
     grid-template-columns: 1fr;
   }
-  /* 3/4 cols without breakpoint -> at least 1 col on xs */
   .grid.grid-cols-3:not(.sm\:grid-cols-2):not(.md\:grid-cols-2):not(.lg\:grid-cols-3) {
     grid-template-columns: 1fr;
   }
   .grid.grid-cols-4:not(.sm\:grid-cols-2):not(.md\:grid-cols-3):not(.lg\:grid-cols-4) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  /* Text that might overflow — keep sidebar readable */
   .truncate {
     max-width: 14rem;
   }
@@ -200,26 +209,19 @@ h3 {
     max-width: none;
   }
 }
-
-/* 3) Ensure modals/sheets are viewport-aware */
 @media (max-width: 640px) {
   .card {
     border-radius: 0.9rem;
   }
-  /* Modal bodies that use max-w-lg/xl -> fit viewport */
   [role="dialog"],
   .fixed.inset-0 .card {
     margin-left: 0.75rem;
     margin-right: 0.75rem;
   }
 }
-
-/* 4) Fluid container padding */
 .container-fluid {
   @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
 }
-
-/* 5) Responsive hide/show helpers (mirror Tailwind but explicit for legacy) */
 @media (max-width: 768px) {
   .hide-md {
     display: none !important;
@@ -230,8 +232,6 @@ h3 {
     display: none !important;
   }
 }
-
-/* 6) Make long words / emails wrap on mobile — but NOT sidebar spans (which use truncate) */
 p,
 td,
 th,
@@ -239,14 +239,11 @@ li {
   overflow-wrap: break-word;
   word-break: break-word;
 }
-/* Sidebar labels keep single-line truncation, never wrap */
 aside span.truncate,
 aside .truncate {
   overflow-wrap: normal;
   word-break: normal;
 }
-
-/* 7) Header / footer safe-area for notched phones */
 @supports (padding: max(0px)) {
   header,
   footer {
@@ -254,8 +251,6 @@ aside .truncate {
     padding-right: max(1rem, env(safe-area-inset-right));
   }
 }
-
-/* 8) Improve tap targets on touch devices */
 @media (pointer: coarse) {
   button,
   a,
@@ -267,21 +262,16 @@ aside .truncate {
     min-height: 42px;
   }
 }
-
-/* 9) lg/md tweaks: tighten sidebar-adjacent content spacing */
 @media (min-width: 1024px) {
   main {
     container-type: inline-size;
   }
 }
 @media (min-width: 768px) and (max-width: 1024px) {
-  /* md: give breathing room but keep 2-col grids readable */
   .grid {
     gap: 0.9rem;
   }
 }
-
-/* 10) Reduce motion for users who prefer it */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

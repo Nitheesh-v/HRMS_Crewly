@@ -553,8 +553,11 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
           )}
         </nav>
 
-        <div className="pt-3 text-[11px] text-crewly-dim/60">
-          <span>Crewly HRMS</span>
+        <div className="flex flex-col gap-2 pt-3">
+          <FigmaThemePill />
+          <div className="text-[11px] text-crewly-dim/60">
+            <span>Crewly HRMS</span>
+          </div>
         </div>
       </aside>
     );
@@ -701,7 +704,9 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
         )}
       </nav>
 
-      <div className="flex items-center justify-between pt-3 text-[11px] text-crewly-dim/60">
+      <div className="flex flex-col gap-2 pt-3">
+        <FigmaThemePill />
+        <div className="flex items-center justify-between text-[11px] text-crewly-dim/60">
         {collapsed ? (
           <button
             type="button"
@@ -714,6 +719,7 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
         ) : (
           <span className="truncate">Crewly HRMS</span>
         )}
+        </div>
       </div>
     </aside>
   );

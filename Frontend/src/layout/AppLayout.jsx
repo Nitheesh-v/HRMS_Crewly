@@ -6,6 +6,8 @@ import { ROLES } from "../utils/roles.js";
 import NotificationBell from "../components/NotificationBell";
 import SubscriptionStatusBanner from "../components/SubscriptionStatusBanner.jsx";
 import { Power, Menu, X } from "lucide-react";
+import ThemeToggle from "../components/ThemeToggle.jsx";
+import useTheme from "../hooks/useTheme.js";
 import SidebarNav from "./SidebarNav.jsx";
 import { useEffect, useState } from "react";
 import { useDispatch } from "react-redux";
@@ -195,6 +197,7 @@ const AppLayout = () => {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const navigate = useNavigate();
   const userId = user?.id || user?._id;
+  useTheme(); // init theme attr
 
   useEffect(() => {
     if (userId) {
@@ -558,6 +561,7 @@ const AppLayout = () => {
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-3 lg:gap-4">
+            <ThemeToggle />
             <NotificationBell />
             <button
               onClick={handleLogout}
