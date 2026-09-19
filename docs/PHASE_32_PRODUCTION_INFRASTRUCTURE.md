@@ -1,5 +1,100 @@
 # PHASE 32 — PRODUCTION INFRASTRUCTURE, SCALABILITY & PERFORMANCE
 
+# 32.10 — API Performance & Response Optimization
+
+Status: **32.10 implemented** (awaiting localhost acceptance).
+MEASURE → FIND REAL API COST → TARGETED CHANGE → VERIFY SECURITY →
+MEASURE AGAIN. Zero new dependencies; zero middleware-order changes;
+Frontend untouched.
+
+## ENDPOINT AUDIT (prioritized inventory; A/B classes; sandbox has no
+live Mongo — structural + hermetic evidence, no fabricated latency)
+
+**A — ALREADY APPROPRIATE (verified, untouched):**
+- Who's Working `/presence`: batched 14-query budget for ANY team size,
+  25/100 pages, escaped+bounded search, allowlisted filters, injectable
+  deps (31.9 law).
+- Operations `/operations`: 25/100, reuses presence derivation (no
+  re-deriving).
+- Analytics: TREND_MONTHS=12 hard cap, PAGE_SIZE_MAX 100,
+  LOCATION_COUNT_CAP 50, reuses the 32.6 cache (namespace
+  `attendance:analytics`).
+- Kiosk: validated stations, masked identities, 3-minute employee
+  contexts, burst-safe (31.14 law).
+- Public careers: paginated, projected, lean, escaped search.
+- Candidate inbox: 20/100 pages, bounded.
+- Payroll reads: lean everywhere, runs list capped at 12.
+- today/live: lean; rate limits (32.4) intact; health cheap; heavy ops
+  already async (32.7); tenant middleware loads company once per
+  request (subscription-gate order preserved).
+- No N+1 found in any audited hot path (32.5's campaign held).
+
+**B → FIXED IN 32.10 (the one systematic gap: 4 legacy controllers):**
+1. RAW user input in Mongo `$regex` (injection + ReDoS-class input,
+   unbounded length): userController (name/email), taskController
+   (title), projectController (name), systemController (actor/action).
+2. Task board payload: up to 300 full docs INCLUDING embedded
+   `comments[]` + `attachments[]` — the sole consumer (TasksPage.jsx,
+   verified) renders board fields only; comment/attachment history
+   belongs to the detail endpoint (`getTask`).
+3. Unnecessary hydration: audit/tasks/projects lists returned hydrated
+   documents (projects even re-`toObject()`-ed every row) for read-only
+   serialized arrays.
+4. Unstable pagination sorts (`-createdAt`, no tie-breaker): identical
+   createdAt (bulk inserts) could make page membership drift.
+
+## THE 32.10 CHANGE
+
+`src/utils/searchInput.js` (NEW, pure): `boundedSearchTerm` (trim +
+60-char cap, the presence-service law) + `escapeRegExp` (literal
+match). All four controllers now run search through it. Task list:
+`.select('-comments -attachments')` + `.lean()`. Audit list: `.lean()`.
+Project list: `.lean()` (spread replaced `toObject()`). All four lists:
+`sort({ createdAt: -1, _id: -1 })` (stable pages). `select:false`
+untouched — the §28 pin asserts no `+field` overrides in the optimized
+list paths (narrow authorized boundaries elsewhere, e.g. the kiosk-PIN
+flow, remain).
+
+## COMPRESSION DECISION (explicit, §34)
+
+**DEFERRED to proxy/edge (32.15/32.16).** Deployment topology is not
+decided; installing Express `compression` now would add a dependency
+(needing approval) and risk double-compression at the future edge.
+Express default weak ETags stay (§37). No conditional HTTP caching
+added — CDN policy belongs to 32.16.
+
+## CACHE DECISION
+
+NONE — no audited hot path had a cache-shaped problem; every finding
+was a bounds/projection/hydration issue. Existing 32.6 cache usage
+(analytics) unchanged.
+
+## AFTER MEASUREMENTS (structural + measured, honest)
+
+- Task board payload (synthetic 300-row board, 4 comments + 2
+  attachments each): BEFORE 386,401 B → AFTER 111,901 B serialized
+  (**3.45× smaller**; real boards carry longer histories, so the
+  production delta is larger). Required board fields byte-identical.
+- Search: all four lists now accept literal bounded terms — `.*`,
+  `(a+)+$`, 500-char inputs can no longer reach `$regex` (behavior for
+  legitimate searches unchanged; "Priya Sharma" still matches).
+- Audit/tasks/projects: no document hydration on serialized read-only
+  pages; projects drop the per-row `toObject()` pass.
+- Pagination: stable `_id` tie-breakers — pages can no longer drift on
+  `createdAt` ties.
+- Task list keeps its 300-row cap (C-class: true pagination is contract
+  churn without a demonstrated page-depth problem — documented).
+- test:all 1990/1990/0 (1979 + 11 new = exact delta); route
+  smoke-imports green; Frontend untouched (no consumers changed —
+  TasksPage verified to use none of the excluded fields).
+
+## DEFERRED
+
+Task/project true pagination → product decision + 32.13 evidence ·
+compression → 32.15/32.16 · request-cancellation framework → not needed
+(no stale-response bug found) · realtime → 32.11 · flat controller
+consolidation + 6 service-local escapeRegex copies → 32.18.
+
 # 32.9 — Frontend Performance
 
 Status: **32.9 implemented** (awaiting localhost acceptance). MEASURE →

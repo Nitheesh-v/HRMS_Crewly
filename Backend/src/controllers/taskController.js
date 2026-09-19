@@ -3,6 +3,7 @@ import Project from '../models/Project.js';
 import User from '../models/User.js';
 import ApiError from '../utils/ApiError.js';
 import asyncHandler from '../utils/asyncHandler.js';
+import { boundedSearchTerm } from '../utils/searchInput.js';
 import { getScopedUserIds } from '../utils/scope.js';
 import { notifyUser } from '../utils/notify.js';
 import { cloudinaryReady } from '../config/cloudinary.js';
@@ -76,14 +77,22 @@ export const listTasks = asyncHandler(async (req, res) => {
   if (assignee) filter.assignedTo = assignee;
   if (view === 'mine') filter.assignedTo = req.user._id;
   if (view === 'created') filter.assignedBy = req.user._id;
-  if (q) filter.title = { $regex: q, $options: 'i' };
+  // Phase 32.10 — bounded + escaped (literal) title search.
+  const searchTerm = boundedSearchTerm(q);
+  if (searchTerm) filter.title = { $regex: searchTerm, $options: 'i' };
 
+  // Phase 32.10 — the list consumer (TasksPage) renders board fields
+  // only; embedded comment/attachment HISTORY belongs to the detail
+  // endpoint (getTask), not to a 300-row board payload. lean() because
+  // the array is serialized untouched; stable tie-breaker for pages.
   const tasks = await Task.find(filter)
+    .select('-comments -attachments')
     .populate('assignedTo', 'name email role avatarUrl')
     .populate('assignedBy', 'name')
     .populate('project', 'name status')
-    .sort({ createdAt: -1 })
-    .limit(300);
+    .sort({ createdAt: -1, _id: -1 })
+    .limit(300)
+    .lean();
 
   // Data to frontend - response to frontend
   ok(res, 200, tasks, 'Tasks fetched');

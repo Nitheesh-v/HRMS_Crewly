@@ -13,6 +13,7 @@ import Resignation from '../models/Resignation.js';
 import JobPosting from '../models/JobPosting.js';
 import ApiResponse from '../utils/ApiResponse.js';
 import asyncHandler from '../utils/asyncHandler.js';
+import { boundedSearchTerm } from '../utils/searchInput.js';
 import { PERMISSION_MATRIX } from '../utils/permissions.js';
 
 // ── 🔔 notifications ─────────────────────────────────────────
@@ -54,16 +55,19 @@ export const audit = asyncHandler(async (req, res) => {
   const filter = { companyId: req.companyId };
   if (status === 'success') filter.statusCode = { $lt: 400 };
   if (status === 'failed') filter.statusCode = { $gte: 400 };
-  if (search) {
+  // Phase 32.10 — bounded + escaped (literal) audit-log search.
+  const searchTerm = boundedSearchTerm(search);
+  if (searchTerm) {
     filter.$or = [
-      { actorName: { $regex: search, $options: 'i' } },
-      { action: { $regex: search, $options: 'i' } },
+      { actorName: { $regex: searchTerm, $options: 'i' } },
+      { action: { $regex: searchTerm, $options: 'i' } },
     ];
   }
 
   // DB Logic - DB logics
   const [logs, total] = await Promise.all([
-    AuditLog.find(filter).sort('-createdAt').skip((page - 1) * limit).limit(limit),
+    // lean + stable tie-breaker (32.10): read-only serialized page.
+    AuditLog.find(filter).sort({ createdAt: -1, _id: -1 }).skip((page - 1) * limit).limit(limit).lean(),
     AuditLog.countDocuments(filter),
   ]);
   // Data to frontend - response to frontend
