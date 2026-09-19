@@ -1,13 +1,12 @@
-// ============================================================
-// DASHBOARD — self widgets for everyone + My Team panel
-// for MANAGER / TEAM_LEAD / COMPANY_ADMIN / HR_MANAGER (Phase 10)
-// ============================================================
+// Dashboard — Figma parity (HRDashboard Community - Light/Dark, green #00C875)
+// Keeps real API: dashboardService.employeeOverview / managerOverview
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   CalendarDays,
   CheckCircle2,
   ClipboardList,
+  Info,
   LayoutDashboard,
   Megaphone,
   Palmtree,
@@ -21,7 +20,6 @@ import { dashboardService } from "../../services/selfService";
 import useAuth from "../../hooks/useAuth";
 
 const SENIORS = ["COMPANY_ADMIN", "HR_MANAGER", "MANAGER", "TEAM_LEAD"];
-
 const errMsg = (err, fb) =>
   err?.response?.data?.message || err?.data?.message || err?.message || fb;
 const money = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
@@ -32,77 +30,66 @@ const monthLabel = (m) => {
 };
 
 const TODAY_STYLE = {
-  PRESENT: "bg-crewly-green/15 text-crewly-green",
-  LATE: "bg-crewly-orange/15 text-crewly-orange",
-  HALF_DAY: "bg-blue-500/15 text-blue-400",
-  ABSENT: "bg-crewly-red/15 text-crewly-red",
+  PRESENT: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+  LATE: "bg-amber-500/15 text-amber-600",
+  HALF_DAY: "bg-blue-500/15 text-blue-500",
+  ABSENT: "bg-red-500/15 text-red-500",
 };
 
-const StatCard = ({ icon, label, value, sub, accent = "text-crewly-text", to }) => {
+const FigmaStat = ({ icon, label, value, sub, accent = "text-slate-800 dark:text-white", to }) => {
   const body = (
     <>
-      <div className="flex items-center justify-between">
-        <span className="text-crewly-dim">{icon}</span>
-      <span className={`text-2xl font-extrabold ${accent}`}>{value}</span>
-    </div>
-      <p className="mt-1 text-xs uppercase tracking-wide text-crewly-dim">
+      <div className="flex items-start justify-between">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-white/60">
+          {icon}
+        </div>
+        <span className={`text-lg font-extrabold leading-none ${accent}`}>{value}</span>
+      </div>
+      <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-white/60">
         {label}
       </p>
-      {sub && <p className="mt-0.5 text-[11px] text-crewly-dim">{sub}</p>}
+      {sub && <p className="mt-1 text-xs leading-snug text-slate-600 dark:text-white/70 line-clamp-1">{sub}</p>}
     </>
   );
   if (to) {
     return (
-      <Link
-        to={to}
-        className="card transition hover:border-crewly-green/50 hover:shadow-lg"
-      >
+      <Link to={to} className="rounded-xl border border-[#E6E9F0] bg-white p-4 shadow-sm transition hover:border-[#00C875]/40 hover:shadow-md dark:border-white/10 dark:bg-white/[0.04]">
         {body}
       </Link>
     );
   }
-  return <div className="card">{body}</div>;
+  return <div className="rounded-xl border border-[#E6E9F0] bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/[0.04]">{body}</div>;
 };
 
 const Panel = ({ icon, title, action, children }) => (
-  <section className="card flex min-h-44 flex-col">
+  <section className="rounded-xl border border-[#E6E9F0] bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/[0.04]">
     <div className="mb-3 flex items-center justify-between">
-      <h3 className="flex items-center gap-2 font-semibold">
-        {icon && <span className="text-crewly-dim">{icon}</span>}
+      <h3 className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-white">
+        {icon && <span className="text-slate-400">{icon}</span>}
         {title}
       </h3>
       {action}
     </div>
-    <div className="flex-1">{children}</div>
+    <div>{children}</div>
   </section>
 );
 
-const DashboardPage = () => {
-  // Meeting date/time that survives BOTH old (date/startTime) and new (startAt) field shapes
+export default function DashboardPage() {
   const fmtMeetDay = (m) => {
     const raw = m.date || m.occStart || m.startAt;
     if (!raw) return "—";
     const d = new Date(raw);
-    if (Number.isNaN(d.getTime())) {
-      return String(raw).slice(5).split("-").reverse().join("/"); // old "YYYY-MM-DD" strings
-    }
+    if (Number.isNaN(d.getTime())) return String(raw).slice(5).split("-").reverse().join("/");
     return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
   };
-
   const fmtMeetTime = (m) => {
-    if (m.startTime) return m.startTime; // old string field
+    if (m.startTime) return m.startTime;
     const raw = m.occStart || m.startAt;
-    return raw
-      ? new Date(raw).toLocaleTimeString("en-IN", {
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-      : "";
+    return raw ? new Date(raw).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "";
   };
 
   const { user } = useAuth();
   const isSenior = SENIORS.includes(user?.role);
-
   const [data, setData] = useState(null);
   const [team, setTeam] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -128,8 +115,7 @@ const DashboardPage = () => {
     load();
   }, [load]);
 
-  if (loading && !data)
-    return <p className="text-crewly-dim">Loading your dashboard…</p>;
+  if (loading && !data) return <p className="text-sm text-slate-500">Loading your dashboard…</p>;
 
   const a = data?.attendance || {};
   const balances = data?.leaveBalance || [];
@@ -137,359 +123,273 @@ const DashboardPage = () => {
   const today = data?.today;
 
   return (
-    <div>
-      <div className="mb-1 flex items-end justify-between">
-        <h1 className="flex items-center gap-2 text-2xl font-bold">
-          <LayoutDashboard className="h-6 w-6 text-crewly-green" />
-          My Dashboard
-        </h1>
-        <span className="text-xs text-crewly-dim">
-          {monthLabel(data?.month)}
-        </span>
-      </div>
-      <p className="mb-5 text-sm text-crewly-dim">
-        Everything about you{isSenior ? " — and your people" : ""}, at a glance.
-      </p>
+    <div className="min-h-[calc(100dvh-64px)] bg-[#F5F7FB] dark:bg-crewly-bg -m-3 sm:-m-4 lg:-m-6 p-3 sm:p-4 lg:p-6">
+      <div className="mx-auto max-w-[1160px]">
+        {/* breadcrumb */}
+        <p className="text-[11px] tracking-wide text-slate-500 dark:text-white/60">
+          <Link to="/app" className="hover:text-slate-800 dark:hover:text-white">
+            Dashboard
+          </Link>{" "}
+          <span className="mx-1">›</span> <span className="text-slate-800 dark:text-white">Overview</span>
+        </p>
+        <p className="mt-0.5 text-[11px] text-slate-400 dark:text-white/40">Manage &gt; Overview</p>
 
-      {/* ── Attendance Quick Action (Phase 31 — one-tap CTA) ── */}
-      <div className="card mb-5 border-crewly-green/30 bg-gradient-to-br from-crewly-green/10 via-crewly-card to-crewly-card">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-crewly-green/15 ring-1 ring-crewly-green/20">
-              <Timer className="h-6 w-6 text-crewly-green" />
-            </div>
-            <div className="min-w-0">
-              <h2 className="text-base font-bold sm:text-lg">
-                Attendance
-              </h2>
-              <p className="text-xs text-crewly-dim sm:text-sm">
-                {today ? (
-                  <>
-                    Checked in at{" "}
-                    <span className="font-semibold text-crewly-text">
-                      {today.checkIn}
-                    </span>{" "}
-                    ·{" "}
-                    <span
-                      className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold ${TODAY_STYLE[today.status] || "bg-crewly-green/15 text-crewly-green"}`}
-                    >
-                      {today.status.replace("_", " ")}
-                    </span>
-                  </>
-                ) : (
-                  "You haven't marked attendance yet today"
-                )}
-              </p>
-              <p className="mt-0.5 hidden text-[11px] text-crewly-dim sm:block">
-                Tap below to clock in / out, start break & view today&apos;s timeline.
-              </p>
-            </div>
+        {/* header */}
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="flex items-center gap-2 text-[22px] font-extrabold tracking-tight text-slate-800 dark:text-white">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0f1a2b] text-white dark:bg-white dark:text-slate-900">
+                <LayoutDashboard className="h-4 w-4" />
+              </span>
+              My Dashboard
+            </h1>
+            <p className="mt-1 text-sm text-slate-500 dark:text-white/60">
+              Everything about you{isSenior ? " — and your people" : ""}, at a glance. ·{" "}
+              <span className="font-medium text-slate-700 dark:text-white/80">{monthLabel(data?.month)}</span>
+            </p>
           </div>
-          <Link
-            to="/app/attendance"
-            className="btn-primary w-full shrink-0 justify-center px-6 py-3 text-sm font-bold sm:w-auto sm:text-[15px]"
-          >
-            {today ? "Go to Attendance →" : "Mark Attendance →"}
+          <div className="flex items-center gap-2">
+            <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${today ? (TODAY_STYLE[today.status] || "bg-emerald-500/15 text-emerald-600") : "bg-white border border-[#E6E9F0] text-slate-500 dark:bg-white/5 dark:border-white/10 dark:text-white/60"}`}>
+              <span className={`h-1.5 w-1.5 rounded-full ${today ? "bg-current" : "bg-slate-300"}`} />
+              {today ? today.status.replace("_", " ") : "Not marked"}
+              {today?.checkIn ? ` · ${today.checkIn}` : ""}
+            </span>
+            <Link to="/app/attendance" className="hidden sm:inline-flex items-center justify-center rounded-full bg-[#00C875] px-4 py-2 text-sm font-semibold text-white hover:brightness-105">
+              {today ? "Go to Attendance →" : "Mark Attendance →"}
+            </Link>
+          </div>
+        </div>
+
+        {/* CTA mobile */}
+        <Link to="/app/attendance" className="mt-3 flex sm:hidden items-center justify-center rounded-full bg-[#00C875] px-4 py-2.5 text-sm font-bold text-white">
+          {today ? "Go to Attendance →" : "Mark Attendance →"}
+        </Link>
+
+        {error && (
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400">
+            {error}
+          </div>
+        )}
+
+        {/* 4 metric cards */}
+        <div className="mt-6 grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
+          <FigmaStat
+            icon={<CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+            label={`Present · ${monthLabel(data?.month)}`}
+            value={(a.present || 0) + (a.late || 0)}
+            sub={a.late ? `incl. ${a.late} late` : "on time streak!"}
+            accent="text-emerald-600"
+          />
+          <FigmaStat
+            icon={<XCircle className="h-4 w-4 text-red-400" />}
+            label="Absent days"
+            value={a.absent || 0}
+            sub={a.halfDay ? `${a.halfDay} half-day(s)` : "No absences"}
+            accent={a.absent ? "text-red-500" : "text-slate-800 dark:text-white"}
+          />
+          <FigmaStat
+            icon={<Palmtree className="h-4 w-4 text-amber-500" />}
+            label="Leave balance"
+            value={totalRemaining}
+            sub={balances.map((b) => `${b.type.toLowerCase()} ${b.remaining}/${b.total}`).join(" · ") || "No leaves"}
+            accent="text-amber-500"
+          />
+          <Link to="/app/attendance" className="rounded-xl border border-[#E6E9F0] bg-white p-4 shadow-sm transition hover:border-[#00C875]/40 hover:shadow-md dark:border-white/10 dark:bg-white/[0.04]">
+            <div className="flex items-start justify-between">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-white/5 dark:text-emerald-400">
+                <Timer className="h-4 w-4" />
+              </div>
+              <span className={`text-lg font-extrabold leading-none ${today ? (today.status === "LATE" ? "text-amber-500" : "text-emerald-600") : "text-slate-400"}`}>
+                {today ? today.status?.replace("_", " ") : "Not marked"}
+              </span>
+            </div>
+            <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-white/60">Today&apos;s attendance</p>
+            <p className="mt-1 text-xs leading-snug text-slate-600 dark:text-white/70 line-clamp-1">
+              {today?.checkIn ? `checked in ${today.checkIn}` : "tap here to mark attendance"}
+            </p>
           </Link>
         </div>
-      </div>
 
-      {error && (
-        <div className="mb-5 rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">
-          {error}
+        {/* blue banner */}
+        <div className="mt-4 flex items-start gap-3 rounded-xl border border-[#dbe4ff] bg-[#eef2ff] px-4 py-3 text-xs leading-relaxed text-[#3b5bdb] dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
+          <Info className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            Your workspace is live — check in from the attendance page, track leaves, and review payroll. Need help? Contact HR or try Chrome DevTools Sensors for geofence testing (dev only).
+          </p>
         </div>
-      )}
 
-      {/* ── MY TEAM panel (Phase 10 — seniors only) ── */}
-      {isSenior && team && (
-        <section className="card mb-5 border-crewly-green/30">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="flex items-center gap-2 font-semibold">
-              <Users className="h-4 w-4 text-crewly-green" />
-              My Team{" "}
-              <span className="ml-1 text-xs font-normal text-crewly-dim">
-                ({team.scopeLabel} · {team.memberCount} people)
-              </span>
-            </h2>
-            <Link
-              to="/app/org-chart"
-              className="text-xs text-crewly-green hover:underline"
-            >
-              Org chart →
-            </Link>
-          </div>
-
-          <div className="mb-4 grid gap-3 sm:grid-cols-4">
-            <div className="rounded-lg bg-crewly-bg p-3 text-center">
-              <p className="text-xl font-extrabold text-crewly-green">
-                {team.today.present}
-              </p>
-              <p className="text-[11px] uppercase text-crewly-dim">
-                Present today
-              </p>
+        {/* My Team — seniors */}
+        {isSenior && team && (
+          <section className="mt-4 rounded-xl border border-[#E6E9F0] bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/[0.04]">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-white">
+                <Users className="h-4 w-4 text-[#00C875]" />
+                My Team{" "}
+                <span className="ml-1 text-xs font-normal text-slate-500 dark:text-white/60">
+                  ({team.scopeLabel} · {team.memberCount} people)
+                </span>
+              </h2>
+              <Link to="/app/org-chart" className="text-xs font-semibold text-[#00C875] hover:underline">
+                Org chart →
+              </Link>
             </div>
-            <div className="rounded-lg bg-crewly-bg p-3 text-center">
-              <p className="text-xl font-extrabold text-crewly-red">
-                {team.today.absent}
-              </p>
-              <p className="text-[11px] uppercase text-crewly-dim">Absent</p>
+            <div className="mb-4 grid gap-3 sm:grid-cols-4">
+              <div className="rounded-xl border border-[#E6E9F0] bg-[#F5F7FB] p-3 text-center dark:border-white/10 dark:bg-white/5">
+                <p className="text-xl font-extrabold text-emerald-600">{team.today.present}</p>
+                <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-white/60">Present today</p>
+              </div>
+              <div className="rounded-xl border border-[#E6E9F0] bg-[#F5F7FB] p-3 text-center dark:border-white/10 dark:bg-white/5">
+                <p className="text-xl font-extrabold text-red-500">{team.today.absent}</p>
+                <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-white/60">Absent</p>
+              </div>
+              <div className="rounded-xl border border-[#E6E9F0] bg-[#F5F7FB] p-3 text-center dark:border-white/10 dark:bg-white/5">
+                <p className="text-xl font-extrabold text-amber-500">{team.pendingLeaves}</p>
+                <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-white/60">Leave approvals</p>
+              </div>
+              <div className="rounded-xl border border-[#E6E9F0] bg-[#F5F7FB] p-3 text-center dark:border-white/10 dark:bg-white/5">
+                <p className="text-xl font-extrabold text-slate-800 dark:text-white">
+                  {team.tasks.open}
+                  {team.tasks.overdue > 0 && <span className="ml-1 text-xs font-bold text-red-500">({team.tasks.overdue} overdue)</span>}
+                </p>
+                <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-white/60">Open tasks</p>
+              </div>
             </div>
-            <div className="rounded-lg bg-crewly-bg p-3 text-center">
-              <p className="text-xl font-extrabold text-crewly-orange">
-                {team.pendingLeaves}
-              </p>
-              <p className="text-[11px] uppercase text-crewly-dim">
-                Leave approvals
-              </p>
-            </div>
-            <div className="rounded-lg bg-crewly-bg p-3 text-center">
-              <p className="text-xl font-extrabold text-crewly-text">
-                {team.tasks.open}
-                {team.tasks.overdue > 0 && (
-                  <span className="ml-1 text-xs font-bold text-crewly-red">
-                    ({team.tasks.overdue} overdue)
-                  </span>
-                )}
-              </p>
-              <p className="text-[11px] uppercase text-crewly-dim">
-                Open tasks
-              </p>
-            </div>
-          </div>
-
-          <div className="grid gap-2 md:grid-cols-2">
-            {team.members.slice(0, 8).map((m) => (
-              <div
-                key={m._id}
-                className="flex items-center gap-3 rounded-lg bg-crewly-bg px-3 py-2"
-              >
-                {m.avatarUrl ? (
-                  <img
-                    src={m.avatarUrl}
-                    alt=""
-                    className="h-8 w-8 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-crewly-green/15 text-xs font-bold text-crewly-green">
-                    {m.name?.[0]?.toUpperCase()}
+            <div className="grid gap-2 md:grid-cols-2">
+              {team.members.slice(0, 8).map((m) => (
+                <div key={m._id} className="flex items-center gap-3 rounded-xl border border-[#E6E9F0] bg-[#F5F7FB] px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
+                  {m.avatarUrl ? (
+                    <img src={m.avatarUrl} alt="" className="h-8 w-8 rounded-full object-cover" />
+                  ) : (
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#00C875]/15 text-xs font-bold text-[#00C875]">
+                      {m.name?.[0]?.toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-slate-800 dark:text-white">{m.name}</p>
+                    <p className="truncate text-[11px] text-slate-500 dark:text-white/60">
+                      {m.role?.replace("_", " ")}
+                      {m.department ? ` · ${m.department}` : ""}
+                    </p>
                   </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{m.name}</p>
-                  <p className="truncate text-[11px] text-crewly-dim">
-                    {m.role?.replace("_", " ")}
-                    {m.department ? ` · ${m.department}` : ""}
-                  </p>
+                  {m.today ? (
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold ${TODAY_STYLE[m.today] || ""}`}>{m.today.replace("_", " ")}</span>
+                  ) : (
+                    <span className="inline-flex rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-bold text-slate-500 dark:bg-white/10 dark:text-white/60">not marked</span>
+                  )}
                 </div>
-                {m.today ? (
-                  <span className={`badge ${TODAY_STYLE[m.today] || ""}`}>
-                    {m.today.replace("_", " ")}
-                  </span>
-                ) : (
-                  <span className="badge bg-gray-500/15 text-gray-500">
-                    not marked
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-          {team.members.length > 8 && (
-            <p className="mt-2 text-center text-xs text-crewly-dim">
-              +{team.members.length - 8} more — see User Management
-            </p>
-          )}
-        </section>
-      )}
-
-      {/* ── self stat cards ── */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          icon={<CheckCircle2 className="h-5 w-5 text-crewly-green" />}
-          label={`Present · ${monthLabel(data?.month)}`}
-          value={(a.present || 0) + (a.late || 0)}
-          sub={a.late ? `incl. ${a.late} late` : "on time streak!"}
-          accent="text-crewly-green"
-        />
-        <StatCard
-          icon={<XCircle className="h-5 w-5 text-crewly-red" />}
-          label="Absent days"
-          value={a.absent || 0}
-          sub={a.halfDay ? `${a.halfDay} half-day(s)` : ""}
-          accent={a.absent ? "text-crewly-red" : "text-crewly-text"}
-        />
-        <StatCard
-          icon={<Palmtree className="h-5 w-5 text-crewly-orange" />}
-          label="Leave balance"
-          value={totalRemaining}
-          sub={balances
-            .map((b) => `${b.type.toLowerCase()} ${b.remaining}/${b.total}`)
-            .join(" · ")}
-          accent="text-crewly-orange"
-        />
-        <StatCard
-          to="/app/attendance"
-          icon={<Timer className="h-5 w-5 text-crewly-green" />}
-          label="Today's attendance"
-          value={today ? today.status?.replace("_", " ") : "Not marked"}
-          sub={
-            today?.checkIn
-              ? `checked in ${today.checkIn}`
-              : "tap here to mark attendance"
-          }
-          accent={
-            today
-              ? today.status === "LATE"
-                ? "text-crewly-orange"
-                : "text-crewly-green"
-              : "text-crewly-dim"
-          }
-        />
-      </div>
-
-      {/* ── self panels ── */}
-      <div className="mt-5 grid gap-4 lg:grid-cols-2">
-        <Panel
-          icon={<ClipboardList className="h-4 w-4" />}
-          title={`Pending Tasks (${data?.pendingTasks?.count || 0})`}
-          action={
-            <Link
-              to="/app/tasks"
-              className="text-xs text-crewly-green hover:underline"
-            >
-              My Tasks →
-            </Link>
-          }
-        >
-          {data?.pendingTasks?.items?.length ? (
-            <ul className="space-y-2">
-              {data.pendingTasks.items.map((t) => (
-                <li
-                  key={t._id}
-                  className="flex items-center justify-between gap-2 rounded-lg bg-crewly-bg px-3 py-2 text-sm"
-                >
-                  <span className="truncate">{t.title}</span>
-                  <span
-                    className={`badge shrink-0 ${t.priority === "HIGH" ? "bg-crewly-red/15 text-crewly-red" : "bg-crewly-orange/15 text-crewly-orange"}`}
-                  >
-                    {t.status?.replace("_", " ")}
-                  </span>
-                </li>
               ))}
-            </ul>
-          ) : (
-            <p className="mt-6 text-center text-sm text-crewly-dim">
-              All clear — no pending tasks
-            </p>
-          )}
-        </Panel>
-
-        <Panel
-          icon={<CalendarDays className="h-4 w-4" />}
-          title="Upcoming Meetings"
-          action={
-            <Link
-              to="/app/meetings"
-              className="text-xs text-crewly-green hover:underline"
-            >
-              All meetings →
-            </Link>
-          }
-        >
-          {data?.upcomingMeetings?.length ? (
-            <ul className="space-y-2">
-              {data.upcomingMeetings.map((m) => (
-                <li
-                  key={m._id}
-                  className="flex items-center justify-between gap-2 rounded-lg bg-crewly-bg px-3 py-2 text-sm"
-                >
-                  <span className="truncate">{m.title}</span>
-                  <span className="shrink-0 text-xs text-crewly-dim">
-                    {fmtMeetDay(m)} · {fmtMeetTime(m)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-6 text-center text-sm text-crewly-dim">
-              No meetings scheduled — enjoy the focus time
-            </p>
-          )}
-        </Panel>
-
-        <Panel
-          icon={<ReceiptText className="h-4 w-4" />}
-          title="Latest Payslip"
-          action={
-            <Link
-              to="/app/payslips"
-              className="text-xs text-crewly-green hover:underline"
-            >
-              My Payslips →
-            </Link>
-          }
-        >
-          {data?.latestPayslip ? (
-            <div className="flex items-center justify-between rounded-lg bg-crewly-bg px-4 py-4">
-              <div>
-                <p className="text-sm text-crewly-dim">
-                  {monthLabel(data.latestPayslip.month)}
-                </p>
-                <p className="text-2xl font-extrabold text-crewly-green">
-                  {money(data.latestPayslip.netPay)}
-                </p>
-              </div>
-              <span
-                className={`badge ${data.latestPayslip.status === "PAID" ? "bg-crewly-green/15 text-crewly-green" : "bg-crewly-orange/15 text-crewly-orange"}`}
-              >
-                {data.latestPayslip.status}
-              </span>
             </div>
-          ) : (
-            <p className="mt-6 text-center text-sm text-crewly-dim">
-              No payslip yet — payroll runs monthly
-            </p>
-          )}
-        </Panel>
+            {team.members.length > 8 && <p className="mt-2 text-center text-xs text-slate-500">+{team.members.length - 8} more — see User Management</p>}
+          </section>
+        )}
 
-        <Panel
-          icon={<Megaphone className="h-4 w-4" />}
-          title="Announcements"
-          action={
-            <Link
-              to="/app/announcements"
-              className="text-xs text-crewly-green hover:underline"
-            >
-              All →
-            </Link>
-          }
-        >
-          {data?.announcements?.length ? (
-            <ul className="space-y-2">
-              {data.announcements.map((ann) => (
-                <li key={ann._id} className="rounded-lg bg-crewly-bg px-3 py-2">
-                  <p className="text-sm font-medium">
-                    {ann.pinned && <Pin className="mr-1 inline h-3 w-3 text-crewly-orange" />}
-                    {ann.title}
-                  </p>
-                  <p className="text-[11px] text-crewly-dim">
-                    {ann.postedBy?.name || "HR"} ·{" "}
-                    {new Date(ann.createdAt).toLocaleDateString("en-IN", {
-                      day: "2-digit",
-                      month: "short",
-                    })}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-6 text-center text-sm text-crewly-dim">
-              Quiet day — no announcements
-            </p>
-          )}
-        </Panel>
+        {/* panels */}
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <Panel
+            icon={<ClipboardList className="h-4 w-4" />}
+            title={`Pending Tasks (${data?.pendingTasks?.count || 0})`}
+            action={
+              <Link to="/app/tasks" className="text-xs font-semibold text-[#00C875] hover:underline">
+                My Tasks →
+              </Link>
+            }
+          >
+            {data?.pendingTasks?.items?.length ? (
+              <ul className="space-y-2">
+                {data.pendingTasks.items.map((t) => (
+                  <li key={t._id} className="flex items-center justify-between gap-2 rounded-xl border border-[#E6E9F0] bg-[#F5F7FB] px-3 py-2.5 text-sm dark:border-white/10 dark:bg-white/5">
+                    <span className="truncate text-slate-700 dark:text-white/80">{t.title}</span>
+                    <span className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${t.priority === "HIGH" ? "bg-red-500/15 text-red-500" : "bg-amber-500/15 text-amber-600"}`}>
+                      {t.status?.replace("_", " ")}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="py-8 text-center text-sm text-slate-400">All clear — no pending tasks</p>
+            )}
+          </Panel>
+
+          <Panel
+            icon={<CalendarDays className="h-4 w-4" />}
+            title="Upcoming Meetings"
+            action={
+              <Link to="/app/meetings" className="text-xs font-semibold text-[#00C875] hover:underline">
+                All meetings →
+              </Link>
+            }
+          >
+            {data?.upcomingMeetings?.length ? (
+              <ul className="space-y-2">
+                {data.upcomingMeetings.map((m) => (
+                  <li key={m._id} className="flex items-center justify-between gap-2 rounded-xl border border-[#E6E9F0] bg-[#F5F7FB] px-3 py-2.5 text-sm dark:border-white/10 dark:bg-white/5">
+                    <span className="truncate text-slate-700 dark:text-white/80">{m.title}</span>
+                    <span className="shrink-0 text-xs text-slate-500 dark:text-white/60">
+                      {fmtMeetDay(m)} · {fmtMeetTime(m)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="py-8 text-center text-sm text-slate-400">No meetings scheduled — enjoy the focus time</p>
+            )}
+          </Panel>
+
+          <Panel
+            icon={<ReceiptText className="h-4 w-4" />}
+            title="Latest Payslip"
+            action={
+              <Link to="/app/payslips" className="text-xs font-semibold text-[#00C875] hover:underline">
+                My Payslips →
+              </Link>
+            }
+          >
+            {data?.latestPayslip ? (
+              <div className="flex items-center justify-between rounded-xl border border-[#E6E9F0] bg-[#F5F7FB] px-4 py-4 dark:border-white/10 dark:bg-white/5">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-white/60">{monthLabel(data.latestPayslip.month)}</p>
+                  <p className="text-2xl font-extrabold text-[#00C875]">{money(data.latestPayslip.netPay)}</p>
+                </div>
+                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${data.latestPayslip.status === "PAID" ? "bg-emerald-500/15 text-emerald-600" : "bg-amber-500/15 text-amber-600"}`}>
+                  {data.latestPayslip.status}
+                </span>
+              </div>
+            ) : (
+              <p className="py-8 text-center text-sm text-slate-400">No payslip yet — payroll runs monthly</p>
+            )}
+          </Panel>
+
+          <Panel
+            icon={<Megaphone className="h-4 w-4" />}
+            title="Announcements"
+            action={
+              <Link to="/app/announcements" className="text-xs font-semibold text-[#00C875] hover:underline">
+                All →
+              </Link>
+            }
+          >
+            {data?.announcements?.length ? (
+              <ul className="space-y-2">
+                {data.announcements.map((ann) => (
+                  <li key={ann._id} className="rounded-xl border border-[#E6E9F0] bg-[#F5F7FB] px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
+                    <p className="text-sm font-semibold text-slate-800 dark:text-white">
+                      {ann.pinned && <Pin className="mr-1 inline h-3 w-3 text-amber-500" />}
+                      {ann.title}
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-white/60">
+                      {ann.postedBy?.name || "HR"} · {new Date(ann.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="py-8 text-center text-sm text-slate-400">Quiet day — no announcements</p>
+            )}
+          </Panel>
+        </div>
+
+        <p className="mt-6 text-center text-[11px] text-slate-400 dark:text-white/30">Crewly · Figma HRDashboard — Dashboard parity · data live via API</p>
       </div>
     </div>
   );
-};
-
-export default DashboardPage;
+}
