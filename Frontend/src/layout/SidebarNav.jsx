@@ -53,6 +53,7 @@ import {
   UserCircle,
   Users,
   Wallet,
+  X,
 } from "lucide-react";
 
 // ── icons (moved out of AppLayout) ────────────────────────────────────────
@@ -146,10 +147,6 @@ const getNavIcon = (item) =>
   NAV_ICON_BY_PATH[item.to] || getSoonIcon(item.label);
 
 // ── groups ───────────────────────────────────────────────────────────────
-//
-// The flat sidebar reached 35+ rows, so every page now belongs to a group.
-// `paths` are exact matches, `prefixes` fold whole areas (recruitment,
-// security, payroll, projects/:id) into one entry.
 
 const NAV_GROUPS = [
   { id: "home", label: "Home", icon: LayoutDashboard, paths: ["/app"] },
@@ -182,8 +179,6 @@ const NAV_GROUPS = [
     id: "payroll",
     label: "Payroll",
     icon: Wallet,
-    // Pinned pages first: Payroll, Employee Payroll, Payslips, then the 29.1
-    // configuration screens.
     paths: ["/app/payroll", "/app/payroll/employees", "/app/payslips"],
     prefixes: ["/app/payroll"],
   },
@@ -287,7 +282,7 @@ const headerClass = (active) =>
       : "text-crewly-dim hover:bg-crewly-bg hover:text-crewly-text"
   }`;
 
-const Sidebar = ({ menu = [] }) => {
+const Sidebar = ({ menu = [], mobile = false, onClose }) => {
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -300,22 +295,18 @@ const Sidebar = ({ menu = [] }) => {
 
   const { buckets, other, groupOfPath } = useMemo(() => groupMenu(menu), [menu]);
 
-  // Which group owns the page we are on — it opens itself on navigation.
   const activeGroupId = useMemo(() => {
     if (groupOfPath.has(location.pathname)) {
       return groupOfPath.get(location.pathname);
     }
-
     const byPrefix = NAV_GROUPS.find(
       (group) => group.id !== "home" && matchesGroup(group, location.pathname),
     );
-
     return byPrefix?.id || null;
   }, [groupOfPath, location.pathname]);
 
   useEffect(() => {
     if (!activeGroupId) return;
-
     setOpenGroup(activeGroupId);
     if (NAV_GROUPS.find((group) => group.id === activeGroupId)?.more) {
       setMoreOpen(true);
@@ -326,23 +317,29 @@ const Sidebar = ({ menu = [] }) => {
     localStorage.setItem("crewly.sidebar.collapsed", String(collapsed));
   }, [collapsed]);
 
-  // A search is a one-shot jump: following a result clears it.
   useEffect(() => {
     setQuery("");
+    if (mobile && onClose) {
+      // auto-close drawer on navigation
+      onClose();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
   const searching = query.trim().length > 0;
 
   const results = useMemo(() => {
     if (!searching) return [];
-
     const needle = query.trim().toLowerCase();
-
     return menu
       .map((item) => ({ item, label: cleanNavLabel(item.label) }))
       .filter(({ label }) => label.toLowerCase().includes(needle))
       .slice(0, 40);
   }, [menu, query, searching]);
+
+  const handleNav = () => {
+    if (mobile && onClose) onClose();
+  };
 
   const renderItem = (item) => {
     const Icon = getNavIcon(item);
@@ -364,7 +361,7 @@ const Sidebar = ({ menu = [] }) => {
     }
 
     return (
-      <NavLink key={key} to={item.to} end={item.end} className={itemClass}>
+      <NavLink key={key} to={item.to} end={item.end} className={itemClass} onClick={handleNav}>
         <Icon aria-hidden="true" className="h-4 w-4 shrink-0" strokeWidth={1.8} />
         <span className="min-w-0 flex-1 truncate">{label}</span>
       </NavLink>
@@ -379,13 +376,12 @@ const Sidebar = ({ menu = [] }) => {
     const isOpen = openGroup === group.id;
     const active = activeGroupId === group.id;
 
-    // A group with a single page is just the page.
     if (items.length === 1 && !items[0].soon) {
       const only = items[0];
       const Icon = getNavIcon(only);
 
       return (
-        <NavLink key={group.id} to={only.to} end={only.end} className={singleClass}>
+        <NavLink key={group.id} to={only.to} end={only.end} className={singleClass} onClick={handleNav}>
           <Icon aria-hidden="true" className="h-[17px] w-[17px] shrink-0" strokeWidth={1.8} />
           <span className="min-w-0 flex-1 truncate">{cleanNavLabel(only.label)}</span>
         </NavLink>
@@ -431,8 +427,10 @@ const Sidebar = ({ menu = [] }) => {
               setCollapsed(false);
               setOpenGroup(group.id);
               if (group.more) setMoreOpen(true);
-              // A one-page group (Home) is a destination, not a dropdown.
-              if (single) navigate(single.to);
+              if (single) {
+                handleNav();
+                navigate(single.to);
+              }
             }}
             className={`flex h-10 w-full items-center justify-center rounded-lg transition ${
               activeGroupId === group.id
@@ -447,10 +445,124 @@ const Sidebar = ({ menu = [] }) => {
     </div>
   );
 
+  // Mobile drawer variant: full height, overlay-style, always expanded
+  if (mobile) {
+    return (
+      <aside className="flex h-dvh w-full flex-col border-r border-crewly-border bg-crewly-card py-4 px-3 overflow-hidden">
+        <div className="flex items-center justify-between gap-2 px-1">
+          <div className="flex items-center gap-1.5">
+            <img src="/logo-crewly.png" alt="Crewly" className="h-8 w-auto mix-blend-screen" />
+            <span className="text-sm font-extrabold tracking-widest text-slate-400">HRMS</span>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-2 text-crewly-dim hover:bg-crewly-bg hover:text-crewly-text"
+            aria-label="Close menu"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="relative mt-4">
+          <Search
+            aria-hidden="true"
+            className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-crewly-dim/60"
+          />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search pages"
+            className="input w-full py-2 pl-9 pr-3 text-[13px]"
+          />
+        </div>
+
+        <nav className="mt-3 flex-1 space-y-1 overflow-y-auto pr-0.5 -mr-1">
+          {searching ? (
+            results.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-crewly-dim">
+                No page matches “{query.trim()}”
+              </p>
+            ) : (
+              <div className="space-y-0.5">
+                {results.map(({ item, label }) => {
+                  const Icon = getNavIcon(item);
+                  const key = `${item.to || "soon"}-${label}`;
+                  if (item.soon) {
+                    return (
+                      <span
+                        key={key}
+                        className="flex cursor-not-allowed items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] text-crewly-dim/40"
+                      >
+                        <Icon aria-hidden="true" className="h-4 w-4 shrink-0" strokeWidth={1.8} />
+                        <span className="min-w-0 flex-1 truncate">{label}</span>
+                        <span className="text-[10px]">soon</span>
+                      </span>
+                    );
+                  }
+                  return (
+                    <NavLink key={key} to={item.to} end={item.end} className={singleClass} onClick={handleNav}>
+                      <Icon aria-hidden="true" className="h-4 w-4 shrink-0" strokeWidth={1.8} />
+                      <span className="min-w-0 flex-1 truncate">{label}</span>
+                    </NavLink>
+                  );
+                })}
+              </div>
+            )
+          ) : (
+            <>
+              {PRIMARY_GROUPS.map(renderGroup)}
+              {(MORE_GROUPS.some((group) => (buckets.get(group.id) || []).length) || other.length > 0) && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setMoreOpen((prev) => !prev)}
+                    className={headerClass(false)}
+                    aria-expanded={moreOpen}
+                  >
+                    <MoreHorizontal
+                      aria-hidden="true"
+                      className="h-[17px] w-[17px] shrink-0"
+                      strokeWidth={1.8}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-left">More</span>
+                    <ChevronDown
+                      aria-hidden="true"
+                      className={`h-3.5 w-3.5 shrink-0 transition ${moreOpen ? "rotate-180" : ""}`}
+                    />
+                  </button>
+
+                  {moreOpen && (
+                    <div className="mt-1 space-y-1">
+                      {MORE_GROUPS.map(renderGroup)}
+                      {other.length > 0 && (
+                        <div>
+                          <p className="px-3 pb-1 pt-2 text-[10px] uppercase tracking-wide text-crewly-dim/60">
+                            Other
+                          </p>
+                          {other.map(renderItem)}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </nav>
+
+        <div className="pt-3 text-[11px] text-crewly-dim/60">
+          <span>Crewly HRMS</span>
+        </div>
+      </aside>
+    );
+  }
+
+  // Desktop variant (responsive: collapsed on lg, full on xl, but keep logic)
   return (
     <aside
-      className={`sticky top-0 flex h-screen shrink-0 flex-col border-r border-crewly-border bg-crewly-card py-5 transition-[width] duration-150 ${
-        collapsed ? "w-16 px-2" : "w-60 px-3"
+      className={`sticky top-0 hidden h-screen shrink-0 flex-col border-r border-crewly-border bg-crewly-card py-5 transition-[width] duration-150 lg:flex ${
+        collapsed ? "w-16 px-2" : "w-60 xl:w-64 px-3"
       }`}
     >
       <div className="flex items-center justify-between gap-2 px-1">
@@ -465,9 +577,9 @@ const Sidebar = ({ menu = [] }) => {
           </button>
         ) : (
           <>
-            <div className="flex items-center gap-1.5">
-              <img src="/logo-crewly.png" alt="Crewly" className="h-9 w-auto mix-blend-screen" />
-              <span className="text-sm font-extrabold tracking-widest text-slate-400">HRMS</span>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <img src="/logo-crewly.png" alt="Crewly" className="h-8 w-auto mix-blend-screen sm:h-9" />
+              <span className="text-xs sm:text-sm font-extrabold tracking-widest text-slate-400 truncate">HRMS</span>
             </div>
 
             <button
@@ -534,7 +646,7 @@ const Sidebar = ({ menu = [] }) => {
                 }
 
                 return (
-                  <NavLink key={key} to={item.to} end={item.end} className={singleClass}>
+                  <NavLink key={key} to={item.to} end={item.end} className={singleClass} onClick={handleNav}>
                     <Icon aria-hidden="true" className="h-4 w-4 shrink-0" strokeWidth={1.8} />
                     <span className="min-w-0 flex-1 truncate">{label}</span>
                   </NavLink>
@@ -598,7 +710,7 @@ const Sidebar = ({ menu = [] }) => {
             <ChevronsRight aria-hidden="true" className="h-4 w-4" />
           </button>
         ) : (
-          <span>Crewly HRMS</span>
+          <span className="truncate">Crewly HRMS</span>
         )}
       </div>
     </aside>

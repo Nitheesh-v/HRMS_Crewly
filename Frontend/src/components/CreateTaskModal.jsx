@@ -68,7 +68,7 @@ export default function CreateTaskModal({ presetProjectId = '', onClose, onCreat
           <input className={inp} placeholder="Task title *" value={form.title} onChange={set('title')} />
           <textarea className={inp} rows={2} placeholder="Description" value={form.description} onChange={set('description')} />
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <select className={inp} value={form.projectId} onChange={set('projectId')}>
               <option value="">— No project —</option>
               {projects.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}

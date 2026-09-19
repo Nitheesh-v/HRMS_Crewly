@@ -12,29 +12,238 @@
   --color-crewly-red: #f85149;
 }
 
+/* ---- Base responsive resets ---- */
+*,
+*::before,
+*::after {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-crewly-border) transparent;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+  scroll-padding-top: 1rem;
+}
+
 body {
   background-color: var(--color-crewly-bg);
   color: var(--color-crewly-text);
+  overflow-x: hidden;
+  min-width: 320px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* ---- Reusable building blocks ---- */
+img,
+video,
+svg,
+canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Prevent 100vw overflow from absolute/fixed toasts */
+#root {
+  min-width: 0;
+  overflow-x: clip;
+}
+
+/* ---- Responsive typography scale ---- */
+h1 {
+  @apply text-xl sm:text-2xl lg:text-3xl;
+}
+h2 {
+  @apply text-lg sm:text-xl lg:text-2xl;
+}
+h3 {
+  @apply text-base sm:text-lg;
+}
+
+/* ---- Reusable building blocks (fully responsive) ---- */
 @layer components {
   .btn-primary {
-    @apply inline-flex items-center justify-center rounded-lg bg-crewly-green px-5 py-2.5 font-semibold text-crewly-bg transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center rounded-lg bg-crewly-green px-4 py-2 sm:px-5 sm:py-2.5 text-sm sm:text-[15px] font-semibold text-crewly-bg transition hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-ghost {
-    @apply inline-flex items-center justify-center rounded-lg border border-crewly-border px-5 py-2.5 text-crewly-text transition hover:border-crewly-green;
+    @apply inline-flex items-center justify-center rounded-lg border border-crewly-border px-4 py-2 sm:px-5 sm:py-2.5 text-sm sm:text-[15px] text-crewly-text transition hover:border-crewly-green hover:bg-crewly-bg active:scale-[0.98];
   }
   .input {
-    @apply w-full rounded-lg border border-crewly-border bg-crewly-bg px-4 py-2.5 text-crewly-text placeholder-crewly-dim outline-none transition focus:border-crewly-green;
+    @apply w-full rounded-lg border border-crewly-border bg-crewly-bg px-3 py-2 sm:px-4 sm:py-2.5 text-sm sm:text-[15px] text-crewly-text placeholder-crewly-dim outline-none transition focus:border-crewly-green focus:ring-2 focus:ring-crewly-green/20;
   }
   .label {
-    @apply mb-1.5 block text-sm text-crewly-dim;
+    @apply mb-1.5 block text-xs sm:text-sm text-crewly-dim;
   }
   .card {
-    @apply rounded-xl border border-crewly-border bg-crewly-card p-6;
+    @apply rounded-xl border border-crewly-border bg-crewly-card p-4 sm:p-5 lg:p-6;
   }
   .badge {
-    @apply inline-block rounded-full px-3 py-1 text-xs font-semibold;
+    @apply inline-block rounded-full px-2.5 py-1 sm:px-3 text-[11px] sm:text-xs font-semibold;
+  }
+
+  /* Responsive table wrapper - use .table-wrap around any table */
+  .table-wrap {
+    @apply -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0;
+  }
+  .table-wrap table {
+    @apply min-w-[520px] sm:min-w-full;
+  }
+
+  /* Responsive grid helpers */
+  .grid-responsive {
+    @apply grid gap-3 sm:gap-4;
+  }
+}
+
+/* ---- Global responsive overrides (FAST fix for legacy fixed widths) ---- */
+
+/* 1) Any card/table container that forces overflow on mobile -> make scrollable */
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+.overflow-x-auto::-webkit-scrollbar {
+  height: 6px;
+}
+.overflow-x-auto::-webkit-scrollbar-thumb {
+  background: var(--color-crewly-border);
+  border-radius: 9999px;
+}
+
+/* 1b) Tighten legacy spacing on small — p-7/px-7 becomes fluid */
+@media (max-width: 640px) {
+  .p-7 {
+    padding: 1rem !important;
+  }
+  .px-7 {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+  .py-7 {
+    padding-top: 1rem !important;
+    padding-bottom: 1rem !important;
+  }
+  .p-8 {
+    padding: 1.25rem !important;
+  }
+  .px-8 {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+}
+@media (min-width: 640px) and (max-width: 768px) {
+  .p-7 {
+    padding: 1.25rem !important;
+  }
+  .px-7 {
+    padding-left: 1.25rem !important;
+    padding-right: 1.25rem !important;
+  }
+}
+
+/* 2) On very small screens, prevent flex rows from blowing out */
+@media (max-width: 640px) {
+  /* Top bars that use justify-between without wrap -> allow wrap */
+  .flex.justify-between {
+    flex-wrap: wrap;
+  }
+  /* 2-col grids without breakpoint -> stack to 1 col on xs */
+  .grid.grid-cols-2:not(.sm\:grid-cols-2):not(.md\:grid-cols-2):not(.lg\:grid-cols-2) {
+    grid-template-columns: 1fr;
+  }
+  /* 3/4 cols without breakpoint -> at least 1 col on xs */
+  .grid.grid-cols-3:not(.sm\:grid-cols-2):not(.md\:grid-cols-2):not(.lg\:grid-cols-3) {
+    grid-template-columns: 1fr;
+  }
+  .grid.grid-cols-4:not(.sm\:grid-cols-2):not(.md\:grid-cols-3):not(.lg\:grid-cols-4) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* Text that might overflow */
+  .truncate {
+    max-width: 12rem;
+  }
+}
+
+/* 3) Ensure modals/sheets are viewport-aware */
+@media (max-width: 640px) {
+  .card {
+    border-radius: 0.9rem;
+  }
+  /* Modal bodies that use max-w-lg/xl -> fit viewport */
+  [role="dialog"],
+  .fixed.inset-0 .card {
+    margin-left: 0.75rem;
+    margin-right: 0.75rem;
+  }
+}
+
+/* 4) Fluid container padding */
+.container-fluid {
+  @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
+}
+
+/* 5) Responsive hide/show helpers (mirror Tailwind but explicit for legacy) */
+@media (max-width: 768px) {
+  .hide-md {
+    display: none !important;
+  }
+}
+@media (min-width: 769px) {
+  .show-md {
+    display: none !important;
+  }
+}
+
+/* 6) Make long words / emails wrap on mobile */
+a,
+p,
+span,
+td,
+th {
+  overflow-wrap: anywhere;
+}
+
+/* 7) Header / footer safe-area for notched phones */
+@supports (padding: max(0px)) {
+  header,
+  footer {
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+}
+
+/* 8) Improve tap targets on touch devices */
+@media (pointer: coarse) {
+  button,
+  a,
+  [role="button"] {
+    min-height: 44px;
+  }
+  .btn-primary,
+  .btn-ghost {
+    min-height: 42px;
+  }
+}
+
+/* 9) lg/md tweaks: tighten sidebar-adjacent content spacing */
+@media (min-width: 1024px) {
+  main {
+    container-type: inline-size;
+  }
+}
+@media (min-width: 768px) and (max-width: 1024px) {
+  /* md: give breathing room but keep 2-col grids readable */
+  .grid {
+    gap: 0.9rem;
+  }
+}
+
+/* 10) Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }

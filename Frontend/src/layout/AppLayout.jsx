@@ -5,7 +5,7 @@ import usePermission from "../hooks/usePermission.js";
 import { ROLES } from "../utils/roles.js";
 import NotificationBell from "../components/NotificationBell";
 import SubscriptionStatusBanner from "../components/SubscriptionStatusBanner.jsx";
-import { Power } from "lucide-react";
+import { Power, Menu, X } from "lucide-react";
 import SidebarNav from "./SidebarNav.jsx";
 import { useEffect, useState } from "react";
 import { useDispatch } from "react-redux";
@@ -192,6 +192,7 @@ const AppLayout = () => {
   const { hasPermission, hasAnyPermission } = usePermission();
   const dispatch = useDispatch();
   const [loggingOut, setLoggingOut] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const navigate = useNavigate();
   const userId = user?.id || user?._id;
 
@@ -200,6 +201,25 @@ const AppLayout = () => {
       dispatch(fetchMyPermissions());
     }
   }, [dispatch, userId]);
+
+  // Close mobile drawer on route change or ESC
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && setMobileNavOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Prevent body scroll when drawer open
+  useEffect(() => {
+    if (mobileNavOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [mobileNavOpen]);
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -305,10 +325,6 @@ const AppLayout = () => {
       : []),
   ];
 
-  // Phase 29.1 / 29.2 — payroll navigation follows PERMISSIONS, not role
-  // names. A Payroll Admin, HR Head or Finance Manager created as a company
-  // role sees these entries because of the permission it holds, which is the
-  // whole point of "Company Admin controls who receives payroll permissions".
   const payrollMenu = [
     ...(hasAnyPermission(['PAYROLL_SETUP_READ', 'PAYROLL_SETUP_UPDATE', 'PAYROLL_SETUP_ACTIVATE'])
       ? [{ to: '/app/payroll/setup', label: 'Payroll Setup' }]
@@ -320,8 +336,6 @@ const AppLayout = () => {
     ])
       ? [{ to: '/app/payroll/components', label: 'Salary Components' }]
       : []),
-    // Phase 29.3 — same discipline: the entry appears for whoever holds a
-    // structure permission, whichever company role carries it.
     ...(hasAnyPermission([
       'SALARY_STRUCTURE_READ',
       'SALARY_STRUCTURE_MANAGE',
@@ -329,13 +343,9 @@ const AppLayout = () => {
     ])
       ? [{ to: '/app/payroll/structures', label: 'Salary Structures' }]
       : []),
-    // Phase 29.5 — Monthly Payroll Inputs, first in the payroll menu: it is
-    // the screen HR opens every month before the engine runs.
     ...(hasAnyPermission(['PAYROLL_INPUT_READ', 'PAYROLL_INPUT_MANAGE', 'PAYROLL_INPUT_LOCK'])
       ? [{ to: '/app/payroll/inputs', label: 'Monthly Inputs' }]
       : []),
-    // Phase 29.6 — Run Payroll, for whoever holds a payroll-run permission
-    // (Company Admin, Payroll Admin, HR Manager, Finance read-only).
     ...(hasAnyPermission([
       'PAYROLL_RUN_READ',
       'PAYROLL_RUN_PREPARE',
@@ -344,9 +354,6 @@ const AppLayout = () => {
     ])
       ? [{ to: '/app/payroll/run', label: 'Run Payroll' }]
       : []),
-    // Phase 29.7 — Review Payroll, right after the run: review, lock and
-    // approve. Permission-driven like every other payroll entry, so a
-    // delegated payroll role sees it without touching the role list.
     ...(hasAnyPermission([
       'PAYROLL_RUN_READ',
       'PAYROLL_RUN_PREPARE',
@@ -358,9 +365,6 @@ const AppLayout = () => {
     ])
       ? [{ to: '/app/payroll/review', label: 'Review Payroll' }]
       : []),
-    // Phase 29.8 — Salary Payment, the last step of the month: turn an
-    // approved payroll into a bank transfer file. Permission-driven, so
-    // whoever holds a payment permission sees the entry (§4 / §24).
     ...(hasAnyPermission([
       'PAYROLL_PAYMENT_READ',
       'PAYROLL_PAYMENT_GENERATE',
@@ -369,8 +373,6 @@ const AppLayout = () => {
     ])
       ? [{ to: '/app/payroll/salary-payment', label: 'Salary Payment' }]
       : []),
-    // Phase 29.9 — Payslips, the step after payment: generate, preview,
-    // email and bulk-download the official salary documents (§27).
     ...(hasAnyPermission([
       'PAYSLIP_READ',
       'PAYSLIP_GENERATE',
@@ -379,8 +381,6 @@ const AppLayout = () => {
     ])
       ? [{ to: '/app/payroll/payslips', label: 'Payslips' }]
       : []),
-    // Phase 29.10 — Statutory Compliance, the step after payslips: prepare
-    // PF / ESI / PT / TDS / LWF returns and track their filing (§5).
     ...(hasAnyPermission([
       'PAYROLL_STATUTORY_READ',
       'PAYROLL_STATUTORY_GENERATE',
@@ -389,13 +389,9 @@ const AppLayout = () => {
     ])
       ? [{ to: '/app/payroll/statutory', label: 'Statutory Compliance' }]
       : []),
-    // §14 — the employee's own salary portal. Distinct from the legacy
-    // "My Payslips" entry, which still serves pre-29.9 payroll records.
     ...(hasAnyPermission(['PAYSLIP_READ_SELF'])
       ? [{ to: '/app/payroll/my-payslips', label: 'My Payroll' }]
       : []),
-    // Phase 29.11 — Final Settlement, the last step of the payroll lifecycle:
-    // calculate the F&F, review it, approve it, pay it, archive it (§25).
     ...(hasAnyPermission([
       'FINAL_SETTLEMENT_READ',
       'FINAL_SETTLEMENT_CALCULATE',
@@ -407,13 +403,9 @@ const AppLayout = () => {
     ])
       ? [{ to: '/app/payroll/final-settlement', label: 'Final Settlement' }]
       : []),
-    // §18 — the employee's own settlement.
     ...(hasAnyPermission(['FINAL_SETTLEMENT_READ_SELF'])
       ? [{ to: '/app/payroll/my-final-settlement', label: 'My Final Settlement' }]
       : []),
-    // Phase 29.12 — Analytics & Reports, one sidebar entry: the ten reports
-    // (§26) are reached from inside the dashboard, so the payroll menu stays
-    // short. Permission-driven like every other entry.
     ...(hasAnyPermission([
       'PAYROLL_REPORT_READ',
       'PAYROLL_REPORT_EXPORT',
@@ -424,7 +416,6 @@ const AppLayout = () => {
       : []),
   ];
 
-  // Phase 31.1 — Attendance Policy entry, permission-driven like payroll.
   const attendancePolicyMenu = hasAnyPermission([
     'ATTENDANCE_POLICY_READ',
     'ATTENDANCE_POLICY_MANAGE',
@@ -433,8 +424,6 @@ const AppLayout = () => {
     ? [{ to: '/app/attendance/policy', label: 'Attendance Policy' }]
     : [];
 
-  // Phase 31.4 — Work Mode Requests entry (one item; the page splits
-  // My requests / Pending approvals by permission internally).
   const workModeMenu = hasAnyPermission([
     'ATTENDANCE_WORK_MODE_REQUEST',
     'ATTENDANCE_WORK_MODE_REVIEW',
@@ -442,8 +431,6 @@ const AppLayout = () => {
     ? [{ to: '/app/attendance/work-modes', label: 'Work Mode Requests' }]
     : [];
 
-  // Phase 31.5 — Attendance Regularization entry (one item; the page
-  // splits My requests / Exception center by permission internally).
   const regularizationMenu = hasAnyPermission([
     'ATTENDANCE_REGULARIZATION_REQUEST',
     'ATTENDANCE_REGULARIZATION_REVIEW',
@@ -451,8 +438,6 @@ const AppLayout = () => {
     ? [{ to: '/app/attendance/regularizations', label: 'Regularizations' }]
     : [];
 
-  // Phase 31.8 — Overtime & Comp-Off entry (one item; the page
-  // splits My overtime / Review queue by permission internally).
   const overtimeMenu = hasAnyPermission([
     'ATTENDANCE_OVERTIME_REQUEST',
     'ATTENDANCE_OVERTIME_REVIEW',
@@ -460,16 +445,10 @@ const AppLayout = () => {
     ? [{ to: '/app/attendance/overtime', label: 'Overtime & Comp-Off' }]
     : [];
 
-  // Phase 31.9 — Who's Working live board (one item; holders of the
-  // existing scoped attendance-read permission, i.e. managers, team
-  // leads and HR — the backend derives company vs team scope).
   const teamMenu = hasAnyPermission(['ATTENDANCE_READ'])
     ? [{ to: '/app/attendance/team', label: "Who's Working" }]
     : [];
 
-  // Phase 31.10 — My Timesheet entry (every employee with the
-  // self-service attendance read; seniors hold it too) plus the
-  // scoped Team Timesheets table for the oversight audience.
   const timesheetMenu = hasAnyPermission(['ATTENDANCE_READ_SELF', 'ATTENDANCE_READ'])
     ? [{ to: '/app/attendance/timesheet', label: 'My Timesheet' }]
     : [];
@@ -477,21 +456,14 @@ const AppLayout = () => {
     ? [{ to: '/app/attendance/team-timesheets', label: 'Team Timesheets' }]
     : [];
 
-  // Phase 31.12 — Attendance Operations entry (HR/Admin holders of the
-  // operations permission; one item inside the Time & Leave group).
   const operationsMenu = hasAnyPermission(['ATTENDANCE_OPERATIONS_READ'])
     ? [{ to: '/app/attendance/operations', label: 'Attendance Operations' }]
     : [];
 
-  // Phase 31.15 — Attendance Analytics entry (oversight audience
-  // plus self-service: the page splits analytics tabs / My summary
-  // by permission internally).
   const analyticsMenu = hasAnyPermission(['ATTENDANCE_ANALYTICS_READ', 'ATTENDANCE_READ_SELF'])
     ? [{ to: '/app/attendance/analytics', label: 'Attendance Analytics' }]
     : [];
 
-  // Phase 31.14 — alternate capture entries (HR/Admin holders of the
-  // capture permission; one item each inside the Time & Leave group).
   const captureMenu = hasAnyPermission(['ATTENDANCE_CAPTURE_MANAGE'])
     ? [
         { to: '/app/attendance/kiosks', label: 'Kiosk Stations' },
@@ -523,44 +495,96 @@ const AppLayout = () => {
   ];
 
   return (
-    <div className="flex min-h-screen">
-      <SidebarNav menu={menu} />
+    <div className="flex min-h-screen bg-crewly-bg">
+      {/* Desktop sidebar — hidden on mobile */}
+      <div className="hidden lg:block">
+        <SidebarNav menu={menu} />
+      </div>
+
+      {/* Mobile drawer */}
+      {mobileNavOpen && (
+        <div className="fixed inset-0 z-50 flex lg:hidden">
+          <div className="w-[85vw] max-w-[300px] shrink-0 overflow-hidden">
+            <SidebarNav menu={menu} mobile onClose={() => setMobileNavOpen(false)} />
+          </div>
+          <button
+            type="button"
+            aria-label="Close menu"
+            className="flex-1 bg-black/60 backdrop-blur-sm"
+            onClick={() => setMobileNavOpen(false)}
+          />
+        </div>
+      )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-crewly-border bg-crewly-card px-7 py-3">
-          <div className="flex items-center gap-3">
-            {user?.avatarUrl ? (
-              <img
-                src={user.avatarUrl}
-                alt=""
-                className="h-9 w-9 rounded-full object-cover ring-2 ring-crewly-border"
-              />
-            ) : (
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-crewly-green/15 text-sm font-bold text-crewly-green">
-                {user?.name?.[0]?.toUpperCase() || "?"}
+        {/* Responsive header: stacks on sm, tighter on mobile */}
+        <header className="sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-crewly-border bg-crewly-card px-3 py-2.5 sm:px-4 lg:px-6 xl:px-7 sm:py-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+            {/* Hamburger — visible only on <lg */}
+            <button
+              type="button"
+              onClick={() => setMobileNavOpen((v) => !v)}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-crewly-border bg-crewly-bg text-crewly-text transition hover:border-crewly-green lg:hidden"
+              aria-label={mobileNavOpen ? "Close navigation" : "Open navigation"}
+              aria-expanded={mobileNavOpen}
+            >
+              {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+              {user?.avatarUrl ? (
+                <img
+                  src={user.avatarUrl}
+                  alt=""
+                  className="h-8 w-8 sm:h-9 sm:w-9 rounded-full object-cover ring-2 ring-crewly-border shrink-0"
+                />
+              ) : (
+                <div className="flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-full bg-crewly-green/15 text-xs sm:text-sm font-bold text-crewly-green">
+                  {user?.name?.[0]?.toUpperCase() || "?"}
+                </div>
+              )}
+              <div className="min-w-0">
+                <span className="block truncate text-xs sm:text-sm text-crewly-dim">
+                  <span className="font-medium text-crewly-text">{user?.name}</span>
+                </span>
+                <span className="badge mt-0.5 hidden bg-crewly-green/15 text-crewly-green sm:inline-block">
+                  {user?.role?.replace("_", " ")}
+                </span>
+                <span className="block text-[11px] text-crewly-green sm:hidden">
+                  {user?.role?.replace("_", " ")}
+                </span>
               </div>
-            )}
-            <span className="text-crewly-dim">
-              {user?.name}{" "}
-              <span className="badge ml-1 bg-crewly-green/15 text-crewly-green">
-                {user?.role?.replace("_", " ")}
-              </span>
-            </span>
+            </div>
           </div>
-          <div className="flex items-center gap-4">
+
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-3 lg:gap-4">
             <NotificationBell />
             <button
               onClick={handleLogout}
               disabled={loggingOut}
-              className="btn-ghost px-4 py-2 text-sm"
+              className="btn-ghost hidden px-3 py-2 text-xs sm:inline-flex sm:px-4 sm:text-sm"
             >
-              {loggingOut ? "Logging out…" : <><Power className="mr-1 inline h-4 w-4" />Logout</>}
+              {loggingOut ? "Logging out…" : <><Power className="mr-1 hidden h-4 w-4 sm:inline" />Logout</>}
+            </button>
+            {/* Mobile logout icon only */}
+            <button
+              onClick={handleLogout}
+              disabled={loggingOut}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-crewly-border bg-crewly-bg text-crewly-red transition hover:bg-crewly-red/10 sm:hidden"
+              aria-label="Logout"
+              title="Logout"
+            >
+              <Power className="h-4 w-4" />
             </button>
           </div>
         </header>
-        <main className="flex-1 p-7">
-          <SubscriptionStatusBanner />
-          <Outlet />
+
+        {/* Responsive main: tight on mobile, generous on desktop */}
+        <main className="flex-1 p-3 sm:p-4 md:p-6 lg:p-7">
+          <div className="mx-auto w-full max-w-[1600px]">
+            <SubscriptionStatusBanner />
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

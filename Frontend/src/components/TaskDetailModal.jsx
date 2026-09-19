@@ -152,7 +152,7 @@ export default function TaskDetailModal({ taskId, onClose, onChanged }) {
           {task && (
             <>
               {/* people */}
-              <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                 <div className="rounded-xl bg-slate-700/40 p-3">
                   <p className="text-xs font-semibold uppercase text-slate-400">Assigned to</p>
                   <p className="mt-1 font-semibold text-slate-100">{task.assignedTo?.name || '—'}</p>
