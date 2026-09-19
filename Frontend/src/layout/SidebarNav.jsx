@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
@@ -317,12 +317,14 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
     localStorage.setItem("crewly.sidebar.collapsed", String(collapsed));
   }, [collapsed]);
 
+  const prevPathRef = useRef(location.pathname);
   useEffect(() => {
     setQuery("");
-    if (mobile && onClose) {
-      // auto-close drawer on navigation
+    // auto-close drawer only when pathname CHANGES (not on initial mount)
+    if (mobile && onClose && prevPathRef.current !== location.pathname) {
       onClose();
     }
+    prevPathRef.current = location.pathname;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 

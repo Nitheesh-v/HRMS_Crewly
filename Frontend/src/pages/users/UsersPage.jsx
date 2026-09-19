@@ -185,8 +185,8 @@ export default function UsersPage() {
     (!editingSelf && (manages(modal.user?.role) || (canAssignCompanyRoles && isKnownRole(modal.user?.role))));
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-3 sm:p-4 lg:p-6 space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold"><Users className="h-5 w-5" />User Management</h1>
           <p className="text-sm text-crewly-dim">{meta.total} people in your company</p>
@@ -202,15 +202,15 @@ export default function UsersPage() {
         </div>
       )}
 
-      {/* filters */}
-      <div className="card p-4 flex flex-wrap gap-3">
+      {/* filters — stack on mobile, row on desktop */}
+      <div className="card p-3 sm:p-4 flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:gap-3">
         <input
-          className="input flex-1 min-w-[180px]"
+          className="input w-full sm:flex-1 sm:min-w-[180px]"
           placeholder="Search name or email…"
           value={filters.search}
           onChange={(e) => { setPage(1); setFilters((f) => ({ ...f, search: e.target.value })); }}
         />
-        <select className="input" value={filters.role} onChange={(e) => { setPage(1); setFilters((f) => ({ ...f, role: e.target.value })); }}>
+        <select className="input w-full sm:w-auto" value={filters.role} onChange={(e) => { setPage(1); setFilters((f) => ({ ...f, role: e.target.value })); }}>
           <option value="">All roles</option>
           {[...[ROLES.HR_MANAGER, ROLES.MANAGER, ROLES.TEAM_LEAD, ROLES.EMPLOYEE].map((r) => (
             <option key={r} value={r}>{roleLabel(r)}</option>
@@ -219,11 +219,11 @@ export default function UsersPage() {
             <option key={role.code} value={role.code}>{role.name || roleLabel(role.code)}</option>
           ))]}
         </select>
-        <select className="input" value={filters.department} onChange={(e) => { setPage(1); setFilters((f) => ({ ...f, department: e.target.value })); }}>
+        <select className="input w-full sm:w-auto" value={filters.department} onChange={(e) => { setPage(1); setFilters((f) => ({ ...f, department: e.target.value })); }}>
           <option value="">All departments</option>
           {departments.map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}
         </select>
-        <select className="input" value={filters.status} onChange={(e) => { setPage(1); setFilters((f) => ({ ...f, status: e.target.value })); }}>
+        <select className="input w-full sm:w-auto" value={filters.status} onChange={(e) => { setPage(1); setFilters((f) => ({ ...f, status: e.target.value })); }}>
           <option value="">Any status</option>
           <option value="ACTIVE">Active</option>
           <option value="INACTIVE">Inactive</option>
@@ -274,12 +274,12 @@ export default function UsersPage() {
         </table>
       </div>
 
-      {/* pagination */}
-      <div className="flex items-center justify-between text-sm text-crewly-dim">
+      {/* pagination — wrap on mobile */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sm text-crewly-dim">
         <span>Page {meta.page} of {meta.pages}</span>
-        <div className="space-x-2">
-          <button className="btn-ghost" disabled={meta.page <= 1} onClick={() => setPage((p) => p - 1)}>← Prev</button>
-          <button className="btn-ghost" disabled={meta.page >= meta.pages} onClick={() => setPage((p) => p + 1)}>Next →</button>
+        <div className="flex gap-2">
+          <button className="btn-ghost flex-1 sm:flex-none" disabled={meta.page <= 1} onClick={() => setPage((p) => p - 1)}>← Prev</button>
+          <button className="btn-ghost flex-1 sm:flex-none" disabled={meta.page >= meta.pages} onClick={() => setPage((p) => p + 1)}>Next →</button>
         </div>
       </div>
 

@@ -110,8 +110,11 @@ h3 {
   border-radius: 9999px;
 }
 
-/* 1b) Tighten legacy spacing on small — p-7/px-7 becomes fluid */
+/* 1b) Tighten legacy spacing on small — p-6/p-7/px-7 becomes fluid */
 @media (max-width: 640px) {
+  .p-6 {
+    padding: 1rem !important;
+  }
   .p-7 {
     padding: 1rem !important;
   }
@@ -129,6 +132,12 @@ h3 {
   .px-8 {
     padding-left: 1rem !important;
     padding-right: 1rem !important;
+  }
+  /* any flex-wrap filter bar on xs -> full-width inputs */
+  .flex.flex-wrap > .input,
+  .flex.flex-wrap > select.input,
+  .card.flex.flex-wrap > .input {
+    min-width: 0 !important;
   }
 }
 @media (min-width: 640px) and (max-width: 768px) {
@@ -158,9 +167,12 @@ h3 {
   .grid.grid-cols-4:not(.sm\:grid-cols-2):not(.md\:grid-cols-3):not(.lg\:grid-cols-4) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  /* Text that might overflow */
+  /* Text that might overflow — keep sidebar readable */
   .truncate {
-    max-width: 12rem;
+    max-width: 14rem;
+  }
+  aside .truncate {
+    max-width: none;
   }
 }
 
@@ -194,13 +206,19 @@ h3 {
   }
 }
 
-/* 6) Make long words / emails wrap on mobile */
-a,
+/* 6) Make long words / emails wrap on mobile — but NOT sidebar spans (which use truncate) */
 p,
-span,
 td,
-th {
-  overflow-wrap: anywhere;
+th,
+li {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+/* Sidebar labels keep single-line truncation, never wrap */
+aside span.truncate,
+aside .truncate {
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 /* 7) Header / footer safe-area for notched phones */
