@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useMemo, useState, useRef } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { FigmaThemePill } from "../components/ThemeToggle.jsx";
 import {
   BarChart3,
   Bell,
