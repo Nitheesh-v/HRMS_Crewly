@@ -1,5 +1,151 @@
 # PHASE 32 — PRODUCTION INFRASTRUCTURE, SCALABILITY & PERFORMANCE
 
+# 32.11 — Realtime Infrastructure Foundation
+
+Status: **32.11 implemented** (awaiting localhost acceptance).
+INFRASTRUCTURE ONLY — an authenticated, tenant-isolated, bounded realtime
+transport (SSE + normal HTTP commands) that future phases (33+: Chat,
+notifications) build ON. This phase ships **no product**: no Chat, no
+Presence product, no notifications, no AI, no surveillance — and no
+scaffolding for any of them (no models, no product routes, no product
+event names, no employee-online anything).
+
+## REQUIREMENTS / REPO AUDIT (findings, A–G classes)
+
+- **A (must-build):** no realtime layer existed anywhere (`grep` over
+  Backend+Frontend: zero websocket/socket.io/eventsource/sse hits). The
+  API is stateless HTTP; multi-instance hardening (32.2/32.4/32.6/32.7)
+  gave us Redis pub/sub, graceful drain, rate limiting, and cache
+  generation primitives — realtime had to reuse them, not reinvent.
+- **B (identity/tenant):** `protect` derives the user from a VERIFIED JWT
+  (`sub||id`), refuses verifier-principal tokens before any DB read, and
+  kiosk tokens carry no user subject at all — so kiosk/candidate/platform
+  tokens can never pass `protect`. `tenantContext` loads the Company from
+  the SERVER-derived `req.companyId`. Realtime inherits this exact order
+  (auth → tenant → …) and never accepts a client-supplied tenant.
+- **C (transport constraint):** EventSource cannot send headers → the JWT
+  can never ride the stream URL. Solved with an opaque, single-use, 30s
+  ticket issued over normal authenticated HTTP (tradeoff documented in
+  `realtimeTickets.js` — no raw JWT in any URL, log, Redis key, or
+  channel name).
+- **D (connection semantics):** sticky sessions were NOT built. SSE
+  connection persistence ≠ sticky reconnect: a dropped stream reconnects
+  through the stateless ticket flow and can land on ANY instance — every
+  instance learns every connection through shared Redis pub/sub.
+- **E (presence danger):** heartbeat frames are transport liveness ONLY.
+  No `lastActive`/`lastSeen`/availability field exists or is written
+  anywhere in realtime infra (structurally pinned by tests); no
+  employee-online list API or UI exists.
+- **F (existing-law conflicts avoided):** no BullMQ queue for realtime;
+  pub/sub uses DEDICATED ioredis connections (never the cache client,
+  BullMQ, rate limiter, or worker heartbeat — same §21 separation as
+  32.6/32.7); namespaced channel `crewly:<env>:realtime:events`
+  (no PSUBSCRIBE `*`); no `FLUSHALL`-class operations anywhere.
+- **G (no-change):** REST stays authoritative — no product API became a
+  socket command; compression/ETag, middleware order, proxy-trust,
+  serialization contracts: untouched.
+
+## ARCHITECTURE DECISION (explicit, not by popularity)
+
+| Option | Verdict | Why |
+| --- | --- | --- |
+| Raw `ws` (WebSocket) | Deferred | Binary/frame control we do not need yet; own protocol, own reconnect logic, own auth handshake to build and audit. |
+| Socket.IO | Rejected (for now) | A new dependency + client library + its own wire protocol for features (rooms/ack/auto-fallback) this phase does not ship; violates the 32.8/32.9 STOP-gate discipline for zero current need. |
+| **SSE + normal HTTP commands (chosen)** | **Built** | Server→client push is all the foundation needs; commands stay plain authenticated REST (authoritative, rate-limited, auditable). Zero new dependencies (browser-native `EventSource`, server-native `res.write`). Ticket auth fits EventSource's headerless nature cleanly. |
+| Polling | Rejected | Per-request auth/DB cost scales with clients; heartbeat-forever pattern in disguise. |
+
+Native `ws`/Socket.IO remains the documented Phase 33 upgrade path IF a
+product needs bidirectional low-latency transport — the gateway boundary
+(admit/publish/stop) is the seam it would replace.
+
+## FOLDER STRUCTURE (as built)
+
+```
+Backend/src/infrastructure/realtime/
+  realtimeConfig.js        # ONE env flag + code-owned bounds + namespacing
+  realtimeRegistry.js      # bounded process-local connection registry
+  realtimeTickets.js       # single-use 30s tickets in shared Redis (atomic consume)
+  realtimeTicketsRuntime.js# lazy singleton binding (no import-time side effects)
+  realtimeProtocol.js      # envelope build/parse + SSE framing (fail-closed)
+  realtimeGateway.js       # per-process owner: admit/publish/heartbeat/drain
+Backend/src/routes/realtimeRoutes.js   # POST /api/realtime/ticket + GET /api/realtime/stream
+Backend/test/realtimeFoundation.test.js# hermetic foundation suite (23 tests)
+Frontend/src/services/realtime/realtimeClient.js # isolated client service
+Frontend/src/layout/AppLayout.jsx       # 2-line lifecycle wiring only
+```
+
+## WIRE FORMAT & VOCABULARY (infrastructure-only)
+
+- Envelope `{ id, type, companyId, userId, ts, payload }`, hard-capped
+  4096 bytes at build time (throw) and parse time (ignored).
+- Event types exactly `[connection:ready, system:ping, realtime:proof]`;
+  anything else is refused at build and dropped at parse (pinned by
+  tests — `message-*`/`presence-*`/`typing-*` families cannot exist
+  here).
+- Channel `crewly:<env>:realtime:events` — no identities in channel
+  names; ephemeral pub/sub only (no durability, no ordering, no
+  exactly-once claims — duplicates are structurally possible and
+  harmless for this vocabulary).
+
+## BOUNDS & FAILURE SEMANTICS
+
+- Limits: 500 streams/process, 5 streams/user (multi-device), 4 KB
+  envelope, heartbeat 15s — all code-owned in `realtimeConfig.js`; only
+  the enablement flag is env.
+- **Enablement decision (documented per law):** ONE env var
+  `REALTIME_ENABLED`, parsed strictly (exact string `true` — not
+  `Boolean(env)`), **default DISABLED**. 32.11 ships infrastructure
+  before product consumers, so the safe default is off: with the flag
+  unset, ticket/stream fail closed with generic 503s and the rest of the
+  system is byte-identical to 32.10. Redis never appears in frontend env
+  (no `VITE_REDIS_URL` anywhere).
+- Redis down → new streams fail closed (tickets need the shared store),
+  publish degrades to LOCAL-instance delivery, HTTP/Mongo untouched —
+  realtime is ephemeral convenience, never business truth.
+- Drain (§48/§81): SIGTERM → `beginDrain('realtime-drain:<sig>')` →
+  gateway stops accepting, ends every local stream (clients reconnect
+  elsewhere with backoff), closes owned pub/sub connections — then the
+  unchanged 32.2 shutdown proceeds. Generic close semantics; no custom
+  close codes.
+- No heartbeat writes to Mongo — heartbeats are in-process timer ticks
+  writing an SSE comment frame.
+
+## VERIFICATION (sandbox; hermetic — no real Redis/Mongo needed)
+
+- `test/realtimeFoundation.test.js`: **23/23 pass** — config parsing
+  (strict flag), protocol (vocabulary + 4 KB bounds + malformed-frame
+  safety with a POSITIVE control proving the injection harness is real),
+  registry (both caps + removal-frees-capacity), tickets (shape, TTL
+  binding, atomic MULTI consume, no-store-touch on malformed shapes),
+  and TWO logical gateway instances on an in-memory bus proving:
+  cross-instance fan-out (tenant A event reaches tenant A connections on
+  BOTH instances; tenant B receives NOTHING), targeted-user delivery,
+  heartbeat comment frames with zero presence semantics, bounded drain
+  (idempotent stop, owned connections closed), and Redis-down local-only
+  degradation via rejecting stub connections (never live ioredis in
+  tests).
+- Structural pins: no User model / presence vocabulary / product event
+  names anywhere in realtime infra; route surface is exactly
+  ticket+stream; `beginDrain` composition pinned in `server.js`.
+- **Full `npm run test:all`: 2013/2013 pass, 0 fail** (32.10 baseline
+  1990 + 23 new = 2013 — exact delta). Honest note: the FIRST full run
+  reported one failure that did not reproduce in two subsequent
+  complete runs (both clean 2013/2013/0); no flake was observed in the
+  realtime suite itself across many runs.
+- Frontend: `eslint` clean on touched files; `vite build` green. Zero
+  new Frontend dependencies (browser-native `EventSource`); zero new
+  Backend dependencies.
+
+## NO-CHANGE REGISTRY (verified, left alone deliberately)
+
+- No sticky sessions, no session affinity config, no new middleware
+  order, no compression/ETag change, no proxy-trust change.
+- No Mongo model created (connection state is process-local + Redis
+  TTLs only); no employee-online list; no publish-any-topic or debug
+  broadcast HTTP endpoint (publish is an internal/test seam).
+- REST unchanged and authoritative; BullMQ/cache/rate-limit connection
+  semantics untouched (realtime uses its own two dedicated connections).
+
 # 32.10 — API Performance & Response Optimization
 
 Status: **32.10 implemented** (awaiting localhost acceptance).

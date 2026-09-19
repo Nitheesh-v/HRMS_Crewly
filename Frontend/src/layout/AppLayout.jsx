@@ -9,6 +9,7 @@ import { Power } from "lucide-react";
 import SidebarNav from "./SidebarNav.jsx";
 import { useEffect, useState } from "react";
 import { useDispatch } from "react-redux";
+import { startRealtimeSession, stopRealtimeSession } from "../services/realtime/realtimeClient.js";
 import { fetchMyPermissions } from "../redux/slices/PermissionSlices.js";
 
 
@@ -200,6 +201,14 @@ const AppLayout = () => {
       dispatch(fetchMyPermissions());
     }
   }, [dispatch, userId]);
+
+  // Phase 32.11: the app-session realtime stream lives and dies with the
+  // authenticated shell (single connection; closed on logout/account switch).
+  useEffect(() => {
+    if (!userId) return undefined;
+    startRealtimeSession();
+    return () => stopRealtimeSession();
+  }, [userId]);
 
   const handleLogout = async () => {
     setLoggingOut(true);

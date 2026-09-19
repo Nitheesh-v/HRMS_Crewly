@@ -28,11 +28,15 @@ import {
 } from './utils/permissionService.js';
 import {
   markReady,
+  beginDrain,
 } from './config/lifecycle.js';
 import {
   createGracefulShutdown,
 } from './utils/gracefulShutdown.js';
 import { closeAllQueues } from './queues/queueFactory.js';
+import {
+  getRealtimeGateway,
+} from './infrastructure/realtime/realtimeGateway.js';
 
 const startServer = async () => {
   try {
@@ -93,6 +97,12 @@ const startServer = async () => {
     // Start the daily subscription lifecycle worker.
     startSubscriptionLifecycle();
 
+    // Phase 32.11 — realtime infrastructure foundation (default OFF).
+    // Starts only when REALTIME_ENABLED=true; otherwise a logged no-op.
+    // Integrated topology: realtime rides this API process and scales
+    // with it (multi-instance fan-out is shared Redis pub/sub).
+    await getRealtimeGateway().start();
+
     // Phase 32.2 — graceful lifecycle: drain first (readiness 503 +
     // app-level gate), bounded close of HTTP + owned resources.
     // Idempotent across repeated signals; SIGINT (local Ctrl+C) uses
@@ -107,11 +117,23 @@ const startServer = async () => {
       disconnectMongo: () => mongoose.disconnect(),
     });
 
+    // 32.11 drain composition: flip readiness FIRST (idempotent 32.2
+    // transition), then end realtime streams + close the gateway's
+    // pub/sub connections so server.close() is never held open by SSE
+    // responses — then the standard bounded 32.2 shutdown runs unchanged.
+    const shutdownWithRealtime = (signal) => {
+      beginDrain(`realtime-drain:${signal}`);
+      Promise.resolve()
+        .then(() => getRealtimeGateway().stop())
+        .catch(() => {})
+        .finally(() => shutdown(signal));
+    };
+
     [
       'SIGTERM',
       'SIGINT',
     ].forEach((signal) => {
-      process.on(signal, () => shutdown(signal));
+      process.on(signal, () => shutdownWithRealtime(signal));
     });
 
     process.on(

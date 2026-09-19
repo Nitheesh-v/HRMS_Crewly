@@ -2,6 +2,7 @@ import { Router } from "express";
 import { auditTrail } from "../middlewares/auditTrail.js";
 import { platformUsage } from "../middlewares/platformUsage.js";
 import healthRoutes from "./healthRoutes.js";
+import realtimeRoutes from "./realtimeRoutes.js";
 
 import authRoutes from "./authRoutes.js";
 import companyRoutes from "./companyRoutes.js";
@@ -172,6 +173,10 @@ router.use("/notification-prefs", notificationPrefRoutes);
 
 // Notifications and permission-matrix endpoints.
 router.use("/", systemRoutes);
+
+// Phase 32.11 — realtime infrastructure surface (ticket + SSE stream).
+// Handlers are inert (503) unless REALTIME_ENABLED=true at boot.
+router.use("/realtime", realtimeRoutes);
 
 // Existing self-service routes are mounted at API root.
 router.use("/", selfServiceRoutes);
