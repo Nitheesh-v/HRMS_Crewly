@@ -1,5 +1,81 @@
 # PHASE 32 — PRODUCTION INFRASTRUCTURE, SCALABILITY & PERFORMANCE
 
+# 32.9 — Frontend Performance
+
+Status: **32.9 implemented** (awaiting localhost acceptance). MEASURE →
+IDENTIFY REAL COST → OPTIMIZE → MEASURE AGAIN. Zero new dependencies.
+
+## BEFORE BASELINE (production `vite build`, this sandbox)
+
+Build ✅ 1.30s, 260 assets, 3.1 MB. **Initial load = 564K raw / ~154 KB
+gz**: entry `index` 353,277 raw / 104,786 gz + rolldown-runtime 694 +
+jsx-runtime 7,899 + axios 47,135 / 17,657 gz + api 27,041 / 9,952 gz +
+createLucideIcon 1,429 + CSS 126,277 / 18,129 gz. Lint baseline: 134
+problems (115 errors / 19 warnings — ALL pre-existing legacy files).
+
+## ROUTE ARCHITECTURE (current truth — not the historical 153)
+
+157 `element=` routes; **135 were already `lazy()`** (careers, BGV
+verifier, candidate portals, attendance, payroll, recruitment, super
+admin pages, kiosk). Eager set was: 7 layouts, 4 guards, **BillingPage**
+and **SuperAdminLayout**. Suspense fallback: one consistent dark
+`Loading…` (kept). No external webfonts; public assets 116 KB; Backend
+serves no frontend (Vite dev proxy + hashed build).
+
+## AUDIT FINDINGS (A/B/C/D/E/F)
+
+- **A (already good):** kiosk lazy + `qrcode` isolated to
+  `QrChallengesPage` chunk; attendance polling law intact (45s,
+  visible-tab only, focus refresh, full cleanup — verified
+  Operations/Team/Presence); dashboards use single-load +
+  bounded-poll (NO duplicate-request bug found); tables server-paged
+  (no virtualization needed); no chart/PDF library in the bundle
+  (`pdfkit` never imported in Frontend — proven, removed from deps);
+  Lucide named imports tree-shake; guards eager+deterministic.
+- **B → fixed in 32.9:** `SuperAdminLayout` (430 lines +
+  superAdminService) and `BillingPage` (481 lines + billingService)
+  were eagerly in the entry — every tenant user downloaded platform
+  admin + billing code they can never reach. Both are now `lazy()`
+  with guards REMAINING EAGER (RequireAuth/RequireRole deterministic —
+  no permission behavior change; frontend chunks were never a security
+  boundary). Also: unused `Navigate`/router import removed from
+  `RequirePermission` (pre-existing lint error).
+- **C (measured, not worth complexity):** AttendancePage 1s display
+  clock tick + AttendanceTeamPage 15s duration tick re-render bounded
+  server-paged views; CandidateDetailPage 96K chunk (lazy family,
+  single navigation cost).
+- **D → 32.10:** no request-cancellation framework added (no stale-
+  response bug found in audited pages).
+- **E → 32.16:** CDN/cache-control of built assets.
+- **F → 32.18:** flat legacy page clusters; CandidateDetailPage
+  mega-page split.
+
+## AFTER MEASUREMENTS (same machine, same command)
+
+Build ✅ 1.12s, 271 assets. Entry **329,075 raw / 99,114 gz**
+(−24.2K raw / −5.7K gz vs BEFORE). Initial load **538K raw / ~148 KB
+gz** (−26K raw / −5.6K gz). `SuperAdminLayout-*.js` and
+`BillingPage-*.js` are now standalone lazy chunks — verified by
+content markers: "Platform alerts" and `/billing/plans` +
+`/billing/subscription` endpoints are OUT of the entry chunk and IN
+their feature chunks. Chunk count 260→271 (expected boundary split —
+initial-load separation improved; not "app got smaller"). Lint AFTER:
+133 problems (114 errors / 19 warnings) — zero new; one pre-existing
+error removed.
+
+**Honest claims only:** the entry chunk reduced from 353.3K to 329.1K
+raw (104.8K→99.1K gz); Super Admin shell + Billing page code now load
+only on their routes; no runtime-speed claims are made (no load-testing
+in this phase — 32.13).
+
+## NO-CHANGE REGISTRY (verified, left alone deliberately)
+
+manualChunks (none — natural boundaries suffice, §46); StrictMode
+(dev-only double-mount diagnostic, kept, effects idempotent);
+Suspense fallback (consistent); source maps (unchanged policy);
+no SW/PWA; no prefetch; no memoization churn (§55); polling
+frequency untouched (§23/§51 — realtime is 32.11).
+
 # 32.8 — Object Storage, Upload & Static Asset Scaling
 
 Status: **32.8 implemented** (awaiting localhost acceptance). MongoDB

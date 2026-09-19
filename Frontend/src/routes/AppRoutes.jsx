@@ -7,7 +7,7 @@ import { Suspense, lazy } from "react";
 
 import PublicLayout from "../layout/PublicLayout.jsx";
 import AppLayout from "../layout/AppLayout.jsx";
-import SuperAdminLayout from "../layout/SuperAdminLayout.jsx";
+const SuperAdminLayout = lazy(() => import("../layout/SuperAdminLayout.jsx")); // 32.9: platform shell only for platform users
 import CareerPublicLayout from "../layout/CareerPublicLayout.jsx";
 const CareerLandingPage = lazy(() => import("../pages/careers/CareerLandingPage.jsx"));
 const CareerJobsPage = lazy(() => import("../pages/careers/CareerJobsPage.jsx"));
@@ -129,7 +129,7 @@ const ExitProcessPage = lazy(() => import("../pages/exit/ExitProcessPage.jsx"));
 
 const CompanyProfilePage = lazy(() => import("../pages/company/CompanyProfilePage.jsx"));
 
-import BillingPage from  "../pages/billing/BillingPage.jsx"
+const BillingPage = lazy(() => import("../pages/billing/BillingPage.jsx")); // 32.9: one route, out of the entry chunk
 const SubscriptionPage = lazy(() => import("../pages/billing/SubscriptionPage.jsx"));
 
 const GovernancePage = lazy(() => import("../pages/governance/GovernancePage.jsx"));

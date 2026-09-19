@@ -1,6 +1,3 @@
-import {
-  Navigate,
-} from 'react-router-dom';
 import usePermission from '../hooks/usePermission.js';
 
 const RequirePermission = ({
