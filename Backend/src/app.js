@@ -7,6 +7,7 @@ import { isDraining } from './config/lifecycle.js';
 import { requestIdMiddleware } from './infrastructure/observability/requestContext.js';
 import { httpObservabilityMiddleware } from './infrastructure/observability/httpObservability.js';
 import { initPerfTiming, perfTiming } from './middlewares/perfTiming.js';
+import { apiCachePolicyMiddleware } from './middlewares/apiCachePolicy.js';
 import notFound from './middlewares/notFound.js';
 import errorHandler from './middlewares/errorHandler.js';
 import routes from './routes/index.js';
@@ -206,6 +207,11 @@ app.use((req, res, next) => {
 
   next();
 });
+
+// Phase 32.16 — default-deny cache policy for every /api/* response
+// (private, no-store). Explicit controller headers win. See
+// middlewares/apiCachePolicy.js + config/staticDeliveryPolicy.js.
+app.use(apiCachePolicyMiddleware);
 
 // Every backend route is mounted under /api.
 app.use('/api', routes);

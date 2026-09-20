@@ -1,5 +1,52 @@
 # PHASE 32 — PRODUCTION INFRASTRUCTURE, SCALABILITY & PERFORMANCE
 
+# 32.16 — CDN, Edge & Static Delivery
+
+Status: **32.16 implemented** (awaiting localhost acceptance).
+Makes Crewly's frontend/static delivery **ready for production CDN/edge
+deployment WITHOUT selecting a vendor**. CDN provider: **NOT SELECTED**.
+No DNS change, no production deployment, no provider configuration, zero
+new dependencies, no route changes.
+
+**Shipped this phase (all repo-verified):**
+- `Backend/src/config/staticDeliveryPolicy.js` — the provider-neutral
+  cache-policy matrix as data (`CREWLY` vs `FUTURE_CDN_HOST` ownership
+  per row): hashed assets immutable one-year, `index.html` no-cache,
+  public non-versioned short-cache, everything `/api/*` default-deny.
+- `Backend/src/middlewares/apiCachePolicy.js` + app.js mount — every
+  `/api/*` response now carries `Cache-Control: private, no-store,
+  max-age=0` by default (explicit controller headers win). Closes the
+  gap where payslip PDFs/ZIPs, payroll/analytics/timesheet/audit
+  exports, F&F documents, kiosk API and public-careers JSON carried
+  **no** cache directive at all.
+- `Frontend/src/components/ChunkLoadErrorBoundary.jsx` — chunk-load
+  failures (old tab + new deployment + retired chunks) now show a
+  user-visible reload affordance instead of a white screen; **never**
+  auto-reloads; genuine bugs surface unchanged; lazy loading untouched.
+- `Frontend/vite.config.js` — `preview.proxy` for `/api` (localhost
+  acceptance only; preview is NOT the CDN, headers are NOT the contract).
+- `Backend/test/staticDelivery.test.js` — 20 hermetic tests: matrix pins,
+  middleware behavior, **behavioral pin that Express `res.download()`
+  cannot clobber a pre-set private header**, SSE no-store pin, SPA/404
+  contract pins, no-private-file-in-public pin, no-auto-reload pin.
+- `docs/PHASE_32_16_CDN_EDGE_STATIC_DELIVERY.md` — full contract
+  (topology, classification, header matrix, compression ownership,
+  DNS/HTTPS models, SSE edge requirements, asset-before-HTML ordering,
+  retention/rollback, cache-key/poisoning principles, deferred provider
+  work).
+- `docs/PHASE_32_16_LOCALHOST_ACCEPTANCE_GUIDE.md` — PowerShell/browser
+  walkthrough.
+
+**Standing laws honored:** no vendor (Cloudflare/CloudFront/Azure/GCP/
+Vercel/Netlify/Fastly/Akamai/Bunny or any other) configured or implied;
+no DNS; no production; private HR files never public CDN content
+(32.8 preserved); authenticated + token + kiosk + QR business responses
+never shared-cached; no service worker added (none exists); no
+`.gz`/`.br` committed; API compression stays deferred to edge (32.10);
+CORS stays an explicit allowlist; HSTS/CSP deferred to 32.17.
+
+---
+
 # 32.15 — Environment & Production Deployment Architecture
 
 Status: **32.15 implemented** (awaiting localhost acceptance).
