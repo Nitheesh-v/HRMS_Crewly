@@ -1,5 +1,44 @@
 # PHASE 32 — PRODUCTION INFRASTRUCTURE, SCALABILITY & PERFORMANCE
 
+# 32.17 — Production Security Hardening
+
+Status: **32.17 implemented** (awaiting localhost acceptance).
+Adversarial re-test of the completed Phase-32 production infrastructure,
+hermetically — no Production targets, no destructive tooling, zero new
+dependencies. **Verdict: no verified Phase-32 security defects** (the
+S32-17 defect register is empty by honesty — every probe passed; two
+mid-run test failures were proven test artifacts, fixed in the test).
+
+**Shipped this phase:**
+- `Backend/test/phase32SecurityAdversarial.test.js` — 20 behavioral
+  attacks on the COMPOSED surfaces: cache default-deny vs extension
+  deception (`/api/x.css`) / errors / 404s · health body-shape
+  disclosure (liveness keys exact; readiness label-only; legacy always
+  200) · forged rotating X-Forwarded-For vs limiter identity (ONE
+  bucket untrusted; distinct only under declared loopback trust) ·
+  `req.secure` spoof refused · SSE `?ticket=` and all query strings
+  stripped from log URLs · Bearer/JWT/credentialed-URI/log-injection
+  scrubbed · unknown job fails loudly; registry infrastructure-only ·
+  no static mounts / cookie writes / `FAIL_*`+`CHAOS_*` toggles /
+  innerHTML · load-tool production refusal pin · 10kb bounds pin ·
+  GET-never-finalizes route scan · frontend raw-HTML scan.
+- `docs/PHASE_32_17_SECURITY_HARDENING.md` — full S-01…S-25 threat
+  matrix with per-row defense/test/result, empty defect register,
+  security-header audit (nosniff, SAMEORIGIN+frame-ancestors,
+  referrer-policy no-referrer — token-URL-safe, HSTS **without
+  preload**, CSP-on-JSON inert + static-host CSP template), cookie/
+  open-redirect/host-header audits, known limitations.
+- `docs/PHASE_32_17_LOCALHOST_ACCEPTANCE_GUIDE.md` — PowerShell/browser
+  walkthrough (safety-first: localhost only).
+
+**Standing outcomes:** auth/tenant/RBAC/org-scope, private files,
+token routes, kiosk/QR, payroll, BGV, cache isolation, queue trust,
+realtime isolation, observability redaction, developer-tool safety,
+deployment config and CDN cache privacy all RE-VERIFIED — Phase-32
+speed work weakened nothing. No surveillance capability introduced.
+
+---
+
 # 32.16 — CDN, Edge & Static Delivery
 
 Status: **32.16 implemented** (awaiting localhost acceptance).
