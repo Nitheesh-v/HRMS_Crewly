@@ -8,6 +8,10 @@ export default defineConfig({
   ],
   server: {
     port: 5173,
+    // Arena live-preview support in development only (mirrors the
+    // backend's dev-only e2b CORS allowance in src/app.js). Production
+    // static hosting is a separate layer and unaffected.
+    allowedHosts: ['.e2b.app'],
     proxy: {
       '/api': {
         target: 'http://localhost:5000',

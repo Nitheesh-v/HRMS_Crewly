@@ -38,3 +38,69 @@ body {
     @apply inline-block rounded-full px-3 py-1 text-xs font-semibold;
   }
 }
+/* ════════════════════════════════════════════════════════════════════════
+   Phase: Auth redesign — login / register / forgot / reset (design-mock set)
+   Self-contained: no external font/CDN requests (system-ui stack).
+   ════════════════════════════════════════════════════════════════════════ */
+
+.auth-input {
+  width: 100%;
+  border-radius: 0.625rem;
+  border: 1px solid rgb(51 65 85 / 0.9); /* slate-700 */
+  background: rgb(15 23 42 / 0.6);       /* slate-900/60 */
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: #e2e8f0;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+.auth-input::placeholder {
+  color: rgb(100 116 139); /* slate-500 */
+}
+.auth-input:focus {
+  outline: none;
+  border-color: #34d399; /* emerald-400 */
+  box-shadow: 0 0 0 3px rgb(52 211 153 / 0.15);
+}
+
+.auth-primary {
+  width: 100%;
+  border-radius: 0.625rem;
+  background: #ffffff;
+  color: #0b1120;
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.8rem 1rem;
+  transition: opacity 150ms ease, transform 80ms ease;
+}
+.auth-primary:hover:not(:disabled) {
+  opacity: 0.92;
+}
+.auth-primary:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.auth-primary:disabled {
+  background: rgb(51 65 85 / 0.7); /* slate-700 — the mock's idle button */
+  color: rgb(148 163 184);
+  cursor: not-allowed;
+}
+
+.auth-secondary {
+  width: 100%;
+  border-radius: 0.625rem;
+  border: 1px solid rgb(71 85 105);
+  color: #e2e8f0;
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.8rem 1rem;
+  transition: border-color 150ms ease, color 150ms ease;
+}
+.auth-secondary:hover {
+  border-color: #34d399;
+  color: #34d399;
+}
+
+/* Concentric wave pattern behind the centered auth screens (inline SVG —
+   no external request). */
+.auth-wave-bg {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='420' viewBox='0 0 420 420'%3E%3Cg fill='none' stroke='%231e293b' stroke-width='1' opacity='0.35'%3E%3Ccircle cx='0' cy='420' r='60'/%3E%3Ccircle cx='0' cy='420' r='110'/%3E%3Ccircle cx='0' cy='420' r='160'/%3E%3Ccircle cx='0' cy='420' r='210'/%3E%3Ccircle cx='0' cy='420' r='260'/%3E%3Ccircle cx='0' cy='420' r='310'/%3E%3Ccircle cx='420' cy='0' r='60'/%3E%3Ccircle cx='420' cy='0' r='110'/%3E%3Ccircle cx='420' cy='0' r='160'/%3E%3Ccircle cx='420' cy='0' r='210'/%3E%3Ccircle cx='420' cy='0' r='260'/%3E%3Ccircle cx='420' cy='0' r='310'/%3E%3C/g%3E%3C/svg%3E");
+}
