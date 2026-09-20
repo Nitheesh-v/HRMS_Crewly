@@ -1,5 +1,52 @@
 # PHASE 32 — PRODUCTION INFRASTRUCTURE, SCALABILITY & PERFORMANCE
 
+# 32.15 — Environment & Production Deployment Architecture
+
+Status: **32.15 implemented** (awaiting localhost acceptance).
+Formalizes how Crewly is **configured, validated, deployed and rolled
+back** across DEVELOPMENT / STAGING / PRODUCTION. **No vendor is
+selected, no production environment is deployed or connected, no
+infrastructure is provisioned.** Zero new dependencies; `npm run dev`
+untouched; no route changes (health routes untouched); no file moves
+(32.18 owns restructuring).
+
+**Shipped this phase (all repo-verified):**
+- `Backend/src/config/env.js` — production fail-fast gate via the pure
+  `validateProductionConfig(source)`: in production a **real** JWT_SECRET
+  is mandatory (the dev default `'dev_secret_change_me'` is refused;
+  <32 chars refused); missing `MONGO_URI` exits — errors name variables,
+  **never values**. Dev/test behavior unchanged.
+- `Backend/scripts/config-check.js` + `npm run config:check` — **offline**
+  pre-flight (no mongo/redis/HTTP imports, test-pinned). Exit 0/1/2.
+  `--production` enforces the same secret law. Output is
+  `NAME: configured|missing|invalid(reason)` — never values/lengths.
+- `Backend/.env.example` — inventory completed (+ the 17 code-used names
+  that were undocumented: realtime flag, proxy-trust set, cache TTLs,
+  bounded token lifetimes, bootstrap identities, private-storage dir).
+  Placeholders only.
+- `Backend/test/deploymentConfig.test.js` — 29 hermetic tests:
+  production guard, strict parsers, config-check spawn/exit codes,
+  secret-leak refusal, env-drift pin, VITE-public-only pin,
+  no-destructive-index pin, env-namespace pin, deterministic-start pin.
+- `docs/PHASE_32_15_DEPLOYMENT_ARCHITECTURE.md` — the 21-topic
+  architecture of record (topology, process types, config surface,
+  startup semantics, expand/contract ordering, index/TTL/backfill
+  policy, vendor-neutral capability expectations, staging policy,
+  conceptual CI/CD with manual gate, checklists, rollback).
+- `docs/PHASE_32_15_LOCALHOST_ACCEPTANCE_GUIDE.md` — the PowerShell
+  walkthrough for this phase's localhost validation.
+
+**Standing laws honored:** vendor-neutral throughout; three separate
+Mongo databases; per-env Redis/BullMQ/cache/rate-limit/realtime
+namespaces (staging can never consume production jobs); three process
+types only (realtime integrated); at-least-once queues (never flush to
+deploy); no destructive `syncIndexes`/dedupe in production; TTL changes
+treated as data-deleting; TLS required / never `rejectUnauthorized:false`;
+no CORS `*`; no Docker/K8s/PM2/CI added; production deploy stays a
+manual-approval concept; load/failure tooling stays out of production.
+
+---
+
 # 32.14 — Backpressure, Failure & Recovery Testing
 
 Status: **32.14 implemented** (awaiting localhost acceptance).
