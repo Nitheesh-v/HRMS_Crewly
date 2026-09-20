@@ -1,5 +1,134 @@
 # PHASE 32 — PRODUCTION INFRASTRUCTURE, SCALABILITY & PERFORMANCE
 
+# 32.14 — Backpressure, Failure & Recovery Testing
+
+Status: **32.14 implemented** (awaiting localhost acceptance).
+Adversarial proof that failure is **bounded, diagnosable and recoverable
+without violating business/security invariants** — deterministic,
+hermetic injection only. No production chaos tooling, no chaos HTTP
+endpoints, no `FAIL_*`/`CHAOS_*` runtime flags (structurally pinned),
+zero new dependencies. **BullMQ remains at-least-once — nothing here
+claims exactly-once.**
+
+## FAILURE MATRIX (F-01…F-15; A = already proven by an existing suite, B = built here)
+
+| # | Failure | Injected phase | Expected behavior | Signal | Class |
+| --- | --- | --- | --- | --- | --- |
+| F-01 | Redis unavailable | cache/limiter/queue/realtime startup | cache fails open to Mongo; limiter degrades to per-process buckets (protection continues); enqueue reports truthfully; realtime degrades local-only + tickets fail closed; readiness stays 200 (fail-open arch) | `[Redis]` safe logs, getRedisHealth | A (redisFoundation, cacheMultiInstance, distributedRateLimit, emailDelivery, realtimeFoundation, healthLifecycle) |
+| F-02 | Redis slow | limiter ops | bounded op-timeout → documented degraded policy; never hangs a request | `[RateLimit]` degraded warn (throttled) | A (rateLimitStore circuit + timeout) |
+| F-03 | Mongo unavailable | readiness/authorization | readiness 503 `database_unavailable`; liveness 200; **stale cache never authorizes a mutation** | health JSON, 32.12 logs | A (healthLifecycle) + B pin (cache law) |
+| F-04 | API #1 terminated (graceful) | drain | readiness 503 during drain; API #2 serves the same JWT — no sticky sessions | lifecycle logs, X-Request-ID | A (healthLifecycle) + B (failover test) |
+| F-04b | API dies MID-REQUEST (hard) | response in flight | client observes a broken response — **never a fabricated success**; a fresh instance serves the next request | client error; ambiguous-request law documented | **B (child-process harness)** |
+| F-05 | Worker terminated mid-job | after claim/partial step | job retries (at-least-once); business result exists exactly ONCE; bounded attempts | `[Worker]` failed/retry logs, corr id | **B (deterministic harness)** + A (lease single-flight in processingQueue) |
+| F-06 | SMTP unavailable/auth-fail | send | transient → retry (bounded 5×exp2s); auth/config → terminal, no retry | lastFailureCategory | A (emailDelivery, multiWorkerSafety) |
+| F-07 | BullMQ enqueue failure | dispatch | **truthful**: `FAILED_TO_QUEUE` + `QUEUE_UNAVAILABLE`, Mongo intent remains the reconciliation target — never a false "queued" | delivery record, reconcile | A (emailDelivery) + B (never-throws pin) |
+| F-08 | Object storage unavailable | upload/worker | no false durable metadata; production without provider refuses (503); DB never claims an upload that failed | safe storage categories | A (privateStorageServices) |
+| F-09 | Object storage slow | upload/download | provider-timeout config = deployment concern (do not blind-shorten) | — | F (deferred → 32.15 runbook) |
+| F-10 | Retry storm | downstream outage | attempts bounded (3 default / 5 email), exponential backoff ≥1s, retention capped, terminal failures do NOT consume retries | job options, failed count | **B (bounds pins)** + A (terminal-first-attempt in processingQueue) |
+| F-11 | Stale delayed job | after business state changed | `STALE_*` SKIP / version-check supersede — no stale send/mutation | SKIPPED results | A (scheduledJobs) + **B (interview version test)** |
+| F-12 | Duplicate equivalent delivery | at-least-once redelivery | deterministic job ids; **terminal email state is write-once** — a duplicate cannot flip SENT/FAILED | delivery record | A (dispatch idempotency) + **B (terminal guard)** |
+| F-13 | Realtime pub/sub outage | cross-instance fan-out | delivery degrades LOCAL-only; HTTP/Mongo business state unaffected; new streams fail closed | gateway diagnostics | A (realtimeFoundation) |
+| F-14 | API #1 drains, #2 healthy | SIGTERM | drain ordering (32.2) unchanged; #2 unaffected | lifecycle | A (healthLifecycle) |
+| F-15 | Failure observability | any | requestId/correlation + safe classification; **no URIs/tokens/PII in failure logs** | 32.12 records | **B (serializer + toggle pins)** |
+
+## BACKPRESSURE & RETRY FINDINGS (§8/§33–§37/§65)
+
+- Existing controls verified sufficient; **no global admission control,
+  no circuit-breaker dependency, no new queues** (evidence: bounded
+  producer paths, BullMQ count-based monitoring, per-queue retention
+  caps, worker concurrency clamps).
+- Retry policy: default 3 attempts / 1s exponential; email 5 / 2s;
+  resume 3 / 2s; terminal classifications settle without consuming
+  retries. Retention capped (complete 100 / failed 500). No unbounded
+  attempts anywhere (structural pin).
+- Backlog drills remain the opt-in `ops:load-check` (isolated prefix,
+  bounded); same-machine results are environment observations only.
+
+## CORRECTNESS INVARIANTS (§3 — pinned by this phase)
+
+- Hard process death can never yield a client-visible success body.
+- A retried/duplicated job cannot flip a write-once terminal state.
+- A cross-tenant mark is structurally refused (compound `_id`+`companyId`
+  filter — asserted with a hostile mismatch).
+- Retry counts are bounded everywhere; terminal exhaustion settles.
+- **Cache never becomes authorization authority** — it accelerates
+  reads; authorization always resolves through the DB-backed permission
+  service; Mongo-down means fail-safe, never stale-authorize.
+- No chaos endpoints/flags: `/debug/crash`, `/api/kill`, `FAIL_*`,
+  `CHAOS_MODE` et al. are structurally absent.
+
+## PRELIMINARY RECOVERY RUNBOOKS (§108 — consolidated in 32.18; no credentials anywhere)
+
+**REDIS (cache/limiter/realtime/queues):** DETECT via `/api/health`
+redis state + `[Redis]`/`[RateLimit]` throttled warns. DEGRADED IMPACT:
+cache misses hit Mongo (slower, correct); limiting becomes per-process;
+realtime fan-out local-only; NEW email enqueues land in
+`FAILED_TO_QUEUE` (reconcile after restore). RESTORE: restart/re-enable
+Redis per deployment docs — never FLUSHALL/FLUSHDB. VERIFY: health redis
+`up`; limiter shared warns stop; queue:check passes; run email
+reconcile; enqueue a harmless job.
+
+**MONGO (authoritative state):** DETECT via readiness 503
+`database_unavailable`. IMPACT: business mutations correctly unavailable
+— **do not bypass via caches; fail-safe is correct.** RESTORE per
+deployment docs. VERIFY: readiness 200; login; one read + one write per
+critical domain; audit logs intact.
+
+**WORKER:** DETECT via Background Operations heartbeat OFFLINE/stale.
+IMPACT: queues accumulate (bounded by producers). RESTORE: start a
+replacement worker (`npm run worker`); at-least-once redelivery resumes
+in-flight jobs safely (proven). VERIFY: heartbeat ONLINE; backlog drains
+(queue counts); no duplicate business outcomes (idempotency suite).
+
+**SMTP:** DETECT via delivery records `lastFailureCategory`
+(SMTP_CONNECTION_ERROR/SMTP_TIMEOUT retryable; auth/config terminal).
+RESTORE provider/config. VERIFY: email reconcile re-queues retryables;
+terminals stay terminal; no real bulk sends during verification.
+
+**STORAGE:** DETECT via safe categories (UPLOAD/DOWNLOAD/DELETE_FAILED,
+PROVIDER_UNAVAILABLE). IMPACT: no durable metadata is created for failed
+uploads; prior valid files are untouched. RESTORE provider. VERIFY:
+upload path works; failed-operation records reconcile; nothing fell
+back to public URLs.
+
+**REALTIME:** DETECT via gateway logs + diagnostics counters. IMPACT:
+fan-out degrades local-only; business HTTP state unaffected. RESTORE
+Redis; streams reconnect with fresh tickets. VERIFY: connection:ready;
+cross-instance proof event (32.11 test flow) — infrastructure events
+only.
+
+## VERIFICATION (this sandbox; hermetic)
+
+- `test/failureRecovery.test.js`: **23/23** — API failover (stateless
+  token across fresh logical instances; per-instance request ids), hard
+  mid-response death via the child-process harness (broken response,
+  never fabricated success; fresh instance serves next; harness is
+  loopback-only, self-exiting, Windows-safe), worker mid-job death →
+  bounded retry → single business commit + final-attempt exhaustion
+  contract, write-once terminal email guard + cross-tenant refusal +
+  legit-path-not-over-broad, stale interview-reminder version supersede,
+  retry-storm bounds pins, Mongo-write-failure truthfulness
+  (queued:false, never-throwing wrapper), cache-never-authorizes
+  structural law, failure-observability serializer pins, no-chaos-flag
+  structural pins, at-least-once documentation law.
+- Known nondeterminism note: the mock-based runner suites
+  (`loadTooling`) had one earlier flake pattern; `failureRecovery` uses
+  deterministic injection only (fixed fixtures, no timing races beyond
+  bounded child-process waits).
+- **Full `npm run test:all`: see handoff — exact current totals
+  reported there.** BLOCKED ≠ PASS is honored: sandbox has no
+  mongod/Redis, so LIVE failure drills (two-API failover, worker loss,
+  backlog) are developer-executed via
+  `docs/PHASE_32_14_LOCALHOST_ACCEPTANCE_GUIDE.md`.
+
+## NO-CHANGE / DEFERRED
+
+Product runtime untouched this phase (tests + docs + one gitignore-era
+script entry only). Deferred: storage-provider timeout policy (32.15
+deployment config), full chaos/timeout campaigns against real services
+(approved staging only, 32.15+), runbook consolidation + final structure
+audit (32.18).
+
 # 32.13 — Load Testing & Capacity Validation
 
 Status: **32.13 implemented** (awaiting localhost acceptance).
