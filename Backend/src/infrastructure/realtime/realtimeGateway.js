@@ -64,10 +64,60 @@ const attachDedicatedRedisLogging = (connection, label, log) => {
   });
 };
 
+// Bounded wait for a dedicated connection's 'ready' event. Stubs (no
+// status, or no event emitter) are treated as already ready — the
+// hermetic suite injects plain objects. Real ioredis connections start
+// at status 'connecting' and must be waited out before any command.
+const awaitConnectionReady = (connection, timeoutMs) =>
+  new Promise((resolve, reject) => {
+    if (!connection || connection.status == null || connection.status === 'ready') {
+      resolve();
+
+      return;
+    }
+
+    if (typeof connection.once !== 'function') {
+      resolve();
+
+      return;
+    }
+
+    const cleanup = () => {
+      clearTimeout(timer);
+
+      connection.off('ready', onReady);
+
+      connection.off('end', onEnd);
+    };
+
+    const timer = setTimeout(() => {
+      cleanup();
+
+      reject(new Error(`dedicated subscriber not ready within ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    const onReady = () => {
+      cleanup();
+
+      resolve();
+    };
+
+    const onEnd = () => {
+      cleanup();
+
+      reject(new Error('dedicated subscriber connection ended'));
+    };
+
+    connection.once('ready', onReady);
+
+    connection.once('end', onEnd);
+  });
+
 export const createRealtimeGateway = ({
   enabled = false,
   channel = realtimeChannelName(),
   heartbeatMs = REALTIME_HEARTBEAT_MS,
+  subscribeReadyTimeoutMs = 5000,
   registry = createRealtimeRegistry(),
   publisher = null, // injectable (tests); default: dedicated ioredis connection
   subscriber = null, // injectable (tests); default: dedicated ioredis connection
@@ -145,14 +195,34 @@ export const createRealtimeGateway = ({
 
         subscriber.on('message', onPubSubMessage);
 
+        // SUBSCRIBE TIMING LAW: enableOfflineQueue=false makes ioredis
+        // REJECT any command sent before the connection is ready — and a
+        // rejected command is never replayed (retryStrategy re-establishes
+        // the TCP connection, not the command). The 32.11 localhost log
+        // "Stream isn't writeable and enableOfflineQueue options is false"
+        // meant the channel was silently never joined. So: wait for the
+        // 'ready' event (bounded) BEFORE subscribing; if that fails, defer
+        // to the next 'ready' (reconnect) with a one-shot retry.
         try {
+          await awaitConnectionReady(subscriber, subscribeReadyTimeoutMs);
           await subscriber.subscribe(channel);
+          log.info('[Realtime] pub/sub subscribed — cross-instance fan-out active.');
         } catch (error) {
-          // Redis unreachable at start: the subscription retries in the
-          // background (bounded retryStrategy); publishing falls back to
-          // local-only delivery until it lands. Streams still require the
-          // shared ticket store, so establishment stays fail-closed.
-          log.warn(`[Realtime] pub/sub subscribe deferred (Redis unavailable): ${error?.code || error?.message || 'error'}`);
+          log.warn(
+            `[Realtime] pub/sub subscribe deferred (${error?.code || error?.message || 'error'}): ` +
+              'will subscribe when the dedicated connection is ready.',
+          );
+
+          if (typeof subscriber.once === 'function') {
+            subscriber.once('ready', () => {
+              if (!started) return; // gateway stopped meanwhile
+
+              subscriber
+                .subscribe(channel)
+                .then(() => log.info('[Realtime] pub/sub subscribed (after ready) — cross-instance fan-out active.'))
+                .catch(() => log.warn('[Realtime] pub/sub still unavailable — local-only delivery continues.'));
+            });
+          }
         }
       }
 

@@ -563,3 +563,131 @@ describe('32.11 regression: dedicated pub/sub connection URL law', () => {
     );
   });
 });
+
+// ─────────────────────────────────────────────────────────────
+//  32.11 regression #2: SUBSCRIBE TIMING LAW
+//
+//  enableOfflineQueue=false makes ioredis REJECT commands sent before
+//  the dedicated connection is ready — and a rejected command is never
+//  replayed. Live log proved it: "Stream isn't writeable and
+//  enableOfflineQueue options is false" → the channel was silently
+//  never joined (cross-instance fan-out dead until restart).
+//  Pinned here, hermetically:
+//    A. subscribe lands once the dedicated connection becomes ready
+//    B. never-ready at start → deferred warn + one-shot retry on the
+//       next 'ready' (reconnect) — no silent permanent loss
+// ─────────────────────────────────────────────────────────────
+const { EventEmitter } = await import('node:events');
+
+describe('32.11 regression #2: subscribe waits for dedicated-connection readiness', () => {
+  const makeSubscriberStub = ({ log, readyAfterMs = null }) => {
+    const subscriber = new EventEmitter();
+
+    subscriber.status = 'connecting';
+
+    subscriber.subscribe = async (channel) => {
+      if (subscriber.status !== 'ready') {
+        const error = new Error('Stream isn\'t writeable and enableOfflineQueue options is false');
+
+        error.code = 'ERR';
+
+        throw error;
+      }
+
+      log.info(`[Realtime] stub subscribed ${channel}`);
+
+      return 1;
+    };
+
+    subscriber.quit = async () => {};
+
+    subscriber.disconnect = () => {};
+
+    if (readyAfterMs !== null) {
+      setTimeout(() => {
+        subscriber.status = 'ready';
+
+        subscriber.emit('ready');
+      }, readyAfterMs);
+    }
+
+    return subscriber;
+  };
+
+  const waitFor = async (logs, fragment, attempts = 40) => {
+    for (let i = 0; i < attempts; i++) {
+      if (logs.some((line) => line.includes(fragment))) return true;
+
+      await sleep(25);
+    }
+
+    return false;
+  };
+
+  test('A: subscribe lands once the dedicated connection becomes ready', async () => {
+    const logs = [];
+    const log = { info: (m) => logs.push(String(m)), warn: (m) => logs.push(String(m)), error: () => {} };
+
+    const subscriber = makeSubscriberStub({ log, readyAfterMs: 15 });
+    const publisher = { publish: async () => 1, quit: async () => {}, disconnect() {} };
+
+    const instance = createRealtimeGateway({
+      enabled: true,
+      channel: realtimeChannelName('crewly:test'),
+      publisher,
+      subscriber,
+      log,
+    });
+
+    try {
+      const verdict = await instance.start();
+
+      assert.equal(verdict.started, true);
+
+      assert.ok(
+        await waitFor(logs, 'pub/sub subscribed — cross-instance fan-out active'),
+        'subscribe must land after the dedicated connection reports ready',
+      );
+    } finally {
+      await instance.stop();
+    }
+  });
+
+  test('B: never-ready at start → deferred warn, one-shot retry on next ready', async () => {
+    const logs = [];
+    const log = { info: (m) => logs.push(String(m)), warn: (m) => logs.push(String(m)), error: () => {} };
+
+    const subscriber = makeSubscriberStub({ log, readyAfterMs: null }); // never ready on its own
+    const publisher = { publish: async () => 1, quit: async () => {}, disconnect() {} };
+
+    const instance = createRealtimeGateway({
+      enabled: true,
+      channel: realtimeChannelName('crewly:test'),
+      publisher,
+      subscriber,
+      log,
+      subscribeReadyTimeoutMs: 25,
+    });
+
+    try {
+      const verdict = await instance.start();
+
+      assert.equal(verdict.started, true, 'gateway stays up (local delivery, fail-closed establishment)');
+      assert.ok(
+        logs.some((line) => line.includes('pub/sub subscribe deferred')),
+        'the deferred warn must be explicit',
+      );
+
+      subscriber.status = 'ready';
+
+      subscriber.emit('ready'); // simulate the reconnect
+
+      assert.ok(
+        await waitFor(logs, 'pub/sub subscribed (after ready)'),
+        'the one-shot ready retry must join the channel',
+      );
+    } finally {
+      await instance.stop();
+    }
+  });
+});
