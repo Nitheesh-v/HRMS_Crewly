@@ -306,3 +306,61 @@ test('index-check tool stays hermetic (no connections, no destructive ops)', asy
     'the auditor is read-only over schema declarations',
   );
 });
+
+// ─────────────────────────────────────────────────────────────
+//  7. WINDOWS ESM DYNAMIC-IMPORT LAW (32.5 acceptance-defect regression)
+//
+//  dynamic import() takes a URL — NEVER a bare filesystem path. A
+//  Windows absolute path ("C:\...\models\User.js") fails with
+//  "Received protocol 'c:'", which used to cascade into
+//  models loaded 0/124 + MissingSchemaError on the developer machine.
+//  The loader contract is pathToFileURL (node:url): correct on
+//  Windows, Linux and macOS. These pins are hermetic and
+//  cross-platform — a future refactor cannot reintroduce
+//  import(<absolute path>) without failing here.
+// ─────────────────────────────────────────────────────────────
+
+test('index-check model loader always produces file: URLs (Windows-safe)', async () => {
+  const { toModuleUrl } = indexCheck;
+
+  const { fileURLToPath } = await import('node:url');
+  const nodePath = await import('node:path');
+
+  // A path WITH spaces and a hash fragment: naive string concatenation
+  // would break here; pathToFileURL percent-encodes correctly.
+  const tricky = nodePath.resolve('src/models/some Dir/user model.js');
+
+  const url = new URL(toModuleUrl(tricky));
+
+  assert.equal(url.protocol, 'file:', 'dynamic import target must be a file: URL');
+
+  // Round-trip: the URL must decode back to the EXACT filesystem path.
+  assert.equal(fileURLToPath(url), tricky);
+});
+
+test('loadAllModels completes the FULL model set with zero failures', async () => {
+  const { loaded, failures, total } = await loadAllModels();
+
+  assert.deepEqual(failures, [], 'every model module must import cleanly');
+  assert.equal(loaded, total, 'partial model sets must be impossible here');
+  assert.ok(total >= 100, 'the intended model catalogue must be present');
+});
+
+test('index-check source never passes a bare filesystem path to import()', async () => {
+  const source = await readFile(
+    new URL('../scripts/index-check.js', import.meta.url),
+    'utf8',
+  );
+
+  assert.doesNotMatch(
+    source,
+    /import\(\s*path\.join\(/,
+    'dynamic import() must never receive a bare path — route through toModuleUrl/pathToFileURL',
+  );
+
+  assert.match(
+    source,
+    /pathToFileURL/,
+    'the Windows-safe URL builder must remain in use',
+  );
+});

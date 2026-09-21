@@ -384,7 +384,14 @@ export const evaluateCatalogEntry = (entry, declaredIndexes) => {
 
 // ─────────────────────────────────────────────────────────────
 //  Model loading + inventory (§47 machine-assisted inventory)
+//
+//  WINDOWS ESM LAW: dynamic import() takes a URL, not a filesystem
+//  path. A bare Windows absolute path ("C:\...\User.js") fails with
+//  "Received protocol 'c:'". Every dynamic import MUST go through
+//  pathToFileURL() (node:url) — correct on Windows, Linux and macOS.
 // ─────────────────────────────────────────────────────────────
+
+export const toModuleUrl = (absolutePath) => pathToFileURL(absolutePath).href;
 
 export const loadAllModels = async () => {
   const files = readdirSync(MODELS_DIR)
@@ -397,7 +404,7 @@ export const loadAllModels = async () => {
 
   for (const file of files) {
     try {
-      await import(path.join(MODELS_DIR, file));
+      await import(toModuleUrl(path.join(MODELS_DIR, file)));
 
       loaded += 1;
     } catch (error) {
@@ -484,6 +491,25 @@ const run = async () => {
     console.log(`  LOAD FAIL ${failure}`);
   }
 
+  // FAIL CLOSED (§5): the audit's verdict is only meaningful when the
+  // COMPLETE model set is loaded. A partial set would under-report
+  // declared indexes and could imply coverage that does not exist.
+  if (failures.length || loaded !== total) {
+    console.log(
+      `\nREFUSED: model loading incomplete (${loaded}/${total}) — ` +
+        'no index-coverage verdict can be produced from a partial model set. ' +
+        'Fix the LOAD FAIL entries above and rerun.',
+    );
+
+    process.exitCode = 1;
+
+    if (!isMain) return;
+
+    setTimeout(() => process.exit(process.exitCode || 0), 50).unref();
+
+    return;
+  }
+
   const stats = inventoryIndexes();
 
   console.log(
@@ -502,6 +528,19 @@ const run = async () => {
   let gaps = 0;
 
   for (const entry of HOT_QUERY_CATALOG) {
+    // Defensive (fail-closed): a catalog model that failed to register
+    // must be a reported GAP, never an uncaught MissingSchemaError.
+    if (!mongoose.models[entry.model]) {
+      gaps += 1;
+
+      console.log(
+        `[GAP] ${entry.id} → ${entry.model} (${entry.evidence})` +
+          ' · model did not register — cannot verify index coverage',
+      );
+
+      continue;
+    }
+
     const model = mongoose.model(entry.model);
 
     const result = evaluateCatalogEntry(entry, model.schema.indexes());
