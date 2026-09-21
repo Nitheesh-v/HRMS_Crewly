@@ -490,3 +490,76 @@ describe('structural pins (§65 law guarantees, io-less)', () => {
     assert.match(read('server.js'), /beginDrain\(`realtime-drain/, 'drain flips readiness first (32.2 order preserved)');
   });
 });
+
+// ─────────────────────────────────────────────────────────────
+//  32.11 localhost-defect regression: dedicated pub/sub URL law
+//
+//  config/env.js is a SIX-KEY snapshot WITHOUT REDIS_URL. The gateway
+//  used to read env.REDIS_URL → String(undefined) = "undefined" →
+//  new Redis("undefined") dialed the literal host "undefined"
+//  (getaddrinfo ENOTFOUND undefined, unhandled-error retry spam).
+//  Pinned here, hermetically and cross-platform:
+//    1. resolveRealtimeRedisUrl NEVER returns "undefined"
+//    2. a stub-less gateway with NO REDIS_URL starts local-only,
+//       warns once, and stops cleanly — it never dials garbage
+//    3. source pin: the gateway reads process.env, never the snapshot
+// ─────────────────────────────────────────────────────────────
+describe('32.11 regression: dedicated pub/sub connection URL law', () => {
+  test('resolveRealtimeRedisUrl NEVER returns "undefined" (absent/blank → null)', async () => {
+    const { resolveRealtimeRedisUrl } = await import('../src/infrastructure/realtime/realtimeGateway.js');
+
+    assert.equal(resolveRealtimeRedisUrl({}), null);
+    assert.equal(resolveRealtimeRedisUrl({ REDIS_URL: undefined }), null);
+    assert.equal(resolveRealtimeRedisUrl({ REDIS_URL: '' }), null);
+    assert.equal(resolveRealtimeRedisUrl({ REDIS_URL: '   ' }), null);
+    assert.equal(resolveRealtimeRedisUrl({ REDIS_URL: '  redis://example:6379 ' }), 'redis://example:6379');
+  });
+
+  test('gateway with NO REDIS_URL and no stubs starts LOCAL-ONLY — never dials "undefined"', async () => {
+    const previous = process.env.REDIS_URL;
+
+    delete process.env.REDIS_URL;
+
+    const warnings = [];
+    const instance = createRealtimeGateway({
+      enabled: true,
+      log: { info: () => {}, warn: (message) => warnings.push(String(message)), error: () => {} },
+    });
+
+    try {
+      const verdict = await instance.start();
+
+      assert.equal(verdict.started, true);
+
+      await sleep(20); // give any bogus dial a chance to surface
+
+      assert.ok(
+        warnings.some((message) => message.includes('REDIS_URL is not set')),
+        'must explicitly warn that pub/sub is unavailable (local-only)',
+      );
+      assert.ok(
+        warnings.every((message) => !message.includes('undefined')),
+        'no warning may contain a coerced "undefined"',
+      );
+
+      await instance.stop(); // null-safe drain with no connections
+    } finally {
+      if (previous !== undefined) process.env.REDIS_URL = previous;
+    }
+  });
+
+  test('source pin: the gateway resolves the URL from process.env, never the env.js snapshot', () => {
+    const gatewaySource = read('infrastructure/realtime/realtimeGateway.js');
+
+    assert.doesNotMatch(
+      gatewaySource,
+      /env\.REDIS_URL/,
+      'config/env.js has NO REDIS_URL key — reading the snapshot yields "undefined"',
+    );
+    assert.match(
+      gatewaySource,
+      /resolveRealtimeRedisUrl\(process\.env\)/,
+      'the URL must come from the same live source the shared client uses',
+    );
+  });
+});

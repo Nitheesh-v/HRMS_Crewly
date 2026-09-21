@@ -20,13 +20,49 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import Redis from 'ioredis';
 import logger from '../../config/logger.js';
-import env from '../../config/env.js';
 import { getRedisClient, createRedisOptions } from '../../config/redis.js';
 import { getQueuePrefix } from '../../config/queueConfig.js';
 import { parseRealtimeEnabled, REALTIME_HEARTBEAT_MS, realtimeChannelName } from './realtimeConfig.js';
 import { createRealtimeRegistry } from './realtimeRegistry.js';
 import { buildRealtimeEnvelope, parseRealtimeEnvelope, formatSseFrame, SSE_HEARTBEAT_FRAME } from './realtimeProtocol.js';
 import { createMetricsRegistry } from '../observability/metricsRegistry.js';
+
+// Pure URL-resolution contract (regression-pinned): NEVER returns the
+// string "undefined". Absent or blank REDIS_URL → null, meaning the
+// gateway runs in local-only delivery mode (publish() already treats a
+// null publisher exactly that way). Root cause of the 32.11 localhost
+// defect: config/env.js is a SIX-KEY snapshot with NO REDIS_URL, so
+// reading the snapshot yielded `undefined`, and `new Redis("undefined")`
+// dialed the literal host "undefined" (ENOTFOUND, unbounded unhandled
+// error spam).
+// The URL must come from the same live source the shared client uses:
+// process.env (see src/config/redis.js).
+export const resolveRealtimeRedisUrl = (source = process.env) => {
+  const url = String(source?.REDIS_URL ?? '').trim();
+
+  return url || null;
+};
+
+// Dedicated §21 connections previously carried NO 'error' handler —
+// every retry attempt printed an "Unhandled error event" stack. Log ONE
+// warning per outage spell; the next successful connect resets it.
+const attachDedicatedRedisLogging = (connection, label, log) => {
+  if (typeof connection?.on !== 'function') return; // injected test stubs
+
+  let down = false;
+
+  connection.on('error', (error) => {
+    if (down) return;
+
+    down = true;
+
+    log.warn(`[Realtime] ${label} redis error: ${error?.code || error?.message || 'error'}`);
+  });
+
+  connection.on('connect', () => {
+    down = false;
+  });
+};
 
 export const createRealtimeGateway = ({
   enabled = false,
@@ -86,22 +122,38 @@ export const createRealtimeGateway = ({
 
       // Dedicated connections (§21): pub/sub MUST NOT reuse the shared
       // cache client (subscriber mode is command-restricted) nor BullMQ's.
-      const realPublisher = publisher || new Redis(String(env.REDIS_URL).trim(), createRedisOptions('realtime-publisher'));
-      const realSubscriber = subscriber || new Redis(String(env.REDIS_URL).trim(), createRedisOptions('realtime-subscriber'));
+      // URL LAW: resolve from process.env (NEVER the env.js snapshot —
+      // it has no REDIS_URL key). No URL → supported local-only state
+      // (null publisher), never a garbage dial.
+      const redisUrl = resolveRealtimeRedisUrl(process.env);
 
-      publisher = realPublisher;
-      subscriber = realSubscriber;
+      if (!redisUrl && !publisher) {
+        log.warn(
+          '[Realtime] pub/sub unavailable: REDIS_URL is not set — local-only delivery (single-instance fan-out).',
+        );
+      } else {
+        const realPublisher =
+          publisher || new Redis(redisUrl, createRedisOptions('realtime-publisher'));
+        const realSubscriber =
+          subscriber || new Redis(redisUrl, createRedisOptions('realtime-subscriber'));
 
-      subscriber.on('message', onPubSubMessage);
+        publisher = realPublisher;
+        subscriber = realSubscriber;
 
-      try {
-        await subscriber.subscribe(channel);
-      } catch (error) {
-        // Redis unavailable at start: the subscription retries in the
-        // background (bounded retryStrategy); publishing falls back to
-        // local-only delivery until it lands. Streams still require the
-        // shared ticket store, so establishment stays fail-closed.
-        log.warn(`[Realtime] pub/sub subscribe deferred (Redis unavailable): ${error?.code || error?.message || 'error'}`);
+        attachDedicatedRedisLogging(realPublisher, 'publisher', log);
+        attachDedicatedRedisLogging(realSubscriber, 'subscriber', log);
+
+        subscriber.on('message', onPubSubMessage);
+
+        try {
+          await subscriber.subscribe(channel);
+        } catch (error) {
+          // Redis unreachable at start: the subscription retries in the
+          // background (bounded retryStrategy); publishing falls back to
+          // local-only delivery until it lands. Streams still require the
+          // shared ticket store, so establishment stays fail-closed.
+          log.warn(`[Realtime] pub/sub subscribe deferred (Redis unavailable): ${error?.code || error?.message || 'error'}`);
+        }
       }
 
       heartbeatTimer = setInterval(() => {
