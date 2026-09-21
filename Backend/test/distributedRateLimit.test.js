@@ -523,15 +523,15 @@ test('super admin guard keys: no raw email in the shared counter key', async () 
 
 test('wiring pins: A/B surfaces shared, C surfaces stay local', async () => {
   const expected = {
-    'src/routes/attendanceKioskRoutes.js': 3,
-    'src/routes/attendanceRoutes.js': 1,
-    'src/routes/bgvVerifierAuthRoutes.js': 2,
-    'src/routes/bgvVerifierWorkRoutes.js': 1,
-    'src/routes/publicBgvConsentRoutes.js': 2,
-    'src/routes/publicBgvCollectionRoutes.js': 4,
-    'src/routes/publicCandidateOfferRoutes.js': 2,
-    'src/routes/publicCandidatePreOnboardingRoutes.js': 2,
-    'src/routes/publicCareerRoutes.js': 2,
+    'src/routes/attendance/attendanceKioskRoutes.js': 3,
+    'src/routes/attendance/attendanceRoutes.js': 1,
+    'src/routes/bgv/bgvVerifierAuthRoutes.js': 2,
+    'src/routes/bgv/bgvVerifierWorkRoutes.js': 1,
+    'src/routes/bgv/publicBgvConsentRoutes.js': 2,
+    'src/routes/bgv/publicBgvCollectionRoutes.js': 4,
+    'src/routes/recruitment/publicCandidateOfferRoutes.js': 2,
+    'src/routes/recruitment/publicCandidatePreOnboardingRoutes.js': 2,
+    'src/routes/recruitment/publicCareerRoutes.js': 2,
   };
 
   for (const [path, count] of Object.entries(expected)) {
@@ -543,7 +543,7 @@ test('wiring pins: A/B surfaces shared, C surfaces stay local', async () => {
   }
 
   // C-class: authenticated internal load-shedding stays process-local.
-  for (const path of ['src/routes/recruitmentRoutes.js', 'src/routes/superAdminRoutes.js']) {
+  for (const path of ['src/routes/recruitment/recruitmentRoutes.js', 'src/routes/platform/superAdminRoutes.js']) {
     const source = await readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
     assert.ok(!source.includes('sharedName:'), `${path} must remain LOCAL (C-class)`);

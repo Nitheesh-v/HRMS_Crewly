@@ -6,7 +6,7 @@
 import express from "express";
 import * as authMwNS from "../middlewares/authMiddleware.js";
 import * as constantsNS from "../utils/constants.js";
-import * as systemControllerNS from "../controllers/systemController.js";
+import * as systemControllerNS from "../controllers/platform/systemController.js";
 
 // 🧩 Bulletproof resolver — works whether the imported file uses
 // named exports (export const x) or a default object (export default {...})

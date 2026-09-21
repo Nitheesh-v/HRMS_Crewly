@@ -35,7 +35,7 @@ import BgvEvidenceFile from '../../models/BgvEvidenceFile.js';
 import ApiError from '../../utils/ApiError.js';
 import { hashToken } from '../../utils/securityPolicy.js';
 import { recordAudit } from '../../utils/securityauditService.js';
-import { inspectPreOnboardingFile } from '../preOnboardingDocumentSecurityService.js';
+import { inspectPreOnboardingFile } from '../recruitment/preOnboardingDocumentSecurityService.js';
 import { storeBgvEvidence, getStoredBgvEvidence } from './bgvEvidenceStorageService.js';
 import { BGV_CONSENT_PURPOSE } from './bgvConsentRules.js';
 import { isCommerciallyAuthorized } from './bgvOrderRules.js';

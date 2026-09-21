@@ -27,7 +27,7 @@
 import crypto from 'node:crypto';
 import mongoose from 'mongoose';
 import { JOB_NAMES } from '../../config/queueConfig.js';
-import { addScheduledJob, cancelScheduledJob } from '../scheduledJobScheduler.js';
+import { addScheduledJob, cancelScheduledJob } from '../ops/scheduledJobScheduler.js';
 import { requestEmailDelivery } from '../emailDeliveryService.js';
 import { getCurrentPolicy } from './attendancePolicyService.js';
 import {

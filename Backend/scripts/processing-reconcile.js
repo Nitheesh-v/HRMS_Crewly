@@ -27,8 +27,8 @@ import mongoose from 'mongoose';
 import { getRedisConfig } from '../src/config/redis.js';
 import {
   recoverPendingResumeProcessing,
-} from '../src/services/resumeProcessingDispatcher.js';
-import { recoverPendingATSMatching } from '../src/services/atsDispatcher.js';
+} from '../src/services/recruitment/resumeProcessingDispatcher.js';
+import { recoverPendingATSMatching } from '../src/services/recruitment/atsDispatcher.js';
 import { closeAllQueues } from '../src/queues/queueFactory.js';
 import { getQueuePrefix } from '../src/config/queueConfig.js';
 

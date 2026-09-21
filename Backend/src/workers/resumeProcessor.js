@@ -23,7 +23,7 @@ import {
   JOB_NAMES,
   RESUME_JOB_OPTIONS,
 } from '../config/queueConfig.js';
-import { processResumeJob } from '../services/resumeProcessingService.js';
+import { processResumeJob } from '../services/recruitment/resumeProcessingService.js';
 
 const RESUME_PAYLOAD_KEYS = new Set([
   'companyId',

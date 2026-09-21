@@ -25,11 +25,11 @@ const [
   import('../src/models/OfferTemplate.js'),
   import('../src/utils/offerTemplateRenderer.js'),
   import('../src/utils/offerPdfService.js'),
-  import('../src/services/offerTokenService.js'),
-  import('../src/services/offerTemplateService.js'),
+  import('../src/services/recruitment/offerTokenService.js'),
+  import('../src/services/recruitment/offerTemplateService.js'),
   import('../src/utils/mailer.js'),
   import('../src/utils/permissionRegistry.js'),
-  import('../src/services/candidatePipelineService.js'),
+  import('../src/services/recruitment/candidatePipelineService.js'),
 ]);
 
 const id = () => new mongoose.Types.ObjectId();
@@ -310,11 +310,11 @@ test('generic pipeline updates cannot mark offer acceptance and offer transition
 
 test('public GET is scanner-safe, decisions use compare-and-set, and token paths are redacted', async () => {
   const [publicService, routes, logger, audit, recruitmentRoutes] = await Promise.all([
-    readFile(new URL('../src/services/publicOfferService.js', import.meta.url), 'utf8'),
-    readFile(new URL('../src/routes/publicCandidateOfferRoutes.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/services/recruitment/publicOfferService.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/routes/recruitment/publicCandidateOfferRoutes.js', import.meta.url), 'utf8'),
     readFile(new URL('../src/infrastructure/observability/redaction.js', import.meta.url), 'utf8'),
     readFile(new URL('../src/utils/securityauditService.js', import.meta.url), 'utf8'),
-    readFile(new URL('../src/routes/recruitmentRoutes.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/routes/recruitment/recruitmentRoutes.js', import.meta.url), 'utf8'),
   ]);
 
   assert.match(routes, /router\.get\('\/:secureToken'/);
@@ -341,8 +341,8 @@ test('public GET is scanner-safe, decisions use compare-and-set, and token paths
 
 test('offer source has no executable-template or Phase 27.12 implementation artifacts', async () => {
   const files = [
-    '../src/services/offerService.js',
-    '../src/services/publicOfferService.js',
+    '../src/services/recruitment/offerService.js',
+    '../src/services/recruitment/publicOfferService.js',
     '../src/utils/offerTemplateRenderer.js',
     '../src/utils/offerPdfService.js',
   ];

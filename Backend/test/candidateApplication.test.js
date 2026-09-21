@@ -38,11 +38,11 @@ const [
   import('../src/models/Subscription.js'),
   import('../src/models/TenantSequence.js'),
   import('express'),
-  import('../src/services/candidateApplicationService.js'),
-  import('../src/services/candidateApplicationJobs.js'),
-  import('../src/services/candidateInboxService.js'),
-  import('../src/services/resumeSecurityService.js'),
-  import('../src/validators/candidateApplicationValidator.js'),
+  import('../src/services/recruitment/candidateApplicationService.js'),
+  import('../src/services/recruitment/candidateApplicationJobs.js'),
+  import('../src/services/recruitment/candidateInboxService.js'),
+  import('../src/services/recruitment/resumeSecurityService.js'),
+  import('../src/validators/recruitment/candidateApplicationValidator.js'),
   import('../src/middlewares/publicResumeUpload.js'),
   import('../src/utils/permissionRegistry.js'),
 ]);
@@ -753,15 +753,15 @@ test('candidate RBAC, private retrieval and race-safe identifiers stay locked to
   const [routes, storageSource, controllerSource, identifierSource] =
     await Promise.all([
       readFile(
-        new URL('../src/routes/recruitmentRoutes.js', import.meta.url),
+        new URL('../src/routes/recruitment/recruitmentRoutes.js', import.meta.url),
         'utf8'
       ),
       readFile(
-        new URL('../src/services/resumeStorageService.js', import.meta.url),
+        new URL('../src/services/recruitment/resumeStorageService.js', import.meta.url),
         'utf8'
       ),
       readFile(
-        new URL('../src/controllers/candidateInboxController.js', import.meta.url),
+        new URL('../src/controllers/recruitment/candidateInboxController.js', import.meta.url),
         'utf8'
       ),
       readFile(

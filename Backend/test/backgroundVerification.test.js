@@ -11,7 +11,7 @@ const [
   { evaluateBgvCaseReadiness },
 ] = await Promise.all([
   import('../src/utils/permissionRegistry.js'),
-  import('../src/services/backgroundVerificationService.js'),
+  import('../src/services/bgv/backgroundVerificationService.js'),
 ]);
 
 test('RBAC grants BGV permissions to admin and HR only by default', () => {
@@ -47,9 +47,9 @@ test('BGV readiness treats optional open checks as non-blocking and never auto-r
 
 test('BGV routes and provider architecture avoid external vendor hard dependency', async () => {
   const [routes, service, dispatcher, provider] = await Promise.all([
-    readFile(new URL('../src/routes/recruitmentRoutes.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/routes/recruitment/recruitmentRoutes.js', import.meta.url), 'utf8'),
     readFile(
-      new URL('../src/services/backgroundVerificationService.js', import.meta.url),
+      new URL('../src/services/bgv/backgroundVerificationService.js', import.meta.url),
       'utf8'
     ),
     readFile(new URL('../src/services/bgv/bgvDispatcher.js', import.meta.url), 'utf8'),
@@ -69,7 +69,7 @@ test('BGV routes and provider architecture avoid external vendor hard dependency
 
 test('conversion service consults BGV eligibility hook', async () => {
   const source = await readFile(
-    new URL('../src/services/candidateConversionService.js', import.meta.url),
+    new URL('../src/services/recruitment/candidateConversionService.js', import.meta.url),
     'utf8'
   );
   assert.match(source, /evaluateBgvForConversion/);

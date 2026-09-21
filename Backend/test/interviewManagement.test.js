@@ -22,8 +22,8 @@ const [
   import('../src/models/TenantSequence.js'),
   import('../src/utils/interviewIdentifiers.js'),
   import('../src/utils/interviewDateTime.js'),
-  import('../src/services/interviewRoundService.js'),
-  import('../src/validators/interviewValidator.js'),
+  import('../src/services/recruitment/interviewRoundService.js'),
+  import('../src/validators/recruitment/interviewValidator.js'),
   import('../src/utils/permissionRegistry.js'),
 ]);
 
@@ -303,10 +303,10 @@ test('routes, access guards, audit actions, queue boundary and frontend surfaces
     scheduleModal,
     detailModal,
   ] = await Promise.all([
-    readFile(new URL('../src/routes/recruitmentRoutes.js', import.meta.url), 'utf8'),
-    readFile(new URL('../src/services/interviewService.js', import.meta.url), 'utf8'),
-    readFile(new URL('../src/services/interviewNotificationDispatcher.js', import.meta.url), 'utf8'),
-    readFile(new URL('../src/controllers/interviewController.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/routes/recruitment/recruitmentRoutes.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/services/recruitment/interviewService.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/services/recruitment/interviewNotificationDispatcher.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/controllers/recruitment/interviewController.js', import.meta.url), 'utf8'),
     readFile(new URL('../../Frontend/src/pages/recruitment/CandidateDetailPage.jsx', import.meta.url), 'utf8'),
     readFile(new URL('../../Frontend/src/pages/recruitment/InterviewsPage.jsx', import.meta.url), 'utf8'),
     readFile(new URL('../../Frontend/src/pages/recruitment/MyInterviewsPage.jsx', import.meta.url), 'utf8'),

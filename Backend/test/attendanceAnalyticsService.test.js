@@ -350,11 +350,11 @@ test('31.16 D-09: every download helper declares byte length, never char length'
   const { fileURLToPath } = await import('node:url');
   const here = dirname(fileURLToPath(import.meta.url));
   const files = [
-    'attendanceAnalyticsController.js',
-    'attendanceTimesheetController.js',
-    'fnfController.js',
-    'payslipController.js',
-    'statutoryController.js',
+    'attendance/attendanceAnalyticsController.js',
+    'attendance/attendanceTimesheetController.js',
+    'payroll/fnfController.js',
+    'payroll/payslipController.js',
+    'payroll/statutoryController.js',
   ];
   for (const file of files) {
     const source = readFileSync(join(here, '..', 'src', 'controllers', file), 'utf8');

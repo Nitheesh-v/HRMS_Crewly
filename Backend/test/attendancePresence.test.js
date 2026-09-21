@@ -1407,7 +1407,7 @@ test('source hygiene: presence code touches no payroll, no mongoose, no network'
   for (const rel of [
     'src/services/attendance/attendancePresenceRules.js',
     'src/services/attendance/attendancePresenceService.js',
-    'src/controllers/attendancePresenceController.js',
+    'src/controllers/attendance/attendancePresenceController.js',
   ]) {
     const source = readSource(rel);
     assert.ok(!source.includes('Payroll'), `${rel} must not reference payroll`);
@@ -1417,11 +1417,11 @@ test('source hygiene: presence code touches no payroll, no mongoose, no network'
   }
   const rules = readSource('src/services/attendance/attendancePresenceRules.js');
   assert.ok(!rules.includes('../models/'), 'pure rules must not import models');
-  const controller = readSource('src/controllers/attendancePresenceController.js');
+  const controller = readSource('src/controllers/attendance/attendancePresenceController.js');
   assert.ok(controller.includes('// Data from frontend'), 'house comment: frontend input');
   assert.ok(controller.includes('// DB Logic'), 'house comment: DB logic');
   assert.ok(controller.includes('// Data to frontend'), 'house comment: frontend output');
-  const routes = readSource('src/routes/attendanceRoutes.js');
+  const routes = readSource('src/routes/attendance/attendanceRoutes.js');
   assert.ok(routes.includes("'/presence'"), 'presence route registered');
   assert.ok(routes.includes("'ATTENDANCE_READ'"), 'presence gated by existing permission');
 });

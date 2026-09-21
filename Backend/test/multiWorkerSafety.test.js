@@ -481,7 +481,7 @@ test('producer guard: every legitimate Crewly payload shape passes', () => {
 // ═════════════════════════════════════════════════════════════
 
 test('two API instances enqueueing the same logical job collapse on the deterministic id', async () => {
-  const bgvDispatcher = await import('../src/services/bgvQueueDispatcher.js');
+  const bgvDispatcher = await import('../src/services/bgv/bgvQueueDispatcher.js');
 
   const docDispatcher = await import('../src/services/documentProcessingDispatcher.js');
 

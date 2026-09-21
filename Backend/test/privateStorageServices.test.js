@@ -31,9 +31,9 @@ process.env.PRIVATE_OFFER_STORAGE_DIR = path.join(TMP_ROOT, 'offers');
 process.env.PRIVATE_PRE_ONBOARDING_STORAGE_DIR = path.join(TMP_ROOT, 'pre-onboarding');
 process.env.PRIVATE_BGV_EVIDENCE_STORAGE_DIR = path.join(TMP_ROOT, 'bgv-evidence');
 
-const resumeStorage = await import('../src/services/resumeStorageService.js');
-const offerStorage = await import('../src/services/offerDocumentStorageService.js');
-const preOnboardingStorage = await import('../src/services/preOnboardingDocumentStorageService.js');
+const resumeStorage = await import('../src/services/recruitment/resumeStorageService.js');
+const offerStorage = await import('../src/services/recruitment/offerDocumentStorageService.js');
+const preOnboardingStorage = await import('../src/services/recruitment/preOnboardingDocumentStorageService.js');
 const bgvStorage = await import('../src/services/bgv/bgvEvidenceStorageService.js');
 
 const COMPANY_ID = 'aaaaaaaaaaaaaaaaaaaaaaaa';

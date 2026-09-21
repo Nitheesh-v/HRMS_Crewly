@@ -23,7 +23,7 @@ process.env.MONGO_URI ||= 'mongodb://127.0.0.1:27017/crewly_test';
 const [cache, invalidation, analytics] = await Promise.all([
   import('../src/services/redisCacheService.js'),
   import('../src/services/analyticsCacheInvalidation.js'),
-  import('../src/services/recruitmentAnalyticsService.js'),
+  import('../src/services/recruitment/recruitmentAnalyticsService.js'),
 ]);
 
 const INFOLEXUS = '64a000000000000000000001'; // tenant A

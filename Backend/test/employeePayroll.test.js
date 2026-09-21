@@ -640,9 +640,9 @@ test('29.4 backend sources are ESM, tenant-scoped and role-name free', async () 
   const files = [
     'src/services/payroll/employeePayrollRules.js',
     'src/services/payroll/employeePayrollService.js',
-    'src/controllers/employeePayrollController.js',
-    'src/validators/employeePayrollValidator.js',
-    'src/routes/employeePayrollRoutes.js',
+    'src/controllers/payroll/employeePayrollController.js',
+    'src/validators/payroll/employeePayrollValidator.js',
+    'src/routes/payroll/employeePayrollRoutes.js',
     'src/middlewares/payrollProfileAccess.js',
     'src/models/EmployeePayrollProfile.js',
   ];

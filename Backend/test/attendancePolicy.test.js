@@ -784,7 +784,7 @@ test('validators: explicit null concurrency tokens are treated as absent', async
   const {
     attendancePolicyDraftValidator,
     attendancePolicyActivateValidator,
-  } = await import('../src/validators/attendancePolicyValidator.js');
+  } = await import('../src/validators/attendance/attendancePolicyValidator.js');
   const { validationResult } = await import('express-validator');
 
   // Run every chain item except the terminal `validate` thrower.

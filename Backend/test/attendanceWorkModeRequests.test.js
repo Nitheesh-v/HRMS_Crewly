@@ -27,7 +27,7 @@ const [requestRules, requestService, eventService, policyRules, requestValidator
     import('../src/services/attendance/attendanceWorkModeService.js'),
     import('../src/services/attendance/attendanceEventService.js'),
     import('../src/services/attendance/attendancePolicyRules.js'),
-    import('../src/validators/attendanceWorkModeValidator.js'),
+    import('../src/validators/attendance/attendanceWorkModeValidator.js'),
     import('../src/utils/permissionRegistry.js'),
   ]);
 
@@ -965,9 +965,9 @@ test('static: 31.4 backend modules never touch payroll', () => {
     'models/AttendanceWorkModeRequest.js',
     'services/attendance/attendanceWorkModeRules.js',
     'services/attendance/attendanceWorkModeService.js',
-    'validators/attendanceWorkModeValidator.js',
-    'controllers/attendanceWorkModeController.js',
-    'routes/attendanceWorkModeRoutes.js',
+    'validators/attendance/attendanceWorkModeValidator.js',
+    'controllers/attendance/attendanceWorkModeController.js',
+    'routes/attendance/attendanceWorkModeRoutes.js',
   ];
   for (const file of files) {
     // Boundary comments may NAME payroll to forbid it; code must not

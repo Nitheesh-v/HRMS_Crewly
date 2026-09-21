@@ -716,9 +716,9 @@ test('29.5 backend sources are ESM, tenant-scoped and role-name free', async () 
   const files = [
     'src/services/payroll/monthlyInputRules.js',
     'src/services/payroll/monthlyInputService.js',
-    'src/controllers/monthlyInputController.js',
-    'src/validators/monthlyInputValidator.js',
-    'src/routes/monthlyInputRoutes.js',
+    'src/controllers/payroll/monthlyInputController.js',
+    'src/validators/payroll/monthlyInputValidator.js',
+    'src/routes/payroll/monthlyInputRoutes.js',
     'src/middlewares/payrollInputScope.js',
     'src/models/EmployeeMonthlyInput.js',
     'src/models/PayrollPeriod.js',

@@ -24,9 +24,9 @@ const [
   import('../src/models/InterviewScorecardTemplate.js'),
   import('../src/models/InterviewFeedback.js'),
   import('../src/models/CandidateDecision.js'),
-  import('../src/services/interviewFeedbackService.js'),
-  import('../src/validators/interviewFeedbackValidator.js'),
-  import('../src/validators/candidateDecisionValidator.js'),
+  import('../src/services/recruitment/interviewFeedbackService.js'),
+  import('../src/validators/recruitment/interviewFeedbackValidator.js'),
+  import('../src/validators/recruitment/candidateDecisionValidator.js'),
   import('../src/utils/permissionRegistry.js'),
   import('../src/models/CandidateHistory.js'),
   import('../src/models/Interview.js'),
@@ -34,7 +34,7 @@ const [
   import('../src/models/Candidate.js'),
   import('../src/models/CandidatePipelineHistory.js'),
   import('../src/models/User.js'),
-  import('../src/services/candidateDecisionService.js'),
+  import('../src/services/recruitment/candidateDecisionService.js'),
 ]);
 
 const runRules = async (rules, { body = {}, params = {}, query = {} } = {}) => {
@@ -656,14 +656,14 @@ test('routes and services enforce assignment, tenant, CAS locking and idempotent
     candidateTimeline,
     permissionMiddleware,
   ] = await Promise.all([
-    readFile(new URL('../src/routes/recruitmentRoutes.js', import.meta.url), 'utf8'),
-    readFile(new URL('../src/services/interviewFeedbackService.js', import.meta.url), 'utf8'),
-    readFile(new URL('../src/services/interviewScorecardService.js', import.meta.url), 'utf8'),
-    readFile(new URL('../src/services/candidateDecisionService.js', import.meta.url), 'utf8'),
-    readFile(new URL('../src/services/candidatePipelineService.js', import.meta.url), 'utf8'),
-    readFile(new URL('../src/controllers/interviewFeedbackController.js', import.meta.url), 'utf8'),
-    readFile(new URL('../src/controllers/candidateDecisionController.js', import.meta.url), 'utf8'),
-    readFile(new URL('../src/services/candidateInboxService.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/routes/recruitment/recruitmentRoutes.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/services/recruitment/interviewFeedbackService.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/services/recruitment/interviewScorecardService.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/services/recruitment/candidateDecisionService.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/services/recruitment/candidatePipelineService.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/controllers/recruitment/interviewFeedbackController.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/controllers/recruitment/candidateDecisionController.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/services/recruitment/candidateInboxService.js', import.meta.url), 'utf8'),
     readFile(new URL('../src/middlewares/permissionMiddleware.js', import.meta.url), 'utf8'),
   ]);
 

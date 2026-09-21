@@ -231,7 +231,7 @@ export const HOT_QUERY_CATALOG = [
   {
     id: 'public careers list',
 
-    evidence: 'src/services/publicCareerService.js:217,229',
+    evidence: 'src/services/recruitment/publicCareerService.js:217,229',
 
     model: 'JobPosting',
 
@@ -261,7 +261,7 @@ export const HOT_QUERY_CATALOG = [
   {
     id: 'candidate pipeline board',
 
-    evidence: 'src/services/candidateInboxService.js:71 + model compounds',
+    evidence: 'src/services/recruitment/candidateInboxService.js:71 + model compounds',
 
     model: 'Candidate',
 

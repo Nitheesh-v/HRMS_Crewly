@@ -31,11 +31,11 @@ import mongoose from 'mongoose';
 import { getRedisConfig } from '../src/config/redis.js';
 import { getQueuePrefix } from '../src/config/queueConfig.js';
 import { closeAllQueues } from '../src/queues/queueFactory.js';
-import { runScheduledReconcile } from '../src/services/scheduledJobScheduler.js';
+import { runScheduledReconcile } from '../src/services/ops/scheduledJobScheduler.js';
 import {
   runPreOnboardingReminderReconcile,
   runBgvReminderReconcile,
-} from '../src/services/reminderSchedulingService.js';
+} from '../src/services/ops/reminderSchedulingService.js';
 import { runAttendanceReminderReconcile } from '../src/services/attendance/attendanceReminderService.js';
 
 const main = async () => {

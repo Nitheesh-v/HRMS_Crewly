@@ -665,7 +665,7 @@ test('30.5: duplicate submit is idempotent; submitted case locks edits and repla
 });
 
 test('30.5: final submission is POST-only (route contract)', async () => {
-  const routes = readFileSync(new URL('../src/routes/publicBgvCollectionRoutes.js', import.meta.url), 'utf8');
+  const routes = readFileSync(new URL('../src/routes/bgv/publicBgvCollectionRoutes.js', import.meta.url), 'utf8');
   assert.ok(routes.includes("router.post('/:secureToken/submit'"));
   assert.equal(routes.includes("router.get('/:secureToken/submit'"), false);
   // GET summary exists but is read-only (no decision/submit verbs on GET).
@@ -710,7 +710,7 @@ test('30.5: raw token never persisted in cases/files/audit; no queue or provider
   // No permanent public URL construction in the collection layer.
   const storageCode = readFileSync(new URL('../src/services/bgv/bgvEvidenceStorageService.js', import.meta.url), 'utf8');
   assert.equal(storageCode.includes('/uploads/'), false);
-  const routes = readFileSync(new URL('../src/routes/publicBgvCollectionRoutes.js', import.meta.url), 'utf8');
+  const routes = readFileSync(new URL('../src/routes/bgv/publicBgvCollectionRoutes.js', import.meta.url), 'utf8');
   assert.equal(routes.includes('/uploads/'), false);
 });
 

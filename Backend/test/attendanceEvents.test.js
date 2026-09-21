@@ -844,14 +844,14 @@ test('compat: legacy Attendance contract and routes are intact', async () => {
   );
   assert.deepEqual([...AttendanceReal.default.schema.paths.status.enumValues], ['PRESENT', 'LATE', 'HALF_DAY']);
 
-  const routesSource = await readFile(new URL('../src/routes/attendanceRoutes.js', import.meta.url), 'utf8');
+  const routesSource = await readFile(new URL('../src/routes/attendance/attendanceRoutes.js', import.meta.url), 'utf8');
   ['/punch-in', '/punch-out', '/today', '/my', '/company', '/report', '/events', '/today/live'].forEach(
     (route) => assert.ok(routesSource.includes(`'${route}'`), `route ${route} wired`),
   );
   assert.ok(routesSource.includes('ATTENDANCE_CREATE_SELF'));
 
   const legacySource = await readFile(
-    new URL('../src/controllers/attendanceController.js', import.meta.url),
+    new URL('../src/controllers/attendance/attendanceController.js', import.meta.url),
     'utf8',
   );
   assert.ok(legacySource.includes('You have already punched in today'));
@@ -915,7 +915,7 @@ test('time: explicit date targets only real open sessions', async () => {
 // ── VALIDATORS ───────────────────────────────────────────────
 
 test('validators: action allowlist, identity refusal and key bounds', async () => {
-  const { attendanceEventValidator } = await import('../src/validators/attendanceEventValidator.js');
+  const { attendanceEventValidator } = await import('../src/validators/attendance/attendanceEventValidator.js');
   const { validationResult } = await import('express-validator');
 
   const runChain = async (body) => {

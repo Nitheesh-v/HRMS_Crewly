@@ -10,7 +10,7 @@ const read = (relativePath) =>
   readFile(new URL(relativePath, import.meta.url), 'utf8');
 
 test('legacy convert path no longer issues temporary passwords', async () => {
-  const controller = await read('../src/controllers/recruitmentController.js');
+  const controller = await read('../src/controllers/recruitment/recruitmentController.js');
   assert.match(controller, /Legacy candidate conversion is retired/);
   assert.doesNotMatch(controller, /tempPassword\s*=/);
   assert.doesNotMatch(controller, /Talent@/);
@@ -28,8 +28,8 @@ test('public recruitment mounts are limited to career offer and pre-onboarding p
 
 test('offer and pre-onboarding tokens store hashes only and rate-limit by hash', async () => {
   const [offerToken, preToken, offerModel, preModel] = await Promise.all([
-    read('../src/services/offerTokenService.js'),
-    read('../src/services/preOnboardingTokenService.js'),
+    read('../src/services/recruitment/offerTokenService.js'),
+    read('../src/services/recruitment/preOnboardingTokenService.js'),
     read('../src/models/OfferAccessToken.js'),
     read('../src/models/PreOnboardingAccessToken.js'),
   ]);
@@ -46,8 +46,8 @@ test('offer and pre-onboarding tokens store hashes only and rate-limit by hash',
 
 test('malware scan abstractions never claim CLEAN without a scanner', async () => {
   const [resumeScan, docScan] = await Promise.all([
-    read('../src/services/resumeSecurityService.js'),
-    read('../src/services/preOnboardingDocumentSecurityService.js'),
+    read('../src/services/recruitment/resumeSecurityService.js'),
+    read('../src/services/recruitment/preOnboardingDocumentSecurityService.js'),
   ]);
 
   assert.match(resumeScan, /NOT_CONFIGURED/);
@@ -58,9 +58,9 @@ test('malware scan abstractions never claim CLEAN without a scanner', async () =
 
 test('BGV and ATS paths do not auto-reject candidates from scores or discrepancies', async () => {
   const [bgv, ats, decision] = await Promise.all([
-    read('../src/services/backgroundVerificationService.js'),
-    read('../src/services/atsMatchingService.js'),
-    read('../src/services/candidateDecisionService.js'),
+    read('../src/services/bgv/backgroundVerificationService.js'),
+    read('../src/services/recruitment/atsMatchingService.js'),
+    read('../src/services/recruitment/candidateDecisionService.js'),
   ]);
 
   assert.match(bgv, /Never auto-reject candidate on discrepancy/);
@@ -75,8 +75,8 @@ test('BGV and ATS paths do not auto-reject candidates from scores or discrepanci
 
 test('secure conversion remains the only employee handoff and is idempotent by unique constraints', async () => {
   const [routes, conversion, userModel, conversionModel] = await Promise.all([
-    read('../src/routes/recruitmentRoutes.js'),
-    read('../src/services/candidateConversionService.js'),
+    read('../src/routes/recruitment/recruitmentRoutes.js'),
+    read('../src/services/recruitment/candidateConversionService.js'),
     read('../src/models/User.js'),
     read('../src/models/CandidateEmployeeConversion.js'),
   ]);
@@ -93,8 +93,8 @@ test('secure conversion remains the only employee handoff and is idempotent by u
 
 test('public GET offer handlers remain scanner-safe decision-free', async () => {
   const [routes, service] = await Promise.all([
-    read('../src/routes/publicCandidateOfferRoutes.js'),
-    read('../src/services/publicOfferService.js'),
+    read('../src/routes/recruitment/publicCandidateOfferRoutes.js'),
+    read('../src/services/recruitment/publicOfferService.js'),
   ]);
 
   assert.match(routes, /router\.get\('\/:secureToken'/);
@@ -108,7 +108,7 @@ test('public GET offer handlers remain scanner-safe decision-free', async () => 
 });
 
 test('tenant-scoped recruitment aggregations match companyId before grouping', async () => {
-  const analytics = await read('../src/services/recruitmentAnalyticsService.js');
+  const analytics = await read('../src/services/recruitment/recruitmentAnalyticsService.js');
   assert.match(analytics, /companyId:\s*companyObjectId|companyId:\s*filters\.companyId|companyId,/);
   assert.match(analytics, /\$match/);
   assert.doesNotMatch(analytics, /req\.body\.companyId/);

@@ -31,12 +31,12 @@ import Candidate from '../models/Candidate.js';
 import CandidateDocumentRequirement from '../models/CandidateDocumentRequirement.js';
 import BackgroundVerificationCase from '../models/BackgroundVerificationCase.js';
 import { buildEventKey, requestEmailDelivery } from '../services/emailDeliveryService.js';
-import { deliverInterviewReminder } from '../services/scheduledJobScheduler.js';
-import { expireOfferIfDue } from '../services/offerService.js';
+import { deliverInterviewReminder } from '../services/ops/scheduledJobScheduler.js';
+import { expireOfferIfDue } from '../services/recruitment/offerService.js';
 import {
   deliverPreOnboardingReminder,
   deliverBgvReminder,
-} from '../services/reminderSchedulingService.js';
+} from '../services/ops/reminderSchedulingService.js';
 import { executeReminder } from '../services/attendance/attendanceReminderService.js';
 import { validateAttendanceReminderPayload } from '../services/attendance/attendanceReminderRules.js';
 

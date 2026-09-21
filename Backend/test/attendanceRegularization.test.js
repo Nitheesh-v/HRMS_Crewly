@@ -32,7 +32,7 @@ const [regRules, regService, eventService, sched, policyRules, regValidator, reg
     import('../src/services/attendance/attendanceEventService.js'),
     import('../src/utils/scheduleEngine.js'),
     import('../src/services/attendance/attendancePolicyRules.js'),
-    import('../src/validators/attendanceRegularizationValidator.js'),
+    import('../src/validators/attendance/attendanceRegularizationValidator.js'),
     import('../src/utils/permissionRegistry.js'),
   ]);
 
@@ -1431,9 +1431,9 @@ test('static: 31.5 never writes payroll, leave, work-mode requests or events', (
     'models/AttendanceRegularization.js',
     'services/attendance/attendanceRegularizationRules.js',
     'services/attendance/attendanceRegularizationService.js',
-    'validators/attendanceRegularizationValidator.js',
-    'controllers/attendanceRegularizationController.js',
-    'routes/attendanceRegularizationRoutes.js',
+    'validators/attendance/attendanceRegularizationValidator.js',
+    'controllers/attendance/attendanceRegularizationController.js',
+    'routes/attendance/attendanceRegularizationRoutes.js',
   ];
   for (const file of files) {
     const content = codeOf(file);
@@ -1460,7 +1460,7 @@ test('static: recorded punches only ever feed derivations, never persistence', (
 });
 
 test('static: controller keeps the repo comment convention', () => {
-  const content = readFileSync(join(SRC, 'controllers/attendanceRegularizationController.js'), 'utf8');
+  const content = readFileSync(join(SRC, 'controllers/attendance/attendanceRegularizationController.js'), 'utf8');
   assert.ok(content.includes('// Data from frontend'), 'controller must mark frontend inputs');
   assert.ok(content.includes('// DB Logic'), 'controller must mark DB logic');
   assert.ok(content.includes('// Data to frontend'), 'controller must mark frontend outputs');

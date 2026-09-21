@@ -1173,7 +1173,7 @@ test('31.11 legacy import still works before attendance send', async () => {
 test('31.11 source hygiene: no money, no force flags, no payroll lock', () => {
   const service = readSource('src/services/attendance/attendanceFinalizationService.js');
   const rules = readSource('src/services/attendance/attendanceFinalizationRules.js');
-  const controller = readSource('src/controllers/attendanceFinalizationController.js');
+  const controller = readSource('src/controllers/attendance/attendanceFinalizationController.js');
   const blob = `${service}\n${rules}\n${controller}`;
   for (const token of [
     'force', 'skipValidation', 'adminOverride', 'bypass', 'netPay', 'grossPay',
@@ -1189,7 +1189,7 @@ test('31.11 source hygiene: no money, no force flags, no payroll lock', () => {
 });
 
 test('31.11 routes + permissions mount the six guarded endpoints', () => {
-  const routes = readSource('src/routes/attendanceRoutes.js');
+  const routes = readSource('src/routes/attendance/attendanceRoutes.js');
   assert.match(routes, /finalization\/:month\/validate/);
   assert.match(routes, /finalization\/:month\/preview/);
   assert.match(routes, /finalization\/:month\/finalize/);

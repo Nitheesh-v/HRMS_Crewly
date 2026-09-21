@@ -33,9 +33,9 @@ test('RBAC registers recruitment analytics read for admin and HR only by default
 
 test('analytics route and service enforce company scope and documented metrics', async () => {
   const [routes, service] = await Promise.all([
-    readFile(new URL('../src/routes/recruitmentRoutes.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/routes/recruitment/recruitmentRoutes.js', import.meta.url), 'utf8'),
     readFile(
-      new URL('../src/services/recruitmentAnalyticsService.js', import.meta.url),
+      new URL('../src/services/recruitment/recruitmentAnalyticsService.js', import.meta.url),
       'utf8'
     ),
   ]);
@@ -58,7 +58,7 @@ test('analytics route and service enforce company scope and documented metrics',
 
 test('analytics source does not expose document contents or compensation in work queues', async () => {
   const service = await readFile(
-    new URL('../src/services/recruitmentAnalyticsService.js', import.meta.url),
+    new URL('../src/services/recruitment/recruitmentAnalyticsService.js', import.meta.url),
     'utf8'
   );
   assert.doesNotMatch(service, /storageKey/);

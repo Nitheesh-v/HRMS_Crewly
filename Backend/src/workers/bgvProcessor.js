@@ -42,12 +42,12 @@ import {
 import BackgroundVerificationCase from '../models/BackgroundVerificationCase.js';
 import BackgroundVerificationCheck from '../models/BackgroundVerificationCheck.js';
 import { getBgvProvider } from '../services/bgv/bgvProviderRegistry.js';
-import { scheduleBgvPoll } from '../services/bgvQueueDispatcher.js';
+import { scheduleBgvPoll } from '../services/bgv/bgvQueueDispatcher.js';
 import {
   recordProviderBgvResult,
   stopCasePolling,
   recordBgvSystemEvent,
-} from '../services/backgroundVerificationService.js';
+} from '../services/bgv/backgroundVerificationService.js';
 
 const OBJECT_ID = /^[a-f0-9]{24}$/i;
 

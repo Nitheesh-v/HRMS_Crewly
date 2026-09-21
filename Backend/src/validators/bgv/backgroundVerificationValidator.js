@@ -1,0 +1,199 @@
+import { body, param, query, validationResult } from 'express-validator';
+import ApiError from '../../utils/ApiError.js';
+import { BGV_TRIGGER_STAGES } from '../../models/BackgroundVerificationSettings.js';
+import { BGV_CASE_STATUSES } from '../../models/BackgroundVerificationCase.js';
+import { BGV_CHECK_CATEGORIES } from '../../models/BackgroundVerificationCheckType.js';
+import {
+  BGV_DECISIONS,
+  BGV_DECISION_MAX_REASON_LENGTH,
+} from '../../services/bgv/bgvDecisionRules.js';
+import { BGV_CATALOGUE_TYPES } from '../../services/bgv/bgvCatalogueRules.js';
+import { clientMoneyViolations } from '../../services/bgv/bgvOrderRules.js';
+
+const validate = (req, _res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return next(ApiError.badRequest(errors.array()[0]?.msg || 'Validation failed'));
+  }
+  return next();
+};
+
+export const bgvSettingsUpdateRules = [
+  body('enabled').optional().isBoolean(),
+  body('consentRequired').optional().isBoolean(),
+  body('bgvRequiredBeforeConversion').optional().isBoolean(),
+  body('bgvRequiredBeforeJoining').optional().isBoolean(),
+  body('triggerStage')
+    .optional()
+    .isIn(BGV_TRIGGER_STAGES)
+    .withMessage('Choose a valid BGV trigger stage'),
+  validate,
+];
+
+export const bgvCheckTypeCreateRules = [
+  body('name').trim().notEmpty().withMessage('Name is required').isLength({ max: 120 }),
+  body('code').optional({ checkFalsy: true }).trim().isLength({ max: 40 }),
+  body('category').optional().isIn(BGV_CHECK_CATEGORIES),
+  body('required').optional().isBoolean(),
+  body('active').optional().isBoolean(),
+  body('instructions').optional({ nullable: true }).isLength({ max: 2000 }),
+  body('displayOrder').optional().isInt({ min: 0, max: 10000 }),
+  validate,
+];
+
+export const bgvCheckTypeUpdateRules = [
+  param('checkTypeId').isMongoId().withMessage('Choose a valid check type'),
+  body('name').optional().trim().notEmpty().isLength({ max: 120 }),
+  body('category').optional().isIn(BGV_CHECK_CATEGORIES),
+  body('required').optional().isBoolean(),
+  body('active').optional().isBoolean(),
+  body('instructions').optional({ nullable: true }).isLength({ max: 2000 }),
+  body('displayOrder').optional().isInt({ min: 0, max: 10000 }),
+  validate,
+];
+
+export const bgvCaseListRules = [
+  query('status')
+    .optional({ checkFalsy: true })
+    .isIn(BGV_CASE_STATUSES)
+    .withMessage('Choose a valid BGV status'),
+  query('jobId').optional({ checkFalsy: true }).isMongoId(),
+  query('verifierId').optional({ checkFalsy: true }).isMongoId(),
+  query('page').optional({ checkFalsy: true }).isInt({ min: 1 }),
+  query('limit').optional({ checkFalsy: true }).isInt({ min: 1, max: 100 }),
+  validate,
+];
+
+export const bgvCaseIdRules = [
+  param('caseId').isMongoId().withMessage('Choose a valid BGV case'),
+  validate,
+];
+
+export const bgvStartRules = [
+  param('candidateId').trim().notEmpty().isLength({ max: 40 }),
+  validate,
+];
+
+export const bgvAssignRules = [
+  param('caseId').isMongoId(),
+  body('verifierId').isMongoId().withMessage('Choose a valid verifier'),
+  validate,
+];
+
+export const bgvCheckActionRules = [
+  param('caseId').isMongoId(),
+  param('checkId').isMongoId(),
+  body('action')
+    .trim()
+    .notEmpty()
+    .isIn([
+      'START',
+      'REQUEST_INFORMATION',
+      'MARK_VERIFIED',
+      'RECORD_DISCREPANCY',
+      'UNABLE_TO_VERIFY',
+    ])
+    .withMessage('Choose a valid check action'),
+  body('discrepancy').optional({ nullable: true }).isLength({ max: 2000 }),
+  body('verifiedInformation').optional({ nullable: true }).isLength({ max: 4000 }),
+  body('resultSummary').optional({ nullable: true }).isLength({ max: 2000 }),
+  body('hrComment').optional({ nullable: true }).isLength({ max: 2000 }),
+  body('claimedInformation').optional({ nullable: true }).isLength({ max: 4000 }),
+  validate,
+];
+
+export const bgvCompleteRules = [
+  param('caseId').isMongoId(),
+  body('overallOutcome')
+    .trim()
+    .notEmpty()
+    .isIn(['CLEAR', 'CLEAR_WITH_DISCREPANCIES', 'HOLD'])
+    .withMessage('Choose a valid overall outcome'),
+  body('reviewComment').optional({ nullable: true }).isLength({ max: 2000 }),
+  validate,
+];
+
+export const bgvCancelRules = [
+  param('caseId').isMongoId(),
+  body('reason').trim().notEmpty().withMessage('Cancellation reason is required').isLength({ max: 1000 }),
+  validate,
+];
+
+// Phase 30.1 — optional BGV decision body/param validation.
+export const bgvDecisionRules = [
+  param('candidateId').trim().notEmpty().isLength({ max: 40 }),
+  body('decision').isIn(BGV_DECISIONS).withMessage('Choose Proceed Without BGV or Initiate BGV'),
+  body('reason')
+    .optional({ checkFalsy: true })
+    .trim()
+    .isLength({ max: BGV_DECISION_MAX_REASON_LENGTH })
+    .withMessage('Keep the reason within 300 characters'),
+  validate,
+];
+
+// ── Phase 30.3 — paid BGV order ──────────────────────────────────
+// Backend price authority: ANY client-submitted money field is rejected
+// outright (the service double-checks, defense in depth).
+const rejectClientMoney = (req, _res, next) => {
+  const hits = clientMoneyViolations(req.body || {});
+  if (hits.length) {
+    return next(
+      ApiError.badRequest(
+        `Client-provided amounts are not accepted (${hits.join(', ')})`
+      )
+    );
+  }
+  return next();
+};
+
+export const bgvOrderCreateRules = [
+  param('candidateId').trim().notEmpty().isLength({ max: 40 }),
+  body('selected')
+    .isArray({ min: 1, max: 5 })
+    .withMessage('Select at least one BGV service (max 5)'),
+  body('selected.*')
+    .isIn(BGV_CATALOGUE_TYPES)
+    .withMessage('Unsupported BGV service in selection'),
+  rejectClientMoney,
+  validate,
+];
+
+export const bgvOrderCandidateRules = [
+  param('candidateId').trim().notEmpty().isLength({ max: 40 }),
+  validate,
+];
+
+export const bgvOrderIdRules = [
+  param('orderId').trim().isMongoId().withMessage('Invalid BGV order reference'),
+  validate,
+];
+
+export const bgvOrderVerifyRules = [
+  param('orderId').trim().isMongoId().withMessage('Invalid BGV order reference'),
+  body('mock').optional().isBoolean(),
+  body('razorpay_payment_id').optional({ checkFalsy: true }).isString().isLength({ max: 80 }),
+  body('razorpay_signature').optional({ checkFalsy: true }).isString().isLength({ max: 200 }),
+  validate,
+];
+
+// ── Phase 30.4 — public candidate BGV consent portal ─────────────
+export const bgvConsentReadRules = [
+  param('secureToken').trim().isLength({ min: 40, max: 200 }),
+  validate,
+];
+
+export const bgvConsentDecisionRules = [
+  param('secureToken').trim().isLength({ min: 40, max: 200 }),
+  validate,
+];
+
+// Tenant-side consent invitation / status.
+export const bgvConsentInvitationRules = [
+  param('orderId').trim().isMongoId().withMessage('Invalid BGV order reference'),
+  validate,
+];
+
+export const bgvConsentStatusRules = [
+  param('candidateId').trim().notEmpty().isLength({ max: 40 }),
+  validate,
+];

@@ -22,7 +22,7 @@ const [locationRules, locationService, eventService, policyRules, eventValidator
     import('../src/services/attendance/attendanceLocationService.js'),
     import('../src/services/attendance/attendanceEventService.js'),
     import('../src/services/attendance/attendancePolicyRules.js'),
-    import('../src/validators/attendanceEventValidator.js'),
+    import('../src/validators/attendance/attendanceEventValidator.js'),
     import('../src/utils/permissionRegistry.js'),
   ]);
 

@@ -38,13 +38,13 @@ const {
   getRetryPolicy,
   SAFE_CATEGORIES,
   OPS_JOB_ID_PATTERN,
-} = await import('../src/services/opsQueueRegistry.js');
+} = await import('../src/services/ops/opsQueueRegistry.js');
 
 const {
   redactSensitiveText,
   extractEntityRef,
   serializeJobForOps,
-} = await import('../src/services/opsJobSerializer.js');
+} = await import('../src/services/ops/opsJobSerializer.js');
 
 const {
   getOpsOverview,
@@ -66,7 +66,7 @@ const {
   OPS_FAILED_PAGE_MAX,
   RECONCILE_MAX_LIMIT,
   RECONCILE_AREAS,
-} = await import('../src/services/opsQueueService.js');
+} = await import('../src/services/ops/opsQueueService.js');
 
 const {
   startWorkerHeartbeat,
@@ -84,7 +84,7 @@ const {
 const { protect } = await import('../src/middlewares/authMiddleware.js');
 const jwt = (await import('jsonwebtoken')).default;
 const { reconcileBackgroundWork } = await import(
-  '../src/services/opsReconcileCoordinator.js'
+  '../src/services/ops/opsReconcileCoordinator.js'
 );
 
 const VALID_OID = '64a1b2c3d4e5f6a7b8c9d0e1';

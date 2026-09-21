@@ -59,7 +59,7 @@ describe('structural pins — legacy list controllers (32.10)', () => {
   const userController = read('controllers/userController.js');
   const taskController = read('controllers/taskController.js');
   const projectController = read('controllers/projectController.js');
-  const systemController = read('controllers/systemController.js');
+  const systemController = read('controllers/platform/systemController.js');
 
   test('no raw user input reaches $regex in the four controllers', () => {
     for (const [name, src] of [

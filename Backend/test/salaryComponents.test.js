@@ -703,7 +703,7 @@ test('permission version was bumped for the new component lifecycle permission',
 
 test('routes are permission-gated and mounted under /api/payroll/components', async () => {
   const [routes, index] = await Promise.all([
-    readFile(new URL('../src/routes/salaryComponentRoutes.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/routes/payroll/salaryComponentRoutes.js', import.meta.url), 'utf8'),
     readFile(new URL('../src/routes/index.js', import.meta.url), 'utf8'),
   ]);
 

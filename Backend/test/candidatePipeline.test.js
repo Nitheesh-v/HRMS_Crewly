@@ -21,8 +21,8 @@ const [
   import('../src/models/CandidatePipelineHistory.js'),
   import('../src/models/CandidateResume.js'),
   import('../src/models/User.js'),
-  import('../src/services/candidatePipelineService.js'),
-  import('../src/services/candidateInboxService.js'),
+  import('../src/services/recruitment/candidatePipelineService.js'),
+  import('../src/services/recruitment/candidateInboxService.js'),
 ]);
 
 const COMPANY_ID = '64b000000000000000000301';
@@ -469,7 +469,7 @@ test('candidate detail merges operational and immutable pipeline history chronol
 
 test('routes, startup migration and hostile-text-safe React controls stay wired', async () => {
   const [routes, server, inboxPage, detailPage, boardPage] = await Promise.all([
-    readFile(new URL('../src/routes/recruitmentRoutes.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/routes/recruitment/recruitmentRoutes.js', import.meta.url), 'utf8'),
     readFile(new URL('../src/server.js', import.meta.url), 'utf8'),
     readFile(new URL('../../Frontend/src/pages/recruitment/CandidateInboxPage.jsx', import.meta.url), 'utf8'),
     readFile(new URL('../../Frontend/src/pages/recruitment/CandidateDetailPage.jsx', import.meta.url), 'utf8'),

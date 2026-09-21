@@ -92,11 +92,25 @@ No CDN/hosting vendor selected (edge WAF, final HSTS/CSP, purge, log redaction =
 
 ## 10. Deferred / future roadmap (PROPOSED — NOT AUTHORIZED)
 
-Tenant Custom Roles & Advanced RBAC · Crewly Chat Hub · Teams-like Presence & Availability · Crewly AI Assistant · controllers/routes/validators domain-nesting (dedicated structure phase) · provider-specific deployment task after vendor selection. No code or scaffolding exists for any of these.
+Tenant Custom Roles & Advanced RBAC · Crewly Chat Hub · Teams-like Presence & Availability · Crewly AI Assistant · provider-specific deployment task after vendor selection. No code or scaffolding exists for any of these. (Domain-nesting of controllers/routes/validators/services was REMOVED from this list: executed as the post-32.18 structure unit — see §11.)
 
 ## 11. Project structure (final state)
 
-Backend: `src/{config,controllers(99 flat·intentional),routes(55),services(attendance/bgv/payroll subdirs + flat domain services),validators(49),middlewares(29),models(124 flat·intentional),utils(56),infrastructure/{observability,realtime,storage},workers}` · `scripts/` grouped: `load/` + `preview/` (32.18 move) + flat ops CLIs · `test/` 196 files flat (explicit-path npm scripts). Frontend: `src/{pages(≈25 domain dirs),components,services,routes,layout,hooks,utils,assets}`. Verified: route imports resolve, `worker`/`config:check`/`ops:load-check`/`load:*`/`preview:*` scripts resolve, no legacy `bull`, no stale import paths.
+**Post-32.18 structure unit (user-directed):** the 32.18 "flat-by-intent" decision for controllers/routes/validators/services was explicitly overridden by the developer; those four layers are now grouped by domain. 180 files moved via `git mv`; every import updated to its real new path (NO barrels/index re-export files — the standing no-shims law); route/URL behavior unchanged; full ladder re-verified 2175/2175.
+
+Backend: `src/{config,controllers,routes,services,validators,middlewares,models(124 flat·intentional),utils,infrastructure/{observability,realtime,storage},workers}` with the four grouped layers sharing one domain taxonomy:
+
+| Domain | controllers | routes | validators | services |
+|---|---|---|---|---|
+| `attendance/` | 15 | 7 | 8 | (pre-existing) |
+| `payroll/` | 12 | 12 | 12 | (pre-existing) |
+| `recruitment/` | 18 | 4 | 17 | 37 |
+| `bgv/` | 10 | 4 | 2 | +2 joined |
+| `platform/` | 11 | 3 | — | — |
+| root (cross-domain core) | 33 | 25 + `index.js` | 10 | 8 shared (redisCache, emailDelivery, privateFileDelivery, companyBranding×2, analyticsCacheInvalidation, documentProcessingDispatcher, accountSetup) + `ops/` (6) |
+
+`services/ops/` holds the ops-queue/scheduler family (`opsJobSerializer`, `opsQueueRegistry`, `opsQueueService`, `opsReconcileCoordinator`, `scheduledJobScheduler`, `reminderSchedulingService`). Models stay flat by intent (high import cost, §79). `scripts/` grouped: `load/` + `preview/` (32.18) + flat ops CLIs · `test/` 196 files flat (explicit-path npm scripts). Frontend: `src/{pages(≈25 domain dirs),components,services,routes,layout,hooks,utils,assets}`. Verified after the restructure: every relative import resolves repo-wide (0 stale refs), all route modules import, `index:check` 124/124 models + zero GAPs, `config:check` clean, full ladder 2175/2175 ×2, zero dependencies added.
+
 
 ## 12. Current test totals (this checkout, this close-out)
 

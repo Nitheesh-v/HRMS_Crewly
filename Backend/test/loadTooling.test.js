@@ -225,13 +225,13 @@ describe('scenario registry (§5/§82) — read-only, real routes only', () => {
   });
 
   test('registered scenarios match REAL Crewly routes (structural pin against inventing endpoints)', () => {
-    const attendance = read('src/routes/attendanceRoutes.js');
+    const attendance = read('src/routes/attendance/attendanceRoutes.js');
     for (const fragment of ['/today/live', '/presence', '/my']) {
       assert.ok(attendance.includes(`'${fragment}'`), `attendance route ${fragment} must exist in the app`);
     }
     const health = read('src/routes/healthRoutes.js');
     assert.match(health, /\/live/);
-    const careers = read('src/routes/publicCareerRoutes.js');
+    const careers = read('src/routes/recruitment/publicCareerRoutes.js');
     assert.match(careers, /\/jobs/);
   });
 

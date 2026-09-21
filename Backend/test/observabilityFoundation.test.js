@@ -608,13 +608,13 @@ describe('queue correlation seam (§38/§39/§88) — payload law untouched', ()
 // ═══════════════════════════════════════════════════════════════════════════
 describe('platform diagnostics surface (§29/§30/§71/§91)', () => {
   test('route mounted under the SAME platform permit as system-health (structural pin)', () => {
-    const routes = read('routes/superAdminRoutes.js');
+    const routes = read('routes/platform/superAdminRoutes.js');
     assert.match(routes, /router\.get\("\/diagnostics", permit\("health:read"\), operations\.diagnostics\)/);
     assert.match(routes, /router\.get\("\/system-health", permit\("health:read"\)/);
   });
 
   test('diagnostics payload is bounded and secret-free (no URIs/hosts/keys/users)', async () => {
-    const { diagnostics } = await import('../src/controllers/superAdminOperationsController.js');
+    const { diagnostics } = await import('../src/controllers/platform/superAdminOperationsController.js');
 
     let payload = null;
     const res = {

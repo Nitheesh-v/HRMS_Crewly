@@ -23,8 +23,8 @@ const [
   import('../src/models/AuditLog.js'),
   import('../src/models/JobRequisition.js'),
   import('../src/models/Notification.js'),
-  import('../src/services/requisitionService.js'),
-  import('../src/validators/requisitionValidator.js'),
+  import('../src/services/recruitment/requisitionService.js'),
+  import('../src/validators/recruitment/requisitionValidator.js'),
   import('../src/utils/permissionRegistry.js'),
 ]);
 
@@ -304,7 +304,7 @@ test('cross-tenant decision attempts return not found and retain company filteri
 
 test('API routes expose the three exact-permission decision endpoints', async () => {
   const routeSource = await readFile(
-    new URL('../src/routes/recruitmentRoutes.js', import.meta.url),
+    new URL('../src/routes/recruitment/recruitmentRoutes.js', import.meta.url),
     'utf8'
   );
 

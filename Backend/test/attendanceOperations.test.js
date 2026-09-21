@@ -904,7 +904,7 @@ test('31.12 query budget stays bounded with zero N+1', async () => {
 test('31.12 source hygiene: reuse 31.9, no audit/GPS/money/queues', () => {
   const service = readSource('src/services/attendance/attendanceOperationsService.js');
   const rules = readSource('src/services/attendance/attendanceOperationsRules.js');
-  const controller = readSource('src/controllers/attendanceOperationsController.js');
+  const controller = readSource('src/controllers/attendance/attendanceOperationsController.js');
   assert.match(service, /getTeamPresence\(/);
   assert.ok(!service.includes('derivePresence'));
   for (const token of [
@@ -920,7 +920,7 @@ test('31.12 source hygiene: reuse 31.9, no audit/GPS/money/queues', () => {
 });
 
 test('31.12 route + permission gate HR-only operations', () => {
-  const routes = readSource('src/routes/attendanceRoutes.js');
+  const routes = readSource('src/routes/attendance/attendanceRoutes.js');
   assert.match(routes, /'\/operations'/);
   assert.match(routes, /ATTENDANCE_OPERATIONS_READ/);
   const registry = readSource('src/utils/permissionRegistry.js');

@@ -342,10 +342,10 @@ describe('E — queue trust & structural security pins (S-18/S-24/S-70/S-71/S-08
 
   test('GET never finalizes: offer/kiosk/token routes expose no mutating GET verbs', () => {
     const routeFiles = [
-      'src/routes/publicCandidateOfferRoutes.js',
-      'src/routes/publicCandidatePreOnboardingRoutes.js',
-      'src/routes/publicBgvConsentRoutes.js',
-      'src/routes/attendanceKioskRoutes.js',
+      'src/routes/recruitment/publicCandidateOfferRoutes.js',
+      'src/routes/recruitment/publicCandidatePreOnboardingRoutes.js',
+      'src/routes/bgv/publicBgvConsentRoutes.js',
+      'src/routes/attendance/attendanceKioskRoutes.js',
     ];
     for (const rel of routeFiles) {
       const source = read(rel);

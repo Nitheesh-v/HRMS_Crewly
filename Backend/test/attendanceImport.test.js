@@ -412,7 +412,7 @@ test('31.14 import: history reads stay tenant-scoped', async () => {
 // ── Static integrity ─────────────────────────────────────────
 
 test('31.14 import: multipart routes, no raw CSV at rest', () => {
-  const routes = readSource('src/routes/attendanceRoutes.js');
+  const routes = readSource('src/routes/attendance/attendanceRoutes.js');
   assert.match(routes, /\/imports\/preview/);
   assert.match(routes, /\/imports\/confirm/);
   assert.match(routes, /csvUpload/);

@@ -32,7 +32,7 @@ import * as employeeDocsNS from '../controllers/employeeDocsController.js';
 import * as lifecycleNS from '../controllers/lifecycleController.js';
 import * as perfNS from '../controllers/performanceController.js';
 import * as announcementNS from '../controllers/announcementController.js';
-import * as supportNS from '../controllers/supportController.js';
+import * as supportNS from '../controllers/platform/supportController.js';
 import * as dashboardNS from '../controllers/dashboardController.js';
 import * as expenseNS from '../controllers/expenseController.js';
 import * as assetNS from '../controllers/assetController.js';

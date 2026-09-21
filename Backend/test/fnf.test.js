@@ -949,9 +949,9 @@ test('§24 the settlement routes, controller and validators all load', async () 
   // half, which left every 29.11 route unvalidated and would have crashed
   // the server on import. Loading the modules proves it cannot happen again.
   const [{ default: routes }, controller, validators] = await Promise.all([
-    import('../src/routes/fnfRoutes.js'),
-    import('../src/controllers/fnfController.js'),
-    import('../src/validators/fnfValidator.js'),
+    import('../src/routes/payroll/fnfRoutes.js'),
+    import('../src/controllers/payroll/fnfController.js'),
+    import('../src/validators/payroll/fnfValidator.js'),
   ]);
 
   assert.equal(typeof routes, 'function');

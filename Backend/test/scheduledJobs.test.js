@@ -23,7 +23,7 @@ process.env.MONGO_URI ||= 'mongodb://127.0.0.1:27017/crewly_test';
 
 const [scheduler, scheduledProcessor, emailProcessor, queueConfig, registry, mailer] =
   await Promise.all([
-    import('../src/services/scheduledJobScheduler.js'),
+    import('../src/services/ops/scheduledJobScheduler.js'),
     import('../src/workers/scheduledProcessor.js'),
     import('../src/workers/emailProcessor.js'),
     import('../src/config/queueConfig.js'),

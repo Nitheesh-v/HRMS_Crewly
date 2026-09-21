@@ -954,12 +954,12 @@ test('the legacy payslip route and renderer still exist, untouched by 29.9', asy
 
   // models/Payroll.js + GET /api/payroll/:id/payslip belong to the pre-29.9
   // payroll module. 29.9 adds /api/payroll/payslips and leaves them alone.
-  const { default: legacyRoutes } = await import('../src/routes/payrollRoutes.js');
+  const { default: legacyRoutes } = await import('../src/routes/payroll/payrollRoutes.js');
   const legacyPayslipRoute = legacyRoutes.stack.find((layer) => layer.route?.path === '/:id/payslip');
   assert.ok(legacyPayslipRoute, 'the legacy payslip download route must survive');
   assert.equal(typeof legacyPayslipRoute.route.stack[0].handle, 'function');
 
-  const { default: payslipRoutes } = await import('../src/routes/payslipRoutes.js');
+  const { default: payslipRoutes } = await import('../src/routes/payroll/payslipRoutes.js');
   const paths = payslipRoutes.stack.map((layer) => layer.route?.path).filter(Boolean);
   assert.ok(paths.includes('/mine'), 'the new employee portal route exists');
   assert.equal(

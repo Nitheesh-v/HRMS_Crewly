@@ -247,7 +247,7 @@ describe('realtime & kiosk edge posture (§18/§52)', () => {
   });
 
   test('kiosk API inherits the default-deny (no public business caching)', () => {
-    const kiosk = read('src/routes/attendanceKioskRoutes.js');
+    const kiosk = read('src/routes/attendance/attendanceKioskRoutes.js');
     assert.ok(!/Cache-Control[^]*?public/.test(kiosk), 'kiosk routes must never set a public cache policy');
     // The app-level default (pinned above) supplies private, no-store.
   });

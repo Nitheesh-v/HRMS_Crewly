@@ -72,11 +72,11 @@ import { registerPayrollProcessors } from './payrollProcessor.js';
 import { markEmailDelivery } from '../services/emailDeliveryService.js';
 import {
   recoverPendingResumeProcessing,
-} from '../services/resumeProcessingDispatcher.js';
-import { recoverPendingATSMatching } from '../services/atsDispatcher.js';
-import { runScheduledReconcile } from '../services/scheduledJobScheduler.js';
+} from '../services/recruitment/resumeProcessingDispatcher.js';
+import { recoverPendingATSMatching } from '../services/recruitment/atsDispatcher.js';
+import { runScheduledReconcile } from '../services/ops/scheduledJobScheduler.js';
 import { runDocumentReconcile } from '../services/documentProcessingDispatcher.js';
-import { runBgvReconcile } from '../services/bgvQueueDispatcher.js';
+import { runBgvReconcile } from '../services/bgv/bgvQueueDispatcher.js';
 import { startWorkerHeartbeat } from './workerHeartbeat.js';
 
 const SHUTDOWN_HARD_STOP_MS = 10000;

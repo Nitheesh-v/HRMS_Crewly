@@ -30,12 +30,12 @@ const [
   import('../src/models/CandidateHistory.js'),
   import('../src/models/CandidateResume.js'),
   import('../src/models/ResumeParseResult.js'),
-  import('../src/services/resumeTextExtractionService.js'),
-  import('../src/services/resumeDeterministicParser.js'),
-  import('../src/services/resumeNormalizationService.js'),
-  import('../src/services/resumeProcessingService.js'),
-  import('../src/services/candidateInboxService.js'),
-  import('../src/services/resumeProcessingDispatcher.js'),
+  import('../src/services/recruitment/resumeTextExtractionService.js'),
+  import('../src/services/recruitment/resumeDeterministicParser.js'),
+  import('../src/services/recruitment/resumeNormalizationService.js'),
+  import('../src/services/recruitment/resumeProcessingService.js'),
+  import('../src/services/recruitment/candidateInboxService.js'),
+  import('../src/services/recruitment/resumeProcessingDispatcher.js'),
   import('../src/utils/permissionRegistry.js'),
 ]);
 
@@ -605,11 +605,11 @@ test('parsed read denies cross-tenant lookup and raw parser text is private by s
 test('authenticated parser routes use exact read/update permissions and public routes expose none', async () => {
   const [recruitmentRoutes, publicRoutes] = await Promise.all([
     readFile(
-      new URL('../src/routes/recruitmentRoutes.js', import.meta.url),
+      new URL('../src/routes/recruitment/recruitmentRoutes.js', import.meta.url),
       'utf8'
     ),
     readFile(
-      new URL('../src/routes/publicCareerRoutes.js', import.meta.url),
+      new URL('../src/routes/recruitment/publicCareerRoutes.js', import.meta.url),
       'utf8'
     ),
   ]);

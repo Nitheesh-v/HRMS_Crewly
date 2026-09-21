@@ -36,8 +36,8 @@ import PreOnboardingHistory from '../models/PreOnboardingHistory.js';
 import { recordAudit } from '../utils/securityauditService.js';
 import {
   getStoredPreOnboardingDocument,
-} from '../services/preOnboardingDocumentStorageService.js';
-import { verifyStoredDocumentBuffer } from '../services/preOnboardingDocumentSecurityService.js';
+} from '../services/recruitment/preOnboardingDocumentStorageService.js';
+import { verifyStoredDocumentBuffer } from '../services/recruitment/preOnboardingDocumentSecurityService.js';
 import { notifyRoles } from '../utils/notify.js';
 
 const OBJECT_ID = /^[a-f0-9]{24}$/i;

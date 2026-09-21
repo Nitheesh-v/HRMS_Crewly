@@ -715,9 +715,9 @@ test('29.3 backend sources are ESM, tenant-scoped and free of hardcoded roles', 
   const files = [
     'src/services/payroll/salaryStructureRules.js',
     'src/services/payroll/salaryStructureService.js',
-    'src/controllers/salaryStructureController.js',
-    'src/validators/salaryStructureValidator.js',
-    'src/routes/salaryStructureRoutes.js',
+    'src/controllers/payroll/salaryStructureController.js',
+    'src/validators/payroll/salaryStructureValidator.js',
+    'src/routes/payroll/salaryStructureRoutes.js',
     'src/models/SalaryStructureTemplate.js',
   ];
 
@@ -741,7 +741,7 @@ test('29.3 backend sources are ESM, tenant-scoped and free of hardcoded roles', 
 });
 
 test('structure routes authenticate, scope the tenant and check permissions', async () => {
-  const source = await readSource('src/routes/salaryStructureRoutes.js');
+  const source = await readSource('src/routes/payroll/salaryStructureRoutes.js');
 
   assert.match(source, /protect/);
   assert.match(source, /tenantContext/);
@@ -779,7 +779,7 @@ test('the legacy per-employee SalaryStructure model is untouched', async () => {
 
 test('29.3 does not collide with the legacy /api/payroll/structures route', async () => {
   const index = await readSource('src/routes/index.js');
-  const structureRoutes = await readSource('src/routes/salaryStructureRoutes.js');
+  const structureRoutes = await readSource('src/routes/payroll/salaryStructureRoutes.js');
 
   assert.match(index, /router\.use\("\/payroll\/salary-structures", salaryStructureRoutes\)/);
   assert.equal(
