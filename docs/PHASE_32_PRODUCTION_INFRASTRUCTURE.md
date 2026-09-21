@@ -1,5 +1,46 @@
 # PHASE 32 — PRODUCTION INFRASTRUCTURE, SCALABILITY & PERFORMANCE
 
+# 32.18 — Final Scale Audit, Runbooks, Project Structure & Close-Out
+
+Status: **32.18 implemented** (awaiting localhost/staging acceptance).
+**FINAL PHASE 32 UNIT.** Zero new dependencies, zero product features,
+zero source-code behavior changes. The close-out deliverables:
+
+- `docs/PHASE_32_ARCHITECTURE.md` — the authoritative architecture of
+  record: topology diagram (as implemented), full 32.1→32.18 status
+  matrix, multi-instance truth, data-layer truth, frontend delivery,
+  security posture, honest capacity/failure statements, known
+  limitations, deferred roadmap, final structure summary, current
+  test totals.
+- `docs/PHASE_32_RUNBOOKS.md` — 20 consolidated runbooks, each in
+  DETECT → IMPACT → DO → DO NOT → VERIFY → ESCALATE form (dev startup,
+  staging/prod deployment, rolling API, worker, frontend, rollback,
+  Redis/Mongo/worker/backlog/SMTP/storage/realtime/cache/limiter,
+  index rollout, config validation, load + failure tooling with
+  non-production-only guards).
+- `docs/PHASE_32_MEMORY_CAPSULE.md` — final memory capsule: repo truth,
+  invariants, queue/cache/limiter/observability/storage truth, CDN
+  status, structure, test totals, deferred work, future roadmap
+  (Custom Roles / Chat / Presence / AI = PROPOSED, NOT AUTHORIZED).
+- Structure migration (impact-map-gated): `scripts/preview/` groups the
+  five 31.x preview/benchmark CLIs (package.json paths updated, verified);
+  `npm run test:phase32` groups the 17 Phase-32 suites (312 tests).
+  Controllers/routes/validators/models remain FLAT **intentionally**
+  (import-cost > nesting benefit; §79 outcome). No barrels, no shims,
+  no renames.
+- LB readiness (32.3) and distributed rate limiting (32.4) re-verified
+  AS BUILT inside `test:phase32` (`proxyReadiness`, `distributedRateLimit`,
+  `multiInstanceBaseline`) — nothing rebuilt.
+
+**Close-out verification (current checkout):** full ladder **2167/2167**
+(two consecutive green runs), `test:phase32` **312/312**, frontend lint
+**132 pre-existing problems / zero new**, build ✓, dist secret scan
+clean, tracked-file secret scan clean, no-surveillance grep clean
+(one-shot punch-time geolocation only), stale-path search clean,
+route mounts unchanged (56).
+
+---
+
 # 32.17 — Production Security Hardening
 
 Status: **32.17 implemented** (awaiting localhost acceptance).
