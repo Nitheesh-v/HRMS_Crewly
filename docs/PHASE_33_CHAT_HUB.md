@@ -318,7 +318,7 @@ Everything else is code-owned in `src/socket/socketConfig.js`: path
 ## 3. Localhost acceptance (Windows PowerShell, names only — no secrets)
 
 ```powershell
-cd C:\Users\megal\Desktop\HRMS\HRMS_Crewly\Backend
+cd <repo root>\Backend        # the repo root is the folder that contains .git
 npm install
 
 # 1. Feature OFF (default): API must behave exactly as before.
