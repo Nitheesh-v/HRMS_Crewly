@@ -38,6 +38,9 @@ import {
   getRealtimeGateway,
 } from './infrastructure/realtime/realtimeGateway.js';
 import {
+  getSocketGateway,
+} from './infrastructure/socket/socketGateway.js';
+import {
   startProcessDiagnostics,
   stopProcessDiagnostics,
   getInstanceId,
@@ -108,6 +111,13 @@ const startServer = async () => {
     // with it (multi-instance fan-out is shared Redis pub/sub).
     await getRealtimeGateway().start();
 
+    // Phase 33.1A — chat transport foundation (default OFF, additive).
+    // Attaches Socket.IO to the SAME http.Server; with SOCKET_ENABLED
+    // unset this is a logged no-op. Redis is required: without the
+    // adapter, handshakes are refused (FEATURE_UNAVAILABLE) rather than
+    // silently serving a single-replica chat. SSE above is untouched.
+    await getSocketGateway().start(server);
+
     // Phase 32.12 — coarse process diagnostics sampler (unref'd,
     // explicit lifecycle; never holds the process open).
     startProcessDiagnostics();
@@ -133,9 +143,14 @@ const startServer = async () => {
     const shutdownWithRealtime = (signal) => {
       beginDrain(`realtime-drain:${signal}`);
       Promise.resolve()
-        .then(() => {
+        .then(async () => {
           stopProcessDiagnostics();
-          return getRealtimeGateway().stop();
+          await getRealtimeGateway().stop();
+          // 33.1A — close chat transports + its adapter connections so the
+          // bounded 32.2 shutdown below is never held open by a live socket.
+          // (stop() deliberately does NOT call io.close(), which would close
+          // the http.Server early and pre-empt that shutdown.)
+          return getSocketGateway().stop();
         })
         .catch(() => {})
         .finally(() => shutdown(signal));

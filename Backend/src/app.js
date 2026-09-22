@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import env from './config/env.js';
+import { originAllowed } from './config/corsOrigins.js';
 import { applyProxyTrust } from './config/proxyTrust.js';
 import { isDraining } from './config/lifecycle.js';
 import { requestIdMiddleware } from './infrastructure/observability/requestContext.js';
@@ -15,33 +15,9 @@ import ApiError from './utils/ApiError.js';
 
 const app = express();
 
-const configuredOrigins = String(env.CLIENT_URL || '')
-  .split(',')
-  .map((origin) => origin.trim().replace(/\/$/, ''))
-  .filter(Boolean);
-
-const originAllowed = (origin) => {
-  // Requests from Postman, mobile clients and internal services.
-  if (!origin) return true;
-
-  const normalizedOrigin = origin.replace(/\/$/, '');
-
-  if (configuredOrigins.includes(normalizedOrigin)) {
-    return true;
-  }
-
-  // Arena live-preview support in development only.
-  if (
-    env.NODE_ENV !== 'production' &&
-    /^https:\/\/\d+-[a-z0-9-]+\.e2b\.app$/i.test(
-      normalizedOrigin,
-    )
-  ) {
-    return true;
-  }
-
-  return false;
-};
+// Phase 33.1A — the origin allowlist moved to config/corsOrigins.js so the
+// Socket.IO handshake enforces the EXACT same decision as this CORS layer
+// (two divergent allowlists would be a real bypass). Logic is unchanged.
 
 const checkCorsOrigin = (origin, callback) => {
   if (originAllowed(origin)) {
