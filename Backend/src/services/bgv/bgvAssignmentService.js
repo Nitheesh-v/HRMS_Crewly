@@ -68,6 +68,26 @@ const defaultListAssignmentsForOrders = ({ orderIds }) =>
   orderIds === null || orderIds === undefined
     ? BgvCheckAssignment.find({ activeKey: 'CURRENT' }).lean()
     : BgvCheckAssignment.find({ bgvOrder: { $in: orderIds }, activeKey: 'CURRENT' }).lean();
+
+// Phase 32.5 — verifier-scoped assignment read (authorization moves INTO
+// the query; served by the existing {verifier} index — zero new indexes).
+const defaultListAssignmentsForVerifier = ({ verifierId }) =>
+  BgvCheckAssignment.find({ verifier: verifierId, activeKey: 'CURRENT' }).lean();
+
+// Phase 32.5 — batched collaborators: one $in read per collection
+// instead of per-row queries (N+1 removal; same rows, same shape).
+const defaultLoadOrdersByIds = ({ orderIds }) =>
+  BgvOrder.find({ _id: { $in: orderIds } })
+    .select('_id companyId candidate orderCode status createdAt')
+    .lean();
+
+const defaultLoadCompaniesByIds = ({ companyIds }) =>
+  Company.find({ _id: { $in: companyIds } }).select('name').lean();
+
+const defaultLoadCasesForOrders = ({ orderIds, companyIds }) =>
+  BgvCollectionCase.find({ bgvOrder: { $in: orderIds }, companyId: { $in: companyIds } })
+    .select('bgvOrder companyId identity.submitted identity.legalName status submittedAt')
+    .lean();
 const defaultListSubmittedCases = () =>
   BgvCollectionCase.find({ status: 'SUBMITTED' }).sort({ submittedAt: 1 }).lean();
 const defaultLoadVerification = ({ orderId, checkType }) =>
@@ -353,45 +373,100 @@ export const verifierWorkQueue = async ({ verifierId, deps = {} }) => {
   if (!verifier || verifier.status !== 'ACTIVE') {
     throw ApiError.forbidden('Verifier account is not active');
   }
-  const listAssignments = deps.listAssignmentsForOrders || defaultListAssignmentsForOrders;
-  const loadOrderById = deps.loadOrderById || defaultLoadOrderById;
-  const loadCompany = deps.loadCompany || defaultLoadCompany;
-  const loadCase = deps.loadCase || defaultLoadCase;
 
-  // All CURRENT assignments; filter to this verifier server-side (the
-  // client never supplies a verifierId).
-  const all = await listAssignments({ orderIds: null });
-  const mine = (all || []).filter((entry) => String(entry.verifier) === String(verifierId));
+  // Phase 32.5 — scoped + batched. The assignment query itself carries
+  // the verifier (authorization moves INTO the read; served by the
+  // existing {verifier} index — zero new indexes; the client never
+  // supplies a verifierId). Orders / companies / cases / verifications
+  // are ONE $in read each, so the queue costs a FLAT number of queries
+  // regardless of how many checks the verifier owns (N+1 removed).
+  const listAssignmentsForVerifier =
+    deps.listAssignmentsForVerifier || defaultListAssignmentsForVerifier;
+  const loadOrdersByIds = deps.loadOrdersByIds || defaultLoadOrdersByIds;
+  const loadCompaniesByIds = deps.loadCompaniesByIds || defaultLoadCompaniesByIds;
+  const loadCasesForOrders = deps.loadCasesForOrders || defaultLoadCasesForOrders;
+  const loadVerifications = deps.loadVerificationsForOrders || defaultLoadVerificationsForOrders;
 
-  const rows = [];
-  for (const assignment of mine) {
-    const order = await loadOrderById({ orderId: assignment.bgvOrder });
-    if (!order) continue;
-    const loadVerification = deps.loadVerification || defaultLoadVerification;
-    const [company, collectionCase, verification] = await Promise.all([
-      loadCompany({ companyId: order.companyId }),
-      loadCase({ companyId: order.companyId, orderId: order._id }),
-      loadVerification({ orderId: order._id, checkType: assignment.checkType }),
-    ]);
-    rows.push({
+  const mine = await listAssignmentsForVerifier({ verifierId });
+
+  // bgvOrder is schema-guaranteed (ref'd ObjectId at insertion); no
+  // extra filter — an order that no longer matches simply skips its
+  // row below, exactly like the previous per-row behavior.
+  const orderIds = [
+    ...new Set((mine || []).map((assignment) => String(assignment.bgvOrder))),
+  ];
+
+  if (!orderIds.length) return { rows: [] };
+
+  const [orders, verifications] = await Promise.all([
+    loadOrdersByIds({ orderIds }),
+    loadVerifications({ orderIds }),
+  ]);
+
+  const ordersById = new Map((orders || []).map((order) => [String(order._id), order]));
+
+  // Same skip-vanished-order behavior as before, in the same row order.
+  const usable = [];
+  for (const assignment of mine || []) {
+    const order = ordersById.get(String(assignment.bgvOrder));
+
+    if (order) usable.push({ assignment, order });
+  }
+
+  const companyIds = [
+    ...new Set(usable.map(({ order }) => String(order.companyId))),
+  ];
+
+  const [companies, cases] = await Promise.all([
+    companyIds.length ? loadCompaniesByIds({ companyIds }) : Promise.resolve([]),
+    loadCasesForOrders({ orderIds, companyIds }),
+  ]);
+
+  const companiesById = new Map((companies || []).map((c) => [String(c._id), c]));
+
+  const casesByOrder = new Map((cases || []).map((c) => [String(c.bgvOrder), c]));
+
+  const verificationsByKey = new Map(
+    (verifications || []).map((v) => [`${v.bgvOrder}:${v.checkType}`, v]),
+  );
+
+  const rows = usable.map(({ assignment, order }) => {
+    const company = companiesById.get(String(order.companyId));
+
+    const collectionCase = casesByOrder.get(String(order._id));
+
+    const verification = verificationsByKey.get(`${order._id}:${assignment.checkType}`);
+
+    return {
       orderId: String(order._id),
+
       orderCode: order.orderCode,
+
       companyName: company?.name || '',
+
       candidateName: collectionCase?.identity?.legalName || 'Candidate',
+
       checkType: assignment.checkType,
+
       status: assignment.status,
+
       assignedAt: assignment.assignedAt,
+
       startedAt: assignment.startedAt,
+
       // Readiness context only — operational state + QA lifecycle, no
       // evidence, no identifiers beyond the declared legal name, no payment.
       submittedAt: collectionCase?.submittedAt || null,
+
       workState: verification?.state || 'ASSIGNED',
+
       qaStatus:
         verification?.qa?.status && verification.qa.status !== 'NONE'
           ? verification.qa.status
           : 'NONE',
-    });
-  }
+    };
+  });
+
   return { rows };
 };
 

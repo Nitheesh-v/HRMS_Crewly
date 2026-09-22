@@ -333,24 +333,24 @@ test('31.16 D-08: GPS with no verifiable binding is refused honestly', async () 
 });
 
 test('31.16 D-08: client locationId never reaches redeem (server decides)', async () => {
-  const validator = readSource('src/validators/attendanceCaptureValidator.js');
+  const validator = readSource('src/validators/attendance/attendanceCaptureValidator.js');
   assert.match(validator, /noQrLocationOverride/);
-  const controller = readSource('src/controllers/attendanceQrController.js');
+  const controller = readSource('src/controllers/attendance/attendanceQrController.js');
   assert.ok(!/req\.body\.locationId/.test(controller));
 });
 
 // ── Static integrity ─────────────────────────────────────────
 
 test('31.14 QR: POST-only routes, no GET punch path', () => {
-  const routes = readSource('src/routes/attendanceRoutes.js');
+  const routes = readSource('src/routes/attendance/attendanceRoutes.js');
   assert.match(routes, /\.post\(\s*'\/qr\/challenges'/);
   assert.match(routes, /\.post\(\s*'\/qr\/resolve'/);
   assert.match(routes, /\.post\(\s*'\/qr\/redeem'/);
   assert.ok(!/\.get\(\s*'\/qr\//.test(routes));
 
-  const controller = readSource('src/controllers/attendanceQrController.js');
+  const controller = readSource('src/controllers/attendance/attendanceQrController.js');
   assert.ok(!/req\.body\.(source|provenance|ingest)/.test(controller));
   assert.ok(!/req\.query\.token/.test(controller));
-  const validator = readSource('src/validators/attendanceCaptureValidator.js');
+  const validator = readSource('src/validators/attendance/attendanceCaptureValidator.js');
   assert.match(validator, /qrRedeemValidator/);
 });

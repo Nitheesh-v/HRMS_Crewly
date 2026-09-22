@@ -4,6 +4,7 @@ import Task from '../models/Task.js';
 import User from '../models/User.js';
 import ApiError from '../utils/ApiError.js';
 import asyncHandler from '../utils/asyncHandler.js';
+import { boundedSearchTerm } from '../utils/searchInput.js';
 import { getScopedUserIds } from '../utils/scope.js';
 import { notifyUser } from '../utils/notify.js';
 
@@ -61,13 +62,19 @@ export const listProjects = asyncHandler(async (req, res) => {
   // Data from frontend - requests from frontend
   if (req.query.status) filter.status = req.query.status;
   if (req.query.priority) filter.priority = req.query.priority;
-  if (req.query.q) filter.name = { $regex: req.query.q, $options: 'i' };
+  // Phase 32.10 — bounded + escaped (literal) project search.
+  const searchTerm = boundedSearchTerm(req.query.q);
+  if (searchTerm) filter.name = { $regex: searchTerm, $options: 'i' };
 
+  // lean + stable tie-breaker (32.10): the response spreads plain
+  // objects (no virtuals/methods), so hydration + toObject() per
+  // project was pure overhead.
   const projects = await Project.find(filter)
     .populate('manager', 'name email role avatarUrl')
     .populate('teamLeads', 'name email role avatarUrl')
     .populate('department', 'name')
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1, _id: -1 })
+    .lean();
 
   const stats = await Task.aggregate([
     { $match: { company: new mongoose.Types.ObjectId(String(req.companyId)), project: { $ne: null } } },
@@ -84,7 +91,7 @@ export const listProjects = asyncHandler(async (req, res) => {
 
   const data = projects.map((p) => {
     const s = byId[String(p._id)] || { total: 0, done: 0 };
-    return { ...p.toObject(), taskCount: s.total, doneCount: s.done, progress: s.total ? Math.round((s.done / s.total) * 100) : 0 };
+    return { ...p, taskCount: s.total, doneCount: s.done, progress: s.total ? Math.round((s.done / s.total) * 100) : 0 };
   });
 
   // Data to frontend - response to frontend

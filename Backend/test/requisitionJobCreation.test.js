@@ -20,8 +20,8 @@ const [
   import('../src/models/JobRequisition.js'),
   import('../src/models/Notification.js'),
   import('../src/models/TenantSequence.js'),
-  import('../src/services/requisitionService.js'),
-  import('../src/validators/requisitionValidator.js'),
+  import('../src/services/recruitment/requisitionService.js'),
+  import('../src/validators/recruitment/requisitionValidator.js'),
 ]);
 
 const requestContext = (payload = {}) => ({
@@ -343,7 +343,7 @@ test('a lost atomic link race removes the unlinked job and returns conflict', as
 
 test('API route requires recruitment create permission and job posting quota', async () => {
   const routeSource = await readFile(
-    new URL('../src/routes/recruitmentRoutes.js', import.meta.url),
+    new URL('../src/routes/recruitment/recruitmentRoutes.js', import.meta.url),
     'utf8'
   );
   const routeIndex = routeSource.indexOf(

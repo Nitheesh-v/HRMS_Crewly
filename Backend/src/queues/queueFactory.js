@@ -28,6 +28,7 @@ import {
   getQueuePrefix,
   isKnownQueueName,
 } from '../config/queueConfig.js';
+import { getCurrentRequestId, isValidRequestId } from '../infrastructure/observability/requestContext.js';
 
 const queues = new Map(); // name -> { queue, connection }
 let closing = false;
@@ -63,15 +64,83 @@ export const getQueue = (name) => {
   return queue;
 };
 
+// ── Phase 32.7 §45 — producer-boundary payload defense-in-depth ──
+// Processors keep their per-job allowlist validators (email
+// EMAIL_JOB_KEYS, strict system validator, per-domain payload
+// validators) — that is the second wall. This is the FIRST wall at
+// the ONE producer entry: references-only payloads are Crewly law,
+// so a bounded denylist of dangerous key names is rejected here,
+// before anything reaches Redis. Conservative by design: exact
+// word-ish matches against keys that no legitimate Crewly payload
+// uses (verified against all dispatchers); values are NEVER logged.
+const FORBIDDEN_PAYLOAD_KEY_PATTERN =
+  /(password|passwd|secret|token|jwt|credential|pin|otp|base64|binary|buffer|pdf|attachment|latitude|longitude|gps|coordinates|bankaccount|accountnumber|ifsc|salaryrow|resumetext|filecontent|documentcontent)/i;
+
+export const findForbiddenPayloadKey = (value, prefix = '') => {
+  if (value === null || value === undefined) return null;
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const hit = findForbiddenPayloadKey(entry, prefix);
+
+      if (hit) return hit;
+    }
+
+    return null;
+  }
+
+  if (typeof value === 'object') {
+    for (const [key, nested] of Object.entries(value)) {
+      const path = prefix ? `${prefix}.${key}` : key;
+
+      if (FORBIDDEN_PAYLOAD_KEY_PATTERN.test(key)) return path;
+
+      const hit = findForbiddenPayloadKey(nested, path);
+
+      if (hit) return hit;
+    }
+
+    return null;
+  }
+
+  return null; // primitives carry no key names
+};
+
+export const assertReferencesOnlyPayload = (queueName, jobName, data) => {
+  const forbiddenKey = findForbiddenPayloadKey(data);
+
+  if (forbiddenKey) {
+    throw new Error(
+      `[Queue] payload rejected (references-only law): key "${forbiddenKey}" ` +
+        `is forbidden for ${jobName} on queue ${queueName}. ` +
+        'Job payloads carry references only — never secrets, tokens, PII, or binaries.'
+    );
+  }
+};
+
 // Single controlled producer path: applies Crewly's default job
 // options, then caller overrides. Payload must contain references
-// only (never secrets/PII/binary) — enforced by convention + tests.
+// only (never secrets/PII/binary) — enforced HERE at the dispatch
+// boundary (32.7) + per-processor validators (second wall) + tests.
 export const enqueueJob = async (queueName, jobName, data, options = {}) => {
+  assertReferencesOnlyPayload(queueName, jobName, data ?? {});
+
   const queue = getQueue(queueName);
   const jobOptions = {
     ...getDefaultJobOptions(),
     ...options,
   };
+
+  // Phase 32.12 — diagnostics correlation: the HTTP request ID rides as
+  // BullMQ opts metadata (NOT payload — the references-only payload law
+  // and every per-queue validator are untouched; idempotency jobId is
+  // untouched). Workers do not inherit HTTP async context (ALS), so the
+  // stamp here is the ONLY bridge. Bounded/validated: only a strict
+  // [A-Za-z0-9_-]{8,64} value is ever attached — no PII, no tokens.
+  if (jobOptions.correlationId === undefined) {
+    const requestId = getCurrentRequestId();
+    if (isValidRequestId(requestId)) jobOptions.correlationId = requestId;
+  }
   const job = await queue.add(jobName, data ?? {}, jobOptions);
   logger.info(
     `[Queue] ${jobName} enqueued (queue=${queueName}, id=${job.id ?? 'auto'}, ` +

@@ -12,7 +12,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { getCandidateParsedResume } from '../src/services/candidateInboxService.js';
+import { getCandidateParsedResume } from '../src/services/recruitment/candidateInboxService.js';
 
 const COMPANY = 'aaa111111111111111111111';
 const CANDIDATE_ID = 'ccc333333333333333333333';

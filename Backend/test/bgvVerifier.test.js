@@ -186,11 +186,11 @@ test('30.6: platform permissions — only SUPER_ADMIN can manage verifiers', asy
     }
   }
   // Route-level: management is behind protect + superAdminSession + permit.
-  const routes = readFileSync(new URL('../src/routes/superAdminRoutes.js', import.meta.url), 'utf8');
+  const routes = readFileSync(new URL('../src/routes/platform/superAdminRoutes.js', import.meta.url), 'utf8');
   assert.ok(routes.includes('router.use(protect, superAdminSession)'));
   assert.ok(routes.includes('permit("bgv-verifiers:manage")'));
   // Tenant routes never expose verifier management.
-  const tenant = readFileSync(new URL('../src/routes/recruitmentRoutes.js', import.meta.url), 'utf8');
+  const tenant = readFileSync(new URL('../src/routes/recruitment/recruitmentRoutes.js', import.meta.url), 'utf8');
   assert.equal(tenant.includes('bgv-verifiers'), false);
 });
 
@@ -348,7 +348,7 @@ test('30.6: principal isolation is enforced in middleware code (structure)', asy
   assert.ok(verifierMw.includes('VERIFIER_PRINCIPAL_TYPE'));
   assert.ok(verifierMw.includes('status !== \'ACTIVE\'') || verifierMw.includes('resolveVerifierSession'));
   // Verifier auth routes apply the verifier-only middleware.
-  const routes = readFileSync(new URL('../src/routes/bgvVerifierAuthRoutes.js', import.meta.url), 'utf8');
+  const routes = readFileSync(new URL('../src/routes/bgv/bgvVerifierAuthRoutes.js', import.meta.url), 'utf8');
   assert.ok(routes.includes("requireVerifierAuth"));
   assert.ok(routes.includes('securityRateLimit'));
 });
@@ -457,9 +457,9 @@ test('30.6: audit is redacted and no seeds/verifier candidate routes exist (stru
   }
 
   // No candidate-facing data in verifier controllers/routes.
-  const controller = codeOnly('../src/controllers/bgvVerifierController.js');
+  const controller = codeOnly('../src/controllers/bgv/bgvVerifierController.js');
   assert.equal(controller.toLowerCase().includes('candidate'), false);
-  const authRoutes = readFileSync(new URL('../src/routes/bgvVerifierAuthRoutes.js', import.meta.url), 'utf8');
+  const authRoutes = readFileSync(new URL('../src/routes/bgv/bgvVerifierAuthRoutes.js', import.meta.url), 'utf8');
   assert.equal(authRoutes.includes('candidate'), false);
   assert.equal(authRoutes.includes('document'), false);
 });

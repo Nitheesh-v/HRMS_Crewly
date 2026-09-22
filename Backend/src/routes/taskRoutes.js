@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import multer from 'multer';
+import { createDocumentFileUpload } from '../middlewares/documentFilePolicy.js';
 import { protect } from '../middlewares/authMiddleware.js';
 import {
   tenantContext,
@@ -17,15 +17,9 @@ import * as taskController from '../controllers/taskController.js';
 
 const router = Router();
 
-const taskUpload = multer({
-  storage:
-    multer.memoryStorage(),
-
-  limits: {
-    fileSize:
-      5 * 1024 * 1024,
-  },
-});
+// Phase 32.8 — same 5 MB cap, now with the shared extension+MIME
+// allowlist (previously ANY type was accepted).
+const taskUpload = createDocumentFileUpload(5 * 1024 * 1024);
 
 const uploadSingle = (
   req,
@@ -137,6 +131,17 @@ router.post(
   ]),
   uploadSingle,
   taskController.uploadAttachment
+);
+
+// Phase 32.8 — gated attachment bytes (task-visibility checked inside the
+// controller; a storage key/URL alone grants nothing).
+router.get(
+  '/:id/attachments/:attachmentId/file',
+  requireAnyPermission([
+    'TASK_READ',
+    'TASK_READ_SELF',
+  ]),
+  taskController.getTaskAttachmentFile
 );
 
 router.delete(

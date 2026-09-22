@@ -58,7 +58,7 @@ const {
   removeJob,
   runReconcile,
   OpsError,
-} = await import('../src/services/opsQueueService.js');
+} = await import('../src/services/ops/opsQueueService.js');
 
 const config = getRedisConfig();
 const HAS_REDIS = config.enabled && config.hasUrl;

@@ -250,14 +250,14 @@ test('30.10 #1-5 access: permit() gate; tenant/verifier/support roles denied; QA
   permit('bgv-qa:review')({ platformPermissions: PLATFORM_PERMISSIONS.SUPPORT_ADMIN }, denied, () => {});
   assert.equal(denied.code, 403);
   // #2/#4 tenant tokens never reach the platform gate (separate stacks).
-  const routes = readFileSync(new URL('../src/routes/superAdminRoutes.js', import.meta.url), 'utf8');
+  const routes = readFileSync(new URL('../src/routes/platform/superAdminRoutes.js', import.meta.url), 'utf8');
   const qaBlock = routes.slice(routes.indexOf('/bgv-qa/queue'));
   assert.ok(routes.indexOf('router.use(protect, superAdminSession)') < routes.indexOf('/bgv-qa/queue'));
   assert.ok((qaBlock.match(/permit\("bgv-qa:/g) || []).length >= 10);
-  const recruitment = readFileSync(new URL('../src/routes/recruitmentRoutes.js', import.meta.url), 'utf8');
+  const recruitment = readFileSync(new URL('../src/routes/recruitment/recruitmentRoutes.js', import.meta.url), 'utf8');
   assert.ok(!/bgv-qa/.test(recruitment));
   // #3 verifiers have no QA surface (separate principal + routes).
-  const verifierRoutes = readFileSync(new URL('../src/routes/bgvVerifierWorkRoutes.js', import.meta.url), 'utf8');
+  const verifierRoutes = readFileSync(new URL('../src/routes/bgv/bgvVerifierWorkRoutes.js', import.meta.url), 'utf8');
   assert.ok(!/approve|bgv-qa|release/i.test(verifierRoutes.replace(/info-requests/g, '')));
 });
 
@@ -453,7 +453,7 @@ test('30.10 #37-43 release boundary + tenancy: explicit, idempotent, tenant-scop
     (err) => err.statusCode === 404
   );
   // #42 authority never comes from body/query (controller uses req.companyId only).
-  const controller = readFileSync(new URL('../src/controllers/bgvOrderController.js', import.meta.url), 'utf8');
+  const controller = readFileSync(new URL('../src/controllers/bgv/bgvOrderController.js', import.meta.url), 'utf8');
   const reportSlice = controller.slice(controller.indexOf('bgvFinalReportSummary'));
   assert.ok(reportSlice.includes('companyId: req.companyId'));
   assert.ok(!/body\.companyId|query\.companyId/.test(reportSlice));

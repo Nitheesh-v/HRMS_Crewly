@@ -26,7 +26,22 @@ import {
 import {
   ensurePermissions,
 } from './utils/permissionService.js';
+import {
+  markReady,
+  beginDrain,
+} from './config/lifecycle.js';
+import {
+  createGracefulShutdown,
+} from './utils/gracefulShutdown.js';
 import { closeAllQueues } from './queues/queueFactory.js';
+import {
+  getRealtimeGateway,
+} from './infrastructure/realtime/realtimeGateway.js';
+import {
+  startProcessDiagnostics,
+  stopProcessDiagnostics,
+  getInstanceId,
+} from './infrastructure/observability/processDiagnostics.js';
 
 const startServer = async () => {
   try {
@@ -74,8 +89,12 @@ const startServer = async () => {
     const server = app.listen(
       env.PORT,
       () => {
+        // Phase 32.2 — startup complete: this instance now reports
+        // READY to /api/health/ready (infrastructure may route traffic).
+        markReady();
+
         logger.info(
-          `🚀 Crewly HRMS API running in ${env.NODE_ENV} mode on port ${env.PORT}`
+          `🚀 Crewly HRMS API running in ${env.NODE_ENV} mode on port ${env.PORT} (${getInstanceId()})`
         );
       }
     );
@@ -83,61 +102,50 @@ const startServer = async () => {
     // Start the daily subscription lifecycle worker.
     startSubscriptionLifecycle();
 
-    let shuttingDown = false;
+    // Phase 32.11 — realtime infrastructure foundation (default OFF).
+    // Starts only when REALTIME_ENABLED=true; otherwise a logged no-op.
+    // Integrated topology: realtime rides this API process and scales
+    // with it (multi-instance fan-out is shared Redis pub/sub).
+    await getRealtimeGateway().start();
 
-    const shutdown = (
-      signal
-    ) => {
-      if (shuttingDown) return;
-      shuttingDown = true;
+    // Phase 32.12 — coarse process diagnostics sampler (unref'd,
+    // explicit lifecycle; never holds the process open).
+    startProcessDiagnostics();
 
-      logger.info(
-        `${signal} received. Shutting down gracefully...`
-      );
+    // Phase 32.2 — graceful lifecycle: drain first (readiness 503 +
+    // app-level gate), bounded close of HTTP + owned resources.
+    // Idempotent across repeated signals; SIGINT (local Ctrl+C) uses
+    // the identical safe path.
+    const shutdown = createGracefulShutdown({
+      server,
 
-      // Hard stop so shutdown can never hang the process.
-      const hardStop = setTimeout(
-        () => {
-          logger.error(
-            'Graceful shutdown timed out after 10s — forcing exit.'
-          );
-          process.exit(1);
-        },
-        10000
-      );
-      hardStop.unref();
+      closeQueues: closeAllQueues,
 
-      server.close(async () => {
-        logger.info(
-          'HTTP server closed.'
-        );
+      closeRedis,
 
-        // Phase 28.3/28.4 — the API opens producer-side queues
-        // (email + processing dispatch). Close BullMQ queues first,
-        // then the shared 28.1 client. Safe when Redis is disabled.
-        await closeAllQueues().catch(() => {});
-        await closeRedis();
+      disconnectMongo: () => mongoose.disconnect(),
+    });
 
-        await mongoose.disconnect().catch(() => {});
-        clearTimeout(hardStop);
-
-        logger.info(
-          'Databases closed. Bye.'
-        );
-
-        process.exit(0);
-      });
+    // 32.11 drain composition: flip readiness FIRST (idempotent 32.2
+    // transition), then end realtime streams + close the gateway's
+    // pub/sub connections so server.close() is never held open by SSE
+    // responses — then the standard bounded 32.2 shutdown runs unchanged.
+    const shutdownWithRealtime = (signal) => {
+      beginDrain(`realtime-drain:${signal}`);
+      Promise.resolve()
+        .then(() => {
+          stopProcessDiagnostics();
+          return getRealtimeGateway().stop();
+        })
+        .catch(() => {})
+        .finally(() => shutdown(signal));
     };
 
     [
       'SIGTERM',
       'SIGINT',
     ].forEach((signal) => {
-      process.on(
-        signal,
-        () =>
-          shutdown(signal)
-      );
+      process.on(signal, () => shutdownWithRealtime(signal));
     });
 
     process.on(
@@ -147,9 +155,9 @@ const startServer = async () => {
           `Unhandled Rejection: ${reason}`
         );
 
-        server.close(() => {
-          process.exit(1);
-        });
+        // Same bounded drain path as a signal — owned resources are
+        // closed instead of abandoned (exit code 1: failure).
+        shutdown('unhandledRejection');
       }
     );
   } catch (error) {

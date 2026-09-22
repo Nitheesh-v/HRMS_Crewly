@@ -26,8 +26,8 @@ const [
   import('../src/models/CandidateResume.js'),
   import('../src/models/JobPosting.js'),
   import('../src/models/ResumeParseResult.js'),
-  import('../src/services/atsMatchingService.js'),
-  import('../src/services/atsDispatcher.js'),
+  import('../src/services/recruitment/atsMatchingService.js'),
+  import('../src/services/recruitment/atsDispatcher.js'),
   import('../src/utils/permissionRegistry.js'),
 ]);
 
@@ -685,11 +685,11 @@ test('dispatcher enqueues deterministic reference-only ATS jobs and rejects forg
 test('ATS routes enforce exact candidate permissions and Employee has no ATS access', async () => {
   const [routes, publicRoutes] = await Promise.all([
     readFile(
-      new URL('../src/routes/recruitmentRoutes.js', import.meta.url),
+      new URL('../src/routes/recruitment/recruitmentRoutes.js', import.meta.url),
       'utf8'
     ),
     readFile(
-      new URL('../src/routes/publicCareerRoutes.js', import.meta.url),
+      new URL('../src/routes/recruitment/publicCareerRoutes.js', import.meta.url),
       'utf8'
     ),
   ]);
@@ -739,7 +739,7 @@ test('ATS routes enforce exact candidate permissions and Employee has no ATS acc
 test('parser completion dispatch and hostile-text-safe ATS UI remain wired', async () => {
   const [processingSource, panelSource, detailSource] = await Promise.all([
     readFile(
-      new URL('../src/services/resumeProcessingService.js', import.meta.url),
+      new URL('../src/services/recruitment/resumeProcessingService.js', import.meta.url),
       'utf8'
     ),
     readFile(

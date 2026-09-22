@@ -30,10 +30,10 @@ const [
   import('../src/models/CandidateDocumentRequirement.js'),
   import('../src/models/CandidateDocument.js'),
   import('../src/models/CandidateDocumentVersion.js'),
-  import('../src/services/preOnboardingDocumentSecurityService.js'),
-  import('../src/services/preOnboardingService.js'),
+  import('../src/services/recruitment/preOnboardingDocumentSecurityService.js'),
+  import('../src/services/recruitment/preOnboardingService.js'),
   import('../src/utils/permissionRegistry.js'),
-  import('../src/services/candidatePipelineService.js'),
+  import('../src/services/recruitment/candidatePipelineService.js'),
   import('../src/utils/fieldEncryption.js'),
   import('../src/utils/securityPolicy.js'),
 ]);
@@ -206,15 +206,15 @@ test('document and case models preserve statuses, snapshots and immutable histor
 test('public portal routes are scanner-safe and token paths are redacted', async () => {
   const [routes, logger, audit, recruitmentRoutes, indexRoutes] = await Promise.all([
     readFile(
-      new URL('../src/routes/publicCandidatePreOnboardingRoutes.js', import.meta.url),
+      new URL('../src/routes/recruitment/publicCandidatePreOnboardingRoutes.js', import.meta.url),
       'utf8'
     ),
-    readFile(new URL('../src/middlewares/requestLogger.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/infrastructure/observability/redaction.js', import.meta.url), 'utf8'),
     readFile(
       new URL('../src/utils/securityauditService.js', import.meta.url),
       'utf8'
     ),
-    readFile(new URL('../src/routes/recruitmentRoutes.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/routes/recruitment/recruitmentRoutes.js', import.meta.url), 'utf8'),
     readFile(new URL('../src/routes/index.js', import.meta.url), 'utf8'),
   ]);
 
@@ -233,10 +233,10 @@ test('public portal routes are scanner-safe and token paths are redacted', async
 
 test('phase 27.12 source has no employee conversion, executable templates, or queue/bullmq', async () => {
   const files = [
-    '../src/services/preOnboardingService.js',
-    '../src/services/publicPreOnboardingService.js',
-    '../src/controllers/preOnboardingController.js',
-    '../src/controllers/publicPreOnboardingController.js',
+    '../src/services/recruitment/preOnboardingService.js',
+    '../src/services/recruitment/publicPreOnboardingService.js',
+    '../src/controllers/recruitment/preOnboardingController.js',
+    '../src/controllers/recruitment/publicPreOnboardingController.js',
   ];
   const source = (
     await Promise.all(

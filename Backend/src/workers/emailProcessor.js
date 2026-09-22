@@ -66,7 +66,7 @@ import {
   bgv30ReminderEmail,
 } from '../utils/mailer.js';
 import { formatInterviewSchedule } from '../utils/interviewDateTime.js';
-import { normalizeCandidateStage } from '../services/candidatePipelineService.js';
+import { normalizeCandidateStage } from '../services/recruitment/candidatePipelineService.js';
 
 // ─── Payload validation (strict, per job) ───────────────────────
 

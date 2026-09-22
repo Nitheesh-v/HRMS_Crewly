@@ -55,7 +55,7 @@ test('§30.12 bgv billing aggregates snapshot totals and paginates rows', async 
 });
 
 test('§30.12 billing route is permit-gated and never touches gateway payment ids', () => {
-  const routes = readFileSync(new URL('../src/routes/superAdminRoutes.js', import.meta.url), 'utf8');
+  const routes = readFileSync(new URL('../src/routes/platform/superAdminRoutes.js', import.meta.url), 'utf8');
   assert.ok(routes.includes('"/bgv-billing/overview", permit("bgv-billing:read")'), 'billing route is permit-gated');
   const service = readFileSync(new URL('../src/services/bgv/bgvBillingService.js', import.meta.url), 'utf8');
   assert.ok(!service.includes('razorpayPaymentId'), 'billing view never couples to gateway payment ids');
@@ -196,7 +196,7 @@ test('§30.12 cancel is refused before the window ends, after a reply, or unpaid
 });
 
 test('§30.12 cancel route carries its own platform permission', () => {
-  const routes = readFileSync(new URL('../src/routes/superAdminRoutes.js', import.meta.url), 'utf8');
+  const routes = readFileSync(new URL('../src/routes/platform/superAdminRoutes.js', import.meta.url), 'utf8');
   assert.ok(routes.includes('"/bgv-billing/awaiting-candidate", permit("bgv-billing:read")'));
   assert.ok(routes.includes('"/bgv-billing/cancel/:orderId", permit("bgv-billing:cancel")'));
 });

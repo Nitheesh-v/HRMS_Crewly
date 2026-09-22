@@ -24,7 +24,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import mongoose from 'mongoose';
 import logger from '../config/logger.js';
-import { redactRequestUrl } from './requestLogger.js';
+import { redactRequestUrl } from '../infrastructure/observability/redaction.js';
 
 const perfStore = new AsyncLocalStorage();
 let debugInstalled = false;

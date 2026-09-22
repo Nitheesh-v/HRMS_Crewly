@@ -11,7 +11,8 @@ import User from '../models/User.js';
 import Department from '../models/Department.js';
 import ApiError from '../utils/ApiError.js';
 import ApiResponse from '../utils/ApiResponse.js';
-import asyncHandler from '../utils/asyncHandler.js';
+import asyncHandler from '../utils/asyncHandler.js';import { boundedSearchTerm } from '../utils/searchInput.js';
+
 import { CREATION_RIGHTS } from '../utils/constants.js';
 import { sendMail, welcomeEmail } from '../utils/mailer.js';
 import { notifyUser } from '../utils/notify.js';
@@ -75,10 +76,13 @@ export const listUsers = asyncHandler(async (req, res) => {
   if (role) filter.role = role;
   if (department) filter.department = department;
   if (status) filter.status = status;
-  if (search) {
+  // Phase 32.10 — bounded + escaped (literal) search; raw input never
+  // reaches $regex (injection/ReDoS-class input) and length is capped.
+  const searchTerm = boundedSearchTerm(search);
+  if (searchTerm) {
     filter.$or = [
-      { name: { $regex: search, $options: 'i' } },
-      { email: { $regex: search, $options: 'i' } },
+      { name: { $regex: searchTerm, $options: 'i' } },
+      { email: { $regex: searchTerm, $options: 'i' } },
     ];
   }
 
@@ -90,7 +94,7 @@ export const listUsers = asyncHandler(async (req, res) => {
       .select('-password')
       .populate('department', 'name')
       .populate('reportingTo', 'name role')
-      .sort('-createdAt')
+      .sort({ createdAt: -1, _id: -1 }) // stable pagination order (32.10)
       .skip((page - 1) * limit)
       .limit(limit)
       .lean(),

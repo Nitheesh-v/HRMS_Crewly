@@ -644,12 +644,12 @@ test('§36.9 queue payloads carry references ONLY and deterministic event keys',
 
 // ── §36.10 surface hygiene ───────────────────────────────────────
 test('§36.10 controller exports the five platform endpoints with the 3-comment convention', async () => {
-  const mod = await import('../src/controllers/bgvOperationsDashboardController.js');
+  const mod = await import('../src/controllers/bgv/bgvOperationsDashboardController.js');
   for (const name of ['bgvOpsDashboard', 'bgvOpsQueue', 'bgvOpsWorkload', 'bgvOpsSlaPolicyRead', 'bgvOpsSlaPolicyUpdate']) {
     assert.equal(typeof mod[name], 'function');
   }
   const { readFileSync } = await import('node:fs');
-  const source = readFileSync(new URL('../src/controllers/bgvOperationsDashboardController.js', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/controllers/bgv/bgvOperationsDashboardController.js', import.meta.url), 'utf8');
   assert.equal((source.match(/Data from frontend/g) || []).length, 5);
   assert.equal((source.match(/DB Logic/g) || []).length, 5);
   assert.equal((source.match(/Data to frontend - response to frontend/g) || []).length, 5);
@@ -657,7 +657,7 @@ test('§36.10 controller exports the five platform endpoints with the 3-comment 
 
 test('§36.10 routes are permit-gated; dashboard reads are not audited', async () => {
   const { readFileSync } = await import('node:fs');
-  const routes = readFileSync(new URL('../src/routes/superAdminRoutes.js', import.meta.url), 'utf8');
+  const routes = readFileSync(new URL('../src/routes/platform/superAdminRoutes.js', import.meta.url), 'utf8');
   for (const line of [
     'router.get("/bgv-ops/dashboard", permit("bgv-operations:read")',
     'router.get("/bgv-ops/queue", permit("bgv-operations:read")',

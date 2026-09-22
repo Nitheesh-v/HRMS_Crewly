@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import authService from '../../services/authService.js';
 import useAuth from "../../hooks/useAuth.jsx"
 import { getDashboardPath } from '../../utils/roles.js';
+import AuthLayout from '../../layout/AuthLayout.jsx';
+import PasswordField from '../../components/auth/PasswordField.jsx';
 
 const RegisterCompanyPage = () => {
   const { login } = useAuth();
@@ -14,6 +16,11 @@ const RegisterCompanyPage = () => {
 
   const onChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
+  const mismatch = form.confirmPassword && form.password !== form.confirmPassword;
+  const canSubmit =
+    form.companyName.trim() && form.adminName.trim() && form.email.trim() &&
+    form.password.length >= 6 && form.confirmPassword && !mismatch;
+
   const onSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -24,7 +31,8 @@ const RegisterCompanyPage = () => {
 
     setLoading(true);
     try {
-      const { confirmPassword, ...payload } = form;
+      const payload = { ...form };
+      delete payload.confirmPassword;
       const data = await authService.registerCompany(payload);
       login(data.user, data.token); // auto login after register
       navigate(getDashboardPath(data.user.role), { replace: true });
@@ -36,41 +44,115 @@ const RegisterCompanyPage = () => {
   };
 
   return (
-    <div className="flex items-center justify-center px-4 py-12">
-      <form onSubmit={onSubmit} className="card w-full max-w-md">
-        <h1 className="text-2xl font-bold">Register your company</h1>
-        <p className="mb-6 mt-1 text-sm text-crewly-dim">14-day free trial · Company Admin account auto-created.</p>
+    <AuthLayout variant="split" visualSide="right">
+      <div className="mx-auto max-w-sm">
+        <h1 className="text-2xl font-bold text-white">
+          Manage employees easily — starting from now!
+        </h1>
+        <p className="mt-1.5 text-sm text-slate-400">
+          Get started free for 14 days. Your Company Admin account is created automatically.
+        </p>
 
         {error && (
-          <div className="mb-4 rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">
+          <div className="mt-5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
             {error}
           </div>
         )}
 
-        <label className="label">Company Name</label>
-        <input name="companyName" className="input mb-4" placeholder="e.g. Acme Technologies" value={form.companyName} onChange={onChange} required />
+        <form onSubmit={onSubmit} className="mt-7 space-y-4" noValidate>
+          <div>
+            <label htmlFor="companyName" className="mb-1.5 block text-sm font-medium text-slate-300">
+              Company Name <span className="text-rose-400">*</span>
+            </label>
+            <input
+              id="companyName"
+              name="companyName"
+              className="auth-input"
+              placeholder="e.g. Unpixel Technologies"
+              value={form.companyName}
+              onChange={onChange}
+              required
+            />
+          </div>
 
-        <label className="label">Your Name (Company Admin)</label>
-        <input name="adminName" className="input mb-4" placeholder="e.g. Priya Sharma" value={form.adminName} onChange={onChange} required />
+          <div>
+            <label htmlFor="adminName" className="mb-1.5 block text-sm font-medium text-slate-300">
+              Your Name <span className="text-rose-400">*</span>
+            </label>
+            <input
+              id="adminName"
+              name="adminName"
+              className="auth-input"
+              placeholder="Input your full name"
+              value={form.adminName}
+              onChange={onChange}
+              required
+            />
+          </div>
 
-        <label className="label">Work Email</label>
-        <input name="email" type="email" className="input mb-4" placeholder="priya@acme.com" value={form.email} onChange={onChange} required />
+          <div>
+            <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-slate-300">
+              Work Email <span className="text-rose-400">*</span>
+            </label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              className="auth-input"
+              placeholder="example@company.com"
+              value={form.email}
+              onChange={onChange}
+              required
+            />
+          </div>
 
-        <label className="label">Password</label>
-        <input name="password" type="password" className="input mb-4" placeholder="Min. 6 characters" value={form.password} onChange={onChange} required minLength={6} />
+          <div>
+            <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-slate-300">
+              Password <span className="text-rose-400">*</span>
+            </label>
+            <PasswordField
+              id="password"
+              name="password"
+              value={form.password}
+              onChange={onChange}
+              placeholder="Min. 6 characters"
+              autoComplete="new-password"
+              minLength={6}
+              maxLength={128}
+            />
+          </div>
 
-        <label className="label">Confirm Password</label>
-        <input name="confirmPassword" type="password" className="input mb-6" placeholder="Repeat password" value={form.confirmPassword} onChange={onChange} required />
+          <div>
+            <label htmlFor="confirmPassword" className="mb-1.5 block text-sm font-medium text-slate-300">
+              Confirmation Password <span className="text-rose-400">*</span>
+            </label>
+            <PasswordField
+              id="confirmPassword"
+              name="confirmPassword"
+              value={form.confirmPassword}
+              onChange={onChange}
+              placeholder="Re-type your password"
+              autoComplete="new-password"
+              required={false}
+            />
+            {mismatch && (
+              <p className="mt-2 text-xs text-rose-400">Passwords do not match yet.</p>
+            )}
+          </div>
 
-        <button type="submit" className="btn-primary w-full" disabled={loading}>
-          {loading ? 'Creating your workspace…' : 'Create Company Workspace'}
-        </button>
+          <button type="submit" disabled={loading || !canSubmit} className="auth-primary mt-2">
+            {loading ? 'Creating your workspace…' : 'Create Account'}
+          </button>
+        </form>
 
-        <p className="mt-4 text-center text-sm text-crewly-dim">
-          Already registered? <Link to="/login" className="text-crewly-green hover:underline">Sign in</Link>
+        <p className="mt-6 text-center text-sm text-slate-400">
+          Already have an account?{" "}
+          <Link to="/login" className="font-medium text-emerald-400 hover:underline">
+            Login Here
+          </Link>
         </p>
-      </form>
-    </div>
+      </div>
+    </AuthLayout>
   );
 };
 

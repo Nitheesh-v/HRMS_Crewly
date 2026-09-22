@@ -28,8 +28,8 @@ import {
 import {
   employeeRecruitmentOrigin,
   resendEmployeeAccountSetup,
-} from '../controllers/candidateConversionController.js';
-import { employeeIdRules } from '../validators/candidateConversionValidator.js';
+} from '../controllers/recruitment/candidateConversionController.js';
+import { employeeIdRules } from '../validators/recruitment/candidateConversionValidator.js';
 
 const router = Router();
 

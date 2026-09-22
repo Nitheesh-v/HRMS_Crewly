@@ -1,11 +1,23 @@
+import { createRateLimitStore } from '../utils/rateLimitStore.js';
+
+import { hashToken } from '../utils/securityPolicy.js';
+
+// Phase 32.4 — pre-32.4 process-local buckets remain as the degraded
+// mode for every limiter (Redis is coordination, never truth).
 const buckets = new Map();
+
+// Phase 32.4 (§13) — personal dimensions (email) are NEVER placed in
+// limiter keys raw. A normalized one-way digest keeps buckets
+// per-account without leaking PII into Redis/ops visibility. Hashing
+// low-entropy data is not encryption — this prevents accidental raw
+// exposure, not guessing.
+const emailFingerprint = (email) =>
+  hashToken(String(email || '').trim().toLowerCase()).slice(0, 16);
 
 const defaultKey = (req) =>
   `${req.ip}:` +
   `${req.originalUrl}:` +
-  `${String(
-    req.body?.email || ''
-  ).toLowerCase()}`;
+  `${emailFingerprint(req.body?.email)}`;
 
 export const securityRateLimit = ({
   windowMs = 60000,
@@ -13,11 +25,64 @@ export const securityRateLimit = ({
   keyGenerator = defaultKey,
   message =
     'Too many requests. Please try again later.',
-} = {}) =>
-  (req, res, next) => {
+  sharedName = null,
+  store = null,
+} = {}) => {
+  // Phase 32.4 — optional SHARED tier: one budget in Redis across API
+  // #1/#2/#N under crewly:<env>:rl:<sharedName>:<identity>. Without
+  // sharedName the limiter behaves exactly as before (process-local).
+  const sharedStore =
+    sharedName && !store
+      ? createRateLimitStore({ sharedName, windowMs })
+      : store;
+
+  return async (req, res, next) => {
+    const key = keyGenerator(req);
+
+    if (sharedStore) {
+      let result = null;
+
+      try {
+        result = await sharedStore.hit(key, maximum);
+      } catch {
+        result = null; // unreachable by contract; local path below
+      }
+
+      if (result) {
+        res.setHeader('X-RateLimit-Limit', maximum);
+
+        res.setHeader(
+          'X-RateLimit-Remaining',
+          result.remaining
+        );
+
+        res.setHeader(
+          'X-RateLimit-Reset',
+          Math.ceil(result.resetAt / 1000)
+        );
+
+        if (result.limited) {
+          // Exact, TTL-derived retry hint (shared tier only).
+          const retryAfterSeconds = Math.max(
+            1,
+            Math.ceil((result.resetAt - Date.now()) / 1000)
+          );
+
+          res.setHeader('Retry-After', retryAfterSeconds);
+
+          return res.status(429).json({
+            statusCode: 429,
+            success: false,
+            code: 'RATE_LIMITED',
+            message,
+          });
+        }
+
+        return next();
+      }
+    }
+
     const now = Date.now();
-    const key =
-      keyGenerator(req);
 
     const bucket =
       buckets.get(key) || {
@@ -75,9 +140,11 @@ export const securityRateLimit = ({
 
     next();
   };
+};
 
 export const loginRateLimit =
   securityRateLimit({
+    sharedName: 'login',
     windowMs: 60000,
     maximum: 5,
 
@@ -87,6 +154,7 @@ export const loginRateLimit =
 
 export const resetRateLimit =
   securityRateLimit({
+    sharedName: 'password-reset',
     windowMs:
       15 * 60 * 1000,
 
@@ -98,6 +166,7 @@ export const resetRateLimit =
 
 export const refreshRateLimit =
   securityRateLimit({
+    sharedName: 'refresh',
     windowMs: 60000,
     maximum: 30,
 
@@ -110,6 +179,7 @@ export const refreshRateLimit =
 
 export const passwordChangeRateLimit =
   securityRateLimit({
+    sharedName: 'password-change',
     windowMs:
       15 * 60 * 1000,
 

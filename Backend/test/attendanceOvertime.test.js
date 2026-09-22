@@ -1136,9 +1136,9 @@ const OT_FILES = [
   'models/AttendanceOvertimeRequest.js',
   'services/attendance/attendanceOvertimeRules.js',
   'services/attendance/attendanceOvertimeService.js',
-  'validators/attendanceOvertimeValidator.js',
-  'controllers/attendanceOvertimeController.js',
-  'routes/attendanceOvertimeRoutes.js',
+  'validators/attendance/attendanceOvertimeValidator.js',
+  'controllers/attendance/attendanceOvertimeController.js',
+  'routes/attendance/attendanceOvertimeRoutes.js',
 ];
 
 test('static: 31.8 never touches payroll computation, leave, periods, or events', () => {
@@ -1188,7 +1188,7 @@ test('static: recorded attendance facts are read-only except the approved-OT rep
 });
 
 test('static: controller keeps the repo comment convention', () => {
-  const content = readFileSync(join(SRC, 'controllers/attendanceOvertimeController.js'), 'utf8');
+  const content = readFileSync(join(SRC, 'controllers/attendance/attendanceOvertimeController.js'), 'utf8');
   assert.ok(content.includes('// Data from frontend'), 'controller must mark frontend inputs');
   assert.ok(content.includes('// DB Logic'), 'controller must mark DB logic');
   assert.ok(content.includes('// Data to frontend'), 'controller must mark frontend outputs');

@@ -7,7 +7,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Download, Eye, FileText, History, Hourglass, Inbox, Paperclip, Upload } from 'lucide-react';
 import {
   getMyDocuments, getMyDocRequests, getDocCategories,
-  uploadMyDocument, fulfillDocRequest,
+  uploadMyDocument, fulfillDocRequest, downloadDocument,
 } from '../../services/docsService.js';
 
 const FALLBACK_CATS = [
@@ -42,17 +42,19 @@ const REQ_CHIP = {
   CANCELLED: 'bg-slate-500/20 text-slate-400',
 };
 
+// Phase 32.8 — documents are PRIVATE: bytes flow through the gated
+// GET /documents/:id/file endpoint with the caller's authentication.
 const download = async (d) => {
   try {
-    const res = await fetch(d.fileUrl);
-    const blob = await res.blob();
+    const res = await downloadDocument(d._id);
+    const blob = res?.data ?? res;
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
+    a.href = URL.createObjectURL(blob instanceof Blob ? blob : new Blob([blob]));
     a.download = d.name || 'document';
     a.click();
     URL.revokeObjectURL(a.href);
   } catch {
-    window.open(d.fileUrl, '_blank');
+    alert('This file could not be downloaded. You may not have access to it.');
   }
 };
 
@@ -203,7 +205,7 @@ export default function MyDocumentsPage() {
                     </p>
                   </div>
                   <ExpiryBadge expiryDate={d.expiryDate} />
-                  <button onClick={() => window.open(d.fileUrl, '_blank')} className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-slate-700"><Eye className="mr-1 inline h-3.5 w-3.5" />View</button>
+                  <button onClick={() => download(d)} className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-slate-700"><Eye className="mr-1 inline h-3.5 w-3.5" />View</button>
                   <button onClick={() => download(d)} className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-slate-700"><Download className="mr-1 inline h-3.5 w-3.5" />Download</button>
                 </div>
               ))}

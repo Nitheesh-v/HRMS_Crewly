@@ -24,10 +24,10 @@ process.env.MONGO_URI ||= 'mongodb://127.0.0.1:27017/crewly_test';
 
 const [qc, dispatcher, processor, svc, reminders] = await Promise.all([
   import('../src/config/queueConfig.js'),
-  import('../src/services/bgvQueueDispatcher.js'),
+  import('../src/services/bgv/bgvQueueDispatcher.js'),
   import('../src/workers/bgvProcessor.js'),
-  import('../src/services/backgroundVerificationService.js'),
-  import('../src/services/reminderSchedulingService.js'),
+  import('../src/services/bgv/backgroundVerificationService.js'),
+  import('../src/services/ops/reminderSchedulingService.js'),
 ]);
 const {
   QUEUE_NAMES,
@@ -425,7 +425,7 @@ test('provider→domain mapping is explicit and provider FAIL can never reject a
 test('recordProviderBgvResult: service source never auto-rejects', async () => {
   const src = await import('node:fs');
   const file = src.readFileSync(
-    new URL('../src/services/backgroundVerificationService.js', import.meta.url),
+    new URL('../src/services/bgv/backgroundVerificationService.js', import.meta.url),
     'utf8'
   );
   // The mapping target set is the ONLY domain state provider results

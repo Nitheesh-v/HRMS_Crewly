@@ -9,6 +9,25 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
+    // Arena live-preview support in development only (mirrors the
+    // backend's dev-only e2b CORS allowance in src/app.js). Production
+    // static hosting is a separate layer and unaffected.
+    allowedHosts: ['.e2b.app'],
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+      },
+    },
+  },
+  // Phase 32.16 — localhost acceptance only: lets `npm run preview` serve
+  // deep-links while /api reaches the local backend, mirroring `server.proxy`.
+  // This is NOT production static hosting and NOT a CDN — the production
+  // SPA-fallback/API-bypass contract is documented in
+  // docs/PHASE_32_16_CDN_EDGE_STATIC_DELIVERY.md and owned by the future
+  // static host/CDN (no vendor selected).
+  preview: {
+    port: 4173,
     proxy: {
       '/api': {
         target: 'http://localhost:5000',

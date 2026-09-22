@@ -24,7 +24,7 @@
 import mongoose from 'mongoose';
 import logger from '../config/logger.js';
 import { JOB_NAMES } from '../config/queueConfig.js';
-import { processATSMatch } from '../services/atsMatchingService.js';
+import { processATSMatch } from '../services/recruitment/atsMatchingService.js';
 
 const ATS_PAYLOAD_KEYS = new Set([
   'companyId',

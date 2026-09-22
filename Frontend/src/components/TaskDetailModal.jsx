@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { CalendarDays, CheckCircle2, FolderOpen, Hourglass, Paperclip, PartyPopper, Pencil, Repeat, Send, Trash2, X } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import {
-  getTask, updateTaskStatus, addComment, uploadAttachment, deleteTask, obj,
+  getTask, updateTaskStatus, addComment, uploadAttachment, downloadAttachment, deleteTask, obj,
 } from '../services/workService.js';
 
 export const STATUS_META = {
@@ -46,6 +46,23 @@ export default function TaskDetailModal({ taskId, onClose, onChanged }) {
   const [comment, setComment] = useState('');
   const [pick, setPick] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // Phase 32.8 — attachments are private; fetch bytes through the gated
+  // endpoint with the caller's authentication, then hand them to the browser.
+  const saveAttachment = async (a) => {
+    try {
+      const res = await downloadAttachment(taskId, a._id);
+      const blob = res?.data ?? res;
+      const url = URL.createObjectURL(blob instanceof Blob ? blob : new Blob([blob]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = a.name || 'attachment';
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setErr('This attachment could not be downloaded.');
+    }
+  };
 
   const load = useCallback(async () => {
     if (!taskId) return;
@@ -251,7 +268,13 @@ export default function TaskDetailModal({ taskId, onClose, onChanged }) {
                 <ul className="space-y-1">
                   {(task.attachments || []).map((a) => (
                     <li key={a._id} className="flex items-center justify-between rounded-lg bg-slate-700/40 px-3 py-1.5 text-sm">
-                      <a href={a.url} target="_blank" rel="noreferrer" className="truncate text-indigo-400 hover:underline"><Paperclip className="mr-1 inline h-3 w-3" />{a.name}</a>
+                      <button
+                        type="button"
+                        onClick={() => saveAttachment(a)}
+                        className="truncate text-indigo-400 hover:underline"
+                      >
+                        <Paperclip className="mr-1 inline h-3 w-3" />{a.name}
+                      </button>
                       <span className="ml-2 shrink-0 text-xs text-slate-400">{a.uploadedBy?.name || ''}</span>
                     </li>
                   ))}

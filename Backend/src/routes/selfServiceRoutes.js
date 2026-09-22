@@ -5,7 +5,6 @@
 // ============================================================
 
 import express from 'express';
-import multer from 'multer';
 
 import * as authMwNS from '../middlewares/authMiddleware.js';
 import * as tenantNS from '../middlewares/tenantMiddleware.js';
@@ -26,12 +25,14 @@ import {
   documentUpload,
 } from '../middlewares/uploadMiddleware.js';
 
+import { createDocumentFileUpload } from '../middlewares/documentFilePolicy.js';
+
 import * as documentNS from '../controllers/documentController.js';
 import * as employeeDocsNS from '../controllers/employeeDocsController.js';
 import * as lifecycleNS from '../controllers/lifecycleController.js';
 import * as perfNS from '../controllers/performanceController.js';
 import * as announcementNS from '../controllers/announcementController.js';
-import * as supportNS from '../controllers/supportController.js';
+import * as supportNS from '../controllers/platform/supportController.js';
 import * as dashboardNS from '../controllers/dashboardController.js';
 import * as expenseNS from '../controllers/expenseController.js';
 import * as assetNS from '../controllers/assetController.js';
@@ -81,16 +82,20 @@ const expenseController =
 const assetController =
   mergeExports(assetNS);
 
-// Field-name-agnostic document uploader.
-const anyDocUpload = multer({
-  storage:
-    multer.memoryStorage(),
-
-  limits: {
-    fileSize:
-      10 * 1024 * 1024,
-  },
-}).any();
+// Field-name-agnostic document uploader — Phase 32.8: same 10 MB cap,
+// now with the shared extension+MIME allowlist (previously ANY type was
+// accepted; see middlewares/documentFilePolicy.js).
+// Filter/limit errors map to 400 exactly like uploadMiddleware.wrap does
+// for every other uploader in the repo.
+const anyDocUpload = (req, res, next) => {
+  createDocumentFileUpload(10 * 1024 * 1024).any()(req, res, (error) => {
+    if (error) {
+      error.statusCode = 400;
+      if (error.code === 'LIMIT_FILE_SIZE') error.message = 'File too large';
+    }
+    next(error);
+  });
+};
 
 const router =
   express.Router();
@@ -138,6 +143,20 @@ router.get(
 
   documentController
     .myDocuments
+);
+
+// Phase 32.8 — the ONLY bytes path for a document (owner or same-company
+// HR inside the controller). Storage keys/URLs alone grant nothing.
+router.get(
+  '/documents/:id/file',
+
+  requireAnyPermission([
+    'DOCUMENT_READ',
+    'DOCUMENT_READ_SELF',
+  ]),
+
+  documentController
+    .getDocumentFile
 );
 
 router.delete(
@@ -570,6 +589,20 @@ router.get(
 
   expenseController
     .myExpenses
+);
+
+// Phase 32.8 — gated receipt delivery (owner or HR/Finance inside the
+// controller).
+router.get(
+  '/expenses/:id/receipt/file',
+
+  requireAnyPermission([
+    'EXPENSE_READ',
+    'EXPENSE_READ_SELF',
+  ]),
+
+  expenseController
+    .getExpenseReceipt
 );
 
 router.get(

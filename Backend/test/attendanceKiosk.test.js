@@ -749,7 +749,7 @@ test('31.14 completion: GPS with an unbound station is refused honestly', async 
 // ── Static integrity ─────────────────────────────────────────
 
 test('31.14 kiosk: routes + middleware enforce the trust boundary', () => {
-  const kioskRoutes = readSource('src/routes/attendanceKioskRoutes.js');
+  const kioskRoutes = readSource('src/routes/attendance/attendanceKioskRoutes.js');
   assert.match(kioskRoutes, /kioskAuth/);
   assert.match(kioskRoutes, /securityRateLimit/);
   assert.match(kioskRoutes, /\/session/);
@@ -758,7 +758,7 @@ test('31.14 kiosk: routes + middleware enforce the trust boundary', () => {
   // No employee-JWT middleware on the kiosk router, ever.
   assert.ok(!/protect/.test(kioskRoutes));
 
-  const mainRoutes = readSource('src/routes/attendanceRoutes.js');
+  const mainRoutes = readSource('src/routes/attendance/attendanceRoutes.js');
   assert.match(mainRoutes, /ATTENDANCE_CAPTURE_MANAGE/);
   assert.match(mainRoutes, /\/kiosks/);
 
@@ -774,25 +774,25 @@ test('31.14 kiosk: routes + middleware enforce the trust boundary', () => {
 });
 
 test('31.14 kiosk: punch path never reads source/provenance from the client', () => {
-  const controller = readSource('src/controllers/attendanceKioskController.js');
+  const controller = readSource('src/controllers/attendance/attendanceKioskController.js');
   assert.ok(!/req\.body\.(source|provenance|ingest)/.test(controller));
-  const validator = readSource('src/validators/attendanceCaptureValidator.js');
+  const validator = readSource('src/validators/attendance/attendanceCaptureValidator.js');
   assert.match(validator, /noSourceOverride/);
   assert.match(validator, /kioskPunchValidator/);
 });
 
 test('31.14 completion: punch identity comes only from the verified context', () => {
-  const controller = readSource('src/controllers/attendanceKioskController.js');
+  const controller = readSource('src/controllers/attendance/attendanceKioskController.js');
   assert.match(controller, /const \{ employeeToken, action, idempotencyKey = null, position = null \} = req\.body/);
   assert.ok(!/employeeCode,\s*action/.test(controller));
-  const validator = readSource('src/validators/attendanceCaptureValidator.js');
+  const validator = readSource('src/validators/attendance/attendanceCaptureValidator.js');
   assert.match(validator, /noKioskIdentityOverride/);
   assert.match(validator, /employeeToken/);
   assert.match(validator, /position\.latitude/);
   assert.ok(/kioskPunchValidator = \[[\s\S]*?body\('position'\)/.test(validator));
   assert.match(validator, /kioskPinSetValidator/);
   assert.match(validator, /kioskPinClearValidator/);
-  const routes = readSource('src/routes/attendanceRoutes.js');
+  const routes = readSource('src/routes/attendance/attendanceRoutes.js');
   assert.match(routes, /\/kiosk-pin/);
   assert.match(routes, /ATTENDANCE_CREATE_SELF/);
 });
@@ -802,7 +802,7 @@ test('31.14 completion: PIN hash is select:false and never serialized', () => {
   assert.match(user, /kioskPinHash:\s*\{\s*type:\s*String[^}]*select:\s*false/s);
   assert.match(user, /kioskPinVersion/);
   assert.match(user, /kioskPinSetAt/);
-  const controller = readSource('src/controllers/attendanceKioskController.js');
+  const controller = readSource('src/controllers/attendance/attendanceKioskController.js');
   assert.ok(!/kioskPinHash/.test(controller));
   const service = readSource('src/services/attendance/attendanceKioskService.js');
   assert.ok(!/console\.log.*[Pp]in/.test(service));

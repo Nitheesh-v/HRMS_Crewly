@@ -4,6 +4,8 @@
 // reporting subtree. Every module and field is whitelisted here.
 // ============================================================
 import mongoose from "mongoose";
+import logger from '../config/logger.js';
+import { sanitizeText as safeErrorText } from '../infrastructure/observability/redaction.js';
 import * as core from "../utils/reportingCore.js";
 import * as orgHelpersNS from "../utils/orgHelpers.js";
 import { auditSafe } from "../utils/scheduleEngine.js";
@@ -736,7 +738,7 @@ export const runReport = async (req, res) => {
       "Report generated",
     );
   } catch (error) {
-    console.error("[report-builder/run]", error);
+    logger.error(`[report-builder/run] ${safeErrorText(error?.message || error)}`);
 
     return fail(
       res,
@@ -789,7 +791,7 @@ export const exportReport = async (req, res) => {
       core.toCsv(columns, result.rows),
     );
   } catch (error) {
-    console.error("[report-builder/export]", error);
+    logger.error(`[report-builder/export] ${safeErrorText(error?.message || error)}`);
 
     return fail(
       res,

@@ -16,6 +16,11 @@ const expenseSchema = new mongoose.Schema(
     receiptUrl: { type: String, default: '' },
     receiptPublicId: { type: String, default: '' },
     receiptMime: { type: String, default: '' },
+    // Phase 32.8 — private receipt reference for NEW uploads (see
+    // models/Document.js note). Delivery: GET /api/expenses/:id/receipt/file
+    // (owner or HR/Finance, authorization-gated). Key never selected.
+    receiptStorageProvider: { type: String, default: '' },
+    receiptStorageKey: { type: String, default: '', select: false },
     status: { type: String, enum: EXPENSE_STATUS, default: 'PENDING_MANAGER', index: true },
     managerApproval: {
       by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

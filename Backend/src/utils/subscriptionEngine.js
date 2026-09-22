@@ -102,10 +102,10 @@ const buildGateSummary = (subscription) => {
 export const hasFeature = async (companyId, requestedFeature) => {
   // Gate-only fast path: short-TTL in-process summary, exact-invalidation
   // via Subscription post-save hooks. Mutation paths bypass this cache.
-  let summary = readSubscriptionGateCache(companyId);
+  let summary = await readSubscriptionGateCache(companyId);
   if (summary === null) {
     summary = buildGateSummary(await getCurrentSubscription(companyId));
-    writeSubscriptionGateCache(companyId, summary);
+    await writeSubscriptionGateCache(companyId, summary);
   }
 
   if (!summary) return false;

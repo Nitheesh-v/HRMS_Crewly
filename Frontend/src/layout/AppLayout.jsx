@@ -9,6 +9,7 @@ import { Power, Menu, X } from "lucide-react";
 import SidebarNav from "./SidebarNav.jsx";
 import { useEffect, useState } from "react";
 import { useDispatch } from "react-redux";
+import { startRealtimeSession, stopRealtimeSession } from "../services/realtime/realtimeClient.js";
 import { fetchMyPermissions } from "../redux/slices/PermissionSlices.js";
 
 
@@ -201,25 +202,6 @@ const AppLayout = () => {
       dispatch(fetchMyPermissions());
     }
   }, [dispatch, userId]);
-
-  // Close mobile drawer on route change or ESC
-  useEffect(() => {
-    const onKey = (e) => e.key === "Escape" && setMobileNavOpen(false);
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  // Prevent body scroll when drawer open
-  useEffect(() => {
-    if (mobileNavOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [mobileNavOpen]);
 
   const handleLogout = async () => {
     setLoggingOut(true);

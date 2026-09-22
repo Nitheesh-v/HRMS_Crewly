@@ -223,10 +223,10 @@ test('30.9 #1-6 authorization: current verifier creates; unassigned/former/speci
   }
   // #6 tenant HR / platform routes cannot create verifier info requests.
   {
-    const recruitment = readFileSync(new URL('../src/routes/recruitmentRoutes.js', import.meta.url), 'utf8');
-    const superAdmin = readFileSync(new URL('../src/routes/superAdminRoutes.js', import.meta.url), 'utf8');
+    const recruitment = readFileSync(new URL('../src/routes/recruitment/recruitmentRoutes.js', import.meta.url), 'utf8');
+    const superAdmin = readFileSync(new URL('../src/routes/platform/superAdminRoutes.js', import.meta.url), 'utf8');
     assert.ok(!/info-requests/.test(recruitment) && !/info-requests/.test(superAdmin));
-    const workRoutes = readFileSync(new URL('../src/routes/bgvVerifierWorkRoutes.js', import.meta.url), 'utf8');
+    const workRoutes = readFileSync(new URL('../src/routes/bgv/bgvVerifierWorkRoutes.js', import.meta.url), 'utf8');
     assert.ok(/router\.use\(requireVerifierAuth/.test(workRoutes));
   }
 });
@@ -387,7 +387,7 @@ test('30.9 #26-30 controlled edit: requested category only; 30.5 stays locked; v
 
 // ── FILES (#31-36) ────────────────────────────────────────────────
 test('30.9 #31-36 files: hardened uploader on the route; private storage; honest scan; no public URL', async () => {
-  const routes = readFileSync(new URL('../src/routes/publicBgvCollectionRoutes.js', import.meta.url), 'utf8');
+  const routes = readFileSync(new URL('../src/routes/bgv/publicBgvCollectionRoutes.js', import.meta.url), 'utf8');
   assert.ok(/info-requests\/:requestId\/file', uploadLimit, preOnboardingUpload/.test(routes));
   const uploader = readFileSync(new URL('../src/middlewares/preOnboardingUpload.js', import.meta.url), 'utf8');
   assert.ok(/\.pdf/.test(uploader) && !/\.exe/.test(uploader)); // allowlist posture: executables impossible

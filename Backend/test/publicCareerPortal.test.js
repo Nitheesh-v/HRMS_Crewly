@@ -19,11 +19,11 @@ const [
   import('../src/models/JobPosting.js'),
   import('../src/models/Subscription.js'),
   import('express'),
-  import('../src/routes/publicCareerRoutes.js'),
-  import('../src/services/publicCareerService.js'),
-  import('../src/validators/publicCareerValidator.js'),
+  import('../src/routes/recruitment/publicCareerRoutes.js'),
+  import('../src/services/recruitment/publicCareerService.js'),
+  import('../src/validators/recruitment/publicCareerValidator.js'),
   import('../src/utils/careerPortalIdentifiers.js'),
-  import('../src/controllers/recruitmentController.js'),
+  import('../src/controllers/recruitment/recruitmentController.js'),
 ]);
 
 const eligibleCompany = {

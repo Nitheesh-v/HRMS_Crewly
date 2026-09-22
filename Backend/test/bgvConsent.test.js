@@ -492,7 +492,7 @@ test('addendum: duplicate triggers rotate safely — exactly one ACTIVE link, on
 });
 
 test('addendum: routes keep verifier/HR boundaries (MANAGE permission required to trigger)', () => {
-  const routes = readFileSync(new URL('../src/routes/recruitmentRoutes.js', import.meta.url), 'utf8');
+  const routes = readFileSync(new URL('../src/routes/recruitment/recruitmentRoutes.js', import.meta.url), 'utf8');
   const at = routes.indexOf("'/bgv-orders/:orderId/consent-invitation'");
   const block = routes.slice(at - 60, at + 240);
   assert.ok(block.includes("requirePermission('BACKGROUND_VERIFICATION_MANAGE')"));

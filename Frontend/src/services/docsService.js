@@ -19,6 +19,11 @@ export const arr = (x) => {
 const postForm = (url, fd) =>
   api.post(url, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
 
+// Phase 32.8 — private bytes come through the gated endpoint (never a
+// public URL). Blob response passes through the shared interceptor.
+export const downloadDocument = (documentId) =>
+  api.get(`/documents/${documentId}/file`, { responseType: 'blob' });
+
 /* ── shared ── */
 export const getDocCategories = async () => arr(await api.get('/documents/meta/categories'));
 export const getMyDocuments = async () => arr(await api.get('/documents/my'));

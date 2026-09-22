@@ -1,41 +1,41 @@
 import { Router } from "express";
-import mongoose from "mongoose";
 import { auditTrail } from "../middlewares/auditTrail.js";
 import { platformUsage } from "../middlewares/platformUsage.js";
-import { getRedisHealth } from "../config/redis.js";
+import healthRoutes from "./healthRoutes.js";
+import realtimeRoutes from "./realtimeRoutes.js";
 
 import authRoutes from "./authRoutes.js";
 import companyRoutes from "./companyRoutes.js";
 import companyBrandingRoutes from "./companyBrandingRoutes.js";
 import departmentRoutes from "./departmentRoutes.js";
 import userRoutes from "./userRoutes.js";
-import attendanceRoutes from "./attendanceRoutes.js";
-import attendanceKioskRoutes from "./attendanceKioskRoutes.js";
-import attendancePolicyRoutes from "./attendancePolicyRoutes.js";
-import attendanceLocationRoutes from "./attendanceLocationRoutes.js";
-import attendanceWorkModeRoutes from "./attendanceWorkModeRoutes.js";
-import attendanceRegularizationRoutes from "./attendanceRegularizationRoutes.js";
-import attendanceOvertimeRoutes from "./attendanceOvertimeRoutes.js";
+import attendanceRoutes from "./attendance/attendanceRoutes.js";
+import attendanceKioskRoutes from "./attendance/attendanceKioskRoutes.js";
+import attendancePolicyRoutes from "./attendance/attendancePolicyRoutes.js";
+import attendanceLocationRoutes from "./attendance/attendanceLocationRoutes.js";
+import attendanceWorkModeRoutes from "./attendance/attendanceWorkModeRoutes.js";
+import attendanceRegularizationRoutes from "./attendance/attendanceRegularizationRoutes.js";
+import attendanceOvertimeRoutes from "./attendance/attendanceOvertimeRoutes.js";
 import leaveRoutes from "./leaveRoutes.js";
 import projectRoutes from "./projectRoutes.js";
 import taskRoutes from "./taskRoutes.js";
-import payrollRoutes from "./payrollRoutes.js";
-import payrollSetupRoutes from "./payrollSetupRoutes.js";
-import salaryComponentRoutes from "./salaryComponentRoutes.js";
-import salaryStructureRoutes from "./salaryStructureRoutes.js";
-import employeePayrollRoutes from "./employeePayrollRoutes.js";
-import monthlyInputRoutes from "./monthlyInputRoutes.js";
-import payrollEngineRoutes from "./payrollEngineRoutes.js";
-import payrollReviewRoutes from "./payrollReviewRoutes.js";
-import payrollPaymentRoutes from "./payrollPaymentRoutes.js";
-import payslipRoutes from "./payslipRoutes.js";
-import statutoryRoutes from "./statutoryRoutes.js";
-import fnfRoutes from "./fnfRoutes.js";
+import payrollRoutes from "./payroll/payrollRoutes.js";
+import payrollSetupRoutes from "./payroll/payrollSetupRoutes.js";
+import salaryComponentRoutes from "./payroll/salaryComponentRoutes.js";
+import salaryStructureRoutes from "./payroll/salaryStructureRoutes.js";
+import employeePayrollRoutes from "./payroll/employeePayrollRoutes.js";
+import monthlyInputRoutes from "./payroll/monthlyInputRoutes.js";
+import payrollEngineRoutes from "./payroll/payrollEngineRoutes.js";
+import payrollReviewRoutes from "./payroll/payrollReviewRoutes.js";
+import payrollPaymentRoutes from "./payroll/payrollPaymentRoutes.js";
+import payslipRoutes from "./payroll/payslipRoutes.js";
+import statutoryRoutes from "./payroll/statutoryRoutes.js";
+import fnfRoutes from "./payroll/fnfRoutes.js";
 import analyticsRoutes from "./analyticsRoutes.js";
-import recruitmentRoutes from "./recruitmentRoutes.js";
+import recruitmentRoutes from "./recruitment/recruitmentRoutes.js";
 import exitRoutes from "./exitRoutes.js";
-import billingRoutes from "./billingRoutes.js";
-import subscriptionRoutes from "./subscriptionRoutes.js";
+import billingRoutes from "./platform/billingRoutes.js";
+import subscriptionRoutes from "./platform/subscriptionRoutes.js";
 import systemRoutes from "./systemRoutes.js";
 import profileRoutes from "./profileRoutes.js";
 import selfServiceRoutes from "./selfServiceRoutes.js";
@@ -43,57 +43,30 @@ import meetingRoutes from "./meetingRoutes.js";
 import notificationPrefRoutes from "./notificationPrefRoutes.js";
 import scheduleRoutes from "./scheduleRoutes.js";
 import payrollAnalyticsRoutes from "./analyticsRoutes.js";
-import superAdminRoutes from "./superAdminRoutes.js";
+import superAdminRoutes from "./platform/superAdminRoutes.js";
 import rolePermissionRoutes from "./rolePermissionRoutes.js";
 import auditRoutes from "./auditRoutes.js";
 import securityRoutes from "./securityRoutes.js";
-import publicCareerRoutes from "./publicCareerRoutes.js";
-import publicCandidateOfferRoutes from "./publicCandidateOfferRoutes.js";
-import publicBgvConsentRoutes from "./publicBgvConsentRoutes.js";
-import publicBgvCollectionRoutes from "./publicBgvCollectionRoutes.js";
-import bgvVerifierAuthRoutes from "./bgvVerifierAuthRoutes.js";
-import bgvVerifierWorkRoutes from "./bgvVerifierWorkRoutes.js";
-import publicCandidatePreOnboardingRoutes from "./publicCandidatePreOnboardingRoutes.js";
+import publicCareerRoutes from "./recruitment/publicCareerRoutes.js";
+import publicCandidateOfferRoutes from "./recruitment/publicCandidateOfferRoutes.js";
+import publicBgvConsentRoutes from "./bgv/publicBgvConsentRoutes.js";
+import publicBgvCollectionRoutes from "./bgv/publicBgvCollectionRoutes.js";
+import bgvVerifierAuthRoutes from "./bgv/bgvVerifierAuthRoutes.js";
+import bgvVerifierWorkRoutes from "./bgv/bgvVerifierWorkRoutes.js";
+import publicCandidatePreOnboardingRoutes from "./recruitment/publicCandidatePreOnboardingRoutes.js";
 import insightsAnalyticsRoutes from "./insightsAnalyticsRoutes.js";
 import reportBuilderRoutes from "./reportBuilderRoutes.js";
 
 const router = Router();
 
-// Phase 28.1 — real infrastructure health. Public, read-only, and
-// secret-safe: only up/down/disabled + safe reason labels are
-// returned. Never the Redis URL, credentials, or stack traces.
-// Semantics:
-//   status "ok"        — MongoDB up; Redis up or intentionally disabled
-//   status "degraded"  — MongoDB up, but Redis enabled and unavailable
-//   status "unhealthy" — MongoDB down (the source of truth is unreachable)
-// Redis "disabled" is intentional configuration, never a fault.
-// success stays true: this endpoint itself is alive and reporting.
-router.get("/health", (req, res) => {
-  const mongodbUp = mongoose.connection.readyState === 1;
-  const redis = getRedisHealth();
-  const status = !mongodbUp
-    ? "unhealthy"
-    : redis.status === "down"
-      ? "degraded"
-      : "ok";
+// Phase 32.2 — infrastructure health probes (liveness/readiness) plus
+// the legacy Phase 28 combined probe, all mounted BEFORE the audit
+// trail so frequent infrastructure polling never writes audit rows.
+// Public, cheap, secret-free: see routes/healthRoutes.js + the
+// Phase 32 architecture doc for the exact contracts.
+router.use("/health", healthRoutes);
 
-  res.json({
-    success: true,
-    message:
-      status === "ok"
-        ? "Crewly HRMS API is healthy"
-        : status === "degraded"
-          ? "Crewly HRMS API is running with degraded infrastructure (Redis unavailable)"
-          : "Crewly HRMS API is unhealthy (MongoDB unavailable)",
-    status,
-    services: {
-      mongodb: mongodbUp ? "up" : "down",
-      redis: redis.status,
-      ...(redis.reason ? { redisReason: redis.reason } : {}),
-    },
-    timestamp: new Date().toISOString(),
-  });
-});
+// Records mutation activity after the response finishes.
 
 // Public career reads are intentionally mounted before authenticated
 // tenant middleware. This router contains its own rate limiting and validation.
@@ -200,6 +173,10 @@ router.use("/notification-prefs", notificationPrefRoutes);
 
 // Notifications and permission-matrix endpoints.
 router.use("/", systemRoutes);
+
+// Phase 32.11 — realtime infrastructure surface (ticket + SSE stream).
+// Handlers are inert (503) unless REALTIME_ENABLED=true at boot.
+router.use("/realtime", realtimeRoutes);
 
 // Existing self-service routes are mounted at API root.
 router.use("/", selfServiceRoutes);

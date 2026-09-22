@@ -1008,7 +1008,7 @@ test('31.10 batch shape: one range read per collection at any team size', async 
 test('31.10 source hygiene: no payroll/finalize/surveillance vocabulary', () => {
   const service = readSource('src/services/attendance/attendanceTimesheetService.js');
   const rules = readSource('src/services/attendance/attendanceTimesheetRules.js');
-  const controller = readSource('src/controllers/attendanceTimesheetController.js');
+  const controller = readSource('src/controllers/attendance/attendanceTimesheetController.js');
   const blob = `${service}\n${rules}\n${controller}`;
   for (const token of [
     'finalize(', 'lockDay', 'lopAmount', 'netPay', 'grossPay', 'BullMQ', 'Queue(',
@@ -1021,7 +1021,7 @@ test('31.10 source hygiene: no payroll/finalize/surveillance vocabulary', () => 
 });
 
 test('31.10 routes mount the four reads under the reused permissions', () => {
-  const routes = readSource('src/routes/attendanceRoutes.js');
+  const routes = readSource('src/routes/attendance/attendanceRoutes.js');
   assert.match(routes, /\/timesheets\/mine/);
   assert.match(routes, /\/timesheets\/team/);
   assert.match(routes, /\/timesheets\/export/);

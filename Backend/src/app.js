@@ -2,8 +2,12 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import env from './config/env.js';
-import requestLogger from './middlewares/requestLogger.js';
+import { applyProxyTrust } from './config/proxyTrust.js';
+import { isDraining } from './config/lifecycle.js';
+import { requestIdMiddleware } from './infrastructure/observability/requestContext.js';
+import { httpObservabilityMiddleware } from './infrastructure/observability/httpObservability.js';
 import { initPerfTiming, perfTiming } from './middlewares/perfTiming.js';
+import { apiCachePolicyMiddleware } from './middlewares/apiCachePolicy.js';
 import notFound from './middlewares/notFound.js';
 import errorHandler from './middlewares/errorHandler.js';
 import routes from './routes/index.js';
@@ -125,8 +129,13 @@ const requestSecurity = (req, res, next) => {
   }
 };
 
-// Required for correct IP addresses behind Render, Nginx or cPanel.
-app.set('trust proxy', 1);
+// Phase 32.3 — reverse-proxy trust boundary (see config/proxyTrust.js).
+// Default TRUST_PROXY_MODE=direct: client identity is the socket address
+// and X-Forwarded-* headers are INERT (an internet client can never forge
+// req.ip / req.secure). Deployments behind a real proxy declare their
+// boundary explicitly (loopback | hop | cidr) via environment variables.
+// Misconfiguration fails startup — never a silently weakened identity.
+applyProxyTrust(app);
 app.disable('x-powered-by');
 
 app.use(helmet());
@@ -173,7 +182,36 @@ initPerfTiming();
 app.use(perfTiming);
 
 app.use(requestSecurity);
-app.use(requestLogger);
+// Phase 32.12 — request/correlation IDs + structured completion/slow
+// logging (replaces the legacy access logger; safe redaction inside). See
+// infrastructure/observability/.
+app.use(requestIdMiddleware);
+app.use(httpObservabilityMiddleware);
+
+// Phase 32.2 — drain gate. Once THIS process begins shutting down it
+// answers 503 SHUTTING_DOWN for every business route: a load balancer
+// that missed the readiness flip (or a keep-alive socket racing the
+// close) gets a clean, standard, retry-elsewhere response instead of a
+// hanging/reset connection. Health probes stay exempt so infrastructure
+// can observe the drain truthfully. Process-local by design: API #1
+// draining never affects API #2.
+app.use((req, res, next) => {
+  if (isDraining() && !req.path.startsWith('/api/health')) {
+    return res.status(503).json({
+      statusCode: 503,
+      success: false,
+      code: 'SHUTTING_DOWN',
+      message: 'Server is shutting down. Please retry.',
+    });
+  }
+
+  next();
+});
+
+// Phase 32.16 — default-deny cache policy for every /api/* response
+// (private, no-store). Explicit controller headers win. See
+// middlewares/apiCachePolicy.js + config/staticDeliveryPolicy.js.
+app.use(apiCachePolicyMiddleware);
 
 // Every backend route is mounted under /api.
 app.use('/api', routes);

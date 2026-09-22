@@ -164,7 +164,7 @@ test('30.8 #1-6 authorization: assigned verifier works; unassigned/former/deacti
   {
     const source = readFileSync(new URL('../src/services/bgv/bgvVerifierService.js', import.meta.url), 'utf8');
     assert.ok(/status !== 'ACTIVE'\) return null/.test(source), 'resolveVerifierSession must refuse non-ACTIVE verifiers');
-    const routes = readFileSync(new URL('../src/routes/bgvVerifierWorkRoutes.js', import.meta.url), 'utf8');
+    const routes = readFileSync(new URL('../src/routes/bgv/bgvVerifierWorkRoutes.js', import.meta.url), 'utf8');
     assert.ok(/router\.use\(requireVerifierAuth/.test(routes));
   }
   // #5 specialization alone grants nothing (no assignment → 404).
@@ -521,7 +521,7 @@ test('30.8 #51-61 security: cross-check evidence denied, private storage, redact
   }
   // #53 structural: verifier evidence upload uses the hardened uploader.
   {
-    const routes = readFileSync(new URL('../src/routes/bgvVerifierWorkRoutes.js', import.meta.url), 'utf8');
+    const routes = readFileSync(new URL('../src/routes/bgv/bgvVerifierWorkRoutes.js', import.meta.url), 'utf8');
     assert.ok(/preOnboardingUpload, bgvVerifierEvidenceUpload/.test(routes));
     const model = readFileSync(new URL('../src/models/BgvVerifierEvidenceFile.js', import.meta.url), 'utf8');
     assert.ok(/storageKey[^\n]*select: false/.test(model));

@@ -1,12 +1,17 @@
 import Task, { TASK_STATUS } from '../models/Task.js';
+import logger from '../config/logger.js';
+import { sanitizeText as safeErrorText } from '../infrastructure/observability/redaction.js';
 import Project from '../models/Project.js';
 import User from '../models/User.js';
 import ApiError from '../utils/ApiError.js';
 import asyncHandler from '../utils/asyncHandler.js';
+import { boundedSearchTerm } from '../utils/searchInput.js';
 import { getScopedUserIds } from '../utils/scope.js';
 import { notifyUser } from '../utils/notify.js';
-import {  cloudinaryReady } from '../config/cloudinary.js';
-import cloudinary  from '../config/cloudinary.js';
+import { cloudinaryReady } from '../config/cloudinary.js';
+import crypto from 'node:crypto';
+import { uploadPrivateAsset, destroyPrivateAsset, getPrivateAssetSignedUrl } from '../infrastructure/storage/privateCloudinaryAsset.js';
+import { legacyRowDeliveryInput, resolvePrivateFileDelivery } from '../services/privateFileDelivery.js';
 // ── WORKFLOW SWITCH ──────────────────────────────────────────────
 // true  → employee submits IN_REVIEW; TL/Manager approves to COMPLETED (Phase-11 workflow)
 // false → employees may mark their own tasks COMPLETED directly
@@ -74,14 +79,22 @@ export const listTasks = asyncHandler(async (req, res) => {
   if (assignee) filter.assignedTo = assignee;
   if (view === 'mine') filter.assignedTo = req.user._id;
   if (view === 'created') filter.assignedBy = req.user._id;
-  if (q) filter.title = { $regex: q, $options: 'i' };
+  // Phase 32.10 — bounded + escaped (literal) title search.
+  const searchTerm = boundedSearchTerm(q);
+  if (searchTerm) filter.title = { $regex: searchTerm, $options: 'i' };
 
+  // Phase 32.10 — the list consumer (TasksPage) renders board fields
+  // only; embedded comment/attachment HISTORY belongs to the detail
+  // endpoint (getTask), not to a 300-row board payload. lean() because
+  // the array is serialized untouched; stable tie-breaker for pages.
   const tasks = await Task.find(filter)
+    .select('-comments -attachments')
     .populate('assignedTo', 'name email role avatarUrl')
     .populate('assignedBy', 'name')
     .populate('project', 'name status')
-    .sort({ createdAt: -1 })
-    .limit(300);
+    .sort({ createdAt: -1, _id: -1 })
+    .limit(300)
+    .lean();
 
   // Data to frontend - response to frontend
   ok(res, 200, tasks, 'Tasks fetched');
@@ -314,32 +327,73 @@ export const uploadAttachment = asyncHandler(async (req, res) => {
   // Data from frontend - requests from frontend
   if (!req.file) throw new ApiError(400, 'No file uploaded');
 
+  // Phase 32.8 — attachments are PRIVATE (Cloudinary `authenticated`, no
+  // public URL). Dev keeps the inline fallback (never a 500); production
+  // fails loud. Delivery: gated GET /tasks/:id/attachments/:attachmentId/file.
   const isImage = /^image\//.test(req.file.mimetype);
   const resourceType = isImage ? 'image' : 'raw';
-  let url = null;
-  let publicId = null;
+  let stored = null;
 
   if (cloudinaryReady) {
     try {
-      const result = await new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-          { folder: `crewly/${req.companyId}/tasks`, resource_type: resourceType },
-          (err, r) => (err ? reject(err) : resolve(r))
-        );
-        stream.end(req.file.buffer);
+      stored = await uploadPrivateAsset({
+        buffer: req.file.buffer,
+        storageKey: `crewly-private-task-attachments/${req.companyId}/${crypto.randomUUID()}`,
+        resourceType,
       });
-      url = result.secure_url;
-      publicId = result.public_id;
     } catch (e) {
-      url = null;
+      if (process.env.NODE_ENV === 'production') {
+        throw new ApiError(503, 'Secure attachment storage is temporarily unavailable');
+      }
+      logger.warn(`[storage] attachment upload failed, inline fallback used (${safeErrorText(e?.message || e)})`);
     }
+  } else if (process.env.NODE_ENV === 'production') {
+    throw new ApiError(503, 'Secure attachment storage is unavailable');
   }
-  if (!url) url = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
 
-  task.attachments.push({ name: req.file.originalname, url, publicId, resourceType, size: req.file.size, uploadedBy: req.user._id });
+  const url = stored ? '' : `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+  const storageProvider = stored ? stored.storageProvider : 'INLINE_DEV_FALLBACK';
+  const storageKey = stored ? stored.storageKey : '';
+
+  task.attachments.push({ name: req.file.originalname, url, publicId: null, resourceType, size: req.file.size, uploadedBy: req.user._id, storageProvider, storageKey });
   await task.save();
   // Data to frontend - response to frontend
   ok(res, 201, task.attachments, 'Attachment uploaded');
+});
+
+// GET /api/tasks/:id/attachments/:attachmentId/file — gated delivery.
+// SAME visibility rule as viewing the task itself (canViewTask): seeing a
+// task already grants its attachment list, and this endpoint issues bytes
+// only after that same check. Storage keys/urls alone grant nothing (§63).
+export const getTaskAttachmentFile = asyncHandler(async (req, res) => {
+  const task = await Task.findOne({ _id: req.params.id, company: req.companyId }).select('+attachments.storageKey');
+  if (!task) throw new ApiError(404, 'Task not found');
+  if (!(await canViewTask(req, task))) throw new ApiError(403, 'This task is outside your visibility');
+
+  const att = task.attachments.id(req.params.attachmentId);
+  if (!att) throw new ApiError(404, 'Attachment not found');
+
+  const delivery = resolvePrivateFileDelivery({
+    ...legacyRowDeliveryInput(att, { legacyUrlField: 'url' }),
+    resourceType: att.resourceType || 'raw',
+    signedUrlResolver: ({ storageKey, resourceType }) =>
+      getPrivateAssetSignedUrl({ storageKey, resourceType, attachment: true }),
+  });
+
+  if (delivery.kind === 'SIGNED_URL' || delivery.kind === 'REDIRECT') {
+    res.set('Cache-Control', 'private, no-store');
+    return res.redirect(302, delivery.url);
+  }
+
+  const safeName = String(att.name || 'attachment')
+    .replace(/[\r\n"\\]/g, '_')
+    .replace(/[/\\?%*:|<>]/g, '_')
+    .slice(0, 120) || 'attachment';
+
+  res.set('Cache-Control', 'private, no-store');
+  res.set('Content-Type', delivery.contentType || 'application/octet-stream');
+  res.set('Content-Disposition', `attachment; filename="${safeName}"`);
+  return res.status(200).send(delivery.bytes);
 });
 
 // DELETE /api/tasks/:id/attachments/:attachmentId
@@ -355,6 +409,10 @@ export const deleteAttachment = asyncHandler(async (req, res) => {
   const me = String(req.user._id);
   const allowed = isAdmin(req) || String(task.assignedBy) === me || String(att.uploadedBy) === me;
   if (!allowed) throw new ApiError(403, 'You cannot remove this attachment');
+
+  if (att.storageProvider === 'CLOUDINARY_AUTHENTICATED' && att.storageKey) {
+    await destroyPrivateAsset({ storageKey: att.storageKey, resourceType: att.resourceType || 'raw' });
+  }
 
   att.deleteOne();
   await task.save();

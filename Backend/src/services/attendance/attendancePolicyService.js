@@ -18,7 +18,7 @@ import {
   buildTenantCacheKey,
   deleteCache,
   getOrSetCache,
-} from '../../services/redisCacheService.js';
+} from '../redisCacheService.js';
 import {
   canTransitionPolicy,
   defaultPolicyInput,

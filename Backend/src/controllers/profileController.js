@@ -4,6 +4,8 @@
 // → graceful inline fallback instead of a 500.
 // ============================================================
 import * as UserNS from '../models/User.js';
+import logger from '../config/logger.js';
+import { sanitizeText as safeErrorText } from '../infrastructure/observability/redaction.js';
 import * as asyncHandlerNS from '../utils/asyncHandler.js';
 import cloudinary, { cloudinaryReady } from '../config/cloudinary.js';
 
@@ -89,7 +91,7 @@ const uploadAvatar = asyncHandler(async (req, res) => {
       user.avatarPublicId = result.public_id;
       toCloud = true;
     } catch (cloudErr) {
-      console.warn('☁️  Cloudinary avatar upload failed, inline fallback used:', cloudErr.message);
+      logger.warn(`[storage] avatar upload failed, inline fallback used (${safeErrorText(cloudErr?.message || cloudErr)})`);
     }
   }
   if (!toCloud) {

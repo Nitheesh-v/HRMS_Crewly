@@ -13,7 +13,7 @@ const [
   { generateUnusablePassword },
 ] = await Promise.all([
   import('../src/utils/permissionRegistry.js'),
-  import('../src/services/candidateConversionService.js'),
+  import('../src/services/recruitment/candidateConversionService.js'),
   import('../src/services/accountSetupService.js'),
 ]);
 
@@ -76,9 +76,9 @@ test('account setup password generator never returns a simple temp password', ()
 
 test('conversion routes and source avoid plaintext password email handoff', async () => {
   const [routes, service, mailer] = await Promise.all([
-    readFile(new URL('../src/routes/recruitmentRoutes.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/routes/recruitment/recruitmentRoutes.js', import.meta.url), 'utf8'),
     readFile(
-      new URL('../src/services/candidateConversionService.js', import.meta.url),
+      new URL('../src/services/recruitment/candidateConversionService.js', import.meta.url),
       'utf8'
     ),
     readFile(new URL('../src/utils/mailer.js', import.meta.url), 'utf8'),

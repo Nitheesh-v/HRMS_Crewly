@@ -18,6 +18,8 @@ npm-debug.log*
 yarn-debug.log*
 
 # Private local development storage
+Backend/logs/
+Backend/**/logs/
 private_storage/
 Backend/private_storage/
 

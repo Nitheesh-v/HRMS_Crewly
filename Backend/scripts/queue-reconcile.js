@@ -29,7 +29,7 @@ import { getRedisConfig } from '../src/config/redis.js';
 import { getQueuePrefix } from '../src/config/queueConfig.js';
 import { closeAllQueues } from '../src/queues/queueFactory.js';
 import { runDocumentReconcile } from '../src/services/documentProcessingDispatcher.js';
-import { runBgvReconcile } from '../src/services/bgvQueueDispatcher.js';
+import { runBgvReconcile } from '../src/services/bgv/bgvQueueDispatcher.js';
 
 const main = async () => {
   const config = getRedisConfig();

@@ -4,12 +4,17 @@
 // Receipts: Cloudinary (field-name agnostic, same as Phase 14).
 // ============================================================
 import * as ExpenseNS from '../models/Expense.js';
+import logger from '../config/logger.js';
+import { sanitizeText as safeErrorText } from '../infrastructure/observability/redaction.js';
 import * as UserNS from '../models/User.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { getSubtreeIds } from '../utils/orgHelpers.js';
 import { notifySmart } from '../utils/notifyPref.js';
 import { cloudinaryReady } from '../config/cloudinary.js';
-import cloudinary from '../config/cloudinary.js';
+import crypto from 'node:crypto';
+import { uploadPrivateAsset, getPrivateAssetSignedUrl } from '../infrastructure/storage/privateCloudinaryAsset.js';
+import { classifyUploadedAsset, legacyRowDeliveryInput, resolvePrivateFileDelivery } from '../services/privateFileDelivery.js';
+import ApiError from '../utils/ApiError.js';
 
 const pickModel = (ns) => (typeof ns.default === 'function' ? ns.default : ns.default || ns);
 const Expense = pickModel(ExpenseNS);
@@ -39,22 +44,77 @@ const notifyFinance = (companyId, payload) => {
 
 const getFile = (req) => req.file || (Array.isArray(req.files) ? req.files[0] : null) || null;
 
+// Phase 32.8 — receipts are PRIVATE (Cloudinary `authenticated`, no public
+// URL). Dev keeps the inline fallback (never a 500); production fails loud.
+// Bytes are delivered via the gated GET /api/expenses/:id/receipt/file.
 const uploadBuffer = async (companyId, file) => {
   const isImage = /^image\//.test(file.mimetype);
   if (cloudinaryReady) {
     try {
-      const result = await new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-          { folder: `crewly/expenses/${companyId}`, resource_type: isImage ? 'image' : 'raw' },
-          (err, r) => (err ? reject(err) : resolve(r))
-        );
-        stream.end(file.buffer);
+      const stored = await uploadPrivateAsset({
+        buffer: file.buffer,
+        storageKey: `crewly-private-expense-receipts/${companyId}/${crypto.randomUUID()}`,
+        resourceType: isImage ? 'image' : 'raw',
       });
-      return { url: result.secure_url, publicId: result.public_id, mime: file.mimetype };
-    } catch { /* inline fallback */ }
+      return { url: '', publicId: '', mime: file.mimetype, storageProvider: stored.storageProvider, storageKey: stored.storageKey };
+    } catch (cloudErr) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new ApiError(503, 'Secure receipt storage is temporarily unavailable');
+      }
+            logger.warn(`[storage] private receipt upload failed, inline fallback used (${safeErrorText(cloudErr)})`);
+    }
+  } else if (process.env.NODE_ENV === 'production') {
+    throw new ApiError(503, 'Secure receipt storage is unavailable');
   }
-  return { url: `data:${file.mimetype};base64,${file.buffer.toString('base64')}`, publicId: '', mime: file.mimetype };
+  return {
+    url: `data:${file.mimetype};base64,${file.buffer.toString('base64')}`,
+    publicId: '',
+    mime: file.mimetype,
+    storageProvider: 'INLINE_DEV_FALLBACK',
+    storageKey: '',
+  };
 };
+
+// §63 authorization predicate — pure + exported for hermetic tests.
+// A receipt is visible to its OWNER or to HR/Finance of the same company.
+export const canViewExpenseReceipt = (actor, expense) => {
+  if (!actor || !expense) return false;
+  if (expense.companyId && String(expense.companyId) !== String(actor.companyId || '')) return false;
+  if (expense.user && actor._id && String(expense.user) === String(actor._id)) return true;
+  return HR_ROLES.includes(actor.role);
+};
+
+const safeReceiptName = (raw) =>
+  String(raw || 'receipt')
+    .replace(/[\r\n"\\]/g, '_')
+    .replace(/[/\\?%*:|<>]/g, '_')
+    .slice(0, 120) || 'receipt';
+
+/* ── GET /expenses/:id/receipt/file — gated receipt delivery ── */
+export const getExpenseReceipt = asyncHandler(async (req, res) => {
+  const expense = await Expense.findOne({ _id: req.params.id, companyId: req.companyId }).select('+receiptStorageKey');
+
+  if (!expense || !canViewExpenseReceipt(req.user, expense)) throw ApiError.notFound('Expense not found');
+  if (!expense.receiptUrl && !expense.receiptStorageProvider && !expense.receiptStorageKey) {
+    throw ApiError.notFound('No receipt attached');
+  }
+
+  const delivery = resolvePrivateFileDelivery({
+    ...legacyRowDeliveryInput(expense, { legacyUrlField: 'receiptUrl', keyField: 'receiptStorageKey', providerField: 'receiptStorageProvider' }),
+    signedUrlResolver: ({ storageKey, resourceType }) =>
+      getPrivateAssetSignedUrl({ storageKey, resourceType, attachment: true }),
+  });
+
+  if (delivery.kind === 'SIGNED_URL' || delivery.kind === 'REDIRECT') {
+    res.set('Cache-Control', 'private, no-store');
+    return res.redirect(302, delivery.url);
+  }
+
+  res.set('Cache-Control', 'private, no-store');
+  res.set('Content-Type', delivery.contentType || expense.receiptMime || 'application/octet-stream');
+  res.set('Content-Disposition', `attachment; filename="${safeReceiptName('receipt-' + expense._id)}"`);
+  return res.status(200).send(delivery.bytes);
+});
 
 const money = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 
@@ -81,6 +141,8 @@ export const submitExpense = asyncHandler(async (req, res) => {
     receiptUrl: receipt.url,
     receiptPublicId: receipt.publicId,
     receiptMime: receipt.mime,
+    receiptStorageProvider: receipt.storageProvider || '',
+    receiptStorageKey: receipt.storageKey || '',
     status: manager ? 'PENDING_MANAGER' : 'PENDING_FINANCE',
   });
 

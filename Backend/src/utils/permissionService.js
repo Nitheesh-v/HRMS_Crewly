@@ -7,15 +7,43 @@ import {
   ROLE_LABELS,
 } from "./permissionRegistry.js";
 import { hasFeature } from "./subscriptionEngine.js";
+import {
+  bumpCacheGeneration,
+  readCacheGeneration,
+} from "./cacheGeneration.js";
 
 const CACHE_TTL = 5 * 60 * 1000;
+
+// Phase 32.6 — cross-instance invalidation. The grants + metadata
+// caches stay process-local (fast, exact same-process invalidation
+// unchanged) but carry the tenant's SHARED permission generation: a
+// role/permission mutation on ANY instance bumps it, and every
+// instance's next check treats older-stamped entries as stale.
+// Redis-down degrades to the documented local-TTL behavior (null
+// generation → local hit, exactly the pre-32.6 contract).
+const PERMISSIONS_GENERATION_NAMESPACE = "security:permissions";
+
+// Hermetic seam: tests inject a fake shared backend here; production
+// always uses the real Redis client.
+let generationIo = null;
+
+export const _setPermissionGenerationIoForTests = (io) => {
+  generationIo = io;
+};
 
 const permissionCache = new Map();
 let ensurePermissionsPromise = null;
 
 const cacheKey = (companyId, userId) => `${companyId}:${userId}`;
 
-export const invalidatePermissionCache = ({ companyId, userId = null }) => {
+export const invalidatePermissionCache = ({ companyId, userId = null }, { io = null } = {}) => {
+  // Phase 32.6 — cross-instance signal: fire-and-forget, never
+  // blocks the business mutation, never throws (§12). Same-process
+  // exact deletion below stays the primary mechanism.
+  void bumpCacheGeneration(PERMISSIONS_GENERATION_NAMESPACE, companyId, {
+    io: io || generationIo,
+  });
+
   if (userId) {
     permissionCache.delete(cacheKey(companyId, userId));
 
@@ -539,7 +567,18 @@ export const resolveUserPermissions = async (
   const cached = permissionCache.get(key);
 
   if (cached && cached.expiresAt > Date.now()) {
-    return cached.value;
+    const generation = await readCacheGeneration(
+      PERMISSIONS_GENERATION_NAMESPACE,
+      user.companyId,
+      { io: generationIo },
+    );
+
+    if (generation === null || cached.generation === generation) {
+      return cached.value;
+    }
+
+    // Another instance invalidated this tenant — reload below.
+    permissionCache.delete(key);
   }
 
   // fetchRoles:false — the return value was always discarded here;
@@ -591,10 +630,18 @@ export const resolveUserPermissions = async (
     role,
   };
 
+  const generation = await readCacheGeneration(
+    PERMISSIONS_GENERATION_NAMESPACE,
+    user.companyId,
+    { io: generationIo },
+  );
+
   permissionCache.set(key, {
     value,
 
     expiresAt: Date.now() + CACHE_TTL,
+
+    generation,
   });
 
   return value;

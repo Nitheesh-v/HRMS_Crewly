@@ -12,7 +12,7 @@ import Company from '../models/Company.js';
 import AuditLog from '../models/AuditLog.js';
 import ApiError from '../utils/ApiError.js';
 import cloudinary, { cloudinaryReady } from '../config/cloudinary.js';
-import { inspectPreOnboardingFile } from './preOnboardingDocumentSecurityService.js';
+import { inspectPreOnboardingFile } from './recruitment/preOnboardingDocumentSecurityService.js';
 import {
   DEFAULT_LOGO_LAYOUT,
   IMAGE_FIT,
