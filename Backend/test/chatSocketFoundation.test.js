@@ -1292,13 +1292,36 @@ describe('33.1 server wiring (source pins)', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-describe('33.1 non-goals — nothing outside the foundation exists', () => {
+describe('33.1/33.2 boundary — models exist, no chat product surface does', () => {
   const modelsDir = path.join(here, '..', 'src', 'models');
   const models = fs.readdirSync(modelsDir);
 
-  test('no chat model was added', () => {
-    for (const name of ['ChatConversation.js', 'ChatMessage.js', 'ChatMessageEdit.js']) {
-      assert.ok(!models.includes(name), `${name} must not exist in 33.1`);
+  // 33.2 landed the persistence layer, so the 33.1 "no chat model" pin is
+  // deliberately inverted here rather than deleted: the models must exist
+  // now, and everything else in this block must still not.
+  test('the chat models exist (33.2) and are the only chat files in src/models', () => {
+    const chatModels = models.filter((name) => /^Chat/i.test(name)).sort();
+
+    assert.deepEqual(chatModels, [
+      'ChatConversation.js',
+      'ChatMessage.js',
+      'ChatMessageEdit.js',
+    ]);
+  });
+
+  test('no chat model is imported by the socket foundation', () => {
+    // The 33.1 foundation must stay product-free even now that the models
+    // exist — importing them would be the first step of a hidden coupling.
+    const socketDir = path.join(here, '..', 'src', 'socket');
+
+    for (const file of fs.readdirSync(socketDir).filter((n) => n.endsWith('.js'))) {
+      const source = fs.readFileSync(path.join(socketDir, file), 'utf8');
+
+      assert.doesNotMatch(
+        source,
+        /from '.*models\/Chat/,
+        `src/socket/${file} must not import a chat model`,
+      );
     }
   });
 

@@ -12,8 +12,8 @@ No external vendor, no third-party API.
 
 | Unit | Scope | Status |
 |---|---|---|
-| **33.1** | **Realtime foundation: Socket.IO server + JWT handshake + Redis adapter + FEATURE_UNAVAILABLE gate** | **IMPLEMENTED · TESTED** (`chatSocketFoundation`, 85 tests) |
-| 33.2 | Chat persistence models + indexes (`ChatConversation`, `ChatMessage`, `ChatMessageEdit`) | NOT STARTED |
+| **33.1** | **Realtime foundation: Socket.IO server + JWT handshake + Redis adapter + FEATURE_UNAVAILABLE gate** | **IMPLEMENTED · TESTED** (`chatSocketFoundation`, 86 tests) |
+| **33.2** | **Chat persistence models + indexes (`ChatConversation`, `ChatMessage`, `ChatMessageEdit`)** | **IMPLEMENTED · TESTED** (`chatModels`, 54 tests) |
 | 33.3 | Conversation REST APIs (create/list/get, membership enforced) | NOT STARTED |
 | 33.4 | Message history REST APIs (paginated, Mongo-authoritative) | NOT STARTED |
 | 33.5 | Socket protocol: server-authorized room join + send with ACK + idempotency | NOT STARTED |
@@ -287,8 +287,8 @@ Everything else is code-owned in `src/socket/socketConfig.js`: path
 
 | Check | Result |
 |---|---|
-| `npm run test:chat-socket` | **85 / 85 pass** |
-| `npm run test:all` | **2260 / 2260 pass, 0 fail** (2175 before 33.1 + 85) |
+| `npm run test:chat-socket` | **86 / 86 pass** |
+| `npm run test:all` | **2315 / 2315 pass, 0 fail** (2175 before 33.1 + 85 + 54 + 1) |
 | `npm run index:check` | All hot-query catalog entries index-served or documented (no GAP) |
 | `npm run config:check` | ✓ Configuration valid |
 | Live smoke (Redis off) | `/api/health/live` 200 · `/socket.io` polling → **403 `FEATURE_UNAVAILABLE`** · no `Set-Cookie` · evil origin → 403 · HTTP alive after `stop()` |
@@ -376,9 +376,9 @@ Backend — **matches repository structure exactly, no mapping needed.**
 | `Backend/src/socket/socketRedisAdapter.js` | 33.1 | exists |
 | `Backend/src/socket/socketAvailability.js` | 33.1 | exists |
 | `Backend/src/socket/socketConfig.js` | 33.1 | exists (holds `parseChatSocketEnabled`, bounds, the `FEATURE_UNAVAILABLE` contract) |
-| `Backend/src/models/ChatConversation.js` | 33.2 | pending |
-| `Backend/src/models/ChatMessage.js` | 33.2 | pending |
-| `Backend/src/models/ChatMessageEdit.js` | 33.6 | pending |
+| `Backend/src/models/ChatConversation.js` | 33.2 | exists |
+| `Backend/src/models/ChatMessage.js` | 33.2 | exists |
+| `Backend/src/models/ChatMessageEdit.js` | 33.2 (model) · 33.6 (behaviour) | exists |
 | `Backend/src/controllers/chatController.js` | 33.3 | pending |
 | `Backend/src/routes/chatRoutes.js` | 33.3 | pending |
 | `Backend/src/validators/chatValidators.js` | 33.3 | pending |
@@ -460,3 +460,184 @@ Then stop — no unrequested next-unit work.
 - Windows PowerShell instructions: exact commands, `$env:NAME="value"`,
   `Remove-Item Env:NAME`, no Unix env-prefix npm scripts, no
   `git reset --hard`, watch for `.js.js` filename traps.
+
+---
+
+# 5. PHASE 33.2 — MODELS & INDEXES
+
+Persistence layer only. Nothing in this unit reads or writes chat data: there
+are no routes, no controllers, no validators, no services and no socket events.
+Declaring the schema first means every invariant below is already in force the
+moment the first write path appears in 33.3/33.5.
+
+## 5.1 Schema summaries
+
+All three collections use `{ timestamps: true, versionKey: false }` — no
+Mongoose `__v`, because chat writes never use Mongoose optimistic concurrency;
+33.6 uses its own `editVersion`.
+
+### ChatConversation (`Backend/src/models/ChatConversation.js`)
+
+| Field | Type | Rule |
+|---|---|---|
+| `companyId` | ObjectId → `Company` | required, immutable |
+| `type` | enum `DIRECT` \| `GROUP` | required, uppercase, trim, immutable |
+| `directKey` | String ≤49 | **derived**, lowercase, trim, immutable, `null` for GROUP |
+| `title` | String ≤80 | trim, `null` for DIRECT, required (≥2 chars) for GROUP |
+| `members[]` | subdocs, `_id:false` | DIRECT: exactly 2 distinct · GROUP: 2–200 |
+| `members[].userId` | ObjectId → `User` | required |
+| `members[].role` | enum `MEMBER` \| `ADMIN` | default `MEMBER` |
+| `members[].joinedAt` | Date | default now |
+| `members[].joinedAtSeq` | Number ≥0 | default 0 — late-joiner unread baseline |
+| `members[].lastReadSeq` | Number ≥0 | default 0 — **the C1 read cursor** |
+| `lastMessageSeq` | Number ≥0 | default 0 |
+| `lastMessageAt` | Date | default `null` |
+| `lastMessagePreview` | String ≤200 | default `null` |
+| `lastMessageSenderUserId` | ObjectId → `User` | default `null` |
+| `isDisabled` / `disabledAt` / `disabledByUserId` | Boolean / Date / ObjectId | default `false` / `null` / `null` — behaviour in 33.9 |
+
+`lastMessage*` is a **cache of the newest message, never its authority**. A
+wrong preview is a display bug; a wrong `lastMessageSeq` would corrupt every
+read cursor, which is why seq allocation (33.5) is the only atomic write that
+touches it.
+
+### ChatMessage (`Backend/src/models/ChatMessage.js`)
+
+| Field | Type | Rule |
+|---|---|---|
+| `companyId` | ObjectId → `Company` | required, immutable |
+| `conversationId` | ObjectId → `ChatConversation` | required, immutable |
+| `senderUserId` | ObjectId → `User` | required, immutable |
+| `seq` | Number ≥1 | **required, immutable** — allocated atomically in 33.5 |
+| `clientMessageId` | String ≤80 | required, trim, immutable — client idempotency key |
+| `type` | enum `TEXT` \| `SYSTEM` \| `FILE` | default `TEXT` |
+| `text` | String ≤4000 | trim; non-empty for TEXT, forbidden otherwise |
+| `editVersion` | Number ≥0 | default 0 |
+| `editedAt` / `editedByUserId` | Date / ObjectId | default `null` |
+| `deletedAt` / `deletedByUserId` | Date / ObjectId | default `null` — **tombstone** |
+
+No embedded read receipts. Read state is the per-member cursor on
+`ChatConversation`. A receipts array grows with readers on every message; a
+cursor grows with members on the conversation. For a chat system the cursor is
+the only shape that stays cheap.
+
+### ChatMessageEdit (`Backend/src/models/ChatMessageEdit.js`)
+
+| Field | Type | Rule |
+|---|---|---|
+| `companyId` | ObjectId → `Company` | required, immutable |
+| `conversationId` | ObjectId → `ChatConversation` | required, immutable |
+| `messageId` | ObjectId → `ChatMessage` | required, immutable |
+| `version` | Number ≥1 | required, immutable |
+| `previousText` | String ≤4000 | required, trim |
+| `editedAt` | Date | required, default now |
+| `editedByUserId` | ObjectId → `User` | required, immutable |
+
+Append-only, one row per edit, holding the text that was **replaced**. Separate
+collection on purpose: embedding history in `ChatMessage` would grow the
+hottest document in the system, drag the whole history through every
+history-page read, and turn the 33.6 retention cap into array surgery instead of
+a bounded, indexable delete.
+
+## 5.2 Indexes (all schema-declared)
+
+| Collection | Index | Options | Serves |
+|---|---|---|---|
+| ChatConversation | `{ companyId: 1, directKey: 1 }` | `unique`, `partialFilterExpression: { type: 'DIRECT' }` | one DIRECT conversation per pair per tenant |
+| ChatConversation | `{ companyId: 1, 'members.userId': 1, lastMessageAt: -1 }` | — | "my conversations" list |
+| ChatMessage | `{ companyId: 1, conversationId: 1, seq: -1 }` | — | history pagination |
+| ChatMessage | `{ companyId: 1, conversationId: 1, senderUserId: 1, clientMessageId: 1 }` | `unique` | idempotent send |
+| ChatMessageEdit | `{ companyId: 1, messageId: 1, version: 1 }` | `unique` | append-only edit versions |
+| ChatMessageEdit | `{ companyId: 1, conversationId: 1, messageId: 1, version: -1 }` | — | edit-history fetch |
+
+**No runtime index management exists.** `grep -rn "createIndex|syncIndexes|dropIndex|ensureIndex" src/ scripts/`
+returns zero hits repo-wide, and `test/chatModels.test.js` pins that the three
+chat model files stay that way.
+
+**Partial unique strategy.** `(companyId, directKey)` with
+`partialFilterExpression: { type: 'DIRECT' }` was chosen over
+`(companyId, type, directKey)` because the filter removes GROUP documents from
+the index *entirely*, so their `null` directKey can never enter a uniqueness
+conflict. It matches the existing `Notification` and `BgvOrder` precedent.
+
+**Deliberate deviation from house convention: no standalone `companyId` index.**
+Most repo models set `index: true` on `companyId`. The chat collections do not,
+because every index above already leads with `companyId`, so a single-field
+index would be redundant write amplification on the highest-volume collections
+in the system. Both halves of that decision are pinned by test: every chat
+index must lead with `companyId` **and** no single-field `companyId` index may
+exist.
+
+## 5.3 Invariants
+
+Enforced in the schema, so they hold before any API exists:
+
+1. **Tenant scope is structural.** `companyId` is required + immutable on all
+   three collections and is the leading key of every index. A chat query that
+   omits `companyId` is unindexable and wrong by construction.
+2. **`directKey` is derived, never trusted.** A `pre('validate')` hook
+   recomputes it from the sorted member ids on every validation. A
+   client-supplied `directKey` is overwritten, not honoured — so `A:B` and
+   `B:A` collapse to one key and cannot become two conversations.
+3. **Self-chat is rejected.** A DIRECT conversation needs exactly 2 *distinct*
+   members; a degenerate key over one person is not a product.
+4. **GROUP needs a title (≥2 chars) and 2–200 members.** A group of one is a
+   malformed DIRECT.
+5. **A TEXT message must have a body; SYSTEM and FILE must not.** Body text
+   cannot be smuggled through a non-text message type.
+6. **A tombstone cannot keep its body.** Deleting clears `text` and edit state
+   while preserving `seq`, `clientMessageId` and the document's place in
+   history — so pagination and read cursors stay stable, and a re-send of the
+   same deleted message is still deduped.
+7. **Edit versions are unique per message.** `(companyId, messageId, version)`
+   unique makes a lost update a write failure rather than a silent overwrite.
+8. **No surveillance anywhere.** No presence, `lastSeen`, `isOnline`, typing or
+   idle field exists on any chat model, and a test asserts it by both exact
+   name and shape. `joinedAt` is membership bookkeeping, not observation.
+
+### Mongoose 9 note (verified, not assumed)
+
+Two API facts were confirmed against the installed Mongoose 9.9.1 before use:
+
+- **`validateSync()` is deprecated and removed in v10.** All offline validation
+  tests use `await document.validate()`. This matters beyond style: in a
+  probe, `validateSync()` **silently skipped a `pre('validate')` hook** while
+  `await validate()` ran it — a sync-only test would have passed a broken
+  invariant.
+- **`validate` hooks receive no `next` callback.** Declaring one and calling it
+  throws `next is not a function` on *every* validation, which would break
+  every chat write path at once. `save` hooks still receive `next`; `validate`
+  hooks do not. Pinned by both a source-shape test and a behavioural test.
+
+## 5.4 Limitations (no APIs yet)
+
+- Nothing creates, reads, updates or deletes chat documents. No REST route, no
+  controller, no validator, no service, no socket event exists.
+- `seq` is **not allocated here**. 33.5 must allocate it from an atomic `$inc`
+  on `ChatConversation.lastMessageSeq` (or `TenantSequence` key
+  `CHAT:<conversationId>`); two concurrent senders must never receive the same
+  number.
+- The idempotency index gives **at-least-once delivery resolved by a unique
+  index**. Nothing in Phase 33 claims exactly-once.
+- Unread maths (`lastMessageSeq − max(lastReadSeq, joinedAtSeq)`), the
+  `chat:readUpTo` event and the monotonic-cursor rule land in 33.7.
+- The edit retention cap, the `expectedEditVersion` concurrency check and the
+  permission gate on reading edit history land in 33.6.
+- `FILE` is an enum value with no storage behind it. Attachments land in 33.10.
+- Tombstones written through an atomic update that does **not** pass
+  `{ runValidators: true }` bypass both the validator and the `pre('validate')`
+  self-heal. 33.6 must pass `runValidators` or explicitly `$set` text to null.
+  This is called out in the model source as well as here.
+- No index has been created on any real database. Indexes are declarations
+  until a connection applies them; nothing exists until 33.3+ writes documents.
+
+## 5.5 Verification (this checkout)
+
+| Check | Result |
+|---|---|
+| `npm run test:chat-models` | **54 / 54 pass** |
+| `npm run test:chat-socket` | **86 / 86 pass** (the 33.1 "no chat model" pin was inverted, not deleted) |
+| `npm run test:all` | **2315 / 2315 pass, 0 fail, 88 suites** (2260 before 33.2) |
+| `npm run index:check` | `models loaded: 127/127` · 621 declared indexes · no GAP |
+
+Hermetic: no Mongo connection, no Redis, no open ports.
