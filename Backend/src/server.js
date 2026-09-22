@@ -1,4 +1,5 @@
 import './config/loadEnv.js'; // FIRST — .env must load before env-snapshotting imports
+import http from 'node:http';
 import mongoose from 'mongoose';
 import app from './app.js';
 import env from './config/env.js';
@@ -37,6 +38,9 @@ import { closeAllQueues } from './queues/queueFactory.js';
 import {
   getRealtimeGateway,
 } from './infrastructure/realtime/realtimeGateway.js';
+import {
+  getChatSocketServer,
+} from './socket/initSocketServer.js';
 import {
   startProcessDiagnostics,
   stopProcessDiagnostics,
@@ -86,7 +90,20 @@ const startServer = async () => {
     // demand via `npm run processing:reconcile`. The API only
     // enqueues; Mongo holds the durable intent.
 
-    const server = app.listen(
+    const server = http.createServer(app);
+
+    // Phase 33.1 — chat Socket.IO foundation (default OFF via
+    // CHAT_SOCKET_ENABLED). ATTACH ORDER IS A LAW, NOT STYLE: Engine.IO
+    // builds its WebSocket engine on the HTTP server's 'listening' event,
+    // so attaching after listen() would leave the ws transport silently
+    // dead while polling appeared to work. Engine.IO caches and restores
+    // Express's request listener, so all existing middleware and Phase-32
+    // behaviour (drain gate, default-deny Cache-Control, helmet/CORS) is
+    // preserved. Refuses every connection as FEATURE_UNAVAILABLE when
+    // Redis is disabled/unreachable — the HTTP API is never affected.
+    await getChatSocketServer().attach(server);
+
+    server.listen(
       env.PORT,
       () => {
         // Phase 32.2 — startup complete: this instance now reports
@@ -130,13 +147,18 @@ const startServer = async () => {
     // transition), then end realtime streams + close the gateway's
     // pub/sub connections so server.close() is never held open by SSE
     // responses — then the standard bounded 32.2 shutdown runs unchanged.
+    // 33.1: chat sockets drain on the same path. Its stop() deliberately
+    // never calls io.close() (that would close the shared HTTP server and
+    // kill in-flight requests), so 32.2's bounded HTTP close stays the
+    // single owner of the listener.
     const shutdownWithRealtime = (signal) => {
       beginDrain(`realtime-drain:${signal}`);
       Promise.resolve()
         .then(() => {
           stopProcessDiagnostics();
-          return getRealtimeGateway().stop();
+          return getChatSocketServer().stop();
         })
+        .then(() => getRealtimeGateway().stop())
         .catch(() => {})
         .finally(() => shutdown(signal));
     };
