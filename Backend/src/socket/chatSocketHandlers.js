@@ -13,6 +13,7 @@
 //                      chat:message:edit { conversationId, messageId,
 //                                          expectedEditVersion, newText }        (33.6)
 //                      chat:message:delete { conversationId, messageId }          (33.6)
+//                      chat:readUpTo { conversationId, lastReadSeq }              (33.7)
 //    server → client : chat:message:created { conversationId, message }
 //                      chat:message:updated { conversationId, messageId, newText,
 //                                             editedAt, editVersion, editedByUserId } (33.6)
@@ -25,9 +26,11 @@
 //  Codes deliberately do NOT distinguish "other tenant" from "not a member"
 //  (NOT_FOUND_OR_FORBIDDEN) so the socket surface leaks no tenant existence.
 //
-//  33.6 edit/delete are sender-only and Mongo-authoritative; no presence,
-//  typing, last-seen or read-marker events here. NO tokens, Redis ids, job
-//  ids or debug metadata in any payload or log.
+//  33.6 edit/delete are sender-only and Mongo-authoritative. 33.7's
+//  chat:readUpTo advances the caller's own C1 cursor and ACKs to the caller
+//  ONLY — read state is never broadcast (it would be presence-ish
+//  surveillance). No presence, typing or last-seen events here. NO tokens,
+//  Redis ids, job ids or debug metadata in any payload or log.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { conversationRoom } from '../utils/chatKeys.js';
@@ -37,6 +40,7 @@ import {
   validateSendPayload,
   validateEditPayload,
   validateDeletePayload,
+  validateReadUpToPayload,
 } from './chatSocketValidators.js';
 import {
   loadWritableConversation,
@@ -46,6 +50,7 @@ import {
   editTextMessage,
   tombstoneMessage,
 } from '../services/chat/chatEditService.js';
+import { updateReadMarker } from '../services/chat/chatReadService.js';
 
 export { CHAT_SOCKET_ERROR_CODES };
 
@@ -127,6 +132,7 @@ export const registerChatSocketHandlers = ({
   sendMessage = sendTextMessage,
   editMessage = editTextMessage,
   deleteMessage = tombstoneMessage,
+  markRead = updateReadMarker,
 }) => {
   const companyId = socket.data?.companyId;
   const userId = socket.data?.userId;
@@ -141,6 +147,8 @@ export const registerChatSocketHandlers = ({
     socket.on('chat:message:edit', (_p, cb) =>
       ack(cb, fail(CHAT_SOCKET_ERROR_CODES.UNAUTHORIZED, 'Authentication required.')));
     socket.on('chat:message:delete', (_p, cb) =>
+      ack(cb, fail(CHAT_SOCKET_ERROR_CODES.UNAUTHORIZED, 'Authentication required.')));
+    socket.on('chat:readUpTo', (_p, cb) =>
       ack(cb, fail(CHAT_SOCKET_ERROR_CODES.UNAUTHORIZED, 'Authentication required.')));
 
     return;
@@ -305,5 +313,33 @@ export const registerChatSocketHandlers = ({
     }
 
     ack(cb, { ok: true, data: { messageId: result.messageId, deletedAt: result.deletedAt } });
+  });
+
+  // 33.7 — advance the caller's own C1 read cursor. Monotonic + clamped in
+  // the service; ACKs to the caller ONLY. Read state is privacy-sensitive,
+  // so nothing is broadcast to other members (no "seen by" in Phase 33).
+  socket.on('chat:readUpTo', async (payload, cb) => {
+    const parsed = validateReadUpToPayload(payload);
+
+    if (!parsed.ok) return ack(cb, fail(CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR, parsed.message));
+
+    const result = await markRead({
+      companyId,
+      userId,
+      conversationId: parsed.conversationId,
+      lastReadSeq: parsed.lastReadSeq,
+    });
+
+    if (!result.ok) {
+      return ack(cb, fail(
+        CHAT_SOCKET_ERROR_CODES.NOT_FOUND_OR_FORBIDDEN,
+        'Conversation not found.',
+      ));
+    }
+
+    ack(cb, {
+      ok: true,
+      data: { myLastReadSeq: result.myLastReadSeq, unreadCount: result.unreadCount },
+    });
   });
 };

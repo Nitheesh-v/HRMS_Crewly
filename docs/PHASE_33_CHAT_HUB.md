@@ -18,7 +18,7 @@ No external vendor, no third-party API.
 | **33.4** | **Message history REST API (keyset seq pagination, membership, tombstone-safe)** | **IMPLEMENTED · TESTED** (`chatHistory`, 5 tests) |
 | **33.5** | **Socket protocol: server-authorized join + send (ACK + idempotency) + broadcast** | **IMPLEMENTED · TESTED** (`chatSocketSend`, 6 tests) |
 | 33.6 | Edits (with history + concurrency control) + tombstone deletes | IMPLEMENTED |
-| 33.7 | Read cursors + unread counts (C1 model) | NOT STARTED |
+| 33.7 | Read cursors + unread counts (C1 model) | IMPLEMENTED |
 | 33.8 | Frontend chat UI + socket lifecycle | NOT STARTED |
 | 33.9 | Moderation + admin controls + moderation audit | NOT STARTED |
 | 33.10 | Private attachments | NOT STARTED |
@@ -991,3 +991,68 @@ No moderation (33.9), no read markers/unread (33.7), no attachments (33.10),
 no UI (33.8), no edit-history read endpoint (33.9), preview not recomputed on
 delete, `clientEditId`/`reason` accepted but not persisted, at-least-once
 never exactly-once.
+
+---
+
+# 11. PHASE 33.7 — READ MARKERS + UNREAD COUNTS (C1)
+
+## 11.1 The C1 model
+
+One cursor per member, one counter per conversation:
+
+    unreadCount = max(0, lastMessageSeq - max(lastReadSeq, joinedAtSeq))
+
+`joinedAtSeq` participates so a late joiner never inherits the backlog as
+unread (`addMembers` also seeds both fields at join time; the max is the
+defense-in-depth the 33.2 model header promises). There are NO per-message
+receipt arrays — receipts scale with readers × messages, cursors scale with
+members.
+
+## 11.2 REST contract (Postman-testable)
+
+`POST /api/chat/conversations/:conversationId/read`
+(protect + tenantContext + checkSubscriptionStatus + checkWriteAccess +
+readMarkerValidator: `lastReadSeq` integer ≥ 0).
+
+Body `{ "lastReadSeq": N }` → response
+`{ message: "Read marker updated", data: { conversationId, myLastReadSeq,
+lastMessageSeq, unreadCount } }`. Non-member / other tenant → 404,
+indistinguishable (no existence leak).
+
+Rules: clamp `target = min(lastReadSeq, lastMessageSeq)`; monotonic
+`next = max(current, target)`; positional `$set members.$.lastReadSeq`
+written only when it increases; bounded ONE re-read/retry if a concurrent
+device raced. Mongo authoritative; no Redis.
+
+## 11.3 Socket contract
+
+`chat:readUpTo { conversationId, lastReadSeq }` →
+ACK `{ ok:true, data:{ myLastReadSeq, unreadCount } }` or
+`{ ok:false, code, message }` with `UNAUTHORIZED / VALIDATION_ERROR /
+NOT_FOUND_OR_FORBIDDEN`. **Read state is NEVER broadcast** — it is
+privacy-sensitive and would become presence-ish surveillance.
+
+## 11.4 Privacy projection
+
+`GET /api/chat/conversations` and `GET /:conversationId` now return each
+conversation projected for the caller: top-level `myLastReadSeq`,
+`lastMessageSeq`, `unreadCount`; every member entry is stripped of
+`lastReadSeq` / `joinedAtSeq` (other people's read state never leaves the
+service). Membership bookkeeping (`userId`, `role`, `joinedAt`) stays.
+
+## 11.5 Tests + verification
+
+`test/chatReadMarkers.test.js` 9/9 hermetic (C1 math incl. late joiner;
+upward / monotonic / clamped updates; non-member + cross-tenant refusal;
+privacy projection; list decoration; socket ACK shape + zero broadcasts).
+Foundation pins inverted: `chat:readUpTo` is now an allowed registered
+event and the router gains `/read`; typing / presence / lastSeen /
+per-message receipt broadcasts stay forbidden.
+`npm run test:all` → **2359 / 2359 pass, 0 fail, 88 suites**
+(2350 before 33.7 + 9); index:check 127/127; config:check valid.
+
+## 11.6 Limitations (honest)
+
+No "seen by" lists, no presence/last-seen, no notifications, no read
+receipts; unread is conversation-level only; a tombstoned last message still
+counts toward seq (C1 counts positions, not content).

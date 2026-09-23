@@ -29,6 +29,7 @@ import {
   createConversationValidator,
   listConversationsValidator,
   messageHistoryValidator,
+  readMarkerValidator,
   removeMemberValidator,
 } from '../../validators/chat/chatValidators.js';
 
@@ -74,6 +75,15 @@ router.delete(
   checkWriteAccess,
   removeMemberValidator,
   chatController.removeMember
+);
+
+// 33.7 — advance the caller's own C1 read cursor (monotonic, clamped).
+// List/detail responses carry the per-caller count computed in the service.
+router.post(
+  '/conversations/:conversationId/read',
+  checkWriteAccess,
+  readMarkerValidator,
+  chatController.updateReadMarker
 );
 
 export default router;

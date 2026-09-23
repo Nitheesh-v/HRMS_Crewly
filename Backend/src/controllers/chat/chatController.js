@@ -2,13 +2,16 @@
 //  PHASE 33.3 — CHAT CONVERSATION CONTROLLER (thin)
 //
 //  Controllers only translate HTTP ↔ service. Every tenant decision,
-//  membership check and Mongo write lives in services/chatService.js.
+//  membership check and Mongo write lives in the chat services
+//  (chatService.js, chatReadService.js).
 //  req.companyId / req.user._id are the ONLY sources of tenant + identity.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import asyncHandler from '../../utils/asyncHandler.js';
 import ApiResponse from '../../utils/ApiResponse.js';
+import ApiError from '../../utils/ApiError.js';
 import * as chatService from '../../services/chat/chatService.js';
+import * as chatReadService from '../../services/chat/chatReadService.js';
 
 export const createConversation = asyncHandler(async (req, res) => {
   // Data from frontend - requests from frontend
@@ -137,5 +140,33 @@ export const removeMember = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, {
     message: 'Member removed',
     data: { conversation, removed },
+  });
+});
+
+// 33.7 — advance the caller's C1 read cursor (monotonic, clamped).
+export const updateReadMarker = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const { conversationId } = req.params;
+  const { lastReadSeq } = req.body;
+
+  // DB Logic - DB logics
+  const result = await chatReadService.updateReadMarker({
+    companyId: req.companyId,
+    userId: req.user._id,
+    conversationId,
+    lastReadSeq: Number(lastReadSeq),
+  });
+
+  if (!result.ok) throw ApiError.notFound('Conversation not found.');
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, {
+    message: 'Read marker updated',
+    data: {
+      conversationId: result.conversationId,
+      myLastReadSeq: result.myLastReadSeq,
+      lastMessageSeq: result.lastMessageSeq,
+      unreadCount: result.unreadCount,
+    },
   });
 });

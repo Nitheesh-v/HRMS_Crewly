@@ -145,3 +145,18 @@ export const removeMemberValidator = [
   objectIdRule(param('userId'), 'userId'),
   validate,
 ];
+
+// ── POST /api/chat/conversations/:conversationId/read (33.7) ──────────────
+
+export const readMarkerValidator = [
+  objectIdRule(param('conversationId'), 'conversationId'),
+
+  body('lastReadSeq')
+    .exists()
+    .withMessage('lastReadSeq is required.')
+    .bail()
+    .isInt({ min: 0 })
+    .withMessage('lastReadSeq must be a whole number of zero or more.'),
+
+  validate,
+];

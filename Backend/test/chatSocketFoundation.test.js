@@ -1158,6 +1158,7 @@ describe('33.1 lifecycle', () => {
         'chat:message:delete',
         'chat:message:edit',
         'chat:message:send',
+        'chat:readUpTo',
         'disconnect',
         'error',
       ],
@@ -1345,11 +1346,12 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
     }
   });
 
-  // 33.3/33.4 landed the conversation REST surface + read-only history, so
-  // the earlier "no chat route/controller/validator" pin is inverted: those
-  // files must exist and /messages (read-only history) is now present, but
-  // the surface must stop there — no REST send, no edit-history read, no
-  // unread markers, no attachments may appear in the chat router yet.
+  // 33.3/33.4 landed the conversation REST surface + read-only history and
+  // 33.7 added the caller-only read-cursor route, so the earlier "no chat
+  // route/controller/validator" pin is inverted: those files must exist and
+  // /messages (read-only history) + /read (33.7 cursor advance) are present,
+  // but the surface must stop there — no REST send, no edit-history read,
+  // no receipt fields, no attachments may appear in the chat router yet.
   test('the 33.3/33.4 REST surface exists and stops at read-only history', () => {
     for (const file of [
       'routes/chat/chatRoutes.js',
@@ -1369,6 +1371,7 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
     );
 
     assert.ok(router.includes('/messages'), 'read-only history must exist (33.4)');
+    assert.ok(router.includes('/read'), 'read-cursor route must exist (33.7)');
 
     for (const forbidden of ['/send', '/edits', 'unread', 'attachments']) {
       assert.ok(
@@ -1378,14 +1381,14 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
     }
   });
 
-  // 33.5 registers join/leave/send and 33.6 adds edit/delete, so the earlier
-  // "no chat events" pin is inverted again: the ONLY chat events that may
-  // exist are join / leave / message:send / message:edit / message:delete
-  // (client→server) and message:created / message:updated / message:deleted
-  // (server→client). Anything surveillance- or later-unit-shaped (typing,
-  // presence, last-seen, read markers) stays forbidden across the whole
-  // socket layer.
-  test('only the 33.5/33.6 chat events exist; no presence/typing/read markers', () => {
+  // 33.5 registers join/leave/send, 33.6 adds edit/delete and 33.7 adds
+  // readUpTo, so the earlier "no chat events" pin is inverted again: the
+  // ONLY chat events that may exist are join / leave / message:send /
+  // message:edit / message:delete / readUpTo (client→server) and
+  // message:created / message:updated / message:deleted (server→client).
+  // Anything surveillance-shaped (typing, presence, last-seen, per-message
+  // receipt broadcasts) stays forbidden across the whole socket layer.
+  test('only the 33.5/33.6/33.7 chat events exist; no presence/typing/seen-by', () => {
     const socketDir = path.join(here, '..', 'src', 'socket');
     const combined = fs
       .readdirSync(socketDir)
@@ -1399,9 +1402,9 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
 
     for (const allowed of [
       'chat:join', 'chat:leave', 'chat:message:send',
-      'chat:message:edit', 'chat:message:delete',
+      'chat:message:edit', 'chat:message:delete', 'chat:readUpTo',
     ]) {
-      assert.ok(registered.has(allowed), `${allowed} must be registered (33.5/33.6)`);
+      assert.ok(registered.has(allowed), `${allowed} must be registered (33.5/33.6/33.7)`);
     }
 
     for (const emitted of [
@@ -1410,8 +1413,13 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
       assert.ok(combined.includes(`'${emitted}'`), `${emitted} must be emitted (33.5/33.6)`);
     }
 
+    // 33.7 added chat:readUpTo (the caller's own C1 cursor, ACK-only), so
+    // 'chat:read' as a blanket substring can no longer be forbidden. The
+    // surveillance-shaped events and any per-message receipt broadcast stay
+    // forbidden.
     for (const forbidden of [
-      'chat:typing', 'chat:presence', 'chat:lastSeen', 'chat:read',
+      'chat:typing', 'chat:presence', 'chat:lastSeen',
+      'chat:readReceipt', 'chat:seenBy',
     ]) {
       assert.ok(!combined.includes(forbidden), `${forbidden} must not exist`);
     }

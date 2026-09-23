@@ -150,3 +150,28 @@ export const validateDeletePayload = (payload) => {
     reason,
   };
 };
+
+// 33.7 — read cursor advance. Same bounds as the REST read marker: a whole
+// number of zero or more; the service clamps it to lastMessageSeq and keeps
+// the higher of old/new (monotonic).
+export const validateReadUpToPayload = (payload) => {
+  const body = asObject(payload);
+
+  if (!body) return validationError('A read payload is required.');
+
+  if (!mongoose.isValidObjectId(String(body.conversationId || ''))) {
+    return validationError('conversationId is not a valid identifier.');
+  }
+
+  const { lastReadSeq } = body;
+
+  if (!Number.isInteger(lastReadSeq) || lastReadSeq < 0) {
+    return validationError('lastReadSeq must be a whole number of zero or more.');
+  }
+
+  return {
+    ok: true,
+    conversationId: String(body.conversationId),
+    lastReadSeq,
+  };
+};
