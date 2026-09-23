@@ -238,6 +238,29 @@ describe('33.1 origin gate — never a wildcard', () => {
     assert.deepEqual(chatAllowedOrigins({ CLIENT_URL: '' }), []);
     assert.equal(isChatOriginAllowed('http://localhost:5173', { CLIENT_URL: '' }), false);
   });
+
+  test('localhost opt-in flag (33.8): off by default, on only for literal true', () => {
+    const locked = { NODE_ENV: 'production', CLIENT_URL: 'https://crewly.example.com' };
+    const optedIn = { ...locked, CHAT_ALLOW_LOCALHOST_ORIGINS: 'true' };
+
+    // Default stays strict: loopback and missing origin refused.
+    assert.equal(isChatOriginAllowed('http://localhost:5173', locked), false);
+    assert.equal(isChatOriginAllowed(undefined, locked), false);
+
+    // Opted in: loopback on any port, and the absent-Origin proxy edge.
+    assert.equal(isChatOriginAllowed('http://localhost:5173', optedIn), true);
+    assert.equal(isChatOriginAllowed('http://127.0.0.1:5173', optedIn), true);
+    assert.equal(isChatOriginAllowed(undefined, optedIn), true);
+
+    // Never widens to non-loopback origins.
+    assert.equal(isChatOriginAllowed('https://evil.example', optedIn), false);
+
+    // Parsed like every enablement flag: only the literal 'true'.
+    assert.equal(
+      isChatOriginAllowed('http://localhost:5173', { ...locked, CHAT_ALLOW_LOCALHOST_ORIGINS: 'yes' }),
+      false,
+    );
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1442,13 +1465,21 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
     ]);
   });
 
-  test('no frontend file was touched in 33.1', () => {
+  // Inverted in 33.8 (authorized frontend unit): the frontend now carries
+  // exactly the approved socket.io-client dependency. The 33.1-era halves
+  // that still hold: no stray frontend socket dir, and no OTHER socket
+  // package slipped in.
+  test('frontend socket footprint is exactly socket.io-client (33.8)', () => {
     const frontend = path.join(here, '..', '..', 'Frontend');
     const socketDir = path.join(frontend, 'src', 'services', 'socket');
+    const pkg = JSON.parse(fs.readFileSync(path.join(frontend, 'package.json'), 'utf8'));
+    const deps = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies });
 
     assert.ok(!fs.existsSync(socketDir));
+    assert.ok(deps.includes('socket.io-client'), '33.8 approved dependency must exist');
     assert.ok(
-      !fs.readFileSync(path.join(frontend, 'package.json'), 'utf8').includes('socket.io'),
+      !deps.some((name) => name.includes('socket.io') && name !== 'socket.io-client'),
+      'no socket package beyond the approved client',
     );
   });
 

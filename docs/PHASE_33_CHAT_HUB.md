@@ -1133,3 +1133,15 @@ No attachments UI (33.10), no moderation UI (33.9), no notifications, no
 presence/typing (never), DIRECT list title resolves names via the cached
 user list, list pagination "load more conversations" not wired (first page
 of 30), virtualization not added (no new deps).
+
+## 12.9 Localhost acceptance origin flag (33.8 fix)
+
+Local acceptance runs hit the 33.1 origin gate with `NODE_ENV=production`
+and a `CLIENT_URL` that may not list the Vite origin. `socketConfig.js`
+gains an EXPLICIT opt-in: `CHAT_ALLOW_LOCALHOST_ORIGINS=true` accepts
+loopback origins (any port) and the absent-Origin edge produced by
+same-origin proxied polling. Default off; parsed like every enablement
+flag (literal `true` only); never widens to non-loopback origins; pinned by
+test/chatSocketFoundation.test.js. Public deployments must leave it unset.
+Remember: enablement flags are read AT STARTUP - the backend must be
+restarted after changing them.

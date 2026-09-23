@@ -1,5 +1,5 @@
-// PHASE 33.8 — one message. Text renders as a plain React text node (never
-// dangerouslySetInnerHTML). Deleted messages show a placeholder only.
+// PHASE 33.8 — one message. Text renders as a plain React text node only, so
+// it can never inject raw HTML. Deleted messages show a placeholder only.
 import { Pencil, Trash2 } from 'lucide-react';
 
 const timeOf = (value) =>

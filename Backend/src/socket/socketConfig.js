@@ -101,22 +101,48 @@ export const chatAllowedOrigins = (source = process.env) =>
 const DEV_PREVIEW_PATTERN = /^https:\/\/\d+-[a-z0-9-]+\.e2b\.app$/i;
 
 /**
+ * Explicit opt-in for localhost acceptance runs (Windows PowerShell
+ * acceptance, Postman-less socket testing). Parses like every other
+ * enablement flag: only the literal 'true' turns it on. When on, loopback
+ * origins (any port) are accepted and an ABSENT Origin header — which
+ * same-origin proxied polling requests can produce — is accepted too.
+ *
+ * SECURITY SHAPE: this is an operator opt-in, never a default, and never
+ * derived from NODE_ENV. A cross-origin attacker's browser always sends the
+ * attacker's origin on XHR and on WebSocket upgrades, so loopback origins
+ * cannot be forged from a malicious site; the flag only widens trust toward
+ * the machine already running the server. Public deployments must leave it
+ * unset.
+ */
+export const parseChatAllowLocalhostOrigins = (source = process.env) =>
+  String(source?.CHAT_ALLOW_LOCALHOST_ORIGINS || '').trim().toLowerCase() === 'true';
+
+const LOOPBACK_ORIGIN_PATTERN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
+
+/**
  * Server-side origin gate.
  *
- * Stricter than app.js on purpose: a browser Socket.IO handshake ALWAYS
- * carries an Origin, so an absent Origin is refused here (app.js allows it
- * for non-browser HTTP clients such as Postman). WebSocket upgrades are
- * NOT subject to browser CORS, so the `cors` option alone is decoration —
- * this predicate, wired through Engine.IO's `allowRequest`, is the real
- * gate for both transports.
+ * Stricter than app.js on purpose: a browser Socket.IO handshake carries an
+ * Origin in the cross-origin case, and WebSocket upgrades ALWAYS carry one,
+ * so an absent Origin is refused by default (app.js allows it for
+ * non-browser HTTP clients such as Postman). WebSocket upgrades are NOT
+ * subject to browser CORS, so the `cors` option alone is decoration — this
+ * predicate, wired through Engine.IO's `allowRequest`, is the real gate for
+ * both transports.
  *
  * Never a wildcard, in any environment.
  */
 export const isChatOriginAllowed = (origin, source = process.env) => {
   const normalized = normalizeOrigin(origin);
 
+  if (normalized && chatAllowedOrigins(source).includes(normalized)) return true;
+
+  if (parseChatAllowLocalhostOrigins(source)) {
+    if (!normalized) return true;
+    if (LOOPBACK_ORIGIN_PATTERN.test(normalized)) return true;
+  }
+
   if (!normalized) return false;
-  if (chatAllowedOrigins(source).includes(normalized)) return true;
 
   const isProduction = String(source?.NODE_ENV || 'development') === 'production';
 
