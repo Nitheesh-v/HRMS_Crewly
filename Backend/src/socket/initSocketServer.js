@@ -56,6 +56,7 @@ import {
   CHAT_REALTIME_STATES,
   createChatSocketAvailability,
 } from './socketAvailability.js';
+import { registerChatSocketHandlers } from './chatSocketHandlers.js';
 
 /**
  * Builds the Socket.IO server options. Exported for hermetic assertion:
@@ -143,6 +144,9 @@ export const createChatSocketServer = ({
   createAdapterClients = createChatRedisAdapter,
   createServer = (httpServer, options) => new Server(httpServer, options),
   verify = verifyChatSocketToken,
+  // 33.5 wires the chat product events (join/leave/send). Injectable so the
+  // foundation stays hermetically testable with a no-op registrar.
+  registerSocketHandlers = registerChatSocketHandlers,
   log = logger,
 } = {}) => {
   let io = null;
@@ -250,6 +254,16 @@ export const createChatSocketServer = ({
           `[ChatSocket] connection ${socket.id} ` +
             `(company=${socket.data?.companyId} user=${socket.data?.userId})`,
         );
+
+        // 33.5 — chat product events (join/leave/send). Authority stays in
+        // socket.data; the handlers re-check membership against Mongo on
+        // every event. Guarded so a faulty handler can never drop the socket
+        // listener registration for the whole process.
+        try {
+          registerSocketHandlers({ io, socket, log });
+        } catch (error) {
+          log.error(`[ChatSocket] handler registration failed (${String(error?.name || 'error')})`);
+        }
 
         socket.on('disconnect', (reason) => {
           counters.disconnects += 1;

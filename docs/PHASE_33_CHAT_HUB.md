@@ -16,7 +16,7 @@ No external vendor, no third-party API.
 | **33.2** | **Chat persistence models + indexes (`ChatConversation`, `ChatMessage`, `ChatMessageEdit`)** | **IMPLEMENTED · TESTED** (`chatModels`, 54 tests) |
 | **33.3** | **Conversation REST APIs (create/list/get + member management, membership enforced)** | **IMPLEMENTED · TESTED** (`chatConversations`, 13 tests) |
 | **33.4** | **Message history REST API (keyset seq pagination, membership, tombstone-safe)** | **IMPLEMENTED · TESTED** (`chatHistory`, 5 tests) |
-| 33.5 | Socket protocol: server-authorized room join + send with ACK + idempotency | NOT STARTED |
+| **33.5** | **Socket protocol: server-authorized join + send (ACK + idempotency) + broadcast** | **IMPLEMENTED · TESTED** (`chatSocketSend`, 6 tests) |
 | 33.6 | Edits (with history + concurrency control) + tombstone deletes | NOT STARTED |
 | 33.7 | Read cursors + unread counts (C1 model) | NOT STARTED |
 | 33.8 | Frontend chat UI + socket lifecycle | NOT STARTED |
@@ -288,7 +288,7 @@ Everything else is code-owned in `src/socket/socketConfig.js`: path
 | Check | Result |
 |---|---|
 | `npm run test:chat-socket` | **86 / 86 pass** |
-| `npm run test:all` | **2334 / 2334 pass, 0 fail** (2329 before 33.4 + 5) |
+| `npm run test:all` | **2340 / 2340 pass, 0 fail** (2334 before 33.5 + 6) |
 | `npm run index:check` | All hot-query catalog entries index-served or documented (no GAP) |
 | `npm run config:check` | ✓ Configuration valid |
 | Live smoke (Redis off) | `/api/health/live` 200 · `/socket.io` polling → **403 `FEATURE_UNAVAILABLE`** · no `Set-Cookie` · evil origin → 403 · HTTP alive after `stop()` |
@@ -797,5 +797,77 @@ is NOT included here (33.6).
 | `npm run test:chat-history` | **5 / 5 pass** (hermetic in-memory fakes) |
 | `npm run test:chat-socket` | **87 / 87 pass** (boundary pin flipped for 33.4) |
 | `npm run test:all` | **2334 / 2334 pass, 0 fail, 88 suites** |
+| `npm run index:check` | `models loaded: 127/127` · no GAP |
+| `npm run config:check` | ✓ Configuration valid |
+
+---
+
+# 8. PHASE 33.5 — SOCKET PROTOCOL (JOIN + SEND)
+
+First realtime capability. Files: `socket/chatSocketHandlers.js`,
+`socket/chatSocketValidators.js`, `services/chatMessageService.js`,
+`utils/chatKeys.js`; wired into the 33.1 foundation via an injectable
+`registerSocketHandlers` called in the connection handler. No edits/deletes/
+read-markers/attachments/UI/presence.
+
+## 8.1 Events
+
+Client → server (each answered with an ACK):
+- `chat:join` `{ conversationId }` → `{ ok:true }` or `{ ok:false, code, message }`
+- `chat:leave` `{ conversationId }` → `{ ok:true }`
+- `chat:message:send` `{ conversationId, clientMessageId, text }` →
+  `{ ok:true, data:{ message } }` or `{ ok:false, code, message }`
+
+Server → client:
+- `chat:message:created` `{ conversationId, message }` (broadcast to room
+  `chat:conv:<conversationId>`; emitted ONLY for a genuinely new message).
+
+Rooms: `chat:conv:<id>` (`utils/chatKeys.js`); `chat:company:<id>` and
+`chat:user:<id>` reserved for future targeted fan-out.
+
+## 8.2 Error codes (stable)
+
+`UNAUTHORIZED`, `FEATURE_UNAVAILABLE`, `VALIDATION_ERROR`,
+`NOT_FOUND_OR_FORBIDDEN`, `CONVERSATION_DISABLED`, `RETRYABLE`,
+`RATE_LIMITED`. `NOT_FOUND_OR_FORBIDDEN` deliberately does not distinguish
+"other tenant" from "not a member", so the socket surface leaks no tenant
+existence.
+
+## 8.3 Membership + tenant enforcement
+
+`companyId`/`userId` come ONLY from `socket.data` (33.1 handshake). Every
+`chat:join`/`chat:message:send` re-checks Mongo membership via
+`ChatConversation.findOne({ _id, companyId, 'members.userId': userId })`; a
+miss or a disabled conversation refuses. Payloads are validated by
+`chatSocketValidators.js` (text 1..4000 trimmed, clientMessageId 1..80).
+
+## 8.4 Send flow (idempotency + seq)
+
+1. validate → 2. membership + disabled → 3. idempotency pre-check (find by
+`clientMessageId`) → 4. atomic `$inc lastMessageSeq` with `{ new: true }`
+(which also refreshes `lastMessageAt/lastMessagePreview/
+lastMessageSenderUserId`) → 5. `ChatMessage.create` with the new seq → on
+E11000 refetch the winner and return `created:false`.
+
+AT-LEAST-ONCE, never exactly-once: a retry resolves to the same message via
+the unique `(companyId, conversationId, senderUserId, clientMessageId)` index
+and is acknowledged to the sender WITHOUT re-broadcasting. Seq gaps are
+tolerated by the C1 cursor model. A minimal fixed-window per-socket send guard
+(30/10s) returns `RATE_LIMITED`; it is in-memory, dies with the socket, and
+stores nothing about the user.
+
+## 8.5 Limitations
+
+No edits (33.6), deletes (33.6), read markers (33.7), attachments (33.10) or
+UI (33.8). Realtime send is exercised here by hermetic handler tests; a live
+browser round-trip is proven in 33.8 when `socket.io-client` lands.
+
+## 8.6 Verification (this checkout)
+
+| Check | Result |
+|---|---|
+| `npm run test:chat-send` | **6 / 6 pass** (hermetic mock socket + io + fakes) |
+| `npm run test:chat-socket` | **87 / 87 pass** (pins updated for 33.5) |
+| `npm run test:all` | **2340 / 2340 pass, 0 fail, 88 suites** |
 | `npm run index:check` | `models loaded: 127/127` · no GAP |
 | `npm run config:check` | ✓ Configuration valid |

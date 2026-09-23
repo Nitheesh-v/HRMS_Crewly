@@ -1147,9 +1147,11 @@ describe('33.1 lifecycle', () => {
     assert.equal(chat.describeDiagnostics().counters.connections_accepted, 1);
     assert.match(logs.at(-1), /company=aaaaaaaaaaaaaaaaaaaaaaaa/);
     assert.ok(!logs.at(-1).includes('Bearer'));
+    // 33.5 registers the chat product events on top of the 33.1 lifecycle
+    // handlers; the connection must still never register anything else.
     assert.deepEqual(
       socketEvents.map((entry) => entry.event).sort(),
-      ['disconnect', 'error'],
+      ['chat:join', 'chat:leave', 'chat:message:send', 'disconnect', 'error'],
     );
   });
 
@@ -1309,18 +1311,27 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
     ]);
   });
 
-  test('no chat model is imported by the socket foundation', () => {
-    // The 33.1 foundation must stay product-free even now that the models
-    // exist — importing them would be the first step of a hidden coupling.
+  test('the 33.1 foundation modules stay model-free (chat modules may import)', () => {
+    // The five foundation modules must not import chat models directly —
+    // product coupling belongs in the 33.5 chat modules, which are allowed to
+    // import models/services. This keeps the handshake/adapter/availability
+    // layer independent of the chat schema.
     const socketDir = path.join(here, '..', 'src', 'socket');
+    const foundation = [
+      'initSocketServer.js',
+      'socketAuth.js',
+      'socketAvailability.js',
+      'socketConfig.js',
+      'socketRedisAdapter.js',
+    ];
 
-    for (const file of fs.readdirSync(socketDir).filter((n) => n.endsWith('.js'))) {
+    for (const file of foundation) {
       const source = fs.readFileSync(path.join(socketDir, file), 'utf8');
 
       assert.doesNotMatch(
         source,
         /from '.*models\/Chat/,
-        `src/socket/${file} must not import a chat model`,
+        `src/socket/${file} must not import a chat model directly`,
       );
     }
   });
@@ -1358,27 +1369,49 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
     }
   });
 
-  test('no chat socket events were added to the 33.1 foundation', () => {
+  // 33.5 intentionally registers the chat product events, so the earlier
+  // "no chat events" pin is inverted: the ONLY chat events that may exist are
+  // join / leave / message:send / message:created. Anything surveillance- or
+  // later-unit-shaped (typing, presence, last-seen, edit, delete, read) stays
+  // forbidden across the whole socket layer.
+  test('only the 33.5 chat events exist; no presence/typing/edit/delete/read', () => {
     const socketDir = path.join(here, '..', 'src', 'socket');
+    const combined = fs
+      .readdirSync(socketDir)
+      .filter((n) => n.endsWith('.js'))
+      .map((n) => fs.readFileSync(path.join(socketDir, n), 'utf8'))
+      .join('\n');
 
-    for (const file of fs.readdirSync(socketDir).filter((n) => n.endsWith('.js'))) {
-      const source = fs.readFileSync(path.join(socketDir, file), 'utf8');
+    const registered = new Set(
+      [...combined.matchAll(/socket\.on\(\s*'(chat:[a-zA-Z:]+)'/g)].map((m) => m[1])
+    );
 
-      assert.doesNotMatch(
-        source,
-        /socket\.on\(\s*'chat/,
-        `src/socket/${file} must not register chat events`,
-      );
+    for (const allowed of ['chat:join', 'chat:leave', 'chat:message:send']) {
+      assert.ok(registered.has(allowed), `${allowed} must be registered (33.5)`);
+    }
+
+    assert.ok(
+      combined.includes("'chat:message:created'"),
+      'chat:message:created must be emitted (33.5)',
+    );
+
+    for (const forbidden of [
+      'chat:typing', 'chat:presence', 'chat:lastSeen', 'chat:read',
+      'chat:message:edit', 'chat:message:delete',
+    ]) {
+      assert.ok(!combined.includes(forbidden), `${forbidden} must not exist`);
     }
   });
 
-  test('the socket folder contains only the four foundation modules + config', () => {
+  test('the socket folder holds the foundation + the 33.5 chat modules', () => {
     const files = fs
       .readdirSync(path.join(here, '..', 'src', 'socket'))
       .filter((name) => name.endsWith('.js'))
       .sort();
 
     assert.deepEqual(files, [
+      'chatSocketHandlers.js',
+      'chatSocketValidators.js',
       'initSocketServer.js',
       'socketAuth.js',
       'socketAvailability.js',
