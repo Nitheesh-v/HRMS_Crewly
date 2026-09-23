@@ -28,6 +28,7 @@ import {
   conversationIdParamValidator,
   createConversationValidator,
   listConversationsValidator,
+  messageHistoryValidator,
   removeMemberValidator,
 } from '../validators/chatValidators.js';
 
@@ -52,6 +53,13 @@ router.get(
   '/conversations/:conversationId',
   conversationIdParamValidator,
   chatController.getConversation
+);
+
+// 33.4 — message history (read-only; send is 33.5, edit history 33.6).
+router.get(
+  '/conversations/:conversationId/messages',
+  messageHistoryValidator,
+  chatController.getMessages
 );
 
 router.post(

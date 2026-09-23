@@ -1325,11 +1325,12 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
     }
   });
 
-  // 33.3 landed the conversation REST surface, so the earlier "no chat
-  // route/controller/validator" pin is inverted: those four files must now
-  // exist, but the surface must stop at conversations — no message,
-  // history, unread or attachment endpoint may appear in the chat router.
-  test('the 33.3 REST surface exists and stops at conversations', () => {
+  // 33.3/33.4 landed the conversation REST surface + read-only history, so
+  // the earlier "no chat route/controller/validator" pin is inverted: those
+  // files must exist and /messages (read-only history) is now present, but
+  // the surface must stop there — no REST send, no edit-history read, no
+  // unread markers, no attachments may appear in the chat router yet.
+  test('the 33.3/33.4 REST surface exists and stops at read-only history', () => {
     for (const file of [
       'routes/chatRoutes.js',
       'controllers/chatController.js',
@@ -1338,7 +1339,7 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
     ]) {
       assert.ok(
         fs.existsSync(path.join(here, '..', 'src', file)),
-        `${file} must exist in 33.3`,
+        `${file} must exist in 33.3/33.4`,
       );
     }
 
@@ -1347,7 +1348,9 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
       'utf8',
     );
 
-    for (const forbidden of ['/messages', 'history', 'read', 'attachments']) {
+    assert.ok(router.includes('/messages'), 'read-only history must exist (33.4)');
+
+    for (const forbidden of ['/send', '/edits', 'unread', 'attachments']) {
       assert.ok(
         !router.includes(forbidden),
         `chatRoutes must not expose ${forbidden} (later unit)`,

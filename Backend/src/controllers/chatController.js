@@ -74,6 +74,33 @@ export const getConversation = asyncHandler(async (req, res) => {
   });
 });
 
+export const getMessages = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const { conversationId } = req.params;
+  const { cursor, limit } = req.query;
+
+  // DB Logic - DB logics
+  const result = await chatService.listMessages({
+    companyId: req.companyId,
+    userId: req.user._id,
+    conversationId,
+    cursor: cursor !== undefined ? Number(cursor) : undefined,
+    limit,
+  });
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, {
+    message: 'Messages fetched',
+    data: {
+      conversationId: result.conversationId,
+      items: result.items,
+      nextCursor: result.nextCursor,
+      hasMore: result.hasMore,
+    },
+    meta: { limit: result.limit },
+  });
+});
+
 export const addMembers = asyncHandler(async (req, res) => {
   // Data from frontend - requests from frontend
   const { conversationId } = req.params;

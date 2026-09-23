@@ -15,7 +15,7 @@ No external vendor, no third-party API.
 | **33.1** | **Realtime foundation: Socket.IO server + JWT handshake + Redis adapter + FEATURE_UNAVAILABLE gate** | **IMPLEMENTED · TESTED** (`chatSocketFoundation`, 86 tests) |
 | **33.2** | **Chat persistence models + indexes (`ChatConversation`, `ChatMessage`, `ChatMessageEdit`)** | **IMPLEMENTED · TESTED** (`chatModels`, 54 tests) |
 | **33.3** | **Conversation REST APIs (create/list/get + member management, membership enforced)** | **IMPLEMENTED · TESTED** (`chatConversations`, 13 tests) |
-| 33.4 | Message history REST APIs (paginated, Mongo-authoritative) | NOT STARTED |
+| **33.4** | **Message history REST API (keyset seq pagination, membership, tombstone-safe)** | **IMPLEMENTED · TESTED** (`chatHistory`, 5 tests) |
 | 33.5 | Socket protocol: server-authorized room join + send with ACK + idempotency | NOT STARTED |
 | 33.6 | Edits (with history + concurrency control) + tombstone deletes | NOT STARTED |
 | 33.7 | Read cursors + unread counts (C1 model) | NOT STARTED |
@@ -288,7 +288,7 @@ Everything else is code-owned in `src/socket/socketConfig.js`: path
 | Check | Result |
 |---|---|
 | `npm run test:chat-socket` | **86 / 86 pass** |
-| `npm run test:all` | **2329 / 2329 pass, 0 fail** (2175 before 33.1 + 85 + 54 + 13 + 1, +5 socket boundary split) |
+| `npm run test:all` | **2334 / 2334 pass, 0 fail** (2329 before 33.4 + 5) |
 | `npm run index:check` | All hot-query catalog entries index-served or documented (no GAP) |
 | `npm run config:check` | ✓ Configuration valid |
 | Live smoke (Redis off) | `/api/health/live` 200 · `/socket.io` polling → **403 `FEATURE_UNAVAILABLE`** · no `Set-Cookie` · evil origin → 403 · HTTP alive after `stop()` |
@@ -722,6 +722,80 @@ of erroring.
 |---|---|
 | `npm run test:chat-conversations` | **13 / 13 pass** (hermetic — in-memory fakes) |
 | `npm run test:chat-socket` | **87 / 87 pass** (boundary pin updated for 33.3) |
-| `npm run test:all` | **2329 / 2329 pass, 0 fail, 88 suites** |
+| `npm run test:all` | **2334 / 2334 pass, 0 fail, 88 suites** (33.3 snapshot + 5) |
+| `npm run index:check` | `models loaded: 127/127` · no GAP |
+| `npm run config:check` | ✓ Configuration valid |
+
+---
+
+# 7. PHASE 33.4 — MESSAGE HISTORY API
+
+Read-only. One endpoint. No send (33.5), no edit-history read (33.6), no
+unread markers (33.7), no attachments (33.10), no socket events.
+
+## 7.1 Endpoint
+
+`GET /api/chat/conversations/:conversationId/messages?cursor=<seq>&limit=<n>`
+
+Runs under the 33.3 stack: `protect` → `tenantContext` →
+`checkSubscriptionStatus`. It is a read, so no `checkWriteAccess`.
+
+Query params:
+- `cursor` — optional positive integer = a message `seq`. When present, the
+  page is the messages strictly older than it (`seq < cursor`). When absent,
+  the newest page is returned.
+- `limit` — optional integer, clamped 1..50 (default 20). The service fetches
+  `limit+1` to compute `hasMore`.
+
+## 7.2 Ordering + cursor semantics
+
+Newest-first, keyset over `seq` desc — this rides the 33.2 index
+`(companyId, conversationId, seq desc)`, so every page is an index scan, never
+a collection scan. `nextCursor` is the `seq` of the last item on the page, or
+`null` when `hasMore` is false. Cursors are monotonic message sequence
+numbers, so a page boundary is stable even while new messages arrive (new
+messages have higher seq and simply appear on the first page).
+
+## 7.3 Membership rule
+
+Membership is verified BEFORE any message is read, by the same scoped lookup
+as 33.3:
+`ChatConversation.findOne({ _id, companyId, 'members.userId': req.user._id })`.
+A miss is a 404 — a non-member or another tenant learns nothing. The message
+query itself is scoped by `companyId + conversationId`.
+
+## 7.4 Response shape
+
+```
+{
+  message: "Messages fetched",
+  data: {
+    conversationId,
+    items: [ { _id, seq, senderUserId, type, text, editedAt, editVersion, deletedAt, createdAt } ],
+    nextCursor, hasMore
+  },
+  meta: { limit }
+}
+```
+
+Tombstones: if `deletedAt` is set, `text` is always `null` (sanitized on read
+as defense-in-depth, even if a half-delete left a body behind), and
+`deletedAt` is surfaced so the UI can render "message deleted". Edit history
+is NOT included here (33.6).
+
+## 7.5 Limitations
+
+- No send path yet — history is empty until 33.5 writes messages.
+- No edit-history entries (33.6), no unread/read state (33.7).
+- Read-only; a `GET .../messages` on a conversation the user is not a member
+  of returns 404.
+
+## 7.6 Verification (this checkout)
+
+| Check | Result |
+|---|---|
+| `npm run test:chat-history` | **5 / 5 pass** (hermetic in-memory fakes) |
+| `npm run test:chat-socket` | **87 / 87 pass** (boundary pin flipped for 33.4) |
+| `npm run test:all` | **2334 / 2334 pass, 0 fail, 88 suites** |
 | `npm run index:check` | `models loaded: 127/127` · no GAP |
 | `npm run config:check` | ✓ Configuration valid |

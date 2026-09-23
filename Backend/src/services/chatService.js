@@ -41,6 +41,7 @@
 import mongoose from 'mongoose';
 
 import ChatConversation from '../models/ChatConversation.js';
+import ChatMessage from '../models/ChatMessage.js';
 import User from '../models/User.js';
 import ApiError from '../utils/ApiError.js';
 
@@ -385,4 +386,65 @@ export const removeMember = async ({
   const updated = await ChatConversation.findOne({ _id: conversationId, companyId }).lean();
 
   return { conversation: updated, removed: String(targetUserId) };
+};
+
+// ── message history (33.4) ────────────────────────────────────────────────
+
+// Defense-in-depth tombstone sanitizer. The 33.2 schema clears body text at
+// write time, but a tombstone written through an atomic update that skips
+// validators could still carry text — so the read path never trusts the
+// stored body: if deletedAt is set, text is always null. We also never leak
+// edit history here (that is a separate, permission-gated read in 33.6).
+export const sanitizeMessageForHistory = (message) => ({
+  _id: message._id,
+  seq: message.seq,
+  senderUserId: message.senderUserId,
+  type: message.type,
+  text: message.deletedAt ? null : message.text ?? null,
+  editedAt: message.editedAt ?? null,
+  editVersion: message.editVersion ?? 0,
+  deletedAt: message.deletedAt ?? null,
+  createdAt: message.createdAt ?? null,
+});
+
+// Newest-first keyset pagination over the 33.2 index
+// (companyId, conversationId, seq desc). cursor is a seq; when present we
+// fetch the page strictly older than it. Membership is verified FIRST via
+// getConversation, so a non-member or another tenant gets a 404 before any
+// message is touched.
+export const listMessages = async ({
+  companyId,
+  userId,
+  conversationId,
+  cursor,
+  limit,
+}) => {
+  // Throws 404 unless the requester is a member of this tenant's conversation.
+  await getConversation({ companyId, userId, conversationId });
+
+  const pageSize = clampChatLimit(limit);
+
+  const filter = { companyId, conversationId };
+
+  if (Number.isFinite(cursor) && cursor > 0) {
+    filter.seq = { $lt: cursor };
+  }
+
+  const rows = await ChatMessage.find(filter)
+    .sort({ seq: -1 })
+    .limit(pageSize + 1)
+    .lean();
+
+  const hasMore = rows.length > pageSize;
+  const page = hasMore ? rows.slice(0, pageSize) : rows;
+
+  const last = page[page.length - 1];
+
+  return {
+    conversationId,
+    items: page.map(sanitizeMessageForHistory),
+    nextCursor: hasMore && last ? last.seq : null,
+    hasMore,
+    limit: pageSize,
+  };
 };

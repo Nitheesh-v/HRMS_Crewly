@@ -120,6 +120,24 @@ export const addMembersValidator = [
   validate,
 ];
 
+// ── GET /api/chat/conversations/:conversationId/messages ──────────────────
+
+export const messageHistoryValidator = [
+  objectIdRule(param('conversationId'), 'conversationId'),
+
+  query('cursor')
+    .optional({ nullable: true, checkFalsy: true })
+    .isInt({ min: 1 })
+    .withMessage('cursor must be a positive integer (a message seq).'),
+
+  query('limit')
+    .optional({ nullable: true, checkFalsy: true })
+    .isInt({ min: 1, max: 50 })
+    .withMessage('limit must be an integer between 1 and 50.'),
+
+  validate,
+];
+
 // ── DELETE /api/chat/conversations/:conversationId/members/:userId ────────
 
 export const removeMemberValidator = [
