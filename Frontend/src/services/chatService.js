@@ -1,34 +1,67 @@
 // PHASE 33.8 — CHAT HUB REST CLIENT
 // Wraps the 33.3/33.4/33.7 backend contracts. The axios instance (api.js)
 // attaches the tenant Bearer token; no secret lives here.
+//
+// IMPORTANT — response unwrapping: the api.js response interceptor already
+// unwraps once. Endpoints whose body carries `meta` come back as
+// { message, data, meta }; endpoints without `meta` come back as `data`
+// itself. Every method below normalizes to a clean shape so pages never
+// guess levels again.
 
 import api from './api.js';
 
-// ApiResponse body: { statusCode, message, data, meta? }
-const body = (res) => res?.data ?? res;
+const withMeta = (res) => ({
+  data: res?.data ?? res,
+  meta: res?.meta ?? {},
+});
+
+const bare = (res) =>
+  res && typeof res === 'object' && 'data' in res ? res.data : res;
 
 const chatService = {
+  // -> { conversations, nextCursor, hasMore, limit }
   listConversations: async ({ cursor, limit } = {}) => {
     const params = {};
     if (cursor) params.cursor = cursor;
     if (limit) params.limit = limit;
-    return body(await api.get('/chat/conversations', { params }));
+
+    const { data, meta } = withMeta(await api.get('/chat/conversations', { params }));
+
+    return {
+      conversations: data?.conversations ?? [],
+      nextCursor: meta.nextCursor ?? data?.nextCursor ?? null,
+      hasMore: meta.hasMore ?? data?.hasMore ?? false,
+      limit: meta.limit ?? data?.limit,
+    };
   },
 
-  createConversation: async (payload) => body(await api.post('/chat/conversations', payload)),
+  // -> { conversation, created }
+  createConversation: async (payload) => bare(await api.post('/chat/conversations', payload)),
 
+  // -> { conversation }
   getConversation: async (conversationId) =>
-    body(await api.get(`/chat/conversations/${conversationId}`)),
+    bare(await api.get(`/chat/conversations/${conversationId}`)),
 
+  // -> { items, nextCursor, hasMore }
   getMessages: async (conversationId, { cursor, limit } = {}) => {
     const params = {};
     if (cursor) params.cursor = cursor;
     if (limit) params.limit = limit;
-    return body(await api.get(`/chat/conversations/${conversationId}/messages`, { params }));
+
+    const { data, meta } = withMeta(
+      await api.get(`/chat/conversations/${conversationId}/messages`, { params })
+    );
+
+    return {
+      items: data?.items ?? [],
+      nextCursor: data?.nextCursor ?? meta.nextCursor ?? null,
+      hasMore: data?.hasMore ?? meta.hasMore ?? false,
+    };
   },
 
+  // -> { conversationId, myLastReadSeq, lastMessageSeq, unreadCount }
   markRead: async (conversationId, lastReadSeq) =>
-    body(await api.post(`/chat/conversations/${conversationId}/read`, { lastReadSeq })),
+    bare(await api.post(`/chat/conversations/${conversationId}/read`, { lastReadSeq })),
 };
 
 export default chatService;

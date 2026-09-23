@@ -100,8 +100,8 @@ const ChatPage = () => {
   const loadConversations = useCallback(async () => {
     dispatch(conversationsLoading());
     try {
-      const body = await chatService.listConversations({ limit: PAGE_SIZE });
-      dispatch(conversationsLoaded(body?.data?.conversations ?? []));
+      const result = await chatService.listConversations({ limit: PAGE_SIZE });
+      dispatch(conversationsLoaded(result.conversations));
     } catch (err) {
       dispatch(conversationsFailed(err?.response?.data?.message || 'Failed to load conversations.'));
     }
@@ -111,10 +111,12 @@ const ChatPage = () => {
     loadConversations();
 
     userService
-      .getAll({ status: 'ACTIVE' })
+      .getAll({ status: 'ACTIVE', limit: 200 })
       .then((res) => {
-        const body = res?.data ?? res;
-        setUsers(body?.data?.users ?? body?.users ?? (Array.isArray(body?.data) ? body.data : []));
+        // api.js unwraps meta-carrying bodies once: the user array sits at
+        // res.data when meta exists, or IS res otherwise.
+        const list = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
+        setUsers(list);
       })
       .catch(() => setUsers([]));
   }, [loadConversations]);
@@ -141,12 +143,12 @@ const ChatPage = () => {
       }
 
       try {
-        const body = await chatService.markRead(id, seq);
+        const result = await chatService.markRead(id, seq);
         lastMarkedSeq.current = seq;
         dispatch(readUpToApplied({
           conversationId: id,
-          myLastReadSeq: body?.data?.myLastReadSeq ?? seq,
-          unreadCount: body?.data?.unreadCount ?? 0,
+          myLastReadSeq: result?.myLastReadSeq ?? seq,
+          unreadCount: result?.unreadCount ?? 0,
         }));
       } catch {
         // best-effort; the next open retries
@@ -168,17 +170,17 @@ const ChatPage = () => {
       dispatch(messagesLoading(conversationId));
 
       try {
-        const body = await chatService.getMessages(conversationId, { limit: PAGE_SIZE });
+        const result = await chatService.getMessages(conversationId, { limit: PAGE_SIZE });
         if (cancelled) return;
 
         dispatch(messagesLoaded({
           conversationId,
-          items: body?.data?.items ?? [],
-          nextCursor: body?.data?.nextCursor ?? null,
-          hasMore: body?.data?.hasMore ?? false,
+          items: result.items,
+          nextCursor: result.nextCursor,
+          hasMore: result.hasMore,
         }));
 
-        const newest = (body?.data?.items ?? [])[0]?.seq ?? 0;
+        const newest = result.items[0]?.seq ?? 0;
         applyRead(conversationId, newest);
       } catch (err) {
         if (!cancelled) {
@@ -234,16 +236,16 @@ const ChatPage = () => {
     if (!activeEntry?.nextCursor) return;
 
     try {
-      const body = await chatService.getMessages(conversationId, {
+      const result = await chatService.getMessages(conversationId, {
         cursor: activeEntry.nextCursor,
         limit: PAGE_SIZE,
       });
 
       dispatch(olderLoaded({
         conversationId,
-        items: body?.data?.items ?? [],
-        nextCursor: body?.data?.nextCursor ?? null,
-        hasMore: body?.data?.hasMore ?? false,
+        items: result.items,
+        nextCursor: result.nextCursor,
+        hasMore: result.hasMore,
       }));
     } catch {
       // keep what we have; the reader can scroll again
@@ -262,12 +264,12 @@ const ChatPage = () => {
       if (ack.code === 'CONFLICT_EDIT_VERSION') {
         // Someone edited first: refresh history so the reader sees the truth.
         try {
-          const body = await chatService.getMessages(conversationId, { limit: PAGE_SIZE });
+          const result = await chatService.getMessages(conversationId, { limit: PAGE_SIZE });
           dispatch(messagesLoaded({
             conversationId,
-            items: body?.data?.items ?? [],
-            nextCursor: body?.data?.nextCursor ?? null,
-            hasMore: body?.data?.hasMore ?? false,
+            items: result.items,
+            nextCursor: result.nextCursor,
+            hasMore: result.hasMore,
           }));
         } catch {
           // the warning below still explains what happened
@@ -292,10 +294,10 @@ const ChatPage = () => {
 
   const handleCreate = async (payload) => {
     try {
-      const body = await chatService.createConversation(payload);
-      const conversation = body?.data?.conversation;
+      const result = await chatService.createConversation(payload);
+      const conversation = result?.conversation;
 
-      if (!conversation) return body?.message || 'The conversation could not be created.';
+      if (!conversation) return 'The conversation could not be created.';
 
       dispatch(conversationAdded({ ...conversation, unreadCount: 0 }));
       navigate(`/app/chat/${conversation._id}`);
