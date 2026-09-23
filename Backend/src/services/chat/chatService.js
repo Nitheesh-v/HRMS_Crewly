@@ -40,10 +40,10 @@
 
 import mongoose from 'mongoose';
 
-import ChatConversation from '../models/ChatConversation.js';
-import ChatMessage from '../models/ChatMessage.js';
-import User from '../models/User.js';
-import ApiError from '../utils/ApiError.js';
+import ChatConversation from '../../models/ChatConversation.js';
+import ChatMessage from '../../models/ChatMessage.js';
+import User from '../../models/User.js';
+import ApiError from '../../utils/ApiError.js';
 
 export const CHAT_GROUP_MAX_MEMBERS = 50;
 

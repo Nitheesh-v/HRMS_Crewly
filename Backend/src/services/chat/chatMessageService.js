@@ -24,8 +24,8 @@
 //  the C1 cursor model tolerates (unread = lastMessageSeq - lastReadSeq).
 // ═══════════════════════════════════════════════════════════════════════════
 
-import ChatConversation from '../models/ChatConversation.js';
-import ChatMessage from '../models/ChatMessage.js';
+import ChatConversation from '../../models/ChatConversation.js';
+import ChatMessage from '../../models/ChatMessage.js';
 
 const PREVIEW_MAX = 200; // matches ChatConversation.lastMessagePreview maxlength
 

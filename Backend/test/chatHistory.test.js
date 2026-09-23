@@ -17,8 +17,8 @@ import mongoose from 'mongoose';
 
 import ChatConversation from '../src/models/ChatConversation.js';
 import ChatMessage from '../src/models/ChatMessage.js';
-import * as chatService from '../src/services/chatService.js';
-import { sanitizeMessageForHistory } from '../src/services/chatService.js';
+import * as chatService from '../src/services/chat/chatService.js';
+import { sanitizeMessageForHistory } from '../src/services/chat/chatService.js';
 
 const { ObjectId } = mongoose.Types;
 

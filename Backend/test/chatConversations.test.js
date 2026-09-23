@@ -19,14 +19,14 @@ import mongoose from 'mongoose';
 
 import ChatConversation from '../src/models/ChatConversation.js';
 import User from '../src/models/User.js';
-import * as chatService from '../src/services/chatService.js';
+import * as chatService from '../src/services/chat/chatService.js';
 import {
   buildDirectKey,
   buildPageFilter,
   clampChatLimit,
   decodeChatCursor,
   encodeChatCursor,
-} from '../src/services/chatService.js';
+} from '../src/services/chat/chatService.js';
 
 const { ObjectId } = mongoose.Types;
 

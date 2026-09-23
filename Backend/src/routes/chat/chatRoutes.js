@@ -16,13 +16,13 @@
 
 import { Router } from 'express';
 
-import { protect } from '../middlewares/authMiddleware.js';
-import { tenantContext } from '../middlewares/tenantMiddleware.js';
+import { protect } from '../../middlewares/authMiddleware.js';
+import { tenantContext } from '../../middlewares/tenantMiddleware.js';
 import {
   checkSubscriptionStatus,
   checkWriteAccess,
-} from '../middlewares/subscriptionAccess.js';
-import * as chatController from '../controllers/chatController.js';
+} from '../../middlewares/subscriptionAccess.js';
+import * as chatController from '../../controllers/chat/chatController.js';
 import {
   addMembersValidator,
   conversationIdParamValidator,
@@ -30,7 +30,7 @@ import {
   listConversationsValidator,
   messageHistoryValidator,
   removeMemberValidator,
-} from '../validators/chatValidators.js';
+} from '../../validators/chat/chatValidators.js';
 
 const router = Router();
 

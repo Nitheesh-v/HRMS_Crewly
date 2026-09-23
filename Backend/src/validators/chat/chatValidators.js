@@ -19,8 +19,8 @@ import { body, param, query, validationResult } from 'express-validator';
 
 import mongoose from 'mongoose';
 
-import ApiError from '../utils/ApiError.js';
-import { CHAT_GROUP_MAX_MEMBERS } from '../services/chatService.js';
+import ApiError from '../../utils/ApiError.js';
+import { CHAT_GROUP_MAX_MEMBERS } from '../../services/chat/chatService.js';
 
 const isObjectId = (value) => mongoose.isValidObjectId(String(value || ''));
 

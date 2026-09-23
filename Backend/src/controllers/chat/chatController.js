@@ -6,9 +6,9 @@
 //  req.companyId / req.user._id are the ONLY sources of tenant + identity.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import asyncHandler from '../utils/asyncHandler.js';
-import ApiResponse from '../utils/ApiResponse.js';
-import * as chatService from '../services/chatService.js';
+import asyncHandler from '../../utils/asyncHandler.js';
+import ApiResponse from '../../utils/ApiResponse.js';
+import * as chatService from '../../services/chat/chatService.js';
 
 export const createConversation = asyncHandler(async (req, res) => {
   // Data from frontend - requests from frontend

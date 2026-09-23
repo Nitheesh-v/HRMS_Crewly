@@ -30,7 +30,7 @@ import {
 import {
   loadWritableConversation,
   sendTextMessage,
-} from '../services/chatMessageService.js';
+} from '../services/chat/chatMessageService.js';
 
 export const CHAT_SOCKET_ERROR_CODES = Object.freeze({
   UNAUTHORIZED: 'UNAUTHORIZED',

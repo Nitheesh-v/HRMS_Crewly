@@ -1343,10 +1343,10 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
   // unread markers, no attachments may appear in the chat router yet.
   test('the 33.3/33.4 REST surface exists and stops at read-only history', () => {
     for (const file of [
-      'routes/chatRoutes.js',
-      'controllers/chatController.js',
-      'validators/chatValidators.js',
-      'services/chatService.js',
+      'routes/chat/chatRoutes.js',
+      'controllers/chat/chatController.js',
+      'validators/chat/chatValidators.js',
+      'services/chat/chatService.js',
     ]) {
       assert.ok(
         fs.existsSync(path.join(here, '..', 'src', file)),
@@ -1355,7 +1355,7 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
     }
 
     const router = fs.readFileSync(
-      path.join(here, '..', 'src', 'routes', 'chatRoutes.js'),
+      path.join(here, '..', 'src', 'routes', 'chat', 'chatRoutes.js'),
       'utf8',
     );
 

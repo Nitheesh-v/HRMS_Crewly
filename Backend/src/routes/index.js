@@ -18,7 +18,7 @@ import attendanceRegularizationRoutes from "./attendance/attendanceRegularizatio
 import attendanceOvertimeRoutes from "./attendance/attendanceOvertimeRoutes.js";
 import leaveRoutes from "./leaveRoutes.js";
 import projectRoutes from "./projectRoutes.js";
-import chatRoutes from "./chatRoutes.js";
+import chatRoutes from "./chat/chatRoutes.js";
 import taskRoutes from "./taskRoutes.js";
 import payrollRoutes from "./payroll/payrollRoutes.js";
 import payrollSetupRoutes from "./payroll/payrollSetupRoutes.js";

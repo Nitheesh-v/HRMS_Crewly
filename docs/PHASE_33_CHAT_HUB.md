@@ -379,10 +379,11 @@ Backend — **matches repository structure exactly, no mapping needed.**
 | `Backend/src/models/ChatConversation.js` | 33.2 | exists |
 | `Backend/src/models/ChatMessage.js` | 33.2 | exists |
 | `Backend/src/models/ChatMessageEdit.js` | 33.2 (model) · 33.6 (behaviour) | exists |
-| `Backend/src/controllers/chatController.js` | 33.3 | exists |
-| `Backend/src/routes/chatRoutes.js` | 33.3 | exists |
-| `Backend/src/validators/chatValidators.js` | 33.3 | exists |
-| `Backend/src/services/chatService.js` | 33.3 | exists |
+| `Backend/src/controllers/chat/chatController.js` | 33.3 | exists (chat/ subfolder, mirrors attendance/bgv) |
+| `Backend/src/routes/chat/chatRoutes.js` | 33.3 | exists (chat/ subfolder) |
+| `Backend/src/validators/chat/chatValidators.js` | 33.3 | exists (chat/ subfolder) |
+| `Backend/src/services/chat/chatService.js` | 33.3 | exists (chat/ subfolder) |
+| `Backend/src/services/chat/chatMessageService.js` | 33.5 | exists (chat/ subfolder) |
 
 Frontend — **four mandated paths do not match repository truth.** "Follow repo
 truth first" applies; each deviation is recorded rather than made silently.
@@ -871,3 +872,25 @@ browser round-trip is proven in 33.8 when `socket.io-client` lands.
 | `npm run test:all` | **2340 / 2340 pass, 0 fail, 88 suites** |
 | `npm run index:check` | `models loaded: 127/127` · no GAP |
 | `npm run config:check` | ✓ Configuration valid |
+
+---
+
+# 9. FOLDER LAYOUT (CHAT DOMAIN, PER-LAYER SUBFOLDERS)
+
+Following the repo's established domain convention (attendance, bgv, payroll,
+recruitment each live in per-layer subfolders), the chat product files were
+restructured from flat shared folders into `chat/` subfolders:
+
+| Layer | Path |
+|---|---|
+| Controller | `src/controllers/chat/chatController.js` |
+| Routes | `src/routes/chat/chatRoutes.js` (mounted at `/api/chat` in `src/routes/index.js`) |
+| Validators | `src/validators/chat/chatValidators.js` |
+| Services | `src/services/chat/chatService.js`, `src/services/chat/chatMessageService.js` |
+| Socket | `src/socket/` stays as its own layer (foundation + `chatSocketHandlers.js` / `chatSocketValidators.js`) — there is no per-domain socket precedent, and it is already isolated |
+| Models | `src/models/Chat*.js` unchanged (33.2) |
+| Utils | `src/utils/chatKeys.js` |
+
+Only import paths and path-based test pins changed; no logic moved. Verified by
+`npm run test:all` (2340/2340), `index:check` (127/127) and `config:check` after
+the move.
