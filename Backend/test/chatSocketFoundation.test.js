@@ -1147,11 +1147,20 @@ describe('33.1 lifecycle', () => {
     assert.equal(chat.describeDiagnostics().counters.connections_accepted, 1);
     assert.match(logs.at(-1), /company=aaaaaaaaaaaaaaaaaaaaaaaa/);
     assert.ok(!logs.at(-1).includes('Bearer'));
-    // 33.5 registers the chat product events on top of the 33.1 lifecycle
-    // handlers; the connection must still never register anything else.
+    // 33.5/33.6 register the chat product events on top of the 33.1
+    // lifecycle handlers; the connection must still never register anything
+    // else (no typing/presence/read-marker events).
     assert.deepEqual(
       socketEvents.map((entry) => entry.event).sort(),
-      ['chat:join', 'chat:leave', 'chat:message:send', 'disconnect', 'error'],
+      [
+        'chat:join',
+        'chat:leave',
+        'chat:message:delete',
+        'chat:message:edit',
+        'chat:message:send',
+        'disconnect',
+        'error',
+      ],
     );
   });
 
@@ -1369,12 +1378,14 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
     }
   });
 
-  // 33.5 intentionally registers the chat product events, so the earlier
-  // "no chat events" pin is inverted: the ONLY chat events that may exist are
-  // join / leave / message:send / message:created. Anything surveillance- or
-  // later-unit-shaped (typing, presence, last-seen, edit, delete, read) stays
-  // forbidden across the whole socket layer.
-  test('only the 33.5 chat events exist; no presence/typing/edit/delete/read', () => {
+  // 33.5 registers join/leave/send and 33.6 adds edit/delete, so the earlier
+  // "no chat events" pin is inverted again: the ONLY chat events that may
+  // exist are join / leave / message:send / message:edit / message:delete
+  // (client→server) and message:created / message:updated / message:deleted
+  // (server→client). Anything surveillance- or later-unit-shaped (typing,
+  // presence, last-seen, read markers) stays forbidden across the whole
+  // socket layer.
+  test('only the 33.5/33.6 chat events exist; no presence/typing/read markers', () => {
     const socketDir = path.join(here, '..', 'src', 'socket');
     const combined = fs
       .readdirSync(socketDir)
@@ -1386,18 +1397,21 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
       [...combined.matchAll(/socket\.on\(\s*'(chat:[a-zA-Z:]+)'/g)].map((m) => m[1])
     );
 
-    for (const allowed of ['chat:join', 'chat:leave', 'chat:message:send']) {
-      assert.ok(registered.has(allowed), `${allowed} must be registered (33.5)`);
+    for (const allowed of [
+      'chat:join', 'chat:leave', 'chat:message:send',
+      'chat:message:edit', 'chat:message:delete',
+    ]) {
+      assert.ok(registered.has(allowed), `${allowed} must be registered (33.5/33.6)`);
     }
 
-    assert.ok(
-      combined.includes("'chat:message:created'"),
-      'chat:message:created must be emitted (33.5)',
-    );
+    for (const emitted of [
+      'chat:message:created', 'chat:message:updated', 'chat:message:deleted',
+    ]) {
+      assert.ok(combined.includes(`'${emitted}'`), `${emitted} must be emitted (33.5/33.6)`);
+    }
 
     for (const forbidden of [
       'chat:typing', 'chat:presence', 'chat:lastSeen', 'chat:read',
-      'chat:message:edit', 'chat:message:delete',
     ]) {
       assert.ok(!combined.includes(forbidden), `${forbidden} must not exist`);
     }

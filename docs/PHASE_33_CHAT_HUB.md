@@ -17,7 +17,7 @@ No external vendor, no third-party API.
 | **33.3** | **Conversation REST APIs (create/list/get + member management, membership enforced)** | **IMPLEMENTED · TESTED** (`chatConversations`, 13 tests) |
 | **33.4** | **Message history REST API (keyset seq pagination, membership, tombstone-safe)** | **IMPLEMENTED · TESTED** (`chatHistory`, 5 tests) |
 | **33.5** | **Socket protocol: server-authorized join + send (ACK + idempotency) + broadcast** | **IMPLEMENTED · TESTED** (`chatSocketSend`, 6 tests) |
-| 33.6 | Edits (with history + concurrency control) + tombstone deletes | NOT STARTED |
+| 33.6 | Edits (with history + concurrency control) + tombstone deletes | IMPLEMENTED |
 | 33.7 | Read cursors + unread counts (C1 model) | NOT STARTED |
 | 33.8 | Frontend chat UI + socket lifecycle | NOT STARTED |
 | 33.9 | Moderation + admin controls + moderation audit | NOT STARTED |
@@ -894,3 +894,100 @@ restructured from flat shared folders into `chat/` subfolders:
 Only import paths and path-based test pins changed; no logic moved. Verified by
 `npm run test:all` (2340/2340), `index:check` (127/127) and `config:check` after
 the move.
+
+---
+
+# 10. PHASE 33.6 — MESSAGE EDIT + EDIT HISTORY + DELETE (TOMBSTONE)
+
+Realtime edit/delete over Socket.IO. No REST routes added, no UI, no read
+markers, no attachments. Sender-only permission model (moderation deferred
+to 33.9).
+
+## 10.1 Events
+
+Client → server (each ACKed `{ok:true,data}` / `{ok:false,code,message}`):
+
+| Event | Payload | ACK data |
+|---|---|---|
+| `chat:message:edit` | `{ conversationId, messageId, expectedEditVersion, newText, clientEditId? }` | `{ message }` (broadcast shape) |
+| `chat:message:delete` | `{ conversationId, messageId, reason? }` | `{ messageId, deletedAt }` |
+
+Server → client (room `chat:conv:<id>`, emitted only on a real change):
+
+| Event | Payload |
+|---|---|
+| `chat:message:updated` | `{ conversationId, messageId, newText, editedAt, editVersion, editedByUserId }` |
+| `chat:message:deleted` | `{ conversationId, messageId, deletedAt, deletedByUserId }` |
+
+Payloads carry no tokens, Redis ids, job ids or debug objects.
+
+## 10.2 Edit rules + optimistic concurrency
+
+Order (cheapest rejection first): payload validation (`newText` trimmed
+1..4000, `expectedEditVersion` integer ≥ 0, optional `clientEditId` ≤ 80) →
+membership + tenant + disabled (Mongo-authoritative) → message fetch scoped
+`{_id, companyId, conversationId}` → `MESSAGE_DELETED` → `MESSAGE_NOT_EDITABLE`
+for non-TEXT or non-sender → history cap → atomic
+`findOneAndUpdate({ ..., editVersion: expectedEditVersion, deletedAt: null },
+{ $set:{text,editedAt,editedByUserId}, $inc:{editVersion:1} },
+{ new:true, runValidators:true })`. A null result refetches and classifies:
+missing → `NOT_FOUND_OR_FORBIDDEN`, tombstoned → `MESSAGE_DELETED`,
+version moved → `CONFLICT_EDIT_VERSION`, else `RETRYABLE`. Two simultaneous
+edits cannot both win; the loser gets `CONFLICT_EDIT_VERSION` and must
+refresh from `chat:message:updated`.
+
+`clientEditId` is accepted and bounded but is NOT a dedupe key in 33.6 —
+the version check is the honest retry behaviour (a blind retry fails loudly
+instead of silently re-applying).
+
+## 10.3 Edit history (append-only) + retention cap
+
+Every successful edit appends ONE `ChatMessageEdit` row:
+`{ companyId, conversationId, messageId, version: <new editVersion>,
+previousText: <replaced text>, editedAt, editedByUserId }`.
+`(companyId, messageId, version)` is unique, so a row can never be
+overwritten. Cap = **20** rows per message (`CHAT_EDIT_HISTORY_MAX`); beyond
+it the edit is REFUSED with `HISTORY_LIMIT_REACHED` (refuse, not prune — no
+destructive history writes). History is internal: the 33.4 history endpoint
+does NOT return it.
+
+## 10.4 Tombstone delete
+
+Never a hard delete: `$set { deletedAt, deletedByUserId, text: null,
+editVersion: 0, editedAt: null, editedByUserId: null }` with
+`runValidators: true` (the update both passes validators and explicitly
+nulls the body, as the ChatMessage model header demands). `seq` is preserved
+so cursors stay stable; 33.4 already renders tombstones as null text.
+Idempotent: deleting an already-tombstoned message returns ok with the
+EXISTING `deletedAt` and `changed:false` → no re-broadcast. A disabled
+conversation does NOT block tombstoning (removal of one's own content stays
+available). `lastMessagePreview` is NOT recomputed on delete in 33.6
+(documented limitation; refreshes on the next send). `reason` is validated
+(≤ 200) but not persisted — ChatMessage has no reason field until 33.9.
+
+## 10.5 Stable error codes (utils/chatErrors.js, single source)
+
+`UNAUTHORIZED`, `FEATURE_UNAVAILABLE`, `VALIDATION_ERROR`,
+`NOT_FOUND_OR_FORBIDDEN`, `CONVERSATION_DISABLED`, `RETRYABLE`,
+`RATE_LIMITED` (33.1/33.5) + `CONFLICT_EDIT_VERSION`, `MESSAGE_DELETED`,
+`MESSAGE_NOT_EDITABLE`, `HISTORY_LIMIT_REACHED` (33.6). Ownership failures
+surface as `MESSAGE_NOT_EDITABLE` to members who can already see the
+message; tenant existence is never confirmed (`NOT_FOUND_OR_FORBIDDEN`).
+
+## 10.6 Layout + tests
+
+`services/chat/chatEditService.js` (edit + tombstone logic),
+`utils/chatErrors.js` (codes), extended `socket/chatSocketHandlers.js` +
+`socket/chatSocketValidators.js`. The per-socket fixed-window write guard
+(30/10s) now covers send + edit + delete. Tests: `test/chatEditDelete.test.js`
+10/10 hermetic (mock socket/io + in-memory model fakes); foundation pins
+inverted to allow the 33.6 events while typing/presence/read markers stay
+forbidden. `npm run test:all` → **2350 / 2350 pass, 0 fail, 88 suites**
+(2340 before 33.6 + 10); index:check 127/127; config:check valid.
+
+## 10.7 Limitations (honest)
+
+No moderation (33.9), no read markers/unread (33.7), no attachments (33.10),
+no UI (33.8), no edit-history read endpoint (33.9), preview not recomputed on
+delete, `clientEditId`/`reason` accepted but not persisted, at-least-once
+never exactly-once.
