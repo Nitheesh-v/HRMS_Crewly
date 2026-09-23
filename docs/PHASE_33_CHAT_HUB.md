@@ -14,7 +14,7 @@ No external vendor, no third-party API.
 |---|---|---|
 | **33.1** | **Realtime foundation: Socket.IO server + JWT handshake + Redis adapter + FEATURE_UNAVAILABLE gate** | **IMPLEMENTED · TESTED** (`chatSocketFoundation`, 86 tests) |
 | **33.2** | **Chat persistence models + indexes (`ChatConversation`, `ChatMessage`, `ChatMessageEdit`)** | **IMPLEMENTED · TESTED** (`chatModels`, 54 tests) |
-| 33.3 | Conversation REST APIs (create/list/get, membership enforced) | NOT STARTED |
+| **33.3** | **Conversation REST APIs (create/list/get + member management, membership enforced)** | **IMPLEMENTED · TESTED** (`chatConversations`, 13 tests) |
 | 33.4 | Message history REST APIs (paginated, Mongo-authoritative) | NOT STARTED |
 | 33.5 | Socket protocol: server-authorized room join + send with ACK + idempotency | NOT STARTED |
 | 33.6 | Edits (with history + concurrency control) + tombstone deletes | NOT STARTED |
@@ -288,7 +288,7 @@ Everything else is code-owned in `src/socket/socketConfig.js`: path
 | Check | Result |
 |---|---|
 | `npm run test:chat-socket` | **86 / 86 pass** |
-| `npm run test:all` | **2315 / 2315 pass, 0 fail** (2175 before 33.1 + 85 + 54 + 1) |
+| `npm run test:all` | **2329 / 2329 pass, 0 fail** (2175 before 33.1 + 85 + 54 + 13 + 1, +5 socket boundary split) |
 | `npm run index:check` | All hot-query catalog entries index-served or documented (no GAP) |
 | `npm run config:check` | ✓ Configuration valid |
 | Live smoke (Redis off) | `/api/health/live` 200 · `/socket.io` polling → **403 `FEATURE_UNAVAILABLE`** · no `Set-Cookie` · evil origin → 403 · HTTP alive after `stop()` |
@@ -379,10 +379,10 @@ Backend — **matches repository structure exactly, no mapping needed.**
 | `Backend/src/models/ChatConversation.js` | 33.2 | exists |
 | `Backend/src/models/ChatMessage.js` | 33.2 | exists |
 | `Backend/src/models/ChatMessageEdit.js` | 33.2 (model) · 33.6 (behaviour) | exists |
-| `Backend/src/controllers/chatController.js` | 33.3 | pending |
-| `Backend/src/routes/chatRoutes.js` | 33.3 | pending |
-| `Backend/src/validators/chatValidators.js` | 33.3 | pending |
-| `Backend/src/services/chatService.js` | 33.3 | pending |
+| `Backend/src/controllers/chatController.js` | 33.3 | exists |
+| `Backend/src/routes/chatRoutes.js` | 33.3 | exists |
+| `Backend/src/validators/chatValidators.js` | 33.3 | exists |
+| `Backend/src/services/chatService.js` | 33.3 | exists |
 
 Frontend — **four mandated paths do not match repository truth.** "Follow repo
 truth first" applies; each deviation is recorded rather than made silently.
@@ -641,3 +641,87 @@ Two API facts were confirmed against the installed Mongoose 9.9.1 before use:
 | `npm run index:check` | `models loaded: 127/127` · 621 declared indexes · no GAP |
 
 Hermetic: no Mongo connection, no Redis, no open ports.
+
+---
+
+# 6. PHASE 33.3 — CONVERSATION REST APIS
+
+REST only. No socket chat events, no message send, no history, no unread, no
+attachments. Files: `controllers/chatController.js` (thin), `services/chatService.js`
+(all Mongo + authorization), `validators/chatValidators.js` (express-validator),
+`routes/chatRoutes.js` (mounted at `/api/chat`), `test/chatConversations.test.js`.
+
+## 6.1 Endpoints
+
+All routes run `protect` → `tenantContext` → `checkSubscriptionStatus`; every
+mutating route additionally runs `checkWriteAccess`.
+
+| Method | Path | Body / Query | Result |
+|---|---|---|---|
+| POST | `/api/chat/conversations` | `{ type: 'DIRECT', targetUserId }` or `{ type: 'GROUP', name, memberUserIds[] }` | `{ conversation }`, 201 if created else 200 |
+| GET | `/api/chat/conversations` | `?cursor=&limit=` | `{ conversations[] }` + `meta { nextCursor, hasMore, limit }` |
+| GET | `/api/chat/conversations/:conversationId` | — | `{ conversation }` (membership required) |
+| POST | `/api/chat/conversations/:conversationId/members` | `{ memberUserIds[] }` | `{ conversation, added }` (GROUP, caller ADMIN) |
+| DELETE | `/api/chat/conversations/:conversationId/members/:userId` | — | `{ conversation, removed }` (GROUP, ADMIN or self) |
+
+## 6.2 Authorization (deliberate, documented)
+
+**No new permissions and no new subscription feature were added.** The repo's
+permission catalogue (`SYSTEM_PERMISSION_VERSION=36`, 231 permissions) and the
+plan feature map are strictly versioned and contain no CHAT entries; adding
+them is a separate, carefully-versioned unit. Instead:
+
+- Tenant + session: `protect` (Mongo-derived `req.companyId`), `tenantContext`
+  (rejects suspended companies), `checkSubscriptionStatus` / `checkWriteAccess`.
+- Membership: every read queries with
+  `{ _id?, companyId, 'members.userId': req.user._id }`, so a non-member —
+  including a user from another tenant — gets a 404, never a leak.
+- Group writes: the in-conversation `members[].role === 'ADMIN'` gates
+  add/remove (33.2 schema). The creator of a group is created as ADMIN.
+
+If named `CHAT_*` permissions are wanted later, do it in a dedicated unit that
+follows the `SYSTEM_PERMISSION_VERSION` bump process and updates the startup
+count (currently 231) — do not bolt them on here.
+
+## 6.3 Tenancy + membership rules
+
+- `companyId` is taken **only** from `req.companyId`; the body/query never
+  supplies a tenant.
+- DIRECT: `targetUserId` must be an ACTIVE user in the same company and not the
+  requester; uniqueness by `directKey` = sorted ids joined by `:`; create is
+  idempotent and an E11000 race refetches and returns the winner.
+- GROUP: name trimmed 2..80; at least one other member; total capped at
+  `CHAT_GROUP_MAX_MEMBERS = 50`; every member must be an ACTIVE same-company
+  user; duplicates are dropped.
+- Add: caller must be a member with role ADMIN; no duplicates; cap enforced;
+  same-company ACTIVE only.
+- Remove: caller ADMIN or self; GROUP only; cannot drop below two members;
+  cannot remove the last ADMIN.
+
+## 6.4 Pagination
+
+Keyset over `{ lastMessageAt: -1, _id: -1 }`. `lastMessageAt` is seeded to
+"now" on create, so an un-messaged conversation sorts by its creation time —
+exactly "lastMessageAt desc with createdAt fallback" — and 33.5 only bumps it
+when a message lands. `limit` is clamped 1..50 (default 20); the service
+requests `limit+1` to compute `hasMore` and returns an opaque `nextCursor`
+(base64url of `{a, id}`); an undecodable cursor restarts from the top instead
+of erroring.
+
+## 6.5 Limitations (messages not yet implemented)
+
+- No message history endpoint (33.4), no socket send (33.5), no unread /
+  `readUpTo` (33.7), no attachments (33.10).
+- `lastMessageSeq` / previews stay at their defaults until 33.5 writes them.
+- Member add is not atomic against the cap under heavy concurrency (read then
+  update); acceptable for 33.3 group sizes, tighten in 33.9 if needed.
+
+## 6.6 Verification (this checkout)
+
+| Check | Result |
+|---|---|
+| `npm run test:chat-conversations` | **13 / 13 pass** (hermetic — in-memory fakes) |
+| `npm run test:chat-socket` | **87 / 87 pass** (boundary pin updated for 33.3) |
+| `npm run test:all` | **2329 / 2329 pass, 0 fail, 88 suites** |
+| `npm run index:check` | `models loaded: 127/127` · no GAP |
+| `npm run config:check` | ✓ Configuration valid |

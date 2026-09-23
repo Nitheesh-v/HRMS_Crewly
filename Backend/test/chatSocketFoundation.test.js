@@ -1325,20 +1325,48 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
     }
   });
 
-  test('no chat route, controller, validator or service was added', () => {
-    const scan = (dir) =>
-      fs
-        .readdirSync(path.join(here, '..', 'src', dir), { withFileTypes: true })
-        .filter((entry) => entry.isFile())
-        .map((entry) => entry.name);
-
-    for (const dir of ['routes', 'controllers', 'validators']) {
-      for (const file of scan(dir)) {
-        assert.ok(!/chat/i.test(file), `${dir}/${file} must not exist in 33.1`);
-      }
+  // 33.3 landed the conversation REST surface, so the earlier "no chat
+  // route/controller/validator" pin is inverted: those four files must now
+  // exist, but the surface must stop at conversations — no message,
+  // history, unread or attachment endpoint may appear in the chat router.
+  test('the 33.3 REST surface exists and stops at conversations', () => {
+    for (const file of [
+      'routes/chatRoutes.js',
+      'controllers/chatController.js',
+      'validators/chatValidators.js',
+      'services/chatService.js',
+    ]) {
+      assert.ok(
+        fs.existsSync(path.join(here, '..', 'src', file)),
+        `${file} must exist in 33.3`,
+      );
     }
 
-    assert.ok(!fs.existsSync(path.join(here, '..', 'src', 'services', 'chat')));
+    const router = fs.readFileSync(
+      path.join(here, '..', 'src', 'routes', 'chatRoutes.js'),
+      'utf8',
+    );
+
+    for (const forbidden of ['/messages', 'history', 'read', 'attachments']) {
+      assert.ok(
+        !router.includes(forbidden),
+        `chatRoutes must not expose ${forbidden} (later unit)`,
+      );
+    }
+  });
+
+  test('no chat socket events were added to the 33.1 foundation', () => {
+    const socketDir = path.join(here, '..', 'src', 'socket');
+
+    for (const file of fs.readdirSync(socketDir).filter((n) => n.endsWith('.js'))) {
+      const source = fs.readFileSync(path.join(socketDir, file), 'utf8');
+
+      assert.doesNotMatch(
+        source,
+        /socket\.on\(\s*'chat/,
+        `src/socket/${file} must not register chat events`,
+      );
+    }
   });
 
   test('the socket folder contains only the four foundation modules + config', () => {

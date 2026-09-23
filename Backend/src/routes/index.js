@@ -18,6 +18,7 @@ import attendanceRegularizationRoutes from "./attendance/attendanceRegularizatio
 import attendanceOvertimeRoutes from "./attendance/attendanceOvertimeRoutes.js";
 import leaveRoutes from "./leaveRoutes.js";
 import projectRoutes from "./projectRoutes.js";
+import chatRoutes from "./chatRoutes.js";
 import taskRoutes from "./taskRoutes.js";
 import payrollRoutes from "./payroll/payrollRoutes.js";
 import payrollSetupRoutes from "./payroll/payrollSetupRoutes.js";
@@ -129,6 +130,7 @@ router.use("/kiosk", attendanceKioskRoutes);
 router.use("/leaves", leaveRoutes);
 
 router.use("/projects", projectRoutes);
+router.use("/chat", chatRoutes);
 
 router.use("/tasks", taskRoutes);
 
