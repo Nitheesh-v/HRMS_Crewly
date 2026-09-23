@@ -28,6 +28,7 @@ process.env.REDIS_ENABLED ||= 'false';
 import mongoose from 'mongoose';
 
 import ChatConversation from '../src/models/ChatConversation.js';
+import User from '../src/models/User.js';
 import {
   computeUnreadCount,
   sanitizeConversationForMember,
@@ -48,14 +49,23 @@ const MALLORY = id(); // company B
 
 // ── in-memory fakes ───────────────────────────────────────────────────────
 
-const installFakes = ({ conversations, findRows = null, capture = null }) => {
+const installFakes = ({ conversations, findRows = null, capture = null, users = null }) => {
   const same = (a, b) => String(a) === String(b);
 
   const original = {
     findOne: ChatConversation.findOne,
     updateOne: ChatConversation.updateOne,
     find: ChatConversation.find,
+    // 33.8-fix: the list path now builds a member directory, so hermetic
+    // runs need a sealed User stub (empty directory unless users given).
+    userFind: User.find,
   };
+
+  User.find = () => ({
+    select: () => ({
+      lean: async () => (users ?? []).map((entry) => ({ ...entry })),
+    }),
+  });
 
   ChatConversation.findOne = (filter) => ({
     lean: async () =>
@@ -104,6 +114,7 @@ const installFakes = ({ conversations, findRows = null, capture = null }) => {
     ChatConversation.findOne = original.findOne;
     ChatConversation.updateOne = original.updateOne;
     ChatConversation.find = original.find;
+    User.find = original.userFind;
   };
 };
 
@@ -280,7 +291,29 @@ test('sanitizeConversationForMember hides other members’ cursors, exposes only
     assert.equal(entry.joinedAtSeq, undefined, 'no member cursor may leak');
     assert.ok(entry.userId, 'membership bookkeeping stays');
     assert.ok(entry.role, 'role stays');
+    assert.equal(entry.user, null, 'no directory -> user is null, never a crash');
   }
+});
+
+// 33.8-fix: names travel with the read projection because the company
+// directory endpoint can be scoped narrower than a conversation
+// (EMPLOYEE_READ_SELF lists only oneself).
+test('sanitizeConversationForMember attaches slim member identities from the directory', () => {
+  const conversation = seedConversation({
+    members: [member(ALICE), member(BOB)],
+    lastMessageSeq: 1,
+  });
+  const directory = new Map([
+    [String(BOB), { name: 'Bob', email: 'bob@x.test', avatarUrl: null }],
+  ]);
+
+  const projected = sanitizeConversationForMember(conversation, ALICE, directory);
+  const bob = projected.members.find((entry) => String(entry.userId) === String(BOB));
+  const alice = projected.members.find((entry) => String(entry.userId) === String(ALICE));
+
+  assert.deepEqual(bob.user, { name: 'Bob', email: 'bob@x.test', avatarUrl: null });
+  assert.equal(alice.user, null, 'members missing from the directory stay null');
+  assert.equal(bob.lastReadSeq, undefined, 'cursors stay private even with a directory');
 });
 
 test('listMyConversations decorates rows with the caller’s C1 count', async () => {

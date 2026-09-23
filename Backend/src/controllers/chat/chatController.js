@@ -12,6 +12,9 @@ import ApiResponse from '../../utils/ApiResponse.js';
 import ApiError from '../../utils/ApiError.js';
 import * as chatService from '../../services/chat/chatService.js';
 import * as chatReadService from '../../services/chat/chatReadService.js';
+// 33.8-fix: data-less list-change nudge. A no-op (false) when realtime is
+// off — REST already did the work; the client's next fetch catches up.
+import { notifyConversationsChanged } from '../../socket/realtimeNudge.js';
 
 export const createConversation = asyncHandler(async (req, res) => {
   // Data from frontend - requests from frontend
@@ -26,6 +29,16 @@ export const createConversation = asyncHandler(async (req, res) => {
     name,
     memberUserIds,
   });
+
+  // 33.8-fix: nudge every other member's personal room so their Chat page
+  // refetches the list live (the event carries no data; Mongo stays truth).
+  if (created) {
+    notifyConversationsChanged(
+      (conversation?.members ?? [])
+        .map((member) => member?.userId)
+        .filter((id) => id != null && String(id) !== String(req.user._id))
+    );
+  }
 
   // Data to frontend - response to frontend
   return ApiResponse.success(res, {
@@ -117,6 +130,10 @@ export const addMembers = asyncHandler(async (req, res) => {
     memberUserIds,
   });
 
+  // 33.8-fix: added users learn about the conversation live; a no-op when
+  // realtime is off (their next fetch catches up).
+  if (added > 0) notifyConversationsChanged(memberUserIds);
+
   // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: 'Members added',
@@ -126,15 +143,18 @@ export const addMembers = asyncHandler(async (req, res) => {
 
 export const removeMember = asyncHandler(async (req, res) => {
   // Data from frontend - requests from frontend
-  const { conversationId, userId } = req.params;
+  const { conversationId, userId: removedUserId } = req.params;
 
   // DB Logic - DB logics
   const { conversation, removed } = await chatService.removeMember({
     companyId: req.companyId,
     actorId: req.user._id,
     conversationId,
-    targetUserId: userId,
+    targetUserId: removedUserId,
   });
+
+  // 33.8-fix: the removed user's list loses the conversation live.
+  if (removed) notifyConversationsChanged([removedUserId]);
 
   // Data to frontend - response to frontend
   return ApiResponse.success(res, {

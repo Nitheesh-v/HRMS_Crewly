@@ -33,6 +33,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import ChatConversation from '../../models/ChatConversation.js';
+import User from '../../models/User.js';
 
 // Pure C1 computation, exported for hermetic tests.
 export const computeUnreadCount = ({ lastMessageSeq, lastReadSeq, joinedAtSeq }) => {
@@ -46,10 +47,46 @@ export const computeUnreadCount = ({ lastMessageSeq, lastReadSeq, joinedAtSeq })
   return Math.max(0, end - read);
 };
 
+// PHASE 33.8-fix — member identity projection. A member is entitled to know
+// WHO they are talking with even when the company directory endpoint is
+// scoped narrower than the conversation itself (an employee holding only
+// EMPLOYEE_READ_SELF lists /users but sees only themselves, while a DIRECT
+// conversation still contains a colleague). Names therefore travel with the
+// read projection: one bounded User lookup per read call, slim fields only
+// (name / email / avatarUrl — no role, no status, and never a cursor).
+// The second argument is injectable so tests stay hermetic (no Mongo).
+export const buildMemberDirectory = async (
+  conversations,
+  findUsers = (ids) =>
+    User.find({ _id: { $in: ids } }).select('name email avatarUrl').lean()
+) => {
+  const ids = new Set();
+  for (const conversation of conversations ?? []) {
+    for (const member of conversation?.members ?? []) {
+      if (member?.userId != null) ids.add(String(member.userId));
+    }
+  }
+  if (ids.size === 0) return new Map();
+
+  const users = await findUsers([...ids]);
+
+  return new Map(
+    (users ?? []).map((user) => [
+      String(user._id),
+      {
+        name: user.name ?? null,
+        email: user.email ?? null,
+        avatarUrl: user.avatarUrl ?? null,
+      },
+    ])
+  );
+};
+
 // Read-side projection: keep membership bookkeeping (userId, role, joinedAt)
 // but never another member's cursor. Adds the caller's own cursor + the C1
-// unread count at the top level.
-export const sanitizeConversationForMember = (conversation, userId) => {
+// unread count at the top level, and (33.8-fix) a slim identity object per
+// member from the optional directory built by buildMemberDirectory.
+export const sanitizeConversationForMember = (conversation, userId, directory = null) => {
   const members = Array.isArray(conversation.members) ? conversation.members : [];
   const mine = members.find((member) => String(member.userId) === String(userId));
 
@@ -58,7 +95,10 @@ export const sanitizeConversationForMember = (conversation, userId) => {
 
   return {
     ...conversation,
-    members: members.map(({ lastReadSeq, joinedAtSeq, ...rest }) => rest),
+    members: members.map(({ lastReadSeq, joinedAtSeq, ...rest }) => ({
+      ...rest,
+      user: directory?.get?.(String(rest.userId)) ?? null,
+    })),
     myLastReadSeq,
     lastMessageSeq,
     unreadCount: computeUnreadCount({

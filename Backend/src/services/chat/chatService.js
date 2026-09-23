@@ -44,7 +44,10 @@ import ChatConversation from '../../models/ChatConversation.js';
 import ChatMessage from '../../models/ChatMessage.js';
 import User from '../../models/User.js';
 import ApiError from '../../utils/ApiError.js';
-import { sanitizeConversationForMember } from './chatReadService.js';
+import {
+  sanitizeConversationForMember,
+  buildMemberDirectory,
+} from './chatReadService.js';
 
 export const CHAT_GROUP_MAX_MEMBERS = 50;
 
@@ -258,9 +261,15 @@ export const listMyConversations = async ({ companyId, userId, cursor, limit }) 
   const last = items[items.length - 1];
 
   // 33.7: project each row for the requester — C1 count at the top level,
-  // and no other member's read cursor leaves the service.
+  // and no other member's read cursor leaves the service. 33.8-fix: slim
+  // member identities ride along so clients can render names even when
+  // the company directory endpoint is scoped narrower than the chat.
+  const directory = await buildMemberDirectory(items);
+
   return {
-    conversations: items.map((conversation) => sanitizeConversationForMember(conversation, userId)),
+    conversations: items.map((conversation) =>
+      sanitizeConversationForMember(conversation, userId, directory)
+    ),
     nextCursor: hasMore && last ? encodeChatCursor({ at: last.lastMessageAt, id: last._id }) : null,
     hasMore,
     limit: pageSize,
@@ -277,8 +286,13 @@ export const getConversation = async ({ companyId, userId, conversationId }) => 
   if (!conversation) throw ApiError.notFound('Conversation not found.');
 
   // 33.7: same privacy projection as the list — the detail view must not
-  // expose other members' read cursors either.
-  return { conversation: sanitizeConversationForMember(conversation, userId) };
+  // expose other members' read cursors either. 33.8-fix: same slim member
+  // identities as the list.
+  const directory = await buildMemberDirectory([conversation]);
+
+  return {
+    conversation: sanitizeConversationForMember(conversation, userId, directory),
+  };
 };
 
 // ── member management ─────────────────────────────────────────────────────

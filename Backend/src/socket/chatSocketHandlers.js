@@ -33,7 +33,7 @@
 //  Redis ids, job ids or debug metadata in any payload or log.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { conversationRoom } from '../utils/chatKeys.js';
+import { conversationRoom, userRoom } from '../utils/chatKeys.js';
 import { CHAT_SOCKET_ERROR_CODES } from '../utils/chatErrors.js';
 import {
   validateJoinPayload,
@@ -153,6 +153,12 @@ export const registerChatSocketHandlers = ({
 
     return;
   }
+
+  // 33.8-fix — personal room so REST-side list changes (a conversation
+  // created elsewhere) can nudge members who have not opened that
+  // conversation yet. Routing metadata only: no presence state is written,
+  // nothing surveillance-shaped (locked 33 decision).
+  socket.join(userRoom(userId));
 
   const allowWrite = createWriteGuard();
 

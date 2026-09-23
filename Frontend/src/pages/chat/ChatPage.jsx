@@ -72,12 +72,30 @@ const ChatPage = () => {
   );
 
   // ── names for DIRECT titles + sender labels ───────────────────────────
+  // 33.8-fix: the /users directory can be scoped narrower than a
+  // conversation (an EMPLOYEE with EMPLOYEE_READ_SELF lists only
+  // themselves), so member identities projected by the backend read
+  // projection (members[].user) are the fallback source of names.
+  const memberNames = useMemo(() => {
+    const map = new Map();
+    for (const conversation of chat.conversations) {
+      for (const member of conversation?.members ?? []) {
+        if (member?.userId != null && member?.user) {
+          map.set(String(member.userId), member.user);
+        }
+      }
+    }
+    return map;
+  }, [chat.conversations]);
+
   const nameOfUserId = useCallback(
     (userId) => {
-      const user = users.find((entry) => String(entry._id) === String(userId));
+      const user =
+        users.find((entry) => String(entry._id ?? entry.id) === String(userId)) ??
+        memberNames.get(String(userId));
       return user ? displayName(user) : 'Unknown user';
     },
-    [users]
+    [users, memberNames]
   );
 
   const nameOfConversation = useCallback(
@@ -124,6 +142,14 @@ const ChatPage = () => {
       })
       .catch(() => setUsers([]));
   }, [loadConversations]);
+
+  // 33.8-fix — the data-less socket nudge (chat:conversations:changed)
+  // flagged the list stale: refetch once so a conversation created in
+  // another window appears live, with names, without a manual reload.
+  const conversationsStale = chat.conversationsStale;
+  useEffect(() => {
+    if (conversationsStale) loadConversations();
+  }, [conversationsStale, loadConversations]);
 
   // ── read marker helper (socket first, REST fallback) ──────────────────
   const lastMarkedSeq = useRef(0);

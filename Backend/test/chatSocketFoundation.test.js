@@ -1159,10 +1159,15 @@ describe('33.1 lifecycle', () => {
 
     const connectionHandler = io.calls.on.find((entry) => entry.event === 'connection').fn;
     const socketEvents = [];
+    const joinedRooms = [];
     const socket = {
       id: 'sock-1',
       data: { companyId: COMPANY_A, userId: USER_A1 },
       on: (event, fn) => socketEvents.push({ event, fn }),
+      // Real Socket.IO sockets always expose join/leave; 33.8-fix joins the
+      // member's personal room at connect time.
+      join: (room) => joinedRooms.push(room),
+      leave: () => {},
     };
 
     connectionHandler(socket);
@@ -1186,6 +1191,10 @@ describe('33.1 lifecycle', () => {
         'error',
       ],
     );
+
+    // 33.8-fix: the member's personal room is joined at connect time so
+    // list-change nudges can reach windows that have no conversation open.
+    assert.deepEqual(joinedRooms, [`chat:user:${String(USER_A1)}`]);
   });
 
   test('stop() disconnects sockets, closes the engine and adapter, and NEVER calls io.close()', async () => {
@@ -1432,8 +1441,10 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
 
     for (const emitted of [
       'chat:message:created', 'chat:message:updated', 'chat:message:deleted',
+      // 33.8-fix: data-less list-change nudge to member personal rooms.
+      'chat:conversations:changed',
     ]) {
-      assert.ok(combined.includes(`'${emitted}'`), `${emitted} must be emitted (33.5/33.6)`);
+      assert.ok(combined.includes(`'${emitted}'`), `${emitted} must be emitted`);
     }
 
     // 33.7 added chat:readUpTo (the caller's own C1 cursor, ACK-only), so
@@ -1458,6 +1469,8 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
       'chatSocketHandlers.js',
       'chatSocketValidators.js',
       'initSocketServer.js',
+      // 33.8-fix: REST→socket list-change nudge seam (data-less event).
+      'realtimeNudge.js',
       'socketAuth.js',
       'socketAvailability.js',
       'socketConfig.js',

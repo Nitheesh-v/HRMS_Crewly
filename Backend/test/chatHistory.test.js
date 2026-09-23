@@ -17,6 +17,7 @@ import mongoose from 'mongoose';
 
 import ChatConversation from '../src/models/ChatConversation.js';
 import ChatMessage from '../src/models/ChatMessage.js';
+import User from '../src/models/User.js';
 import * as chatService from '../src/services/chat/chatService.js';
 import { sanitizeMessageForHistory } from '../src/services/chat/chatService.js';
 
@@ -44,7 +45,17 @@ const installFakes = ({ conversation, messages }) => {
   const original = {
     convFindOne: ChatConversation.findOne,
     msgFind: ChatMessage.find,
+    // 33.8-fix: listMessages verifies membership through getConversation,
+    // which now builds a member directory — hermetic runs need a sealed
+    // User stub (empty directory).
+    userFind: User.find,
   };
+
+  User.find = () => ({
+    select: () => ({
+      lean: async () => [],
+    }),
+  });
 
   ChatConversation.findOne = (filter) => ({
     lean: async () => {
@@ -95,6 +106,7 @@ const installFakes = ({ conversation, messages }) => {
     restore: () => {
       ChatConversation.findOne = original.convFindOne;
       ChatMessage.find = original.msgFind;
+      User.find = original.userFind;
     },
   };
 };

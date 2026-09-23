@@ -1130,8 +1130,9 @@ Backend deps untouched.
 ## 12.8 Limitations
 
 No attachments UI (33.10), no moderation UI (33.9), no notifications, no
-presence/typing (never), DIRECT list title resolves names via the cached
-user list, list pagination "load more conversations" not wired (first page
+presence/typing (never), DIRECT list title resolves names via the member
+identity projection (12.10) with the scoped /users list as a supplementary
+source, list pagination "load more conversations" not wired (first page
 of 30), virtualization not added (no new deps).
 
 ## 12.9 Localhost acceptance origin flag (33.8 fix)
@@ -1145,3 +1146,32 @@ flag (literal `true` only); never widens to non-loopback origins; pinned by
 test/chatSocketFoundation.test.js. Public deployments must leave it unset.
 Remember: enablement flags are read AT STARTUP - the backend must be
 restarted after changing them.
+
+## 12.10 Member identities + live list nudge (33.8 fix)
+
+"Unknown user" root cause: name resolution relied on `GET /users`, which is
+permission-scoped (`scopedUserFilter`) - an EMPLOYEE holding only
+`EMPLOYEE_READ_SELF` lists only themselves, while a DIRECT conversation
+still contains a colleague. Fix (no new permission surface):
+
+- `chatReadService.buildMemberDirectory` does ONE bounded `User.find`
+  (`name email avatarUrl` only - no role/status/cursor) per read call;
+  `sanitizeConversationForMember` attaches it as `members[].user` on both
+  list and detail. Cursors stay private exactly as before (pinned).
+- Frontend `nameOfUserId` merges the /users directory with the projected
+  member identities; the directory wins only when it has the id.
+
+Live discovery of a conversation created in ANOTHER window: socket rooms are
+joined per OPEN conversation only, so a window sitting on the Chat page
+never saw brand-new conversations until reload. Added:
+
+- personal room `chat:user:<id>` joined at connect (chatKeys already had it);
+- `src/socket/realtimeNudge.js` - a REST-to-socket seam bound in
+  `initSocketServer.attach()` / unbound in `stop()`; controllers call
+  `notifyConversationsChanged(memberIds)` after create/addMembers/remove;
+- the event `chat:conversations:changed` carries NO payload (data-less
+  nudge). The client sets `chat.conversationsStale`; ChatPage refetches the
+  list once. Mongo stays the single source of truth; when realtime is off
+  the seam is a no-op and REST behaviour is unchanged. Not presence, not
+  typing, not receipts - pinned by test/chatRealtimeNudge.test.js and the
+  updated event/folder pins in test/chatSocketFoundation.test.js.

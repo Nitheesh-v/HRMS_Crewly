@@ -16,6 +16,9 @@ const initialState = {
   conversations: [],
   conversationsStatus: 'idle', // idle | loading | ready | error
   conversationsError: '',
+  // 33.8-fix: a data-less socket nudge said the list changed server-side;
+  // ChatPage refetches once when it sees this flag.
+  conversationsStale: false,
   activeId: null,
   byId: {},    // conversationId -> { items, nextCursor, hasMore, status, error }
   pending: {}, // conversationId -> [{ clientMessageId, text, status }]
@@ -77,6 +80,11 @@ const chatSlice = createSlice({
     conversationsLoaded: (state, action) => {
       state.conversations = action.payload;
       state.conversationsStatus = 'ready';
+      state.conversationsStale = false;
+    },
+
+    conversationsNudged: (state) => {
+      state.conversationsStale = true;
     },
 
     conversationsFailed: (state, action) => {
@@ -193,6 +201,7 @@ export const {
   realtimeStatusSet,
   conversationsLoading,
   conversationsLoaded,
+  conversationsNudged,
   conversationsFailed,
   conversationAdded,
   setActive,

@@ -57,6 +57,7 @@ import {
   createChatSocketAvailability,
 } from './socketAvailability.js';
 import { registerChatSocketHandlers } from './chatSocketHandlers.js';
+import { bindRealtimeNudge, unbindRealtimeNudge } from './realtimeNudge.js';
 
 /**
  * Builds the Socket.IO server options. Exported for hermetic assertion:
@@ -311,6 +312,11 @@ export const createChatSocketServer = ({
       closeAdapter = adapterResult.close;
       adapterAttached = true;
 
+      // 33.8-fix: REST controllers may now nudge member personal rooms
+      // (chat:conversations:changed). Bound only on full success so a
+      // degraded attach never promises realtime it cannot deliver.
+      bindRealtimeNudge(io);
+
       availability.markReady();
 
       log.info(
@@ -328,6 +334,7 @@ export const createChatSocketServer = ({
      */
     stop: async () => {
       availability.markStopped();
+      unbindRealtimeNudge();
 
       if (io) {
         try {

@@ -19,6 +19,7 @@ import {
   messageCreated,
   messageUpdated,
   messageDeleted,
+  conversationsNudged,
 } from '../../redux/slices/chatSlice.js';
 
 let socket = null;
@@ -59,6 +60,10 @@ export const connectChatSocket = () => {
   socket.on('chat:message:created', (payload) => store.dispatch(messageCreated(payload)));
   socket.on('chat:message:updated', (payload) => store.dispatch(messageUpdated(payload)));
   socket.on('chat:message:deleted', (payload) => store.dispatch(messageDeleted(payload)));
+
+  // 33.8-fix: data-less nudge — the conversation list changed server-side
+  // (created/added/removed elsewhere). ChatPage refetches; Mongo stays truth.
+  socket.on('chat:conversations:changed', () => store.dispatch(conversationsNudged()));
 
   return socket;
 };
