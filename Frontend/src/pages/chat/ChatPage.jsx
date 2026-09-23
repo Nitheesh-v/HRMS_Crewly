@@ -58,6 +58,10 @@ const ChatPage = () => {
   const me = useSelector((state) => state.auth.user);
   const chat = useSelector((state) => state.chat);
 
+  // Repo truth: login stores the user via publicUser(), which exposes `id`
+  // (not `_id`). Accept both so the chat never mis-resolves "me".
+  const meId = me?._id ?? me?.id ?? null;
+
   const [users, setUsers] = useState([]);
   const [showNew, setShowNew] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -80,11 +84,11 @@ const ChatPage = () => {
     (conversation) => {
       if (conversation.type !== 'DIRECT') return conversation.title || 'Group conversation';
       const other = (conversation.members ?? []).find(
-        (member) => String(member.userId) !== String(me?._id)
+        (member) => String(member.userId) !== String(meId)
       );
       return other ? nameOfUserId(other.userId) : 'Direct message';
     },
-    [users, me, nameOfUserId]
+    [users, meId, nameOfUserId]
   );
 
   // ── socket lifecycle (page-scoped) ────────────────────────────────────
@@ -354,7 +358,7 @@ const ChatPage = () => {
               conversationId={conversationId}
               entry={activeEntry}
               pending={chat.pending[conversationId] ?? []}
-              meId={me?._id}
+              meId={meId}
               nameOfUserId={nameOfUserId}
               onOlder={handleOlder}
               onEdit={setEditing}
@@ -373,7 +377,7 @@ const ChatPage = () => {
       {showNew && (
         <NewConversationModal
           users={users}
-          meId={me?._id}
+          meId={meId}
           onClose={() => setShowNew(false)}
           onCreate={handleCreate}
         />
