@@ -44,6 +44,7 @@ const AuditLogsPage = lazy(() => import("../pages/security/AuditLogsPage.jsx"));
 const SecuritySettingsPage = lazy(() => import("../pages/security/SecuritySettingsPage.jsx"));
 
 const DashboardPage = lazy(() => import("../pages/dashboard/DashboardPage.jsx"));
+const ChatPage = lazy(() => import("../pages/chat/ChatPage.jsx")); // Phase 33.8 — Chat Hub
 const DepartmentsPage = lazy(() => import("../pages/departments/DepartmentsPage.jsx"));
 const UsersPage = lazy(() => import("../pages/users/UsersPage.jsx"));
 const OrgChartPage = lazy(() => import("../pages/org-chart/OrgChartPage.jsx"));
@@ -351,6 +352,16 @@ const AppRoutes = () => (
       <Route
         index
         element={<DashboardPage />}
+      />
+
+      {/* Phase 33.8 — Chat Hub (list + active conversation) */}
+      <Route
+        path="chat"
+        element={<ChatPage />}
+      />
+      <Route
+        path="chat/:conversationId"
+        element={<ChatPage />}
       />
 
       {/* Phase 22 — account security */}

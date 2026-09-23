@@ -17,6 +17,7 @@ import { fetchMyPermissions } from "../redux/slices/PermissionSlices.js";
 const NAV_BY_ROLE = {
   [ROLES.COMPANY_ADMIN]: [
     { to: "/app", label: "Dashboard", end: true },
+    { to: "/app/chat", label: "Chat" },
     { to: "/app/meetings", label: "Meetings" },
     { to: "/app/org-chart", label: "Organization" },
     { to: "/app/users", label: "User Management" },
@@ -60,6 +61,7 @@ const NAV_BY_ROLE = {
 
   [ROLES.HR_MANAGER]: [
     { to: "/app", label: "Dashboard", end: true },
+    { to: "/app/chat", label: "Chat" },
     { to: "/app/users", label: "Employees" },
     {
       to: "/app/subscription",
@@ -97,6 +99,7 @@ const NAV_BY_ROLE = {
   // ══ Phase 10: MANAGER ─ department-scoped workspace ═══════════════════
   [ROLES.MANAGER]: [
     { to: "/app", label: "Dashboard", end: true },
+    { to: "/app/chat", label: "Chat" },
     { to: "/app/meetings", label: "Meetings" },
     { to: "/app/departments", label: "My Departments" },
     { to: "/app/analytics", label: "Team Analytics" },
@@ -132,6 +135,7 @@ const NAV_BY_ROLE = {
   // ══ Phase 10: TEAM LEAD ─ team-scoped workspace ═══════════════════════
   [ROLES.TEAM_LEAD]: [
     { to: "/app", label: "Dashboard", end: true },
+    { to: "/app/chat", label: "Chat" },
     { to: "/app/meetings", label: "Meetings" },
     { to: "/app/org-chart", label: "My Team" },
     { to: "/app/users", label: "Team Members" },
@@ -164,6 +168,7 @@ const NAV_BY_ROLE = {
 
   [ROLES.EMPLOYEE]: [
     { to: "/app", label: "Dashboard", end: true },
+    { to: "/app/chat", label: "Chat" },
     { label: "Chat Hub", soon: true },
     { to: "/app/meetings", label: "Meetings" },
     { label: "Time Tracking", soon: true },

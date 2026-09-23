@@ -19,7 +19,7 @@ No external vendor, no third-party API.
 | **33.5** | **Socket protocol: server-authorized join + send (ACK + idempotency) + broadcast** | **IMPLEMENTED · TESTED** (`chatSocketSend`, 6 tests) |
 | 33.6 | Edits (with history + concurrency control) + tombstone deletes | IMPLEMENTED |
 | 33.7 | Read cursors + unread counts (C1 model) | IMPLEMENTED |
-| 33.8 | Frontend chat UI + socket lifecycle | NOT STARTED |
+| 33.8 | Frontend chat UI + socket lifecycle | IMPLEMENTED |
 | 33.9 | Moderation + admin controls + moderation audit | NOT STARTED |
 | 33.10 | Private attachments | NOT STARTED |
 | 33.11 | Rate limits, abuse controls, observability, runbooks | NOT STARTED |
@@ -1056,3 +1056,80 @@ per-message receipt broadcasts stay forbidden.
 No "seen by" lists, no presence/last-seen, no notifications, no read
 receipts; unread is conversation-level only; a tombstoned last message still
 counts toward seq (C1 counts positions, not content).
+
+---
+
+# 12. PHASE 33.8 — FRONTEND CHAT UI + SOCKET CLIENT
+
+## 12.1 Repo-truth layout (prompt skeleton adjusted, SS4.1 applied)
+
+The 33.8 prompt's preferred skeleton was adjusted to repo truth (recorded in
+SS4.1, applied under the 33.8 authorization "adjust to repo truth"):
+
+| Prompt skeleton | Repo truth (implemented) |
+|---|---|
+| `pages/chat/ChatPage.jsx` | `src/pages/chat/ChatPage.jsx` (pages are lowercase dirs) |
+| `components/chat/*` | `src/components/chat/*` (8 feature-local components) |
+| `services/chatApi.js` | `src/services/chatService.js` (all 62+ services are `*Service.js`) |
+| `realtime/chatSocket.js` | `src/services/realtime/chatSocketClient.js` (with 32.11 SSE client) |
+| `store/chatSlice.js` | `src/redux/slices/chatSlice.js` (repo has redux/slices, no store/) |
+
+## 12.2 Routes + nav
+
+`/app/chat` and `/app/chat/:conversationId` — lazy() child routes of the
+existing tenant stack (RequireAuth + RequireRole(TENANT_ROLES) + AppLayout),
+so ChatPage ships as its own chunk (verified in `vite build` output:
+`ChatPage-*.js`). "Chat" nav item added to all five role nav arrays.
+
+## 12.3 State model (chatSlice)
+
+`realtimeStatus: idle|connected|unavailable`; `conversations[]` (as returned
+by 33.7, caller-projected); `byId[conversationId] = { items(ASC by seq),
+nextCursor, hasMore, status, error }`; `pending[conversationId]` keyed by
+clientMessageId until the created broadcast resolves it. Reducers:
+messageCreated (dedupe by _id/seq, clears matching pending, bumps
+lastMessage*, increments unread only for inactive conversations),
+messageUpdated, messageDeleted (text -> null), olderLoaded (prepend, no
+dups), readUpToApplied.
+
+## 12.4 Socket behaviour
+
+`io({ path:'/socket.io', auth:{ token } })` SAME ORIGIN via vite proxy
+(token from the Redux auth slice, never query string, never logged).
+Refused handshake (FEATURE_UNAVAILABLE / UNAUTHORIZED) closes the socket —
+no infinite retry; the orange banner shows and history stays readable via
+REST. ACKs are callback-promises with a 10s bound. Join on open, leave on
+close/unmount; readUpTo on open and on new arrivals while active (socket
+first, REST /read fallback). CONFLICT_EDIT_VERSION refetches history and
+warns. Delete asks for confirmation, then tombstone placeholder renders.
+Text is rendered only as plain React text nodes — no
+dangerouslySetInnerHTML anywhere in the feature.
+
+## 12.5 Vite proxy fix (required for same-origin socket)
+
+`server.proxy` gains `/socket.io` and `ws:true`; the DUPLICATE `preview`
+key (second silently won, dropping the proxy block) is merged into one.
+Preview now proxies /api + /socket.io on 4173.
+
+## 12.6 Dependency
+
+Frontend: `socket.io-client ^4.8.3` only (matches backend socket.io 4.8.3).
+Backend deps untouched.
+
+## 12.7 Verification (honest)
+
+- `npm run build` (Frontend): SUCCESS, ChatPage emitted as its own lazy
+  chunk (59.65 kB).
+- chatSlice reducer exercised in Node with real dispatched actions:
+  pending resolve, unread increment rules, update/delete, older-page
+  dedupe, read marker — ALL PASS.
+- NOT verifiable in this sandbox (no Mongo/Redis): live login, two-user
+  round trip, banner-with-Redis-down in a real browser. Those are the
+  localhost acceptance steps below.
+
+## 12.8 Limitations
+
+No attachments UI (33.10), no moderation UI (33.9), no notifications, no
+presence/typing (never), DIRECT list title resolves names via the cached
+user list, list pagination "load more conversations" not wired (first page
+of 30), virtualization not added (no new deps).

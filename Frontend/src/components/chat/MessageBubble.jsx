@@ -1,0 +1,61 @@
+// PHASE 33.8 — one message. Text renders as a plain React text node (never
+// dangerouslySetInnerHTML). Deleted messages show a placeholder only.
+import { Pencil, Trash2 } from 'lucide-react';
+
+const timeOf = (value) =>
+  value ? new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+
+const MessageBubble = ({ message, mine, senderName, onEdit, onDelete }) => {
+  const deleted = Boolean(message.deletedAt);
+
+  return (
+    <div className={`group flex ${mine ? 'justify-end' : 'justify-start'}`}>
+      <div
+        className={`max-w-[78%] rounded-xl border px-3 py-2 ${
+          mine
+            ? 'border-crewly-green/40 bg-crewly-green/10'
+            : 'border-crewly-border bg-crewly-card'
+        }`}
+      >
+        {!mine && (
+          <p className="mb-0.5 text-[11px] font-semibold text-crewly-dim">{senderName}</p>
+        )}
+
+        {deleted ? (
+          <p className="text-sm italic text-crewly-dim">This message was deleted</p>
+        ) : (
+          <p className="whitespace-pre-wrap break-words text-sm text-crewly-text">
+            {message.text}
+          </p>
+        )}
+
+        <p className="mt-1 flex items-center gap-2 text-[10px] text-crewly-dim">
+          <span>{timeOf(message.createdAt)}</span>
+          {!deleted && (message.editVersion ?? 0) > 0 && <span>(edited)</span>}
+          {mine && !deleted && message.type === 'TEXT' && (
+            <span className="hidden gap-1 group-hover:flex">
+              <button
+                type="button"
+                title="Edit message"
+                className="text-crewly-dim hover:text-crewly-green"
+                onClick={() => onEdit(message)}
+              >
+                <Pencil className="h-3 w-3" />
+              </button>
+              <button
+                type="button"
+                title="Delete message"
+                className="text-crewly-dim hover:text-crewly-red"
+                onClick={() => onDelete(message)}
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
+            </span>
+          )}
+        </p>
+      </div>
+    </div>
+  );
+};
+
+export default MessageBubble;
