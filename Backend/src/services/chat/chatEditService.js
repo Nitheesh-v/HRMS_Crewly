@@ -45,6 +45,7 @@
 //  model header demands for atomic update paths.
 // ═══════════════════════════════════════════════════════════════════════════
 
+import ChatConversation from '../../models/ChatConversation.js';
 import ChatMessage from '../../models/ChatMessage.js';
 import ChatMessageEdit from '../../models/ChatMessageEdit.js';
 
@@ -152,14 +153,27 @@ export const tombstoneMessage = async ({
   deleterUserId,
   conversationId,
   messageId,
+  // 33.9: CHAT_MODERATE holders tombstone ANY message. The permission is
+  // verified by the CALLER (socket handler / moderation service) — this
+  // flag only relaxes the sender-only rule and the membership loader; the
+  // tenant scope below is untouched. Moderators may also delete inside a
+  // disabled conversation (that is the point of the lock); non-moderators
+  // may not delete at all while disabled.
+  moderator = false,
 }) => {
-  const conversation = await loadWritableConversation({
-    companyId,
-    userId: deleterUserId,
-    conversationId,
-  });
+  const conversation = moderator
+    ? await ChatConversation.findOne({ _id: conversationId, companyId }).lean()
+    : await loadWritableConversation({
+        companyId,
+        userId: deleterUserId,
+        conversationId,
+      });
 
   if (!conversation) return { ok: false, code: 'NOT_FOUND_OR_FORBIDDEN' };
+
+  if (!moderator && conversation.isDisabled) {
+    return { ok: false, code: 'CONVERSATION_DISABLED' };
+  }
 
   const message = await ChatMessage.findOne({
     _id: messageId,
@@ -176,7 +190,7 @@ export const tombstoneMessage = async ({
     return { ok: true, messageId: message._id, deletedAt: message.deletedAt, changed: false };
   }
 
-  if (String(message.senderUserId) !== String(deleterUserId)) {
+  if (!moderator && String(message.senderUserId) !== String(deleterUserId)) {
     return { ok: false, code: 'MESSAGE_NOT_EDITABLE' };
   }
 

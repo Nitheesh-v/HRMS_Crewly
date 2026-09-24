@@ -99,6 +99,21 @@ const chatSlice = createSlice({
       if (!exists) state.conversations = [action.payload, ...state.conversations];
     },
 
+    // 33.9 — a moderation result (lock / unlock) merges into the existing
+    // list row so the C1 unread fields and the member projection survive.
+    conversationUpdated: (state, action) => {
+      const payload = action.payload;
+      if (!payload?._id) return;
+
+      const index = state.conversations.findIndex(
+        (entry) => String(entry._id) === String(payload._id)
+      );
+
+      if (index === -1) return;
+
+      state.conversations[index] = { ...state.conversations[index], ...payload };
+    },
+
     setActive: (state, action) => {
       state.activeId = action.payload;
     },
@@ -175,11 +190,13 @@ const chatSlice = createSlice({
     },
 
     messageDeleted: (state, action) => {
-      const { conversationId, messageId, deletedAt } = action.payload;
+      // 33.9: deletedByUserId is kept so the bubble can tell a self-delete
+      // from a moderator removal (never the original text).
+      const { conversationId, messageId, deletedAt, deletedByUserId } = action.payload;
       const entry = bucket(state, conversationId);
       entry.items = entry.items.map((m) =>
         String(m._id) === String(messageId)
-          ? { ...m, deletedAt, text: null }
+          ? { ...m, deletedAt, deletedByUserId: deletedByUserId ?? m.deletedByUserId, text: null }
           : m
       );
     },
@@ -204,6 +221,7 @@ export const {
   conversationsNudged,
   conversationsFailed,
   conversationAdded,
+  conversationUpdated,
   setActive,
   messagesLoading,
   messagesLoaded,

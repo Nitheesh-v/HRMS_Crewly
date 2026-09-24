@@ -45,6 +45,12 @@ export const RESOURCES = [
   "SUPPORT",
   "PROFILE",
   "RESIGNATION",
+
+  // Phase 33.9 — chat moderation / group administration. Chat itself stays
+  // membership-gated (33.3); these two powers are the company-level
+  // moderation layer and NOTHING else (no CHAT_READ — membership is the
+  // read gate, deliberately).
+  "CHAT",
 ];
 
 export const ACTIONS = [
@@ -87,6 +93,12 @@ export const ACTIONS = [
   // Phase 29.10 — filing a statutory return on the government portal is a
   // separate duty from producing the report that is filed.
   "FILING",
+
+  // Phase 33.9 — chat moderation verbs. MODERATE = disable/enable
+  // conversations + tombstone any message; GROUP_MANAGE = add/remove
+  // members in any group (in-group ADMIN role keeps its 33.2 powers).
+  "MODERATE",
+  "GROUP_MANAGE",
 ];
 
 const actions = (resource, actionList, scope = "ALL") =>
@@ -372,6 +384,11 @@ export const DEFAULT_PERMISSIONS = [
   ...actions("ASSET", ["READ", "CREATE", "UPDATE", "DELETE"]),
 
   ...actions("LIFECYCLE", ["READ", "CREATE", "UPDATE"]),
+
+  // Phase 33.9 — chat moderation catalogue entry. Scope ALL so COMPANY_ADMIN
+  // inherits both via allCompanyPermissions; HR_MANAGER / MANAGER grants are
+  // explicit in DEFAULT_ROLE_MATRIX below.
+  ...actions("CHAT", ["MODERATE", "GROUP_MANAGE"]),
 ];
 
 const permissions = (...names) => names.flat();
@@ -454,6 +471,11 @@ export const DEFAULT_ROLE_MATRIX = {
     "EMPLOYEE_READ",
     "EMPLOYEE_CREATE",
     "EMPLOYEE_UPDATE",
+
+    // Phase 33.9 — HR owns people moderation: disable/enable conversations
+    // and tombstone any message; manage any group's membership.
+    "CHAT_MODERATE",
+    "CHAT_GROUP_MANAGE",
 
     "PAYROLL_READ",
     "PAYROLL_CREATE",
@@ -625,6 +647,10 @@ export const DEFAULT_ROLE_MATRIX = {
   MANAGER: permissions(
     ...SELF_SERVICE_PERMISSIONS,
     "EMPLOYEE_READ_TEAM",
+
+    // Phase 33.9 — managers may moderate (disable conversations, remove
+    // offending messages) but do NOT administer group membership.
+    "CHAT_MODERATE",
     // Phase 31.4 — review work-mode requests within the org subtree
     // (scope enforced at the service layer, never by role name).
     "ATTENDANCE_WORK_MODE_REVIEW",

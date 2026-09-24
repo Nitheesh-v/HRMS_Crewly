@@ -6,8 +6,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Lock, Unlock } from 'lucide-react';
 
+import usePermission from '../../hooks/usePermission.js';
 import chatService from '../../services/chatService.js';
 import userService from '../../services/userService.js';
 import {
@@ -29,6 +30,8 @@ import {
   pendingAdd,
   pendingFail,
   readUpToApplied,
+  messageDeleted,
+  conversationUpdated,
 } from '../../redux/slices/chatSlice.js';
 
 import ConversationList from '../../components/chat/ConversationList.jsx';
@@ -62,6 +65,14 @@ const ChatPage = () => {
   // Repo truth: login stores the user via publicUser(), which exposes `id`
   // (not `_id`). Accept both so the chat never mis-resolves "me".
   const meId = me?._id ?? me?.id ?? null;
+
+  // 33.9 — moderation powers come from the server-resolved permission set
+  // (never from a role name). While permissions are still loading the
+  // controls stay hidden; the backend refuses them anyway.
+  const { hasPermission } = usePermission();
+  const canModerate = hasPermission('CHAT_MODERATE');
+  const [moderationBusy, setModerationBusy] = useState(false);
+  const [moderationNotice, setModerationNotice] = useState(null);
 
   const [users, setUsers] = useState([]);
   const [showNew, setShowNew] = useState(false);
@@ -316,11 +327,64 @@ const ChatPage = () => {
   };
 
   const handleDelete = async (message) => {
+    const mineMessage = String(message.senderUserId) === String(meId);
+
+    // 33.9 — moderator removal goes over REST (audited, permission-gated) so
+    // it works even while realtime is down; the socket path covers the
+    // sender's own delete.
+    if (!mineMessage && canModerate) {
+      const sure = globalThis.confirm("Remove this message as a moderator? It is replaced by a placeholder.");
+
+      if (!sure) return;
+
+      try {
+        await chatService.moderateDelete(conversationId, message._id);
+
+        dispatch(messageDeleted({
+          conversationId,
+          messageId: message._id,
+          deletedAt: new Date().toISOString(),
+          deletedByUserId: meId,
+        }));
+      } catch (err) {
+        setModerationNotice(err?.response?.data?.message || 'The message could not be removed.');
+      }
+
+      return;
+    }
+
     const sure = globalThis.confirm('Delete this message for everyone?');
 
     if (!sure) return;
 
     await chatRealtime.remove({ conversationId, messageId: message._id });
+  };
+
+  // 33.9 — lock / unlock the conversation (CHAT_MODERATE only).
+  const handleToggleLock = async (conversation) => {
+    const isDisabled = Boolean(conversation.isDisabled);
+    const question = isDisabled
+      ? 'Re-open this conversation for everyone?'
+      : 'Disable this conversation? Nobody can send or edit until it is re-enabled. History stays readable.';
+
+    if (!globalThis.confirm(question)) return;
+
+    setModerationBusy(true);
+    setModerationNotice(null);
+
+    try {
+      const result = isDisabled
+        ? await chatService.enableConversation(conversation._id)
+        : await chatService.disableConversation(conversation._id);
+
+      const updated = result?.conversation;
+
+      if (updated) dispatch(conversationUpdated(updated));
+    } catch (err) {
+      setModerationNotice(err?.response?.data?.message || 'The conversation could not be updated.');
+    } finally {
+      setModerationBusy(false);
+    }
   };
 
   const handleCreate = async (payload) => {
@@ -339,6 +403,10 @@ const ChatPage = () => {
   };
 
   const title = activeConversation ? nameOfConversation(activeConversation) : 'Chat';
+
+  // 33.9 — the lock comes from the Mongo row (via the list projection), so a
+  // member who is merely reading sees it without any extra request.
+  const conversationLocked = Boolean(activeConversation?.isDisabled);
 
   const unreadTotal = useMemo(
     () => chat.conversations.reduce((sum, entry) => sum + (entry.unreadCount ?? 0), 0),
@@ -360,7 +428,14 @@ const ChatPage = () => {
       <section className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-crewly-border px-4 py-3">
           <div>
-            <h1 className="text-sm font-bold text-crewly-text">{title}</h1>
+            <h1 className="text-sm font-bold text-crewly-text">
+              {title}
+              {conversationLocked && (
+                <span className="ml-2 rounded border border-crewly-red/40 px-1.5 py-0.5 text-[10px] font-semibold text-crewly-red">
+                  Disabled
+                </span>
+              )}
+            </h1>
             <p className="text-[11px] text-crewly-dim">
               {chat.realtimeStatus === 'connected'
                 ? 'Realtime connected'
@@ -370,7 +445,33 @@ const ChatPage = () => {
               {unreadTotal > 0 ? ` · ${unreadTotal} unread elsewhere` : ''}
             </p>
           </div>
+
+          {canModerate && activeConversation && (
+            <button
+              type="button"
+              disabled={moderationBusy}
+              onClick={() => handleToggleLock(activeConversation)}
+              className="flex items-center gap-1.5 rounded border border-crewly-border px-2 py-1 text-[11px] font-semibold text-crewly-dim hover:text-crewly-text disabled:opacity-50"
+            >
+              {conversationLocked ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+              {conversationLocked ? 'Re-enable' : 'Disable'}
+            </button>
+          )}
         </header>
+
+        {moderationNotice && (
+          <div className="flex items-center gap-2 border-b border-crewly-red/40 bg-crewly-red/10 px-4 py-2 text-xs text-crewly-red">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            {moderationNotice}
+          </div>
+        )}
+
+        {conversationLocked && (
+          <div className="flex items-center gap-2 border-b border-crewly-red/40 bg-crewly-red/10 px-4 py-2 text-xs text-crewly-red">
+            <Lock className="h-3.5 w-3.5" />
+            Conversation disabled by an admin. You can still read history; sending, editing and deleting are paused.
+          </div>
+        )}
 
         {chat.realtimeStatus === 'unavailable' && (
           <div className="flex items-center gap-2 border-b border-crewly-orange/40 bg-crewly-orange/10 px-4 py-2 text-xs text-crewly-orange">
@@ -397,9 +498,11 @@ const ChatPage = () => {
               onOlder={handleOlder}
               onEdit={setEditing}
               onDelete={handleDelete}
+              canModerate={canModerate}
+              locked={conversationLocked}
             />
             <MessageComposer
-              disabled={chat.realtimeStatus !== 'connected'}
+              disabled={chat.realtimeStatus !== 'connected' || conversationLocked}
               onSend={handleSend}
             />
           </>

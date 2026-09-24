@@ -62,6 +62,24 @@ const chatService = {
   // -> { conversationId, myLastReadSeq, lastMessageSeq, unreadCount }
   markRead: async (conversationId, lastReadSeq) =>
     bare(await api.post(`/chat/conversations/${conversationId}/read`, { lastReadSeq })),
+
+  // ── 33.9 moderation (CHAT_MODERATE holders only; the backend refuses
+  // everyone else with 403, so these are safe to expose to all clients).
+  // -> { conversation, changed }
+  disableConversation: async (conversationId, reason = null) =>
+    bare(await api.patch(`/chat/conversations/${conversationId}/disable`, { reason })),
+
+  enableConversation: async (conversationId) =>
+    bare(await api.patch(`/chat/conversations/${conversationId}/enable`)),
+
+  // -> { conversationId, messageId, deletedAt, changed }
+  moderateDelete: async (conversationId, messageId, reason = null) =>
+    bare(
+      await api.post(
+        `/chat/conversations/${conversationId}/messages/${messageId}/moderate-delete`,
+        { reason }
+      )
+    ),
 };
 
 export default chatService;

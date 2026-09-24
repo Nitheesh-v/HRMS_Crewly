@@ -932,7 +932,12 @@ test('31.12 route + permission gate HR-only operations', () => {
   );
   assert.ok(!managerBlock.includes('ATTENDANCE_OPERATIONS'));
   const permService = readSource('src/utils/permissionService.js');
-  assert.match(permService, /SYSTEM_PERMISSION_VERSION = 36/);
+  // Inverted stale pin (33.9): 36 was the 31.15 baseline; 37 added CHAT
+  // moderation. Assert the floor, not the literal.
+  const version = Number(
+    permService.match(/SYSTEM_PERMISSION_VERSION\s*=\s*(\d+)/)?.[1],
+  );
+  assert.ok(version >= 36, `expected permission version >= 36, got ${version}`);
 });
 
 

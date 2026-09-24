@@ -316,11 +316,19 @@ export const addMembers = async ({
   actorId,
   conversationId,
   memberUserIds = [],
+  // 33.9: CHAT_GROUP_MANAGE holders (verified by the controller) may manage
+  // ANY group in the tenant without holding the in-group ADMIN role. The
+  // 33.2 rule is untouched for everyone else.
+  moderatorManage = false,
 }) => {
   const { conversation, actor } = await loadForManage({ companyId, actorId, conversationId });
 
-  if (!actor) throw ApiError.forbidden('You must be a member to manage this group.');
-  if (actor.role !== 'ADMIN') throw ApiError.forbidden('Only group admins can add members.');
+  if (!actor && !moderatorManage) {
+    throw ApiError.forbidden('You must be a member to manage this group.');
+  }
+  if (!moderatorManage && actor?.role !== 'ADMIN') {
+    throw ApiError.forbidden('Only group admins can add members.');
+  }
 
   const cleaned = [
     ...new Set(
@@ -370,14 +378,17 @@ export const removeMember = async ({
   actorId,
   conversationId,
   targetUserId,
+  moderatorManage = false,
 }) => {
   const { conversation, actor } = await loadForManage({ companyId, actorId, conversationId });
 
-  if (!actor) throw ApiError.forbidden('You must be a member to manage this group.');
+  if (!actor && !moderatorManage) {
+    throw ApiError.forbidden('You must be a member to manage this group.');
+  }
 
   const isSelf = String(actorId) === String(targetUserId);
 
-  if (!isSelf && actor.role !== 'ADMIN') {
+  if (!isSelf && !moderatorManage && actor?.role !== 'ADMIN') {
     throw ApiError.forbidden('Only group admins can remove other members.');
   }
 

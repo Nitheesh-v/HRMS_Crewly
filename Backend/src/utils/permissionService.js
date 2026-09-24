@@ -206,7 +206,13 @@ export const _resetEnsurePermissionsForTests = () => {
 //             but was missing from the catalogue, so it was silently dropped
 //             from every role; the catalogue now carries it and the version
 //             migration $addToSet-grants it once to matrix-holding roles.
-const SYSTEM_PERMISSION_VERSION = 36;
+//   36 → 37 : Phase 33.9 added CHAT_MODERATE + CHAT_GROUP_MANAGE (resource
+//             CHAT). COMPANY_ADMIN inherits both via the scope-ALL filter;
+//             HR_MANAGER gets both, MANAGER gets CHAT_MODERATE. The generic
+//             permissionVersion migration $addToSet-grants them once to the
+//             matrix-holding system roles. Chat reads stay membership-gated;
+//             no subscription feature is attached (unmapped = allowed).
+const SYSTEM_PERMISSION_VERSION = 37;
 
 // Exported for bootstrap verification/tests — the value itself is owned
 // by this module; bump it ONLY when the catalogue or default role

@@ -31,6 +31,13 @@
 //  ONLY — read state is never broadcast (it would be presence-ish
 //  surveillance). No presence, typing or last-seen events here. NO tokens,
 //  Redis ids, job ids or debug metadata in any payload or log.
+//
+//  33.9 MODERATION: deletion gains ONE moderator fallback — when the
+//  sender-only rule refuses a delete, a CHAT_MODERATE holder may tombstone
+//  the message instead (resolved server-side from role matrices; audit is
+//  written by moderateDeleteMessage). Disabled conversations keep refusing
+//  send/edit/delete for everyone who is not a moderator; the lock itself is
+//  applied over REST (PATCH .../disable) and needs no socket event.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { conversationRoom, userRoom } from '../utils/chatKeys.js';
@@ -51,8 +58,29 @@ import {
   tombstoneMessage,
 } from '../services/chat/chatEditService.js';
 import { updateReadMarker } from '../services/chat/chatReadService.js';
+import {
+  actorHasChatModerate,
+  moderateDeleteMessage,
+} from '../services/chat/chatModerationService.js';
 
 export { CHAT_SOCKET_ERROR_CODES };
+
+// The ONLY refusals a CHAT_MODERATE holder may overturn on delete (33.9).
+const MODERATOR_FALLBACK_CODES = new Set([
+  'MESSAGE_NOT_EDITABLE',
+  'CONVERSATION_DISABLED',
+  'NOT_FOUND_OR_FORBIDDEN',
+]);
+
+// Moderation gate for the delete fallback. Never throws: an unavailable
+// permission resolve means "not a moderator" (fail closed).
+const defaultResolveModerator = async ({ companyId, userId }) => {
+  try {
+    return await actorHasChatModerate({ companyId, userId });
+  } catch {
+    return false;
+  }
+};
 
 // Minimal per-socket abuse guard (fixed window), shared by every writing
 // chat event (send, edit, delete). Bounded, in-memory, and per-socket only —
@@ -133,6 +161,10 @@ export const registerChatSocketHandlers = ({
   editMessage = editTextMessage,
   deleteMessage = tombstoneMessage,
   markRead = updateReadMarker,
+  // 33.9 — moderation. Injectable so handler tests stay hermetic (no role
+  // provisioning, no Mongo). resolveModerator degrades to false on error.
+  resolveModerator = defaultResolveModerator,
+  moderateDelete = moderateDeleteMessage,
 }) => {
   const companyId = socket.data?.companyId;
   const userId = socket.data?.userId;
@@ -298,12 +330,31 @@ export const registerChatSocketHandlers = ({
       ));
     }
 
-    const result = await deleteMessage({
+    let result = await deleteMessage({
       companyId,
       deleterUserId: userId,
       conversationId: parsed.conversationId,
       messageId: parsed.messageId,
     });
+
+    // 33.9 — moderation fallback: the sender-only rule is the ONLY gate a
+    // CHAT_MODERATE holder may bypass (only for delete, never edit). The
+    // permission is resolved server-side from role matrices; a broken
+    // resolve degrades to "not a moderator". The lookup runs only on the
+    // refusal codes a moderator could legitimately overturn, so the happy
+    // path stays a single Mongo round-trip.
+    if (!result.ok && MODERATOR_FALLBACK_CODES.has(result.code)) {
+      const isModerator = await resolveModerator({ companyId, userId });
+
+      if (isModerator) {
+        result = await moderateDelete({
+          companyId,
+          actorId: userId,
+          conversationId: parsed.conversationId,
+          messageId: parsed.messageId,
+        });
+      }
+    }
 
     if (!result.ok) {
       return ack(cb, fail(editFailureCode(result.code), editFailureMessage(result.code)));

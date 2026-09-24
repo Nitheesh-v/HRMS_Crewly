@@ -1201,5 +1201,12 @@ test('31.11 routes + permissions mount the six guarded endpoints', () => {
   const registry = readSource('src/utils/permissionRegistry.js');
   assert.match(registry, /ATTENDANCE_FINALIZATION", \["READ", "MANAGE", "REOPEN"\]/);
   const permService = readSource('src/utils/permissionService.js');
-  assert.match(permService, /SYSTEM_PERMISSION_VERSION = 36/);
+  // Inverted stale pin (33.9): the literal no longer tracks the baseline —
+  // 36 was the 31.15 catalogue, 37 added the CHAT moderation entries. The
+  // guarantee that matters here is that the constant is still owned by this
+  // module and has not moved backwards.
+  const version = Number(
+    permService.match(/SYSTEM_PERMISSION_VERSION\s*=\s*(\d+)/)?.[1],
+  );
+  assert.ok(version >= 36, `expected permission version >= 36, got ${version}`);
 });

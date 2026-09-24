@@ -160,3 +160,44 @@ export const readMarkerValidator = [
 
   validate,
 ];
+
+// ── 33.9 moderation: PATCH .../disable · PATCH .../enable ──────────────────
+// The reason is optional and hard-bounded (200 chars) at the validator AND
+// re-bounded in the service — it is stored in the AUDIT only, never on the
+// message/conversation documents, and never with message text.
+
+export const disableConversationValidator = [
+  objectIdRule(param('conversationId'), 'conversationId'),
+
+  body('reason')
+    .optional({ nullable: true, checkFalsy: true })
+    .isString()
+    .withMessage('reason must be text.')
+    .trim()
+    .isLength({ max: 200 })
+    .withMessage('reason must be 200 characters or fewer.'),
+
+  validate,
+];
+
+export const enableConversationValidator = [
+  objectIdRule(param('conversationId'), 'conversationId'),
+  validate,
+];
+
+// ── 33.9 POST .../messages/:messageId/moderate-delete ─────────────────────
+
+export const moderateDeleteValidator = [
+  objectIdRule(param('conversationId'), 'conversationId'),
+  objectIdRule(param('messageId'), 'messageId'),
+
+  body('reason')
+    .optional({ nullable: true, checkFalsy: true })
+    .isString()
+    .withMessage('reason must be text.')
+    .trim()
+    .isLength({ max: 200 })
+    .withMessage('reason must be 200 characters or fewer.'),
+
+  validate,
+];

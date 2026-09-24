@@ -6,12 +6,13 @@
 //  with checkWriteAccess on every mutating route.
 //
 //  AUTHORIZATION NOTE (deliberate, documented):
-//    No requirePermission(...) and no requireFeature(...) here. The
-//    permission catalogue (SYSTEM_PERMISSION_VERSION=36) and the plan feature
-//    map are strictly versioned and contain no CHAT entries; adding them is a
-//    separate versioned unit. Tenant + membership + in-group ADMIN role are
-//    enforced in services/chatService.js, and the subscription gate
-//    (checkSubscriptionStatus / checkWriteAccess) still applies.
+//    Conversation READS/writes stay free of requirePermission by design: chat
+//    access is MEMBERSHIP, enforced Mongo-authoritatively in
+//    services/chatService.js; the 33.9 catalogue entry (resource CHAT,
+//    SYSTEM_PERMISSION_VERSION=37) covers moderation only, which is why the
+//    three moderation routes at the bottom use requireAnyPermission. No
+//    subscription feature is attached (unmapped resource = allowed), so the
+//    gates stay checkSubscriptionStatus / checkWriteAccess.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { Router } from 'express';
@@ -27,11 +28,15 @@ import {
   addMembersValidator,
   conversationIdParamValidator,
   createConversationValidator,
+  disableConversationValidator,
+  enableConversationValidator,
   listConversationsValidator,
   messageHistoryValidator,
+  moderateDeleteValidator,
   readMarkerValidator,
   removeMemberValidator,
 } from '../../validators/chat/chatValidators.js';
+import { requireAnyPermission } from '../../middlewares/permissionMiddleware.js';
 
 const router = Router();
 
@@ -84,6 +89,42 @@ router.post(
   checkWriteAccess,
   readMarkerValidator,
   chatController.updateReadMarker
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  33.9 — MODERATION ROUTES (company-level)
+//
+//  These are the ONLY chat routes with requireAnyPermission: disabling a
+//  conversation and tombstoning somebody else's message are company-level
+//  powers, so the tenant-wide CHAT_MODERATE permission gates them (the
+//  in-group ADMIN role is deliberately NOT enough — group admins moderate
+//  their own group's membership, not other people's words).
+//  Membership management above stays as 33.2 defined it (in-group ADMIN),
+//  widened — never narrowed — by CHAT_GROUP_MANAGE inside the service.
+// ═══════════════════════════════════════════════════════════════════════════
+
+router.patch(
+  '/conversations/:conversationId/disable',
+  checkWriteAccess,
+  requireAnyPermission(['CHAT_MODERATE']),
+  disableConversationValidator,
+  chatController.disableConversation
+);
+
+router.patch(
+  '/conversations/:conversationId/enable',
+  checkWriteAccess,
+  requireAnyPermission(['CHAT_MODERATE']),
+  enableConversationValidator,
+  chatController.enableConversation
+);
+
+router.post(
+  '/conversations/:conversationId/messages/:messageId/moderate-delete',
+  checkWriteAccess,
+  requireAnyPermission(['CHAT_MODERATE']),
+  moderateDeleteValidator,
+  chatController.moderateDeleteMessage
 );
 
 export default router;

@@ -770,7 +770,12 @@ test('31.14 kiosk: routes + middleware enforce the trust boundary', () => {
   const registry = readSource('src/utils/permissionRegistry.js');
   assert.match(registry, /ATTENDANCE_CAPTURE/);
   const permService = readSource('src/utils/permissionService.js');
-  assert.match(permService, /SYSTEM_PERMISSION_VERSION = 36/);
+  // Inverted stale pin (33.9): 36 was the 31.15 baseline; 37 added CHAT
+  // moderation. Assert the floor, not the literal.
+  const version = Number(
+    permService.match(/SYSTEM_PERMISSION_VERSION\s*=\s*(\d+)/)?.[1],
+  );
+  assert.ok(version >= 36, `expected permission version >= 36, got ${version}`);
 });
 
 test('31.14 kiosk: punch path never reads source/provenance from the client', () => {

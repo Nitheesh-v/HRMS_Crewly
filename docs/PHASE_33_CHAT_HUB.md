@@ -1182,3 +1182,190 @@ until the user retries. The orange banner now has a Retry button
 (one re-handshake per click, never an automatic retry loop), and an ACK that
 times out over a half-dead transport reports "Chat realtime is not
 connected." instead of a misleading server-blame message.
+
+---
+
+# 13. PHASE 33.9 — MODERATION + ADMIN CONTROLS + AUDIT
+
+## 13.1 What this unit adds (and what it deliberately does not)
+
+Adds the company-level moderation layer on top of the 33.2/33.3/33.6
+primitives:
+
+- disable / re-enable a conversation (read-only lock),
+- moderator tombstone-delete of ANY message,
+- group membership management widened (never narrowed) by a permission,
+- an audit trail for every moderation action.
+
+Not in this unit: presence, typing, last-seen, per-message receipts,
+attachments (33.10), rate limits/observability (33.11). Read state stays C1
+and stays private — moderation never reads or exposes another member's
+cursor.
+
+## 13.2 Permissions (SYSTEM_PERMISSION_VERSION 36 → 37)
+
+The chat domain previously had NO catalogue entries on purpose: chat access
+is MEMBERSHIP, enforced Mongo-authoritatively. Moderation is a different
+thing — a company-level power — so 33.9 adds the smallest possible entry:
+
+  resource CHAT, actions MODERATE + GROUP_MANAGE (both scope ALL)
+
+  CHAT_MODERATE      disable/enable any conversation; tombstone any message
+  CHAT_GROUP_MANAGE  add/remove members in any group
+
+Grants (DEFAULT_ROLE_MATRIX):
+
+  COMPANY_ADMIN  both (inherited automatically: every scope-ALL permission)
+  HR_MANAGER     both
+  MANAGER        CHAT_MODERATE only — a manager moderates content but does
+                 not administer group membership
+  EMPLOYEE       neither
+
+NO CHAT_READ was invented: reading stays membership-gated, so an employee
+who is not a member still sees nothing.
+
+The bump to 37 flows through the existing migration in
+`ensureCompanyRoles` (permissionVersion $lt → $addToSet), so already
+provisioned company roles receive the two permissions exactly once on the
+next ensure. No plan/subscription feature is attached (unmapped resource =
+allowed by `permissionAllowedByPlan`), matching how 33.3–33.8 shipped; the
+subscription gates (`checkSubscriptionStatus` / `checkWriteAccess`) still
+apply to every route.
+
+`hasPermission` resolution is wrapped to fail CLOSED (`.catch(() => false)`)
+exactly like the payroll analytics/fnf/statutory call sites: a broken
+permission resolve can never become moderation power.
+
+## 13.3 REST contracts
+
+    PATCH /api/chat/conversations/:conversationId/disable
+      body { reason? }        (≤ 200 chars, optional, trimmed)
+      → { conversation, changed }
+    PATCH /api/chat/conversations/:conversationId/enable
+      → { conversation, changed }
+    POST  /api/chat/conversations/:conversationId/messages/:messageId/moderate-delete
+      body { reason? }        (≤ 200 chars, optional)
+      → { conversationId, messageId, deletedAt, changed }
+
+All three require `checkWriteAccess` + `requireAnyPermission(['CHAT_MODERATE'])`.
+Membership is NOT required: tenant scope (req.companyId) + the permission is
+the gate, so an HR admin can moderate a group they are not in. A conversation
+in another tenant answers 404 "Conversation not found." — the same shape a
+genuinely missing id produces, so no cross-tenant existence leaks.
+
+Idempotence is part of the contract: disabling a disabled conversation (or
+enabling an enabled one) returns `changed: false`, writes nothing and audits
+nothing — a retry is not a moderation event.
+
+## 13.4 The lock (read-only mode)
+
+`ChatConversation.isDisabled / disabledAt / disabledByUserId` (33.2) are set
+and cleared by the service. Enforcement:
+
+  send / edit / delete   refused with CONVERSATION_DISABLED for every
+                         non-moderator, on socket AND REST paths
+  history (33.4)         unchanged — always readable, which is the point of
+                         a lock: silence the channel, preserve the record
+  moderator delete       still allowed (removing abuse in a locked channel is
+                         the primary use case)
+  moderator send/edit    still refused — a moderator is not above the lock
+  join / readUpTo        unaffected
+
+Lock/unlock fans the existing data-less 33.8-fix nudge
+(`chat:conversations:changed`) to every member's personal room, so other
+windows show the banner without a manual reload. When realtime is off the
+nudge is a no-op and each window learns on its next fetch — REST stays truth.
+
+## 13.5 Moderator deletion
+
+`socket chat:message:delete` keeps its sender-only rule. When that rule
+refuses (MESSAGE_NOT_EDITABLE / CONVERSATION_DISABLED /
+NOT_FOUND_OR_FORBIDDEN) the handler resolves CHAT_MODERATE for the socket's
+server-derived principal and, only then, retries through
+`moderateDeleteMessage`. The refusal codes are the ONLY trigger, so the happy
+path stays a single Mongo round-trip and the moderator lookup never runs for
+ordinary members.
+
+The tombstone mechanics are 33.6's, unchanged: `deletedAt` +
+`deletedByUserId` set, `text` nulled, runValidators on, idempotent on retry,
+`chat:message:deleted` broadcast with `deletedByUserId`. Because the deleted
+event carries BOTH ids, the client can tell a self-delete from a moderator
+removal and renders "Message removed by a moderator" without ever seeing the
+original text.
+
+Moderators may NOT edit other people's messages: edit stays sender-only.
+Delete-only is the deliberate choice (an edited message under someone else's
+name is a forgery surface).
+
+## 13.6 Group membership management
+
+The 33.2 rule — a member of the group who holds the in-group ADMIN role — is
+untouched. 33.9 only WIDENS it: a caller holding CHAT_GROUP_MANAGE may manage
+any group in the tenant without being a member and without the in-group role.
+Invariants (pinned by tests):
+
+- a group keeps ≥ 1 ADMIN (the existing orphan guard — the last admin cannot
+  be removed),
+- a group keeps ≥ 2 members (cannot be emptied),
+- late joiners still start unread-free (`joinedAtSeq`/`lastReadSeq` seeded at
+  the current `lastMessageSeq`),
+- membership management stays tenant-scoped.
+
+## 13.7 Audit semantics (privacy law)
+
+Every real moderation action writes exactly one `AuditLog` row:
+actor/actorName/actorRole, action (`CHAT_CONVERSATION_DISABLED`,
+`CHAT_CONVERSATION_ENABLED`, `CHAT_MESSAGE_MODERATED_DELETE`), method, path,
+ip, targetType, targetId, previousValue/newValue.
+
+- NO message text ever enters the audit. The tombstone nulls the text in
+  ChatMessage; the audit stores `{ conversationId, reason }` only.
+- NO read state, NO member cursors, NO other members' data.
+- The reason is bounded twice (validator + `boundModerationReason`, 200 chars)
+  and stored in the audit only — not on the conversation or message document.
+- Writes are best-effort by design: a failed audit must not mask a successful
+  moderation action, but it is logged by error NAME only (never payloads).
+- The socket path audits through the same service, so a moderator removal is
+  recorded whichever transport performed it.
+
+## 13.8 Frontend (minimal, permission-gated)
+
+- `usePermission()` resolves CHAT_MODERATE from the server permission set —
+  never from a role name. Loading state keeps the controls hidden.
+- Header: a Disable / Re-enable button (moderators only, with confirm).
+- A red banner "Conversation disabled by an admin..." plus a `Disabled` badge
+  in the title; the composer is disabled and edit/delete affordances hide for
+  everyone (`locked` prop) while history stays scrollable.
+- A moderator gets a shield delete action on other members' messages; the
+  removal goes over REST (audited, works even when realtime is down) and the
+  local row is tombstoned immediately.
+- Deleted bubbles read "Message removed by a moderator" when
+  `deletedByUserId ≠ senderUserId`, otherwise "This message was deleted".
+- No new presence/typing UI, no new vendors, no emojis.
+
+## 13.9 Tests + verification
+
+`test/chatModeration.test.js` (23 tests, hermetic — no Mongo, no Redis, no
+socket.io-client) pins: catalogue + role-matrix grants, version 37, the 403
+refusals, the lock/unlock writes, cross-tenant 404s, idempotence without
+duplicate audits, the bounded reason, the absence of message text in audit
+rows, moderator tombstone of another member's message, socket fallback
+(positive + negative + happy-path non-invocation), disabled-conversation send
+refusal, and the membership invariants.
+
+Stale pins inverted, not deleted: the three attendance suites that asserted
+the literal `SYSTEM_PERMISSION_VERSION = 36` now assert the version FLOOR
+(≥ 36) with a comment naming 36 (31.15) and 37 (33.9).
+
+## 13.10 Limitations (honest)
+
+- Group-level roles beyond ADMIN/MEMBER are not modelled; a moderator cannot
+  be scoped to "their" group only — CHAT_MODERATE is company-wide.
+- A disabled conversation has no auto-expiry; re-enabling is manual.
+- The audit is write-behind best-effort (no transactional outbox), so an audit
+  row can be missing if the process dies between the write and the audit.
+- Moderators can delete but never edit others' messages.
+- No moderation UI for message history/audit browsing (the existing admin
+  audit surface is unchanged).
+- Lock/unlock during an open socket session is visible to other members on
+  their next fetch or nudge; there is no per-message "locked" system line.

@@ -5,7 +5,18 @@ import { useLayoutEffect, useRef } from 'react';
 
 import MessageBubble from './MessageBubble.jsx';
 
-const MessageList = ({ conversationId, entry, pending, meId, nameOfUserId, onOlder, onEdit, onDelete }) => {
+const MessageList = ({
+  conversationId,
+  entry,
+  pending,
+  meId,
+  nameOfUserId,
+  onOlder,
+  onEdit,
+  onDelete,
+  canModerate = false,
+  locked = false,
+}) => {
   const scrollRef = useRef(null);
   const stickToBottom = useRef(true);
   const olderFix = useRef(null);
@@ -61,6 +72,8 @@ const MessageList = ({ conversationId, entry, pending, meId, nameOfUserId, onOld
           senderName={nameOfUserId(message.senderUserId)}
           onEdit={onEdit}
           onDelete={onDelete}
+          canModerate={canModerate}
+          locked={locked}
         />
       ))}
 

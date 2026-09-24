@@ -15,6 +15,22 @@ import * as chatReadService from '../../services/chat/chatReadService.js';
 // 33.8-fix: data-less list-change nudge. A no-op (false) when realtime is
 // off — REST already did the work; the client's next fetch catches up.
 import { notifyConversationsChanged } from '../../socket/realtimeNudge.js';
+import * as chatModerationService from '../../services/chat/chatModerationService.js';
+import { hasPermission } from '../../utils/permissionService.js';
+
+// 33.9 — CHAT_GROUP_MANAGE WIDENS 33.2's in-group ADMIN rule; it can never
+// narrow it (a group's own ADMIN still manages that group without the
+// permission). Resolution is server-side only and fails closed.
+const canManageAnyGroup = async (req) => {
+  try {
+    return await hasPermission(
+      { ...req.user, companyId: req.companyId },
+      'CHAT_GROUP_MANAGE',
+    );
+  } catch {
+    return false;
+  }
+};
 
 export const createConversation = asyncHandler(async (req, res) => {
   // Data from frontend - requests from frontend
@@ -128,6 +144,7 @@ export const addMembers = asyncHandler(async (req, res) => {
     actorId: req.user._id,
     conversationId,
     memberUserIds,
+    moderatorManage: await canManageAnyGroup(req),
   });
 
   // 33.8-fix: added users learn about the conversation live; a no-op when
@@ -151,6 +168,7 @@ export const removeMember = asyncHandler(async (req, res) => {
     actorId: req.user._id,
     conversationId,
     targetUserId: removedUserId,
+    moderatorManage: await canManageAnyGroup(req),
   });
 
   // 33.8-fix: the removed user's list loses the conversation live.
@@ -187,6 +205,99 @@ export const updateReadMarker = asyncHandler(async (req, res) => {
       myLastReadSeq: result.myLastReadSeq,
       lastMessageSeq: result.lastMessageSeq,
       unreadCount: result.unreadCount,
+    },
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PHASE 33.9 — MODERATION (thin; CHAT_MODERATE enforced in the service)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// A lock/unlock changes every member's composer state, so the affected
+// members get the same data-less list nudge the 33.8-fix membership paths
+// use (their next fetch re-reads the authoritative Mongo row).
+const memberIdsOf = (conversation) =>
+  (conversation?.members ?? []).map((member) => member.userId);
+
+// The audit meta is derived from the request, never from the body.
+const moderationMeta = (req) => ({
+  method: req.method,
+  path: req.originalUrl.split('?')[0],
+  ip: req.ip || '',
+});
+
+// PATCH /api/chat/conversations/:conversationId/disable
+export const disableConversation = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const { conversationId } = req.params;
+  const { reason } = req.body;
+
+  // DB Logic - DB logics
+  const result = await chatModerationService.disableConversation({
+    companyId: req.companyId,
+    actorId: req.user._id,
+    conversationId,
+    reason,
+    reqMeta: moderationMeta(req),
+  });
+
+  if (result.changed) notifyConversationsChanged(memberIdsOf(result.conversation));
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, {
+    message: result.changed ? 'Conversation disabled' : 'Conversation was already disabled',
+    data: { conversation: result.conversation, changed: result.changed },
+  });
+});
+
+// PATCH /api/chat/conversations/:conversationId/enable
+export const enableConversation = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const { conversationId } = req.params;
+
+  // DB Logic - DB logics
+  const result = await chatModerationService.enableConversation({
+    companyId: req.companyId,
+    actorId: req.user._id,
+    conversationId,
+    reqMeta: moderationMeta(req),
+  });
+
+  if (result.changed) notifyConversationsChanged(memberIdsOf(result.conversation));
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, {
+    message: result.changed ? 'Conversation enabled' : 'Conversation was already enabled',
+    data: { conversation: result.conversation, changed: result.changed },
+  });
+});
+
+// POST /api/chat/conversations/:conversationId/messages/:messageId/moderate-delete
+export const moderateDeleteMessage = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const { conversationId, messageId } = req.params;
+  const { reason } = req.body;
+
+  // DB Logic - DB logics
+  const result = await chatModerationService.moderateDeleteMessage({
+    companyId: req.companyId,
+    actorId: req.user._id,
+    conversationId,
+    messageId,
+    reason,
+    reqMeta: moderationMeta(req),
+  });
+
+  if (!result.ok) throw ApiError.notFound('Message not found.');
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, {
+    message: result.changed ? 'Message removed by moderator' : 'Message was already removed',
+    data: {
+      conversationId,
+      messageId: result.messageId,
+      deletedAt: result.deletedAt,
+      changed: result.changed,
     },
   });
 });
