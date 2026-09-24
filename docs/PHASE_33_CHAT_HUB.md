@@ -1175,3 +1175,10 @@ never saw brand-new conversations until reload. Added:
   the seam is a no-op and REST behaviour is unchanged. Not presence, not
   typing, not receipts - pinned by test/chatRealtimeNudge.test.js and the
   updated event/folder pins in test/chatSocketFoundation.test.js.
+
+Degraded-mode honesty (same fix): a refused handshake closes the client
+socket by design, so after Redis/API recovery the window stays "unavailable"
+until the user retries. The orange banner now has a Retry button
+(one re-handshake per click, never an automatic retry loop), and an ACK that
+times out over a half-dead transport reports "Chat realtime is not
+connected." instead of a misleading server-blame message.

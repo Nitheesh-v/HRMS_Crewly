@@ -68,6 +68,19 @@ export const connectChatSocket = () => {
   return socket;
 };
 
+// 33.8-fix — bounded manual recovery. A refused handshake closes the socket
+// by design (no infinite retry loop); once Redis / the API recovers, the
+// banner's Retry button re-handshakes exactly once per click.
+export const retryChatSocket = () => {
+  if (socket) {
+    socket.removeAllListeners();
+    socket.close();
+    socket = null;
+  }
+
+  return connectChatSocket();
+};
+
 export const disconnectChatSocket = () => {
   if (!socket) return;
 
@@ -94,10 +107,21 @@ const ackOf = (event, payload, timeoutMs = 10_000) =>
     let settled = false;
 
     const timer = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        resolve({ ok: false, code: 'RETRYABLE', message: 'The chat server did not answer. Try again.' });
+      if (settled) return;
+      settled = true;
+
+      // A half-dead transport (Redis lost server-side, laptop slept) looks
+      // "connected" for a moment but never answers. Say what is true.
+      if (!socket?.connected) {
+        resolve({
+          ok: false,
+          code: 'FEATURE_UNAVAILABLE',
+          message: 'Chat realtime is not connected.',
+        });
+        return;
       }
+
+      resolve({ ok: false, code: 'RETRYABLE', message: 'The chat server did not answer. Try again.' });
     }, timeoutMs);
 
     socket.emit(event, payload, (ack) => {

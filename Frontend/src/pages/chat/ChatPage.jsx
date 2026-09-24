@@ -13,6 +13,7 @@ import userService from '../../services/userService.js';
 import {
   connectChatSocket,
   disconnectChatSocket,
+  retryChatSocket,
   chatRealtime,
 } from '../../services/realtime/chatSocketClient.js';
 import {
@@ -375,6 +376,13 @@ const ChatPage = () => {
           <div className="flex items-center gap-2 border-b border-crewly-orange/40 bg-crewly-orange/10 px-4 py-2 text-xs text-crewly-orange">
             <AlertTriangle className="h-3.5 w-3.5" />
             Chat realtime unavailable. History still loads; sending returns when realtime is back.
+            <button
+              type="button"
+              onClick={() => retryChatSocket()}
+              className="ml-auto rounded border border-crewly-orange/50 px-2 py-0.5 font-semibold hover:bg-crewly-orange/20"
+            >
+              Retry
+            </button>
           </div>
         )}
 
