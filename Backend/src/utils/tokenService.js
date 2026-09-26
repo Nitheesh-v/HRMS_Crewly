@@ -15,6 +15,18 @@ import { recordAudit, recordSecurityEvent } from "./securityauditService.js";
 
 const REFRESH_COOKIE = "crewly_refresh";
 
+// 33.13 — HOW LONG A JUST-ROTATED TOKEN IS TREATED AS A RACE, NOT A THEFT.
+//
+// Rotation is single-use, and the refresh cookie is shared by every tab of the
+// browser. Two tabs whose access token expires at the same moment both POST
+// /auth/refresh with the SAME token: the first wins and rotates, the second
+// presents a token that is one instant old. Treating that as token theft used
+// to revoke the entire family AND bump User.tokenVersion — which signs the
+// person out of every tab and every device, mid-work, for using two tabs.
+// Inside this window the second presentation is answered with 409
+// REFRESH_IN_PROGRESS: no tokens, no family revocation, no cookie cleared.
+// Outside it, reuse is still theft and still nukes the family.
+
 const cookieString = (value, options = {}) => {
   const parts = [
     `${REFRESH_COOKIE}=${value}`,
@@ -23,7 +35,10 @@ const cookieString = (value, options = {}) => {
     `SameSite=${options.sameSite || "Lax"}`,
   ];
 
-  if (options.maxAge) {
+  // 33.13 — `if (options.maxAge)` skipped the ONE value that matters most:
+  // 0. clearRefreshCookie() therefore emptied the cookie without expiring it,
+  // so it lingered as a session cookie instead of being deleted.
+  if (options.maxAge !== undefined && options.maxAge !== null) {
     parts.push(`Max-Age=${Math.floor(options.maxAge / 1000)}`);
   }
 
@@ -118,6 +133,8 @@ const revokeTokenFamily = async ({ tokenFamily, userId, reason }) => {
     ),
   ]);
 };
+
+export const REFRESH_RACE_GRACE_MS = 60 * 1000;
 
 export const setRefreshCookie = (res, refreshToken, maxAge) => {
   res.setHeader(
@@ -230,8 +247,38 @@ export const rotateRefreshToken = async ({ req, res }) => {
     throw error;
   }
 
-  // Used/revoked token means possible token theft.
+  // Used/revoked token means possible token theft — unless it is the benign
+  // race described above.
   if (token.usedAt || token.revokedAt) {
+    const usedAtMs = token.usedAt ? new Date(token.usedAt).getTime() : 0;
+
+    const isBenignRace =
+      !token.revokedAt &&
+      usedAtMs > 0 &&
+      Date.now() - usedAtMs <= REFRESH_RACE_GRACE_MS;
+
+    if (isBenignRace) {
+      // The winner of the race already set a fresh cookie on this browser: the
+      // cookie is left ALONE (clearing it here would destroy the healthy
+      // session the other tab just renewed).
+      await recordSecurityEvent({
+        req,
+        companyId: token.companyId,
+        userId: token.user,
+        sessionId: token.sessionId,
+        event: "REFRESH_TOKEN_CONCURRENT_REFRESH",
+        success: true,
+        reason: "A second client presented a refresh token this session had just rotated.",
+      });
+
+      const raceError = new Error("Refresh already in progress");
+
+      raceError.statusCode = 409;
+      raceError.code = "REFRESH_IN_PROGRESS";
+
+      throw raceError;
+    }
+
     token.reuseDetectedAt = new Date();
 
     await token.save();

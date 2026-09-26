@@ -161,10 +161,46 @@ export const refresh =
           },
         );
       } catch (error) {
-        clearRefreshCookie(res);
+        const statusCode =
+          error.statusCode || 401;
+
+        // 33.13 — THE RACE IS NOT A LOGOUT.
+        //
+        // A second tab lost the rotation race: the family is intact and the
+        // winner already set a fresh cookie on this browser. Answer with the
+        // code the client retries on, and touch NOTHING — clearing the cookie
+        // here would destroy the very session that just got renewed.
+        if (
+          error.code ===
+          "REFRESH_IN_PROGRESS"
+        ) {
+          return res
+            .status(409)
+            .json({
+              statusCode: 409,
+              success: false,
+              code:
+                "REFRESH_IN_PROGRESS",
+              message:
+                "Refresh already in progress. Retry with the current cookie.",
+            });
+        }
+
+        // 33.13 — DO NOT BURN A HEALTHY SESSION ON A TRANSIENT FAILURE.
+        //
+        // Clearing the refresh cookie is a one-way door: the user cannot
+        // recover without typing their password again. Only a dead session
+        // (401/403) deserves that. A 5xx — Mongo slow, a timeout, a bug — must
+        // leave the cookie in place so the next attempt can succeed.
+        if (
+          statusCode === 401 ||
+          statusCode === 403
+        ) {
+          clearRefreshCookie(res);
+        }
 
         throw new ApiError(
-          error.statusCode || 401,
+          statusCode,
           error.message ||
             "Could not refresh session",
         );
