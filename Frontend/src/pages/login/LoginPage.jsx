@@ -94,7 +94,9 @@ const LoginPage = () => {
         localStorage.removeItem(REMEMBER_KEY);
       }
       const data = await authService.login(form);
-      login(data.user, data.token);
+      // 33.14 — the session arrives as HttpOnly cookies on this response:
+      // the store keeps the profile only, never a token.
+      login(data.user);
       navigate(getDashboardPath(data.user.role), { replace: true });
     } catch (err) {
       setError(err.message);

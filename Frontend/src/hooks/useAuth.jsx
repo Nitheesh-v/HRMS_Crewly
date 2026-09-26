@@ -42,8 +42,14 @@ const useAuth = () => {
     user,
     token,
 
+    /*
+     * 33.14 — the session is the HttpOnly cookie plus the profile in the
+     * store. `token` is only ever set for the PLATFORM portal (super-admin),
+     * so requiring it here would sign every customer out on reload while
+     * their cookie was perfectly alive.
+     */
     isAuthenticated:
-      Boolean(user && token),
+      Boolean(user),
 
     hasRole: (...roles) =>
       Boolean(

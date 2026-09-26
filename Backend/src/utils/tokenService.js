@@ -15,6 +15,31 @@ import { recordAudit, recordSecurityEvent } from "./securityauditService.js";
 
 const REFRESH_COOKIE = "crewly_refresh";
 
+// 33.14 — THE BROWSER SESSION LIVES IN COOKIES (access token included).
+//
+// The refresh token was already HttpOnly; the ACCESS token was not. It was
+// returned in the login/refresh body and kept in localStorage, where any
+// script on the page — a compromised dependency, an XSS anywhere in the SPA,
+// a support-screen-share — could read it and post it to another host. Both
+// browser tokens are now HttpOnly cookies, so JavaScript holds no credential
+// at all. (Non-browser clients still get the token in the response body and
+// may keep using `Authorization: Bearer`; that path is untouched.)
+//
+// WHY Path=/api AND NOT Path=/
+//   · every REST route lives under /api, so the cookie rides exactly the
+//     surface that needs it and nothing else;
+//   · the chat socket handshake is /socket.io — this cookie is NOT sent
+//     there by the browser, and the handshake never wants it: sockets
+//     authenticate with a short-lived single-use ticket (33.1's "no cookies
+//     on sockets" decision stays exactly as locked, plus the CSRF surface
+//     a cookie-bearing handshake would create never exists).
+const ACCESS_COOKIE = "crewly_access";
+
+// The access cookie must ALSO reach /api/auth/* (logout, me, refresh), so
+// its path is the /api subtree rather than the /api/auth one the refresh
+// cookie uses (a refresh cookie has no business on the other 40 routers).
+const ACCESS_COOKIE_PATH = "/api";
+
 // 33.13 — HOW LONG A JUST-ROTATED TOKEN IS TREATED AS A RACE, NOT A THEFT.
 //
 // Rotation is single-use, and the refresh cookie is shared by every tab of the
@@ -29,8 +54,8 @@ const REFRESH_COOKIE = "crewly_refresh";
 
 const cookieString = (value, options = {}) => {
   const parts = [
-    `${REFRESH_COOKIE}=${value}`,
-    "Path=/api/auth",
+    `${options.name || REFRESH_COOKIE}=${value}`,
+    `Path=${options.path || "/api/auth"}`,
     "HttpOnly",
     `SameSite=${options.sameSite || "Lax"}`,
   ];
@@ -49,6 +74,38 @@ const cookieString = (value, options = {}) => {
   return parts.join("; ");
 };
 
+/*
+ * 33.14 — ONE RESPONSE, TWO COOKIES.
+ *
+ * login/register/refresh mint BOTH the refresh cookie and the access cookie
+ * on the same response. `res.setHeader('Set-Cookie', …)` REPLACES whatever is
+ * already there, so the second call would silently delete the first cookie —
+ * an empty-looking bug (login "works", refresh 401s 15 minutes later). Every
+ * cookie write therefore appends to whatever the response already carries.
+ */
+const appendCookie = (res, cookie) => {
+  const existing = res.getHeader ? res.getHeader("Set-Cookie") : undefined;
+
+  if (!existing) {
+    res.setHeader("Set-Cookie", cookie);
+
+    return;
+  }
+
+  const list = Array.isArray(existing) ? existing : [String(existing)];
+
+  res.setHeader("Set-Cookie", [...list, cookie]);
+};
+
+/** Cookie attributes shared by both browser tokens (dev/prod split). */
+const cookieOptions = (options = {}) => ({
+  ...options,
+
+  secure: env.NODE_ENV === "production",
+
+  sameSite: env.NODE_ENV === "production" ? "None" : "Lax",
+});
+
 const readCookie = (req, name) => {
   const cookieHeader = req.headers.cookie || "";
 
@@ -64,11 +121,17 @@ const readCookie = (req, name) => {
           return [part, ""];
         }
 
-        return [
-          part.slice(0, separator),
+        const value = part.slice(separator + 1);
 
-          decodeURIComponent(part.slice(separator + 1)),
-        ];
+        // A malformed percent-escape in ANY cookie header must not turn every
+        // protected request into a 500 (33.14: the access cookie is read on
+        // every /api call now). Undecodable → raw, so signature verification
+        // rejects it like any other junk token.
+        try {
+          return [part.slice(0, separator), decodeURIComponent(value)];
+        } catch {
+          return [part.slice(0, separator), value];
+        }
       }),
   );
 
@@ -137,32 +200,60 @@ const revokeTokenFamily = async ({ tokenFamily, userId, reason }) => {
 export const REFRESH_RACE_GRACE_MS = 60 * 1000;
 
 export const setRefreshCookie = (res, refreshToken, maxAge) => {
-  res.setHeader(
-    "Set-Cookie",
-    cookieString(encodeURIComponent(refreshToken), {
-      maxAge,
-
-      secure: env.NODE_ENV === "production",
-
-      sameSite: env.NODE_ENV === "production" ? "None" : "Lax",
-    }),
+  appendCookie(
+    res,
+    cookieString(
+      encodeURIComponent(refreshToken),
+      cookieOptions({ maxAge }),
+    ),
   );
 };
 
 export const clearRefreshCookie = (res) => {
-  res.setHeader(
-    "Set-Cookie",
-    cookieString("", {
+  appendCookie(
+    res,
+    cookieString("", cookieOptions({ maxAge: 0 })),
+  );
+};
+
+/*
+ * 33.14 — the access token as an HttpOnly cookie.
+ *
+ * Same attributes as the refresh cookie (HttpOnly, SameSite=None+Secure in
+ * production because customer deployments can serve the SPA from a different
+ * site than the API, Lax+insecure in development), a broader path (/api, not
+ * /api/auth) and a short Max-Age matching the token itself — when the cookie
+ * dies, the browser simply has nothing to send and the client refreshes.
+ */
+export const setAccessCookie = (res, accessToken, maxAge) => {
+  appendCookie(
+    res,
+    cookieString(
+      encodeURIComponent(accessToken),
+      cookieOptions({
+        name: ACCESS_COOKIE,
+        path: ACCESS_COOKIE_PATH,
+        maxAge,
+      }),
+    ),
+  );
+};
+
+export const clearAccessCookie = (res) => {
+  appendCookie(
+    res,
+    cookieString("", cookieOptions({
+      name: ACCESS_COOKIE,
+      path: ACCESS_COOKIE_PATH,
       maxAge: 0,
-
-      secure: env.NODE_ENV === "production",
-
-      sameSite: env.NODE_ENV === "production" ? "None" : "Lax",
-    }),
+    })),
   );
 };
 
 export const getRefreshToken = (req) => readCookie(req, REFRESH_COOKIE);
+
+/** The customer access token from the cookie jar, if the browser sent one. */
+export const getAccessToken = (req) => readCookie(req, ACCESS_COOKIE);
 
 export const createUserSession = async ({ user, req, res }) => {
   const policy = await getSecurityPolicy(user.companyId);
@@ -215,6 +306,10 @@ export const createUserSession = async ({ user, req, res }) => {
   });
 
   setRefreshCookie(res, rawRefreshToken, refreshDays * 24 * 60 * 60 * 1000);
+
+  // 33.14 — the browser gets its access token as a cookie too (the body copy
+  // below stays for non-browser clients that cannot hold a cookie jar).
+  setAccessCookie(res, accessToken, accessMinutes * 60 * 1000);
 
   return {
     accessToken,
@@ -426,6 +521,14 @@ export const rotateRefreshToken = async ({ req, res }) => {
     policy.sessions.refreshTokenDays * 24 * 60 * 60 * 1000,
   );
 
+  // 33.14 — rotation replaces BOTH cookies, so the tab that wins the race
+  // hands every other tab a usable access token as well.
+  setAccessCookie(
+    res,
+    accessToken,
+    policy.sessions.accessTokenMinutes * 60 * 1000,
+  );
+
   await recordSecurityEvent({
     req,
     companyId: user.companyId,
@@ -472,6 +575,11 @@ export const revokeCurrentSession = async ({ req, res, user, sessionId }) => {
   }
 
   clearRefreshCookie(res);
+
+  // 33.14 — logout deletes the access cookie too. Leaving it behind would
+  // mean "logged out" in the UI while the browser still presents a live
+  // token until it expires.
+  clearAccessCookie(res);
 
   await recordSecurityEvent({
     req,
@@ -532,6 +640,8 @@ export const revokeAllUserSessions = async ({
   ]);
 
   clearRefreshCookie(res);
+
+  clearAccessCookie(res);
 
   await recordSecurityEvent({
     req,

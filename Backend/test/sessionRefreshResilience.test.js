@@ -204,14 +204,33 @@ const makeReq = () => ({
   },
 });
 
+/*
+ * A faithful-enough Express response double: `setHeader` REPLACES (exactly
+ * like Express) and `getHeader` reads back, which is what production code
+ * (`appendCookie`) uses to append a second cookie instead of clobbering the
+ * first. A double that always overwrote would hide that bug, so it does not.
+ */
 const makeRes = () => ({
   headers: {},
+  getHeader(name) {
+    return this.headers[name];
+  },
   setHeader(name, value) {
     this.headers[name] = value;
   },
 });
 
-const cookieOf = (res) => String(res.headers['Set-Cookie'] || '');
+const cookiesOf = (res) => {
+  const raw = res.headers['Set-Cookie'];
+
+  if (Array.isArray(raw)) return raw;
+
+  return raw ? [String(raw)] : [];
+};
+
+/** The cookie line for one name (default: the refresh cookie). */
+const cookieOf = (res, name = 'crewly_refresh') =>
+  cookiesOf(res).find((line) => line.startsWith(`${name}=`)) || '';
 
 // ── 1. THE RACE ───────────────────────────────────────────────────────────
 
@@ -375,8 +394,25 @@ test('the browser coordinates tabs and retries the race instead of logging out',
   assert.match(api, /navigator\.locks\.request/, 'tabs take a real cross-tab lock');
   assert.match(api, /REFRESH_LOCK/, 'the lock has a stable name');
   assert.match(api, /REFRESH_IN_PROGRESS/, 'the race code is handled, not swallowed as a logout');
-  assert.match(api, /current !== tokenBeforeRefresh/, 'a token another tab wrote is ADOPTED, not re-rotated');
-  assert.match(api, /readStoredToken\(\)/, 'and the client re-reads storage before ever rotating');
+
+  /*
+   * 33.14 INVERTED THIS PIN, deliberately.
+   *
+   * It used to require the client to re-read localStorage and ADOPT the token
+   * another tab had written. There is no client-side token any more: the new
+   * cookie is installed by the response itself, so adoption is not a thing the
+   * client can or should do — and a client that still read a stored token here
+   * would be the regression. Same guarantee, new mechanism: the lock still
+   * serialises tabs, and the 409 retry still recovers from the race.
+   */
+  assert.ok(
+    !/readStoredToken|tokenBeforeRefresh/.test(api),
+    'the client must not go back to reading/adopting a stored access token',
+  );
+  assert.ok(
+    !/localStorage\.(get|set)Item\(\s*'infolexus_token'/.test(api),
+    'and never touches a token in storage again',
+  );
 });
 
 test('the refresh controller clears the cookie for a dead session only', () => {

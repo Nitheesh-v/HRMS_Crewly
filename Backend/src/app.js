@@ -156,6 +156,12 @@ app.use(
     allowedHeaders: [
       'Content-Type',
       'Authorization',
+
+      // 33.14 — the CSRF proof for cookie-authenticated writes. It MUST be
+      // allowed here: a preflight that does not approve it makes the browser
+      // drop every state-changing request from our own SPA. Only our
+      // allowlisted origins get this header echoed back.
+      'X-Requested-With',
     ],
     maxAge: 86400,
   }),

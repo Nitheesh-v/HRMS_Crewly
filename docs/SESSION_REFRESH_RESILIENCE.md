@@ -30,9 +30,11 @@ alone**. Outside the window, reuse is still theft: family revoked, `tokenVersion
 bumped, cookie cleared. The security property is unchanged.
 
 The browser also stops creating the race at all: the refresh path takes a
-cross-tab **Web Lock** (`navigator.locks`) and re-reads `localStorage` before
-rotating, so a tab that was beaten adopts the winner's token instead of
-rotating a second time.
+cross-tab **Web Lock** (`navigator.locks`), so only one tab rotates at a time —
+and a tab that was beaten retries on the `409` instead of rotating a second
+time. (Until 33.14 the beaten tab also adopted the winner's token out of
+`localStorage`; there is no client-side token to adopt any more, because the
+session now rides HttpOnly cookies — see `docs/COOKIE_SESSION.md`.)
 
 ### 2. Every refresh failure burned the cookie
 

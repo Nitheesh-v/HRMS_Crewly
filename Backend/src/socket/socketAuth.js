@@ -20,6 +20,15 @@
 //    · NOT a cookie (no cookies on sockets — locked decision; also removes
 //      the CSRF surface a cookie-bearing handshake would create)
 //
+//  33.14 — WHAT THAT PAYLOAD CARRIES, TWO ACCEPTED SHAPES:
+//    · a SHORT-LIVED CHAT TICKET (the browser: it is minted by
+//      POST /api/realtime/chat-ticket and validated against the shared
+//      ticket store, 64 hex chars, no dots) — because the SPA no longer
+//      holds an access token in JavaScript at all;
+//    · a CUSTOMER JWT (non-browser clients, unchanged).
+//  The discriminator is structural (a JWT has two dots) and both shapes run
+//  the SAME Mongo gates below, so neither can outrank the other.
+//
 //  Tenant derivation: companyId comes from the Mongo User document. The
 //  signed token claim is only COMPARED against it (exactly as `protect`
 //  does). A client-supplied companyId is never read — there is no code
@@ -33,6 +42,8 @@ import env from '../config/env.js';
 import Company from '../models/Company.js';
 import SecuritySession from '../models/SecuritySession.js';
 import User from '../models/User.js';
+import { getRealtimeTickets } from '../infrastructure/realtime/realtimeTicketsRuntime.js';
+import { isValidTicketShape } from '../infrastructure/realtime/realtimeTickets.js';
 
 /**
  * MUST mirror the PLATFORM_ROLES list in src/middlewares/authMiddleware.js
@@ -91,6 +102,7 @@ export const verifyChatSocketToken = async (
         .lean(),
     findSession = (filter) => SecuritySession.findOne(filter).select('sessionId').lean(),
     findCompany = (companyId) => Company.findById(companyId).select('status').lean(),
+    consumeTicket = (ticket) => getRealtimeTickets().consumeReusable(ticket),
     now = () => new Date(),
   } = {},
 ) => {
@@ -99,48 +111,94 @@ export const verifyChatSocketToken = async (
 
   if (!raw) return fail(SOCKET_AUTH_REASONS.MISSING_TOKEN);
 
-  // ── 2. Signature + expiry ──────────────────────────────────────────────
-  let decoded;
+  /*
+   * ── 2. WHICH SHAPE IS IT, and what identity does it claim? ─────────────
+   *
+   * A JWT is `header.payload.signature`; a chat ticket is 64 hex characters
+   * with no dot. The ticket's identity comes from the SHARED STORE — never
+   * from the client, and the store only ever holds identities that a
+   * `protect`-authenticated HTTP call verified (33.14). The JWT path is
+   * unchanged from 33.1.
+   */
+  const isTicket = !raw.includes('.');
 
-  try {
-    decoded = verifyJwt(raw);
-  } catch (error) {
-    if (error?.name === 'TokenExpiredError') {
-      return fail(SOCKET_AUTH_REASONS.EXPIRED_TOKEN);
+  let claims;
+
+  if (isTicket) {
+    const identity = await consumeTicket(raw);
+
+    if (!identity) {
+      return fail(
+        isValidTicketShape(raw)
+          ? SOCKET_AUTH_REASONS.INVALID_TOKEN
+          : SOCKET_AUTH_REASONS.MALFORMED_TOKEN,
+      );
     }
 
-    return fail(
-      error?.name === 'JsonWebTokenError'
-        ? SOCKET_AUTH_REASONS.MALFORMED_TOKEN
-        : SOCKET_AUTH_REASONS.INVALID_TOKEN,
-    );
-  }
+    if (!identity.userId) return fail(SOCKET_AUTH_REASONS.INVALID_SUBJECT);
 
-  if (!decoded || typeof decoded !== 'object') {
-    return fail(SOCKET_AUTH_REASONS.INVALID_TOKEN);
-  }
+    /*
+     * The principal gates below cannot run on a ticket (it carries no
+     * `principalType`/`typ` claims) — they do not need to: the ticket was
+     * minted by /api/realtime/chat-ticket, which refuses verifier and kiosk
+     * principals before issuing anything.
+     */
+    claims = {
+      userId: identity.userId,
+      sessionId: identity.sessionId,
+      companyId: identity.companyId,
+      tokenVersion: identity.tokenVersion,
+    };
+  } else {
+    let decoded;
 
-  // ── 3. Principal gates FIRST, before anything else is interpreted
-  //       (mirrors protect's 30.6 rule, evaluated even earlier so the
-  //       internal reason is precise rather than incidental).
-  //
-  //       BGV verifier tokens are a separate internal principal and can
-  //       never ride a tenant surface.
-  if (decoded.principalType === 'BGV_VERIFIER') {
-    return fail(SOCKET_AUTH_REASONS.WRONG_PORTAL);
-  }
+    try {
+      decoded = verifyJwt(raw);
+    } catch (error) {
+      if (error?.name === 'TokenExpiredError') {
+        return fail(SOCKET_AUTH_REASONS.EXPIRED_TOKEN);
+      }
 
-  // Belt-and-braces: kiosk device + kiosk employee-context tokens are
-  // subject-less by construction (they carry `stationId`/`userId`, never
-  // `sub`), but refuse them explicitly so a future claim change can never
-  // open a chat socket — same posture as src/routes/realtimeRoutes.js.
-  if (KIOSK_TOKEN_TYPES.includes(String(decoded.typ || ''))) {
-    return fail(SOCKET_AUTH_REASONS.WRONG_PORTAL);
+      return fail(
+        error?.name === 'JsonWebTokenError'
+          ? SOCKET_AUTH_REASONS.MALFORMED_TOKEN
+          : SOCKET_AUTH_REASONS.INVALID_TOKEN,
+      );
+    }
+
+    if (!decoded || typeof decoded !== 'object') {
+      return fail(SOCKET_AUTH_REASONS.INVALID_TOKEN);
+    }
+
+    // ── 3. Principal gates FIRST, before anything else is interpreted
+    //       (mirrors protect's 30.6 rule, evaluated even earlier so the
+    //       internal reason is precise rather than incidental).
+    //
+    //       BGV verifier tokens are a separate internal principal and can
+    //       never ride a tenant surface.
+    if (decoded.principalType === 'BGV_VERIFIER') {
+      return fail(SOCKET_AUTH_REASONS.WRONG_PORTAL);
+    }
+
+    // Belt-and-braces: kiosk device + kiosk employee-context tokens are
+    // subject-less by construction (they carry `stationId`/`userId`, never
+    // `sub`), but refuse them explicitly so a future claim change can never
+    // open a chat socket — same posture as src/routes/realtimeRoutes.js.
+    if (KIOSK_TOKEN_TYPES.includes(String(decoded.typ || ''))) {
+      return fail(SOCKET_AUTH_REASONS.WRONG_PORTAL);
+    }
+
+    claims = {
+      userId: decoded.sub || decoded.id,
+      sessionId: decoded.sessionId,
+      companyId: decoded.companyId,
+      tokenVersion: decoded.tokenVersion,
+    };
   }
 
   // ── 4. Subject. Customer tokens carry `sub`; `id` is the legacy and
   //       platform shape (both fail the customer-validity check below).
-  const userId = decoded.sub || decoded.id;
+  const userId = claims.userId;
 
   if (!userId) return fail(SOCKET_AUTH_REASONS.INVALID_SUBJECT);
 
@@ -148,11 +206,11 @@ export const verifyChatSocketToken = async (
   //       keyed by verified claims — same perf note as protect).
   const [user, securitySession] = await Promise.all([
     findUser(userId),
-    decoded.sessionId
+    claims.sessionId
       ? findSession({
-          sessionId: decoded.sessionId,
+          sessionId: claims.sessionId,
           user: userId,
-          companyId: decoded.companyId || null,
+          companyId: claims.companyId || null,
           revokedAt: null,
           expiresAt: { $gt: now() },
         })
@@ -173,14 +231,14 @@ export const verifyChatSocketToken = async (
   // ── 7. Customer-token validity: rejects legacy `generateToken` tokens
   //       (no sessionId / no tokenVersion) and platform tokens alike.
   const customerTokenIsValid =
-    Boolean(decoded.sessionId) &&
-    decoded.tokenVersion !== undefined &&
-    String(decoded.companyId || '') === String(user.companyId || '') &&
-    Number(decoded.tokenVersion) === Number(user.tokenVersion || 0);
+    Boolean(claims.sessionId) &&
+    claims.tokenVersion !== undefined &&
+    String(claims.companyId || '') === String(user.companyId || '') &&
+    Number(claims.tokenVersion) === Number(user.tokenVersion || 0);
 
   if (!customerTokenIsValid) {
     return fail(
-      String(decoded.companyId || '') !== String(user.companyId || '')
+      String(claims.companyId || '') !== String(user.companyId || '')
         ? SOCKET_AUTH_REASONS.TENANT_MISMATCH
         : SOCKET_AUTH_REASONS.LEGACY_TOKEN,
     );

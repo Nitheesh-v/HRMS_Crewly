@@ -1,18 +1,29 @@
 // PHASE 33.8 — CHAT SOCKET CLIENT (socket.io-client singleton)
+// 33.14 — the handshake now carries a TICKET, not the customer JWT.
 //
 // Connects to the SAME ORIGIN through the dev/preview proxy
 // (vite server.proxy['/socket.io'] -> backend), so browser code never
-// hard-codes a host and never carries Redis knowledge. The tenant JWT goes
-// in the handshake AUTH payload only — never the query string, never a
-// header, never a log line.
+// hard-codes a host and never carries Redis knowledge.
+//
+// WHY A TICKET: the customer access token is an HttpOnly cookie now — no
+// JavaScript can read it — and the socket handshake deliberately refuses
+// cookies (33.1: a browser attaches a cookie automatically, which is exactly
+// the cross-site WebSocket-hijacking surface this handshake must not have).
+// So the page exchanges its cookie session for a 60-second ticket over
+// ordinary authenticated HTTP, and presents THAT in the auth payload. A
+// leaked ticket is worth nothing a minute later. The secret never rides the
+// query string; the socket server still reads the auth payload only.
 //
 // Failure behaviour is bounded: a refused handshake (FEATURE_UNAVAILABLE =
-// Redis down / chat disabled, UNAUTHORIZED = bad token) closes the socket
-// instead of retrying forever; the UI shows the "realtime unavailable"
-// banner and keeps working read-only through REST (33.4).
+// Redis down / chat disabled) closes the socket instead of retrying forever;
+// an UNAUTHORIZED handshake (ticket outlived its minute, or the session was
+// revoked) mints exactly ONE fresh ticket and lets the socket's own bounded
+// retry use it. The UI shows the "realtime unavailable" banner and keeps
+// working read-only through REST (33.4).
 
 import { io } from 'socket.io-client';
 
+import api from '../api.js';
 import store from '../../redux/store.js';
 import {
   realtimeStatusSet,
@@ -22,33 +33,108 @@ import {
   conversationsNudged,
 } from '../../redux/slices/chatSlice.js';
 
+const CHAT_TICKET_PATH = '/realtime/chat-ticket';
+
 let socket = null;
 
-export const connectChatSocket = () => {
+/*
+ * Lifecycle generation. The ticket is fetched over the network, so a page
+ * that unmounts mid-fetch (or is remounted, as React StrictMode does) must
+ * not be handed a socket nobody owns. Every connect records the generation it
+ * started in and drops its result if the generation moved on.
+ */
+let lifecycleEpoch = 0;
+
+/** One authenticated REST call → one short-lived ticket (or '' on refusal). */
+const fetchChatTicket = async () => {
+  try {
+    const response = await api.post(CHAT_TICKET_PATH);
+
+    // api.js already unwraps `data`; accept both shapes defensively so a
+    // response-shape change cannot silently kill realtime.
+    return (
+      response?.ticket ||
+      response?.data?.ticket ||
+      response?.data?.data?.ticket ||
+      ''
+    );
+  } catch {
+    // Redis down, chat disabled, session gone — the caller shows the banner
+    // and the page keeps working over REST.
+    return '';
+  }
+};
+
+export const connectChatSocket = async () => {
   if (socket) return socket;
 
-  const token = store.getState().auth?.token;
+  // The cookie is the session; the profile in the store is the only local
+  // proof that there IS a signed-in user to open a socket for.
+  if (!store.getState().auth?.user) return null;
 
-  if (!token) return null;
+  const epoch = lifecycleEpoch;
+
+  const ticket = await fetchChatTicket();
+
+  if (epoch !== lifecycleEpoch) return null; // unmounted while fetching
+  if (socket) return socket; // a parallel call won the race
+
+  if (!ticket) {
+    store.dispatch(realtimeStatusSet('unavailable'));
+
+    return null;
+  }
 
   socket = io({
     path: '/socket.io',
-    auth: { token },
+    auth: { token: ticket },
+    withCredentials: true,
     reconnectionAttempts: 6,
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,
   });
 
-  socket.on('connect', () => store.dispatch(realtimeStatusSet('connected')));
+  // At most one ticket re-mint per connection cycle: a refused handshake
+  // must never become an unbounded ticket-minting loop.
+  let reminted = false;
+
+  socket.on('connect', () => {
+    reminted = false;
+    store.dispatch(realtimeStatusSet('connected'));
+  });
 
   socket.on('disconnect', () => store.dispatch(realtimeStatusSet('idle')));
 
-  socket.on('connect_error', (err) => {
+  socket.on('connect_error', async (err) => {
     const message = String(err?.message ?? '');
 
-    if (message.includes('FEATURE_UNAVAILABLE') || message.includes('UNAUTHORIZED')) {
+    if (message.includes('FEATURE_UNAVAILABLE')) {
       store.dispatch(realtimeStatusSet('unavailable'));
       socket?.close(); // refused handshake: no infinite retry loop
+
+      return;
+    }
+
+    if (message.includes('UNAUTHORIZED')) {
+      /*
+       * The ticket expired (60s) before the reconnect landed, or the session
+       * was revoked. One fresh ticket is cheap and fixes the common case;
+       * anything else is a real refusal and closes the socket.
+       */
+      if (!reminted) {
+        reminted = true;
+
+        const fresh = await fetchChatTicket();
+
+        if (fresh && socket) {
+          socket.auth = { token: fresh };
+
+          return; // socket.io's own bounded retry re-handshakes with it
+        }
+      }
+
+      store.dispatch(realtimeStatusSet('unavailable'));
+      socket?.close();
 
       return;
     }
@@ -71,7 +157,9 @@ export const connectChatSocket = () => {
 // 33.8-fix — bounded manual recovery. A refused handshake closes the socket
 // by design (no infinite retry loop); once Redis / the API recovers, the
 // banner's Retry button re-handshakes exactly once per click.
-export const retryChatSocket = () => {
+export const retryChatSocket = async () => {
+  lifecycleEpoch += 1;
+
   if (socket) {
     socket.removeAllListeners();
     socket.close();
@@ -82,6 +170,8 @@ export const retryChatSocket = () => {
 };
 
 export const disconnectChatSocket = () => {
+  lifecycleEpoch += 1;
+
   if (!socket) return;
 
   socket.removeAllListeners();

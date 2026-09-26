@@ -2388,8 +2388,11 @@ Refusals use the existing error style with code `RATE_LIMITED` and a
 
 ## 22.5 Socket protocol (final, with its limits)
 
-Namespace/path `/chat-socket`; JWT in the handshake `auth` payload only (never
-query, header or body). Every event is answered with an ACK envelope
+Namespace/path `/chat-socket`; the secret in the handshake `auth` payload only
+(never query, header or body). Since 33.14 that secret is, for browsers, a
+**60-second chat ticket** minted by `POST /api/realtime/chat-ticket` (see §23) —
+non-browser clients can still present a customer JWT, and both shapes run the
+same gates. Every event is answered with an ACK envelope
 `{ ok: true, data }` or `{ ok: false, code, message }`.
 
 | Event (client → server) | Server → room | Identity budget |
@@ -2450,7 +2453,7 @@ manual step for the parts a hermetic test cannot own (two processes, real Redis)
 |---|---|---|---|
 | 1 | Tenant isolation — no cross-company reads, uploads or moderation | `chatConversations.test.js › getConversation 404s for other tenants and non-members`<br>`chatConversations.test.js › DIRECT create rejects self-chat and cross-company targets`<br>`chatHistory.test.js › non-member and cross-tenant callers get 404 before any message read`<br>`chatAttachments.test.js › a cross-tenant upload is refused with the same 404 shape`<br>`chatModeration.test.js › moderation never crosses the tenant boundary (404, no existence leak)` | Sign in as a user of another company and open a conversation id from tenant A: 404, never content |
 | 2 | Membership enforcement — read, history, join, send, edit, delete, readUpTo | `chatConversations.test.js › getConversation 404s for other tenants and non-members`<br>`chatHistory.test.js › non-member and cross-tenant callers get 404 before any message read`<br>`chatSocketSend.test.js › chat:join allowed for member, refused for non-member and other tenant`<br>`chatSocketSend.test.js › chat:message:send refused for non-member`<br>`chatEditDelete.test.js › chat:message:edit refused for non-member and for other tenant`<br>`chatEditDelete.test.js › chat:message:delete refused for non-member and for a member who is not the sender`<br>`chatReadMarkers.test.js › chat:readUpTo validates lastReadSeq and refuses non-members` | Remove yourself from a group in a second browser, then try to send: refused; history still readable |
-| 3 | Socket auth — missing/invalid/expired/foreign tokens, kiosk/candidate/platform, origin | `chatSocketFoundation.test.js › rejects a missing token`<br>`chatSocketFoundation.test.js › rejects an expired token`<br>`chatSocketFoundation.test.js › rejects the kiosk device token (typ:"kiosk")`<br>`chatSocketFoundation.test.js › rejects the kiosk employee-context token (typ:"kiosk-employee")`<br>`chatSocketFoundation.test.js › rejects every platform role — platform auth is AdminSession, not a tenant JWT`<br>`chatSocketFoundation.test.js › candidate portals hold no JWT at all — secure tokens ride the URL, never a socket`<br>`chatSocketFoundation.test.js › a token claiming a DIFFERENT company than the Mongo user is refused`<br>`chatSocketFoundation.test.js › reads the token from the auth payload only — never query, header or body`<br>`chatSocketFoundation.test.js › refuses a MISSING origin — stricter than app.js (fail closed)` | In devtools, clear the token and (re)load chat: the socket is refused and the UI says so |
+| 3 | Socket auth — missing/invalid/expired/foreign tokens, kiosk/candidate/platform, origin | `chatSocketFoundation.test.js › rejects a missing token`<br>`chatSocketFoundation.test.js › rejects an expired token`<br>`chatSocketFoundation.test.js › rejects the kiosk device token (typ:"kiosk")`<br>`chatSocketFoundation.test.js › rejects the kiosk employee-context token (typ:"kiosk-employee")`<br>`chatSocketFoundation.test.js › rejects every platform role — platform auth is AdminSession, not a tenant JWT`<br>`chatSocketFoundation.test.js › candidate portals hold no JWT at all — secure tokens ride the URL, never a socket`<br>`chatSocketFoundation.test.js › a token claiming a DIFFERENT company than the Mongo user is refused`<br>`chatSocketFoundation.test.js › reads the token from the auth payload only — never query, header or body`<br>`chatSocketFoundation.test.js › refuses a MISSING origin — stricter than app.js (fail closed)` | In devtools, delete the cookies and (re)load chat: the socket is refused and the UI says so (a signed-out or revoked session cannot mint a ticket) |
 | 4 | Redis down — socket unavailable, REST unaffected, limits never fail open | `chatSocketFoundation.test.js › REDIS_ENABLED=false ⇒ adapter refused and NO client is created`<br>`chatSocketFoundation.test.js › attach() with Redis unavailable reports FEATURE_UNAVAILABLE and admits nothing`<br>`chatSocketResilience.test.js › a throwing send service becomes a RETRYABLE ack, never a rejection`<br>`chatHardening.test.js › with Redis intentionally disabled the limiter still limits (local tier)`<br>`chatHardening.test.js › a dead Redis degrades to the bounded local bucket, never to unlimited`<br>`chatHardening.test.js › a limiter store that throws is a REFUSAL, never an open door`<br>`chatHardening.test.js › a normal request passes while Redis is dead (degrade, not fail-closed)` | Set `REDIS_ENABLED=false` in a NEW terminal, restart the API: chat shows unavailable, history still loads (§J step 5) |
 | 5 | Idempotency — a retried send/delete/create never duplicates | `chatSocketSend.test.js › idempotency: same clientMessageId twice returns same message, one broadcast`<br>`chatConversations.test.js › DIRECT create is idempotent and tenant-scoped`<br>`chatEditDelete.test.js › chat:message:delete is idempotent: second delete ok with same deletedAt, no re-broadcast`<br>`chatModeration.test.js › moderate-delete is idempotent: retry reports changed:false and writes no new audit` | Double-click Send with a slow network: one bubble appears |
 | 6 | Edit concurrency + history | `chatEditDelete.test.js › chat:message:edit with a stale expectedEditVersion returns CONFLICT_EDIT_VERSION untouched`<br>`chatEditDelete.test.js › chat:message:edit updates text, bumps editVersion, appends history, broadcasts once`<br>`chatEditDelete.test.js › chat:message:edit refuses beyond the history cap (20) with HISTORY_LIMIT_REACHED`<br>`chatEditDelete.test.js › chat:message:edit payload validation rejects bad expectedEditVersion and empty text` | Edit the same message in two tabs: the second gets the conflict sentence, not a silent overwrite |
@@ -2502,3 +2505,60 @@ npm run config:check       # chat config lines (exit 1 on real problems)
 
 Live, opt-in, two-instance verification: `docs/PHASE_33_CHAT_RUNBOOKS.md` §7 and
 the handoff checklist in §J of the 33.12 build prompt.
+
+---
+
+## 23. Cross-cutting: the browser session became a cookie (33.14)
+
+Session work, not a chat unit — recorded here because it changes **how the chat
+handshake authenticates** and therefore what §22.5 describes.
+
+The customer access token used to be returned in the login/refresh body, kept in
+`localStorage['infolexus_token']`, and presented to the socket as a JWT. Any
+script on the page could read that token and post it to another host. It is now
+an **HttpOnly cookie** (`crewly_access`, `Path=/api`) that JavaScript cannot
+read, and the SPA holds no credential at all. Full rationale, CSRF model,
+verification steps and incident table: `docs/COOKIE_SESSION.md`.
+
+Consequences for chat, in the order they matter:
+
+1. **The handshake secret is now a ticket** — `POST /api/realtime/chat-ticket`
+   binds a 64-hex, crypto-random ticket in the shared store to the verified
+   `{userId, companyId, sessionId, tokenVersion}` for 60 s
+   (`CHAT_TICKET_TTL_SECONDS`). Identity stays 100 % server-derived and the
+   SAME Mongo gates run as before: ACTIVE user, live session, matching
+   `tokenVersion`, ACTIVE company. A theft revocation (`tokenVersion` bump),
+   a logout, or a suspended tenant kills the next handshake.
+2. **33.1's "no cookies on sockets" decision is untouched.** The handshake still
+   reads `socket.handshake.auth.token` only; it never reads the cookie jar.
+   `Path=/api` (never `/`) means the browser does not even attach the access
+   cookie to `/socket.io`. That is what keeps cross-site WebSocket hijacking
+   structurally impossible rather than "handled".
+3. **The ticket is reusable inside its TTL, on purpose** — a socket reconnects
+   on its own and cannot mint a ticket mid-reconnect. It is not ambient
+   authority (the browser sends it explicitly) and it is worthless after a
+   minute. The SSE ticket keeps its single-use contract: `consumeReusable()`
+   refuses anything whose stored mode is not reusable, and `consume()` is still
+   atomic GET+DEL.
+4. **Redis down** → `/chat-ticket` answers `503`; the UI shows the
+   "realtime unavailable" banner and REST keeps working. Nothing fails open.
+5. **The platform portal is unaffected** — super-admin/support/billing
+   authenticate against `AdminSession` with an explicit bearer token kept in its
+   own key (`infolexus_platform_token`), so a customer login can never leave a
+   stray platform header on a tenant call, or the reverse.
+
+Proof: `Backend/test/cookieSession.test.js` (19 hermetic tests — cookie shape and
+paths, append-don't-clobber, real `Max-Age=0` deletes, the CSRF decision table,
+`protect`'s source precedence, the socket refusing cookies, ticket reuse vs the
+SSE single-use contract, ticket refusals for revoked sessions / bumped
+tokenVersion / suspended tenants, and the frontend's "no token anywhere" pins).
+`Backend/test/sessionRefreshResilience.test.js` (7) still covers the rotation
+race, with its client-adoption pin deliberately **inverted** (there is no
+token to adopt any more).
+
+```powershell
+# From Backend/
+npm run test:cookie     # this unit
+npm run test:session    # the rotation race (33.13)
+npm run test:all        # the whole suite
+```

@@ -5,7 +5,10 @@ import {
   registerCompany,
 } from "../controllers/authController.js";
 import * as securityAuthNS from "../controllers/securityAuthController.js";
-import { protect } from "../middlewares/authMiddleware.js";
+import {
+  protect,
+  requireCsrfProof,
+} from "../middlewares/authMiddleware.js";
 import { tenantContext } from "../middlewares/tenantMiddleware.js";
 import * as rateLimitNS from "../middlewares/securityRateLimit.js";
 import {
@@ -100,7 +103,19 @@ router.post(
 
 router.post("/login", loginRateLimit, loginValidator, validate, login);
 
-router.post("/refresh", refreshRateLimit, refresh);
+/*
+ * 33.14 — the ONLY cookie-authenticated route outside `protect`. It rotates
+ * tokens, so it takes the same CSRF proof as every other write: a cross-site
+ * page cannot set a custom header without a preflight this API never
+ * approves. (It also cannot read the response, but an unreadable write is
+ * still a write.)
+ */
+router.post(
+  "/refresh",
+  refreshRateLimit,
+  requireCsrfProof,
+  refresh,
+);
 
 router.post("/forgot-password", passwordRateLimit, forgotPassword);
 

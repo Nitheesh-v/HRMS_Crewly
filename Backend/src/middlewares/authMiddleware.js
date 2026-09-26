@@ -4,6 +4,7 @@ import SecuritySession from '../models/SecuritySession.js';
 import User from '../models/User.js';
 import ApiError from '../utils/ApiError.js';
 import asyncHandler from '../utils/asyncHandler.js';
+import { getAccessToken, getRefreshToken } from '../utils/tokenService.js';
 import { markPerf } from './perfTiming.js';
 
 const PLATFORM_ROLES = [
@@ -13,22 +14,130 @@ const PLATFORM_ROLES = [
   'BILLING_ADMIN',
 ];
 
+export const CSRF_HEADER = 'x-requested-with';
+export const CSRF_HEADER_VALUE = 'XMLHttpRequest';
+
+/** Methods a cross-site form can send; they must never change state. */
+const CSRF_SAFE_METHODS = ['GET', 'HEAD', 'OPTIONS'];
+
+/**
+ * 33.14 — CSRF GATE FOR COOKIE-AUTHENTICATED WRITES.
+ *
+ * A cookie is ambient authority: the browser attaches it to any request to
+ * the API, including one a hostile page triggered. The header below is the
+ * proof that the call came from our own JavaScript (the axios layer sets it
+ * on every request). A cross-site caller cannot add a custom header without
+ * a CORS preflight, and the allowlist in src/app.js never approves a
+ * preflight from an unknown origin — so it can send the request, but not
+ * the proof.
+ *
+ * Scope, deliberately narrow:
+ *   · only COOKIE-authenticated requests are gated (a Bearer caller already
+ *     proved intent by holding a token no page can borrow);
+ *   · only state-changing methods (a cross-site GET must stay harmless, and
+ *     it is — the read surface is tenant-scoped, not action-taking);
+ *   · the socket handshake is not affected at all: it authenticates with a
+ *     short-lived ticket, never a cookie (33.1's locked decision).
+ *
+ * Pure and exported so the decision is testable without a request object.
+ */
+export const needsCsrfHeader = ({
+  method,
+  authSource,
+  requestedWith,
+} = {}) =>
+  authSource === 'cookie' &&
+  !CSRF_SAFE_METHODS.includes(String(method || 'GET').toUpperCase()) &&
+  requestedWith !== CSRF_HEADER_VALUE;
+
+/**
+ * Express-middleware form of the same decision, for cookie-authenticated
+ * routes that do NOT run `protect` — today exactly one: POST /auth/refresh,
+ * which authenticates with the refresh cookie and rotates tokens. It is
+ * state-changing, so a cross-site page must not be able to trigger it.
+ *
+ * `req.authSource` is reused when `protect` already resolved it; on the
+ * refresh route there is no access token at all, so the presence of the
+ * refresh cookie IS the cookie authentication.
+ */
+export const requireCsrfProof = (req, res, next) => {
+  const authSource =
+    req.authSource || (getRefreshToken(req) ? 'cookie' : 'none');
+
+  const requestedWith = req.get
+    ? req.get('X-Requested-With')
+    : req.headers?.[CSRF_HEADER];
+
+  if (!needsCsrfHeader({ method: req.method, authSource, requestedWith })) {
+    return next();
+  }
+
+  return res.status(403).json({
+    statusCode: 403,
+    success: false,
+    code: 'CSRF_HEADER_REQUIRED',
+    message: 'This request was not sent by the Crewly app.',
+  });
+};
+
 /*
  * Validates:
  * 1. Super Admin JWT → AdminSession is checked later by superAdminSession.
  * 2. Customer JWT → tokenVersion + active SecuritySession are checked here.
+ *
+ * 33.14 — TOKEN SOURCES, in precedence order:
+ *   1. `Authorization: Bearer …` — non-browser clients, the platform portal
+ *      (its AdminSession token is unchanged), kiosk devices, verifiers, and
+ *      any script. An explicit header always wins: it is the caller stating
+ *      which identity it means, and it cannot be attached by a hostile page.
+ *   2. the HttpOnly `crewly_access` cookie — the customer SPA, which no
+ *      longer keeps any token in JavaScript.
+ * Everything below is byte-for-byte the same accept/reject logic as before.
  */
 export const protect = asyncHandler(async (req, res, next) => {
   const authorization = req.headers.authorization;
 
-  if (!authorization?.startsWith('Bearer ')) {
+  const bearerToken = authorization?.startsWith('Bearer ')
+    ? authorization.slice(7)
+    : '';
+
+  const cookieToken = bearerToken ? '' : getAccessToken(req);
+
+  const token = bearerToken || cookieToken;
+
+  req.authSource = bearerToken ? 'bearer' : cookieToken ? 'cookie' : 'none';
+
+  if (!token) {
     throw ApiError.unauthorized('Not authorized — no token provided');
+  }
+
+  if (
+    needsCsrfHeader({
+      method: req.method,
+      authSource: req.authSource,
+      requestedWith: req.get
+        ? req.get('X-Requested-With')
+        : req.headers?.[CSRF_HEADER],
+    })
+  ) {
+    /*
+     * The error pipeline (utils/errorHandler) does not carry a custom
+     * `code`, and the SPA needs to tell this apart from an expired session,
+     * so the refusal is written directly — same shape as the 409 refresh
+     * race (33.13).
+     */
+    return res.status(403).json({
+      statusCode: 403,
+      success: false,
+      code: 'CSRF_HEADER_REQUIRED',
+      message: 'This request was not sent by the Crewly app.',
+    });
   }
 
   let decoded;
 
   try {
-    decoded = jwt.verify(authorization.slice(7), env.JWT_SECRET);
+    decoded = jwt.verify(token, env.JWT_SECRET);
   } catch (error) {
     const message =
       error.name === 'TokenExpiredError'

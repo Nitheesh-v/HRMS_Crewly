@@ -24,6 +24,7 @@
 import { Router } from 'express';
 import env from '../config/env.js';
 import { protect } from '../middlewares/authMiddleware.js';
+import { CHAT_TICKET_TTL_SECONDS } from '../socket/socketConfig.js';
 import { tenantContext } from '../middlewares/tenantMiddleware.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import ApiError from '../utils/ApiError.js';
@@ -89,6 +90,77 @@ router.post(
     return ApiResponse.success(res, {
       message: 'Realtime ticket issued',
       data: issued, // { ticket, expiresInSeconds }
+    });
+  })
+);
+
+/**
+ * POST /api/realtime/chat-ticket — 33.14.
+ *
+ * WHY THIS EXISTS
+ *   The customer SPA no longer keeps an access token in JavaScript: it rides
+ *   in the HttpOnly `crewly_access` cookie, which the chat socket handshake
+ *   deliberately refuses to read (33.1: no cookies on sockets — a cookie is
+ *   attached automatically by the browser, which is precisely the CSRF
+ *   surface a WebSocket handshake would otherwise hand an attacker). So the
+ *   client mints a short-lived ticket HERE — over ordinary authenticated
+ *   HTTP, where the cookie already carries the session — and presents it in
+ *   the Socket.IO auth payload exactly like the token it replaces.
+ *
+ * DIFFERENCE FROM /ticket (the SSE stream's):
+ *   · carries sessionId + tokenVersion, so the socket re-runs the same Mongo
+ *     gates as `protect` and a revoked session/tokenVersion kills the socket;
+ *   · valid for its whole 60s TTL instead of exactly once, because a socket
+ *     reconnects on its own and cannot fetch a fresh ticket mid-reconnect
+ *     (the SSE single-use contract is untouched — the stored `reusable` flag
+ *     decides, and consume() still deletes atomically).
+ *
+ * Same principal gates as /ticket: plain customer users only.
+ */
+router.post(
+  '/chat-ticket',
+  protect,
+  tenantContext,
+  asyncHandler(async (req, res) => {
+    const principal = req.user?.principalType;
+
+    if (principal && principal !== 'USER') {
+      throw ApiError.unauthorized('Invalid token for this portal');
+    }
+
+    if (!req.user?._id || !req.companyId) {
+      throw ApiError.unauthorized('Invalid session identity');
+    }
+
+    if (req.user?.typ === 'kiosk') {
+      throw ApiError.unauthorized('Invalid token for this portal');
+    }
+
+    const tickets = getRealtimeTickets();
+
+    let issued;
+
+    try {
+      issued = await tickets.issue({
+        userId: String(req.user._id),
+        companyId: String(req.companyId),
+        sessionId: req.sessionId,
+        tokenVersion: req.user.tokenVersion ?? 0,
+        reusable: true,
+        ttl: CHAT_TICKET_TTL_SECONDS,
+      });
+    } catch {
+      /*
+       * Redis down → chat realtime is unavailable by design (33.11). Say that
+       * instead of leaking a 500 from the ticket store; the client shows the
+       * "realtime unavailable" banner and keeps working over REST.
+       */
+      throw new ApiError(503, 'Realtime is not available');
+    }
+
+    return ApiResponse.success(res, {
+      message: 'Chat ticket issued',
+      data: issued,
     });
   })
 );

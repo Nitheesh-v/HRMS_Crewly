@@ -11,6 +11,7 @@ import ApiResponse from "../utils/ApiResponse.js";
 import asyncHandler from "../utils/asyncHandler.js";
 
 import {
+  clearAccessCookie,
   clearRefreshCookie,
   revokeAllUserSessions,
   revokeCurrentSession,
@@ -197,6 +198,10 @@ export const refresh =
           statusCode === 403
         ) {
           clearRefreshCookie(res);
+
+          // 33.14 — the session is dead, so the (already useless) access
+          // cookie goes with it. Transient failures still clear neither.
+          clearAccessCookie(res);
         }
 
         throw new ApiError(

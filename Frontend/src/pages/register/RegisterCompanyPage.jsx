@@ -62,7 +62,9 @@ const RegisterCompanyPage = () => {
       const payload = { ...form };
       delete payload.confirmPassword;
       const data = await authService.registerCompany(payload);
-      login(data.user, data.token); // auto login after register
+      // 33.14 — auto login after register: cookies are set by the server,
+      // so only the profile goes into the store.
+      login(data.user);
       navigate(getDashboardPath(data.user.role), { replace: true });
     } catch (err) {
       setError(err.message);

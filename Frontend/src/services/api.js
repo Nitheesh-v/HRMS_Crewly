@@ -1,7 +1,6 @@
 import axios from 'axios';
 import store from '../redux/store.js';
 import {
-  accessTokenRefreshed,
   logout as logoutAction,
 } from '../redux/slices/AuthSlices.js';
 
@@ -110,123 +109,52 @@ const sleep = (ms) =>
     setTimeout(resolve, ms);
   });
 
-const readStoredToken = () =>
-  localStorage.getItem('infolexus_token');
-
 /*
- * One rotation, one writer.
+ * 33.14 — THE CLIENT NO LONGER TOUCHES A TOKEN AT ALL.
  *
- * The refresh token is SINGLE USE server-side, and the cookie is shared by
- * every tab of the browser. Two tabs whose access token expires together used
- * to rotate the same token twice: the second rotation looked like theft, the
- * whole family was revoked and User.tokenVersion was bumped — every tab and
- * every device signed out, mid-work. (That is the "session expired too fast"
- * bug.)
+ * The access token is an HttpOnly cookie the server sets on login and on
+ * every rotation; JavaScript cannot read it, so nothing here stores, adopts,
+ * or re-reads one. (The platform portal's bearer token is a different
+ * session and is attached by the request interceptor below.)
  *
- * So: the tab that wins the race writes the token to localStorage; the others
- * see it changed and adopt it instead of rotating again.
+ * What stays, and why:
+ *   · ONE ROTATION, ONE WRITER. The refresh token is single use and the
+ *     cookie is shared by every tab. Tabs that expire together used to
+ *     rotate twice; the second presentation looked like theft and signed the
+ *     person out of every device. The cross-tab lock serialises them — and
+ *     the loser now gets 409 REFRESH_IN_PROGRESS (server-side grace window,
+ *     33.13) which it retries, because the winner's fresh cookie is already
+ *     installed in this browser.
+ *   · The retry is BOUNDED (3 attempts with jitter), never a loop.
  */
 const requestRefresh = async () => {
-  const response = await refreshClient
-    .post('/auth/refresh', {});
+  // No token to read and none to write back: the response's Set-Cookie IS
+  // the new session. The separate client keeps the response interceptor of
+  // the main one from intercepting this call.
+  const response = await refreshClient.post('/auth/refresh', {});
 
-  const payload =
-    response?.data?.data ??
-    response?.data ??
-    {};
-
-  /*
-   * Supports both existing backend response names:
-   * accessToken and token.
-   */
-  const token =
-    payload.accessToken ||
-    payload.token;
-
-  if (!token) {
-    throw new Error(
-      'Refresh response did not contain an access token',
-    );
-  }
-
-  localStorage.setItem(
-    'infolexus_token',
-    token,
-  );
-
-  store.dispatch(
-    accessTokenRefreshed(token),
-  );
-
-  return token;
+  return response?.data ?? {};
 };
 
-const performRefresh = async (tokenBeforeRefresh) => {
-  /*
-   * Another tab refreshed while this one was waiting for the cross-tab lock:
-   * its token is already in localStorage, so there is nothing to rotate.
-   */
-  const current = readStoredToken();
-
-  if (
-    current &&
-    tokenBeforeRefresh &&
-    current !== tokenBeforeRefresh
-  ) {
-    store.dispatch(
-      accessTokenRefreshed(current),
-    );
-
-    return current;
-  }
-
+const performRefresh = async () => {
   let lastError = null;
 
-  for (
-    let attempt = 0;
-    attempt < 3;
-    attempt += 1
-  ) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       return await requestRefresh();
     } catch (error) {
       lastError = error;
 
-      const status =
-        error?.response?.status;
-
-      const code =
-        error?.response?.data?.code;
+      const status = error?.response?.status;
+      const code = error?.response?.data?.code;
 
       /*
-       * 409 REFRESH_IN_PROGRESS: another client rotated first and its cookie
-       * is already in this browser. Waiting briefly and retrying is the whole
+       * 409 REFRESH_IN_PROGRESS: another tab rotated first and its cookie is
+       * already in this browser. Waiting briefly and retrying is the whole
        * recovery — no logout, no re-login.
        */
-      if (
-        (code === 'REFRESH_IN_PROGRESS' ||
-          status === 409) &&
-        attempt < 2
-      ) {
-        await sleep(
-          REFRESH_RETRY_MS +
-            Math.random() * REFRESH_RETRY_MS,
-        );
-
-        const afterRace =
-          readStoredToken();
-
-        if (
-          afterRace &&
-          tokenBeforeRefresh &&
-          afterRace !== tokenBeforeRefresh
-        ) {
-          store.dispatch(
-            accessTokenRefreshed(afterRace),
-          );
-
-          return afterRace;
-        }
+      if ((code === 'REFRESH_IN_PROGRESS' || status === 409) && attempt < 2) {
+        await sleep(REFRESH_RETRY_MS + Math.random() * REFRESH_RETRY_MS);
 
         continue;
       }
@@ -243,10 +171,9 @@ const performRefresh = async (tokenBeforeRefresh) => {
  * single refresh — and, when the browser has the Web Locks API, so does every
  * other tab (a real cross-tab mutex, no extra dependency).
  */
-const refreshAccessToken = (tokenBeforeRefresh) => {
+const refreshAccessToken = () => {
   if (!refreshPromise) {
-    const run = () =>
-      performRefresh(tokenBeforeRefresh);
+    const run = () => performRefresh();
 
     const settled =
       globalThis.navigator?.locks?.request
@@ -264,19 +191,45 @@ const refreshAccessToken = (tokenBeforeRefresh) => {
   return refreshPromise;
 };
 
-// Always attach the latest token from localStorage.
+/*
+ * 33.14 — WHAT EVERY REQUEST CARRIES.
+ *
+ *  · X-Requested-With: the CSRF proof the API requires on cookie-authenticated
+ *    writes. The cookie is attached by the browser; this header is the part a
+ *    hostile page cannot add (a custom header needs a CORS preflight, and the
+ *    API never approves one from an unknown origin).
+ *  · Authorization: ONLY for the platform portal (super-admin/support/billing),
+ *    whose AdminSession is a bearer token by design. A customer request never
+ *    sends one — there is no customer token in JavaScript to send — so the
+ *    cookie is the only identity it can present.
+ */
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem(
-    'infolexus_token',
-  );
+  config.headers = config.headers || {};
 
-  if (token) {
-    config.headers =
-      config.headers || {};
+  config.headers['X-Requested-With'] = 'XMLHttpRequest';
 
-    config.headers.Authorization =
-      `Bearer ${token}`;
+  const user = getStoredUser();
+
+  const platformToken = PLATFORM_ROLES.includes(user?.role)
+    ? localStorage.getItem('infolexus_platform_token')
+    : '';
+
+  if (platformToken) {
+    config.headers.Authorization = `Bearer ${platformToken}`;
   }
+
+  return config;
+});
+
+/*
+ * The refresh call must carry the CSRF header too: it is a state-changing
+ * POST (it rotates the refresh token). It deliberately has no Authorization
+ * header — even for the platform portal — so it can never be confused with a
+ * platform session.
+ */
+refreshClient.interceptors.request.use((config) => {
+  config.headers = config.headers || {};
+  config.headers['X-Requested-With'] = 'XMLHttpRequest';
 
   return config;
 });
@@ -330,33 +283,12 @@ api.interceptors.response.use(
 
       try {
         /*
-         * The token this request actually carried. If another tab has already
-         * replaced it, the refresh becomes a no-op read instead of a rotation.
+         * 33.14 — nothing to swap here. The refresh answered with a new
+         * HttpOnly cookie, and the browser attaches it to the retry
+         * automatically; there is no header to rewrite (and no token in
+         * JavaScript to rewrite it with).
          */
-        const usedHeader =
-          originalRequest.headers?.Authorization ??
-          originalRequest.headers?.authorization ??
-          (typeof originalRequest.headers?.get ===
-          'function'
-            ? originalRequest.headers.get(
-                'Authorization',
-              )
-            : null);
-
-        const usedToken =
-          typeof usedHeader === 'string' &&
-          usedHeader.startsWith('Bearer ')
-            ? usedHeader.slice(7)
-            : null;
-
-        const token =
-          await refreshAccessToken(usedToken);
-
-        originalRequest.headers =
-          originalRequest.headers || {};
-
-        originalRequest.headers.Authorization =
-          `Bearer ${token}`;
+        await refreshAccessToken();
 
         return api(originalRequest);
       } catch (refreshError) {

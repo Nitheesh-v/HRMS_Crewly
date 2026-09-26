@@ -60,6 +60,19 @@ export const CHAT_ADAPTER_READY_TIMEOUT_MS = 5_000;
 export const CHAT_RECONNECT_BASE_MS = 1_000;
 export const CHAT_RECONNECT_MAX_MS = 15_000;
 
+/**
+ * 33.14 — LIFETIME OF THE CHAT HANDSHAKE TICKET.
+ *
+ * The browser stores no access token in JavaScript any more (it is an
+ * HttpOnly cookie, 33.14), and the handshake still refuses cookies (33.1),
+ * so the client mints one of these over authenticated HTTP and presents it
+ * in the auth payload. 60 s is deliberately SHORT: it is long enough to
+ * cover a socket reconnect (which cannot make a REST call mid-flight) and
+ * short enough that a leaked ticket is worthless almost immediately. It is
+ * not ambient authority — nothing attaches it to a request automatically.
+ */
+export const CHAT_TICKET_TTL_SECONDS = 60;
+
 // ── Stable client-facing error contracts ────────────────────────────────────
 
 /**

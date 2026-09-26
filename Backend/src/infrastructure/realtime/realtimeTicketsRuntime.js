@@ -21,6 +21,10 @@ export const getRealtimeTickets = () => {
         throw new ApiError(503, 'Realtime delivery is not enabled on this instance');
       },
       consume: async () => null,
+
+      // 33.14 — the socket handshake's read-only consume. Same fail-closed
+      // answer when the shared store is not configured on this instance.
+      consumeReusable: async () => null,
     };
   }
 
