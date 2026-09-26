@@ -110,6 +110,50 @@ report.push({ name: 'REALTIME_ENABLED', status: String(parseRealtimeEnabled(proc
 const { parseSlowRequestThresholdMs } = await import('../src/infrastructure/observability/observabilityConfig.js');
 report.push({ name: 'OBSERVABILITY_SLOW_REQUEST_MS', status: `valid (${parseSlowRequestThresholdMs(process.env)}ms effective)` });
 
+// ── CHAT HARDENING (33.11 — enablement, payload caps, limiter tier) ─────────
+const { parseChatSocketEnabled, CHAT_MAX_HTTP_BUFFER_BYTES } = await import('../src/socket/socketConfig.js');
+const { describeFrameCaps } = await import('../src/utils/chatPayloadCaps.js');
+
+const chatEnabled = parseChatSocketEnabled(process.env);
+report.push({ name: 'CHAT_SOCKET_ENABLED', status: String(chatEnabled) });
+
+// Chat realtime is the ONE subsystem that cannot degrade: without Redis the
+// adapter cannot fan out across instances, so every socket connection is
+// refused FEATURE_UNAVAILABLE (33.1).
+//
+// DELIBERATELY A WARNING, NOT A BLOCKED DEPLOYMENT. The product already
+// handles this shape truthfully — the API starts, REST keeps working, sockets
+// are refused with a stable code, and the diagnostics block reports which
+// reason. Pre-flight must not contradict the product's own behaviour by
+// refusing to start it; it must make the trade-off impossible to miss.
+const chatWithoutRedis = chatEnabled && !redisConfig.enabled;
+report.push({
+  name: 'CHAT_REALTIME_DEPENDENCY',
+  status: chatWithoutRedis
+    ? 'WARNING: chat enabled with Redis off — every socket connection will be refused (set CHAT_SOCKET_ENABLED=false for an honest disabled state, or enable Redis)'
+    : 'ok',
+});
+
+// The transport must be able to carry what the product allows; this is the
+// same law the test suite pins (utils/chatPayloadCaps.js).
+const frameCaps = describeFrameCaps(CHAT_MAX_HTTP_BUFFER_BYTES);
+report.push({
+  name: 'CHAT_SOCKET_FRAME_CAP',
+  status: `${frameCaps.capBytes} bytes (worst-case frame ${frameCaps.worstCaseFrameBytes}, ${frameCaps.sufficient ? 'sufficient' : 'INSUFFICIENT'})`,
+});
+if (!frameCaps.sufficient) {
+  problems.push('chat socket frame cap is smaller than the product worst-case legal frame');
+}
+
+// Abuse controls follow the same tier as every other limiter (32.4): shared
+// in Redis, or the bounded per-process bucket — never unlimited.
+report.push({
+  name: 'CHAT_RATE_LIMIT_TIER',
+  status: redisConfig.enabled
+    ? 'shared (Redis) — one budget across instances'
+    : 'local per-process (degraded but ENFORCED — never unlimited)',
+});
+
 // ── EMAIL / STORAGE (feature-off capable; never validated as mandatory) ─────
 for (const name of ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_FROM']) {
   report.push(state(name, process.env[name]));

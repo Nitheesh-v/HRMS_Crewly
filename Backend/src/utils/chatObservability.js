@@ -35,6 +35,7 @@ export const CHAT_LIMIT_ACTIONS = Object.freeze([
   'message.edit',
   'message.delete',
   'message.moderateDelete',
+  'conversation.moderateState',
   'attachment.upload',
   'attachment.download',
   'socket.join',

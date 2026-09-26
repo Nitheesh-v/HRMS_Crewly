@@ -40,6 +40,11 @@ own runbooks.
 - Users: history loads and pages work, but the header shows realtime
   unavailable and sends fail with `Chat realtime is unavailable right now.
   History still loads read-only.`
+- **Platform diagnostics** (Super Admin, `health:read`): the `chat.realtime`
+  block shows `state: "UNAVAILABLE"` with a reason word (`REDIS_DISABLED`,
+  `REDIS_ERROR`, `REDIS_CONNECT_TIMEOUT`, `REDIS_MISCONFIGURED`,
+  `ADAPTER_FAILURE`) on the affected instance. `state: "DISABLED"` means chat
+  was never enabled here — check `CHAT_SOCKET_ENABLED`, not Redis.
 - `npm run redis:check` reports the connection is not usable.
 
 ### IMPACT
@@ -145,6 +150,10 @@ own runbooks.
 
 ### DETECT
 
+- **Platform diagnostics**: `chat.limits` shows the policy in force (maximum +
+  window per action), and the `counters` section shows
+  `chat.rate_limited{action}` — compare what users hit against what the policy
+  actually allows.
 - Log lines `chat.rate_limited` (warn) — bounded metadata only:
   `surface`, `action`, `tier`, `count`, `maximum`, `windowMs`, `companyId`,
   `userId`.
@@ -384,11 +393,12 @@ npm run dev
 cd Backend
 npm run redis:check
 
-# Environment sanity (prints statuses, never secret values)
+# Environment sanity (prints statuses, never secret values) — now includes
+# chat enablement, the socket frame-cap law and the limiter tier
 cd Backend
 npm run config:check
 
-# Chat abuse controls + payload caps (hermetic, no Redis/Mongo)
+# Chat abuse controls + payload caps + wiring (hermetic, no Redis/Mongo)
 cd Backend
 node --test test/chatHardening.test.js
 

@@ -2,6 +2,8 @@ import mongoose from 'mongoose';
 // Phase 32.12 — bounded diagnostics aggregates (secret-free by construction).
 import { getRedisHealth } from '../../config/redis.js';
 import { getRealtimeGateway } from '../../infrastructure/realtime/realtimeGateway.js';
+// 33.11 — chat hardening view (realtime state, payload caps, limit policy).
+import { getChatDiagnostics } from '../../services/chat/chatDiagnosticsService.js';
 import { processDiagnosticsSnapshot } from '../../infrastructure/observability/processDiagnostics.js';
 import { getMetricsRegistry } from '../../infrastructure/observability/metricsRegistry.js';
 import { parseSlowRequestThresholdMs } from '../../infrastructure/observability/observabilityConfig.js';
@@ -968,6 +970,10 @@ export const diagnostics = async (req, res) => {
       mongo: { connected: mongoose.connection.readyState === 1 },
       redis: getRedisHealth(),
       realtime: realtime.describeDiagnostics(),
+      // 33.11 — chat hub: whether realtime is up on THIS instance and why not,
+      // whether the transport can carry the product's maximum payload, and the
+      // rate-limit policy in force. Numbers and safe words only.
+      chat: getChatDiagnostics(),
       counters: getMetricsRegistry().snapshot(),
       thresholds: { slowRequestMs: parseSlowRequestThresholdMs() },
     }, 'Platform diagnostics');

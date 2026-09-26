@@ -45,6 +45,9 @@ export const CHAT_REST_LIMITS = Object.freeze({
   'message.history': { windowMs: 60 * 1000, maximum: 60 },
   'message.read': { windowMs: 60 * 1000, maximum: 120 },
   'message.moderateDelete': { windowMs: 60 * 1000, maximum: 30 },
+  // Locks and unlocks are state changes that notify and wake every member —
+  // cheap for a moderator to do once, expensive to do in a loop.
+  'conversation.moderateState': { windowMs: 60 * 1000, maximum: 30 },
   'attachment.upload': { windowMs: 10 * 60 * 1000, maximum: 20 },
   'attachment.download': { windowMs: 60 * 1000, maximum: 120 },
 });
@@ -67,6 +70,7 @@ const REST_MESSAGES = Object.freeze({
   'message.history': 'Too many history requests. Please slow down.',
   'message.read': 'Too many read updates. Please slow down.',
   'message.moderateDelete': 'Too many moderation actions. Please slow down.',
+  'conversation.moderateState': 'Too many moderation actions. Please slow down.',
   'attachment.upload': 'Too many uploads. Please wait a few minutes.',
   'attachment.download': 'Too many downloads. Please slow down.',
 });

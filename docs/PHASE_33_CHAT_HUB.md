@@ -2113,6 +2113,7 @@ choose its own bucket, and one tenant's traffic never consumes another's
 | REST | message history | 1 min | 60 | paging is a few calls per screen |
 | REST | read marker | 1 min | 120 | fires on every incoming message |
 | REST | moderation delete | 1 min | 30 | a moderator acting in bulk is still not 30/min |
+| REST | lock / unlock conversation | 1 min | 30 | a state change that notifies every member; cheap once, expensive in a loop |
 | REST | attachment upload | 10 min | 20 | each upload can hold 10 MB of memory |
 | REST | attachment download | 1 min | 120 | downloads are cheap per call, bounded per file |
 | Socket | `chat:join` | 1 min | 30 | reconnects + room hops |
@@ -2212,4 +2213,56 @@ metric increments with an unknown-label refusal.
 
 The 33.1 transport-cap pin in `chatSocketFoundation.test.js` was INVERTED (not
 deleted) to the new derivation, so the reason lives in the test.
+
+## 21.6 Operational visibility (no new endpoint)
+
+The platform diagnostics payload (32.12's existing `GET` diagnostics, platform
+scope only) gained ONE block — nothing new was exposed, and there is still no
+`/metrics`:
+
+    chat: {
+      realtime: { enabled, state, reason, localConnections, counters },
+      payload:  { capBytes, worstCaseFrameBytes, headroomFactor, sufficient, headroomBytes },
+      limits:   { rest: { <action>: { maximum, windowSeconds } },
+                  socket: { <action>: { maximum, windowSeconds, event } } },
+    }
+
+- `realtime.state` is the process's truth for THIS instance
+  (`READY` / `DISABLED` / `UNAVAILABLE` / `STOPPED`) with a reason word from
+  the frozen 33.1 vocabulary — the question "is chat realtime up here, and why
+  not?" is now answered without reading logs.
+- `payload.sufficient` is the transport-vs-product law as a boolean; if a
+  future cap change makes it false, ops sees it in the same place the test
+  suite fails.
+- `limits` is the policy in force, so "why did this 429?" is answerable with
+  numbers instead of reading code.
+- The block contains **no ids at all** (not even the caller's), no limiter
+  keys, no URLs, no secrets. `chat.rate_limited{action}` and
+  `chat.rate_limit_degraded{tier}` counters ride the existing `counters`
+  section, so a degraded limiter is distinguishable from real abuse.
+
+Deployment pre-flight (`npm run config:check`) now also reports the chat
+hardening state, using the same parsers and the same cap law:
+
+    CHAT_SOCKET_ENABLED          true
+    CHAT_REALTIME_DEPENDENCY     WARNING: chat enabled with Redis off — every socket connection will be refused
+    CHAT_SOCKET_FRAME_CAP        49152 bytes (worst-case frame 17464, sufficient)
+    CHAT_RATE_LIMIT_TIER         local per-process (degraded but ENFORCED — never unlimited)
+
+Enabled chat without Redis is reported as a loud **WARNING in every
+environment**, never as a blocked deployment. That is a deliberate choice: the
+product already handles the shape truthfully (the API starts, REST keeps
+working, every socket is refused with the stable `FEATURE_UNAVAILABLE` code,
+and the diagnostics block names the reason), so pre-flight's job is to make the
+trade-off impossible to miss — not to contradict the server's own behaviour.
+The two honest fixes are in the message: enable Redis, or set
+`CHAT_SOCKET_ENABLED=false` for a chat that is knowingly HTTP-only.
+
+## 21.7 Wiring is pinned, not assumed
+
+A policy table can be perfect while a route forgets to mount its limiter, so
+the suite walks the REAL `chatRoutes` stack and fails if ANY route lacks one —
+each of the 12 routes mounts exactly one, for its own action, before the
+controller. A future chat route therefore cannot ship as an unlimited abuse
+surface: the test refuses it.
 

@@ -26,6 +26,9 @@
 //    · Observability: a refusal logs metadata only — bounded vocabulary,
 //      server-derived ids — and message CONTENT never reaches any log line
 //      (a sentinel body must not appear in captured output).
+//    · WIRING: every route the chat router exposes really carries a limiter
+//      (policy tables can be perfect while a route forgets to mount one), and
+//      the diagnostics block is numbers/safe-words only.
 // ============================================================
 
 import assert from 'node:assert/strict';
@@ -706,4 +709,209 @@ test('refusals increment the bounded metrics families', () => {
 
   // The registry still refuses unknown labels (no cardinality leak).
   assert.equal(registry.increment('chat.rate_limited', { action: 'x', userId: 'y' }), false);
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// 6. WIRING — the limiter must be MOUNTED, not merely defined
+// ══════════════════════════════════════════════════════════════════════════
+
+test('every route in the chat router carries an identity limiter', async () => {
+  const { chatRoutes } = await import('../src/routes/chat/chatRoutes.js');
+
+  const limiters = new Set(Object.values(chatRestLimiters));
+
+  const routes = chatRoutes.stack
+    .map((layer) => layer.route)
+    .filter(Boolean);
+
+  assert.ok(routes.length >= 12, `the chat router exposes its routes (${routes.length} found)`);
+
+  const unmounted = [];
+
+  for (const route of routes) {
+    const hasLimiter = route.stack.some((layer) => limiters.has(layer.handle));
+
+    if (!hasLimiter) {
+      const methods = Object.keys(route.methods).join(',').toUpperCase();
+      unmounted.push(`${methods} ${route.path}`);
+    }
+  }
+
+  assert.deepEqual(
+    unmounted,
+    [],
+    'a chat route without an identity limiter is an unlimited abuse surface',
+  );
+});
+
+test('each limited route mounts the limiter for ITS action', async () => {
+  const { chatRoutes } = await import('../src/routes/chat/chatRoutes.js');
+
+  const expected = [
+    ['post', '/conversations', 'conversation.create'],
+    ['get', '/conversations', 'conversation.list'],
+    ['get', '/conversations/:conversationId', 'conversation.detail'],
+    ['get', '/conversations/:conversationId/messages', 'message.history'],
+    ['post', '/conversations/:conversationId/members', 'conversation.members.add'],
+    ['delete', '/conversations/:conversationId/members/:userId', 'conversation.members.remove'],
+    ['post', '/conversations/:conversationId/read', 'message.read'],
+    ['patch', '/conversations/:conversationId/disable', 'conversation.moderateState'],
+    ['patch', '/conversations/:conversationId/enable', 'conversation.moderateState'],
+    ['post', '/conversations/:conversationId/messages/:messageId/moderate-delete', 'message.moderateDelete'],
+    ['post', '/conversations/:conversationId/attachments', 'attachment.upload'],
+    ['get', '/attachments/:attachmentId/download', 'attachment.download'],
+  ];
+
+  for (const [method, path, action] of expected) {
+    const route = chatRoutes.stack
+      .map((layer) => layer.route)
+      .find((candidate) => candidate?.path === path && candidate?.methods?.[method]);
+
+    assert.ok(route, `${method.toUpperCase()} ${path} exists`);
+
+    assert.ok(
+      route.stack.some((layer) => layer.handle === chatRestLimiters[action]),
+      `${method.toUpperCase()} ${path} must mount the "${action}" limiter`,
+    );
+  }
+
+  // …and the limiter runs BEFORE the controller (a limit after the work is
+  // not a limit).
+  const route = chatRoutes.stack
+    .map((layer) => layer.route)
+    .find((candidate) => candidate?.path === '/conversations' && candidate?.methods?.post);
+
+  const limiterIndex = route.stack.findIndex((layer) => layer.handle === chatRestLimiters['conversation.create']);
+  const controllerIndex = route.stack.findIndex((layer) => /upload|create|list/i.test(layer.name || ''));
+
+  assert.ok(limiterIndex >= 0, 'the limiter is mounted');
+  assert.ok(controllerIndex === -1 || limiterIndex < controllerIndex, 'limiter before controller');
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// 7. OPERATIONAL DIAGNOSTICS — numbers and safe words only
+// ══════════════════════════════════════════════════════════════════════════
+
+test('the chat diagnostics block is safe, bounded and complete', async () => {
+  const { getChatDiagnostics } = await import('../src/services/chat/chatDiagnosticsService.js');
+  const { CHAT_REALTIME_STATES, CHAT_UNAVAILABLE_REASONS } = await import('../src/socket/socketAvailability.js');
+
+  const diagnostics = getChatDiagnostics();
+
+  // Realtime: a state from the frozen vocabulary + a bounded counter set.
+  assert.ok(
+    Object.values(CHAT_REALTIME_STATES).includes(diagnostics.realtime.state),
+    `state must be a known word, got ${diagnostics.realtime.state}`,
+  );
+  if (diagnostics.realtime.reason !== null) {
+    assert.ok(CHAT_UNAVAILABLE_REASONS.includes(diagnostics.realtime.reason));
+  }
+  assert.equal(typeof diagnostics.realtime.enabled, 'boolean');
+  assert.equal(typeof diagnostics.realtime.localConnections, 'number');
+
+  // Payload: the transport-vs-product law, as numbers.
+  assert.equal(diagnostics.payload.sufficient, true);
+  assert.ok(diagnostics.payload.capBytes > diagnostics.payload.worstCaseFrameBytes);
+
+  // Limits: EVERY action in both tables is visible to ops.
+  assert.deepEqual(
+    Object.keys(diagnostics.limits.rest).sort(),
+    Object.keys(CHAT_REST_LIMITS).sort(),
+  );
+  assert.deepEqual(
+    Object.keys(diagnostics.limits.socket).sort(),
+    Object.keys(CHAT_SOCKET_LIMITS).sort(),
+  );
+
+  for (const policy of Object.values(diagnostics.limits.rest)) {
+    assert.ok(Number.isFinite(policy.maximum) && policy.maximum > 0);
+    assert.ok(Number.isFinite(policy.windowSeconds) && policy.windowSeconds > 0);
+  }
+
+  // Nothing sensitive: no ids, no limiter keys, no URLs, no secrets, no
+  // per-user anything.
+  const flat = JSON.stringify(diagnostics);
+
+  for (const forbidden of ['crewly:', 'rl:', 'redis://', 'rediss://', 'Bearer', 'companyId', 'userId', 'socket.id', 'storageKey', 'token']) {
+    assert.ok(!flat.includes(forbidden), `diagnostics must not contain "${forbidden}"`);
+  }
+});
+
+test('the diagnostics endpoint exposes the chat block through the existing pattern', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const controller = fs.readFileSync(
+    path.join(here, '..', 'src', 'controllers', 'platform', 'superAdminOperationsController.js'),
+    'utf8',
+  );
+
+  // The EXISTING platform diagnostics payload gained one block — no new
+  // endpoint, no /metrics, no new vendor.
+  assert.match(controller, /import \{ getChatDiagnostics \}/);
+  assert.match(controller, /chat: getChatDiagnostics\(\)/);
+  assert.match(controller, /realtime: realtime\.describeDiagnostics\(\)/, 'the pattern it follows');
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// 8. THE USER SEES THE LIMIT (frontend, source-pinned: no test harness exists)
+// ══════════════════════════════════════════════════════════════════════════
+
+test('a rate-limited send shows the server sentence, not a generic failure', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const frontend = (rel) => fs.readFileSync(path.join(here, '..', '..', 'Frontend', 'src', rel), 'utf8');
+
+  const page = frontend('pages/chat/ChatPage.jsx');
+
+  // handleSend returns the ACK's own message, so "Too many messages. Slow
+  // down and retry." reaches the composer instead of a generic line.
+  assert.match(page, /return ack\.message \|\| 'The message could not be sent\.'/, 'the ACK message is surfaced');
+  assert.match(page, /ack\.code === 'FEATURE_UNAVAILABLE'/, 'degraded realtime keeps its own sentence');
+
+  const composer = frontend('components/chat/MessageComposer.jsx');
+
+  assert.match(composer, /if \(failure\) \{/, 'the composer inspects the failure');
+  assert.match(composer, /setError\(failure\)/, 'and shows it to the sender');
+  assert.match(composer, /\{error && <p/, 'rendered above the composer');
+
+  // REST limits (upload 429) surface the server's sentence — the picker reads
+  // the normalized error from services/api.js.
+  const picker = frontend('components/chat/AttachmentPicker.jsx');
+
+  assert.match(picker, /err\?\.data\?\.message \|\| err\?\.message/);
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// 9. DEPLOYMENT PRE-FLIGHT
+// ══════════════════════════════════════════════════════════════════════════
+
+test('config-check reports chat enablement, the cap law and the limiter tier', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const script = fs.readFileSync(path.join(here, '..', 'scripts', 'config-check.js'), 'utf8');
+
+  assert.match(script, /parseChatSocketEnabled/, 'chat enablement is reported');
+  assert.match(script, /describeFrameCaps/, 'the cap law is reported');
+  assert.match(script, /CHAT_SOCKET_FRAME_CAP/);
+  assert.match(script, /CHAT_RATE_LIMIT_TIER/);
+  // Enabled chat without Redis can never work (33.1) — reported loudly, but
+  // DELIBERATELY not a blocked deployment: the product degrades truthfully
+  // (API up, REST fine, sockets refused with a stable code) and pre-flight
+  // must not contradict that. Pinned so a future change to hard-fail here is
+  // a conscious decision, not an accident.
+  assert.match(script, /CHAT_REALTIME_DEPENDENCY/);
+  assert.match(script, /every socket connection will be refused/);
+  assert.ok(
+    !/problems\.push\('CHAT_SOCKET_ENABLED=true requires/.test(script),
+    'chat enablement is a warning, never a hard pre-flight failure',
+  );
 });

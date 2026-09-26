@@ -127,6 +127,7 @@ router.post(
 
 router.patch(
   '/conversations/:conversationId/disable',
+  chatRestLimiters['conversation.moderateState'],
   checkWriteAccess,
   requireAnyPermission(['CHAT_MODERATE']),
   disableConversationValidator,
@@ -135,6 +136,7 @@ router.patch(
 
 router.patch(
   '/conversations/:conversationId/enable',
+  chatRestLimiters['conversation.moderateState'],
   checkWriteAccess,
   requireAnyPermission(['CHAT_MODERATE']),
   enableConversationValidator,
