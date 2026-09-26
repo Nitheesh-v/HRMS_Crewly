@@ -9,9 +9,13 @@
 //    vs 404). The structured JSON in the file transports always had it; the
 //    human line did not.
 //
-//  WHAT IS PINNED
-//    · status is rendered, and rendered FIRST (access-log shape)
-//    · the other essentials survive (method, route, durationMs)
+//  WHAT IS PINNED (33.10-fix: the access row)
+//    · an HTTP request is ONE compact row, read the way the product has always
+//      been read:  [http]: GET <route> 200 12.400 ms - 812
+//    · a failure is its own line with the REASON, never the serializer JSON:
+//      [warn]: 400 - A file is required.
+//    · the row carries method/route/status/duration/bytes and nothing else —
+//      ids and stacks stay in the JSON file transports
 //    · a message with no metadata stays a clean line (no dangling space)
 //    · the tail is bounded (value length, key count, total length)
 //    · unserializable/circular values degrade — the formatter never throws
@@ -32,6 +36,7 @@ process.env.REDIS_ENABLED ||= 'false';
 import winston from 'winston';
 
 import {
+  formatAccessRow,
   formatMetaTail,
   prettyFormat,
   structuredFormat,
@@ -68,7 +73,7 @@ const completionEvent = {
   companyId: '68efcompany',
 };
 
-test('a request line carries the status code, rendered first', async () => {
+test('a request is ONE compact access row: METHOD route STATUS duration ms - bytes', async () => {
   const lines = await capture(prettyFormat, (logger) =>
     logger.info('http.request.complete', completionEvent)
   );
@@ -77,20 +82,38 @@ test('a request line carries the status code, rendered first', async () => {
 
   const line = lines[0];
 
-  assert.match(line, /http\.request\.complete/);
-  assert.match(line, /status=200/);
-  assert.match(line, /method=GET/);
-  assert.match(line, /route=\/api\/chat\/conversations\/:conversationId/);
-  assert.match(line, /durationMs=12\.4/);
+  // Exactly the shape the terminal is read in (33.10-fix): the status code
+  // the 33.9-fix unit asked for, in the place an operator scans for it.
+  assert.match(
+    line,
+    /\[http\]: GET \/api\/chat\/conversations\/:conversationId 200 12\.400 ms - 812$/
+  );
 
-  // Access-log shape: status comes before method/route/duration.
-  const indexOf = (needle) => line.indexOf(needle);
-  assert.ok(indexOf('status=') < indexOf('method='), 'status must lead the tail');
-  assert.ok(indexOf('status=') < indexOf('route='), 'status before route');
-  assert.ok(indexOf('status=') < indexOf('durationMs='), 'status before duration');
+  // The key=value paragraph is retired for request lines…
+  assert.ok(!line.includes('status='), 'no key=value tail on an access row');
+  assert.ok(!line.includes('http.request.complete'), 'the event name is not the console line');
+
+  // …and so are the ids: they stay in logs/combined.log (JSON), where an
+  // incident is correlated, not in the terminal.
+  assert.ok(!line.includes('requestId='));
+  assert.ok(!line.includes('userId='));
+  assert.ok(!line.includes('companyId='));
+
+  // A missing byte count renders as a dash, like every other access log.
+  assert.match(
+    formatAccessRow({
+      message: 'http.request.complete',
+      ...completionEvent,
+      bytes: undefined,
+    }).text,
+    /- -$/
+  );
+
+  // Non-HTTP events are untouched by the access-row renderer.
+  assert.equal(formatAccessRow({ message: '[Cache] miss' }), null);
 });
 
-test('a slow-request warn line carries its status too (403 acceptance case)', async () => {
+test('a slow request is the same row, flagged, at warn level (403 acceptance case)', async () => {
   const lines = await capture(prettyFormat, (logger) =>
     logger.warn('http.request.slow', {
       requestId: 'f3a2',
@@ -102,8 +125,80 @@ test('a slow-request warn line carries its status too (403 acceptance case)', as
     })
   );
 
-  assert.match(lines[0], /^.*\[warn\]: http\.request\.slow status=403/);
-  assert.match(lines[0], /thresholdMs=1500/);
+  assert.match(
+    lines[0],
+    /\[warn\]: PATCH \/api\/chat\/conversations\/:conversationId\/disable 403 1602\.500 ms - - \(slow\)$/
+  );
+});
+
+test('a refusal is its own line: STATUS - reason, never the serializer JSON', async () => {
+  const lines = await capture(prettyFormat, (logger) =>
+    logger.warn('http.request.rejected', {
+      requestId: '864503f2',
+      method: 'POST',
+      route: '/conversations/:conversationId/attachments',
+      status: 400,
+      error: {
+        name: 'Error',
+        message: 'A file is required.',
+        statusCode: 400,
+        stack: 'Error: A file is required.\n    at ApiError.badRequest (file:///C:/app/ApiError.js:1:1)',
+      },
+    })
+  );
+
+  // The exact line the 2026-09-26 localhost screenshot asked for.
+  assert.match(lines[0], /\[warn\]: 400 - A file is required\.$/);
+
+  // The noise that made the terminal unreadable is gone…
+  assert.ok(!lines[0].includes('"name"'), 'no serializer JSON in the console line');
+  assert.ok(!lines[0].includes('stack'), 'no stack in the console line');
+  assert.ok(!lines[0].includes('at ApiError'), 'no stack frames either');
+  assert.equal(lines[0].includes('\n'), false, 'one line, always');
+});
+
+test('a 5xx keeps its error class and stops at one bounded line', async () => {
+  const lines = await capture(prettyFormat, (logger) =>
+    logger.error('http.request.error', {
+      method: 'POST',
+      route: '/chat/messages',
+      status: 500,
+      error: {
+        name: 'MongoServerError',
+        message: `E11000 duplicate key\n${'x'.repeat(800)}`,
+        statusCode: 500,
+      },
+    })
+  );
+
+  assert.match(lines[0], /\[error\]: 500 - MongoServerError: E11000 duplicate key x/);
+  assert.ok(lines[0].length < 400, `the row is bounded, got ${lines[0].length}`);
+  assert.equal(lines[0].includes('\n'), false);
+});
+
+test('the JSON transports keep what the console row drops', async () => {
+  const lines = await capture(structuredFormat, (logger) =>
+    logger.warn('http.request.rejected', {
+      requestId: '864503f2',
+      method: 'POST',
+      route: '/conversations/:conversationId/attachments',
+      status: 400,
+      error: {
+        name: 'Error',
+        message: 'A file is required.',
+        statusCode: 400,
+        stack: 'Error: A file is required.\n    at handler',
+      },
+    })
+  );
+
+  const record = JSON.parse(lines[0]);
+
+  assert.equal(record.message, 'http.request.rejected');
+  assert.equal(record.requestId, '864503f2');
+  assert.equal(record.status, 400);
+  assert.equal(record.error.message, 'A file is required.');
+  assert.match(record.error.stack, /at handler/, 'the stack survives in the file transport');
 });
 
 test('a message without metadata stays a clean line', async () => {

@@ -480,6 +480,11 @@ first); **zero new dependencies** (morgan was REMOVED as unused).
   console keeps the human line format. Levels: ERROR = unexpected
   failure, WARN = degraded/slow/4xx-class, INFO = lifecycle +
   completion, DEBUG = development only.
+- Development console (33.10-fix): request events render as ONE compact
+  access row — `[http]: POST /api/chat/x 200 212.500 ms - 49` — and a failure
+  as its own short line — `[warn]: 400 - A file is required.` The ids and the
+  bounded stack stay in the JSON records (file transports + production
+  console), which are unchanged. `logger.formatAccessRow` owns the row.
 - Morgan removed (unused). Events: `http.request.complete` (info),
   `http.request.slow` (warn), `http.request.error` (error),
   `http.request.rejected` (warn, 4xx) — fields: requestId, method

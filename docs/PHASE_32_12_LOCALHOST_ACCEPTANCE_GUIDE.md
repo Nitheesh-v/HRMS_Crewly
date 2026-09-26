@@ -50,16 +50,20 @@ $response.Headers["X-Request-ID"]
 ```
 
 - Expected: a UUID-style value like `9f1c0e…-…` (36 chars).
-- Copy it, then look at Terminal 1: the matching
-  `http.request.complete` line for `GET /api/health/live` carries the
+- Copy it, then open `Backend\logs\combined.log` and find the
+  `http.request.complete` record for `GET /api/health/live`: it carries the
   SAME id. That is the support-correlation contract.
+  (Since 33.10-fix the Terminal 1 row is the compact access row and omits the
+  ids on purpose — `Get-Content Backend\logs\combined.log -Tail 1` shows the
+  full JSON record for the request you just made.)
 
 ## 3. NORMAL LOGGED-IN REQUEST (Browser)
 
 1. Start the Frontend, log in, open an ordinary page (e.g. a list).
-2. Terminal 1 shows one `http.request.complete` line per API call with:
-   requestId, method, the route TEMPLATE (e.g. `/api/tasks/:id` —
-   never search text or tokens), status, durationMs.
+2. Terminal 1 shows one `http.request.complete` row per API call with:
+   method, the route TEMPLATE (e.g. `/api/tasks/:id` — never search text or
+   tokens), status, durationMs and bytes. The requestId/userId/companyId for
+   the same call are in `Backend\logs\combined.log` (JSON).
 3. **Verify nothing else appears**: no Authorization token, no request
    body, no query string with your search words.
 
@@ -69,9 +73,11 @@ $response.Headers["X-Request-ID"]
 try { Invoke-WebRequest -Uri "http://localhost:5000/api/definitely-not-a-route" -UseBasicParsing } catch { $_.Exception.Response.StatusCode.value__ }
 ```
 
-- Expected: 404 with a safe JSON error; the backend log line carries a
-  requestId and the REDACTED path (never a stack trace to the client,
-  never tokens). Do not deliberately crash the process.
+- Expected: 404 with a safe JSON error; the backend logs the reason as a
+  short row (`[warn]: 404 - Route not found`) plus the access row with the
+  REDACTED path — never a stack trace to the client, never tokens. The
+  requestId and the bounded stack are in `Backend\logs\error.log`. Do not
+  deliberately crash the process.
 
 ## 5. SLOW REQUEST BEHAVIOR
 

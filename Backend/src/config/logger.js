@@ -120,8 +120,99 @@ export const formatMetaTail = (info = {}) => {
     : tail;
 };
 
+// ─────────────────────────────────────────────────────────────────────────
+// DEVELOPMENT access rows (33.10-fix).
+//
+// The metadata tail made every request line a key=value paragraph and printed
+// the error serializer's JSON (stack included) straight into the terminal:
+//
+//   [warn]: http.request.rejected status=400 ... error={"name":"Error",...
+//
+// The console now renders request events the way this product has always been
+// read, one bounded row per request, with the failure reason on its own line:
+//
+//   2026-09-26 10:43:34 [warn]: 400 - A file is required.
+//   2026-09-26 10:43:34 [http]: POST /api/chat/conversations/:id/attachments 400 212.500 ms - 49
+//
+// It is a RENDERING change only: the event name and every safe field still
+// travel to the JSON file transports (logs/combined.log, logs/error.log),
+// which keep requestId/userId/companyId and the bounded stack.
+//
+// The path shown is the normalized ROUTE TEMPLATE, not the raw URL: 32.12's
+// redaction law strips query strings and tokenized path segments, so raw URLs
+// never reach a log line (§12/§15) — and the template is what metrics label on.
+// ─────────────────────────────────────────────────────────────────────────
+const HTTP_ACCESS_EVENTS = new Set([
+  'http.request.complete',
+  'http.request.slow',
+  'http.request.rejected',
+  'http.request.error',
+]);
+
+const ACCESS_ROW_MAX_CHARS = 300;
+
+// One line, always: control characters and newlines collapse to spaces so a
+// multi-line error message cannot break the log stream.
+const toSingleLine = (value) =>
+  String(value ?? '')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f-\u009f]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const boundedRow = (text) =>
+  text.length > ACCESS_ROW_MAX_CHARS ? `${text.slice(0, ACCESS_ROW_MAX_CHARS)}...` : text;
+
+/**
+ * Render an HTTP request event as a compact console row, or null when the
+ * event is not an access-log event (every non-HTTP line keeps the existing
+ * `message + metadata tail` shape). Never throws.
+ */
+export const formatAccessRow = (info = {}) => {
+  const message = String(info?.message ?? '');
+  if (!HTTP_ACCESS_EVENTS.has(message)) return null;
+
+  const status = info.status ?? info.error?.statusCode;
+
+  if (message === 'http.request.rejected' || message === 'http.request.error') {
+    const error = info.error || {};
+    const name = toSingleLine(error.name);
+    const detail = toSingleLine(error.message) || 'request failed';
+
+    return {
+      level: message === 'http.request.error' ? 'error' : 'warn',
+      text: boundedRow(
+        `${status ?? '-'} - ${name && name !== 'Error' ? `${name}: ` : ''}${detail}`,
+      ),
+    };
+  }
+
+  const duration = Number(info.durationMs);
+  const bytes = info.bytes === undefined || info.bytes === null ? '-' : info.bytes;
+  const slow = message === 'http.request.slow' ? ' (slow)' : '';
+
+  return {
+    level: message === 'http.request.slow' ? 'warn' : 'http',
+    text: boundedRow(
+      `${info.method || '-'} ${info.route || 'unmatched'} ${status ?? '-'} ${
+        Number.isFinite(duration) ? duration.toFixed(3) : '-'
+      } ms - ${bytes}${slow}`,
+    ),
+  };
+};
+
 const lineFormat = printf((info) => {
   const { level, message, timestamp, stack } = info;
+
+  let accessRow = null;
+  try {
+    accessRow = formatAccessRow(info);
+  } catch {
+    accessRow = null; // a formatter must never break the log path
+  }
+
+  if (accessRow) return `${timestamp} [${accessRow.level}]: ${accessRow.text}`;
+
   const tail = formatMetaTail(info);
 
   return `${timestamp} [${level}]: ${stack || message}${tail ? ` ${tail}` : ''}`;

@@ -23,10 +23,18 @@
 //      an id from another conversation cannot be attached; the stored
 //      message carries ONLY the metadata the service returned
 //    · delete-for-everyone withdraws the attachments
+//    · multipart contract (33.10-fix): the upload route refuses a non-multipart
+//      body by NAME (multipart/form-data, shared field name) instead of the
+//      misleading "a file is required", and the frontend really sends
+//      multipart under that same field name — the localhost 400 of
+//      2026-09-26 came from a JSON body reaching multer
 // ============================================================
 
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 process.env.MONGO_URI ||= 'mongodb://127.0.0.1:27017/crewly_chat_attachments';
 process.env.REDIS_ENABLED ||= 'false';
@@ -46,9 +54,12 @@ import { resolveChatAttachmentDelivery } from '../src/services/chat/chatAttachme
 import { sendFileMessage } from '../src/services/chat/chatMessageService.js';
 import { registerChatSocketHandlers } from '../src/socket/chatSocketHandlers.js';
 import {
+  CHAT_ATTACHMENT_FIELD,
   CHAT_ATTACHMENT_MAX_BYTES,
+  CHAT_ATTACHMENT_MESSAGES,
   assertSafeStorageKey,
   buildAttachmentStorageKey,
+  isMultipartRequest,
   safeChatFileName,
 } from '../src/utils/chatFileRules.js';
 
@@ -1091,4 +1102,106 @@ test('the download controller refuses a non-member before any storage read', asy
   assert.equal(failure.statusCode, 404);
   assert.equal(res.sentBody, undefined, 'no bytes may be sent to a non-member');
   assert.equal(headers['Content-Disposition'], undefined, 'and no filename either');
+});
+
+// ── 7. multipart contract (33.10-fix) ─────────────────────────────────────
+// The localhost failure on 2026-09-26: the shared axios instance defaults to
+// Content-Type: application/json, axios serialized the FormData body to JSON,
+// multer found no file and the API answered "A file is required." — a message
+// that names the symptom, never the cause. These pins keep the cause visible
+// on both sides of the wire.
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const backendSrc = (rel) => fs.readFileSync(path.join(here, '..', 'src', rel), 'utf8');
+const frontendSrc = (rel) =>
+  fs.readFileSync(path.join(here, '..', '..', 'Frontend', 'src', rel), 'utf8');
+
+test('a non-multipart upload body is refused by NAME, not as a missing file', async () => {
+  assert.equal(
+    isMultipartRequest({ headers: { 'content-type': 'multipart/form-data; boundary=----x' } }),
+    true,
+    'a real multipart request passes',
+  );
+  assert.equal(isMultipartRequest({ headers: { 'content-type': 'MULTIPART/FORM-DATA; B=x' } }), true);
+  assert.equal(isMultipartRequest({ headers: { 'content-type': 'application/json' } }), false);
+  assert.equal(isMultipartRequest({ headers: { 'content-type': 'text/plain' } }), false);
+  assert.equal(isMultipartRequest({}), false, 'fail closed on a missing header');
+  assert.equal(isMultipartRequest(), false, 'and never throw on a missing request');
+
+  assert.match(CHAT_ATTACHMENT_MESSAGES.NOT_MULTIPART, /multipart\/form-data/);
+  assert.ok(
+    CHAT_ATTACHMENT_MESSAGES.NOT_MULTIPART.includes(`"${CHAT_ATTACHMENT_FIELD}"`),
+    'the refusal names the field the client must use',
+  );
+
+  // Behaviour, through the REAL route middleware (not a source-text pin):
+  // the guard runs before multer, so a JSON body is answered immediately.
+  const { chatRoutes } = await import('../src/routes/chat/chatRoutes.js');
+  const route = chatRoutes.stack
+    .map((layer) => layer.route)
+    .find(
+      (candidate) =>
+        candidate?.path === '/conversations/:conversationId/attachments' &&
+        candidate?.methods?.post,
+    );
+
+  assert.ok(route, 'the upload route exists');
+
+  const upload = route.stack.map((layer) => layer.handle).find(
+    (handle) => handle.name === 'chatAttachmentUpload',
+  );
+
+  assert.ok(upload, 'the multipart guard is mounted on the upload route');
+
+  const failure = await new Promise((resolve) => {
+    upload({ headers: { 'content-type': 'application/json' } }, {}, resolve);
+  });
+
+  assert.ok(failure, 'a JSON body must be refused');
+  assert.equal(failure.statusCode, 400);
+  assert.equal(failure.message, CHAT_ATTACHMENT_MESSAGES.NOT_MULTIPART);
+
+  const routes = backendSrc('routes/chat/chatRoutes.js');
+
+  assert.match(routes, /isMultipartRequest\(req\)/, 'the guard is wired into the route');
+  assert.match(routes, /single\(CHAT_ATTACHMENT_FIELD\)/, 'multer reads the shared field name');
+  assert.match(
+    routes,
+    /CHAT_ATTACHMENT_MESSAGES\.NOT_MULTIPART/,
+    'and answers with the named refusal',
+  );
+});
+
+test('the frontend upload is real multipart under the same field name', () => {
+  const service = frontendSrc('services/chatService.js');
+
+  assert.match(service, /new FormData\(\)/);
+
+  const appended = service.match(/\.append\(\s*'([^']+)'/);
+
+  assert.ok(appended, 'the upload appends a file field');
+  assert.equal(
+    appended[1],
+    CHAT_ATTACHMENT_FIELD,
+    'client field name must equal the server field name',
+  );
+
+  assert.match(
+    service,
+    /'Content-Type':\s*'multipart\/form-data'/,
+    'the shared axios instance defaults to JSON — the upload must state multipart (docsService.js pattern)',
+  );
+
+  assert.ok(
+    service.includes('/chat/conversations/${conversationId}/attachments'),
+    'and it posts to the attachment route',
+  );
+
+  // The other half of "see the errors": api.js normalizes failures to
+  // { message, status, code, data }, so reading `err.response` shows the
+  // generic sentence instead of the server's reason.
+  const picker = frontendSrc('components/chat/AttachmentPicker.jsx');
+
+  assert.match(picker, /err\?\.data\?\.message/);
+  assert.ok(!picker.includes('err?.response'), 'the normalized error is the one to read');
 });

@@ -89,9 +89,14 @@ const chatService = {
     const form = new FormData();
     form.append('file', file);
 
+    // The shared axios instance defaults to Content-Type: application/json and
+    // axios serializes a FormData body to JSON when that header survives — the
+    // server then sees a JSON body with no file. Every uploader in this repo
+    // therefore states multipart/form-data explicitly (docsService.js).
     const response = await api.post(
       `/chat/conversations/${conversationId}/attachments`,
-      form
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
     );
 
     return bare(response);

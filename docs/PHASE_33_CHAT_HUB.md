@@ -1747,3 +1747,89 @@ resilience pin expects the FILE stub among the unauthenticated raw listeners.
   the repo already uses).
 - Attachment storage counts toward nothing (no per-tenant quota in this unit).
 - A FILE message cannot be edited (its references are immutable).
+
+---
+
+# 17. PHASE 33.10-fix — THE LOCALHOST UPLOAD 400 + THE TERMINAL LINE
+
+## 17.1 The failure
+
+During localhost acceptance the composer answered **"The file could not be
+uploaded."** and the API logged:
+
+    [info]: http.request.complete status=400 method=POST route=/conversations/:conversationId/attachments ...
+    [warn]: http.request.rejected status=400 method=POST route=/conversations/:conversationId/attachments error={"name":"Error","message":"A file is required.","statusCode":400,"stack":"Error: A file is required.\n    at ...
+
+Two problems behind one message:
+
+1. **The upload was never multipart.** `services/api.js` creates the shared
+   axios instance with `headers: { 'Content-Type': 'application/json' }`. Axios
+   serializes a FormData body to JSON when that header survives, so the server
+   received a JSON document, multer found no file, and the service threw
+   `A file is required.` — a message that names the symptom, never the cause.
+   Every other uploader in this repo already states the header explicitly
+   (`docsService.js`, `selfService.js`, `companyService.js`); the 33.10 chat
+   upload was the one place that relied on auto-detection.
+2. **The error text never reached the screen.** `api.js` normalizes every
+   failure into `{ message, status, code, data }` and drops `response`, but
+   `AttachmentPicker` read `err?.response?.data?.message` — so the server's real
+   reason was replaced by the generic sentence. It now reads
+   `err?.data?.message || err?.message` and shows the actual refusal (size cap,
+   locked conversation, type, membership).
+
+## 17.2 The fixes
+
+- `Frontend/src/services/chatService.js` — the upload posts with
+  `{ headers: { 'Content-Type': 'multipart/form-data' } }`, matching the
+  established repo pattern for real multipart.
+- `Frontend/src/components/chat/AttachmentPicker.jsx` — surfaces the
+  normalized error message.
+- `Backend/src/utils/chatFileRules.js` — `CHAT_ATTACHMENT_FIELD` (one field
+  name for multer and the client), `CHAT_ATTACHMENT_MESSAGES.NOT_MULTIPART`,
+  and `isMultipartRequest(req)`.
+- `Backend/src/routes/chat/chatRoutes.js` — the upload route checks
+  `isMultipartRequest` BEFORE multer and answers
+  `400 Attachments must be sent as multipart/form-data (file field "file").`
+  A JSON body can therefore never masquerade as a missing file again — for
+  this route, the field name and the shape are now named in the refusal.
+- Pins: `test/chatAttachments.test.js` §7 exercises the gate through the real
+  route middleware (not a source-text pin) and asserts the frontend appends
+  `CHAT_ATTACHMENT_FIELD` with an explicit multipart header to the right URL,
+  plus the picker's normalized-error read. A future client field rename or a
+  dropped header fails the suite instead of failing acceptance.
+
+## 17.3 The terminal line
+
+The 33.9-fix metadata tail made every request a key=value paragraph and printed
+the error serializer's JSON — stack included — straight into the terminal:
+
+    [info]: http.request.complete status=200 method=GET route=/api/... durationMs=12.4 bytes=812 requestId=... userId=... companyId=...
+    [warn]: http.request.rejected status=400 ... error={"name":"Error",...}
+
+The development console now renders request events as the compact access row
+the product has always been read in, one row per request, with the failure
+reason on its own line:
+
+    2026-09-26 10:43:26 [http]: POST /conversations/:conversationId/attachments 200 212.500 ms - 49
+    2026-09-26 10:43:34 [warn]: 400 - A file is required.
+    2026-09-26 10:43:34 [http]: POST /conversations/:conversationId/attachments 400 212.500 ms - 49
+    2026-09-26 10:44:02 [error]: 500 - MongoServerError: E11000 duplicate key error ...
+    2026-09-26 10:44:09 [warn]: GET /attendance/today/live 200 1370.730 ms - - (slow)
+
+Rules of the row:
+
+- one line, always — control characters and newlines collapse to spaces, the
+  row is bounded at 300 chars, and a 5xx keeps its error class name;
+- the path is the normalized ROUTE TEMPLATE, never the raw URL: 32.12's
+  redaction law strips query strings and tokenized segments (§12/§15), and the
+  template is what metrics label on;
+- `requestId`, `userId`, `companyId` and the bounded stack are NOT dropped —
+  they still travel to `Backend/logs/combined.log` and `Backend/logs/error.log`
+  as JSON, which is where an incident is correlated. The production console and
+  both file transports are byte-for-byte unchanged; this is a rendering change
+  in `logger.js` (`formatAccessRow`) for the development console only.
+
+Spec: `test/loggerStatusLine.test.js` (11 tests) pins the row shape, the
+refusal line, the 5xx class name, the 300-char/newline bounds, and that the
+JSON transports keep the ids and the stack.
+

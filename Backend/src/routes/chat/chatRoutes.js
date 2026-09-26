@@ -39,7 +39,13 @@ import {
   uploadAttachmentValidator,
 } from '../../validators/chat/chatValidators.js';
 import { createDocumentFileUpload } from '../../middlewares/documentFilePolicy.js';
-import { CHAT_ATTACHMENT_MAX_BYTES } from '../../utils/chatFileRules.js';
+import {
+  CHAT_ATTACHMENT_FIELD,
+  CHAT_ATTACHMENT_MAX_BYTES,
+  CHAT_ATTACHMENT_MESSAGES,
+  isMultipartRequest,
+} from '../../utils/chatFileRules.js';
+import ApiError from '../../utils/ApiError.js';
 import { requireAnyPermission } from '../../middlewares/permissionMiddleware.js';
 
 const router = Router();
@@ -149,15 +155,23 @@ router.post(
 // other uploader in the repo uses (selfServiceRoutes / taskRoutes /
 // uploadMiddleware.wrap). The policy message already names the allowlist.
 const chatAttachmentUpload = (req, res, next) => {
-  createDocumentFileUpload(CHAT_ATTACHMENT_MAX_BYTES).single('file')(req, res, (error) => {
-    if (error) {
-      error.statusCode = 400;
-      if (error.code === 'LIMIT_FILE_SIZE') {
-        error.message = `File must be ${Math.floor(CHAT_ATTACHMENT_MAX_BYTES / (1024 * 1024))} MB or smaller.`;
+  // Shape first: a JSON body can never carry a file, and multer would answer
+  // with a misleading "a file is required". Name the real mistake instead.
+  if (!isMultipartRequest(req)) {
+    next(ApiError.badRequest(CHAT_ATTACHMENT_MESSAGES.NOT_MULTIPART));
+    return;
+  }
+
+  createDocumentFileUpload(CHAT_ATTACHMENT_MAX_BYTES)
+    .single(CHAT_ATTACHMENT_FIELD)(req, res, (error) => {
+      if (error) {
+        error.statusCode = 400;
+        if (error.code === 'LIMIT_FILE_SIZE') {
+          error.message = CHAT_ATTACHMENT_MESSAGES.TOO_LARGE;
+        }
       }
-    }
-    next(error);
-  });
+      next(error);
+    });
 };
 
 router.post(

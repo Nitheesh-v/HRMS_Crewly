@@ -38,13 +38,33 @@ export const CHAT_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
 // payload stays small).
 export const CHAT_ATTACHMENT_MAX_PER_MESSAGE = 5;
 
+// The multipart field name. ONE constant, because a mismatch between what the
+// client appends and what multer reads is invisible until runtime: multer
+// simply finds no file and the request fails as "a file is required"
+// (observed in localhost acceptance on 2026-09-26 — the client was sending a
+// JSON body, see the NOT_MULTIPART guard below).
+export const CHAT_ATTACHMENT_FIELD = 'file';
+
 export const CHAT_ATTACHMENT_MESSAGES = Object.freeze({
   EMPTY: 'A file is required.',
   TOO_LARGE: `File must be ${Math.floor(CHAT_ATTACHMENT_MAX_BYTES / (1024 * 1024))} MB or smaller.`,
   TYPE: DOCUMENT_FILE_POLICY_MESSAGE,
   TOO_MANY: `A message can carry at most ${CHAT_ATTACHMENT_MAX_PER_MESSAGE} files.`,
   NO_FILES: 'At least one file is required.',
+  NOT_MULTIPART:
+    `Attachments must be sent as multipart/form-data (file field "${CHAT_ATTACHMENT_FIELD}").`,
 });
+
+// Fail-closed request-shape guard for the upload route. The shared axios
+// instance defaults to `Content-Type: application/json`, and axios serializes
+// a FormData body to JSON when that header survives — the bytes then arrive
+// as a JSON document, multer finds no file, and the failure looks like a
+// missing file instead of a missing multipart header. Rejecting a
+// non-multipart body up front names the real problem.
+export const isMultipartRequest = (req = {}) =>
+  String(req.headers?.['content-type'] || '')
+    .toLowerCase()
+    .startsWith('multipart/form-data');
 
 export const CHAT_FILE_ALLOWLIST = DOCUMENT_FILE_ALLOWLIST;
 

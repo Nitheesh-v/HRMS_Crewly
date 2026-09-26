@@ -52,9 +52,15 @@ const AttachmentPicker = ({ conversationId, pending, onAdd, onRemove, disabled }
 
       onAdd(attachment);
     } catch (err) {
+      // api.js normalizes every failure to { message, status, code, data } —
+      // there is no `response` on the thrown error, so reading it showed a
+      // generic sentence instead of the server's real reason (e.g. the size
+      // cap or a locked conversation).
+      const serverMessage = err?.data?.message || err?.message;
+
       setError(
-        err?.response?.data?.message ||
-          (err?.response?.status === 404
+        serverMessage ||
+          (err?.status === 404
             ? 'You are not a member of this conversation.'
             : 'The file could not be uploaded.')
       );
