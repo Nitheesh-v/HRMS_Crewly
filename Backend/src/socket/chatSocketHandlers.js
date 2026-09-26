@@ -113,6 +113,38 @@ const ack = (callback, payload) => {
 
 const fail = (code, message) => ({ ok: false, code, message });
 
+// 33.9-fix — NO ASYNC LISTENER MAY REJECT.
+// socket.io invokes listeners through EventEmitter and ignores the returned
+// promise, so a rejected async listener becomes an unhandledRejection — and
+// the 32.x process policy drains the whole API on one (observed live: a
+// mongoose ValidationError from a TEXT edit took the server down). Every
+// chat listener therefore runs inside this guard: a service throw becomes a
+// RETRYABLE ACK (the generic 33.x code), never a process event. Only the
+// error NAME reaches the log — never payloads, text or stacks.
+const reportHandlerError = (log, event, error) => {
+  const message = `[ChatSocket] ${event} failed (${String(error?.name || 'error')})`;
+
+  if (typeof log?.error === 'function') log.error(message);
+  else if (typeof log?.warn === 'function') log.warn(message);
+};
+
+const guard = (socket, log, event, handler) =>
+  socket.on(event, async (payload, cb) => {
+    try {
+      return await handler(payload, cb);
+    } catch (error) {
+      reportHandlerError(log, event, error);
+
+      return ack(
+        cb,
+        fail(
+          CHAT_SOCKET_ERROR_CODES.RETRYABLE,
+          'The chat server could not complete that action. Try again.',
+        ),
+      );
+    }
+  });
+
 // Broadcast shape is deliberately small and token/redis/job-free. The sender
 // needs clientMessageId + seq to reconcile its optimistic UI; everyone needs
 // enough to render the message.
@@ -194,7 +226,7 @@ export const registerChatSocketHandlers = ({
 
   const allowWrite = createWriteGuard();
 
-  socket.on('chat:join', async (payload, cb) => {
+  guard(socket, log, 'chat:join', async (payload, cb) => {
     const parsed = validateJoinPayload(payload);
 
     if (!parsed.ok) return ack(cb, fail(CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR, parsed.message));
@@ -224,7 +256,7 @@ export const registerChatSocketHandlers = ({
     ack(cb, { ok: true });
   });
 
-  socket.on('chat:leave', (payload, cb) => {
+  guard(socket, log, 'chat:leave', (payload, cb) => {
     const parsed = validateJoinPayload(payload);
 
     if (!parsed.ok) return ack(cb, fail(CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR, parsed.message));
@@ -234,7 +266,7 @@ export const registerChatSocketHandlers = ({
     ack(cb, { ok: true });
   });
 
-  socket.on('chat:message:send', async (payload, cb) => {
+  guard(socket, log, 'chat:message:send', async (payload, cb) => {
     const parsed = validateSendPayload(payload);
 
     if (!parsed.ok) return ack(cb, fail(CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR, parsed.message));
@@ -279,7 +311,7 @@ export const registerChatSocketHandlers = ({
   // 33.6 — edit. Optimistic concurrency lives in the service (the atomic
   // update filters on expectedEditVersion); the handler only validates,
   // rate-guards, and fans the win out to the room.
-  socket.on('chat:message:edit', async (payload, cb) => {
+  guard(socket, log, 'chat:message:edit', async (payload, cb) => {
     const parsed = validateEditPayload(payload);
 
     if (!parsed.ok) return ack(cb, fail(CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR, parsed.message));
@@ -318,7 +350,7 @@ export const registerChatSocketHandlers = ({
 
   // 33.6 — delete (tombstone). Idempotent: re-deleting an already-tombstoned
   // message acknowledges with the original deletedAt and does NOT re-broadcast.
-  socket.on('chat:message:delete', async (payload, cb) => {
+  guard(socket, log, 'chat:message:delete', async (payload, cb) => {
     const parsed = validateDeletePayload(payload);
 
     if (!parsed.ok) return ack(cb, fail(CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR, parsed.message));
@@ -375,7 +407,7 @@ export const registerChatSocketHandlers = ({
   // 33.7 — advance the caller's own C1 read cursor. Monotonic + clamped in
   // the service; ACKs to the caller ONLY. Read state is privacy-sensitive,
   // so nothing is broadcast to other members (no "seen by" in Phase 33).
-  socket.on('chat:readUpTo', async (payload, cb) => {
+  guard(socket, log, 'chat:readUpTo', async (payload, cb) => {
     const parsed = validateReadUpToPayload(payload);
 
     if (!parsed.ok) return ack(cb, fail(CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR, parsed.message));

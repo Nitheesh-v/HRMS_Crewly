@@ -936,3 +936,109 @@ test('chat models do not import other chat models (no load-order coupling)', asy
     );
   }
 });
+
+// ── 33.9-fix — the `text` validator must work on BOTH write paths ─────────
+//
+// Mongoose runs UPDATE validators (findOneAndUpdate/updateOne +
+// runValidators) with `this` = the QUERY, not the document, and validates
+// only the paths present in the update. The 33.6 validator read
+// `this.type`/`this.deletedAt` unconditionally, so every atomic TEXT edit
+// threw "TEXT messages require non-empty text..." — the throw escaped an
+// async socket listener and drained the API (unhandled rejection).
+//
+// These tests drive the REAL schema validator exactly the way mongoose
+// does (schema.path('text').doValidate(value, query, { updateValidator:
+// true }), see lib/helpers/updateValidators.js) plus the offline document
+// path, so the trap can never come back silently.
+
+const oid = () => new ChatMessage.db.base.Types.ObjectId();
+
+const updateProbe = async (update, value) => {
+  const query = ChatMessage.findOneAndUpdate({ _id: oid(), companyId: oid() }, update);
+
+  try {
+    await ChatMessage.schema.path('text').doValidate(value, query, { updateValidator: true });
+    return null;
+  } catch (error) {
+    return error.message;
+  }
+};
+
+const docProbe = async (data) => {
+  const doc = new ChatMessage({
+    companyId: oid(),
+    conversationId: oid(),
+    senderUserId: oid(),
+    seq: 1,
+    clientMessageId: `c-${oid()}`,
+    ...data,
+  });
+
+  try {
+    await doc.validate();
+    return { error: null, doc };
+  } catch (error) {
+    return { error: error.message, doc };
+  }
+};
+
+test('33.9-fix: a legitimate atomic TEXT edit passes update validation', async () => {
+  const failure = await updateProbe(
+    { $set: { text: 'hih', editedAt: new Date(), editedByUserId: oid() } },
+    'hih'
+  );
+
+  assert.equal(failure, null, 'the edit shape that crashed the API must validate');
+});
+
+test('33.9-fix: update validation still refuses an empty TEXT body', async () => {
+  const failure = await updateProbe({ $set: { text: '   ' } }, '   ');
+
+  assert.match(failure ?? '', /non-empty text/);
+});
+
+test('33.9-fix: the tombstone update validates, and carrying a body still fails', async () => {
+  assert.equal(
+    await updateProbe({ $set: { text: null, deletedAt: new Date() } }, null),
+    null,
+    'tombstone must stay valid'
+  );
+
+  assert.match(
+    (await updateProbe({ $set: { text: 'leak', deletedAt: new Date() } }, 'leak')) ?? '',
+    /must not carry body text/
+  );
+});
+
+test('33.9-fix: a SYSTEM body is refused when the update names the type', async () => {
+  assert.match(
+    (await updateProbe({ $set: { type: 'SYSTEM', text: 'smuggled' } }, 'smuggled')) ?? '',
+    /must not carry body text/
+  );
+});
+
+test('33.9-fix: document validation semantics are unchanged', async () => {
+  assert.equal((await docProbe({ type: 'TEXT', text: 'hello' })).error, null);
+
+  assert.match((await docProbe({ type: 'TEXT', text: '' })).error ?? '', /non-empty text/);
+  assert.match((await docProbe({ type: 'SYSTEM', text: 'x' })).error ?? '', /must not carry body text/);
+
+  // Tombstoning a whole document self-heals: the pre('validate') hook nulls
+  // the body instead of failing the write (33.2 contract).
+  const tombstoned = await docProbe({ type: 'TEXT', text: 'x', deletedAt: new Date() });
+
+  assert.equal(tombstoned.error, null);
+  assert.equal(tombstoned.doc.text, null, 'the hook must redact the body');
+  assert.equal(tombstoned.doc.editVersion, 0);
+});
+
+test('33.9-fix: the validator reads cross-field state from the update, not just `this`', async () => {
+  const source = await readModelSource('ChatMessage');
+
+  // The scope helper is the fix; without it the update path sees undefined.
+  assert.match(source, /updateScopeOf/);
+  assert.match(source, /scope\.getUpdate\(\)/);
+  assert.match(source, /update\.\$setOnInsert/);
+  // And the comment that misled 33.6 is gone.
+  assert.doesNotMatch(source, /`this` is the document, which is what makes this cross-field/);
+});

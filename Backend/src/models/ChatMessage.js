@@ -129,16 +129,44 @@ const chatMessageSchema = new Schema(
 //   1. a tombstone never carries body text — the delete IS the redaction
 //   2. a TEXT message must actually say something
 //   3. a SYSTEM/FILE message must not smuggle body text into `text`
-// `this` is the document, which is what makes this cross-field.
+//
+// THE SCOPE TRAP (33.9-fix — this validator crashed the API once; read on):
+// mongoose runs UPDATE validators (findOneAndUpdate/updateOne with
+// runValidators) with `this` = the QUERY, not the document — see
+// node_modules/mongoose/lib/helpers/updateValidators.js (`const context =
+// query`). Only the paths present in the update are validated, and the query
+// exposes neither `type` nor `deletedAt` (they live in `this.getUpdate()`).
+// The 33.6 version read `this.type`/`this.deletedAt` unconditionally, so
+// every atomic TEXT edit saw `type === undefined` and threw
+// "TEXT messages require non-empty text...". The throw escaped an async
+// socket listener and the process drained (unhandled rejection).
+//
+// The rule now reads the cross-field state from wherever it actually lives,
+// and only enforces what it can see. The service layer still owns the full
+// decision (services filter on { type: 'TEXT', deletedAt: null }), so an
+// update that does not mention `type`/`deletedAt` is held to its local rule
+// — never to a guess.
+const updateScopeOf = (scope) => {
+  if (!scope || typeof scope.getUpdate !== 'function') return scope ?? null;
+
+  const update = scope.getUpdate() ?? {};
+
+  return { ...update, ...(update.$set ?? {}), ...(update.$setOnInsert ?? {}) };
+};
+
 chatMessageSchema.path('text').validate(
   function textShape(value) {
     const empty = value === null || value === undefined || value === '';
+    const scope = updateScopeOf(this);
 
-    if (this.deletedAt) return empty;
+    // A tombstone must never carry a body (checkable on both write paths).
+    if (scope?.deletedAt) return empty;
 
-    if (this.type === 'TEXT') return typeof value === 'string' && value.trim().length > 0;
+    // A SYSTEM/FILE body is never allowed (checkable when `type` is known).
+    if (scope?.type && scope.type !== 'TEXT') return empty;
 
-    return empty;
+    // Otherwise the body is a TEXT body: it must say something.
+    return typeof value === 'string' && value.trim().length > 0;
   },
   'TEXT messages require non-empty text; SYSTEM, FILE and deleted messages must not carry body text.'
 );

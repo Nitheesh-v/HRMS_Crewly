@@ -1428,8 +1428,16 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
       .map((n) => fs.readFileSync(path.join(socketDir, n), 'utf8'))
       .join('\n');
 
+    // 33.9-fix: authenticated listeners are registered through guard(socket,
+    // log, '<event>', ...) so a throwing service becomes a RETRYABLE ack
+    // instead of an unhandled rejection. Detect BOTH registration shapes
+    // (the raw sync stubs and the guarded listeners) — the pin is about
+    // WHICH events exist, not how they are wired.
     const registered = new Set(
-      [...combined.matchAll(/socket\.on\(\s*'(chat:[a-zA-Z:]+)'/g)].map((m) => m[1])
+      [
+        ...combined.matchAll(/socket\.on\(\s*'(chat:[a-zA-Z:]+)'/g),
+        ...combined.matchAll(/guard\(socket, log, '(chat:[a-zA-Z:]+)'/g),
+      ].map((m) => m[1])
     );
 
     for (const allowed of [

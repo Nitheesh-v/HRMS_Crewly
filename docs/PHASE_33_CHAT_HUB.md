@@ -1369,3 +1369,93 @@ the literal `SYSTEM_PERMISSION_VERSION = 36` now assert the version FLOOR
   audit surface is unchanged).
 - Lock/unlock during an open socket session is visible to other members on
   their next fetch or nudge; there is no per-message "locked" system line.
+
+---
+
+# 14. PHASE 33.9-FIX — THE EDIT CRASH (unhandled rejection → API shutdown)
+
+## 14.1 Symptom
+
+Live acceptance of 33.9: the first TEXT edit that actually reached Mongo took
+the API down.
+
+    [error]: Unhandled Rejection: ValidationError: text: TEXT messages require
+             non-empty text; SYSTEM, FILE and deleted messages must not carry
+             body text.
+    [info]: [Shutdown] unhandledRejection received - draining gracefully...
+    [error]: [Shutdown] Graceful shutdown timed out after 10000ms - forcing exit.
+
+## 14.2 Root cause (latent 33.6 defect, exposed by 33.9 acceptance)
+
+`ChatMessage.text` carries a cross-field validator that needs `type` and
+`deletedAt` ("may this document carry a body right now?"). It read them as
+`this.type` / `this.deletedAt` and assumed `this` is the document.
+
+That assumption is wrong for **update validators**. Mongoose runs
+findOneAndUpdate/updateOne validators with `this` = the **query** (see
+`node_modules/mongoose/lib/helpers/updateValidators.js`: `const context =
+query`), and only validates the paths present in the update. Reproduced
+offline (33.9-fix):
+
+    scope.type = undefined | scope.deletedAt = undefined | scope.getUpdate ? function
+    FAIL  EDIT   $set {text, editedAt, editedByUserId} -> <the exact crash message>
+    PASS  TOMBSTONE $set {text:null, deletedAt}
+
+So `editTextMessage`'s `$set: { text: newText, ... }` saw `type === undefined`
+and threw on every edit; the tombstone update happened to pass only because
+`$set.text` was already null. Sends were never affected — they use
+`ChatMessage.create`, i.e. full-document validation.
+
+Earlier edit attempts in acceptance never reached Mongo (realtime was down, so
+the client failed first). This crash needed the socket to be alive at the same
+moment as the DB write — which is exactly what 33.9's acceptance produced.
+
+## 14.3 Why it was an *outage* and not a 500
+
+socket.io invokes listeners through EventEmitter and ignores the returned
+promise, so a rejected `async` chat listener becomes an
+**unhandledRejection** — and the 32.x process policy drains the whole API on
+one. A bad edit from one client therefore killed every tenant's API.
+
+## 14.4 The fix (two layers)
+
+1. **Model — the validator now reads state where it actually lives.**
+   `updateScopeOf(scope)` returns the update (`$set` / `$setOnInsert`) when
+   `this` is a query, else the document itself; the rule then enforces only
+   what is knowable:
+   - a tombstoned/bodied conflict (`deletedAt` set) must carry no body —
+     checkable on both paths;
+   - a SYSTEM/FILE body must be empty — checkable when `type` is named;
+   - otherwise the value is a TEXT body and must be non-empty.
+   Services still own the full decision (edit filters on `{ type: 'TEXT',
+   deletedAt: null }`), so an update that does not mention those fields is
+   held to its local rule — never to a guess. The misleading comment that
+   caused the bug is gone.
+
+2. **Socket — no async listener may reject.** Every authenticated chat
+   listener now runs inside a `guard(socket, log, event, handler)` that turns
+   a service throw into a stable `RETRYABLE` ACK and logs the error **name**
+   only. This is defense in depth: ANY future service error (network blip,
+   validation, bug) can no longer take the process down. The unauthenticated
+   stubs stay raw — they are synchronous and cannot produce a rejection.
+
+## 14.5 Pins
+
+- `test/chatModels.test.js` (+6): drives the REAL schema validator the way
+  mongoose does (`path.doValidate(value, query, { updateValidator: true })`)
+  for the edit and tombstone shapes, plus the offline document path, plus a
+  source pin that the scope helper exists.
+- `test/chatSocketResilience.test.js` (NEW, 7 tests): a throwing service yields
+  a RETRYABLE ack for send/edit/delete/readUpTo, the log carries the error
+  name and nothing else, the success path is untouched, and no chat listener is
+  registered as a raw async function.
+- `test/chatSocketFoundation.test.js`: the event-registration pin now detects
+  BOTH registration shapes (raw stubs + guarded listeners) — inverted, not
+  deleted, so "which events exist" is still enforced.
+
+## 14.6 Operator note
+
+The crash is a server-side defect, not an environment problem: after pulling
+this fix the API no longer needs a restart to survive a bad edit. If a window
+still shows "Chat realtime is not connected.", that is the separate
+Redis/transport issue (section 12.10) — use the banner's Retry button.
