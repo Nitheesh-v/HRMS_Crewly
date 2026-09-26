@@ -912,7 +912,10 @@ test('a rate-limited send shows the server sentence, not a generic failure', asy
 
   assert.match(composer, /if \(failure\) \{/, 'the composer inspects the failure');
   assert.match(composer, /setError\(failure\)/, 'and shows it to the sender');
-  assert.match(composer, /\{error && <p/, 'rendered above the composer');
+  // Shape-tolerant on purpose: the pin is "the failure is rendered as a
+  // paragraph above the composer", not "it is written on one line". A UI pass
+  // that adds role="alert" and a wrapper paren must not read as a regression.
+  assert.match(composer, /\{error && \(\s*<p[^>]*>\s*\{error\}/, 'rendered above the composer');
 
   // REST limits (upload 429) surface the server's sentence — the picker reads
   // the normalized error from services/api.js.

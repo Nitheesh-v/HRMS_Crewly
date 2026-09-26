@@ -95,6 +95,168 @@ h3 {
   }
 }
 
+/* ---- Auth screens ----------------------------------------------------
+   These class names are referenced by LoginPage, RegisterCompanyPage,
+   ForgotPasswordPage, ResetPasswordPage and ResetPasswordPage's success card,
+   but were never defined anywhere: every auth input and primary button fell
+   back to browser defaults on a dark canvas. Defined ONCE, here, so the five
+   screens share one look. Plain CSS (not @apply) so the focus ring, invalid
+   state and placeholder colour stay under our control. */
+.auth-input {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: rgba(255, 255, 255, 0.04);
+  padding: 0.7rem 1rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: #fff;
+  outline: none;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    box-shadow 150ms ease;
+}
+.auth-input::placeholder {
+  color: #64748b;
+}
+.auth-input:hover:not(:focus) {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.auth-input:focus {
+  border-color: rgba(52, 211, 153, 0.7);
+  background-color: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.14);
+}
+.auth-input[aria-invalid='true'] {
+  border-color: rgba(244, 63, 94, 0.6);
+}
+.auth-input[aria-invalid='true']:focus {
+  box-shadow: 0 0 0 4px rgba(244, 63, 94, 0.14);
+}
+.auth-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+/* Chrome's autofill paint is light-blue by default — keep it on-palette */
+.auth-input:-webkit-autofill,
+.auth-input:-webkit-autofill:hover,
+.auth-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #fff;
+  -webkit-box-shadow: 0 0 0 1000px #101a2e inset;
+  caret-color: #fff;
+}
+
+.auth-primary {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.75rem;
+  background-color: #10b981;
+  padding: 0.7rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #04170d;
+  outline: none;
+  transition:
+    background-color 150ms ease,
+    transform 150ms ease,
+    box-shadow 150ms ease;
+}
+.auth-primary:hover:not(:disabled) {
+  background-color: #34d399;
+}
+.auth-primary:active:not(:disabled) {
+  transform: scale(0.99);
+}
+.auth-primary:focus-visible {
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.35);
+}
+.auth-primary:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.auth-secondary {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 0.65rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #e2e8f0;
+  outline: none;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease;
+}
+.auth-secondary:hover {
+  border-color: rgba(255, 255, 255, 0.28);
+  background-color: rgba(255, 255, 255, 0.04);
+}
+.auth-secondary:focus-visible {
+  box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.25);
+}
+
+/* The centered variant's canvas: two soft emerald blooms over navy. */
+.auth-wave-bg {
+  background-color: #0b1120;
+  background-image:
+    radial-gradient(60rem 40rem at 15% -10%, rgba(16, 185, 129, 0.16), transparent 60%),
+    radial-gradient(50rem 34rem at 110% 10%, rgba(59, 130, 246, 0.14), transparent 55%);
+}
+
+/* ---- Chat helpers ---- */
+
+/* Slim scrollbar for the message pane and the conversation list. */
+.chat-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-crewly-border) transparent;
+}
+.chat-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.chat-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-crewly-border);
+  border-radius: 9999px;
+}
+.chat-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* A message bubble's asymmetric corner — the visual "side" of the sender. */
+.bubble-mine {
+  border-radius: 1rem 1rem 0.35rem 1rem;
+}
+.bubble-theirs {
+  border-radius: 1rem 1rem 1rem 0.35rem;
+}
+
+/* Day separator inside the history. */
+.chat-day-sep {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--color-crewly-dim);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.chat-day-sep::before,
+.chat-day-sep::after {
+  content: '';
+  height: 1px;
+  flex: 1;
+  background: var(--color-crewly-border);
+}
+
 /* ---- Global responsive overrides (FAST fix for legacy fixed widths) ---- */
 
 /* 1) Any card/table container that forces overflow on mobile -> make scrollable */

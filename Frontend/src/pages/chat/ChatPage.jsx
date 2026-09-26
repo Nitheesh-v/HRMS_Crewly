@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { AlertTriangle, Lock, Unlock } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Lock, Unlock, Users } from 'lucide-react';
 
 import usePermission from '../../hooks/usePermission.js';
 import chatService from '../../services/chatService.js';
@@ -39,6 +39,7 @@ import ConversationList from '../../components/chat/ConversationList.jsx';
 import MessageList from '../../components/chat/MessageList.jsx';
 import MessageComposer from '../../components/chat/MessageComposer.jsx';
 import ChatEmptyState from '../../components/chat/ChatEmptyState.jsx';
+import Avatar from '../../components/chat/Avatar.jsx';
 import EditMessageModal from '../../components/chat/EditMessageModal.jsx';
 import NewConversationModal from '../../components/chat/NewConversationModal.jsx';
 
@@ -459,6 +460,11 @@ const ChatPage = () => {
 
   const title = activeConversation ? nameOfConversation(activeConversation) : 'Chat';
 
+  // Header identity: a DIRECT chat shows the other person's initials, a group
+  // shows the group glyph. Purely derived from state we already hold.
+  const headerIsDirect = activeConversation?.type === 'DIRECT';
+  const memberCount = activeConversation?.members?.length ?? 0;
+
   // 33.9 — the lock comes from the Mongo row (via the list projection), so a
   // member who is merely reading sees it without any extra request.
   const conversationLocked = Boolean(activeConversation?.isDisabled);
@@ -478,25 +484,48 @@ const ChatPage = () => {
         nameOf={nameOfConversation}
         onSelect={(id) => navigate(`/app/chat/${id}`)}
         onNew={() => setShowNew(true)}
+        mobileHidden={Boolean(conversationId)}
       />
 
-      <section className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-crewly-border px-4 py-3">
-          <div>
-            <h1 className="text-sm font-bold text-crewly-text">
-              {title}
+      <section className={`min-w-0 flex-1 flex-col ${conversationId ? 'flex' : 'hidden md:flex'}`}>
+        <header className="flex items-center gap-3 border-b border-crewly-border px-3 py-2.5 sm:px-4">
+          {/* Phones show one pane at a time; this is the way back to the list. */}
+          {conversationId && (
+            <button
+              type="button"
+              onClick={() => navigate('/app/chat')}
+              aria-label="Back to conversations"
+              className="rounded-lg p-1.5 text-crewly-dim transition hover:bg-crewly-card hover:text-crewly-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-crewly-green/40 md:hidden"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+          )}
+
+          {activeConversation &&
+            (headerIsDirect ? (
+              <Avatar name={title} seed={title} size="md" />
+            ) : (
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-crewly-border/40 text-crewly-dim">
+                <Users className="h-4 w-4" aria-hidden="true" />
+              </span>
+            ))}
+
+          <div className="min-w-0 flex-1">
+            <h1 className="flex items-center gap-2 text-sm font-bold text-crewly-text">
+              <span className="truncate">{title}</span>
               {conversationLocked && (
-                <span className="ml-2 rounded border border-crewly-red/40 px-1.5 py-0.5 text-[10px] font-semibold text-crewly-red">
+                <span className="shrink-0 rounded border border-crewly-red/40 px-1.5 py-0.5 text-[10px] font-semibold text-crewly-red">
                   Disabled
                 </span>
               )}
             </h1>
-            <p className="text-[11px] text-crewly-dim">
+            <p className="truncate text-[11px] text-crewly-dim">
               {chat.realtimeStatus === 'connected'
                 ? 'Realtime connected'
                 : chat.realtimeStatus === 'unavailable'
                   ? 'Realtime unavailable — read-only history'
                   : 'Connecting...'}
+              {memberCount > 1 ? ` · ${memberCount} members` : ''}
               {unreadTotal > 0 ? ` · ${unreadTotal} unread elsewhere` : ''}
             </p>
           </div>
@@ -558,6 +587,13 @@ const ChatPage = () => {
             />
             <MessageComposer
               disabled={chat.realtimeStatus !== 'connected' || conversationLocked}
+              disabledReason={
+                conversationLocked
+                  ? 'An admin disabled this conversation. History stays readable; sending resumes when it is re-enabled.'
+                  : chat.realtimeStatus !== 'connected'
+                    ? 'Realtime is unavailable — history stays readable. Sending returns when the connection is back.'
+                    : ''
+              }
               onSend={handleSend}
               conversationId={conversationId}
               pendingAttachments={activePending}
@@ -566,7 +602,7 @@ const ChatPage = () => {
             />
           </>
         ) : (
-          <ChatEmptyState />
+          <ChatEmptyState onNew={() => setShowNew(true)} />
         )}
       </section>
 
