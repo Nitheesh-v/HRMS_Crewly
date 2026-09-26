@@ -14,6 +14,8 @@
 //                                          expectedEditVersion, newText }        (33.6)
 //                      chat:message:delete { conversationId, messageId }          (33.6)
 //                      chat:readUpTo { conversationId, lastReadSeq }              (33.7)
+//                      chat:message:sendFile { conversationId, clientMessageId,
+//                                              attachmentIds[] }                  (33.10)
 //    server → client : chat:message:created { conversationId, message }
 //                      chat:message:updated { conversationId, messageId, newText,
 //                                             editedAt, editVersion, editedByUserId } (33.6)
@@ -48,11 +50,14 @@ import {
   validateEditPayload,
   validateDeletePayload,
   validateReadUpToPayload,
+  validateSendFilePayload,
 } from './chatSocketValidators.js';
 import {
   loadWritableConversation,
+  sendFileMessage,
   sendTextMessage,
 } from '../services/chat/chatMessageService.js';
+import { linkAttachmentsToMessage } from '../services/chat/chatAttachmentService.js';
 import {
   editTextMessage,
   tombstoneMessage,
@@ -178,6 +183,14 @@ const toBroadcastMessage = (message) => ({
   senderUserId: message.senderUserId,
   type: message.type,
   text: message.text ?? null,
+  // 33.10 — references only (id + display metadata). Never a storage key,
+  // never a URL: the download is a separate, auth-gated request.
+  attachments: (message.attachments ?? []).map((row) => ({
+    attachmentId: row.attachmentId,
+    fileName: row.fileName,
+    mimeType: row.mimeType,
+    sizeBytes: row.sizeBytes,
+  })),
   clientMessageId: message.clientMessageId,
   editVersion: message.editVersion ?? 0,
   deletedAt: message.deletedAt ?? null,
@@ -193,6 +206,9 @@ export const registerChatSocketHandlers = ({
   editMessage = editTextMessage,
   deleteMessage = tombstoneMessage,
   markRead = updateReadMarker,
+  // 33.10 — injectable so the FILE path is hermetically testable.
+  linkAttachments = linkAttachmentsToMessage,
+  sendFile = sendFileMessage,
   // 33.9 — moderation. Injectable so handler tests stay hermetic (no role
   // provisioning, no Mongo). resolveModerator degrades to false on error.
   resolveModerator = defaultResolveModerator,
@@ -209,6 +225,8 @@ export const registerChatSocketHandlers = ({
     socket.on('chat:message:send', (_p, cb) =>
       ack(cb, fail(CHAT_SOCKET_ERROR_CODES.UNAUTHORIZED, 'Authentication required.')));
     socket.on('chat:message:edit', (_p, cb) =>
+      ack(cb, fail(CHAT_SOCKET_ERROR_CODES.UNAUTHORIZED, 'Authentication required.')));
+    socket.on('chat:message:sendFile', (_p, cb) =>
       ack(cb, fail(CHAT_SOCKET_ERROR_CODES.UNAUTHORIZED, 'Authentication required.')));
     socket.on('chat:message:delete', (_p, cb) =>
       ack(cb, fail(CHAT_SOCKET_ERROR_CODES.UNAUTHORIZED, 'Authentication required.')));
@@ -298,6 +316,68 @@ export const registerChatSocketHandlers = ({
 
     // Broadcast only a genuinely new message; an idempotent retry is
     // acknowledged to the sender without re-emitting to the room.
+    if (result.created) {
+      io.to(conversationRoom(parsed.conversationId)).emit('chat:message:created', {
+        conversationId: parsed.conversationId,
+        message: toBroadcastMessage(result.message),
+      });
+    }
+
+    ack(cb, { ok: true, data: { message: toBroadcastMessage(result.message) } });
+  });
+
+  // 33.10 — FILE send. The ids are revalidated against THIS tenant and THIS
+  // conversation before anything is written (linkAttachments), so an id from
+  // another room — or another company — cannot be attached here. The message
+  // then stores only the metadata the service returned, never the ids the
+  // client asked for. Same idempotency index and same ACK shape as TEXT.
+  guard(socket, log, 'chat:message:sendFile', async (payload, cb) => {
+    const parsed = validateSendFilePayload(payload);
+
+    if (!parsed.ok) return ack(cb, fail(CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR, parsed.message));
+
+    if (!allowWrite()) {
+      return ack(cb, fail(
+        CHAT_SOCKET_ERROR_CODES.RATE_LIMITED,
+        'Too many messages. Slow down and retry.',
+      ));
+    }
+
+    let attachments;
+
+    try {
+      attachments = await linkAttachments({
+        companyId,
+        conversationId: parsed.conversationId,
+        attachmentIds: parsed.attachmentIds,
+      });
+    } catch (error) {
+      // A rejected link is a REFUSAL, not a server fault: the caller is told
+      // which of the two things went wrong, without a tenant probe surface.
+      return ack(cb, fail(
+        CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR,
+        error?.message || 'The attachments are not available in this conversation.',
+      ));
+    }
+
+    const result = await sendFile({
+      companyId,
+      senderUserId: userId,
+      conversationId: parsed.conversationId,
+      clientMessageId: parsed.clientMessageId,
+      attachments,
+    });
+
+    if (!result.ok) {
+      const code = result.code === 'NOT_FOUND_OR_FORBIDDEN'
+        ? CHAT_SOCKET_ERROR_CODES.NOT_FOUND_OR_FORBIDDEN
+        : result.code === 'CONVERSATION_DISABLED'
+          ? CHAT_SOCKET_ERROR_CODES.CONVERSATION_DISABLED
+          : CHAT_SOCKET_ERROR_CODES.RETRYABLE;
+
+      return ack(cb, fail(code, 'The message could not be sent.'));
+    }
+
     if (result.created) {
       io.to(conversationRoom(parsed.conversationId)).emit('chat:message:created', {
         conversationId: parsed.conversationId,

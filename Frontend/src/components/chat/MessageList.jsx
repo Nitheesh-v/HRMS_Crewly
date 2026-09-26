@@ -80,6 +80,15 @@ const MessageList = ({
       {pendingItems.map((item) => (
         <div key={item.clientMessageId} className="flex justify-end opacity-60">
           <div className="max-w-[78%] rounded-xl border border-crewly-green/40 bg-crewly-green/10 px-3 py-2">
+            {(item.attachments ?? []).length > 0 && (
+              <div className="mb-1 space-y-1">
+                {(item.attachments ?? []).map((attachment) => (
+                  <p key={String(attachment.attachmentId)} className="truncate text-xs text-crewly-dim">
+                    {attachment.fileName}
+                  </p>
+                ))}
+              </div>
+            )}
             <p className="whitespace-pre-wrap break-words text-sm text-crewly-text">{item.text}</p>
             <p className="mt-1 text-[10px] text-crewly-dim">sending...</p>
           </div>

@@ -80,6 +80,34 @@ const chatService = {
         { reason }
       )
     ),
+
+  // ── 33.10 attachments ──────────────────────────────────────────────────
+  // Upload is REST (multipart); the FILE message itself goes over the socket
+  // (chatRealtime.sendFile) so it rides the same seq/idempotency path as text.
+  // -> { attachment: { _id, fileName, mimeType, sizeBytes, scanState, createdAt } }
+  uploadAttachment: async (conversationId, file) => {
+    const form = new FormData();
+    form.append('file', file);
+
+    const response = await api.post(
+      `/chat/conversations/${conversationId}/attachments`,
+      form
+    );
+
+    return bare(response);
+  },
+
+  // The ONLY way to fetch bytes: the gated endpoint streams them through the
+  // API (Bearer token), so membership is re-checked on every download and no
+  // provider URL or storage key ever reaches the browser.
+  // -> Blob
+  downloadAttachment: async (attachmentId) => {
+    const response = await api.get(`/chat/attachments/${attachmentId}/download`, {
+      responseType: 'blob',
+    });
+
+    return response instanceof Blob ? response : response?.data ?? response;
+  },
 };
 
 export default chatService;

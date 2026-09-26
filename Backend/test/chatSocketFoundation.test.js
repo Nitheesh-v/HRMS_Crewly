@@ -1186,6 +1186,8 @@ describe('33.1 lifecycle', () => {
         'chat:message:delete',
         'chat:message:edit',
         'chat:message:send',
+        // 33.10 — FILE send: references only, ids revalidated server-side.
+        'chat:message:sendFile',
         'chat:readUpTo',
         'disconnect',
         'error',
@@ -1347,6 +1349,8 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
     const chatModels = models.filter((name) => /^Chat/i.test(name)).sort();
 
     assert.deepEqual(chatModels, [
+      // 33.10 — attachment metadata row (bytes live in private storage).
+      'ChatAttachment.js',
       'ChatConversation.js',
       'ChatMessage.js',
       'ChatMessageEdit.js',
@@ -1405,7 +1409,14 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
     assert.ok(router.includes('/messages'), 'read-only history must exist (33.4)');
     assert.ok(router.includes('/read'), 'read-cursor route must exist (33.7)');
 
-    for (const forbidden of ['/send', '/edits', 'unread', 'attachments']) {
+    // 33.10 landed attachments (private upload + auth-gated download), so
+    // 'attachments' left the forbidden list and became an EXPECTED route.
+    // What still must not exist: REST send, edit-history reads, receipt or
+    // unread-mutation endpoints.
+    assert.ok(router.includes('/attachments'), 'attachment upload must exist (33.10)');
+    assert.ok(router.includes('/download'), 'gated download must exist (33.10)');
+
+    for (const forbidden of ['/send', '/edits', 'unread', 'receipts']) {
       assert.ok(
         !router.includes(forbidden),
         `chatRoutes must not expose ${forbidden} (later unit)`,
@@ -1441,10 +1452,10 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
     );
 
     for (const allowed of [
-      'chat:join', 'chat:leave', 'chat:message:send',
+      'chat:join', 'chat:leave', 'chat:message:send', 'chat:message:sendFile',
       'chat:message:edit', 'chat:message:delete', 'chat:readUpTo',
     ]) {
-      assert.ok(registered.has(allowed), `${allowed} must be registered (33.5/33.6/33.7)`);
+      assert.ok(registered.has(allowed), `${allowed} must be registered (33.5/33.6/33.7/33.10)`);
     }
 
     for (const emitted of [

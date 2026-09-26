@@ -22,10 +22,21 @@
 //  Seq gaps are acceptable: seq must be unique and increasing per
 //  conversation, not gapless. A lost create after an $inc leaves a gap, which
 //  the C1 cursor model tolerates (unread = lastMessageSeq - lastReadSeq).
+//
+//  PHASE 33.10 — ONE persistence core, two message kinds.
+//    `persistMessage` holds steps 1-5 above; `sendTextMessage` and
+//    `sendFileMessage` differ only in what they write (type, text,
+//    attachments). The TEXT contract is byte-identical to 33.5 — the file
+//    path reuses the SAME idempotency index, the SAME atomic seq allocation
+//    and the SAME E11000 convergence, so a retried FILE send behaves exactly
+//    like a retried TEXT send. Attachments are revalidated by the caller
+//    (chatAttachmentService.linkAttachmentsToMessage) BEFORE this runs, and
+//    the preview for a FILE message is a generic word — never a filename.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import ChatConversation from '../../models/ChatConversation.js';
 import ChatMessage from '../../models/ChatMessage.js';
+import { CHAT_FILE_PREVIEW_TEXT } from '../../utils/chatFileRules.js';
 
 const PREVIEW_MAX = 200; // matches ChatConversation.lastMessagePreview maxlength
 
@@ -49,12 +60,16 @@ export const loadWritableConversation = async ({
   return conversation ?? null;
 };
 
-export const sendTextMessage = async ({
+// ── shared persistence core ───────────────────────────────────────────────
+// Membership → disabled → idempotency → atomic seq → create → E11000 winner.
+// `mutation` supplies ONLY the type-specific fields.
+const persistMessage = async ({
   companyId,
   senderUserId,
   conversationId,
   clientMessageId,
-  text,
+  mutation,
+  preview,
 }) => {
   const conversation = await loadWritableConversation({
     companyId,
@@ -89,7 +104,7 @@ export const sendTextMessage = async ({
       $inc: { lastMessageSeq: 1 },
       $set: {
         lastMessageAt: now,
-        lastMessagePreview: buildPreview(text),
+        lastMessagePreview: buildPreview(preview),
         lastMessageSenderUserId: senderUserId,
       },
     },
@@ -107,8 +122,7 @@ export const sendTextMessage = async ({
       senderUserId,
       seq,
       clientMessageId,
-      type: 'TEXT',
-      text,
+      ...mutation,
     });
 
     return { ok: true, message: message.toObject(), created: true };
@@ -129,3 +143,39 @@ export const sendTextMessage = async ({
     return { ok: false, code: 'RETRYABLE' };
   }
 };
+
+export const sendTextMessage = async ({
+  companyId,
+  senderUserId,
+  conversationId,
+  clientMessageId,
+  text,
+}) =>
+  persistMessage({
+    companyId,
+    senderUserId,
+    conversationId,
+    clientMessageId,
+    mutation: { type: 'TEXT', text },
+    preview: text,
+  });
+
+// 33.10 — a FILE message carries references, never bytes. `attachments` is
+// the metadata array produced by linkAttachmentsToMessage (already
+// revalidated for tenant + conversation + unused); this function does not
+// re-derive it from the payload.
+export const sendFileMessage = async ({
+  companyId,
+  senderUserId,
+  conversationId,
+  clientMessageId,
+  attachments,
+}) =>
+  persistMessage({
+    companyId,
+    senderUserId,
+    conversationId,
+    clientMessageId,
+    mutation: { type: 'FILE', text: null, attachments },
+    preview: CHAT_FILE_PREVIEW_TEXT,
+  });

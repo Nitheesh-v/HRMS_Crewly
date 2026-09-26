@@ -16,6 +16,8 @@ import * as chatReadService from '../../services/chat/chatReadService.js';
 // off — REST already did the work; the client's next fetch catches up.
 import { notifyConversationsChanged } from '../../socket/realtimeNudge.js';
 import * as chatModerationService from '../../services/chat/chatModerationService.js';
+import * as chatAttachmentService from '../../services/chat/chatAttachmentService.js';
+import { resolveChatAttachmentDelivery } from '../../services/chat/chatAttachmentStorage.js';
 import { hasPermission } from '../../utils/permissionService.js';
 
 // 33.9 — CHAT_GROUP_MANAGE WIDENS 33.2's in-group ADMIN rule; it can never
@@ -300,4 +302,81 @@ export const moderateDeleteMessage = asyncHandler(async (req, res) => {
       changed: result.changed,
     },
   });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PHASE 33.10 — ATTACHMENTS (thin; auth + rules live in the services)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// The name already went through safeChatFileName at upload; this second pass
+// exists because a download header must ALSO be quote/newline-safe (header
+// injection is a transport concern, not a storage one).
+const sanitizeDownloadName = (raw) =>
+  String(raw || 'attachment')
+    .replace(/[\r\n"]/g, '')
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .slice(0, 200) || 'attachment';
+
+// POST /api/chat/conversations/:conversationId/attachments (multipart)
+export const uploadAttachment = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const { conversationId } = req.params;
+  const file = req.file;
+
+  // DB Logic - DB logics
+  // The service resolves membership from Mongo, enforces the type/size
+  // policy, stores the bytes in private storage and writes the metadata row.
+  const attachment = await chatAttachmentService.uploadAttachment({
+    companyId: req.companyId,
+    userId: req.user._id,
+    conversationId,
+    file,
+  });
+
+  // Data to frontend - response to frontend
+  // No storage key, no URL, no checksum: the client only needs what a bubble
+  // renders, and the download is a separate gated request.
+  return ApiResponse.success(res, {
+    message: 'Attachment uploaded',
+    data: { attachment },
+  });
+});
+
+// GET /api/chat/attachments/:attachmentId/download
+export const downloadAttachment = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const { attachmentId } = req.params;
+
+  // DB Logic - DB logics
+  // Tenant + membership are proven BEFORE any storage call; a miss is an
+  // indistinguishable 404 (never "exists but forbidden").
+  const attachment = await chatAttachmentService.authorizeAttachmentDownload({
+    companyId: req.companyId,
+    userId: req.user._id,
+    attachmentId,
+  });
+
+  const delivery = await resolveChatAttachmentDelivery({ attachment });
+
+  // Data to frontend - private, uncacheable, sanitized name. Also set on the
+  // redirect: a signed URL must never be cached by a shared proxy either.
+  res.set('Cache-Control', 'private, no-store, max-age=0');
+  res.set('X-Content-Type-Options', 'nosniff');
+
+  // The resolver is streaming-first (see chatAttachmentStorage); the
+  // redirect branch stays for completeness and is not used by chat today.
+  if (delivery.kind === 'SIGNED_URL' || delivery.kind === 'REDIRECT') {
+    return res.redirect(302, delivery.url);
+  }
+
+  res.set(
+    'Content-Type',
+    delivery.contentType || attachment.mimeType || 'application/octet-stream'
+  );
+  res.set(
+    'Content-Disposition',
+    `attachment; filename="${sanitizeDownloadName(attachment.originalFileName)}"`
+  );
+
+  return res.status(200).send(delivery.bytes);
 });

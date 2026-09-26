@@ -2,6 +2,8 @@
 // it can never inject raw HTML. Deleted messages show a placeholder only.
 import { Pencil, ShieldAlert, Trash2 } from 'lucide-react';
 
+import AttachmentBubble from './AttachmentBubble.jsx';
+
 const timeOf = (value) =>
   value ? new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
 
@@ -47,15 +49,29 @@ const MessageBubble = ({
             {removedByModerator ? 'Message removed by a moderator' : 'This message was deleted'}
           </p>
         ) : (
-          <p className="whitespace-pre-wrap break-words text-sm text-crewly-text">
-            {message.text}
-          </p>
+          <>
+            {(message.attachments ?? []).length > 0 && (
+              <div className="mb-1.5 space-y-1.5">
+                {(message.attachments ?? []).map((attachment) => (
+                  <AttachmentBubble
+                    key={String(attachment.attachmentId)}
+                    attachment={attachment}
+                  />
+                ))}
+              </div>
+            )}
+            {message.text && (
+              <p className="whitespace-pre-wrap break-words text-sm text-crewly-text">
+                {message.text}
+              </p>
+            )}
+          </>
         )}
 
         <p className="mt-1 flex items-center gap-2 text-[10px] text-crewly-dim">
           <span>{timeOf(message.createdAt)}</span>
           {!deleted && (message.editVersion ?? 0) > 0 && <span>(edited)</span>}
-          {showOwnActions && message.type === 'TEXT' && (
+          {showOwnActions && message.type === 'TEXT' && (message.attachments ?? []).length === 0 && (
             <span className="hidden gap-1 group-hover:flex">
               <button
                 type="button"

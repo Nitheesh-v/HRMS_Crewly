@@ -195,6 +195,8 @@ test('exact index inventory — no index may appear or disappear silently', () =
     ChatMessage: [
       ['companyId', 'conversationId', 'seq'],
       ['companyId', 'conversationId', 'senderUserId', 'clientMessageId'],
+      // 33.10 — "is this attachment already referenced by a message?".
+      ['companyId', 'conversationId', 'attachments.attachmentId'],
     ],
     ChatMessageEdit: [
       ['companyId', 'messageId', 'version'],

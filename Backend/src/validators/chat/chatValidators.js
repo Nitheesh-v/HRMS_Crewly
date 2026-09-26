@@ -201,3 +201,21 @@ export const moderateDeleteValidator = [
 
   validate,
 ];
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PHASE 33.10 — ATTACHMENT VALIDATORS
+//
+//  Multipart limits live in the multer policy (utils/chatFileRules +
+//  middlewares/documentFilePolicy); these only validate the ROUTE PARAMS, so
+//  a bad id is a clean 400 before any service or storage call happens.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const uploadAttachmentValidator = [
+  objectIdRule(param('conversationId'), 'conversationId'),
+  validate,
+];
+
+export const attachmentIdParamValidator = [
+  objectIdRule(param('attachmentId'), 'attachmentId'),
+  validate,
+];

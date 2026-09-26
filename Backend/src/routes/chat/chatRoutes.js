@@ -26,6 +26,7 @@ import {
 import * as chatController from '../../controllers/chat/chatController.js';
 import {
   addMembersValidator,
+  attachmentIdParamValidator,
   conversationIdParamValidator,
   createConversationValidator,
   disableConversationValidator,
@@ -35,7 +36,10 @@ import {
   moderateDeleteValidator,
   readMarkerValidator,
   removeMemberValidator,
+  uploadAttachmentValidator,
 } from '../../validators/chat/chatValidators.js';
+import { createDocumentFileUpload } from '../../middlewares/documentFilePolicy.js';
+import { CHAT_ATTACHMENT_MAX_BYTES } from '../../utils/chatFileRules.js';
 import { requireAnyPermission } from '../../middlewares/permissionMiddleware.js';
 
 const router = Router();
@@ -125,6 +129,49 @@ router.post(
   requireAnyPermission(['CHAT_MODERATE']),
   moderateDeleteValidator,
   chatController.moderateDeleteMessage
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  33.10 — ATTACHMENTS (private storage; auth-gated delivery)
+//
+//  The upload reuses the repo's shared file policy (PDF/JPG/JPEG/PNG/WEBP
+//  with an extension+MIME cross-check) and its 10 MB document cap — no new
+//  policy, no new limit. Membership is NOT checked here: the service resolves
+//  it from Mongo so the answer is authoritative (and the uploader learns
+//  nothing about conversations they are not in).
+//
+//  The download is the ONLY way bytes leave the system: it proves tenant +
+//  membership first, then returns a bounded signed URL (or streams a dev-local
+//  file) with Cache-Control private,no-store,max-age=0.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Size/type violations MUST be 400s, never 500s — the same mapping every
+// other uploader in the repo uses (selfServiceRoutes / taskRoutes /
+// uploadMiddleware.wrap). The policy message already names the allowlist.
+const chatAttachmentUpload = (req, res, next) => {
+  createDocumentFileUpload(CHAT_ATTACHMENT_MAX_BYTES).single('file')(req, res, (error) => {
+    if (error) {
+      error.statusCode = 400;
+      if (error.code === 'LIMIT_FILE_SIZE') {
+        error.message = `File must be ${Math.floor(CHAT_ATTACHMENT_MAX_BYTES / (1024 * 1024))} MB or smaller.`;
+      }
+    }
+    next(error);
+  });
+};
+
+router.post(
+  '/conversations/:conversationId/attachments',
+  checkWriteAccess,
+  chatAttachmentUpload,
+  uploadAttachmentValidator,
+  chatController.uploadAttachment
+);
+
+router.get(
+  '/attachments/:attachmentId/download',
+  attachmentIdParamValidator,
+  chatController.downloadAttachment
 );
 
 export default router;

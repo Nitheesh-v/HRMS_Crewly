@@ -1582,3 +1582,168 @@ Expected: 23, 7 and 8 passing respectively; `test:all` 2400+ passing with
   another company (that is the intended non-leaking answer).
 - Old log lines had no status → the API was not restarted after pulling this
   change.
+
+---
+
+# 16. PHASE 33.10 — PRIVATE ATTACHMENTS (UPLOAD + GATED DOWNLOAD)
+
+## 16.1 What this unit adds
+
+A conversation member can attach a file to a message, and any member of that
+conversation can download it later. The bytes live in the repo's EXISTING
+private storage; the database stores a server-generated key and display
+metadata only. There is no public URL, and no signed URL is ever persisted.
+
+Not in this unit: virus scanning (there is no scanner in this repo — see
+§16.6), image thumbnails/previews, drag-and-drop, multi-file drag, resumable
+upload, background purge of removed bytes (documented limitation in §16.7).
+
+## 16.2 Data model
+
+`src/models/ChatAttachment.js` (NEW)
+
+    companyId, conversationId, uploadedByUserId   (all indexed, immutable)
+    storageProvider   CLOUDINARY_AUTHENTICATED | LOCAL_PRIVATE (repo enum)
+    storageKey        select: false  — never returned by a normal read
+    checksumSha256    select: false  — durable integrity proof, not a payload
+    originalFileName  sanitized at upload (max 220)
+    mimeType, sizeBytes
+    scanStatus        NOT_CONFIGURED | PENDING | CLEAN | REJECTED | ERROR
+    scanCheckedAt, removedAt
+    index: (companyId, conversationId, createdAt desc)
+
+`ChatMessage.attachments[]` (NEW field, `_id: false`)
+
+    { attachmentId, fileName, mimeType, sizeBytes }
+
+References ONLY. No key, no URL, no bytes. `ChatMessage` now also carries
+`{ companyId, conversationId, 'attachments.attachmentId' }` (multikey) for
+the "is this attachment already used?" check.
+
+## 16.3 Limits (utils/chatFileRules.js)
+
+- allowlist: PDF / JPG / JPEG / PNG / WEBP — the repo's OWN list
+  (`middlewares/documentFilePolicy.js`), with the extension↔MIME cross-check,
+  so a `.pdf`-named executable or a browser MIME lie is refused.
+- size: 10 MB per file — the repo's document cap, not a new number.
+- count: 5 files per message.
+- storage keys are built by the SERVER only
+  (`crewly-private-chat-attachments/<companyId>/<conversationId>/<uuid>`);
+  caller input never reaches a key. A read-side guard
+  (`assertSafeStorageKey`) refuses `..`, `\`, absolute paths, percent-encoded
+  traversal and oversized keys.
+- No new env var: the dev-local directory has a code default
+  (`private_storage/chat-attachments`, already gitignored). Production
+  refuses the local fallback entirely.
+
+## 16.4 REST contract
+
+    POST /api/chat/conversations/:conversationId/attachments   (multipart, field "file")
+      → { attachment: { _id, conversationId, fileName, mimeType, sizeBytes,
+                        scanState, createdAt } }
+      404 for a non-member / other tenant (same shape as a missing row)
+      400 for type/size violations and for a disabled conversation
+
+    GET  /api/chat/attachments/:attachmentId/download
+      → 200 streamed bytes with
+          Cache-Control: private, no-store, max-age=0
+          X-Content-Type-Options: nosniff
+          Content-Disposition: attachment; filename="<sanitized>"
+      404 for a non-member, another tenant, a withdrawn file, or a row whose
+      provider is unknown — all four are indistinguishable on purpose.
+
+Downloads are decision-ordered: tenant + membership are proven from Mongo
+FIRST, then the bytes are fetched (bounded, 15 s timeout, 413 if the provider
+body exceeds the cap). For Cloudinary rows a signed URL (≤ 5 min) is minted as
+an INTERNAL hop only — the browser never receives a provider URL, and there is
+exactly one auth model (the same Bearer token as every other endpoint). This
+mirrors how the BGV evidence download already streams private files.
+
+## 16.5 Socket contract (FILE messages)
+
+    client → server : chat:message:sendFile { conversationId, clientMessageId,
+                                              attachmentIds: [...] }
+    server → client : chat:message:created  { conversationId, message }  (broadcast,
+                                              message.attachments = references)
+    ACK             : { ok: true, data: { message } } | { ok: false, code, message }
+
+Server rules:
+
+- every id is revalidated against the SAME tenant and the SAME conversation,
+  and must not already be referenced by another message — an id from another
+  room cannot be attached, and an id cannot be replayed (the message stores
+  what the service RETURNED, never what the client asked for);
+- the idempotency index, atomic seq allocation and E11000 convergence are the
+  SAME ones TEXT uses (`persistMessage` core, shared by both senders);
+- the conversation-list preview for a FILE message is the generic word
+  "Attachment" — a private filename never lands in a denormalized field;
+- a locked conversation refuses the send (CONVERSATION_DISABLED), exactly as
+  text does.
+
+## 16.6 ScanState truthfulness
+
+This repository has NO malware scanner. `scanDocumentForMalware()` in the
+pre-onboarding security service returns `{ status: 'NOT_CONFIGURED' }` and
+there is nothing to call instead. Chat attachments therefore store
+`scanStatus: 'NOT_CONFIGURED'` and the API reports it as `scanState`. Nothing
+in this unit converts it to CLEAN, and no UI claims a file was scanned. If a
+scanner is configured later, the enum already has PENDING / CLEAN / REJECTED /
+ERROR and the field is where the result belongs.
+
+## 16.7 Delete-for-everyone also withdraws the file
+
+Tombstoning a message (sender delete 33.6, or moderator delete 33.9) marks
+every attachment it referenced as `removedAt`, and the download endpoint
+refuses withdrawn rows. Without this, "deleted" would be a half-truth: the
+bubble would say the message was removed while the bytes stayed fetchable by
+id. The withdraw step is best-effort and idempotent, and it runs before the
+tombstone write so the intent is recorded even if that write then races.
+
+## 16.8 Frontend (minimal)
+
+- `AttachmentPicker.jsx` — paperclip in the composer; the file uploads on
+  SELECT (REST) and appears as a removable chip. Server caps are mirrored for
+  a fast error, the server stays the authority.
+- `AttachmentBubble.jsx` — filename, human size, download button. The download
+  calls the gated endpoint through the api client (Bearer token), receives a
+  blob and hands it to the browser; a 404 renders "This file is no longer
+  available." No provider URL ever exists in the component.
+- `MessageBubble.jsx` renders attachments above the text; the edit pencil is
+  hidden for a FILE message (editing references is not supported in this
+  unit); pending (optimistic) messages show the file names while the send is
+  in flight.
+- Files stay in the tray if the send is refused, so a retry does not
+  re-upload.
+
+## 16.9 Tests
+
+`test/chatAttachments.test.js` — 21 hermetic tests, storage layer injected
+(no Cloudinary, no Mongo, no HTTP server): non-member and cross-tenant
+refusals for upload and download, the response shape never carrying
+key/checksum/URL, server-built keys, oversize/type/MIME-lie refusals, upload
+refused on a locked conversation, withdrawn-file refusal, traversal-key
+refusal, streaming delivery for both providers with 503/413 degradation, the
+linking rules (tenant + conversation + unused), reference-only broadcast, and
+the download headers (`private, no-store, max-age=0`, sanitized
+`Content-Disposition`) driven through the real controller.
+
+Stale pins were INVERTED, not deleted: the 33.1 lifecycle event list and the
+33.1/33.2 boundary test now expect `chat:message:sendFile`, `ChatAttachment.js`
+and the attachment routes, while still forbidding REST send, edit-history
+reads and receipts; the index inventory records the new multikey index; the
+resilience pin expects the FILE stub among the unauthenticated raw listeners.
+
+## 16.10 Limitations (honest)
+
+- No malware scanning (nothing to scan with) and no content-disarm; the
+  allowlist and structural checks are the only pre-storage validation.
+- Removing a message withdraws the FILE reference and refuses the download,
+  but the stored bytes are not deleted from the provider — a purge job is a
+  deliberate later unit (documented, not forgotten).
+- No thumbnails, previews or inline image rendering; every file is a
+  download.
+- No resumable/sharded upload; the whole file is held in memory for the
+  request (bounded by the 10 MB cap and the multer memory policy the rest of
+  the repo already uses).
+- Attachment storage counts toward nothing (no per-tenant quota in this unit).
+- A FILE message cannot be edited (its references are immutable).

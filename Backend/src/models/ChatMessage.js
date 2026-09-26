@@ -101,6 +101,31 @@ const chatMessageSchema = new Schema(
       maxlength: CHAT_MESSAGE_TEXT_MAX,
     },
 
+    // ── FILE references (33.10) ──────────────────────────────────────────
+    // Metadata ONLY, copied at send time so the bubble renders without a
+    // second query: the id to download with, plus what to show. NEVER a
+    // storageKey, NEVER a URL — the bytes are reachable only through the
+    // auth-gated download endpoint. The array is bounded by
+    // CHAT_ATTACHMENT_MAX_PER_MESSAGE at the service layer.
+    attachments: {
+      type: [
+        new Schema(
+          {
+            attachmentId: {
+              type: Schema.Types.ObjectId,
+              ref: 'ChatAttachment',
+              required: true,
+            },
+            fileName: { type: String, required: true, trim: true, maxlength: 220 },
+            mimeType: { type: String, required: true, trim: true, maxlength: 120 },
+            sizeBytes: { type: Number, required: true, min: 1 },
+          },
+          { _id: false }
+        ),
+      ],
+      default: [],
+    },
+
     // ── Edits ────────────────────────────────────────────────────────────
     // editVersion 0 means "never edited". Each edit increments it and appends
     // a ChatMessageEdit row. 33.6 enforces the retention cap and the
@@ -208,5 +233,9 @@ chatMessageSchema.index(
   { companyId: 1, conversationId: 1, senderUserId: 1, clientMessageId: 1 },
   { unique: true }
 );
+
+// 33.10 — "is this attachment already referenced?" (one attachment belongs to
+// exactly one message). Multikey on the embedded array, tenant-first.
+chatMessageSchema.index({ companyId: 1, conversationId: 1, 'attachments.attachmentId': 1 });
 
 export default mongoose.model('ChatMessage', chatMessageSchema);

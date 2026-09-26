@@ -50,6 +50,8 @@ import ChatMessage from '../../models/ChatMessage.js';
 import ChatMessageEdit from '../../models/ChatMessageEdit.js';
 
 import { loadWritableConversation } from './chatMessageService.js';
+// 33.10 — tombstoning a FILE message withdraws its attachments too.
+import { withdrawMessageAttachments } from './chatAttachmentService.js';
 
 export const CHAT_EDIT_HISTORY_MAX = 20;
 
@@ -192,6 +194,20 @@ export const tombstoneMessage = async ({
 
   if (!moderator && String(message.senderUserId) !== String(deleterUserId)) {
     return { ok: false, code: 'MESSAGE_NOT_EDITABLE' };
+  }
+
+  // 33.10 — "delete for everyone" must also withdraw the FILES. A tombstoned
+  // FILE message whose attachment stayed downloadable would be a half-delete:
+  // the bubble would say "deleted" while the bytes remained fetchable by id.
+  // Best-effort by design (a storage-lookup hiccup must not resurrect the
+  // message), and it runs BEFORE the tombstone write so the intent is
+  // recorded even if the message update then races.
+  if (Array.isArray(message.attachments) && message.attachments.length > 0) {
+    await withdrawMessageAttachments({
+      companyId,
+      conversationId,
+      attachments: message.attachments,
+    });
   }
 
   const now = new Date();

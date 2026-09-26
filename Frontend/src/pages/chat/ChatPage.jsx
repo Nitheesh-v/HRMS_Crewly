@@ -74,6 +74,28 @@ const ChatPage = () => {
   const [moderationBusy, setModerationBusy] = useState(false);
   const [moderationNotice, setModerationNotice] = useState(null);
 
+  // 33.10 — files already uploaded and waiting for the send that will
+  // reference them. Keyed per conversation so switching rooms cannot leak a
+  // pending file into the wrong chat.
+  const [pendingAttachments, setPendingAttachments] = useState({});
+  const activePending = conversationId ? pendingAttachments[conversationId] ?? [] : [];
+
+  const addAttachment = useCallback((attachment) => {
+    setPendingAttachments((current) => ({
+      ...current,
+      [conversationId]: [...(current[conversationId] ?? []), attachment],
+    }));
+  }, [conversationId]);
+
+  const removeAttachment = useCallback((attachmentId) => {
+    setPendingAttachments((current) => ({
+      ...current,
+      [conversationId]: (current[conversationId] ?? []).filter(
+        (entry) => String(entry._id) !== String(attachmentId)
+      ),
+    }));
+  }, [conversationId]);
+
   const [users, setUsers] = useState([]);
   const [showNew, setShowNew] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -254,12 +276,30 @@ const ChatPage = () => {
   }, [conversationId, newestSeq, applyRead]);
 
   // ── actions ───────────────────────────────────────────────────────────
-  const handleSend = async (text) => {
+  const handleSend = async (text, attachments = []) => {
     const clientMessageId = newClientMessageId();
 
-    dispatch(pendingAdd({ conversationId, entry: { clientMessageId, text, status: 'sending' } }));
+    dispatch(pendingAdd({
+      conversationId,
+      entry: {
+        clientMessageId,
+        text: text || 'Attachment',
+        attachments: attachments.map((entry) => ({
+          attachmentId: entry._id,
+          fileName: entry.fileName,
+          sizeBytes: entry.sizeBytes,
+        })),
+        status: 'sending',
+      },
+    }));
 
-    const ack = await chatRealtime.send({ conversationId, clientMessageId, text });
+    const ack = attachments.length > 0
+      ? await chatRealtime.sendFile({
+          conversationId,
+          clientMessageId,
+          attachmentIds: attachments.map((entry) => entry._id),
+        })
+      : await chatRealtime.send({ conversationId, clientMessageId, text });
 
     if (!ack.ok) {
       dispatch(pendingFail({ conversationId, clientMessageId }));
@@ -268,7 +308,13 @@ const ChatPage = () => {
         return 'Chat realtime is unavailable right now. History still loads read-only.';
       }
 
+      // The uploaded files stay in the tray so the sender can retry without
+      // re-uploading; the ids are still unclaimed.
       return ack.message || 'The message could not be sent.';
+    }
+
+    if (attachments.length > 0) {
+      setPendingAttachments((current) => ({ ...current, [conversationId]: [] }));
     }
 
     return null;
@@ -504,6 +550,10 @@ const ChatPage = () => {
             <MessageComposer
               disabled={chat.realtimeStatus !== 'connected' || conversationLocked}
               onSend={handleSend}
+              conversationId={conversationId}
+              pendingAttachments={activePending}
+              onAddAttachment={addAttachment}
+              onRemoveAttachment={removeAttachment}
             />
           </>
         ) : (

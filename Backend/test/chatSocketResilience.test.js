@@ -232,6 +232,8 @@ test('every authenticated listener is registered through the guard (source pin)'
       'chat:message:delete',
       'chat:message:edit',
       'chat:message:send',
+      // 33.10 — the FILE stub is unauthenticated-raw like the others.
+      'chat:message:sendFile',
       'chat:readUpTo',
     ],
     'raw registrations must be exactly the unauthenticated stubs',

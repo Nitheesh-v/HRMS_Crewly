@@ -15,6 +15,7 @@
 import mongoose from 'mongoose';
 
 import { CHAT_MESSAGE_TEXT_MAX } from '../models/ChatMessage.js';
+import { CHAT_ATTACHMENT_MAX_PER_MESSAGE } from '../utils/chatFileRules.js';
 
 export const CHAT_CLIENT_MESSAGE_ID_MAX = 80;
 export const CHAT_CLIENT_EDIT_ID_MAX = 80;
@@ -174,4 +175,46 @@ export const validateReadUpToPayload = (payload) => {
     conversationId: String(body.conversationId),
     lastReadSeq,
   };
+};
+
+// ── 33.10 — FILE send ─────────────────────────────────────────────────────
+// Same idempotency contract as TEXT (clientMessageId is required), but the
+// body is a bounded, deduplicated array of attachment ids. Ids are validated
+// as ObjectIds HERE so a malformed frame never reaches a Mongo query; the
+// tenant/conversation/unused revalidation happens in the service, because
+// only the database can answer those questions.
+export const validateSendFilePayload = (payload) => {
+  const body = asObject(payload);
+
+  if (!body) return validationError('A message payload is required.');
+
+  if (!mongoose.isValidObjectId(String(body.conversationId || ''))) {
+    return validationError('conversationId is not a valid identifier.');
+  }
+
+  const clientMessageId = String(body.clientMessageId || '').trim();
+
+  if (clientMessageId.length < 1 || clientMessageId.length > CHAT_CLIENT_MESSAGE_ID_MAX) {
+    return validationError('clientMessageId is required for idempotent delivery.');
+  }
+
+  if (!Array.isArray(body.attachmentIds)) {
+    return validationError('attachmentIds must be a list of attachment ids.');
+  }
+
+  const attachmentIds = [...new Set(body.attachmentIds.map((id) => String(id || '')))];
+
+  if (attachmentIds.length < 1) return validationError('At least one file is required.');
+
+  if (attachmentIds.length > CHAT_ATTACHMENT_MAX_PER_MESSAGE) {
+    return validationError(
+      `A message can carry at most ${CHAT_ATTACHMENT_MAX_PER_MESSAGE} files.`
+    );
+  }
+
+  if (attachmentIds.some((id) => !mongoose.isValidObjectId(id))) {
+    return validationError('attachmentIds contains an invalid identifier.');
+  }
+
+  return { ok: true, conversationId: String(body.conversationId), clientMessageId, attachmentIds };
 };

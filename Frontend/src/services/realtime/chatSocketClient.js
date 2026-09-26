@@ -136,6 +136,9 @@ export const chatRealtime = {
   join: (conversationId) => ackOf('chat:join', { conversationId }),
   leave: (conversationId) => ackOf('chat:leave', { conversationId }),
   send: (payload) => ackOf('chat:message:send', payload),
+  // 33.10 — FILE messages ride the same ACK contract as text; the ids were
+  // already uploaded over REST, so nothing but references goes over the wire.
+  sendFile: (payload) => ackOf('chat:message:sendFile', payload),
   edit: (payload) => ackOf('chat:message:edit', payload),
   remove: (payload) => ackOf('chat:message:delete', payload),
   readUpTo: (payload) => ackOf('chat:readUpTo', payload),
