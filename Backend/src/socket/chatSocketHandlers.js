@@ -58,6 +58,7 @@ import {
   sendTextMessage,
 } from '../services/chat/chatMessageService.js';
 import { linkAttachmentsToMessage } from '../services/chat/chatAttachmentService.js';
+import { toAttachmentReferences } from '../utils/chatAttachmentView.js';
 import {
   editTextMessage,
   tombstoneMessage,
@@ -185,12 +186,9 @@ const toBroadcastMessage = (message) => ({
   text: message.text ?? null,
   // 33.10 — references only (id + display metadata). Never a storage key,
   // never a URL: the download is a separate, auth-gated request.
-  attachments: (message.attachments ?? []).map((row) => ({
-    attachmentId: row.attachmentId,
-    fileName: row.fileName,
-    mimeType: row.mimeType,
-    sizeBytes: row.sizeBytes,
-  })),
+  // 33.10-fix3 — ONE definition, shared with the REST history projection so
+  // the two surfaces cannot drift (they did: history dropped the field).
+  attachments: toAttachmentReferences(message.attachments),
   clientMessageId: message.clientMessageId,
   editVersion: message.editVersion ?? 0,
   deletedAt: message.deletedAt ?? null,

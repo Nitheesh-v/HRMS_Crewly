@@ -39,6 +39,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import mongoose from 'mongoose';
+import { toAttachmentReferences } from '../../utils/chatAttachmentView.js';
 
 import ChatConversation from '../../models/ChatConversation.js';
 import ChatMessage from '../../models/ChatMessage.js';
@@ -431,6 +432,12 @@ export const sanitizeMessageForHistory = (message) => ({
   senderUserId: message.senderUserId,
   type: message.type,
   text: message.deletedAt ? null : message.text ?? null,
+  // 33.10-fix3 — the whitelist FORGOT attachments when 33.10 shipped, so a
+  // FILE message loaded from history arrived with no file and rendered as an
+  // empty bubble (it looked fine only while it was still the live socket
+  // copy). References only — id + display metadata, the same view the socket
+  // broadcasts; the bytes stay behind the gated download.
+  attachments: toAttachmentReferences(message.attachments),
   editedAt: message.editedAt ?? null,
   editVersion: message.editVersion ?? 0,
   deletedAt: message.deletedAt ?? null,

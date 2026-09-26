@@ -1956,3 +1956,71 @@ which looks exactly like a legitimate refusal. A rule that can throw is not a
 rule; the suite pins both the refusal AND the acceptance so a broken import
 cannot masquerade as enforcement.
 
+---
+
+# 19. PHASE 33.10-fix3 — THE HISTORY DROPPED THE FILE
+
+## 19.1 The symptom
+
+After the page was reloaded, a file message that had rendered correctly on
+arrival showed as **"This message could not be displayed"**. The database was
+fine: the same rows rendered their pdf bubbles whenever they arrived live over
+the socket.
+
+## 19.2 The cause
+
+`sanitizeMessageForHistory` (33.4, `services/chat/chatService.js`) is a field
+**whitelist**, and 33.10 never added `attachments` to it. The two surfaces
+therefore disagreed about the same document:
+
+    socket broadcast  -> { ..., attachments: [ { attachmentId, fileName, ... } ] }
+    GET .../messages  -> { ..., attachments: undefined }        ← the file vanished
+
+A FILE message renders its content from `attachments`; with the field missing,
+the bubble had nothing to draw. This was invisible in the first acceptance run
+because the file was still the live socket copy at the time.
+
+## 19.3 The fix
+
+- `utils/chatAttachmentView.js` (NEW) — `toAttachmentReferences()`: THE
+  definition of an attachment reference on the wire (id + fileName + mimeType +
+  sizeBytes; never a storage key, URL or checksum).
+- `services/chat/chatService.js` — the history projection now carries
+  `attachments` through that helper.
+- `socket/chatSocketHandlers.js` — the broadcast uses the same helper, so the
+  two surfaces cannot drift again; `test/chatHistory.test.js` compares them
+  directly for the same row.
+- Nothing in the database was ever wrong, and nothing needs repairing: reload
+  the page and the files come back.
+
+## 19.4 Why the 33.10 tests missed it
+
+The 33.10 suite pinned the socket projection, the linking rules and the
+download headers, but nothing pinned the REST **history** shape — a whitelist
+regression is exactly the kind of bug a projection test catches and a service
+test does not. `test/chatHistory.test.js` now pins:
+
+- the history view of a FILE row (references only; a storage key, a checksum,
+  a key namespace or any URL must not appear in the serialized item);
+- a tombstoned FILE row keeps its references (the bubble shows the tombstone);
+- `listMessages` returns FILE messages with their files attached;
+- **the history view and the socket broadcast are deep-equal for the same
+  row**, which is the assertion that would have caught this on day one.
+
+## 19.5 The blank row at 10:57
+
+§18 fixed a body that cannot be read; this section fixed a file that was never
+sent to the client. They are different failures with the same visible symptom,
+and one command separates them:
+
+    cd Backend
+    npm run chat:blank-check
+
+- **It reports a row** → that row is genuinely blank in the database (an
+  invisible body, or a FILE message with no references). §18's rule now
+  refuses to write either; the row itself stays visible as
+  "This message could not be displayed" until it is deleted through the
+  product.
+- **It reports 0 rows** → the blank bubble you saw was purely this projection
+  bug, and it is fixed.
+
