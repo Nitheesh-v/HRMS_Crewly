@@ -1,5 +1,12 @@
 # CREWLY — TOTAL PROJECT MEMORY CAPSULE
 
+> **Superseded for CURRENT state (2026-09-26).** This file is accurate through
+> **Phase 30**. Phase 31/32 truth lives in `docs/PHASE_32_MEMORY_CAPSULE.md`, and
+> the **current** state (Phase 33 chat hub + the 33.13/33.14 session/auth work,
+> standing rules, strategy, pitfalls, exact commands) is
+> **`docs/PHASE_33_MEMORY_CAPSULE.md`** — start there. The history below is kept
+> because it is still the fullest description of Phases 1–30.
+
 For starting a new Agent/session on this project. Read this first, then the
 repo (the repo is always the source of truth).
 Last updated: 2026-09-09, after Phase 30 close (branch
