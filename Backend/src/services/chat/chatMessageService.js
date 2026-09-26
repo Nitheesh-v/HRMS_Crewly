@@ -37,8 +37,14 @@
 import ChatConversation from '../../models/ChatConversation.js';
 import ChatMessage from '../../models/ChatMessage.js';
 import { CHAT_FILE_PREVIEW_TEXT } from '../../utils/chatFileRules.js';
+import { hasVisibleText } from '../../utils/chatTextRules.js';
+import logger from '../../config/logger.js';
 
 const PREVIEW_MAX = 200; // matches ChatConversation.lastMessagePreview maxlength
+
+// The one sentence the API says when a message would carry no renderable
+// content. Shared by both senders so the wording cannot drift.
+export const EMPTY_BODY_MESSAGE = 'A message must not be empty.';
 
 const buildPreview = (text) => String(text ?? '').slice(0, PREVIEW_MAX);
 
@@ -63,6 +69,17 @@ export const loadWritableConversation = async ({
 // ── shared persistence core ───────────────────────────────────────────────
 // Membership → disabled → idempotency → atomic seq → create → E11000 winner.
 // `mutation` supplies ONLY the type-specific fields.
+// 33.10-fix2 — THE RENDERABILITY INVARIANT.
+//
+// A stored message must render something: a visible body, or at least one
+// attachment reference. Localhost acceptance showed a bubble carrying only a
+// timestamp (2026-09-26, 10:57) — an all-invisible body was accepted by the
+// old trim()-only check. Rather than trust every present and future writer to
+// remember the rule, the ONE create path refuses what nobody could read.
+const unrenderableMutation = (mutation) =>
+  !hasVisibleText(mutation?.text) &&
+  (!Array.isArray(mutation?.attachments) || mutation.attachments.length === 0);
+
 const persistMessage = async ({
   companyId,
   senderUserId,
@@ -71,6 +88,20 @@ const persistMessage = async ({
   mutation,
   preview,
 }) => {
+  if (unrenderableMutation(mutation)) {
+    // Refused before any DB work. Logged with safe scalars only — never the
+    // body (it is invisible, but it is still user content).
+    logger.warn('chat.message.unrenderable', {
+      conversationId: String(conversationId),
+      senderUserId: String(senderUserId),
+      type: mutation?.type ?? null,
+      textLength: typeof mutation?.text === 'string' ? mutation.text.length : 0,
+      attachmentCount: Array.isArray(mutation?.attachments) ? mutation.attachments.length : 0,
+    });
+
+    return { ok: false, code: 'EMPTY_BODY', message: EMPTY_BODY_MESSAGE };
+  }
+
   const conversation = await loadWritableConversation({
     companyId,
     userId: senderUserId,

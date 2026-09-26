@@ -1833,3 +1833,126 @@ Spec: `test/loggerStatusLine.test.js` (11 tests) pins the row shape, the
 refusal line, the 5xx class name, the 300-char/newline bounds, and that the
 JSON transports keep the ids and the stack.
 
+---
+
+# 18. PHASE 33.10-fix2 — THE INVISIBLE MESSAGE (THE BLANK BUBBLE)
+
+## 18.1 The symptom
+
+Localhost acceptance showed a bubble carrying nothing but a timestamp
+(2026-09-26, 10:57) in BOTH members' views, while the file sent a minute later
+rendered correctly. Nothing looked wrong in the database or the network tab:
+the row was there, it was broadcast, and every client drew it.
+
+## 18.2 The cause
+
+The stored body was **invisible** — a zero-width space (\u200B), the class of
+character that arrives by copy/paste from other apps. `String(text).trim()`
+removes only WhiteSpace and line terminators, so an all-invisible body passed
+every "is it empty?" check:
+
+    text = '\u200B'
+    text.trim().length      -> 1        (trim does not touch it)
+    validateSendPayload(...) -> { ok: true, text: '\u200B' }
+
+The message was therefore stored legitimately, broadcast legitimately, and
+rendered by every client as a bubble with no visible character in it. The
+blank box was not a rendering failure — the row really contained nothing a
+human can read. The client's `canSend` gate had the same hole
+(`text.trim()` non-empty), so the composer allowed the send.
+
+## 18.3 The law
+
+**A chat body must contain at least one visible character.** A character is
+invisible when it only shapes rendering: C0/C1 controls, zero-width
+space/non-joiner/joiner and directional marks, BOM, line/paragraph and bidi
+separators, invisible operators (word joiner, ...), soft hyphen, variation
+selectors and the Hangul fillers. Anything else — Tamil, emoji (with or
+without a variation selector), punctuation, digits — is visible, and one
+visible character anywhere in the body makes the whole body visible, so
+nothing the product already accepted stopped working.
+
+**A message must render something.** Beyond the text rule: a stored message
+must carry either a visible body or at least one attachment reference. A FILE
+message's content IS its references, so a FILE message with an empty reference
+list is the same hollow bubble and is refused the same way.
+
+## 18.4 What changed
+
+Backend
+
+- `utils/chatTextRules.js` (NEW) — the character law, `hasVisibleText()`,
+  documented and pure. `INVISIBLE_TEXT_PATTERN` is a deliberate list, not a
+  guess about "a good message".
+- `socket/chatSocketValidators.js` — send AND edit require a visible body
+  ("A message must not be empty." / "The edited text must not be empty." — the
+  existing wording, now enforced correctly).
+- `models/ChatMessage.js` — the schema's own `text` validator uses the same
+  rule, so the invariant holds for every writer, including `runValidators`
+  atomic updates.
+- `services/chat/chatMessageService.js` — **the create path refuses what
+  nobody could read**: an unrenderable mutation (no visible text AND no
+  attachment reference) is refused BEFORE any database work with code
+  `EMPTY_BODY`, and logged as `chat.message.unrenderable` with safe scalars
+  only (conversation id, sender id, type, text LENGTH, attachment count —
+  never the body).
+- `socket/chatSocketHandlers.js` — `EMPTY_BODY` is answered as a
+  `VALIDATION_ERROR` carrying the rule, not as a retryable server fault, for
+  both TEXT and FILE sends.
+
+Frontend
+
+- `utils/chatText.js` (NEW) — the mirror of the rule, so the send button is
+  disabled before a round-trip. `test/chatMessageBodyRules.test.js` runs the
+  same sample table through BOTH implementations; drift fails the suite.
+- `MessageComposer.jsx` — `canSend` uses `hasVisibleText`.
+- `ChatPage.jsx` — the optimistic row can never render blank (a body without
+  visible characters falls back exactly as a FILE message does).
+- `MessageBubble.jsx` — a row with no visible body and no attachment now says
+  **"This message could not be displayed"** instead of rendering as a hollow
+  box. Rows written before this rule existed stay visible as a fact rather
+  than looking like a UI glitch.
+
+## 18.5 The row that is already stored
+
+Nothing is rewritten: the existing blank row now renders as "This message
+could not be displayed" (it is a real message with an invisible body, and the
+product does not guess what it should have said).
+
+To see how many such rows a database holds — read-only, no writes, no bodies
+printed:
+
+    cd Backend
+    npm run chat:blank-check
+
+The auditor (`scripts/chat-blank-check.js`) scans every non-tombstoned
+message with the SAME rule the API now enforces, prints up to 20 examples as
+id/conversation/type/seq/timestamp plus a bounded code-point summary of the
+invisible body, and exits 1 when it finds any.
+
+There is deliberately NO automatic repair job: a body nobody can read is
+indistinguishable from a body that was never there, and silently deleting
+messages is not a UI fix. Operators who want the rows gone delete them through
+the normal product path (sender or moderator delete — audited, tombstoned,
+`seq` preserved).
+
+## 18.6 Tests
+
+`test/chatMessageBodyRules.test.js` (NEW, 10 hermetic tests): the
+`hasVisibleText` sample table, frontend/backend drift, send + edit refusals,
+the schema-level refusal (`validateSync`), the create-path invariant
+(`EMPTY_BODY` for invisible text, empty lists and missing lists; writes for
+renderable text and files), the socket's VALIDATION_ERROR mapping, the FILE
+validator's non-empty rule, and the UI pins (gate + fallback). Suite wired
+into `test:all`.
+
+## 18.7 The other half of the same lesson
+
+`test/chatMessageBodyRules.test.js` caught a second, self-inflicted bug on the
+first run: the new model import did not apply, so the schema validator threw
+`hasVisibleText is not defined` for EVERY text write. Mongoose reports a
+throwing validator as a validation failure with the validator's own message —
+which looks exactly like a legitimate refusal. A rule that can throw is not a
+rule; the suite pins both the refusal AND the acceptance so a broken import
+cannot masquerade as enforcement.
+

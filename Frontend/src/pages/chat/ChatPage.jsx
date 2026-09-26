@@ -10,6 +10,7 @@ import { AlertTriangle, Lock, Unlock } from 'lucide-react';
 
 import usePermission from '../../hooks/usePermission.js';
 import chatService from '../../services/chatService.js';
+import { hasVisibleText } from '../../utils/chatText.js';
 import userService from '../../services/userService.js';
 import {
   connectChatSocket,
@@ -283,7 +284,9 @@ const ChatPage = () => {
       conversationId,
       entry: {
         clientMessageId,
-        text: text || 'Attachment',
+        // An invisible body never becomes a blank pending bubble: the
+        // fallback reads the same way a FILE message does.
+        text: hasVisibleText(text) ? text : 'Attachment',
         attachments: attachments.map((entry) => ({
           attachmentId: entry._id,
           fileName: entry.fileName,

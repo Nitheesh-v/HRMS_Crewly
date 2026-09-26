@@ -305,6 +305,15 @@ export const registerChatSocketHandlers = ({
     });
 
     if (!result.ok) {
+      // 33.10-fix2 — a refused unrenderable body is the caller's mistake, not
+      // a server fault: answer with the rule, not with "retry".
+      if (result.code === 'EMPTY_BODY') {
+        return ack(cb, fail(
+          CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR,
+          result.message || 'A message must not be empty.',
+        ));
+      }
+
       const code = result.code === 'NOT_FOUND_OR_FORBIDDEN'
         ? CHAT_SOCKET_ERROR_CODES.NOT_FOUND_OR_FORBIDDEN
         : result.code === 'CONVERSATION_DISABLED'
@@ -369,6 +378,15 @@ export const registerChatSocketHandlers = ({
     });
 
     if (!result.ok) {
+      // 33.10-fix2 — a refused unrenderable body is the caller's mistake, not
+      // a server fault: answer with the rule, not with "retry".
+      if (result.code === 'EMPTY_BODY') {
+        return ack(cb, fail(
+          CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR,
+          result.message || 'A message must not be empty.',
+        ));
+      }
+
       const code = result.code === 'NOT_FOUND_OR_FORBIDDEN'
         ? CHAT_SOCKET_ERROR_CODES.NOT_FOUND_OR_FORBIDDEN
         : result.code === 'CONVERSATION_DISABLED'

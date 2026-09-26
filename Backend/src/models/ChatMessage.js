@@ -45,6 +45,8 @@
 
 import mongoose from 'mongoose';
 
+import { hasVisibleText } from '../utils/chatTextRules.js';
+
 const { Schema } = mongoose;
 
 export const CHAT_MESSAGE_TYPES = ['TEXT', 'SYSTEM', 'FILE'];
@@ -190,8 +192,11 @@ chatMessageSchema.path('text').validate(
     // A SYSTEM/FILE body is never allowed (checkable when `type` is known).
     if (scope?.type && scope.type !== 'TEXT') return empty;
 
-    // Otherwise the body is a TEXT body: it must say something.
-    return typeof value === 'string' && value.trim().length > 0;
+    // Otherwise the body is a TEXT body: it must say something a reader can
+    // see. 33.10-fix2 — `trim()` alone let a body of zero-width characters
+    // through, which stored an invisible message (an empty bubble for every
+    // member). See utils/chatTextRules.js for the character law.
+    return hasVisibleText(value);
   },
   'TEXT messages require non-empty text; SYSTEM, FILE and deleted messages must not carry body text.'
 );

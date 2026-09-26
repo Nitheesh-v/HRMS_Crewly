@@ -15,6 +15,7 @@
 import mongoose from 'mongoose';
 
 import { CHAT_MESSAGE_TEXT_MAX } from '../models/ChatMessage.js';
+import { hasVisibleText } from '../utils/chatTextRules.js';
 import { CHAT_ATTACHMENT_MAX_PER_MESSAGE } from '../utils/chatFileRules.js';
 
 export const CHAT_CLIENT_MESSAGE_ID_MAX = 80;
@@ -55,7 +56,10 @@ export const validateSendPayload = (payload) => {
 
   const text = String(body.text ?? '').trim();
 
-  if (text.length < 1) return validationError('A message must not be empty.');
+  // 33.10-fix2 — `trim()` alone accepts a body made of zero-width/invisible
+  // characters, which stored a message nobody could read (an empty bubble for
+  // every member). The body must carry at least one VISIBLE character.
+  if (!hasVisibleText(text)) return validationError('A message must not be empty.');
 
   if (text.length > CHAT_MESSAGE_TEXT_MAX) {
     return validationError(`A message must be at most ${CHAT_MESSAGE_TEXT_MAX} characters.`);
@@ -93,7 +97,9 @@ export const validateEditPayload = (payload) => {
 
   const text = String(body.newText ?? '').trim();
 
-  if (text.length < 1) return validationError('The edited text must not be empty.');
+  // Same visibility law as send: an edit may not blank a message into an
+  // invisible one either.
+  if (!hasVisibleText(text)) return validationError('The edited text must not be empty.');
 
   if (text.length > CHAT_MESSAGE_TEXT_MAX) {
     return validationError(`A message must be at most ${CHAT_MESSAGE_TEXT_MAX} characters.`);

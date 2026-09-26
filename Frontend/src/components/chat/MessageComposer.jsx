@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Send } from 'lucide-react';
 
 import AttachmentPicker from './AttachmentPicker.jsx';
+import { hasVisibleText } from '../../utils/chatText.js';
 
 const TEXT_MAX = 4000;
 
@@ -25,7 +26,10 @@ const MessageComposer = ({
 
   const trimmed = text.trim();
   const hasFiles = pendingAttachments.length > 0;
-  const canSend = Boolean(trimmed) || hasFiles;
+  // 33.10-fix2 — a body of zero-width characters is not a message: the send
+  // stays disabled, exactly as it would be for an empty box. (The server
+  // refuses it too; this is the fast gate, not the authority.)
+  const canSend = hasVisibleText(trimmed) || hasFiles;
 
   const submit = async () => {
     if (!canSend || disabled) return;

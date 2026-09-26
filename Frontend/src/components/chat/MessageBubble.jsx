@@ -3,6 +3,7 @@
 import { Pencil, ShieldAlert, Trash2 } from 'lucide-react';
 
 import AttachmentBubble from './AttachmentBubble.jsx';
+import { hasVisibleText } from '../../utils/chatText.js';
 
 const timeOf = (value) =>
   value ? new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
@@ -28,6 +29,13 @@ const MessageBubble = ({
 
   // Moderators may remove anybody's message, but never edit one (edit stays
   // sender-only by design) and never while the conversation is locked.
+  // 33.10-fix2 — a row nothing can be read from (no visible body, no
+  // attachment) must not render as a hollow box. Legacy rows written before
+  // the visibility rule existed say so instead of looking like a glitch.
+  const hasBody = hasVisibleText(message.text);
+  const attachments = message.attachments ?? [];
+  const empty = !deleted && !hasBody && attachments.length === 0;
+
   const showModeratorDelete = canModerate && !mine && !deleted && !locked;
   const showOwnActions = mine && !deleted && !locked;
 
@@ -50,9 +58,14 @@ const MessageBubble = ({
           </p>
         ) : (
           <>
-            {(message.attachments ?? []).length > 0 && (
+            {empty && (
+              <p className="text-sm italic text-crewly-dim">
+                This message could not be displayed
+              </p>
+            )}
+            {attachments.length > 0 && (
               <div className="mb-1.5 space-y-1.5">
-                {(message.attachments ?? []).map((attachment) => (
+                {attachments.map((attachment) => (
                   <AttachmentBubble
                     key={String(attachment.attachmentId)}
                     attachment={attachment}
@@ -60,7 +73,7 @@ const MessageBubble = ({
                 ))}
               </div>
             )}
-            {message.text && (
+            {hasBody && (
               <p className="whitespace-pre-wrap break-words text-sm text-crewly-text">
                 {message.text}
               </p>
@@ -71,7 +84,7 @@ const MessageBubble = ({
         <p className="mt-1 flex items-center gap-2 text-[10px] text-crewly-dim">
           <span>{timeOf(message.createdAt)}</span>
           {!deleted && (message.editVersion ?? 0) > 0 && <span>(edited)</span>}
-          {showOwnActions && message.type === 'TEXT' && (message.attachments ?? []).length === 0 && (
+          {showOwnActions && message.type === 'TEXT' && attachments.length === 0 && (
             <span className="hidden gap-1 group-hover:flex">
               <button
                 type="button"
