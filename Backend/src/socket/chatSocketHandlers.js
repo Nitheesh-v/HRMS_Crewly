@@ -16,11 +16,18 @@
 //                      chat:readUpTo { conversationId, lastReadSeq }              (33.7)
 //                      chat:message:sendFile { conversationId, clientMessageId,
 //                                              attachmentIds[] }                  (33.10)
+//                      chat:message:react { conversationId, messageId,
+//                                           reactionType }                        (34.1)
+//                      chat:message:unreact { conversationId, messageId,
+//                                             reactionType }                      (34.1)
 //    server → client : chat:message:created { conversationId, message }
 //                      chat:message:updated { conversationId, messageId, newText,
 //                                             editedAt, editVersion, editedByUserId } (33.6)
 //                      chat:message:deleted { conversationId, messageId,
 //                                             deletedAt, deletedByUserId }        (33.6)
+//                      chat:message:reactionsUpdated { conversationId, messageId,
+//                                             reactions[{type,count}], actorUserId,
+//                                             action, reactionType }               (34.1)
 //
 //  Every client→server event answers with an ACK of shape
 //    { ok: true,  data }  or  { ok: false, code, message }
@@ -33,6 +40,12 @@
 //  ONLY — read state is never broadcast (it would be presence-ish
 //  surveillance). No presence, typing or last-seen events here. NO tokens,
 //  Redis ids, job ids or debug metadata in any payload or log.
+//
+//  34.1 REACTIONS: react/unreact are membership-scoped writes with a fixed
+//  vocabulary (LIKE/HEART/LAUGH/THANKS). The broadcast is VIEWER-NEUTRAL
+//  ({type,count} + who changed what) because one room frame cannot carry a
+//  different "mine" per member; the ACK tells the actor its own state. A
+//  reaction is never presence, never typing, never last-seen.
 //
 //  33.9 MODERATION: deletion gains ONE moderator fallback — when the
 //  sender-only rule refuses a delete, a CHAT_MODERATE holder may tombstone
@@ -52,6 +65,7 @@ import {
   validateDeletePayload,
   validateReadUpToPayload,
   validateSendFilePayload,
+  validateReactionPayload,
 } from './chatSocketValidators.js';
 import {
   loadWritableConversation,
@@ -74,6 +88,13 @@ import {
   actorHasChatModerate,
   moderateDeleteMessage,
 } from '../services/chat/chatModerationService.js';
+// 34.1 — reactions. Both services are injectable (see registerChatSocketHandlers)
+// so the socket contract stays hermetically testable without Mongo.
+import {
+  reactToMessage,
+  toNeutralSummary,
+  unreactFromMessage,
+} from '../services/chat/chatReactionService.js';
 
 export { CHAT_SOCKET_ERROR_CODES };
 
@@ -184,6 +205,32 @@ const editFailureMessage = (code) => ({
   [CHAT_SOCKET_ERROR_CODES.HISTORY_LIMIT_REACHED]: 'This message has reached the edit history limit.',
 })[code] ?? 'The change could not be applied.';
 
+/*
+ * 34.1 — the refusals a reaction can produce. A reaction reuses 33.6's
+ * MESSAGE_DELETED for a tombstoned message (the message really is gone) and
+ * adds exactly one code of its own: the per-message safety valve.
+ */
+const reactionFailureCode = (code) => {
+  const known = [
+    CHAT_SOCKET_ERROR_CODES.NOT_FOUND_OR_FORBIDDEN,
+    CHAT_SOCKET_ERROR_CODES.CONVERSATION_DISABLED,
+    CHAT_SOCKET_ERROR_CODES.MESSAGE_DELETED,
+    CHAT_SOCKET_ERROR_CODES.REACTION_LIMIT_REACHED,
+    CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR,
+  ];
+
+  return known.includes(code) ? code : CHAT_SOCKET_ERROR_CODES.RETRYABLE;
+};
+
+const reactionFailureMessage = (code) => ({
+  [CHAT_SOCKET_ERROR_CODES.NOT_FOUND_OR_FORBIDDEN]: 'Message not found.',
+  [CHAT_SOCKET_ERROR_CODES.CONVERSATION_DISABLED]: 'This conversation is disabled.',
+  [CHAT_SOCKET_ERROR_CODES.MESSAGE_DELETED]: 'This message was deleted.',
+  [CHAT_SOCKET_ERROR_CODES.REACTION_LIMIT_REACHED]:
+    'This message has reached the reaction limit.',
+  [CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR]: 'That reaction is not supported.',
+})[code] ?? 'The reaction could not be saved.';
+
 const toBroadcastMessage = (message) => ({
   _id: message._id,
   seq: message.seq,
@@ -219,6 +266,9 @@ export const registerChatSocketHandlers = ({
   // provisioning, no Mongo). resolveModerator degrades to false on error.
   resolveModerator = defaultResolveModerator,
   moderateDelete = moderateDeleteMessage,
+  // 34.1 — reactions, injectable for the same reason.
+  react = reactToMessage,
+  unreact = unreactFromMessage,
 }) => {
   const companyId = socket.data?.companyId;
   const userId = socket.data?.userId;
@@ -237,6 +287,10 @@ export const registerChatSocketHandlers = ({
     socket.on('chat:message:delete', (_p, cb) =>
       ack(cb, fail(CHAT_SOCKET_ERROR_CODES.UNAUTHORIZED, 'Authentication required.')));
     socket.on('chat:readUpTo', (_p, cb) =>
+      ack(cb, fail(CHAT_SOCKET_ERROR_CODES.UNAUTHORIZED, 'Authentication required.')));
+    socket.on('chat:message:react', (_p, cb) =>
+      ack(cb, fail(CHAT_SOCKET_ERROR_CODES.UNAUTHORIZED, 'Authentication required.')));
+    socket.on('chat:message:unreact', (_p, cb) =>
       ack(cb, fail(CHAT_SOCKET_ERROR_CODES.UNAUTHORIZED, 'Authentication required.')));
 
     return;
@@ -571,4 +625,76 @@ export const registerChatSocketHandlers = ({
       data: { myLastReadSeq: result.myLastReadSeq, unreadCount: result.unreadCount },
     });
   });
+
+  /*
+   * ── 34.1 REACTIONS ──────────────────────────────────────────────────────
+   *
+   * ONE shared runner for react and unreact: both validate the same payload,
+   * take the same identity budget, call the same shape of service and fan the
+   * same event out. Only the service differs, so the two events cannot drift.
+   *
+   * The broadcast carries a viewer-neutral summary + who changed what. The
+   * actor learns its own state from the ACK (myReaction); every other client
+   * (including the same user's other tabs) derives it from actorUserId.
+   */
+  const runReaction = async ({ payload, cb, service, message }) => {
+    const parsed = validateReactionPayload(payload);
+
+    if (!parsed.ok) return ack(cb, fail(CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR, parsed.message));
+
+    // 34.1 — one shared budget for react AND unreact, per identity.
+    if (await rateLimited(cb, 'message.react', message)) return;
+
+    if (!allowWrite()) return ack(cb, fail(CHAT_SOCKET_ERROR_CODES.RATE_LIMITED, message));
+
+    const result = await service({
+      companyId,
+      userId,
+      conversationId: parsed.conversationId,
+      messageId: parsed.messageId,
+      reactionType: parsed.reactionType,
+    });
+
+    if (!result.ok) {
+      return ack(cb, fail(reactionFailureCode(result.code), reactionFailureMessage(result.code)));
+    }
+
+    // Idempotent no-ops (already reacted / nothing to remove) do not re-emit.
+    if (result.changed) {
+      io.to(conversationRoom(parsed.conversationId)).emit('chat:message:reactionsUpdated', {
+        conversationId: parsed.conversationId,
+        messageId: parsed.messageId,
+        reactions: toNeutralSummary(result.reactions),
+        actorUserId: userId,
+        action: result.action,
+        reactionType: parsed.reactionType,
+      });
+    }
+
+    return ack(cb, {
+      ok: true,
+      data: {
+        messageId: parsed.messageId,
+        reactions: result.reactions,
+        myReaction: result.myReaction,
+        changed: result.changed,
+      },
+    });
+  };
+
+  guard(socket, log, 'chat:message:react', (payload, cb) =>
+    runReaction({
+      payload,
+      cb,
+      service: react,
+      message: 'Too many reactions. Slow down and retry.',
+    }));
+
+  guard(socket, log, 'chat:message:unreact', (payload, cb) =>
+    runReaction({
+      payload,
+      cb,
+      service: unreact,
+      message: 'Too many reactions. Slow down and retry.',
+    }));
 };

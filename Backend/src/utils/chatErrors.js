@@ -3,7 +3,8 @@
 //
 //  Every chat socket ACK failure carries one of these codes in `code`, so
 //  clients can branch on stable strings instead of human wording. 33.5
-//  introduced the first seven; 33.6 adds the edit/delete four.
+//  introduced the first seven; 33.6 adds the edit/delete four; 34.1 adds the
+//  reaction cap. MESSAGE_DELETED (33.6) is reused for a tombstoned message.
 //
 //  SECURITY SHAPE
 //    NOT_FOUND_OR_FORBIDDEN deliberately does not distinguish "other tenant"
@@ -28,4 +29,6 @@ export const CHAT_SOCKET_ERROR_CODES = Object.freeze({
   MESSAGE_DELETED: 'MESSAGE_DELETED',
   MESSAGE_NOT_EDITABLE: 'MESSAGE_NOT_EDITABLE',
   HISTORY_LIMIT_REACHED: 'HISTORY_LIMIT_REACHED',
+  // 34.1
+  REACTION_LIMIT_REACHED: 'REACTION_LIMIT_REACHED',
 });

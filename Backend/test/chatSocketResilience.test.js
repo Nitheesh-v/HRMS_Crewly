@@ -203,6 +203,10 @@ test('every authenticated listener is registered through the guard (source pin)'
     'chat:message:edit',
     'chat:message:delete',
     'chat:readUpTo',
+    // 34.1 — reactions are writes, so they need the same guard as every
+    // other write (a rejection here would be an unhandledRejection).
+    'chat:message:react',
+    'chat:message:unreact',
   ]) {
     assert.match(
       source,
@@ -231,9 +235,11 @@ test('every authenticated listener is registered through the guard (source pin)'
       'chat:join',
       'chat:message:delete',
       'chat:message:edit',
+      'chat:message:react',
       'chat:message:send',
       // 33.10 — the FILE stub is unauthenticated-raw like the others.
       'chat:message:sendFile',
+      'chat:message:unreact',
       'chat:readUpTo',
     ],
     'raw registrations must be exactly the unauthenticated stubs',

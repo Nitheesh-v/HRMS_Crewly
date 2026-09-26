@@ -17,6 +17,8 @@ import mongoose from 'mongoose';
 import { CHAT_MESSAGE_TEXT_MAX } from '../models/ChatMessage.js';
 import { hasVisibleText } from '../utils/chatTextRules.js';
 import { CHAT_ATTACHMENT_MAX_PER_MESSAGE } from '../utils/chatFileRules.js';
+// 34.1 — the reaction vocabulary is defined by the model, never by the client.
+import { CHAT_REACTION_TYPES } from '../models/ChatMessageReaction.js';
 
 export const CHAT_CLIENT_MESSAGE_ID_MAX = 80;
 export const CHAT_CLIENT_EDIT_ID_MAX = 80;
@@ -189,6 +191,41 @@ export const validateReadUpToPayload = (payload) => {
 // as ObjectIds HERE so a malformed frame never reaches a Mongo query; the
 // tenant/conversation/unused revalidation happens in the service, because
 // only the database can answer those questions.
+/**
+ * 34.1 — chat:message:react / chat:message:unreact.
+ *
+ * `reactionType` is validated against the model's closed set, so an unknown
+ * string is a VALIDATION_ERROR at the edge instead of a schema failure deep
+ * inside the write path. The type is normalized to upper case first — a client
+ * sending "like" means LIKE, and refusing it would be pedantry, not security.
+ */
+export const validateReactionPayload = (payload) => {
+  const body = asObject(payload);
+
+  if (!body) return validationError('A reaction payload is required.');
+
+  if (!mongoose.isValidObjectId(String(body.conversationId || ''))) {
+    return validationError('conversationId is not a valid identifier.');
+  }
+
+  if (!mongoose.isValidObjectId(String(body.messageId || ''))) {
+    return validationError('messageId is not a valid identifier.');
+  }
+
+  const reactionType = String(body.reactionType || '').trim().toUpperCase();
+
+  if (!CHAT_REACTION_TYPES.includes(reactionType)) {
+    return validationError('That reaction is not supported.');
+  }
+
+  return {
+    ok: true,
+    conversationId: String(body.conversationId),
+    messageId: String(body.messageId),
+    reactionType,
+  };
+};
+
 export const validateSendFilePayload = (payload) => {
   const body = asObject(payload);
 

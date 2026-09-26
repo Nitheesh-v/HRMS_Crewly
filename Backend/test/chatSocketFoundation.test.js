@@ -1197,9 +1197,13 @@ describe('33.1 lifecycle', () => {
         'chat:leave',
         'chat:message:delete',
         'chat:message:edit',
+        // 34.1 — reactions: a fixed icon/text set, no free emoji, one shared
+        // rate-limit budget for both events. Still no typing/presence here.
+        'chat:message:react',
         'chat:message:send',
         // 33.10 — FILE send: references only, ids revalidated server-side.
         'chat:message:sendFile',
+        'chat:message:unreact',
         'chat:readUpTo',
         'disconnect',
         'error',
@@ -1366,6 +1370,9 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
       'ChatConversation.js',
       'ChatMessage.js',
       'ChatMessageEdit.js',
+      // 34.1 — one row per (user, message, type). A separate collection, so a
+      // popular message can never grow its own document toward the BSON limit.
+      'ChatMessageReaction.js',
     ]);
   });
 
@@ -1466,6 +1473,8 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
     for (const allowed of [
       'chat:join', 'chat:leave', 'chat:message:send', 'chat:message:sendFile',
       'chat:message:edit', 'chat:message:delete', 'chat:readUpTo',
+      // 34.1 — reactions (guarded like every other write).
+      'chat:message:react', 'chat:message:unreact',
     ]) {
       assert.ok(registered.has(allowed), `${allowed} must be registered (33.5/33.6/33.7/33.10)`);
     }

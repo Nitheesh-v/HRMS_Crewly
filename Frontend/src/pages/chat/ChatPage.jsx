@@ -32,6 +32,7 @@ import {
   pendingFail,
   readUpToApplied,
   messageDeleted,
+  reactionsUpdated,
   conversationUpdated,
 } from '../../redux/slices/chatSlice.js';
 
@@ -382,6 +383,44 @@ const ChatPage = () => {
     return null;
   };
 
+  // 34.1 — REACTIONS. Socket-only, ACK-first: the bubble decides ADD vs REMOVE
+  // from the viewer-aware summary it was given, and this function sends exactly
+  // that intent. The ACK carries the caller's OWN state ({type,count,mine}), so
+  // applying it here means the sender sees the result immediately even when the
+  // change was a no-op (already reacted / nothing to remove) and therefore
+  // produced no broadcast. Everyone else updates from the room broadcast.
+  //
+  // No optimistic write on purpose: a reaction is cheap, and inventing a state
+  // the server has not confirmed is exactly how two clients end up disagreeing
+  // about the counts.
+  const handleReact = async (message, reactionType, intent = 'ADD') => {
+    if (!conversationId || !message?._id) return;
+
+    const call = intent === 'REMOVE' ? chatRealtime.unreact : chatRealtime.react;
+
+    const ack = await call({
+      conversationId,
+      messageId: message._id,
+      reactionType,
+    });
+
+    if (!ack.ok) {
+      setModerationNotice(ack.message || 'The reaction could not be saved.');
+
+      return;
+    }
+
+    dispatch(reactionsUpdated({
+      conversationId,
+      messageId: ack.data?.messageId ?? message._id,
+      reactions: ack.data?.reactions ?? [],
+      viewerAware: true,
+      myReaction: ack.data?.myReaction ?? null,
+    }));
+
+    setModerationNotice(null);
+  };
+
   const handleDelete = async (message) => {
     const mineMessage = String(message.senderUserId) === String(meId);
 
@@ -582,6 +621,7 @@ const ChatPage = () => {
               onOlder={handleOlder}
               onEdit={setEditing}
               onDelete={handleDelete}
+              onReact={handleReact}
               canModerate={canModerate}
               locked={conversationLocked}
             />

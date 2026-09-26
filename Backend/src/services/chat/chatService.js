@@ -49,6 +49,9 @@ import {
   sanitizeConversationForMember,
   buildMemberDirectory,
 } from './chatReadService.js';
+// 34.1 — reactions are projected into history here; the service owns the caps
+// and the viewer-aware grouping (one query per page, never one per message).
+import { summarizeReactions } from './chatReactionService.js';
 
 export const CHAT_GROUP_MAX_MEMBERS = 50;
 
@@ -426,7 +429,7 @@ export const removeMember = async ({
 // validators could still carry text — so the read path never trusts the
 // stored body: if deletedAt is set, text is always null. We also never leak
 // edit history here (that is a separate, permission-gated read in 33.6).
-export const sanitizeMessageForHistory = (message) => ({
+export const sanitizeMessageForHistory = (message, reactions = []) => ({
   _id: message._id,
   seq: message.seq,
   senderUserId: message.senderUserId,
@@ -442,6 +445,12 @@ export const sanitizeMessageForHistory = (message) => ({
   editVersion: message.editVersion ?? 0,
   deletedAt: message.deletedAt ?? null,
   createdAt: message.createdAt ?? null,
+  // 34.1 — reactions, as [{ type, count, mine }]. Viewer-aware on purpose: the
+  // REST surface knows who is asking, so it answers "did *I* react" instead of
+  // making every client join a userId list. Empty array (never undefined) so
+  // the renderer has one shape to handle. Tombstones are passed [] by the
+  // caller — a deleted message shows no reactions.
+  reactions,
 });
 
 // Newest-first keyset pagination over the 33.2 index
@@ -477,9 +486,23 @@ export const listMessages = async ({
 
   const last = page[page.length - 1];
 
+  // 34.1 — reactions ride the history page: ONE extra bounded query for the
+  // whole page (never one per message), and only for messages that can still
+  // receive them. A tombstone shows nothing, so those ids are not even asked
+  // about.
+  const liveIds = page.filter((row) => !row.deletedAt).map((row) => row._id);
+
+  const reactionsByMessage = await summarizeReactions({
+    companyId,
+    messageIds: liveIds,
+    viewerUserId: userId,
+  });
+
   return {
     conversationId,
-    items: page.map(sanitizeMessageForHistory),
+    items: page.map((row) =>
+      sanitizeMessageForHistory(row, reactionsByMessage.get(String(row._id)) ?? [])
+    ),
     nextCursor: hasMore && last ? last.seq : null,
     hasMore,
     limit: pageSize,

@@ -201,6 +201,66 @@ const chatSlice = createSlice({
       );
     },
 
+    // 34.1 — reactions as a projection on the message, never as a separate
+    // store: the bubble renders `message.reactions` and nothing else.
+    //
+    // TWO SOURCES, ONE SHAPE.
+    //   · REST history (viewerAware: true) — the server already computed `mine`
+    //     against the caller, so it is copied through as-is.
+    //   · the room broadcast (viewerAware: false) — the payload is deliberately
+    //     VIEWER-NEUTRAL ({type,count} + who acted), because one frame cannot
+    //     carry a different `mine` per member. `mine` is therefore derived here:
+    //     when the actor is me, ONLY the acted type is mine (the per-user cap is
+    //     one, so an ADD replaces my previous type and a REMOVE clears it);
+    //     when the actor is somebody else, my existing flags are preserved —
+    //     their reaction never changes what I hold.
+    reactionsUpdated: (state, action) => {
+      const {
+        conversationId,
+        messageId,
+        reactions = [],
+        viewerAware = false,
+        actorUserId = null,
+        action: change = null,
+        reactionType = null,
+        myReaction = null,
+        meId = null,
+      } = action.payload;
+
+      const entry = bucket(state, conversationId);
+      const mineTheActor = Boolean(meId && actorUserId && String(meId) === String(actorUserId));
+
+      entry.items = entry.items.map((message) => {
+        if (String(message._id) !== String(messageId)) return message;
+
+        const previous = message.reactions ?? [];
+
+        const next = (Array.isArray(reactions) ? reactions : []).map((reaction) => {
+          if (viewerAware) {
+            return {
+              type: reaction.type,
+              count: reaction.count,
+              mine: Boolean(reaction.mine ?? String(reaction.type) === String(myReaction)),
+            };
+          }
+
+          if (mineTheActor) {
+            return {
+              type: reaction.type,
+              count: reaction.count,
+              mine: String(reaction.type) === String(reactionType) && change !== 'REMOVED',
+            };
+          }
+
+          const before = previous.find((item) => item.type === reaction.type);
+
+          return { type: reaction.type, count: reaction.count, mine: Boolean(before?.mine) };
+        });
+
+        return { ...message, reactions: next };
+      });
+    },
+
     readUpToApplied: (state, action) => {
       const { conversationId, myLastReadSeq, unreadCount } = action.payload;
       const conversation = state.conversations.find(
@@ -232,6 +292,7 @@ export const {
   messageCreated,
   messageUpdated,
   messageDeleted,
+  reactionsUpdated,
   readUpToApplied,
 } = chatSlice.actions;
 

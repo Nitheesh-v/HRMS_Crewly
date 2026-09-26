@@ -24,6 +24,10 @@ import mongoose from 'mongoose';
 
 import ChatConversation from '../src/models/ChatConversation.js';
 import ChatMessage from '../src/models/ChatMessage.js';
+// 34.1 — the history projection now carries a reaction summary, so the read
+// path depends on this model too. A hermetic double must cover it, otherwise
+// the call escapes to a real (unconnected) driver and buffers for 10s.
+import ChatMessageReaction from '../src/models/ChatMessageReaction.js';
 import User from '../src/models/User.js';
 import * as chatService from '../src/services/chat/chatService.js';
 import { sanitizeMessageForHistory } from '../src/services/chat/chatService.js';
@@ -49,14 +53,35 @@ const makeConversation = (overrides = {}) => ({
   ...overrides,
 });
 
-const installFakes = ({ conversation, messages }) => {
+const installFakes = ({ conversation, messages, reactions = [] }) => {
   const original = {
     convFindOne: ChatConversation.findOne,
     msgFind: ChatMessage.find,
+    msgReactionFind: ChatMessageReaction.find,
     // 33.8-fix: listMessages verifies membership through getConversation,
     // which now builds a member directory — hermetic runs need a sealed
     // User stub (empty directory).
     userFind: User.find,
+  };
+
+  // 34.1 — the chainable shape the reaction summary actually uses:
+  // find(filter).select(...).limit(n).lean()
+  ChatMessageReaction.find = (filter = {}) => {
+    const query = {
+      select: () => query,
+      limit: () => query,
+      lean: async () => {
+        const ids = (filter.messageId?.$in ?? []).map(String);
+
+        return reactions.filter(
+          (row) =>
+            String(row.companyId) === String(filter.companyId) &&
+            (ids.length === 0 || ids.includes(String(row.messageId)))
+        );
+      },
+    };
+
+    return query;
   };
 
   User.find = () => ({
@@ -114,6 +139,7 @@ const installFakes = ({ conversation, messages }) => {
     restore: () => {
       ChatConversation.findOne = original.convFindOne;
       ChatMessage.find = original.msgFind;
+      ChatMessageReaction.find = original.msgReactionFind;
       User.find = original.userFind;
     },
   };

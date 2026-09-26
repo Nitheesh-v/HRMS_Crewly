@@ -531,6 +531,14 @@ test('every writing socket event is gated by an identity limit', () => {
     sendFile: async () => ({ ok: true, created: false, message: {} }),
     editMessage: async () => ({ ok: true, changed: false, message: {} }),
     deleteMessage: async () => ({ ok: true, changed: false, messageId: id(), deletedAt: new Date() }),
+    // 34.1 — reactions are stubbed for the same reason: this suite asserts the
+    // gate, not persistence.
+    react: async () => ({
+      ok: true, changed: true, action: 'ADDED', myReaction: 'LIKE', reactions: [],
+    }),
+    unreact: async () => ({
+      ok: true, changed: true, action: 'REMOVED', myReaction: null, reactions: [],
+    }),
   });
 
   const calls = [
@@ -539,6 +547,10 @@ test('every writing socket event is gated by an identity limit', () => {
     ['chat:message:sendFile', { conversationId: String(id()), clientMessageId: 'b', attachmentIds: [String(id())] }],
     ['chat:message:edit', { conversationId: String(id()), messageId: String(id()), expectedEditVersion: 0, newText: 'x' }],
     ['chat:message:delete', { conversationId: String(id()), messageId: String(id()) }],
+    // 34.1 — react and unreact deliberately SHARE one identity budget, so both
+    // events resolve to the single 'message.react' policy action.
+    ['chat:message:react', { conversationId: String(id()), messageId: String(id()), reactionType: 'LIKE' }],
+    ['chat:message:unreact', { conversationId: String(id()), messageId: String(id()), reactionType: 'LIKE' }],
     ['chat:readUpTo', { conversationId: String(id()), lastReadSeq: 1 }],
   ];
 
@@ -549,8 +561,26 @@ test('every writing socket event is gated by an identity limit', () => {
 
     assert.deepEqual(
       actions,
-      ['socket.join', 'message.send', 'message.sendFile', 'message.edit', 'message.delete', 'socket.readUpTo'],
+      [
+        'socket.join',
+        'message.send',
+        'message.sendFile',
+        'message.edit',
+        'message.delete',
+        'message.react',
+        'message.react',
+        'socket.readUpTo',
+      ],
       'one gate per event, in the policy vocabulary',
+    );
+
+    // 34.1 — the two reaction events must NOT each own a private bucket: one
+    // identity, one budget, so a client cannot double its allowance by
+    // alternating react/unreact.
+    assert.equal(
+      actions.filter((action) => action.startsWith('message.react')).length,
+      2,
+      'react and unreact both gate on message.react',
     );
 
     for (const action of actions) {

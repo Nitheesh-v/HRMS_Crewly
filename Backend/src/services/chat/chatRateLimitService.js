@@ -58,6 +58,10 @@ export const CHAT_SOCKET_LIMITS = Object.freeze({
   'message.sendFile': { event: 'chat:message:sendFile', windowMs: 60 * 1000, maximum: 20 },
   'message.edit': { event: 'chat:message:edit', windowMs: 10 * 1000, maximum: 20 },
   'message.delete': { event: 'chat:message:delete', windowMs: 10 * 1000, maximum: 20 },
+  // 34.1 — reacting is a cheap write, but a toggle is something a client can
+  // fire in a loop; the same strict window as edit/delete, shared by
+  // chat:message:react AND chat:message:unreact (one budget per identity).
+  'message.react': { event: 'chat:message:react', windowMs: 10 * 1000, maximum: 30 },
   'socket.readUpTo': { event: 'chat:readUpTo', windowMs: 10 * 1000, maximum: 60 },
 });
 

@@ -37,6 +37,7 @@ const MessageList = ({
   onOlder,
   onEdit,
   onDelete,
+  onReact,
   canModerate = false,
   locked = false,
 }) => {
@@ -149,6 +150,7 @@ const MessageList = ({
                 grouped={!newDay && shouldGroup(previous, message)}
                 onEdit={onEdit}
                 onDelete={onDelete}
+                onReact={onReact}
                 canModerate={canModerate}
                 locked={locked}
               />

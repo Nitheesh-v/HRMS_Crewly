@@ -30,6 +30,7 @@ import {
   messageCreated,
   messageUpdated,
   messageDeleted,
+  reactionsUpdated,
   conversationsNudged,
 } from '../../redux/slices/chatSlice.js';
 
@@ -147,6 +148,21 @@ export const connectChatSocket = async () => {
   socket.on('chat:message:updated', (payload) => store.dispatch(messageUpdated(payload)));
   socket.on('chat:message:deleted', (payload) => store.dispatch(messageDeleted(payload)));
 
+  // 34.1 — reactions arrive VIEWER-NEUTRAL (counts + who acted): one room
+  // broadcast cannot carry a different `mine` for every member, so `mine` is
+  // derived in the reducer from the actor id. The 60s ticket socket already
+  // implies a signed-in profile, so the id is read defensively, never assumed.
+  socket.on('chat:message:reactionsUpdated', (payload) => {
+    const me = store.getState().auth?.user ?? null;
+
+    store.dispatch(
+      reactionsUpdated({
+        ...payload,
+        meId: me?._id ?? me?.id ?? null,
+      })
+    );
+  });
+
   // 33.8-fix: data-less nudge — the conversation list changed server-side
   // (created/added/removed elsewhere). ChatPage refetches; Mongo stays truth.
   socket.on('chat:conversations:changed', () => store.dispatch(conversationsNudged()));
@@ -232,5 +248,10 @@ export const chatRealtime = {
   edit: (payload) => ackOf('chat:message:edit', payload),
   remove: (payload) => ackOf('chat:message:delete', payload),
   readUpTo: (payload) => ackOf('chat:readUpTo', payload),
+  // 34.1 — reactions ride the same ACK contract. The ACK carries the caller's
+  // OWN state ({type,count,mine}) so a retry that changes nothing can still be
+  // applied without waiting for a broadcast that will not come.
+  react: (payload) => ackOf('chat:message:react', payload),
+  unreact: (payload) => ackOf('chat:message:unreact', payload),
   isConnected: () => Boolean(socket?.connected),
 };

@@ -12,6 +12,8 @@ import { Pencil, ShieldAlert, Trash2 } from 'lucide-react';
 
 import AttachmentBubble from './AttachmentBubble.jsx';
 import Avatar from './Avatar.jsx';
+import ReactionBar from './ReactionBar.jsx';
+import ReactionPicker from './ReactionPicker.jsx';
 import { hasVisibleText } from '../../utils/chatText.js';
 import { timeOf } from '../../utils/chatFormat.js';
 
@@ -43,6 +45,7 @@ const MessageBubble = ({
   grouped = false,
   onEdit,
   onDelete,
+  onReact,
   canModerate = false,
   locked = false,
 }) => {
@@ -68,6 +71,18 @@ const MessageBubble = ({
   const showModeratorDelete = canModerate && !mine && !deleted && !locked;
   const showOwnActions = mine && !deleted && !locked;
   const hasActions = showOwnActions || showModeratorDelete;
+
+  // 34.1 — reactions. A tombstone shows nothing (the server refuses writes to
+  // it and never projects a summary for it), and a locked conversation is
+  // read-only, so the picker disappears exactly where the write would fail.
+  const reactions = message.reactions ?? [];
+  const canReact = Boolean(onReact) && !deleted && !locked;
+
+  const toggleReaction = (type) => {
+    const held = reactions.find((reaction) => reaction.type === type && reaction.mine);
+
+    onReact(message, type, held ? 'REMOVE' : 'ADD');
+  };
 
   const edited = !deleted && (message.editVersion ?? 0) > 0;
 
@@ -125,6 +140,12 @@ const MessageBubble = ({
             <span className="tabular-nums">{timeOf(message.createdAt)}</span>
             {edited && <span className="rounded bg-crewly-border/60 px-1 py-px font-medium">edited</span>}
 
+            {canReact && (
+              <span className={ACTION_ROW}>
+                <ReactionPicker onPick={toggleReaction} />
+              </span>
+            )}
+
             {hasActions && (
               <span className={ACTION_ROW}>
                 {showOwnActions && message.type === 'TEXT' && attachments.length === 0 && (
@@ -146,6 +167,14 @@ const MessageBubble = ({
             )}
           </div>
         </div>
+
+        {!deleted && reactions.length > 0 && (
+          <ReactionBar
+            reactions={reactions}
+            disabled={!canReact}
+            onToggle={toggleReaction}
+          />
+        )}
       </div>
     </div>
   );
