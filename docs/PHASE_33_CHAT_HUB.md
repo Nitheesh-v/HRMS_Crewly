@@ -2084,3 +2084,132 @@ INVERTED the old "FILE must not carry a body" pin to "FILE may carry a visible
 caption" and added the invisible-caption refusal; the two wording pins moved to
 the reworded validator message.
 
+---
+
+# 21. PHASE 33.11 — HARDENING (ABUSE CONTROLS, PAYLOAD CAPS, OBSERVABILITY)
+
+No new chat features. This unit makes the existing surfaces hard to abuse and
+hard to misread in production.
+
+## 21.1 Rate limits — one design, two surfaces
+
+Both surfaces ride the **32.4 distributed store**
+(`utils/rateLimitStore.js`) and the existing express middleware
+(`middlewares/securityRateLimit.js`). No new limiter, no new package.
+
+**Identity is always `companyId` + `userId`, server-derived:** for REST from
+`req.companyId` / `req.user._id` (after `protect` + `tenantMiddleware`), for
+sockets from `socket.data` (written during the JWT handshake). A client cannot
+choose its own bucket, and one tenant's traffic never consumes another's
+(pinned by `test/chatHardening.test.js`).
+
+| Surface | Action | Window | Max | Why this number |
+|---|---|---|---|---|
+| REST | create conversation | 10 min | 10 | a human creates a handful; a script is obvious |
+| REST | list conversations | 1 min | 120 | clients refetch on every nudge |
+| REST | conversation detail | 1 min | 120 | same |
+| REST | add member | 10 min | 20 | membership churn is rare |
+| REST | remove member | 10 min | 20 | same |
+| REST | message history | 1 min | 60 | paging is a few calls per screen |
+| REST | read marker | 1 min | 120 | fires on every incoming message |
+| REST | moderation delete | 1 min | 30 | a moderator acting in bulk is still not 30/min |
+| REST | attachment upload | 10 min | 20 | each upload can hold 10 MB of memory |
+| REST | attachment download | 1 min | 120 | downloads are cheap per call, bounded per file |
+| Socket | `chat:join` | 1 min | 30 | reconnects + room hops |
+| Socket | `chat:message:send` | 10 s | 20 | 2/s sustained is generous for a human |
+| Socket | `chat:message:sendFile` | 1 min | 20 | the most expensive send |
+| Socket | `chat:message:edit` | 10 s | 20 | matches send |
+| Socket | `chat:message:delete` | 10 s | 20 | matches send |
+| Socket | `chat:readUpTo` | 10 s | 60 | fires per message, never blocked by normal use |
+
+Refusals:
+
+- **REST** → `429` with the repo's shape `{statusCode, success:false,
+  code:'RATE_LIMITED', message}` plus `X-RateLimit-Limit`,
+  `X-RateLimit-Remaining`, `X-RateLimit-Reset` and `Retry-After` (shared tier).
+- **Socket** → ACK `{ok:false, code:'RATE_LIMITED', message:'Too many
+  messages. Slow down and retry.'}` — the same stable code the 33.5 burst
+  guard already used, so a client cannot tell the two apart (no probing
+  surface).
+
+**The 33.5 per-socket guard stays:** 10 s / 30 writes, one connection, in
+memory. It is a cheap first line that costs no Redis hop; it is NOT the abuse
+control (it never left the process). Both may refuse; both answer
+`RATE_LIMITED`.
+
+## 21.2 Degraded behaviour (never fail-open)
+
+| State | What happens |
+|---|---|
+| Redis healthy | one shared counter per `(companyId, userId, action)` across API #1/#2/#N (`crewly:<env>:rl:chat-<action>:<companyId>:<userId>`) |
+| `REDIS_ENABLED` not `true` | quiet **local** mode: bounded per-process bucket, same refusal contract, no warning spam |
+| Redis down / erroring / slower than 250 ms | 30 s process-local circuit + ONE bounded warn per family; every hit served by the bounded local bucket |
+| Limiter store throws unexpectedly | the socket limiter refuses (`RATE_LIMITED`) — an abuse control must never fail open |
+| `CHAT_SOCKET_ENABLED != true` or the adapter can't attach | socket connections are refused `FEATURE_UNAVAILABLE` (33.1); the REST limits above still apply |
+
+Degradation is always **stricter** (per-process buckets ≈ per-instance limits)
+and never unlimited. `chat.rate_limit_degraded{tier}` makes the degraded state
+visible to ops instead of silently changing behaviour.
+
+## 21.3 Payload caps
+
+Product caps (enforced by validators, unchanged): text **4,000 characters**,
+**5 attachments** per message, delete reason **200 characters**,
+`clientMessageId` **80 characters**, conversation title **120**.
+
+Transport cap: `CHAT_MAX_HTTP_BUFFER_BYTES` — **16 KB → 48 KB** in this unit.
+
+Why (measured, not guessed): the largest LEGAL frame was **16,178 B**
+(`chat:message:send` with a max emoji message) and **16,330 B**
+(`chat:message:sendFile` with a max caption + five attachments — legal since
+33.10-fix4) against a 16,384 B bound: **54 bytes of headroom before Engine.IO
+framing**, i.e. a user could compose a payload the transport dropped with **no
+ACK**. 48 KB gives the product's worst case ≥2× headroom while staying 21×
+under Engine.IO's 1 MB default.
+
+The law is pinned: `CHAT_MAX_HTTP_BUFFER_BYTES >= 2 × worstCaseFrameBytes()`
+(`utils/chatPayloadCaps.js` + `test/chatHardening.test.js`), so a future
+product-cap raise fails the SUITE instead of failing in a user's session.
+Oversized payloads are refused with `VALIDATION_ERROR` (never truncated).
+
+## 21.4 Observability rules
+
+Logged on a refusal — `chat.rate_limited` (warn), metadata only:
+
+    { surface, action, tier, count, maximum, windowMs, companyId, userId }
+
+- `action` comes from a **fixed vocabulary** (`CHAT_LIMIT_ACTIONS`); an unknown
+  action or surface is **not logged at all** (fail closed) — an unrecognized
+  string can never become a log field.
+- ids are bounded to 64 chars and dropped if longer (a token pasted into an id
+  field never leaks).
+- counters `chat.rate_limited{action}` and `chat.rate_limit_degraded{tier}` are
+  **allowlisted low-cardinality families** in the existing metrics registry,
+  visible through the existing Super Admin Operations diagnostics. No new
+  `/metrics`, no new vendor.
+
+**Never logged:** message text, captions, attachment names, storage keys, file
+bytes, tokens, cookies, URLs, payload dumps, client-supplied identifiers.
+Pinned by a sentinel test: a message body containing
+`salary-details-of-employee-42.pdf`, a storage key and a bearer token is logged
+as metadata and none of the sentinels appear in the captured output.
+
+Socket lifecycle logs stay as 33.1 wrote them (ids + tenant + disconnect
+reason, no payload).
+
+## 21.5 Tests
+
+`test/chatHardening.test.js` — 15 hermetic tests (no Redis, no Mongo, no HTTP
+server): REST threshold + 429 shape + headers, per-tenant/per-user bucket
+isolation, every REST action has a policy and a middleware, Redis-disabled
+local tier still limits, dead-Redis circuit degrades without pounding Redis,
+a throwing store is a refusal, socket `RATE_LIMITED` after threshold with the
+service never reached, a forged payload cannot move the bucket, one gate per
+writing event (and `chat:leave` deliberately ungated), the cap-sufficiency law
++ measured worst frame, oversized text/attachment-list/reason refusals with
+boundary cases passing, log-safety with sentinels, vocabulary fail-closed, and
+metric increments with an unknown-label refusal.
+
+The 33.1 transport-cap pin in `chatSocketFoundation.test.js` was INVERTED (not
+deleted) to the new derivation, so the reason lives in the test.
+

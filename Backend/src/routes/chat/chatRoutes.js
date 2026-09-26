@@ -47,6 +47,11 @@ import {
 } from '../../utils/chatFileRules.js';
 import ApiError from '../../utils/ApiError.js';
 import { requireAnyPermission } from '../../middlewares/permissionMiddleware.js';
+// 33.11 — abuse controls. Identity comes from the authenticated request
+// (companyId + userId), never from the payload; the budget is shared across
+// instances through the 32.4 store and degrades to a bounded per-process
+// bucket (never unlimited) when Redis is down.
+import { chatRestLimiters } from '../../services/chat/chatRateLimitService.js';
 
 const router = Router();
 
@@ -54,6 +59,7 @@ router.use(protect, tenantContext, checkSubscriptionStatus);
 
 router.post(
   '/conversations',
+  chatRestLimiters['conversation.create'],
   checkWriteAccess,
   createConversationValidator,
   chatController.createConversation
@@ -61,12 +67,14 @@ router.post(
 
 router.get(
   '/conversations',
+  chatRestLimiters['conversation.list'],
   listConversationsValidator,
   chatController.listMyConversations
 );
 
 router.get(
   '/conversations/:conversationId',
+  chatRestLimiters['conversation.detail'],
   conversationIdParamValidator,
   chatController.getConversation
 );
@@ -74,12 +82,14 @@ router.get(
 // 33.4 — message history (read-only; send is 33.5, edit history 33.6).
 router.get(
   '/conversations/:conversationId/messages',
+  chatRestLimiters['message.history'],
   messageHistoryValidator,
   chatController.getMessages
 );
 
 router.post(
   '/conversations/:conversationId/members',
+  chatRestLimiters['conversation.members.add'],
   checkWriteAccess,
   addMembersValidator,
   chatController.addMembers
@@ -87,6 +97,7 @@ router.post(
 
 router.delete(
   '/conversations/:conversationId/members/:userId',
+  chatRestLimiters['conversation.members.remove'],
   checkWriteAccess,
   removeMemberValidator,
   chatController.removeMember
@@ -96,6 +107,7 @@ router.delete(
 // List/detail responses carry the per-caller count computed in the service.
 router.post(
   '/conversations/:conversationId/read',
+  chatRestLimiters['message.read'],
   checkWriteAccess,
   readMarkerValidator,
   chatController.updateReadMarker
@@ -131,6 +143,7 @@ router.patch(
 
 router.post(
   '/conversations/:conversationId/messages/:messageId/moderate-delete',
+  chatRestLimiters['message.moderateDelete'],
   checkWriteAccess,
   requireAnyPermission(['CHAT_MODERATE']),
   moderateDeleteValidator,
@@ -176,6 +189,7 @@ const chatAttachmentUpload = (req, res, next) => {
 
 router.post(
   '/conversations/:conversationId/attachments',
+  chatRestLimiters['attachment.upload'],
   checkWriteAccess,
   chatAttachmentUpload,
   uploadAttachmentValidator,
@@ -184,6 +198,7 @@ router.post(
 
 router.get(
   '/attachments/:attachmentId/download',
+  chatRestLimiters['attachment.download'],
   attachmentIdParamValidator,
   chatController.downloadAttachment
 );

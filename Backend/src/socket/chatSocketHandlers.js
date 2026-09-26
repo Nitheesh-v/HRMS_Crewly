@@ -44,6 +44,7 @@
 
 import { conversationRoom, userRoom } from '../utils/chatKeys.js';
 import { CHAT_SOCKET_ERROR_CODES } from '../utils/chatErrors.js';
+import { CHAT_SOCKET_RATE_LIMITED_ACK, chatSocketRateLimiter } from '../services/chat/chatRateLimitService.js';
 import {
   validateJoinPayload,
   validateSendPayload,
@@ -59,6 +60,11 @@ import {
 } from '../services/chat/chatMessageService.js';
 import { linkAttachmentsToMessage } from '../services/chat/chatAttachmentService.js';
 import { toAttachmentReferences } from '../utils/chatAttachmentView.js';
+// 33.11 — identity-based, multi-instance-safe abuse control. One Redis
+// budget per (companyId, userId, action) shared by every API instance, with
+// the 32.4 store's bounded local bucket as the degraded mode (never
+// unlimited). The 33.5 per-socket burst guard below stays as a cheap first
+// line that costs no Redis hop.
 import {
   editTextMessage,
   tombstoneMessage,
@@ -207,6 +213,8 @@ export const registerChatSocketHandlers = ({
   // 33.10 — injectable so the FILE path is hermetically testable.
   linkAttachments = linkAttachmentsToMessage,
   sendFile = sendFileMessage,
+  // 33.11 — injectable so the limit path is hermetically testable (no Redis).
+  limitRate = chatSocketRateLimiter,
   // 33.9 — moderation. Injectable so handler tests stay hermetic (no role
   // provisioning, no Mongo). resolveModerator degrades to false on error.
   resolveModerator = defaultResolveModerator,
@@ -242,10 +250,28 @@ export const registerChatSocketHandlers = ({
 
   const allowWrite = createWriteGuard();
 
+  // 33.11 — THE identity gate for ONE socket event. The identity comes from
+  // socket.data (written during the JWT handshake), so a payload can never
+  // move its own bucket. Returns true when the caller must stop — the ACK is
+  // sent here. Never throws: limitRate reports an internal failure as a
+  // refusal, because an abuse control must not fail open.
+  const rateLimited = async (cb, action, message = CHAT_SOCKET_RATE_LIMITED_ACK.message) => {
+    const verdict = await limitRate({ action, companyId, userId });
+
+    if (!verdict?.limited) return false;
+
+    ack(cb, fail(CHAT_SOCKET_ERROR_CODES.RATE_LIMITED, message));
+
+    return true;
+  };
+
   guard(socket, log, 'chat:join', async (payload, cb) => {
     const parsed = validateJoinPayload(payload);
 
     if (!parsed.ok) return ack(cb, fail(CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR, parsed.message));
+
+    // 33.11 — identity limit BEFORE the Mongo membership read.
+    if (await rateLimited(cb, 'socket.join', 'Too many joins. Slow down and retry.')) return;
 
     const conversation = await loadConversation({
       companyId,
@@ -286,6 +312,9 @@ export const registerChatSocketHandlers = ({
     const parsed = validateSendPayload(payload);
 
     if (!parsed.ok) return ack(cb, fail(CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR, parsed.message));
+
+    // 33.11 — shared identity budget, then the cheap per-socket burst guard.
+    if (await rateLimited(cb, 'message.send')) return;
 
     if (!allowWrite()) {
       return ack(cb, fail(
@@ -342,6 +371,9 @@ export const registerChatSocketHandlers = ({
     const parsed = validateSendFilePayload(payload);
 
     if (!parsed.ok) return ack(cb, fail(CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR, parsed.message));
+
+    // 33.11 — files are the most expensive send: stricter, shared budget.
+    if (await rateLimited(cb, 'message.sendFile')) return;
 
     if (!allowWrite()) {
       return ack(cb, fail(
@@ -414,6 +446,9 @@ export const registerChatSocketHandlers = ({
 
     if (!parsed.ok) return ack(cb, fail(CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR, parsed.message));
 
+    // 33.11 — shared identity budget for edits.
+    if (await rateLimited(cb, 'message.edit', 'Too many changes. Slow down and retry.')) return;
+
     if (!allowWrite()) {
       return ack(cb, fail(
         CHAT_SOCKET_ERROR_CODES.RATE_LIMITED,
@@ -452,6 +487,9 @@ export const registerChatSocketHandlers = ({
     const parsed = validateDeletePayload(payload);
 
     if (!parsed.ok) return ack(cb, fail(CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR, parsed.message));
+
+    // 33.11 — shared identity budget for deletes.
+    if (await rateLimited(cb, 'message.delete', 'Too many changes. Slow down and retry.')) return;
 
     if (!allowWrite()) {
       return ack(cb, fail(
@@ -509,6 +547,10 @@ export const registerChatSocketHandlers = ({
     const parsed = validateReadUpToPayload(payload);
 
     if (!parsed.ok) return ack(cb, fail(CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR, parsed.message));
+
+    // 33.11 — read markers fire on every incoming message; the shared budget
+    // stops a flood without ever delaying a normal reader.
+    if (await rateLimited(cb, 'socket.readUpTo', 'Too many read updates. Slow down and retry.')) return;
 
     const result = await markRead({
       companyId,

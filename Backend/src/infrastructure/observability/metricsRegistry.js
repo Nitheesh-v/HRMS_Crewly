@@ -20,6 +20,11 @@ const METRIC_LABEL_ALLOWLIST = Object.freeze({
   'realtime.events_published': Object.freeze(['kind']),
   'realtime.connections_refused': Object.freeze(['reason']),
   'rate_limit.degraded_transitions': Object.freeze([]),
+  // 33.11 — chat abuse controls. Label VALUES are allowlisted by the caller
+  // (utils/chatObservability.js refuses an action it does not know), so the
+  // series count is bounded by the action vocabulary, not by user input.
+  'chat.rate_limited': Object.freeze(['action']),
+  'chat.rate_limit_degraded': Object.freeze(['tier']),
   'cache.errors': Object.freeze(['op']),
 });
 

@@ -30,10 +30,21 @@ export const CHAT_SOCKET_PATH = '/socket.io';
  * Hard cap on ONE inbound socket frame (Engine.IO maxHttpBufferSize, also
  * enforced as the ws maxPayload). Engine.IO's default is 1 MB — 100x the
  * API's express.json 10 kb bound, which does NOT apply to socket frames.
- * 33.1 carries no product payload at all, so the cap stays deliberately
- * small; 33.5 raises it only if message send requires it.
+ *
+ * 33.1 set 16 KB when no product payload existed. 33.11 raises it to 48 KB
+ * because 16 KB stopped being sufficient for the product's OWN maximum:
+ * measured worst-case legal frames are 16,178 bytes (message send) and
+ * 16,330 bytes (sendFile with a max caption + five attachments, legal since
+ * 33.10-fix4) — i.e. 54 bytes of headroom before Engine.IO framing, so a
+ * user could compose a payload the transport dropped with no ACK.
+ *
+ * 48 KB does not loosen the product caps (text 4000 chars, 5 attachments):
+ * those are enforced by the validators. It only makes the TRANSPORT able to
+ * carry what the product already allows, with the 2x headroom law pinned in
+ * utils/chatPayloadCaps.js + test/chatHardening.test.js. Still 21x smaller
+ * than Engine.IO's 1 MB default.
  */
-export const CHAT_MAX_HTTP_BUFFER_BYTES = 16 * 1024;
+export const CHAT_MAX_HTTP_BUFFER_BYTES = 48 * 1024;
 
 /** Handshake must finish (including the Mongo reads) inside this window. */
 export const CHAT_CONNECT_TIMEOUT_MS = 20_000;

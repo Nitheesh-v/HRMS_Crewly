@@ -27,6 +27,12 @@ export const securityRateLimit = ({
     'Too many requests. Please try again later.',
   sharedName = null,
   store = null,
+  // 33.11 — OPTIONAL reporting hook, additive and never breaking: called
+  // exactly once when a request is refused, with the tier that refused it
+  // ('shared' = the Redis budget, 'local' = the degraded per-process
+  // bucket). Observability must never change the answer, so a hook that
+  // throws is swallowed. Existing callers pass nothing and are unaffected.
+  onLimited = null,
 } = {}) => {
   // Phase 32.4 — optional SHARED tier: one budget in Redis across API
   // #1/#2/#N under crewly:<env>:rl:<sharedName>:<identity>. Without
@@ -67,6 +73,18 @@ export const securityRateLimit = ({
             1,
             Math.ceil((result.resetAt - Date.now()) / 1000)
           );
+
+          try {
+            onLimited?.({
+              req,
+              tier: result.tier || 'shared',
+              count: result.count,
+              remaining: result.remaining,
+              retryAfterSeconds,
+            });
+          } catch {
+            /* observability must never change the response */
+          }
 
           res.setHeader('Retry-After', retryAfterSeconds);
 
@@ -127,6 +145,21 @@ export const securityRateLimit = ({
       bucket.count >
       maximum
     ) {
+      try {
+        onLimited?.({
+          req,
+          tier: 'local',
+          count: bucket.count,
+          remaining: 0,
+          retryAfterSeconds: Math.max(
+            1,
+            Math.ceil((bucket.resetAt - Date.now()) / 1000)
+          ),
+        });
+      } catch {
+        /* observability must never change the response */
+      }
+
       return res
         .status(429)
         .json({

@@ -881,9 +881,21 @@ describe('33.1 socket server options — security posture (e, f)', () => {
     assert.equal(options.allowEIO3, false);
   });
 
-  test('inbound frames are hard-capped well under the Engine.IO default', () => {
-    assert.equal(options.maxHttpBufferSize, 16 * 1024);
-    assert.ok(options.maxHttpBufferSize < 1024 * 1024);
+  test('inbound frames are hard-capped well under the Engine.IO default', async () => {
+    // 33.11 — INVERTED (was 16 * 1024). 16 KB stopped being sufficient for
+    // the product's OWN maximum payload once 33.10 added attachments and
+    // 33.10-fix4 added captions: the measured worst-case legal frame is
+    // 16,330 bytes, i.e. 54 bytes of headroom before Engine.IO framing, so a
+    // user could compose a payload the transport dropped with no ACK.
+    // The cap is derived from the product caps and pinned by the 2x headroom
+    // law in test/chatHardening.test.js.
+    const { CHAT_MAX_HTTP_BUFFER_BYTES } = await import('../src/socket/socketConfig.js');
+    const { frameCapIsSufficient, worstCaseFrameBytes } = await import('../src/utils/chatPayloadCaps.js');
+
+    assert.equal(options.maxHttpBufferSize, CHAT_MAX_HTTP_BUFFER_BYTES);
+    assert.ok(options.maxHttpBufferSize >= 2 * worstCaseFrameBytes());
+    assert.equal(frameCapIsSufficient(options.maxHttpBufferSize), true);
+    assert.ok(options.maxHttpBufferSize < 1024 * 1024, 'still conservative vs the 1 MB default');
   });
 
   test('both transports are enabled so a non-upgrading proxy still works', () => {
