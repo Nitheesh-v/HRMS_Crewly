@@ -316,6 +316,35 @@ test('a dead Redis degrades to the bounded local bucket, never to unlimited', as
   assert.equal(calls, callsAfterFirstFailure, 'circuit breaker stops the failing round-trips');
 });
 
+test('a normal request passes while Redis is dead (degrade, not fail-closed)', async () => {
+  resetRateLimitStoreForTests();
+
+  const dead = () => {
+    throw new Error('redis is down');
+  };
+
+  const limiter = securityRateLimit({
+    sharedName: 'hardening-degrade-open',
+    windowMs: 60_000,
+    maximum: 5,
+    keyGenerator: chatRestIdentity,
+    store: createRateLimitStore({
+      sharedName: `hardening-degrade-open-${id()}`,
+      windowMs: 60_000,
+      io: { incr: async () => dead(), get: async () => dead(), del: async () => dead() },
+    }),
+  });
+
+  const { res, nexted } = await run(limiter, restReq());
+
+  // "Never fail open" is about the ABUSE control (over-limit requests are still
+  // refused, and a throwing store refuses rather than admits). It must not
+  // become "fail closed for everybody": a dead Redis cannot lock every user out
+  // of their own inbox, because history lives in Mongo.
+  assert.equal(nexted, true, 'a legitimate request is NOT blocked because Redis is down');
+  assert.equal(res.statusCode, null);
+});
+
 test('the socket limiter reports the degraded tier instead of hiding it', async () => {
   const events = [];
   const log = { warn: (message, meta) => events.push([message, meta]) };

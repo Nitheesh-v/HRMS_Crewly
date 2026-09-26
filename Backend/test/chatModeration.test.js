@@ -22,7 +22,9 @@
 //    · socket delete fallback: sender-only refusal is overturned ONLY for a
 //      CHAT_MODERATE socket, and the broadcast still goes out; a
 //      non-moderator keeps the refusal
-//    · disabled conversation refuses send for a member (CONVERSATION_DISABLED)
+//    · disabled conversation refuses send, EDIT and DELETE for a member
+//      (CONVERSATION_DISABLED); a CHAT_MODERATE socket may still delete inside
+//      it (the lock is aimed at members, not at moderation)
 //    · membership invariants: last admin cannot be removed, a 2-member group
 //      cannot be emptied; CHAT_GROUP_MANAGE widens (never narrows) the
 //      in-group ADMIN rule
@@ -803,6 +805,114 @@ test('socket send in a disabled conversation is refused for a member (CONVERSATI
     assert.equal(ack.ok, false);
     assert.equal(ack.code, 'CONVERSATION_DISABLED');
     assert.equal(broadcasts.length, 0);
+  } finally {
+    fakes.restore();
+  }
+});
+
+test('socket edit in a disabled conversation is refused for a member (CONVERSATION_DISABLED)', async () => {
+  const broadcasts = [];
+  const conversation = seedConversation({
+    members: [memberOf(MEMBER), memberOf(OTHER)],
+    isDisabled: true,
+  });
+
+  const fakes = installFakes({ conversations: [conversation] });
+  const socket = makeSocket({ companyId: COMPANY_A, userId: MEMBER });
+
+  try {
+    registerChatSocketHandlers({
+      io: makeIo(broadcasts),
+      socket,
+      log: { warn: () => {} },
+    });
+
+    const ack = await socket.trigger('chat:message:edit', {
+      conversationId: conversation._id,
+      messageId: id(),
+      expectedEditVersion: 1,
+      newText: 'edited inside a locked room',
+    });
+
+    // 33.9 pinned send; the lock is a property of the CONVERSATION, so the same
+    // refusal must cover edit — the service gate fires before the message load.
+    assert.equal(ack.ok, false);
+    assert.equal(ack.code, 'CONVERSATION_DISABLED');
+    assert.equal(broadcasts.length, 0);
+  } finally {
+    fakes.restore();
+  }
+});
+
+test('socket delete in a disabled conversation is refused for a member, and overturned for a CHAT_MODERATE socket', async () => {
+  const broadcasts = [];
+  const conversation = seedConversation({
+    members: [memberOf(ADMIN, 'ADMIN'), memberOf(MEMBER), memberOf(OTHER)],
+    isDisabled: true,
+  });
+
+  const fakes = installFakes({ conversations: [conversation] });
+
+  try {
+    // Half 1 — a plain member: the lock holds, and the moderator path is denied.
+    const memberChecks = { moderator: 0 };
+
+    const memberSocket = makeSocket({ companyId: COMPANY_A, userId: MEMBER });
+
+    registerChatSocketHandlers({
+      io: makeIo(broadcasts),
+      socket: memberSocket,
+      log: { warn: () => {} },
+      resolveModerator: async () => {
+        memberChecks.moderator += 1;
+
+        return false;
+      },
+    });
+
+    const refused = await memberSocket.trigger('chat:message:delete', {
+      conversationId: conversation._id,
+      messageId: id(),
+    });
+
+    assert.equal(refused.ok, false);
+    assert.equal(refused.code, 'CONVERSATION_DISABLED');
+    assert.equal(memberChecks.moderator, 1, 'the fallback is consulted and denies');
+    assert.equal(broadcasts.length, 0);
+
+    // Half 2 — a CHAT_MODERATE holder: the lock is aimed at members, not at
+    // moderation. The REAL delete service still refuses (it runs as the member),
+    // and the moderator fallback is what overturns it.
+    const moderatorCalls = { moderate: 0 };
+    const messageId = id();
+    const moderatorSocket = makeSocket({ companyId: COMPANY_A, userId: ADMIN });
+
+    registerChatSocketHandlers({
+      io: makeIo(broadcasts),
+      socket: moderatorSocket,
+      log: { warn: () => {} },
+      resolveModerator: async () => true,
+      moderateDelete: async ({ messageId: targetId }) => {
+        moderatorCalls.moderate += 1;
+
+        return {
+          ok: true,
+          messageId: targetId,
+          deletedAt: new Date('2026-01-01T00:00:00.000Z'),
+          changed: true,
+        };
+      },
+    });
+
+    const allowed = await moderatorSocket.trigger('chat:message:delete', {
+      conversationId: conversation._id,
+      messageId,
+    });
+
+    assert.equal(allowed.ok, true);
+    assert.equal(moderatorCalls.moderate, 1);
+    assert.equal(broadcasts.length, 1);
+    assert.equal(broadcasts[0].event, 'chat:message:deleted');
   } finally {
     fakes.restore();
   }

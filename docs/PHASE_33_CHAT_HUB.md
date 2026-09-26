@@ -4,7 +4,11 @@ Multi-tenant, membership-authorized, multi-replica in-app chat for the Crewly
 tenant app. Built on Mongo (truth) + Redis (fanout) + Socket.IO (transport).
 No external vendor, no third-party API.
 
-**Status:** 33.1 IMPLEMENTED · TESTED. Product features **NOT BUILT YET**.
+**Status:** 33.1 → 33.11 IMPLEMENTED · TESTED. **For the authoritative summary of
+the whole phase (scope, architecture, data model, REST + socket surface, security
+posture, degraded modes, the verification matrix and the deferred list), read
+[§22](#22-phase-33-close-out--the-authoritative-summary-3312) — the section below
+is the unit-by-unit build log that got us there.**
 
 ---
 
@@ -12,18 +16,18 @@ No external vendor, no third-party API.
 
 | Unit | Scope | Status |
 |---|---|---|
-| **33.1** | **Realtime foundation: Socket.IO server + JWT handshake + Redis adapter + FEATURE_UNAVAILABLE gate** | **IMPLEMENTED · TESTED** (`chatSocketFoundation`, 86 tests) |
-| **33.2** | **Chat persistence models + indexes (`ChatConversation`, `ChatMessage`, `ChatMessageEdit`)** | **IMPLEMENTED · TESTED** (`chatModels`, 54 tests) |
+| **33.1** | **Realtime foundation: Socket.IO server + JWT handshake + Redis adapter + FEATURE_UNAVAILABLE gate** | **IMPLEMENTED · TESTED** (`chatSocketFoundation`, 88 tests) |
+| **33.2** | **Chat persistence models + indexes (`ChatConversation`, `ChatMessage`, `ChatMessageEdit`, `ChatAttachment`)** | **IMPLEMENTED · TESTED** (`chatModels`, 60 tests) |
 | **33.3** | **Conversation REST APIs (create/list/get + member management, membership enforced)** | **IMPLEMENTED · TESTED** (`chatConversations`, 13 tests) |
-| **33.4** | **Message history REST API (keyset seq pagination, membership, tombstone-safe)** | **IMPLEMENTED · TESTED** (`chatHistory`, 5 tests) |
+| **33.4** | **Message history REST API (keyset seq pagination, membership, tombstone-safe)** | **IMPLEMENTED · TESTED** (`chatHistory`, 9 tests) |
 | **33.5** | **Socket protocol: server-authorized join + send (ACK + idempotency) + broadcast** | **IMPLEMENTED · TESTED** (`chatSocketSend`, 6 tests) |
-| 33.6 | Edits (with history + concurrency control) + tombstone deletes | IMPLEMENTED |
-| 33.7 | Read cursors + unread counts (C1 model) | IMPLEMENTED |
-| 33.8 | Frontend chat UI + socket lifecycle | IMPLEMENTED |
-| 33.9 | Moderation + admin controls + moderation audit | NOT STARTED |
-| 33.10 | Private attachments | NOT STARTED |
-| 33.11 | Rate limits, abuse controls, observability, runbooks | NOT STARTED |
-| 33.12 | Production verification matrix (cross-instance proof) | NOT STARTED |
+| **33.6** | **Edits (with history + `editVersion` concurrency control) + tombstone deletes** | **IMPLEMENTED · TESTED** (`chatEditDelete`, 10 tests) |
+| **33.7** | **Read cursors + unread counts (C1 model only, no per-message receipts)** | **IMPLEMENTED · TESTED** (`chatReadMarkers`, 10 tests) |
+| **33.8** | **Frontend chat UI + socket lifecycle + honest degraded states** | **IMPLEMENTED · TESTED** (`chatRealtimeNudge`, `chatSocketResilience`, frontend build) |
+| **33.9** | **Moderation + admin controls + moderation audit (no message text in audit)** | **IMPLEMENTED · TESTED** (`chatModeration`, 25 tests) |
+| **33.10** | **Private attachments (auth-gated streaming, server-built keys, optional caption)** | **IMPLEMENTED · TESTED** (`chatAttachments`, 23 tests) |
+| **33.11** | **Rate limits, payload caps, safe observability, incident runbooks** | **IMPLEMENTED · TESTED** (`chatHardening`, 25 tests) |
+| **33.12** | **Production verification matrix + close-out docs (this unit)** | **IMPLEMENTED · TESTED** (`phase33Closeout`, see §22) |
 
 ---
 
@@ -2297,3 +2301,204 @@ The runbooks no longer tell an operator that "the window expires on its own" —
 that sentence was false for a key in this state, and a runbook that says it is
 how a stuck key survives an incident review.
 
+# 22. PHASE 33 CLOSE-OUT — THE AUTHORITATIVE SUMMARY (33.12)
+
+Everything above this line is the unit-by-unit build log (33.1 → 33.11), kept
+because the *reasoning* behind each decision still matters. **This section is the
+summary**: read it first, follow the pointers when you need the history.
+
+## 22.1 Purpose and scope
+
+Phase 33 is an **in-app chat hub for tenant users**: conversations, messages with
+edit history, tombstone deletes, read cursors with C1 unread counts, private
+attachments and moderation — multi-tenant, membership-authorized, multi-replica.
+
+| In scope | Deliberately OUT |
+|---|---|
+| Conversations (DIRECT + GROUP), membership management | Presence, typing indicators, last-seen, activity tracking |
+| Messages: send, edit (versioned history), tombstone delete, FILE + optional caption | Reactions, threads, search, message forwarding |
+| Read cursors + C1 unread counts (cursor arithmetic only) | Per-message read receipts (per-user fan-out tables) |
+| Private attachments: upload, reference-only messages, auth-gated streaming | Public/permanent URLs, image transform vendors, malware scanning claims |
+| Moderation: disable/enable, moderate-delete, bounded audit | Moderator text editing of another member's message (never allowed) |
+| Rate limits, payload caps, diagnostics, runbooks | Production deployment, vendor selection, capacity claims |
+
+Transport: **Socket.IO for chat** (this phase) and the **32.11 SSE foundation
+unchanged**, both riding the same API process. Two transports, two Redis
+namespaces, no retirement of either.
+
+## 22.2 Architecture (one picture)
+
+```
+ Browser (tenant app)
+    |                       |
+    |  REST  /api/chat/*    |  Socket.IO  /chat-socket  (chat only)
+    v                       v
+ LOAD BALANCER (TLS; 32.3 proxy trust; sticky sessions while polling)
+   /            |            \
+  v             v             v
+API #1       API #2        API #N      ← node src/server.js
+  |             |             |        Express + Socket.IO on ONE HTTP server
+  +------+------+------+------+
+         |             |
+      MongoDB        Redis
+     (truth)     @socket.io/redis-adapter   crewly:<env>:chat:adapter
+                 rate-limit counters        crewly:<env>:rl:*
+                 SSE realtime channel       crewly:<env>:realtime:events
+
+ONE prefix law for every namespace: BULLMQ_PREFIX when set, else crewly:<NODE_ENV>.
+```
+
+Mongo is the only source of truth. Redis is fan-out + counters: lose Redis and
+history is still complete over REST — realtime is what degrades, and it says so.
+
+## 22.3 Data model
+
+| Model | Purpose | Notes |
+|---|---|---|
+| `ChatConversation` | room + members + cursors + lock | `members[]` carry `userId`/`role`; `isDisabled`/`disabledAt`/`disabledByUserId`; `lastMessageSeq`, `lastMessageAt`; per-member `lastReadSeq` |
+| `ChatMessage` | one row per message | `seq` (per-conversation, gap-free), `type` TEXT/FILE/SYSTEM, `text` (null when tombstoned), `editVersion`, `deletedAt`, `clientMessageId` (unique per sender+conversation), `attachments[]`, references to system events |
+| `ChatMessageEdit` | edit history | one row per edit, capped at 20, ids + bounded text only |
+| `ChatAttachment` | private upload metadata | server-built storage key, provider, size, MIME, `scanState`, `removedAt`; never a public URL |
+| `AuditLog` | moderation trail | action + ids + bounded reason. **Never message text** |
+
+Full schemas + indexes: §5.1/§5.2. Invariants: §5.3.
+
+## 22.4 REST surface (final, with its limits)
+
+All routes are tenant-scoped, membership-checked and rate-limited per
+`companyId:userId` (§21.1).
+
+| Method | Path | Action budget |
+|---|---|---|
+| POST | `/api/chat/conversations` | `conversation.create` — 10 / 10 min |
+| GET | `/api/chat/conversations` | `conversation.list` — 120 / min |
+| GET | `/api/chat/conversations/:id` | `conversation.detail` — 120 / min |
+| GET | `/api/chat/conversations/:id/messages` | `message.history` — 60 / min |
+| POST | `/api/chat/conversations/:id/members` | `conversation.members.add` — 20 / 10 min |
+| DELETE | `/api/chat/conversations/:id/members/:userId` | `conversation.members.remove` — 20 / 10 min |
+| POST | `/api/chat/conversations/:id/read` | `message.read` — 120 / min |
+| PATCH | `/api/chat/conversations/:id/disable` | `conversation.moderateState` — 30 / min |
+| PATCH | `/api/chat/conversations/:id/enable` | `conversation.moderateState` — 30 / min |
+| POST | `/api/chat/conversations/:id/messages/:messageId/moderate-delete` | `message.moderateDelete` — 30 / min |
+| POST | `/api/chat/conversations/:id/attachments` | `attachment.upload` — 20 / 10 min |
+| GET | `/api/chat/attachments/:attachmentId/download` | `attachment.download` — 120 / min |
+
+Refusals use the existing error style with code `RATE_LIMITED` and a
+`Retry-After` header. Downloads answer `Cache-Control: private, no-store, max-age=0`.
+
+## 22.5 Socket protocol (final, with its limits)
+
+Namespace/path `/chat-socket`; JWT in the handshake `auth` payload only (never
+query, header or body). Every event is answered with an ACK envelope
+`{ ok: true, data }` or `{ ok: false, code, message }`.
+
+| Event (client → server) | Server → room | Identity budget |
+|---|---|---|
+| `chat:join` | — | 30 / min |
+| `chat:message:send` | `chat:message:created` | 20 / 10 s |
+| `chat:message:sendFile` | `chat:message:created` | 20 / min |
+| `chat:message:edit` | `chat:message:edited` | 20 / 10 s |
+| `chat:message:delete` | `chat:message:deleted` | 20 / 10 s |
+| `chat:readUpTo` | — (ACK only; no broadcast) | 60 / 10 s |
+| REST-created list changes | `chat:conversations:changed` (personal room) | — |
+
+Stable refusal codes: `UNAUTHORIZED`, `FEATURE_UNAVAILABLE`, `VALIDATION_ERROR`,
+`NOT_FOUND_OR_FORBIDDEN`, `CONVERSATION_DISABLED`, `MESSAGE_NOT_EDITABLE`,
+`CONFLICT_EDIT_VERSION`, `HISTORY_LIMIT_REACHED`, `RATE_LIMITED`, `RETRYABLE`.
+Plus the 33.5 per-socket write guard (30 writes / 10 s) on top of the identity
+budget. Payload cap: 48 KB (> 2× the worst-case legal frame, §21.3).
+
+## 22.6 Security posture (Phase 33 as a whole)
+
+- **Tenancy**: every query carries `companyId`; cross-tenant reads and writes are
+  a 404 in the same shape as a genuinely missing row — no existence leak.
+- **Membership**: authorization is server-side on every surface (REST handler,
+  socket listener, attachment stream). Non-members cannot read, send, edit,
+  delete, mark read or download.
+- **Identity**: `companyId:userId` is server-derived (`req.companyId` /
+  `socket.data`) — a payload can never move its own identity or bucket.
+- **Tokens**: chat uses the tenant-user JWT only. Kiosk, candidate and platform
+  auth shapes are refused at the handshake.
+- **No surveillance**: no presence, no typing, no last-seen, no per-message
+  receipts. Read cursors are private: a member never sees another member's cursor.
+- **No secrets in logs**: rate-limit and moderation logs carry ids, counts and
+  bounded reasons — never message text, attachment names, tokens or URLs.
+- **Attachments**: private by construction; the server builds storage keys,
+  downloads stream through the backend, and no permanent public URL is stored.
+- **Audit**: moderation actions record ids + bounded reason + previous/new state.
+  Message text is never copied into the audit.
+
+## 22.7 Degraded modes (truthful, never silent)
+
+| Condition | What the product does |
+|---|---|
+| Redis disabled/down | Chat sockets are refused with `FEATURE_UNAVAILABLE` (no half-open gate); REST chat still works; history is complete |
+| Limiter store unreachable | Rate limits fall back to a bounded per-process bucket (never unlimited); if even that is unavailable, the request is REFUSED — an abuse control never fails open |
+| A limiter window lost its TTL | The refusal re-asserts the TTL, so no identity is blocked forever (§21.8) |
+| Attachment storage unavailable | 503/413 with an honest sentence — never a crash, never a false success |
+| Socket transport blocked | The client shows an explicit unavailable state and offers retry; REST remains usable (runbooks §2) |
+| Mongo slow | Sockets answer `RETRYABLE` (bounded), the error NAME is logged, never the message or a stack |
+
+## 22.8 Verification matrix
+
+Every row below is **proven by a hermetic test that must exist** — the coupling
+itself is pinned by `phase33Closeout.test.js` → "every matrix row points at a
+test that exists", so this table cannot rot into fiction. "Live check" is the
+manual step for the parts a hermetic test cannot own (two processes, real Redis).
+
+| # | Feature / risk | Proof (hermetic) | Live check |
+|---|---|---|---|
+| 1 | Tenant isolation — no cross-company reads, uploads or moderation | `chatConversations.test.js › getConversation 404s for other tenants and non-members`<br>`chatConversations.test.js › DIRECT create rejects self-chat and cross-company targets`<br>`chatHistory.test.js › non-member and cross-tenant callers get 404 before any message read`<br>`chatAttachments.test.js › a cross-tenant upload is refused with the same 404 shape`<br>`chatModeration.test.js › moderation never crosses the tenant boundary (404, no existence leak)` | Sign in as a user of another company and open a conversation id from tenant A: 404, never content |
+| 2 | Membership enforcement — read, history, join, send, edit, delete, readUpTo | `chatConversations.test.js › getConversation 404s for other tenants and non-members`<br>`chatHistory.test.js › non-member and cross-tenant callers get 404 before any message read`<br>`chatSocketSend.test.js › chat:join allowed for member, refused for non-member and other tenant`<br>`chatSocketSend.test.js › chat:message:send refused for non-member`<br>`chatEditDelete.test.js › chat:message:edit refused for non-member and for other tenant`<br>`chatEditDelete.test.js › chat:message:delete refused for non-member and for a member who is not the sender`<br>`chatReadMarkers.test.js › chat:readUpTo validates lastReadSeq and refuses non-members` | Remove yourself from a group in a second browser, then try to send: refused; history still readable |
+| 3 | Socket auth — missing/invalid/expired/foreign tokens, kiosk/candidate/platform, origin | `chatSocketFoundation.test.js › rejects a missing token`<br>`chatSocketFoundation.test.js › rejects an expired token`<br>`chatSocketFoundation.test.js › rejects the kiosk device token (typ:"kiosk")`<br>`chatSocketFoundation.test.js › rejects the kiosk employee-context token (typ:"kiosk-employee")`<br>`chatSocketFoundation.test.js › rejects every platform role — platform auth is AdminSession, not a tenant JWT`<br>`chatSocketFoundation.test.js › candidate portals hold no JWT at all — secure tokens ride the URL, never a socket`<br>`chatSocketFoundation.test.js › a token claiming a DIFFERENT company than the Mongo user is refused`<br>`chatSocketFoundation.test.js › reads the token from the auth payload only — never query, header or body`<br>`chatSocketFoundation.test.js › refuses a MISSING origin — stricter than app.js (fail closed)` | In devtools, clear the token and (re)load chat: the socket is refused and the UI says so |
+| 4 | Redis down — socket unavailable, REST unaffected, limits never fail open | `chatSocketFoundation.test.js › REDIS_ENABLED=false ⇒ adapter refused and NO client is created`<br>`chatSocketFoundation.test.js › attach() with Redis unavailable reports FEATURE_UNAVAILABLE and admits nothing`<br>`chatSocketResilience.test.js › a throwing send service becomes a RETRYABLE ack, never a rejection`<br>`chatHardening.test.js › with Redis intentionally disabled the limiter still limits (local tier)`<br>`chatHardening.test.js › a dead Redis degrades to the bounded local bucket, never to unlimited`<br>`chatHardening.test.js › a limiter store that throws is a REFUSAL, never an open door`<br>`chatHardening.test.js › a normal request passes while Redis is dead (degrade, not fail-closed)` | Set `REDIS_ENABLED=false` in a NEW terminal, restart the API: chat shows unavailable, history still loads (§J step 5) |
+| 5 | Idempotency — a retried send/delete/create never duplicates | `chatSocketSend.test.js › idempotency: same clientMessageId twice returns same message, one broadcast`<br>`chatConversations.test.js › DIRECT create is idempotent and tenant-scoped`<br>`chatEditDelete.test.js › chat:message:delete is idempotent: second delete ok with same deletedAt, no re-broadcast`<br>`chatModeration.test.js › moderate-delete is idempotent: retry reports changed:false and writes no new audit` | Double-click Send with a slow network: one bubble appears |
+| 6 | Edit concurrency + history | `chatEditDelete.test.js › chat:message:edit with a stale expectedEditVersion returns CONFLICT_EDIT_VERSION untouched`<br>`chatEditDelete.test.js › chat:message:edit updates text, bumps editVersion, appends history, broadcasts once`<br>`chatEditDelete.test.js › chat:message:edit refuses beyond the history cap (20) with HISTORY_LIMIT_REACHED`<br>`chatEditDelete.test.js › chat:message:edit payload validation rejects bad expectedEditVersion and empty text` | Edit the same message in two tabs: the second gets the conflict sentence, not a silent overwrite |
+| 7 | Tombstone safety — deleted text never leaks, delete is idempotent | `chatHistory.test.js › sanitizeMessageForHistory never leaks a tombstone body`<br>`chatHistory.test.js › deleted messages come back tombstone-safe in a real page`<br>`chatEditDelete.test.js › chat:message:delete tombstones own message and broadcasts once`<br>`chatHistory.test.js › a tombstoned message keeps its references (the bubble shows the tombstone)` | Delete a message, reload: no text, tombstone row remains |
+| 8 | Unread counts (C1) — formula, monotonicity, clamp | `chatReadMarkers.test.js › computeUnreadCount: zero messages, partial read, fully read, late joiner`<br>`chatReadMarkers.test.js › updateReadMarker is monotonic: a lower request never rewinds the cursor`<br>`chatReadMarkers.test.js › updateReadMarker clamps to lastMessageSeq (cannot read past the end)`<br>`chatReadMarkers.test.js › updateReadMarker refuses non-members and other tenants identically`<br>`chatReadMarkers.test.js › chat:readUpTo ACKs the caller with cursor + count and broadcasts nothing` | Read a conversation in one tab; the badge clears and never goes negative |
+| 9 | Attachment privacy — membership, private headers, server-built keys, no public URL | `chatAttachments.test.js › a non-member cannot upload (404, and nothing is stored)`<br>`chatAttachments.test.js › the download controller streams privately: private,no-store + sanitized name`<br>`chatAttachments.test.js › the server builds the key: caller input cannot reach it`<br>`chatAttachments.test.js › a member upload returns display metadata only — never a key or checksum`<br>`chatAttachments.test.js › a locked conversation refuses uploads (the 33.9 lock covers files)`<br>`chatAttachments.test.js › delivery streams through the backend for both providers` | Copy a download URL into a private window (no session): refused |
+| 10 | Moderation — the lock blocks writes, moderators still moderate, audit is text-free | `chatModeration.test.js › socket send in a disabled conversation is refused for a member (CONVERSATION_DISABLED)`<br>`chatModeration.test.js › socket edit in a disabled conversation is refused for a member (CONVERSATION_DISABLED)`<br>`chatModeration.test.js › socket delete in a disabled conversation is refused for a member, and overturned for a CHAT_MODERATE socket`<br>`chatModeration.test.js › moderator tombstones ANOTHER member message: text nulled, audited once, no content stored`<br>`chatModeration.test.js › non-moderator cannot disable a conversation (403, no write)` | As admin: disable a conversation → members cannot send/edit/delete; you still can; audit log holds ids only |
+| 11 | Rate limits — REST + socket thresholds, identity-scoped, never fail open | `chatHardening.test.js › a restricted chat action refuses with 429 after its threshold`<br>`chatHardening.test.js › every route in the chat router carries an identity limiter`<br>`chatHardening.test.js › the socket refuses with the stable RATE_LIMITED ACK after the threshold`<br>`chatHardening.test.js › a payload claiming another identity cannot move the socket bucket`<br>`chatHardening.test.js › oversized payloads are refused with VALIDATION_ERROR, not truncation`<br>`chatHardening.test.js › every chat REST action has a policy and a built middleware`<br>`chatHardening.test.js › a window whose EXPIRE failed can no longer block an identity forever` | Send 21 messages fast: the 21st is refused with the slow-down sentence; sending resumes ~10 s later |
+| 12 | Multi-instance fan-out — one channel, one prefix, cross-instance delivery | `chatSocketFoundation.test.js › the adapter key is env-namespaced and separate from the SSE namespace`<br>`realtimeFoundation.test.js › the gateway DEFAULTS to the app namespace law, not a hardcoded env`<br>`observabilityFoundation.test.js › diagnostics payload is bounded and secret-free (no URIs/hosts/keys/users)` | §J: run API #1 + API #2, two browsers, message crosses instances; stop #1 and #2 keeps serving |
+| 13 | Frontend safety — no HTML injection, no token in console, explicit unavailable state | `chatHardening.test.js › a rate-limited send shows the server sentence, not a generic failure`<br>`phase33Closeout.test.js › the chat UI never injects HTML, never prints a token, and renders an explicit unavailable state` | Open the chat page with the API stopped: an explicit unavailable state, not a blank screen |
+| 14 | Docs integrity — the matrix points at real tests; no secrets in docs; runbooks complete | `phase33Closeout.test.js › every matrix row points at a test that exists`<br>`phase33Closeout.test.js › the phase docs carry no credential-shaped strings`<br>`phase33Closeout.test.js › every runbook keeps its six-part structure` | `npm run test:chat` (this repo) |
+
+**What this matrix does NOT claim.** No capacity numbers, no throughput, no
+"supports N users" — those need load testing with real infrastructure, which
+this phase deliberately does not do. The tests prove *correctness and
+authorization*, not scale.
+
+## 22.9 Deferred / not built (honest list)
+
+- Presence, typing indicators, last-seen, activity tracking — locked OUT of Phase 33.
+- Per-message read receipts — the read model is C1 (per-member cursor) only.
+- Reactions, threads, replies, search, forwarding, message pinning.
+- Malware scanning of attachments (`scanState` is truthful, not a scanner).
+- Capacity/load certification and any production deployment.
+- Frontend unit-test harness: the UI is verified by source pins + the production
+  build + manual acceptance (the repo has no frontend test runner).
+
+## 22.10 Operator entry points
+
+| Command (from `Backend/`) | What it does |
+|---|---|
+| `npm run config:check` | Config truth, including the 4 chat lines (enablement, Redis dependency warning, frame cap law, limiter tier) |
+| `npm run chat:blank-check` | Read-only scan for blank/unrenderable stored message bodies (exit 1 on findings) |
+| `npm run test:chat` | Every chat/realtime test file (hermetic; no live Redis or Mongo required) |
+| `npm run test:all` | The full hermetic suite |
+
+Diagnostics ride the existing platform block (`chat: { realtime, payload, limits }`) —
+counts, tiers and caps only. No new endpoint, no new metric surface.
+
+## 22.11 Running the proof
+
+```powershell
+# From the repository root — hermetic: no Redis, no Mongo, no network.
+cd Backend
+npm run test:chat          # every Phase 33 test file
+npm run test:all           # the whole backend suite
+npm run config:check       # chat config lines (exit 1 on real problems)
+```
+
+Live, opt-in, two-instance verification: `docs/PHASE_33_CHAT_RUNBOOKS.md` §7 and
+the handoff checklist in §J of the 33.12 build prompt.

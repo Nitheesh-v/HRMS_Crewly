@@ -443,3 +443,128 @@ Get-Content Backend\logs\combined.log -Tail 1
 **Never run:** `FLUSHALL`, `FLUSHDB`, `KEYS`, `SCAN` against production Redis,
 manual edits to `chatmessages`/`chatconversations`/`chatattachments`, or any
 command that prints `.env` values.
+
+---
+
+## §7 — PHASE 33.12 CLOSE-OUT: OPT-IN LIVE VERIFICATION (TWO INSTANCES)
+
+Everything in §1–§6 is written for an operator facing a live incident. This one
+is different: it is the **deliberate, opt-in** check that the things a hermetic
+test cannot own are true on real hardware — two API processes, one Redis, real
+sockets. Run it before you trust chat in a new environment, after an infra
+change, or when closing out this phase.
+
+**It is destructive to nothing.** No `FLUSHALL`, no `KEYS`, no queue drains, no
+database migration. Every step is reversible by closing a terminal.
+
+### DETECT
+
+There is nothing to detect — you are *choosing* to verify. If any step below
+fails, you have found a real gap; record which step and stop.
+
+### IMPACT
+
+None until a step fails. A failure at step 3 (cross-instance) means realtime is
+single-instance-only in that environment; a failure at step 4 (Redis off) means
+the honest-degradation promise is broken. Both are worth knowing *before* a
+user finds them.
+
+### DO
+
+Prerequisites: MongoDB reachable, Redis reachable (dev instance or managed
+Redis) with a URL whose credentials you do NOT paste anywhere, and the repo
+checked out. Four terminals.
+
+```powershell
+# Terminal 1 — Redis (skip if you use a managed instance; do NOT print its URL)
+#   e.g. a local redis-server, or your existing dev instance
+
+# Terminal 2 — API instance #1 (default PORT from .env)
+cd C:\Users\megal\Desktop\HRMS\HRMS_Crewly\Backend
+npm run dev
+
+# Terminal 3 — API instance #2 (a DIFFERENT port, same Redis, same prefix)
+cd C:\Users\megal\Desktop\HRMS\HRMS_Crewly\Backend
+$env:PORT="5001"
+npm run dev
+Remove-Item Env:PORT
+
+# Terminal 4 — Frontend
+cd C:\Users\megal\Desktop\HRMS\HRMS_Crewly\Frontend
+npm run dev
+```
+
+1. **Both instances must announce the SAME Redis namespace.** In terminals 2 and
+   3, the chat line prints `adapterKey=` and the realtime line prints
+   `channel=`. The prefixes must match — they come from `BULLMQ_PREFIX` when
+   set, else `crewly:<NODE_ENV>`. Two different prefixes behave like two
+   deployments: messages will not cross, and that is not a bug.
+
+2. **Cross-instance delivery.** Open the frontend twice — once logged in
+   normally, once in a private window as a second member of the same
+   conversation. Send a message from A; it must appear in B without a reload.
+   Force the two sessions onto different instances by reloading one until its
+   `socket.id` differs (or point one browser at `localhost:5001` — the frontend
+   proxies to its own backend, so this is the honest way to prove the adapter
+   rather than sticky sessions).
+
+3. **Instance loss.** Stop API #1 (`Ctrl+C`). API #2 must keep serving REST and
+   realtime; the browser session on #1 reconnects to #2 and chat still works.
+   Start #1 again and confirm both instances serve.
+
+4. **Redis off is honest.** In a NEW terminal only:
+
+   ```powershell
+   cd C:\Users\megal\Desktop\HRMS\HRMS_Crewly\Backend
+   $env:REDIS_ENABLED="false"
+   $env:PORT="5002"
+   npm run dev
+   Remove-Item Env:REDIS_ENABLED
+   ```
+
+   On that instance: chat connections are refused with an explicit unavailable
+   state (no half-open pretend-connected socket), while REST history, unread
+   counts and downloads still work. This is the phase's central promise.
+
+5. **Hermetic proof, same repository** (no Redis, no Mongo, no network):
+
+   ```powershell
+   cd Backend
+   npm run test:chat     # every Phase 33 file
+   npm run test:all      # the whole backend suite
+   ```
+
+### DO NOT
+
+- Do not paste Redis URLs, passwords or tokens into a terminal you will share,
+  a screenshot, a ticket or this repository. Refer to them as "the dev instance".
+- Do not run the instances on different `NODE_ENV`/`BULLMQ_PREFIX` values and
+  expect fan-out.
+- Do not `FLUSHALL`/`FLUSHDB`/`KEYS *` to "reset" anything: pub/sub is stateless,
+  and a flush erases other tenants' rate limits and queued work.
+- Do not treat a green hermetic run as a substitute for step 2 — the adapter is
+  exactly the part a single process cannot prove.
+- Do not run this against production data with a second writer unless you intend
+  to; it writes real messages.
+
+### VERIFY
+
+- Step 1: the two prefixes printed by the two instances are identical.
+- Step 2: the message arrives in the other session in under a second, both
+  directions, and `chat:message:created` appears in both logs.
+- Step 3: after stopping one instance, the surviving instance serves REST and
+  realtime, and the restarted instance rejoins cleanly.
+- Step 4: that instance refuses sockets with `FEATURE_UNAVAILABLE` and still
+  serves history over REST.
+- Step 5: `test:chat` and `test:all` report 0 failures (record the exact counts).
+
+### ESCALATE
+
+- Step 1 mismatch → §6 (multi-instance mismatch).
+- Step 2/3 failure with matching prefixes → adapter not connected on one
+  instance: confirm each instance opened its OWN Redis connection and that the
+  Redis host allows the second client.
+- Step 4 failure (sockets accepted with Redis off) → stop and treat as a
+  security-relevant defect: the feature must refuse, never pretend.
+- Any step that succeeds only after a restart → record it; intermittent is a
+  finding, not a pass.
