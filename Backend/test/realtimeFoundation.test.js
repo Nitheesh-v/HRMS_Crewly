@@ -27,7 +27,7 @@ const { createRealtimeTickets, isValidTicketShape } = await import('../src/infra
 const { buildRealtimeEnvelope, parseRealtimeEnvelope, formatSseFrame, SSE_HEARTBEAT_FRAME } = await import(
   '../src/infrastructure/realtime/realtimeProtocol.js'
 );
-const { createRealtimeGateway } = await import('../src/infrastructure/realtime/realtimeGateway.js');
+const { createRealtimeGateway, realtimeChannel } = await import('../src/infrastructure/realtime/realtimeGateway.js');
 
 const COMPANY_A = 'aaaaaaaaaaaaaaaaaaaaaaaa';
 const COMPANY_B = 'bbbbbbbbbbbbbbbbbbbbbbbb';
@@ -164,6 +164,48 @@ describe('realtime config (explicit parsing + namespacing)', () => {
     assert.equal(parseRealtimeEnabled({ REALTIME_ENABLED: 'TRUE' }), true);
     assert.equal(parseRealtimeEnabled({ REALTIME_ENABLED: '1' }), false, 'not Boolean(env) — exact true only');
     assert.equal(parseRealtimeEnabled({ REALTIME_ENABLED: 'garbage' }), false);
+  });
+
+  test('the gateway DEFAULTS to the app namespace law, not a hardcoded env', async () => {
+    // 33.11-fix — the gateway used to default to the literal
+    // 'crewly:development', so an instance with BULLMQ_PREFIX set (or
+    // NODE_ENV=production) still published and subscribed on the development
+    // channel: two environments sharing one Redis silently shared ONE
+    // realtime channel. The default now follows getQueuePrefix(), the same law
+    // as queues, the rate-limit store, tickets and the chat adapter.
+    const previousPrefix = process.env.BULLMQ_PREFIX;
+    const subscribed = [];
+    const published = [];
+
+    process.env.BULLMQ_PREFIX = 'crewly:hardening-check';
+
+    try {
+      const gateway = createRealtimeGateway({
+        enabled: true,
+        heartbeatMs: 10,
+        publisher: { publish: async (channel, raw) => { published.push(channel); return 1; } },
+        subscriber: {
+          subscribe: async (channel) => { subscribed.push(channel); },
+          on: () => {},
+          once: (event, handler) => { if (event === 'ready') setImmediate(handler); },
+        },
+      });
+
+      const started = await gateway.start();
+
+      assert.equal(started.started, true);
+      assert.deepEqual(subscribed, ['crewly:hardening-check:realtime:events']);
+      assert.equal(realtimeChannel(), 'crewly:hardening-check:realtime:events', 'diagnostics agree');
+
+      await gateway.publish({ type: 'system:ping', companyId: COMPANY_A });
+
+      assert.deepEqual(published, ['crewly:hardening-check:realtime:events'], 'publish uses the same channel');
+
+      await gateway.stop();
+    } finally {
+      if (previousPrefix === undefined) delete process.env.BULLMQ_PREFIX;
+      else process.env.BULLMQ_PREFIX = previousPrefix;
+    }
   });
 
   test('channel + ticket keys are env-namespaced; channels never carry identities', () => {

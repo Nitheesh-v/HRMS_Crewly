@@ -17,6 +17,12 @@
 //  - Namespace: crewly:<env>:rl:<family>: — isolated from caches,
 //    queues, heartbeats and other environments. Exact keys only:
 //    no KEYS / SCAN / FLUSH anywhere in this module.
+//
+//  33.11-fix — NO IDENTITY MAY BE BLOCKED FOREVER. A window whose EXPIRE
+//  failed leaves a TTL-less counter that refuses that identity until someone
+//  deletes the key by hand; the next refusal re-asserts the TTL through the
+//  io contract's optional `expireIfMissing(key, ttlSeconds)`. An injected io
+//  without that method simply skips healing (legacy/test doubles).
 //  - REDIS_DISABLED (strict parser in config/redis.js) is quiet
 //    local mode; REDIS_DOWN opens a short process-local circuit
 //    and warns ONCE per open — never per request. No limiter key,
@@ -173,6 +179,25 @@ export const createRateLimitStore = ({
 
       await withTimeout(client.del(key));
     },
+
+    // 33.11-fix — heal a window whose TTL never got set. Deliberately asks for
+    // the TTL first instead of using `EXPIRE ... NX`: NX needs Redis 7+ and
+    // this product must run against older servers too. One extra round-trip,
+    // on the refusal path only.
+    expireIfMissing: async (key) => {
+      const client = getRedisClient();
+
+      if (!client) return false;
+
+      const ttl = await withTimeout(client.ttl(key));
+
+      // -2 = the key is gone (nothing to heal), > 0 = a healthy live window.
+      if (ttl !== -1) return false;
+
+      const applied = await withTimeout(client.expire(key, ttlSeconds));
+
+      return applied === 1;
+    },
   };
 
   const backend = io || defaultIo;
@@ -197,6 +222,26 @@ export const createRateLimitStore = ({
         // Redis intentionally disabled — quiet local mode, no circuit,
         // no warning (this is a documented deployment shape).
         return fallbackHit(sharedName, key, windowMs, maximum);
+      }
+
+      if (count > maximum) {
+        // 33.11-fix — IMMORTAL KEY SELF-HEAL.
+        //
+        // The window's TTL is set on the FIRST hit (EXPIRE NX). If that call
+        // fails — a 250 ms op timeout on a loaded Redis is enough — the
+        // counter survives with NO TTL, so every later request from that
+        // identity is refused FOREVER. Observed in the field as a permanent
+        // `POST /api/auth/refresh 429` for one IP that never recovered, twice
+        // twelve minutes apart, with no preceding burst in the logs: a
+        // limiter quietly became an outage.
+        //
+        // The refused request repairs it. Best effort by design: healing must
+        // never change the refusal, and it only runs on the rare refusal path.
+        try {
+          await backend.expireIfMissing?.(key, ttlSeconds);
+        } catch {
+          /* healing is best effort — the refusal stands regardless */
+        }
       }
 
       return {

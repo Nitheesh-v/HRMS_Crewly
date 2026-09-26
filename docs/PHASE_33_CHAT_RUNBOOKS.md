@@ -187,9 +187,31 @@ own runbooks.
 
 ### DO NOT
 
-- Do not delete Redis keys to "reset" a bucket: the window expires on its own.
+- Do not delete limiter keys as a routine remedy: a window expires on its own,
+  and a key that lost its TTL **heals itself on the next refused request**
+  (`rateLimitStore` checks `TTL` and sets one when it is missing — see §21.8 of
+  the phase doc).
 - Do not raise a limit without recording why. Every number in §21 of
   `PHASE_33_CHAT_HUB.md` has a stated reason.
+
+**If one identity is refused forever** (the classic shape: the same 429 coming
+back hours apart with no burst in the logs), the window lost its TTL. Check it
+on the EXACT key — no wildcards, no `KEYS`, no `SCAN`:
+
+```powershell
+# A healthy window has TTL between 1 and its window length; -1 means NO TTL
+redis-cli TTL "crewly:<env>:rl:refresh:<ip>:refresh"
+```
+
+The running API heals it the next time that identity is refused. To release the
+identity immediately, delete THAT EXACT key (never a pattern):
+
+```powershell
+redis-cli DEL "crewly:<env>:rl:refresh:<ip>:refresh"
+```
+
+Confirm the deployed build includes the 33.11 self-heal before treating the
+manual delete as more than a stop-gap.
 - Do not log or ask for message text to "see what they are sending".
 
 ### VERIFY
@@ -347,8 +369,16 @@ own runbooks.
 1. Confirm every API instance logged the adapter becoming ready, and that each
    one has its OWN Redis connection (pub/sub clients are per-instance).
 2. Confirm all instances point at the SAME Redis and the same environment
-   prefix (`crewly:<env>:`) — different prefixes behave like separate
-   deployments and will never see each other.
+   prefix — different prefixes behave like separate deployments and will never
+   see each other. There is ONE prefix for every namespace (queues, rate-limit
+   counters, realtime tickets, the SSE realtime channel and the chat adapter
+   channel) and it comes from `BULLMQ_PREFIX` when set, else `crewly:<NODE_ENV>`.
+   `npm run config:check` prints the channel-bearing names; the boot log prints
+   the chat adapter key and the realtime channel — **they must agree**.
+   (Until 33.11 the SSE channel ignored `BULLMQ_PREFIX`, so an instance could
+   announce `crewly:production:chat:adapter` while publishing SSE events on
+   `crewly:development:realtime:events`; that is fixed, and an environment pair
+   sharing one Redis must now be separated by the prefix on BOTH.)
 3. Confirm sticky sessions on the load balancer while polling transport is in
    use, and WebSocket upgrade support (§2).
 4. Restart instances ONE AT A TIME if an adapter must be re-established, and

@@ -115,7 +115,21 @@ const awaitConnectionReady = (connection, timeoutMs) =>
 
 export const createRealtimeGateway = ({
   enabled = false,
-  channel = realtimeChannelName(),
+  // 33.11-fix — the channel follows the SAME namespace law as queues, the
+  // rate-limit store, realtime tickets and the chat adapter:
+  // getQueuePrefix() → BULLMQ_PREFIX when set, else crewly:<NODE_ENV>.
+  //
+  // It used to default to the literal 'crewly:development' whatever the
+  // environment was. Consequence, seen in a real boot log: with
+  // BULLMQ_PREFIX=crewly:production the chat adapter announced
+  // crewly:production:chat:adapter while the SSE gateway published and
+  // subscribed on crewly:development:realtime:events — so two environments
+  // sharing one Redis (the common dev/staging shape) silently shared ONE
+  // realtime channel, defeating the isolation the prefix exists to provide.
+  //
+  // Explicit `channel:` injection still wins (tests and any future gateway
+  // with a deliberately different namespace).
+  channel = realtimeChannelName(getQueuePrefix()),
   heartbeatMs = REALTIME_HEARTBEAT_MS,
   subscribeReadyTimeoutMs = 5000,
   registry = createRealtimeRegistry(),

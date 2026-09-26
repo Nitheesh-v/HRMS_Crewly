@@ -29,6 +29,11 @@
 //    · WIRING: every route the chat router exposes really carries a limiter
 //      (policy tables can be perfect while a route forgets to mount one), and
 //      the diagnostics block is numbers/safe-words only.
+//    · NO IDENTITY IS BLOCKED FOREVER: a window whose EXPIRE failed (a Redis
+//      op timeout is enough) leaves a TTL-less counter that would refuse that
+//      identity until someone deleted the key by hand — the field symptom was
+//      a permanent `POST /api/auth/refresh 429`. The refusal path re-asserts
+//      the TTL, and the identity recovers within ONE window.
 // ============================================================
 
 import assert from 'node:assert/strict';
@@ -914,4 +919,125 @@ test('config-check reports chat enablement, the cap law and the limiter tier', a
     !/problems\.push\('CHAT_SOCKET_ENABLED=true requires/.test(script),
     'chat enablement is a warning, never a hard pre-flight failure',
   );
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// 10. A LIMITER MUST NEVER BLOCK AN IDENTITY FOREVER
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Redis double that models the failure that matters: the FIRST-hit EXPIRE
+ * (the call that gives a window its life) times out, so the counter is left
+ * with no TTL — immortal until something heals it.
+ */
+const makeImmortalKeyIo = ({ healWorks = true } = {}) => {
+  const counters = new Map();
+  const ttls = new Map();
+  const calls = { incr: 0, expire: 0, expireIfMissing: 0 };
+
+  const alive = (key) => {
+    const expiresAt = ttls.get(key);
+    if (expiresAt !== undefined && expiresAt <= Date.now()) {
+      counters.delete(key);
+      ttls.delete(key);
+    }
+    return counters.has(key);
+  };
+
+  return {
+    calls,
+    ttls,
+    incr: async (key) => {
+      calls.incr += 1;
+      if (!alive(key)) counters.set(key, 0);
+      const next = counters.get(key) + 1;
+      counters.set(key, next);
+      return next;
+    },
+    get: async (key) => (alive(key) ? counters.get(key) : null),
+    del: async (key) => {
+      counters.delete(key);
+      ttls.delete(key);
+    },
+    // The window TTL is NEVER applied here: this is the failure being modelled.
+    setWindowTtl: () => false,
+    expireIfMissing: async (key) => {
+      calls.expireIfMissing += 1;
+      if (!healWorks) return false;
+      if (ttls.has(key)) return false; // NX semantics: never extend a live window
+      ttls.set(key, Date.now() + 1000);
+      return true;
+    },
+  };
+};
+
+test('a window whose EXPIRE failed can no longer block an identity forever', async () => {
+  resetRateLimitStoreForTests();
+
+  const io = makeImmortalKeyIo();
+
+  // A short window: ttlSeconds = 1, and the fake honours it after healing.
+  const store = createRateLimitStore({ sharedName: `hardening-immortal-${id()}`, windowMs: 1000, io });
+
+  const maximum = 2;
+
+  const hits = [];
+
+  for (let attempt = 1; attempt <= maximum + 1; attempt += 1) {
+    hits.push(await store.hit('stuck-identity', maximum));
+  }
+
+  assert.deepEqual(hits.map((entry) => entry.limited), [false, false, true]);
+  assert.equal(hits[2].tier, 'shared');
+
+  // THE FIX: refusing repaired the missing TTL…
+  assert.equal(io.calls.expireIfMissing, 1, 'the refusal re-asserted the window TTL');
+  assert.ok(io.ttls.get([...io.ttls.keys()][0]) > Date.now(), 'a TTL now exists');
+
+  // …so the identity recovers by itself, with no operator touching Redis.
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+
+  const afterWindow = await store.hit('stuck-identity', maximum);
+
+  assert.equal(afterWindow.limited, false, 'the next window starts fresh');
+  assert.equal(afterWindow.count, 1);
+});
+
+test('healing is best effort: a failed heal cannot change the refusal', async () => {
+  resetRateLimitStoreForTests();
+
+  const io = makeImmortalKeyIo({ healWorks: false });
+  const store = createRateLimitStore({ sharedName: `hardening-heal-fail-${id()}`, windowMs: 1000, io });
+
+  await store.hit('identity', 1);
+  const refused = await store.hit('identity', 1);
+
+  // The heal attempted and returned false (e.g. Redis still timing out) —
+  // the answer is unchanged and the caller never sees an exception.
+  assert.equal(refused.limited, true);
+  assert.equal(io.calls.expireIfMissing, 1);
+  assert.ok(io.ttls.size === 0, 'nothing was healed, and nothing was thrown');
+});
+
+test('an io without the optional heal method still behaves exactly as before', async () => {
+  resetRateLimitStoreForTests();
+
+  // Legacy/test doubles implement only incr/get/del. The store must not
+  // require the new method (no crash, no behaviour change).
+  const counters = new Map();
+  const legacyIo = {
+    incr: async (key) => {
+      const next = (counters.get(key) || 0) + 1;
+      counters.set(key, next);
+      return next;
+    },
+    get: async (key) => counters.get(key) ?? null,
+    del: async (key) => counters.delete(key),
+  };
+
+  const store = createRateLimitStore({ sharedName: `hardening-legacy-${id()}`, windowMs: 1000, io: legacyIo });
+
+  // Also: the heal is attempted but optional, so refusals still work.
+  assert.equal((await store.hit('identity', 1)).limited, false);
+  assert.equal((await store.hit('identity', 1)).limited, true);
 });

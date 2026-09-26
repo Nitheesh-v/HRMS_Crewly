@@ -321,7 +321,8 @@ export const createChatSocketServer = ({
 
       log.info(
         `[ChatSocket] foundation ready (path=${CHAT_SOCKET_PATH}, ` +
-          `adapterKey=${adapterResult.key}). No chat product events exist in 33.1.`,
+          `adapterKey=${adapterResult.key}). Product events (join/leave, send, ` +
+          `sendFile, edit, delete, readUpTo) are registered per connection.`,
       );
 
       return { started: true, path: CHAT_SOCKET_PATH, adapterKey: adapterResult.key };

@@ -2146,6 +2146,7 @@ control (it never left the process). Both may refuse; both answer
 | `REDIS_ENABLED` not `true` | quiet **local** mode: bounded per-process bucket, same refusal contract, no warning spam |
 | Redis down / erroring / slower than 250 ms | 30 s process-local circuit + ONE bounded warn per family; every hit served by the bounded local bucket |
 | Limiter store throws unexpectedly | the socket limiter refuses (`RATE_LIMITED`) — an abuse control must never fail open |
+| A window's `EXPIRE` failed (Redis op timeout) | the counter has no TTL, so without help that identity would be refused FOREVER. The refused request re-asserts the TTL (`EXPIRE ... NX`), so the identity recovers within **one window** — pinned in `test/chatHardening.test.js` |
 | `CHAT_SOCKET_ENABLED != true` or the adapter can't attach | socket connections are refused `FEATURE_UNAVAILABLE` (33.1); the REST limits above still apply |
 
 Degradation is always **stricter** (per-process buckets ≈ per-instance limits)
@@ -2265,4 +2266,34 @@ the suite walks the REAL `chatRoutes` stack and fails if ANY route lacks one —
 each of the 12 routes mounts exactly one, for its own action, before the
 controller. A future chat route therefore cannot ship as an unlimited abuse
 surface: the test refuses it.
+
+## 21.8 A limiter must never block an identity forever
+
+Found in a real boot log during acceptance: `POST /api/auth/refresh 429`, twice,
+twelve minutes apart, with **no preceding burst** in the logs and no recovery.
+
+The mechanism: a fixed window gets its TTL on the FIRST hit
+(`INCR` → `EXPIRE key ttl NX`). The `EXPIRE` rides the store's 250 ms op
+timeout. When it fails — a momentarily loaded Redis is enough — the counter
+exists with **no TTL**, so `count > maximum` is true for every later request
+from that identity, permanently, until somebody deletes the key by hand. A
+protection quietly becomes an outage, and nothing in the logs says why.
+
+The fix (`utils/rateLimitStore.js`): the refusal path repairs the window. On
+`count > maximum` the store calls the io contract's optional
+`expireIfMissing(key, ttlSeconds)`, which reads `TTL` first and sets one only
+when the answer is `-1`, so a healthy window is never extended and the identity
+is blocked for at most one further window. It reads `TTL` rather than using
+`EXPIRE ... NX` on purpose: `NX` needs Redis 7+ and this product must run
+against older servers. Healing is best effort by design:
+it can never change the refusal, and an injected io without the method (legacy
+and test doubles) skips it entirely.
+
+The suite pins all three halves: the heal happens and the identity recovers
+within one window; a heal that itself fails leaves the refusal untouched and
+throws nothing; and an io that lacks the method behaves exactly as before.
+
+The runbooks no longer tell an operator that "the window expires on its own" —
+that sentence was false for a key in this state, and a runbook that says it is
+how a stuck key survives an incident review.
 
