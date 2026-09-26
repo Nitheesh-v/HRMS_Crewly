@@ -27,6 +27,9 @@ const MessageComposer = ({
   pendingAttachments = [],
   onAddAttachment,
   onRemoveAttachment,
+  // 34.2 — "Replying to …" shown above the box. The page owns the state; the
+  // composer only reserves the space for it.
+  replyPill = null,
 }) => {
   const [text, setText] = useState('');
   const [error, setError] = useState('');
@@ -72,6 +75,8 @@ const MessageComposer = ({
           {error}
         </p>
       )}
+
+      {replyPill}
 
       {disabled && disabledReason && !error && (
         <p className="mb-2 text-[11px] text-crewly-dim">{disabledReason}</p>

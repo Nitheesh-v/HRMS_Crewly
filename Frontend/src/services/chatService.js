@@ -42,6 +42,25 @@ const chatService = {
   getConversation: async (conversationId) =>
     bare(await api.get(`/chat/conversations/${conversationId}`)),
 
+  // 34.2 — one thread page. Same cursor contract as history, one extra param.
+  // -> { root, items, nextCursor, hasMore }
+  getThread: async (conversationId, rootMessageId, { cursor, limit } = {}) => {
+    const params = {};
+    if (cursor) params.cursor = cursor;
+    if (limit) params.limit = limit;
+
+    const { data, meta } = withMeta(
+      await api.get(`/chat/conversations/${conversationId}/threads/${rootMessageId}`, { params })
+    );
+
+    return {
+      root: data?.root ?? null,
+      items: data?.items ?? [],
+      nextCursor: data?.nextCursor ?? meta.nextCursor ?? null,
+      hasMore: data?.hasMore ?? meta.hasMore ?? false,
+    };
+  },
+
   // -> { items, nextCursor, hasMore }
   getMessages: async (conversationId, { cursor, limit } = {}) => {
     const params = {};

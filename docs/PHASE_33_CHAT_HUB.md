@@ -827,6 +827,13 @@ Server → client:
 - `chat:message:created` `{ conversationId, message }` (broadcast to room
   `chat:conv:<conversationId>`; emitted ONLY for a genuinely new message).
 
+**34.2 update** — `chat:message:send` (and `chat:message:sendFile`) accept an
+optional `replyToMessageId`, and every `message` payload above additionally
+carries `replyToMessageId`, `threadRootMessageId` and a bounded
+`replyTo: { messageId, senderUserId, snippet, deletedAt }` hint. Threads are
+documented in `docs/PHASE_34_CHAT_ENHANCEMENTS.md` (§34.2); nothing else in this
+document changes.
+
 Rooms: `chat:conv:<id>` (`utils/chatKeys.js`); `chat:company:<id>` and
 `chat:user:<id>` reserved for future targeted fan-out.
 
@@ -2356,7 +2363,7 @@ history is still complete over REST — realtime is what degrades, and it says s
 | Model | Purpose | Notes |
 |---|---|---|
 | `ChatConversation` | room + members + cursors + lock | `members[]` carry `userId`/`role`; `isDisabled`/`disabledAt`/`disabledByUserId`; `lastMessageSeq`, `lastMessageAt`; per-member `lastReadSeq` |
-| `ChatMessage` | one row per message | `seq` (per-conversation, gap-free), `type` TEXT/FILE/SYSTEM, `text` (null when tombstoned), `editVersion`, `deletedAt`, `clientMessageId` (unique per sender+conversation), `attachments[]`, references to system events |
+| `ChatMessage` | one row per message | `seq` (per-conversation, gap-free), `type` TEXT/FILE/SYSTEM, `text` (null when tombstoned), `editVersion`, `deletedAt`, `clientMessageId` (unique per sender+conversation), `attachments[]`, `replyToMessageId` + `threadRootMessageId` (34.2 — both null for a top-level message), references to system events |
 | `ChatMessageEdit` | edit history | one row per edit, capped at 20, ids + bounded text only |
 | `ChatAttachment` | private upload metadata | server-built storage key, provider, size, MIME, `scanState`, `removedAt`; never a public URL |
 | `AuditLog` | moderation trail | action + ids + bounded reason. **Never message text** |

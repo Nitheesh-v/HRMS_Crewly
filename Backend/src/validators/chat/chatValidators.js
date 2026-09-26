@@ -138,6 +138,26 @@ export const messageHistoryValidator = [
   validate,
 ];
 
+// ── GET /api/chat/conversations/:conversationId/threads/:rootMessageId ───
+// 34.2 — the thread page. Same pagination contract as message history
+// (cursor = a message seq, newest first, limit 1..50), plus the root id.
+export const threadMessagesValidator = [
+  objectIdRule(param('conversationId'), 'conversationId'),
+  objectIdRule(param('rootMessageId'), 'rootMessageId'),
+
+  query('cursor')
+    .optional({ nullable: true, checkFalsy: true })
+    .isInt({ min: 1 })
+    .withMessage('cursor must be a positive integer (a message seq).'),
+
+  query('limit')
+    .optional({ nullable: true, checkFalsy: true })
+    .isInt({ min: 1, max: 50 })
+    .withMessage('limit must be an integer between 1 and 50.'),
+
+  validate,
+];
+
 // ── DELETE /api/chat/conversations/:conversationId/members/:userId ────────
 
 export const removeMemberValidator = [

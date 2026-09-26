@@ -10,7 +10,7 @@ is described here only once its code exists in the repository.
 | Unit | Scope | Status |
 | --- | --- | --- |
 | **34.1** | Message reactions (fixed icon/text set) | **IMPLEMENTED** (this document) |
-| 34.2 | Threads (reply-to + thread root, thread REST list, socket reply, thread panel) | NOT BUILT YET |
+| **34.2** | Threads (reply-to + thread root, thread REST list, socket reply, thread panel) | **IMPLEMENTED** (this document) |
 | 34.3 | Mentions (`@user` autocomplete, server-validated `mentions[]`, in-app notifications only) | NOT BUILT YET |
 | 34.4 | Search (conversation-scoped only) | NOT BUILT YET |
 | 34.5 | Typing indicator (socket-only, ephemeral, never stored) | NOT BUILT YET |
@@ -253,6 +253,249 @@ Then, signed in as a normal customer user with Redis available:
 
 ---
 
-*Units 34.2 – 34.5 are not described here yet: this document gains a section per
-unit, written when that unit is built. No later unit is in progress while 34.1
-is awaiting localhost acceptance.*
+## 34.2 Threads
+
+### Implemented changes
+
+**Why two fields and not a second collection.** A thread here is a QUERY, not a
+document: the root carries `threadRootMessageId = null`, every reply carries the
+root's id there and its immediate parent in `replyToMessageId`. There is no
+children array to grow, no reply counter to drift, and no tree to balance — a
+thread can never fork deeper than two levels, because replying to a reply keeps
+the ORIGINAL root. That is the whole storage story: two nullable ObjectIds and
+one compound index.
+
+- **Modified `Backend/src/models/ChatMessage.js`** — `replyToMessageId` and
+  `threadRootMessageId` (both `ObjectId` refs to `ChatMessage`, `default: null`,
+  `immutable: true`) plus the index
+  `{ companyId: 1, conversationId: 1, threadRootMessageId: 1, seq: -1 }`.
+  Existing indexes are untouched and nothing is synced at runtime — indexes stay
+  schema-declared only.
+- **Added `Backend/src/services/chat/chatThreadService.js`** — the read path and
+  the reply resolver:
+  - `resolveReplyTarget` — the parent must be a message of THIS tenant and THIS
+    conversation; anything else is `null`, which the caller reports as
+    `NOT_FOUND_OR_FORBIDDEN`. A reply can therefore never be used as an
+    existence probe.
+  - `toReplyPreview` — the bounded hint (`messageId`, `senderUserId`, `snippet`,
+    `deletedAt`). The snippet is truncated to 120 characters and is **null** for
+    a tombstoned or body-less parent, so a preview can never resurrect deleted
+    text.
+  - `summarizeThreadCounts` — reply counts for a page in ONE aggregation.
+  - `loadReplyPreviews` — every parent referenced by a page in ONE query.
+  - `listThreadMessages` — the read gate (tenant + membership, and deliberately
+    NOT an `isDisabled` check: the lock law keeps history readable), the root
+    lookup, the **root redirect** (asking for a reply opens the thread it
+    belongs to) and the pagination (cursor by `seq`, newest first, `limit + 1`
+    probe, clamp 1..50).
+- **Modified `Backend/src/services/chat/chatMessageService.js`** — the parent is
+  resolved BEFORE anything is written; the stored message gets
+  `replyToMessageId = parent._id` and
+  `threadRootMessageId = parent.threadRootMessageId ?? parent._id`; the write
+  returns the bounded preview so the ACK can show it. Both `sendTextMessage` and
+  `sendFileMessage` accept the optional target (a FILE reply would otherwise
+  silently lose its context). The idempotency pre-check and the E11000
+  convergence path are untouched, and a retry re-resolves its preview instead of
+  writing anything.
+- **Modified `Backend/src/services/chat/chatService.js`** — `listMessages` now
+  projects `replyToMessageId`, `threadRootMessageId`, `replyTo` and
+  `threadReplyCount` for a page, using the two bounded lookups above (skipped
+  entirely when the page has no replies). Added `getThread`, the read facade
+  that runs the thread service and projects the root + items exactly like a
+  history page — reactions included.
+- **Modified `Backend/src/socket/chatSocketValidators.js`** — `validateSendPayload`
+  and `validateSendFilePayload` accept an optional `replyToMessageId`, which
+  must be a valid ObjectId when present (absent/null/`''` mean "not a reply").
+- **Modified `Backend/src/socket/chatSocketHandlers.js`** — both send paths
+  forward the target, and the shared `toBroadcastMessage(message, replyTo)`
+  projection now carries `replyToMessageId`, `threadRootMessageId` and `replyTo`
+  on both the `chat:message:created` broadcast and the sender's ACK.
+- **Modified `Backend/src/services/chat/chatRateLimitService.js` +
+  `Backend/src/utils/chatObservability.js`** — a `thread.history` REST budget
+  (60/min, its own bucket, so a hot thread cannot starve history) and the
+  matching log action.
+- **Modified `Backend/src/validators/chat/chatValidators.js`,
+  `src/routes/chat/chatRoutes.js`, `src/controllers/chat/chatController.js`** —
+  the new endpoint, its validator and its controller with the house comment
+  convention.
+- **Frontend** — `ThreadPanel` (drawer/column), `ThreadMessageList` (compact
+  rows), `ReplyContextPill`; `MessageBubble` gained a Reply action, the reply
+  hint above a reply, and a "View thread (n)" affordance; `MessageComposer` takes
+  a `replyPill` slot; `chatSlice` holds threads keyed by root id and feeds them
+  from `messageCreated`/`threadMessageDeleted`; `chatService.getThread` is the
+  REST call; `ChatPage` owns the reply target and the open thread and uses ONE
+  `sendMessage` for both composers.
+- **Tests** — new hermetic `Backend/test/chatThreads.test.js` (18 tests) plus
+  extended model pins in `chatModels.test.js` (thread index, field rules, and
+  `ChatMessageReaction` — the 34.1 model — added to the pinned map) and extended
+  fakes in `chatHistory.test.js`.
+
+### API + socket contracts
+
+**REST — one thread page.**
+
+```
+GET /api/chat/conversations/:conversationId/threads/:rootMessageId?cursor=<seq>&limit=<n>
+```
+
+- `:rootMessageId` may be the root OR any reply in that thread: the server
+  resolves the effective root, so one thread has exactly one view.
+- `cursor` is a message `seq` (same contract as history), `limit` is clamped
+  1..50 (default 20).
+- 404 `NOT_FOUND_OR_FORBIDDEN` for a non-member, another tenant, a message from
+  another conversation, or an id that does not exist — one indistinguishable
+  refusal.
+
+```jsonc
+{
+  "message": "Thread fetched",
+  "data": {
+    "conversationId": "<id>",
+    "root": { /* the same message shape as history, with threadReplyCount */ },
+    "items": [ /* replies, newest first, same shape as history */ ],
+    "nextCursor": 42,
+    "hasMore": true
+  },
+  "meta": { "limit": 20 }
+}
+```
+
+A projected message now carries:
+
+```jsonc
+{
+  "replyToMessageId": null,        // the immediate parent, null at top level
+  "threadRootMessageId": null,     // the thread it belongs to
+  "replyTo": {                     // bounded hint, null when not a reply
+    "messageId": "<id>", "senderUserId": "<id>",
+    "snippet": "first 120 chars of the parent, or null if deleted",
+    "deletedAt": null
+  },
+  "threadReplyCount": 3,           // replies in the thread this message ROOTS
+  "reactions": [ { "type": "LIKE", "count": 2, "mine": true } ]
+}
+```
+
+**Socket — send an answer.**
+
+```jsonc
+// emit -> chat:message:send   (chat:message:sendFile takes the same field)
+{ "conversationId": "<id>", "clientMessageId": "<key>", "text": "…",
+  "replyToMessageId": "<id or null>" }
+```
+
+`replyToMessageId` is optional; a malformed value is refused at the edge with
+`VALIDATION_ERROR` before any database read. The ACK and the room broadcast both
+carry the three thread fields, so no client has to refetch to learn where a
+message belongs. Refusals: `NOT_FOUND_OR_FORBIDDEN` (parent missing, other
+tenant or other conversation), `CONVERSATION_DISABLED` (a reply is a write),
+plus the existing `RATE_LIMITED` / `RETRYABLE` / `UNAUTHORIZED`.
+
+### Security + tenancy rules
+
+- **Tenant on the row, tenant on the query.** Both new fields are written from a
+  parent resolved with `companyId` AND `conversationId`; every read filters the
+  same way. A reply pointing across a boundary cannot exist.
+- **No existence leak.** A non-member, another tenant, a parent in another room
+  and a nonexistent id all produce the SAME `NOT_FOUND_OR_FORBIDDEN`, on both the
+  REST and the socket surface.
+- **Authority unchanged.** `companyId`/`userId` still come only from
+  `req.companyId`/`req.user` (REST) and `socket.data` (socket). The client sends
+  one optional id and never a tenant.
+- **Reads respect the lock law.** A disabled conversation stays readable as a
+  thread (it is history); replying is a write and is refused exactly like
+  sending, editing and deleting.
+- **Tombstones stay tombstones.** A deleted root or reply keeps its row, loses
+  its text, shows a neutral placeholder in the panel, and can never reappear in
+  a reply hint — the snippet is null server-side.
+- **No surveillance.** Opening a thread writes nothing. There is no per-thread
+  cursor, no follower list, no "seen by", and the read model stays C1 (the
+  per-member `lastReadSeq` on the conversation, unchanged by this unit).
+- **Abuse control.** The thread page is rate-limited per `companyId:userId`
+  (`thread.history`, 60/min) through the shared store, which still fails closed
+  when Redis is down.
+
+### Limitations
+
+- **Two levels only.** Replying to a reply answers the original thread; there is
+  no nested tree, no "reply to a reply to a reply" chain — by design, because the
+  UI can render one flat list and nobody has to reason about depth.
+- **Panel replies answer the ROOT.** The thread panel's composer always answers
+  the root message (the pill above the composer says so). Replying to a specific
+  message is done from the main view's "Reply" action.
+- **No per-thread unread state.** Replies count toward the conversation's
+  existing C1 unread behaviour; a thread has no badge of its own. Adding one
+  would be a read-model change, and this unit does not touch C1.
+- **No edit/delete inside the panel.** Thread rows are read-only (no edit, no
+  delete, no reaction picker); reaction pills show what the thread says. The
+  panel is a focused read, and moderation stays where its rules and confirmations
+  already live.
+- **Three bounded queries per history page.** Reactions, reply hints and thread
+  counts are each resolved in ONE query for the whole page (≤ 50 ids), skipped
+  when the page has no replies. A conversation with no threads costs exactly what
+  it cost before this unit.
+- **A deleted parent cannot be answered back into existence.** Replying to a
+  tombstone is allowed (a moderator removal must not freeze a thread) and its
+  hint shows "deleted message" — the text itself is gone for good.
+- **`threadReplyCount` is derived, not stored.** It is computed per page, so it
+  is always consistent with the rows that exist and can never be a stale
+  denormalized number.
+- **Realtime append, not realtime ordering guarantees.** A reply arriving while
+  the panel is open is inserted by `seq` like any other message; a client that
+  misses the broadcast re-reads the thread page, which is the authority.
+
+### Localhost verification steps
+
+```powershell
+# Terminal 1 — API + socket server
+cd Backend
+npm run dev
+
+# Terminal 2 — web app
+cd Frontend
+npm run dev
+```
+
+Signed in as a normal customer user with Redis available:
+
+1. Hover a message → the action row now shows a **Reply** arrow (touch/narrow
+   windows show it always). Click it: the composer shows "Replying to <name>:
+   <snippet>" with an ✕.
+2. Send a message: it appears with the reply hint above the bubble, and the room
+   shows it in realtime in a second window.
+3. Cancel the reply target with the ✕ and send another message: it is a normal
+   top-level message with no hint.
+4. Click **View thread (1)** under the message you answered: the panel opens
+   beside the conversation (full screen on a phone) showing the root message, the
+   reply, and a composer.
+5. Type in the panel's composer and send: the reply appears in the panel, and in
+   the OTHER window the main conversation also grows a new row with its own hint.
+6. Reply inside the panel, then click **Reply** on that same reply from the main
+   view and send: the new message lands in the SAME thread (the panel shows it),
+   not in a second one.
+7. Open a thread with more replies than one page and press **Load older replies**:
+   older rows appear above, without duplicates.
+8. Delete one of the replies you wrote: it becomes a placeholder in the panel too,
+   and any reply that answered it says "deleted message" instead of its text.
+9. Delete a message that has replies: the thread stays open and can still be
+   replied to — only the text is gone.
+10. **Non-member / other-tenant check** — with Postman, call
+    `GET /api/chat/conversations/<conversationId>/threads/<rootMessageId>` as a
+    user who is not a member of that conversation, then as a user from another
+    tenant: both must return 404 with `NOT_FOUND_OR_FORBIDDEN`, identical to a
+    random id.
+11. **Cross-conversation check** — as a member, call the same endpoint with a
+    `rootMessageId` from a DIFFERENT conversation you also belong to: 404, same
+    body.
+12. **Lock check** — as a moderator, disable the conversation: the thread still
+    opens and reads (history stays readable), while the panel's composer and the
+    main composer both refuse to send.
+13. **Realtime-down check** — stop Redis or the API and open a thread: the panel
+    still loads over REST (history is REST-served) and the banner explains that
+    realtime is unavailable. Restart, press Retry, and reply in the thread.
+
+---
+
+*Units 34.3 – 34.5 are not described here yet: this document gains a section per
+unit, written when that unit is built. No later unit is in progress while 34.2 is
+awaiting localhost acceptance.*

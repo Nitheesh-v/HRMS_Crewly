@@ -231,12 +231,21 @@ const reactionFailureMessage = (code) => ({
   [CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR]: 'That reaction is not supported.',
 })[code] ?? 'The reaction could not be saved.';
 
-const toBroadcastMessage = (message) => ({
+const toBroadcastMessage = (message, replyTo = null) => ({
   _id: message._id,
   seq: message.seq,
   senderUserId: message.senderUserId,
   type: message.type,
   text: message.text ?? null,
+  // 34.2 — thread metadata. ONE projection, so the room broadcast and the
+  // sender's ACK can never disagree about which thread a message belongs to.
+  // `replyTo` is the bounded hint ({ messageId, senderUserId, snippet }) and is
+  // VIEWER-NEUTRAL: its snippet is the parent's text, which every member of
+  // this conversation is already allowed to read. A deleted parent arrives with
+  // a null snippet, never with the deleted text.
+  replyToMessageId: message.replyToMessageId ?? null,
+  threadRootMessageId: message.threadRootMessageId ?? null,
+  replyTo,
   // 33.10 — references only (id + display metadata). Never a storage key,
   // never a URL: the download is a separate, auth-gated request.
   // 33.10-fix3 — ONE definition, shared with the REST history projection so
@@ -383,6 +392,8 @@ export const registerChatSocketHandlers = ({
       conversationId: parsed.conversationId,
       clientMessageId: parsed.clientMessageId,
       text: parsed.text,
+      // 34.2 — null for a top-level message; the service verifies the target.
+      replyToMessageId: parsed.replyToMessageId ?? null,
     });
 
     if (!result.ok) {
@@ -409,11 +420,14 @@ export const registerChatSocketHandlers = ({
     if (result.created) {
       io.to(conversationRoom(parsed.conversationId)).emit('chat:message:created', {
         conversationId: parsed.conversationId,
-        message: toBroadcastMessage(result.message),
+        message: toBroadcastMessage(result.message, result.replyTo ?? null),
       });
     }
 
-    ack(cb, { ok: true, data: { message: toBroadcastMessage(result.message) } });
+    ack(cb, {
+      ok: true,
+      data: { message: toBroadcastMessage(result.message, result.replyTo ?? null) },
+    });
   });
 
   // 33.10 — FILE send. The ids are revalidated against THIS tenant and THIS
@@ -461,6 +475,8 @@ export const registerChatSocketHandlers = ({
       attachments,
       // 33.10-fix4 — the caption the sender typed next to the files.
       text: parsed.text,
+      // 34.2 — a FILE message may answer a message too.
+      replyToMessageId: parsed.replyToMessageId ?? null,
     });
 
     if (!result.ok) {
@@ -485,11 +501,14 @@ export const registerChatSocketHandlers = ({
     if (result.created) {
       io.to(conversationRoom(parsed.conversationId)).emit('chat:message:created', {
         conversationId: parsed.conversationId,
-        message: toBroadcastMessage(result.message),
+        message: toBroadcastMessage(result.message, result.replyTo ?? null),
       });
     }
 
-    ack(cb, { ok: true, data: { message: toBroadcastMessage(result.message) } });
+    ack(cb, {
+      ok: true,
+      data: { message: toBroadcastMessage(result.message, result.replyTo ?? null) },
+    });
   });
 
   // 33.6 — edit. Optimistic concurrency lives in the service (the atomic

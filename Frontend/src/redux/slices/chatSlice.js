@@ -22,6 +22,11 @@ const initialState = {
   activeId: null,
   byId: {},    // conversationId -> { items, nextCursor, hasMore, status, error }
   pending: {}, // conversationId -> [{ clientMessageId, text, status }]
+  // 34.2 — threads, keyed by ROOT message id (the server guarantees one root
+  // per thread, however the user arrived at it). Held per root rather than per
+  // conversation so closing and reopening a thread is instant and two threads
+  // in the same conversation cannot collide.
+  threads: {}, // rootMessageId -> { conversationId, root, items, nextCursor, hasMore, status, error }
 };
 
 const emptyBucket = () => ({
@@ -177,6 +182,22 @@ const chatSlice = createSlice({
       }
 
       touchConversation(state, { conversationId, message });
+
+      // 34.2 — a reply that lands while its thread is open must appear THERE
+      // too, without a second socket event and without a refetch. The insert is
+      // the same dedupe-by-id primitive the conversation list uses, so a
+      // re-delivered broadcast cannot double a reply.
+      const rootId = message.threadRootMessageId ? String(message.threadRootMessageId) : null;
+      const thread = rootId ? state.threads[rootId] : null;
+
+      if (thread) {
+        const before = thread.items.length;
+        thread.items = insertAscending(thread.items, message);
+
+        if (thread.items.length > before && thread.root) {
+          thread.root.threadReplyCount = (thread.root.threadReplyCount ?? 0) + 1;
+        }
+      }
     },
 
     messageUpdated: (state, action) => {
@@ -261,6 +282,78 @@ const chatSlice = createSlice({
       });
     },
 
+    // 34.2 — a reply removed while its thread is open becomes a tombstone in
+    // the panel too (never in the conversation bucket only).
+    threadMessageDeleted: (state, action) => {
+      const { messageId, deletedAt, deletedByUserId } = action.payload;
+
+      for (const thread of Object.values(state.threads)) {
+        thread.items = thread.items.map((message) =>
+          String(message._id) === String(messageId)
+            ? { ...message, deletedAt, deletedByUserId: deletedByUserId ?? message.deletedByUserId, text: null }
+            : message
+        );
+      }
+    },
+
+    threadLoading: (state, action) => {
+      const { conversationId, rootId } = action.payload;
+      const existing = state.threads[rootId];
+
+      state.threads[rootId] = {
+        conversationId,
+        root: existing?.root ?? null,
+        items: existing?.items ?? [],
+        nextCursor: existing?.nextCursor ?? null,
+        hasMore: existing?.hasMore ?? false,
+        status: 'loading',
+        error: '',
+      };
+    },
+
+    threadLoaded: (state, action) => {
+      const { conversationId, rootId, root, items, nextCursor, hasMore } = action.payload;
+
+      state.threads[rootId] = {
+        conversationId,
+        root,
+        items: [...(items ?? [])].sort((a, b) => a.seq - b.seq),
+        nextCursor,
+        hasMore,
+        status: 'ready',
+        error: '',
+      };
+    },
+
+    threadOlderLoaded: (state, action) => {
+      const { rootId, items, nextCursor, hasMore } = action.payload;
+      const thread = state.threads[rootId];
+
+      if (!thread) return;
+
+      const known = new Set(thread.items.map((message) => String(message._id)));
+      const fresh = (items ?? []).filter((message) => !known.has(String(message._id)));
+
+      thread.items = [...fresh, ...thread.items].sort((a, b) => a.seq - b.seq);
+      thread.nextCursor = nextCursor;
+      thread.hasMore = hasMore;
+      thread.status = 'ready';
+    },
+
+    threadFailed: (state, action) => {
+      const { conversationId, rootId, error } = action.payload;
+
+      state.threads[rootId] = {
+        conversationId,
+        root: state.threads[rootId]?.root ?? null,
+        items: state.threads[rootId]?.items ?? [],
+        nextCursor: null,
+        hasMore: false,
+        status: 'error',
+        error: error ?? '',
+      };
+    },
+
     readUpToApplied: (state, action) => {
       const { conversationId, myLastReadSeq, unreadCount } = action.payload;
       const conversation = state.conversations.find(
@@ -293,6 +386,11 @@ export const {
   messageUpdated,
   messageDeleted,
   reactionsUpdated,
+  threadLoading,
+  threadLoaded,
+  threadOlderLoaded,
+  threadFailed,
+  threadMessageDeleted,
   readUpToApplied,
 } = chatSlice.actions;
 

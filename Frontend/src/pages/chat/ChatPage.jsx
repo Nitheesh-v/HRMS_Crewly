@@ -33,11 +33,19 @@ import {
   readUpToApplied,
   messageDeleted,
   reactionsUpdated,
+  threadLoading,
+  threadLoaded,
+  threadOlderLoaded,
+  threadFailed,
+  threadMessageDeleted,
   conversationUpdated,
 } from '../../redux/slices/chatSlice.js';
 
 import ConversationList from '../../components/chat/ConversationList.jsx';
 import MessageList from '../../components/chat/MessageList.jsx';
+// 34.2 — threads, feature-local: the panel, its rows and the reply pill.
+import ThreadPanel from '../../components/chat/ThreadPanel.jsx';
+import ReplyContextPill from '../../components/chat/ReplyContextPill.jsx';
 import MessageComposer from '../../components/chat/MessageComposer.jsx';
 import ChatEmptyState from '../../components/chat/ChatEmptyState.jsx';
 import Avatar from '../../components/chat/Avatar.jsx';
@@ -76,6 +84,16 @@ const ChatPage = () => {
   const canModerate = hasPermission('CHAT_MODERATE');
   const [moderationBusy, setModerationBusy] = useState(false);
   const [moderationNotice, setModerationNotice] = useState(null);
+
+  // 34.2 — THREAD STATE.
+  //   replyingTo     : the message the main composer will answer (null = a
+  //                    normal top-level send)
+  //   openThreadRoot : the ROOT id of the thread shown in the panel
+  // Both are view state and live and die with the page: a thread is a read, and
+  // nothing about it is persisted (no per-thread cursor, no followers).
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [openThreadRoot, setOpenThreadRoot] = useState(null);
+  const [threadLoadingOlder, setThreadLoadingOlder] = useState(false);
 
   // 33.10 — files already uploaded and waiting for the send that will
   // reference them. Keyed per conversation so switching rooms cannot leak a
@@ -266,6 +284,10 @@ const ChatPage = () => {
     return () => {
       cancelled = true;
       if (chatRealtime.isConnected()) chatRealtime.leave(conversationId);
+      // A reply target and an open thread belong to ONE conversation: carrying
+      // either into another room would point at a message that is not there.
+      setReplyingTo(null);
+      setOpenThreadRoot(null);
     };
   }, [conversationId, dispatch, applyRead]);
 
@@ -279,7 +301,12 @@ const ChatPage = () => {
   }, [conversationId, newestSeq, applyRead]);
 
   // ── actions ───────────────────────────────────────────────────────────
-  const handleSend = async (text, attachments = []) => {
+  /**
+   * 34.2 — ONE send path for the composer and the thread panel. The only
+   * difference between them is the reply target, so the optimistic pending row,
+   * the FILE-vs-TEXT decision and the failure copy cannot drift apart.
+   */
+  const sendMessage = async ({ text, attachments = [], replyToMessageId = null }) => {
     const clientMessageId = newClientMessageId();
 
     dispatch(pendingAdd({
@@ -303,14 +330,25 @@ const ChatPage = () => {
     // text event instead would split one message into two.
     const caption = hasVisibleText(text) ? text : null;
 
+    // 34.2 — a reply target rides along on BOTH transports, so answering a
+    // message with a file attached keeps its context (the server refuses a
+    // parent from another conversation or tenant).
+    const replyTarget = replyToMessageId ? String(replyToMessageId) : null;
+
     const ack = attachments.length > 0
       ? await chatRealtime.sendFile({
           conversationId,
           clientMessageId,
           attachmentIds: attachments.map((entry) => entry._id),
           text: caption,
+          replyToMessageId: replyTarget,
         })
-      : await chatRealtime.send({ conversationId, clientMessageId, text });
+      : await chatRealtime.send({
+          conversationId,
+          clientMessageId,
+          text,
+          replyToMessageId: replyTarget,
+        });
 
     if (!ack.ok) {
       dispatch(pendingFail({ conversationId, clientMessageId }));
@@ -330,6 +368,32 @@ const ChatPage = () => {
 
     return null;
   };
+
+  // The main composer: answers whichever message "Reply" last selected.
+  const handleSend = (text, attachments = []) =>
+    sendMessage({ text, attachments, replyToMessageId: replyingTo?._id ?? null }).then((failure) => {
+      // The reply target is consumed by a successful send only: a failed send
+      // keeps the context so the retry answers the same message.
+      if (!failure) setReplyingTo(null);
+
+      return failure;
+    });
+
+  // The thread panel: answers the ROOT (see ThreadPanel for why the flat
+  // two-level model makes the root the honest target).
+  const handleThreadReply = (text, attachments = []) =>
+    sendMessage({
+      text,
+      attachments,
+      // `openThreadRoot` is already the EFFECTIVE root (a reply click sets its
+      // threadRootMessageId), so the panel always answers the thread's first
+      // message — see ThreadPanel for why that is the honest target.
+      replyToMessageId: openThreadRoot,
+    }).then((failure) => {
+      if (!failure) setPendingAttachments((current) => ({ ...current, [conversationId]: [] }));
+
+      return failure;
+    });
 
   const handleOlder = async () => {
     if (!activeEntry?.nextCursor) return;
@@ -452,8 +516,79 @@ const ChatPage = () => {
 
     if (!sure) return;
 
-    await chatRealtime.remove({ conversationId, messageId: message._id });
+    const ack = await chatRealtime.remove({ conversationId, messageId: message._id });
+
+    // 34.2 — if that message is a reply shown in an open thread, tombstone it
+    // there too (the conversation bucket got its own messageDeleted broadcast).
+    if (ack?.ok) {
+      dispatch(threadMessageDeleted({
+        messageId: message._id,
+        deletedAt: new Date().toISOString(),
+        deletedByUserId: meId,
+      }));
+    }
   };
+
+  // ── 34.2 threads ──────────────────────────────────────────────────────
+  //
+  // Opening a thread is a READ: it goes over REST (so it works while realtime
+  // is down), it is tenant- and membership-gated server-side, and nothing about
+  // it is stored. A message that is itself a reply opens the thread it belongs
+  // to — `threadRootMessageId` is the server's answer to "which thread am I in",
+  // so the client never has to guess.
+  const openThreadFor = async (message, { cursor } = {}) => {
+    const rootId = String(message.threadRootMessageId ?? message._id);
+
+    if (!cursor) setOpenThreadRoot(rootId);
+
+    if (cursor) setThreadLoadingOlder(true);
+
+    // The bucket keeps whatever it already shows while this request is in
+    // flight, so "load older" never blanks the panel.
+    dispatch(threadLoading({ conversationId, rootId }));
+
+    try {
+      const result = await chatService.getThread(conversationId, rootId, {
+        cursor,
+        limit: PAGE_SIZE,
+      });
+
+      if (cursor) {
+        dispatch(threadOlderLoaded({
+          rootId,
+          items: result.items,
+          nextCursor: result.nextCursor,
+          hasMore: result.hasMore,
+        }));
+      } else {
+        dispatch(threadLoaded({
+          conversationId,
+          rootId,
+          root: result.root,
+          items: result.items,
+          nextCursor: result.nextCursor,
+          hasMore: result.hasMore,
+        }));
+      }
+    } catch (err) {
+      const status = err?.response?.status;
+
+      dispatch(threadFailed({
+        conversationId,
+        rootId,
+        error:
+          status === 404
+            ? 'This thread is no longer available.'
+            : err?.response?.data?.message || 'The thread could not be loaded.',
+      }));
+    } finally {
+      if (cursor) setThreadLoadingOlder(false);
+    }
+  };
+
+  const closeThread = () => setOpenThreadRoot(null);
+
+  const thread = openThreadRoot ? chat.threads[openThreadRoot] ?? null : null;
 
   // 33.9 — lock / unlock the conversation (CHAT_MODERATE only).
   const handleToggleLock = async (conversation) => {
@@ -622,10 +757,21 @@ const ChatPage = () => {
               onEdit={setEditing}
               onDelete={handleDelete}
               onReact={handleReact}
+              onReply={setReplyingTo}
+              onOpenThread={openThreadFor}
               canModerate={canModerate}
               locked={conversationLocked}
             />
             <MessageComposer
+              replyPill={
+                replyingTo ? (
+                  <ReplyContextPill
+                    senderName={nameOfUserId(replyingTo.senderUserId)}
+                    snippet={replyingTo.replyTo?.snippet ?? replyingTo.text ?? null}
+                    onCancel={() => setReplyingTo(null)}
+                  />
+                ) : null
+              }
               disabled={chat.realtimeStatus !== 'connected' || conversationLocked}
               disabledReason={
                 conversationLocked
@@ -645,6 +791,34 @@ const ChatPage = () => {
           <ChatEmptyState onNew={() => setShowNew(true)} />
         )}
       </section>
+
+      {/* 34.2 — the thread panel is a sibling of the message column: a column
+          on a desktop, a full-screen overlay on a phone (ThreadPanel owns that
+          decision). Rendered for the open thread only. */}
+      {conversationId && openThreadRoot && (
+        <ThreadPanel
+          conversationId={conversationId}
+          thread={thread}
+          nameOfUserId={nameOfUserId}
+          onClose={closeThread}
+          onLoadOlder={() =>
+            thread?.nextCursor
+              ? openThreadFor({ _id: openThreadRoot }, { cursor: thread.nextCursor })
+              : undefined
+          }
+          onSendReply={handleThreadReply}
+          disabled={chat.realtimeStatus !== 'connected' || conversationLocked}
+          disabledReason={
+            conversationLocked
+              ? 'An admin disabled this conversation. Replies resume when it is re-enabled.'
+              : 'Realtime is unavailable — the thread is readable, replying returns with the connection.'
+          }
+          pendingAttachments={activePending}
+          onAddAttachment={addAttachment}
+          onRemoveAttachment={removeAttachment}
+          loadingOlder={threadLoadingOlder}
+        />
+      )}
 
       {showNew && (
         <NewConversationModal

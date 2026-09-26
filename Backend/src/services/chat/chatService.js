@@ -52,6 +52,13 @@ import {
 // 34.1 — reactions are projected into history here; the service owns the caps
 // and the viewer-aware grouping (one query per page, never one per message).
 import { summarizeReactions } from './chatReactionService.js';
+// 34.2 — the same shape for threads: reply hints and reply counts for a whole
+// page in two bounded lookups, never one per row.
+import {
+  listThreadMessages,
+  loadReplyPreviews,
+  summarizeThreadCounts,
+} from './chatThreadService.js';
 
 export const CHAT_GROUP_MAX_MEMBERS = 50;
 
@@ -315,6 +322,75 @@ const loadForManage = async ({ companyId, actorId, conversationId }) => {
   return { conversation, actor };
 };
 
+/**
+ * 34.2 — ONE thread page, fully projected.
+ *
+ * The thread service owns the gate (membership + tenant + root-in-this-
+ * conversation) and the pagination; this function owns the projection, so the
+ * thread panel renders exactly the same message shape as the main history —
+ * reactions included, reply hints included. Three bounded lookups at most, and
+ * a tombstone is never asked about.
+ */
+export const getThread = async ({
+  companyId,
+  userId,
+  conversationId,
+  rootMessageId,
+  cursor,
+  limit,
+}) => {
+  const result = await listThreadMessages({
+    companyId,
+    userId,
+    conversationId,
+    rootMessageId,
+    cursor,
+    limit,
+  });
+
+  if (!result.ok) return result;
+
+  const liveItems = result.items.filter((row) => !row.deletedAt);
+  const rootIsLive = !result.root.deletedAt;
+
+  const ids = [...liveItems.map((row) => row._id), ...(rootIsLive ? [result.root._id] : [])];
+
+  const reactionsByMessage = await summarizeReactions({
+    companyId,
+    messageIds: ids,
+    viewerUserId: userId,
+  });
+
+  const replyPreviews = await loadReplyPreviews({
+    companyId,
+    conversationId,
+    messages: result.items,
+  });
+
+  return {
+    ok: true,
+    conversationId,
+    // The root keeps its own count (the whole thread) and never carries a
+    // reply hint of its own: by definition it is the start.
+    root: sanitizeMessageForHistory(
+      result.root,
+      reactionsByMessage.get(String(result.root._id)) ?? [],
+      { replyTo: null, threadReplyCount: result.rootReplyCount ?? 0 }
+    ),
+    // A thread item can never root another thread (the write path always keeps
+    // the original root), so its own count is zero by construction.
+    items: result.items.map((row) =>
+      sanitizeMessageForHistory(row, reactionsByMessage.get(String(row._id)) ?? [], {
+        replyTo: replyPreviews.get(String(row._id)) ?? null,
+        threadReplyCount: 0,
+      })
+    ),
+    nextCursor: result.nextCursor,
+    hasMore: result.hasMore,
+    limit: result.limit,
+  };
+};
+
 export const addMembers = async ({
   companyId,
   actorId,
@@ -429,7 +505,13 @@ export const removeMember = async ({
 // validators could still carry text — so the read path never trusts the
 // stored body: if deletedAt is set, text is always null. We also never leak
 // edit history here (that is a separate, permission-gated read in 33.6).
-export const sanitizeMessageForHistory = (message, reactions = []) => ({
+export const sanitizeMessageForHistory = (
+  message,
+  reactions = [],
+  // 34.2 — page-level extras, resolved in bulk by the caller. Defaults keep
+  // every existing single-message call site (and its tests) valid.
+  { replyTo = null, threadReplyCount = 0 } = {}
+) => ({
   _id: message._id,
   seq: message.seq,
   senderUserId: message.senderUserId,
@@ -451,6 +533,18 @@ export const sanitizeMessageForHistory = (message, reactions = []) => ({
   // the renderer has one shape to handle. Tombstones are passed [] by the
   // caller — a deleted message shows no reactions.
   reactions,
+
+  // ── 34.2 threads ───────────────────────────────────────────────────────
+  // Both ids are null for a top-level message. `threadRootMessageId` is what
+  // the UI uses to open the right thread from a reply, and `replyTo` is the
+  // bounded hint above the bubble (null snippet for a deleted parent — the
+  // parent is never echoed back, so a tombstone stays a tombstone).
+  replyToMessageId: message.replyToMessageId ?? null,
+  threadRootMessageId: message.threadRootMessageId ?? null,
+  replyTo,
+  // Count of replies in the thread this message ROOTS. Derived, never stored:
+  // a delete can therefore never leave a stale number behind.
+  threadReplyCount: Number(threadReplyCount) || 0,
 });
 
 // Newest-first keyset pagination over the 33.2 index
@@ -498,10 +592,28 @@ export const listMessages = async ({
     viewerUserId: userId,
   });
 
+  // 34.2 — two more bounded lookups for the same page: reply hints (one query
+  // for every parent referenced by the page) and reply counts (one
+  // aggregation). Both are skipped entirely when the page has no replies, so a
+  // plain conversation costs exactly what it cost before threads existed.
+  const replyPreviews =
+    liveIds.length > 0
+      ? await loadReplyPreviews({ companyId, conversationId, messages: page })
+      : new Map();
+
+  const threadCounts = await summarizeThreadCounts({
+    companyId,
+    conversationId,
+    messageIds: page.map((row) => row._id),
+  });
+
   return {
     conversationId,
     items: page.map((row) =>
-      sanitizeMessageForHistory(row, reactionsByMessage.get(String(row._id)) ?? [])
+      sanitizeMessageForHistory(row, reactionsByMessage.get(String(row._id)) ?? [], {
+        replyTo: replyPreviews.get(String(row._id)) ?? null,
+        threadReplyCount: threadCounts.get(String(row._id)) ?? 0,
+      })
     ),
     nextCursor: hasMore && last ? last.seq : null,
     hasMore,

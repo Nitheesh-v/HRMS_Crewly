@@ -41,6 +41,15 @@
 //    There is no seenBy, no readBy, no receipts array. Read state is the
 //    per-member lastReadSeq cursor on ChatConversation. An array that grows
 //    with readers on every message is the wrong shape for a chat system.
+//
+//  34.2 — THREADS ARE TWO FIELDS, NOT A SECOND COLLECTION
+//    A reply stores replyToMessageId (the immediate parent) and
+//    threadRootMessageId (the root of the thread it belongs to). Two levels,
+//    flat storage: a thread is a QUERY (threadRootMessageId + seq order), not
+//    a document that has to be kept in sync. Replying to a reply keeps the
+//    same root, so a thread can never fork into a tree the UI cannot render.
+//    Both fields are immutable once written — a message that could change its
+//    parent would silently move between threads.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import mongoose from 'mongoose';
@@ -126,6 +135,28 @@ const chatMessageSchema = new Schema(
         ),
       ],
       default: [],
+    },
+
+    // ── Threads (34.2) ───────────────────────────────────────────────────
+    // replyToMessageId points at the message this one answers; it is null for
+    // a top-level message. threadRootMessageId points at the message that
+    // STARTED the thread — when a reply answers the root, both fields hold the
+    // SAME id, which is what keeps the thread a flat, two-level list.
+    //
+    // Both are nullable and immutable. No counter is denormalized here: the
+    // reply count is derived (34.2 summarizes it per page with one bounded
+    // aggregation) so a delete can never leave a stale number behind.
+    replyToMessageId: {
+      type: Schema.Types.ObjectId,
+      ref: 'ChatMessage',
+      default: null,
+      immutable: true,
+    },
+    threadRootMessageId: {
+      type: Schema.Types.ObjectId,
+      ref: 'ChatMessage',
+      default: null,
+      immutable: true,
     },
 
     // ── Edits ────────────────────────────────────────────────────────────
@@ -247,6 +278,16 @@ chatMessageSchema.index(
   { companyId: 1, conversationId: 1, senderUserId: 1, clientMessageId: 1 },
   { unique: true }
 );
+
+// 34.2 — thread fetch: one tenant, one conversation, one root, newest reply
+// first. The same order the history index uses, so a thread page and a history
+// page walk their collections identically (cursor by seq).
+chatMessageSchema.index({
+  companyId: 1,
+  conversationId: 1,
+  threadRootMessageId: 1,
+  seq: -1,
+});
 
 // 33.10 — "is this attachment already referenced?" (one attachment belongs to
 // exactly one message). Multikey on the embedded array, tenant-first.

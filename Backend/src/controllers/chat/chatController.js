@@ -135,6 +135,42 @@ export const getMessages = asyncHandler(async (req, res) => {
   });
 });
 
+export const getThreadMessages = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const { conversationId, rootMessageId } = req.params;
+  const { cursor, limit } = req.query;
+
+  // DB Logic - DB logics
+  const result = await chatService.getThread({
+    companyId: req.companyId,
+    userId: req.user._id,
+    conversationId,
+    rootMessageId,
+    cursor: cursor !== undefined ? Number(cursor) : undefined,
+    limit,
+  });
+
+  // 34.2 — an id that is not this caller's (another tenant, another
+  // conversation, or simply not a member) is reported exactly like a missing
+  // one, so a thread fetch can never confirm that somebody else's room exists.
+  if (!result.ok) {
+    throw ApiError.notFound('Thread not found');
+  }
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, {
+    message: 'Thread fetched',
+    data: {
+      conversationId: result.conversationId,
+      root: result.root,
+      items: result.items,
+      nextCursor: result.nextCursor,
+      hasMore: result.hasMore,
+    },
+    meta: { limit: result.limit },
+  });
+});
+
 export const addMembers = asyncHandler(async (req, res) => {
   // Data from frontend - requests from frontend
   const { conversationId } = req.params;

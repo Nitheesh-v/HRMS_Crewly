@@ -8,7 +8,7 @@
 //     there is no hover, so they are always present there (a delete button you
 //     cannot reach is not a feature);
 //   · tombstone rows keep their shape instead of collapsing the bubble.
-import { Pencil, ShieldAlert, Trash2 } from 'lucide-react';
+import { CornerUpLeft, MessagesSquare, Pencil, ShieldAlert, Trash2 } from 'lucide-react';
 
 import AttachmentBubble from './AttachmentBubble.jsx';
 import Avatar from './Avatar.jsx';
@@ -46,6 +46,9 @@ const MessageBubble = ({
   onEdit,
   onDelete,
   onReact,
+  onReply,
+  onOpenThread,
+  nameOfUserId,
   canModerate = false,
   locked = false,
 }) => {
@@ -78,6 +81,20 @@ const MessageBubble = ({
   const reactions = message.reactions ?? [];
   const canReact = Boolean(onReact) && !deleted && !locked;
 
+  // 34.2 — thread affordances. `threadReplyCount` is a server-derived number
+  // (never stored), so a message with no thread simply has none. A message that
+  // IS a reply always offers its thread, because that is how a reader gets from
+  // an answer to the question it belongs to.
+  const threadReplyCount = message.threadReplyCount ?? 0;
+  const inThread = Boolean(message.threadRootMessageId);
+  const canOpenThread = Boolean(onOpenThread) && !deleted && (threadReplyCount > 0 || inThread);
+
+  // The hint above a reply. Names come from the page's member directory; a
+  // parent outside the loaded page still renders (the server sent the sender id
+  // with the snippet), which is why the fallback is a neutral word, not blank.
+  const replyTo = deleted ? null : message.replyTo ?? null;
+  const replyToName = replyTo ? nameOfUserId?.(replyTo.senderUserId) ?? '' : '';
+
   const toggleReaction = (type) => {
     const held = reactions.find((reaction) => reaction.type === type && reaction.mine);
 
@@ -98,6 +115,15 @@ const MessageBubble = ({
       <div className={`flex max-w-[80%] flex-col ${mine ? 'items-end' : 'items-start'}`}>
         {!mine && !grouped && (
           <p className="mb-1 text-[11px] font-semibold text-crewly-dim">{senderName}</p>
+        )}
+
+        {replyTo && (
+          <p className="mb-1 max-w-full truncate border-l-2 border-crewly-green/40 pl-2 text-[11px] text-crewly-dim">
+            <span className="font-semibold text-crewly-text">
+              {replyToName || 'Someone'}
+            </span>
+            {replyTo.snippet ? `: ${replyTo.snippet}` : ' · deleted message'}
+          </p>
         )}
 
         <div
@@ -158,6 +184,12 @@ const MessageBubble = ({
                     </IconAction>
                   </>
                 )}
+                {!deleted && !locked && onReply && (
+                  <IconAction label="Reply" onClick={() => onReply(message)}>
+                    <CornerUpLeft className="h-3 w-3" />
+                  </IconAction>
+                )}
+
                 {showModeratorDelete && (
                   <IconAction label="Remove as moderator" danger onClick={() => onDelete(message)}>
                     <ShieldAlert className="h-3 w-3" />
@@ -168,12 +200,25 @@ const MessageBubble = ({
           </div>
         </div>
 
-        {!deleted && reactions.length > 0 && (
-          <ReactionBar
-            reactions={reactions}
-            disabled={!canReact}
-            onToggle={toggleReaction}
-          />
+        {!deleted && (
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            {canOpenThread && (
+              <button
+                type="button"
+                onClick={() => onOpenThread(message)}
+                className="flex items-center gap-1 rounded-full border border-crewly-border px-2 py-0.5 text-[11px] font-semibold text-crewly-dim transition-colors hover:border-crewly-green/40 hover:text-crewly-green focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-crewly-green/40"
+              >
+                <MessagesSquare className="h-3 w-3" aria-hidden="true" />
+                {threadReplyCount > 0 ? `View thread (${threadReplyCount})` : 'View thread'}
+              </button>
+            )}
+
+            <ReactionBar
+              reactions={reactions}
+              disabled={!canReact}
+              onToggle={toggleReaction}
+            />
+          </div>
         )}
       </div>
     </div>

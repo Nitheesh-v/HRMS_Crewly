@@ -57,6 +57,7 @@ const installFakes = ({ conversation, messages, reactions = [] }) => {
   const original = {
     convFindOne: ChatConversation.findOne,
     msgFind: ChatMessage.find,
+    msgAggregate: ChatMessage.aggregate,
     msgReactionFind: ChatMessageReaction.find,
     // 33.8-fix: listMessages verifies membership through getConversation,
     // which now builds a member directory — hermetic runs need a sealed
@@ -90,6 +91,27 @@ const installFakes = ({ conversation, messages, reactions = [] }) => {
     }),
   });
 
+  // 34.2 — the history page asks for reply counts with one aggregation.
+  // Hermetic: answered from the seeded rows, never from a driver.
+  ChatMessage.aggregate = async (pipeline = []) => {
+    const match = pipeline[0]?.$match ?? {};
+    const wanted = (match.threadRootMessageId?.$in ?? []).map(String);
+
+    if (wanted.length === 0) return [];
+
+    const counts = new Map();
+
+    for (const row of messages) {
+      const rootId = row.threadRootMessageId ? String(row.threadRootMessageId) : null;
+
+      if (!rootId || !wanted.includes(rootId)) continue;
+
+      counts.set(rootId, (counts.get(rootId) ?? 0) + 1);
+    }
+
+    return [...counts].map(([messageId, count]) => ({ _id: messageId, count }));
+  };
+
   ChatConversation.findOne = (filter) => ({
     lean: async () => {
       if (!conversation) return null;
@@ -107,6 +129,8 @@ const installFakes = ({ conversation, messages, reactions = [] }) => {
     capture.filter = filter;
 
     const query = {
+      // 34.2 — the reply-preview lookup chains .select() before .lean().
+      select: () => query,
       sort: (sort) => {
         capture.sort = sort;
         return query;
@@ -120,6 +144,13 @@ const installFakes = ({ conversation, messages, reactions = [] }) => {
 
         if (filter.seq?.$lt !== undefined) {
           rows = rows.filter((row) => row.seq < filter.seq.$lt);
+        }
+
+        // 34.2 — $in on _id is the reply-preview batch lookup.
+        if (Array.isArray(filter._id?.$in)) {
+          const wanted = filter._id.$in.map(String);
+
+          rows = rows.filter((row) => wanted.includes(String(row._id)));
         }
 
         // emulate seq desc
@@ -139,6 +170,7 @@ const installFakes = ({ conversation, messages, reactions = [] }) => {
     restore: () => {
       ChatConversation.findOne = original.convFindOne;
       ChatMessage.find = original.msgFind;
+      ChatMessage.aggregate = original.msgAggregate;
       ChatMessageReaction.find = original.msgReactionFind;
       User.find = original.userFind;
     },

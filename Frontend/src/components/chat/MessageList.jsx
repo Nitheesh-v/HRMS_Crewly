@@ -38,6 +38,8 @@ const MessageList = ({
   onEdit,
   onDelete,
   onReact,
+  onReply,
+  onOpenThread,
   canModerate = false,
   locked = false,
 }) => {
@@ -151,6 +153,9 @@ const MessageList = ({
                 onEdit={onEdit}
                 onDelete={onDelete}
                 onReact={onReact}
+                onReply={onReply}
+                onOpenThread={onOpenThread}
+                nameOfUserId={nameOfUserId}
                 canModerate={canModerate}
                 locked={locked}
               />

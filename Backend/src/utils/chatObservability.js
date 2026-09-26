@@ -29,6 +29,8 @@ export const CHAT_LIMIT_ACTIONS = Object.freeze([
   'conversation.members.add',
   'conversation.members.remove',
   'message.history',
+  // 34.2 — thread reads are their own budget and their own log action.
+  'thread.history',
   'message.read',
   'message.send',
   'message.sendFile',

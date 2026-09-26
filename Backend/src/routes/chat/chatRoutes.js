@@ -36,6 +36,7 @@ import {
   moderateDeleteValidator,
   readMarkerValidator,
   removeMemberValidator,
+  threadMessagesValidator,
   uploadAttachmentValidator,
 } from '../../validators/chat/chatValidators.js';
 import { createDocumentFileUpload } from '../../middlewares/documentFilePolicy.js';
@@ -85,6 +86,16 @@ router.get(
   chatRestLimiters['message.history'],
   messageHistoryValidator,
   chatController.getMessages
+);
+
+// 34.2 — thread page. A THREAD IS A READ: it keeps the membership gate and the
+// tenant authority of message history above (which is also why it stays free of
+// requirePermission, exactly like the history it mirrors).
+router.get(
+  '/conversations/:conversationId/threads/:rootMessageId',
+  chatRestLimiters['thread.history'],
+  threadMessagesValidator,
+  chatController.getThreadMessages
 );
 
 router.post(

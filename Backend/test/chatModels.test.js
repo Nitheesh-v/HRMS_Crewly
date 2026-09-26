@@ -24,6 +24,7 @@ process.env.REDIS_ENABLED ||= 'false';
 import ChatConversation from '../src/models/ChatConversation.js';
 import ChatMessage from '../src/models/ChatMessage.js';
 import ChatMessageEdit from '../src/models/ChatMessageEdit.js';
+import ChatMessageReaction from '../src/models/ChatMessageReaction.js';
 import {
   CHAT_CONVERSATION_TYPES,
   CHAT_MEMBER_ROLES,
@@ -33,7 +34,10 @@ import {
   CHAT_MESSAGE_TEXT_MAX,
 } from '../src/models/ChatMessage.js';
 
-const MODELS = { ChatConversation, ChatMessage, ChatMessageEdit };
+// 34.2 — ChatMessageReaction (34.1) joins the pinned map: every index law in
+// this file (tenant-first, compound, no standalone companyId, no cross-tenant
+// index, no surveillance-shaped path) now covers it too.
+const MODELS = { ChatConversation, ChatMessage, ChatMessageEdit, ChatMessageReaction };
 
 const hex = (fill) => fill.repeat(24).slice(0, 24);
 
@@ -155,6 +159,30 @@ test('ChatMessage: history pagination index is tenant + conversation + seq desc'
   assert.equal(keys.seq, -1, 'history pages newest-first by seq');
 });
 
+test('ChatMessage: thread fetch index is tenant + conversation + root + seq desc', () => {
+  const keys = directionsFor(ChatMessage, [
+    'companyId',
+    'conversationId',
+    'threadRootMessageId',
+    'seq',
+  ]);
+
+  assert.ok(keys, 'the thread index must exist');
+  assert.equal(keys.seq, -1, 'a thread page reads newest reply first');
+});
+
+test('ChatMessage: thread fields are nullable, immutable and never required', () => {
+  for (const field of ['replyToMessageId', 'threadRootMessageId']) {
+    const path = ChatMessage.schema.path(field);
+
+    assert.ok(path, `${field} must exist`);
+    assert.equal(path.options.immutable, true, `${field} must be immutable`);
+    assert.equal(path.options.ref, 'ChatMessage', `${field} must ref a message`);
+    assert.equal(path.options.required, undefined, `${field} must be optional`);
+    assert.equal(path.options.default, null, `${field} must default to null`);
+  }
+});
+
 test('ChatMessage: idempotent-send index is unique over the client key', () => {
   const options = optionsFor(ChatMessage, [
     'companyId',
@@ -197,10 +225,16 @@ test('exact index inventory — no index may appear or disappear silently', () =
       ['companyId', 'conversationId', 'senderUserId', 'clientMessageId'],
       // 33.10 — "is this attachment already referenced by a message?".
       ['companyId', 'conversationId', 'attachments.attachmentId'],
+      // 34.2 — "give me this thread, newest reply first".
+      ['companyId', 'conversationId', 'threadRootMessageId', 'seq'],
     ],
     ChatMessageEdit: [
       ['companyId', 'messageId', 'version'],
       ['companyId', 'conversationId', 'messageId', 'version'],
+    ],
+    ChatMessageReaction: [
+      // 34.1 — the unique row identity: one user, one message, one type.
+      ['companyId', 'messageId', 'userId', 'reactionType'],
     ],
   };
 

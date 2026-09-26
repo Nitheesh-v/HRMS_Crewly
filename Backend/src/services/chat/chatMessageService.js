@@ -42,6 +42,9 @@ import {
 } from '../../utils/chatFileRules.js';
 import { hasVisibleText } from '../../utils/chatTextRules.js';
 import logger from '../../config/logger.js';
+// 34.2 — threads. The resolver lives in its own module (the read path needs it
+// too); importing it here keeps ONE definition of "may this be replied to".
+import { resolveReplyTarget, toReplyPreview } from './chatThreadService.js';
 
 const PREVIEW_MAX = 200; // matches ChatConversation.lastMessagePreview maxlength
 
@@ -95,6 +98,8 @@ const persistMessage = async ({
   clientMessageId,
   mutation,
   preview,
+  // 34.2 — optional. When present, this message answers that message.
+  replyToMessageId = null,
 }) => {
   if (unrenderableMutation(mutation)) {
     // Refused before any DB work. Logged with safe scalars only — never the
@@ -124,6 +129,25 @@ const persistMessage = async ({
 
   if (conversation.isDisabled) return { ok: false, code: 'CONVERSATION_DISABLED' };
 
+  // 34.2 — the parent is resolved BEFORE anything is written and with the same
+  // tenant + conversation filter, so a reply can never point across a boundary
+  // and a foreign id is indistinguishable from a missing one. A tombstoned
+  // parent is allowed on purpose (a moderator removal must not freeze a
+  // thread); its preview snippet comes back null, never the deleted text.
+  let replyTo = null;
+
+  if (replyToMessageId !== null && replyToMessageId !== undefined && replyToMessageId !== '') {
+    const parent = await resolveReplyTarget({ companyId, conversationId, messageId: replyToMessageId });
+
+    if (!parent) return { ok: false, code: 'NOT_FOUND_OR_FORBIDDEN' };
+
+    mutation.replyToMessageId = parent._id;
+    // Replying to a reply keeps the ORIGINAL root: threads stay two levels
+    // deep and a thread view can never fork.
+    mutation.threadRootMessageId = parent.threadRootMessageId ?? parent._id;
+    replyTo = toReplyPreview(parent);
+  }
+
   // Idempotency pre-check: a retry of an already-stored intent returns the
   // stored message instead of writing a second one.
   const existing = await ChatMessage.findOne({
@@ -133,7 +157,20 @@ const persistMessage = async ({
     clientMessageId,
   }).lean();
 
-  if (existing) return { ok: true, message: existing, created: false };
+  if (existing) {
+    // A retry returns the STORED message; its reply context is re-resolved so
+    // the ACK still shows the hint the sender expects, without a second write.
+    const storedReply =
+      !replyTo && existing.replyToMessageId
+        ? toReplyPreview(await resolveReplyTarget({
+          companyId,
+          conversationId,
+          messageId: existing.replyToMessageId,
+        }))
+        : replyTo;
+
+    return { ok: true, message: existing, created: false, replyTo: storedReply };
+  }
 
   // Atomic seq allocation: bump the conversation counter and read the new
   // value in one round-trip. `new: true` returns the post-increment document,
@@ -168,7 +205,7 @@ const persistMessage = async ({
       ...mutation,
     });
 
-    return { ok: true, message: message.toObject(), created: true };
+    return { ok: true, message: message.toObject(), created: true, replyTo };
   } catch (error) {
     // Duplicate-key race: a concurrent send with the same clientMessageId won.
     // Refetch and return the winner; do NOT broadcast again.
@@ -180,7 +217,7 @@ const persistMessage = async ({
         clientMessageId,
       }).lean();
 
-      if (winner) return { ok: true, message: winner, created: false };
+      if (winner) return { ok: true, message: winner, created: false, replyTo };
     }
 
     return { ok: false, code: 'RETRYABLE' };
@@ -193,6 +230,8 @@ export const sendTextMessage = async ({
   conversationId,
   clientMessageId,
   text,
+  // 34.2 — optional reply target (same tenant + conversation, verified inside).
+  replyToMessageId = null,
 }) =>
   persistMessage({
     companyId,
@@ -201,6 +240,7 @@ export const sendTextMessage = async ({
     clientMessageId,
     mutation: { type: 'TEXT', text },
     preview: text,
+    replyToMessageId,
   });
 
 // 33.10 — a FILE message carries references, never bytes. `attachments` is
@@ -219,6 +259,9 @@ export const sendFileMessage = async ({
   clientMessageId,
   attachments,
   text = null,
+  // 34.2 — a FILE message may answer a message too. Without this the reply
+  // context would be silently dropped whenever the composer had an attachment.
+  replyToMessageId = null,
 }) => {
   const caption = hasVisibleText(text) ? String(text).trim() : null;
 
@@ -229,5 +272,6 @@ export const sendFileMessage = async ({
     clientMessageId,
     mutation: { type: 'FILE', text: caption, attachments },
     preview: caption ?? CHAT_FILE_PREVIEW_TEXT,
+    replyToMessageId,
   });
 };

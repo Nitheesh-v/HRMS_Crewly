@@ -41,6 +41,20 @@ export const validateJoinPayload = (payload) => {
   return { ok: true, conversationId: String(body.conversationId) };
 };
 
+/**
+ * 34.2 — one definition of "an optional reply target": absent, null and the
+ * empty string all mean "no reply"; anything else must be a valid ObjectId.
+ * Returns { ok, value } so a malformed id is refused at the edge instead of
+ * reaching a query.
+ */
+const parseReplyTarget = (raw) => {
+  if (raw === undefined || raw === null || raw === '') return { ok: true, value: null };
+
+  if (!mongoose.isValidObjectId(String(raw))) return { ok: false, value: null };
+
+  return { ok: true, value: String(raw) };
+};
+
 export const validateSendPayload = (payload) => {
   const body = asObject(payload);
 
@@ -67,11 +81,20 @@ export const validateSendPayload = (payload) => {
     return validationError(`A message must be at most ${CHAT_MESSAGE_TEXT_MAX} characters.`);
   }
 
+  // 34.2 — OPTIONAL reply target. The wire value is only checked for SHAPE
+  // here; whether that message exists, belongs to this tenant and lives in
+  // THIS conversation is decided by the service, against the database, with no
+  // client input. Absent/null/empty all mean "not a reply".
+  const replyTo = parseReplyTarget(body.replyToMessageId);
+
+  if (!replyTo.ok) return validationError('replyToMessageId is not a valid identifier.');
+
   return {
     ok: true,
     conversationId: String(body.conversationId),
     clientMessageId,
     text,
+    replyToMessageId: replyTo.value,
   };
 };
 
@@ -272,11 +295,17 @@ export const validateSendFilePayload = (payload) => {
     return validationError(`A message must be at most ${CHAT_MESSAGE_TEXT_MAX} characters.`);
   }
 
+  // 34.2 — a FILE message may answer a message too (same optional shape).
+  const replyTo = parseReplyTarget(body.replyToMessageId);
+
+  if (!replyTo.ok) return validationError('replyToMessageId is not a valid identifier.');
+
   return {
     ok: true,
     conversationId: String(body.conversationId),
     clientMessageId,
     attachmentIds,
     text: caption.length > 0 ? caption : null,
+    replyToMessageId: replyTo.value,
   };
 };
