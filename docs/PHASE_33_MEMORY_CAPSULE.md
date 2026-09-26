@@ -73,7 +73,8 @@ HARD RULES:
   · PowerShell-first commands for me (I am a beginner; give exact copy-paste
     lines, no bash-only syntax), with a hard-reload/restart step where needed.
   · If something is genuinely ambiguous or security-sensitive, STOP and ask me.
-  · Reply to me in Tamil-English (Tanglish) with short bullets + code blocks.
+  · Reply to me in ENGLISH with short bullets + code blocks (owner's instruction;
+    earlier sessions used Tamil-English — use plain English unless he asks otherwise).
 
 CURRENT OPEN ITEMS: my localhost acceptance of Phase 33.10–33.12, the UI/UX
 pass and the session/cookie work (33.14) was never confirmed; the super-admin

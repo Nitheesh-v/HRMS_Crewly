@@ -665,8 +665,9 @@ WARNINGS THAT HAVE COST TIME BEFORE
 §H. THE REPORTING CONTRACT (every unit, no exceptions)
 ════════════════════════════════════════════════════════════════════════════
 
-Write the report in this shape, in Tanglish (Tamil-English) with short bullets
-and code blocks, addressed to the owner:
+Write the report in this shape, in ENGLISH with short bullets and code blocks,
+addressed to the owner (owner's standing instruction — earlier sessions used
+Tamil-English; use plain English unless he asks otherwise):
 
   ## Why it happened
      The real mechanism, named, with the code path. Not a guess. If it was a
@@ -734,7 +735,8 @@ BEHAVIOUR WITH THE OWNER
     Unix-only syntax, and name the restart/hard-reload step.
   · If something is genuinely ambiguous, or security-sensitive, STOP and ask —
     one focused question is cheaper than a wrong implementation.
-  · Reply in Tanglish: short bullets, code blocks, no walls of prose.
+  · Reply in ENGLISH (owner's standing instruction): short bullets, code
+    blocks, no walls of prose.
 
 ════════════════════════════════════════════════════════════════════════════
 §J. PITFALLS — DEAD ENDS ALREADY PAID FOR (do not retry these)
