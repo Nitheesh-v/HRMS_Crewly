@@ -1459,3 +1459,126 @@ The crash is a server-side defect, not an environment problem: after pulling
 this fix the API no longer needs a restart to survive a bad edit. If a window
 still shows "Chat realtime is not connected.", that is the separate
 Redis/transport issue (section 12.10) — use the banner's Retry button.
+
+---
+
+# 15. PHASE 33.9 — LOCALHOST ACCEPTANCE (PowerShell, beginner-friendly)
+
+Everything below is copy-paste. Nothing here needs Postman unless you want
+the raw REST checks; the UI covers the product surface.
+
+## 15.1 What changed in the logs (read this first)
+
+The development console line now prints the metadata the observability
+middleware already attached — status code first:
+
+    2026-09-26 10:12:41 [info]: http.request.complete status=200 method=GET route=/api/chat/conversations durationMs=12.4 requestId=...
+    2026-09-26 10:12:56 [warn]: http.request.slow status=403 method=PATCH route=/api/chat/conversations/:conversationId/disable durationMs=1602.5 thresholdMs=1500
+
+So while you accept 33.9 you can read the RBAC verdict straight off the
+terminal: **200** = allowed, **403** = refused (no CHAT_MODERATE),
+**404** = not found / other tenant. These are the SAME events as before —
+only the human line got the fields (production JSON and logs/combined.log
+always had them).
+
+## 15.2 Start the stack
+
+    # Terminal 1 — API
+    cd C:\Users\megal\Desktop\HRMS\HRMS_Crewly
+    git pull
+    cd Backend
+    npm install
+    npm run dev
+
+    # Terminal 2 — UI
+    cd C:\Users\megal\Desktop\HRMS\HRMS_Crewly\Frontend
+    npm install
+    npm run dev
+
+Wait for "Server running" in Terminal 1, then open
+http://localhost:5173 in the browser.
+
+IMPORTANT (permissions changed in 33.9): log out and log back in once, so the
+frontend refetches your permission set. The new permissions are granted to
+existing roles by the version migration (36 → 37) on the first API start
+after `git pull` — if the Disable button does not appear for an admin, check
+Terminal 1 for the role-migration log and restart the API.
+
+## 15.3 Acceptance — the five checks
+
+Check 1 — the button exists for a moderator, and only for a moderator
+  1. Log in as Manikandan (COMPANY ADMIN). Open Chat, pick a conversation.
+  2. A "Disable" button appears in the conversation header (next to the
+     title). Log out and back in as an EMPLOYEE: it must NOT appear.
+  3. Expect in Terminal 1: a GET (or PATCH) line with status=200 for the
+     admin; the employee never issues the call at all (no log line).
+
+Check 2 — disabling locks the conversation, for everyone, live
+  1. As the admin, click Disable → confirm.
+  2. The header shows the "Disabled" badge and the red banner
+     "Conversation disabled by an admin..." appears; the message box is
+     greyed out.
+  3. In a second browser window (or another machine on localhost), logged in
+     as the other member, the same banner appears within a second or two
+     WITHOUT a reload (the lock nudge), and their composer is locked too.
+  4. History stays readable in both windows — that is the point of a lock.
+  5. Terminal 1 shows: status=200 on PATCH .../disable.
+
+Check 3 — a locked conversation refuses sending (and a member cannot unlock)
+  1. As the member, try to send a message → it is refused with
+     "This conversation is disabled." and no message appears.
+  2. As the member, try calling the REST endpoints anyway (the UI hides the
+     button, the server must still refuse). In PowerShell:
+
+       $token = "PASTE_YOUR_JWT_HERE"
+       $id    = "PASTE_CONVERSATION_ID_HERE"
+       Invoke-RestMethod -Method Patch `
+         -Uri "http://localhost:5000/api/chat/conversations/$id/enable" `
+         -Headers @{ Authorization = "Bearer $token" }
+
+     Expect a 403 (Forbidden) — and a `status=403` line in Terminal 1.
+     That 403 is the acceptance: the gate is the server, not the UI.
+
+Check 4 — moderator delete of someone else's message
+  1. As the admin (conversation re-enabled), hover another member's message:
+     a shield (remove as moderator) button appears.
+  2. Click it → confirm. The bubble is replaced by
+     "Message removed by a moderator" in every open window.
+  3. As the message's own author, hover a message that was NOT
+     removed by a moderator: you see the normal pencil/trash; the pencil is
+     never offered on somebody else's message (moderators delete, they do
+     not edit).
+  4. Terminal 1 shows status=200 on POST .../moderate-delete.
+
+Check 5 — the audit trail (no message text anywhere)
+  Using MongoDB Compass (or mongosh) against your own database:
+
+      db.auditlogs.find({ action: /^CHAT_/ }).sort({ createdAt: -1 }).limit(10)
+
+  Expect rows with action CHAT_CONVERSATION_DISABLED /
+  CHAT_CONVERSATION_ENABLED / CHAT_MESSAGE_MODERATED_DELETE, carrying ids and
+  the bounded reason only. Confirm by eye: NO message text in any of them.
+
+## 15.4 Automated tests (exact)
+
+    cd C:\Users\megal\Desktop\HRMS\HRMS_Crewly\Backend
+    node --test test/chatModeration.test.js          # 33.9 moderation
+    node --test test/chatSocketResilience.test.js    # the crash guard
+    node --test test/loggerStatusLine.test.js        # the status line
+    npm run test:all                                 # the whole suite
+
+Expected: 23, 7 and 8 passing respectively; `test:all` 2400+ passing with
+0 failures (the same totals this workspace reports).
+
+## 15.5 If something looks wrong
+
+- No Disable button as admin → log out/in (permission refetch), and confirm
+  Terminal 1 restarted AFTER `git pull` (the role migration runs then).
+- Banner says "Realtime unavailable" → that is the Redis/transport issue, not
+  33.9; click the banner's Retry once Redis is awake (section 12.10).
+- 403 on your own disable → that account lacks CHAT_MODERATE; only
+  COMPANY_ADMIN, HR_MANAGER and MANAGER have it by default.
+- 404 on the REST call → wrong conversation id, or the conversation belongs to
+  another company (that is the intended non-leaking answer).
+- Old log lines had no status → the API was not restarted after pulling this
+  change.
