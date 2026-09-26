@@ -613,7 +613,7 @@ test('a missing companyId is rejected on every chat model', async () => {
   assert.ok(edit.includes('companyId'));
 });
 
-test('ChatMessage: TEXT requires a body; SYSTEM and FILE must not carry one', async () => {
+test('ChatMessage: TEXT requires a body; FILE may carry a caption; SYSTEM may not', async () => {
   const emptyText = await rejectionPaths(ChatMessage, {
     companyId: tenant(),
     conversationId: tenant(),
@@ -653,10 +653,55 @@ test('ChatMessage: TEXT requires a body; SYSTEM and FILE must not carry one', as
     type: 'SYSTEM',
   });
 
+  // 33.10-fix4 — a FILE message with files and a caption is legitimate…
+  const fileWithCaption = await validateOk(ChatMessage, {
+    companyId: tenant(),
+    conversationId: tenant(),
+    senderUserId: tenant(),
+    seq: 5,
+    clientMessageId: 'client-5',
+    type: 'FILE',
+    text: 'here is the report',
+    attachments: [
+      { attachmentId: tenant(), fileName: 'r.pdf', mimeType: 'application/pdf', sizeBytes: 10 },
+    ],
+  });
+
+  // …as is one with only files (the caption is optional)…
+  const fileWithoutCaption = await validateOk(ChatMessage, {
+    companyId: tenant(),
+    conversationId: tenant(),
+    senderUserId: tenant(),
+    seq: 6,
+    clientMessageId: 'client-6',
+    type: 'FILE',
+    text: null,
+    attachments: [
+      { attachmentId: tenant(), fileName: 'r.pdf', mimeType: 'application/pdf', sizeBytes: 10 },
+    ],
+  });
+
+  // …but an invisible caption is not a caption.
+  const invisibleCaption = await rejectionPaths(ChatMessage, {
+    companyId: tenant(),
+    conversationId: tenant(),
+    senderUserId: tenant(),
+    seq: 7,
+    clientMessageId: 'client-7',
+    type: 'FILE',
+    text: '\u200B',
+    attachments: [
+      { attachmentId: tenant(), fileName: 'r.pdf', mimeType: 'application/pdf', sizeBytes: 10 },
+    ],
+  });
+
   assert.ok(emptyText.includes('text'), 'blank TEXT must be refused');
   assert.ok(systemWithBody.includes('text'), 'SYSTEM body must be refused');
   assert.equal(validText, true);
   assert.equal(validSystem, true);
+  assert.equal(fileWithCaption, true, 'a FILE caption must be allowed (33.10-fix4)');
+  assert.equal(fileWithoutCaption, true, 'and the caption stays optional');
+  assert.ok(invisibleCaption.includes('text'), 'an invisible caption must be refused');
 });
 
 // The document path self-heals (see the next test), so the tombstone rule is
@@ -679,7 +724,14 @@ test('ChatMessage: the text validator refuses a tombstone that keeps its body', 
   assert.equal(run({ deletedAt: null, type: 'TEXT' }, '   '), false);
   assert.equal(run({ deletedAt: null, type: 'SYSTEM' }, 'smuggled'), false);
   assert.equal(run({ deletedAt: null, type: 'SYSTEM' }, null), true);
-  assert.equal(run({ deletedAt: null, type: 'FILE' }, 'smuggled'), false);
+
+  // 33.10-fix4 — INVERTED. A FILE message may carry a caption (the composer
+  // always sent one; the server used to drop it silently). A caption is still
+  // a body, so it must be visible, and a tombstoned FILE may carry none.
+  assert.equal(run({ deletedAt: null, type: 'FILE' }, 'caption for the file'), true);
+  assert.equal(run({ deletedAt: null, type: 'FILE' }, null), true);
+  assert.equal(run({ deletedAt: null, type: 'FILE' }, '\u200B'), false);
+  assert.equal(run({ deletedAt: new Date(), type: 'FILE' }, 'caption'), false);
 });
 
 test('ChatMessage: save() self-heals a tombstone instead of failing', async () => {
@@ -996,7 +1048,9 @@ test('33.9-fix: a legitimate atomic TEXT edit passes update validation', async (
 test('33.9-fix: update validation still refuses an empty TEXT body', async () => {
   const failure = await updateProbe({ $set: { text: '   ' } }, '   ');
 
-  assert.match(failure ?? '', /non-empty text/);
+  // 33.10-fix4 reworded the validator message (a FILE caption is legal now);
+  // the BEHAVIOUR this pin protects is unchanged: an empty TEXT body is out.
+  assert.match(failure ?? '', /requires visible text/);
 });
 
 test('33.9-fix: the tombstone update validates, and carrying a body still fails', async () => {
@@ -1008,22 +1062,25 @@ test('33.9-fix: the tombstone update validates, and carrying a body still fails'
 
   assert.match(
     (await updateProbe({ $set: { text: 'leak', deletedAt: new Date() } }, 'leak')) ?? '',
-    /must not carry body text/
+    /SYSTEM and deleted messages must not carry body text/
   );
 });
 
 test('33.9-fix: a SYSTEM body is refused when the update names the type', async () => {
   assert.match(
     (await updateProbe({ $set: { type: 'SYSTEM', text: 'smuggled' } }, 'smuggled')) ?? '',
-    /must not carry body text/
+    /SYSTEM and deleted messages must not carry body text/
   );
 });
 
 test('33.9-fix: document validation semantics are unchanged', async () => {
   assert.equal((await docProbe({ type: 'TEXT', text: 'hello' })).error, null);
 
-  assert.match((await docProbe({ type: 'TEXT', text: '' })).error ?? '', /non-empty text/);
-  assert.match((await docProbe({ type: 'SYSTEM', text: 'x' })).error ?? '', /must not carry body text/);
+  assert.match((await docProbe({ type: 'TEXT', text: '' })).error ?? '', /requires visible text/);
+  assert.match(
+    (await docProbe({ type: 'SYSTEM', text: 'x' })).error ?? '',
+    /SYSTEM and deleted messages must not carry body text/,
+  );
 
   // Tombstoning a whole document self-heals: the pre('validate') hook nulls
   // the body instead of failing the write (33.2 contract).

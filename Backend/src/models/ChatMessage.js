@@ -189,8 +189,16 @@ chatMessageSchema.path('text').validate(
     // A tombstone must never carry a body (checkable on both write paths).
     if (scope?.deletedAt) return empty;
 
-    // A SYSTEM/FILE body is never allowed (checkable when `type` is known).
-    if (scope?.type && scope.type !== 'TEXT') return empty;
+    // A SYSTEM body is never allowed (checkable when `type` is known).
+    //
+    // 33.10-fix4 — a FILE message MAY carry a caption: the composer has always
+    // sent whatever the sender typed alongside the files, and dropping it
+    // silently was the wrong answer to "attachment plus message". A caption is
+    // still a body, so it obeys the same visibility law as text.
+    if (scope?.type && scope.type !== 'TEXT') {
+      if (scope.type === 'FILE') return empty || hasVisibleText(value);
+      return empty;
+    }
 
     // Otherwise the body is a TEXT body: it must say something a reader can
     // see. 33.10-fix2 — `trim()` alone let a body of zero-width characters
@@ -198,7 +206,8 @@ chatMessageSchema.path('text').validate(
     // member). See utils/chatTextRules.js for the character law.
     return hasVisibleText(value);
   },
-  'TEXT messages require non-empty text; SYSTEM, FILE and deleted messages must not carry body text.'
+  'a TEXT message requires visible text; a FILE message may carry only a visible caption; '
+  + 'SYSTEM and deleted messages must not carry body text.'
 );
 
 // Convenience self-heal: tombstoning a document clears the body instead of

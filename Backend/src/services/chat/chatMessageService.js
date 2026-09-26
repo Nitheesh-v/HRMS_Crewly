@@ -36,7 +36,10 @@
 
 import ChatConversation from '../../models/ChatConversation.js';
 import ChatMessage from '../../models/ChatMessage.js';
-import { CHAT_FILE_PREVIEW_TEXT } from '../../utils/chatFileRules.js';
+import {
+  CHAT_ATTACHMENT_MESSAGES,
+  CHAT_FILE_PREVIEW_TEXT,
+} from '../../utils/chatFileRules.js';
 import { hasVisibleText } from '../../utils/chatTextRules.js';
 import logger from '../../config/logger.js';
 
@@ -76,9 +79,14 @@ export const loadWritableConversation = async ({
 // timestamp (2026-09-26, 10:57) — an all-invisible body was accepted by the
 // old trim()-only check. Rather than trust every present and future writer to
 // remember the rule, the ONE create path refuses what nobody could read.
-const unrenderableMutation = (mutation) =>
-  !hasVisibleText(mutation?.text) &&
-  (!Array.isArray(mutation?.attachments) || mutation.attachments.length === 0);
+const unrenderableMutation = (mutation) => {
+  const fileCount = Array.isArray(mutation?.attachments) ? mutation.attachments.length : 0;
+
+  // A FILE message with no file is a hollow bubble wearing a caption's clothes.
+  if (mutation?.type === 'FILE' && fileCount === 0) return true;
+
+  return !hasVisibleText(mutation?.text) && fileCount === 0;
+};
 
 const persistMessage = async ({
   companyId,
@@ -99,7 +107,11 @@ const persistMessage = async ({
       attachmentCount: Array.isArray(mutation?.attachments) ? mutation.attachments.length : 0,
     });
 
-    return { ok: false, code: 'EMPTY_BODY', message: EMPTY_BODY_MESSAGE };
+    return {
+      ok: false,
+      code: 'EMPTY_BODY',
+      message: mutation?.type === 'FILE' ? CHAT_ATTACHMENT_MESSAGES.EMPTY : EMPTY_BODY_MESSAGE,
+    };
   }
 
   const conversation = await loadWritableConversation({
@@ -195,18 +207,27 @@ export const sendTextMessage = async ({
 // the metadata array produced by linkAttachmentsToMessage (already
 // revalidated for tenant + conversation + unused); this function does not
 // re-derive it from the payload.
+//
+// 33.10-fix4 — `text` is an OPTIONAL caption (validated by the socket layer:
+// visible only, length-capped). The conversation-list preview prefers the
+// caption because it is a normal body, and falls back to the generic word so
+// a private FILENAME never lands in a denormalized field.
 export const sendFileMessage = async ({
   companyId,
   senderUserId,
   conversationId,
   clientMessageId,
   attachments,
-}) =>
-  persistMessage({
+  text = null,
+}) => {
+  const caption = hasVisibleText(text) ? String(text).trim() : null;
+
+  return persistMessage({
     companyId,
     senderUserId,
     conversationId,
     clientMessageId,
-    mutation: { type: 'FILE', text: null, attachments },
-    preview: CHAT_FILE_PREVIEW_TEXT,
+    mutation: { type: 'FILE', text: caption, attachments },
+    preview: caption ?? CHAT_FILE_PREVIEW_TEXT,
   });
+};

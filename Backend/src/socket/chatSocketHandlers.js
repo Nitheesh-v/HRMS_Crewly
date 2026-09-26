@@ -373,6 +373,8 @@ export const registerChatSocketHandlers = ({
       conversationId: parsed.conversationId,
       clientMessageId: parsed.clientMessageId,
       attachments,
+      // 33.10-fix4 — the caption the sender typed next to the files.
+      text: parsed.text,
     });
 
     if (!result.ok) {

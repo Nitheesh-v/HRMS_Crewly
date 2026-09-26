@@ -222,5 +222,24 @@ export const validateSendFilePayload = (payload) => {
     return validationError('attachmentIds contains an invalid identifier.');
   }
 
-  return { ok: true, conversationId: String(body.conversationId), clientMessageId, attachmentIds };
+  // 33.10-fix4 — an OPTIONAL caption. The composer has always sent the typed
+  // text with the files; until now the server dropped it. A caption is a body,
+  // so it obeys the same rules as any other body: visible, and length-capped.
+  const caption = String(body.text ?? '').trim();
+
+  if (caption.length > 0 && !hasVisibleText(caption)) {
+    return validationError('A message must not be empty.');
+  }
+
+  if (caption.length > CHAT_MESSAGE_TEXT_MAX) {
+    return validationError(`A message must be at most ${CHAT_MESSAGE_TEXT_MAX} characters.`);
+  }
+
+  return {
+    ok: true,
+    conversationId: String(body.conversationId),
+    clientMessageId,
+    attachmentIds,
+    text: caption.length > 0 ? caption : null,
+  };
 };

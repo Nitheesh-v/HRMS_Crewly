@@ -1662,7 +1662,8 @@ mirrors how the BGV evidence download already streams private files.
 ## 16.5 Socket contract (FILE messages)
 
     client → server : chat:message:sendFile { conversationId, clientMessageId,
-                                              attachmentIds: [...] }
+                                              attachmentIds: [...],
+                                              text? }   (33.10-fix4: caption)
     server → client : chat:message:created  { conversationId, message }  (broadcast,
                                               message.attachments = references)
     ACK             : { ok: true, data: { message } } | { ok: false, code, message }
@@ -2023,4 +2024,63 @@ and one command separates them:
   product.
 - **It reports 0 rows** → the blank bubble you saw was purely this projection
   bug, and it is fixed.
+
+---
+
+# 20. PHASE 33.10-fix4 — ATTACHMENT PLUS MESSAGE (CAPTIONS)
+
+## 20.1 What was wrong
+
+The composer has always handed the typed text to `onSend(text, files)`, and the
+optimistic bubble showed it — but the FILE payload never carried it and
+`sendFileMessage` stored `text: null`, so **typing a message and attaching a
+file silently threw the message away**. The phase-33.2 model rule made that
+explicit: "a SYSTEM/FILE message must not smuggle body text into `text`".
+
+That rule was aimed at SYSTEM messages and at bodies smuggled into a FILE row
+by an update. A caption the sender typed next to the file is neither of those:
+it is the message. `33.10-fix4` makes it legal and carries it end to end.
+
+## 20.2 The rules
+
+- The caption is **optional**: a FILE message may carry one, or not carry one.
+- A caption **is a body**: it must contain at least one visible character
+  (§18) and it obeys the same length cap (`CHAT_MESSAGE_TEXT_MAX`) as any text.
+- A FILE message **must still reference at least one file**. "Caption, no file"
+  is not a FILE message — it is a TEXT message, and the create path refuses it
+  ("A file is required.").
+- A SYSTEM message still carries no body, and a tombstoned message still clears
+  its caption (the tombstone is the whole render).
+- The conversation-list preview prefers the caption (it is a normal body) and
+  falls back to the generic word `Attachment` — a private filename still never
+  reaches a denormalized field.
+- **Not supported:** editing a caption. Edit stays sender-only and TEXT-only
+  (§16.5); a FILE message's caption is immutable with its references, which
+  keeps the edit-history contract and the attachment link intact.
+
+## 20.3 What changed
+
+- `socket/chatSocketValidators.js` — the FILE payload takes an optional
+  `text`: trimmed, visibility-checked, length-capped, returned as `null` when
+  absent (never an empty string).
+- `services/chat/chatMessageService.js` — `sendFileMessage` stores the caption
+  and uses it as the preview; the renderability invariant now also refuses a
+  FILE mutation with **no file** (message "A file is required.") even when a
+  caption is present.
+- `socket/chatSocketHandlers.js` — the FILE handler forwards the caption.
+- `models/ChatMessage.js` — the text validator: TEXT needs visible text, FILE
+  may carry only a visible caption, SYSTEM and deletions carry none.
+- `Frontend/src/pages/chat/ChatPage.jsx` — the caption travels IN the FILE
+  payload (sending it in the text event would split one message into two).
+
+## 20.4 Tests
+
+`test/chatMessageBodyRules.test.js` 14 tests: the FILE payload with/without a
+caption, an invisible caption refused, an over-long caption refused, the stored
+message keeping its caption while the caption stays optional, a FILE mutation
+with no file refused even with a caption, and the socket path forwarding the
+caption and broadcasting it (payload + ACK). `test/chatModels.test.js`
+INVERTED the old "FILE must not carry a body" pin to "FILE may carry a visible
+caption" and added the invisible-caption refusal; the two wording pins moved to
+the reworded validator message.
 

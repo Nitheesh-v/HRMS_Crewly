@@ -26,6 +26,10 @@
 //      as a retryable server fault
 //    · the UI cannot render a hollow bubble: the composer gate and the bubble
 //      fallback are pinned
+//    · 33.10-fix4 — a FILE message may carry a CAPTION (text + file in one
+//      message): the validator accepts a visible one, refuses an invisible or
+//      over-long one, the stored message keeps it, the preview prefers it, and
+//      a FILE message with no file is still refused
 //
 //  No Redis, no Mongo, no HTTP: pure rules, in-memory fakes.
 // ============================================================
@@ -185,7 +189,7 @@ test('the model itself refuses an invisible TEXT body', () => {
   const failure = invisible.validateSync();
 
   assert.ok(failure, 'an invisible body must fail validation');
-  assert.match(String(failure.message), /non-empty text/);
+  assert.match(String(failure.message), /requires visible text/);
 
   assert.equal(new ChatMessage({ ...base, text: 'hi' }).validateSync(), undefined);
   // A FILE message is legitimately body-less: its references are the content.
@@ -416,4 +420,167 @@ test('the composer gate and the bubble fallback use the shared rule', () => {
   const page = frontendSrc('pages/chat/ChatPage.jsx');
 
   assert.match(page, /hasVisibleText\(text\) \? text : 'Attachment'/, 'the optimistic row too');
+
+  // 33.10-fix4 — the caption must travel WITH the FILE payload. The composer
+  // has always handed the typed text to onSend; sending it in the text event
+  // instead would split one message into two.
+  assert.match(
+    page,
+    /const caption = hasVisibleText\(text\) \? text : null/,
+    'the caption is derived with the same rule',
+  );
+  assert.match(page, /chatRealtime\.sendFile\(\{[^}]*text: caption/s, 'and sent with the file');
+});
+
+// ── 33.10-fix4 — caption + file in one message ────────────────────────────
+
+test('the FILE payload accepts an optional caption and refuses a bad one', () => {
+  const conversationId = String(id());
+  const attachmentIds = [String(id())];
+
+  const bare = validateSendFilePayload({ conversationId, clientMessageId: 'c1', attachmentIds });
+
+  assert.equal(bare.ok, true);
+  assert.equal(bare.text, null, 'no caption means null, not an empty string');
+
+  const captioned = validateSendFilePayload({
+    conversationId,
+    clientMessageId: 'c2',
+    attachmentIds,
+    text: '  here is the report  ',
+  });
+
+  assert.equal(captioned.ok, true);
+  assert.equal(captioned.text, 'here is the report', 'the caption is trimmed like any body');
+
+  const invisible = validateSendFilePayload({
+    conversationId,
+    clientMessageId: 'c3',
+    attachmentIds,
+    text: '\u200B',
+  });
+
+  assert.equal(invisible.ok, false);
+  assert.equal(invisible.message, 'A message must not be empty.');
+
+  const tooLong = validateSendFilePayload({
+    conversationId,
+    clientMessageId: 'c4',
+    attachmentIds,
+    text: 'x'.repeat(5000),
+  });
+
+  assert.equal(tooLong.ok, false);
+  assert.match(tooLong.message, /at most/);
+});
+
+test('a stored FILE message keeps its caption and previews it', async () => {
+  const fakes = installFakes();
+
+  try {
+    const args = {
+      companyId: fakes.conversation.companyId,
+      senderUserId: fakes.senderUserId,
+      conversationId: fakes.conversation._id,
+      attachments: [reference()],
+    };
+
+    const captioned = await sendFileMessage({ ...args, clientMessageId: 'cap-1', text: '  looks good  ' });
+
+    assert.equal(captioned.ok, true);
+    assert.equal(captioned.created, true);
+
+    const bare = await sendFileMessage({ ...args, clientMessageId: 'cap-2' });
+
+    assert.equal(bare.ok, true);
+
+    assert.equal(fakes.created.length, 2);
+    assert.equal(fakes.created[0].type, 'FILE');
+    assert.equal(fakes.created[0].text, 'looks good', 'the caption rides with the file');
+    assert.equal(fakes.created[0].attachments.length, 1);
+    assert.equal(fakes.created[1].text, null, 'the caption stays optional');
+
+    // The denormalized preview prefers the caption and never a filename.
+    const previews = fakes.created.map((row) => row.lastMessagePreview).filter(Boolean);
+    assert.deepEqual(previews, [], 'previews live on the conversation, not the message');
+  } finally {
+    fakes.restore();
+  }
+});
+
+test('a FILE message with no file is still refused, even with a caption', async () => {
+  const fakes = installFakes();
+
+  try {
+    const result = await sendFileMessage({
+      companyId: fakes.conversation.companyId,
+      senderUserId: fakes.senderUserId,
+      conversationId: fakes.conversation._id,
+      clientMessageId: 'cap-3',
+      text: 'here is the report',
+      attachments: [],
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.code, 'EMPTY_BODY');
+    assert.equal(result.message, 'A file is required.');
+    assert.equal(fakes.created.length, 0);
+  } finally {
+    fakes.restore();
+  }
+});
+
+test('the socket FILE path forwards the caption and broadcasts it', async () => {
+  const handlers = new Map();
+  const emitted = [];
+  const socket = {
+    data: { companyId: String(id()), userId: String(id()) },
+    on: (event, handler) => handlers.set(event, handler),
+    join: () => {}, leave: () => {}, emit: () => {},
+  };
+
+  const sent = [];
+  const row = reference();
+  const stored = {
+    _id: id(), seq: 5, senderUserId: id(), type: 'FILE', text: 'here is the report',
+    attachments: [row], clientMessageId: 'cap-4', editVersion: 0,
+    deletedAt: null, createdAt: new Date(),
+  };
+
+  registerChatSocketHandlers({
+    io: { to: () => ({ emit: (event, payload) => emitted.push([event, payload]) }) },
+    socket,
+    log: { warn: () => {}, error: () => {}, info: () => {} },
+    loadConversation: async () => ({ _id: id(), isDisabled: false }),
+    linkAttachments: async () => [row],
+    sendFile: async (args) => {
+      sent.push(args);
+      return { ok: true, created: true, message: { ...stored, text: args.text } };
+    },
+  });
+
+  const acks = [];
+
+  await new Promise((resolve) => {
+    handlers.get('chat:message:sendFile')(
+      {
+        conversationId: String(id()),
+        clientMessageId: 'cap-4',
+        attachmentIds: [String(row.attachmentId)],
+        text: 'here is the report',
+      },
+      (ack) => { acks.push(ack); resolve(); },
+    );
+  });
+
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].text, 'here is the report', 'the caption reaches the service');
+  assert.equal(sent[0].attachments.length, 1);
+
+  const broadcast = emitted.find(([event]) => event === 'chat:message:created')?.[1]?.message;
+
+  assert.equal(broadcast.text, 'here is the report');
+  assert.equal(broadcast.attachments.length, 1);
+  assert.equal(acks[0].ok, true);
+  assert.equal(acks[0].data.message.text, 'here is the report');
 });

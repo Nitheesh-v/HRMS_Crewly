@@ -296,11 +296,17 @@ const ChatPage = () => {
       },
     }));
 
+    // 33.10-fix4 — a caption rides WITH the file in the same message (the
+    // server validates it: visible only, length-capped). Sending it in the
+    // text event instead would split one message into two.
+    const caption = hasVisibleText(text) ? text : null;
+
     const ack = attachments.length > 0
       ? await chatRealtime.sendFile({
           conversationId,
           clientMessageId,
           attachmentIds: attachments.map((entry) => entry._id),
+          text: caption,
         })
       : await chatRealtime.send({ conversationId, clientMessageId, text });
 
