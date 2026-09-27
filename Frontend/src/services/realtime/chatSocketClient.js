@@ -32,9 +32,44 @@ import {
   messageDeleted,
   reactionsUpdated,
   conversationsNudged,
+  typingChanged,
+  typingExpired,
+  typingCleared,
 } from '../../redux/slices/chatSlice.js';
 
 const CHAT_TICKET_PATH = '/realtime/chat-ticket';
+
+/*
+ * 34.5 — the receiving side of typing.
+ *
+ * TYPING_TTL_MS is a MISSED-FRAME deadline, not a presence window: if the stop
+ * frame never arrives (laptop closed mid-sentence, network died), the indicator
+ * must expire on its own rather than claim someone is still typing forever. The
+ * sender heartbeats every 3 s (see ChatPage), so a live typist keeps refreshing
+ * well inside this window.
+ *
+ * Nothing here is stored: one timer per (conversation, user) in a module-level
+ * map, cleared on every frame for that pair, cleared wholesale on disconnect —
+ * and a page reload starts from empty.
+ */
+const TYPING_TTL_MS = 5000;
+
+const typingTimers = new Map();
+
+const clearTypingTimer = (key) => {
+  const timer = typingTimers.get(key);
+
+  if (timer) {
+    clearTimeout(timer);
+    typingTimers.delete(key);
+  }
+};
+
+const clearAllTypingTimers = () => {
+  for (const timer of typingTimers.values()) clearTimeout(timer);
+
+  typingTimers.clear();
+};
 
 let socket = null;
 
@@ -104,7 +139,14 @@ export const connectChatSocket = async () => {
     store.dispatch(realtimeStatusSet('connected'));
   });
 
-  socket.on('disconnect', () => store.dispatch(realtimeStatusSet('idle')));
+  socket.on('disconnect', () => {
+    // 34.5 — a dropped transport invalidates every indicator: they were claims
+    // about frames we can no longer receive, and the stop for each one is never
+    // coming. Clear them and their timers with the connection.
+    clearAllTypingTimers();
+    store.dispatch(typingCleared({}));
+    store.dispatch(realtimeStatusSet('idle'));
+  });
 
   socket.on('connect_error', async (err) => {
     const message = String(err?.message ?? '');
@@ -167,6 +209,32 @@ export const connectChatSocket = async () => {
   // (created/added/removed elsewhere). ChatPage refetches; Mongo stays truth.
   socket.on('chat:conversations:changed', () => store.dispatch(conversationsNudged()));
 
+  // 34.5 — typing. The frame carries three fields and no content; it is applied
+  // to the store and given a TTL so a lost stop cannot strand the indicator.
+  socket.on('chat:typing', (payload) => {
+    const conversationId = String(payload?.conversationId ?? '');
+    const userId = String(payload?.userId ?? '');
+    const isTyping = payload?.isTyping === true;
+
+    if (!conversationId || !userId) return;
+
+    const key = `${conversationId}:${userId}`;
+
+    clearTypingTimer(key);
+
+    store.dispatch(typingChanged({ conversationId, userId, isTyping }));
+
+    if (isTyping) {
+      typingTimers.set(
+        key,
+        setTimeout(() => {
+          typingTimers.delete(key);
+          store.dispatch(typingExpired({ conversationId, userId }));
+        }, TYPING_TTL_MS)
+      );
+    }
+  });
+
   return socket;
 };
 
@@ -193,6 +261,10 @@ export const disconnectChatSocket = () => {
   socket.removeAllListeners();
   socket.close();
   socket = null;
+  // 34.5 — the socket that carried those indicators is gone, so the claims go
+  // with it (and no stray timer can fire into a dead page).
+  clearAllTypingTimers();
+  store.dispatch(typingCleared({}));
   store.dispatch(realtimeStatusSet('idle'));
 };
 
@@ -253,5 +325,11 @@ export const chatRealtime = {
   // applied without waiting for a broadcast that will not come.
   react: (payload) => ackOf('chat:message:react', payload),
   unreact: (payload) => ackOf('chat:message:unreact', payload),
+  // 34.5 — typing. Fire-and-forget in spirit: the ACK is still awaited by the
+  // caller (so a refusal is visible in the console during acceptance), but the
+  // UI never blocks on it and the server response `{relayed:false}` is a
+  // legitimate outcome (throttled frame), not an error.
+  typingStart: (payload) => ackOf('chat:typing:start', payload),
+  typingStop: (payload) => ackOf('chat:typing:stop', payload),
   isConnected: () => Boolean(socket?.connected),
 };

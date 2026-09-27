@@ -44,6 +44,7 @@ import {
   searchMoreLoaded,
   searchFailed,
   searchCleared,
+  typingCleared,
   conversationUpdated,
 } from '../../redux/slices/chatSlice.js';
 
@@ -55,6 +56,8 @@ import ReplyContextPill from '../../components/chat/ReplyContextPill.jsx';
 // 34.4 — conversation-scoped search (bar + results panel).
 import ConversationSearchBar from '../../components/chat/ConversationSearchBar.jsx';
 import ConversationSearchResults from '../../components/chat/ConversationSearchResults.jsx';
+// 34.5 — "…is typing" for the open conversation only.
+import TypingIndicator from '../../components/chat/TypingIndicator.jsx';
 import MessageComposer from '../../components/chat/MessageComposer.jsx';
 import ChatEmptyState from '../../components/chat/ChatEmptyState.jsx';
 import Avatar from '../../components/chat/Avatar.jsx';
@@ -67,6 +70,22 @@ const PAGE_SIZE = 30;
 // refuses more), while history and threads take 30. Asking for PAGE_SIZE here
 // was the bug the first localhost run found: every search came back 400.
 const SEARCH_PAGE_SIZE = 20;
+
+/*
+ * 34.5 — typing timers.
+ *
+ * IDLE: how long after the last keystroke we tell the room we stopped. Long
+ * enough that the pause while thinking does not flicker the indicator off and
+ * on, short enough that the other side is not left looking at a stale one.
+ *
+ * HEARTBEAT: a typing session can outlast the RECEIVER's TTL (5 s in the
+ * socket client), so a single start per session cannot keep the indicator
+ * alive. Re-emitting start every 3 s is the minimum that stays honest; the
+ * server's own throttle allows 1 s, and one tiny frame per 3 s per typing
+ * person is the whole cost.
+ */
+const TYPING_IDLE_MS = 2500;
+const TYPING_HEARTBEAT_MS = 3000;
 
 /*
  * Error text.
@@ -289,6 +308,73 @@ const ChatPage = () => {
     [dispatch]
   );
 
+  // ── 34.5 typing (the emitting side) ──────────────────────────────────
+  //
+  // The ref holds the ONE room we last told "started" (plus that room's two
+  // timers). Nothing is persisted, nothing is shared between users, and every
+  // timer dies with the page.
+  const typingRef = useRef({ conversationId: null, idleTimer: null, beatTimer: null });
+
+  const clearTypingTimers = () => {
+    const state = typingRef.current;
+
+    if (state.idleTimer) clearTimeout(state.idleTimer);
+    if (state.beatTimer) clearInterval(state.beatTimer);
+
+    state.idleTimer = null;
+    state.beatTimer = null;
+  };
+
+  // Best effort by design: a typing frame is decoration, so a refusal, a
+  // throttle or a dead socket is never surfaced to the reader. (The server
+  // still enforces membership and the room lock — the silence is about UX, not
+  // about skipping a gate.)
+  const emitTyping = useCallback((isTyping, roomId) => {
+    if (!roomId || !chatRealtime.isConnected()) return;
+
+    const call = isTyping ? chatRealtime.typingStart : chatRealtime.typingStop;
+
+    call({ conversationId: roomId }).catch(() => {});
+  }, []);
+
+  const stopTyping = useCallback((roomId) => {
+    const state = typingRef.current;
+    const target = roomId ?? state.conversationId;
+
+    clearTypingTimers();
+    state.conversationId = null;
+
+    if (target) emitTyping(false, target);
+  }, [emitTyping]);
+
+  const handleComposerActivity = useCallback((active) => {
+    const state = typingRef.current;
+
+    if (!conversationId) return;
+
+    if (!active) {
+      if (state.conversationId) stopTyping();
+
+      return;
+    }
+
+    // A new room: end the previous room's indicator BEFORE announcing this one,
+    // so a switch can never leave a ghost behind.
+    if (state.conversationId !== conversationId) {
+      if (state.conversationId) stopTyping(state.conversationId);
+
+      state.conversationId = conversationId;
+      emitTyping(true, conversationId);
+      state.beatTimer = setInterval(() => emitTyping(true, conversationId), TYPING_HEARTBEAT_MS);
+    }
+
+    if (state.idleTimer) clearTimeout(state.idleTimer);
+    state.idleTimer = setTimeout(() => stopTyping(), TYPING_IDLE_MS);
+  }, [conversationId, emitTyping, stopTyping]);
+
+  // Leaving the page ends the indicator, whatever the reason.
+  useEffect(() => () => stopTyping(), [stopTyping]);
+
   // ── open a conversation: history + join + read ────────────────────────
   useEffect(() => {
     dispatch(setActive(conversationId ?? null));
@@ -338,8 +424,12 @@ const ChatPage = () => {
       setSearchOpen(false);
       setSearchQuery('');
       dispatch(searchCleared());
+      // 34.5 — the room we are leaving is told we stopped, and its indicators
+      // are dropped: a claim about another conversation must not follow us here.
+      stopTyping();
+      dispatch(typingCleared({ conversationId }));
     };
-  }, [conversationId, dispatch, applyRead]);
+  }, [conversationId, dispatch, applyRead, stopTyping]);
 
   // ── mark read when new messages land while open ───────────────────────
   const newestSeq = activeEntry?.items?.length
@@ -795,6 +885,22 @@ const ChatPage = () => {
     if (term.length >= 2) runSearch(term);
   };
 
+  // 34.5 — who is typing IN THIS ROOM, resolved to names through the member
+  // directory the page already has. Our own id is filtered defensively (the
+  // server never echoes to the sender) and an unresolvable member degrades to
+  // "Someone" rather than leaking an id into the sentence.
+  const typingNames = useMemo(() => {
+    const ids = (chat.typing[conversationId] ?? []).filter(
+      (id) => String(id) !== String(meId)
+    );
+
+    if (ids.length === 0) return [];
+
+    const names = ids.map((id) => nameOfUserId(id)).filter(Boolean);
+
+    return names.length > 0 ? names : ['Someone'];
+  }, [chat.typing, conversationId, meId, nameOfUserId]);
+
   const closeSearch = () => {
     setSearchOpen(false);
     setSearchQuery('');
@@ -1034,6 +1140,8 @@ const ChatPage = () => {
               canModerate={canModerate}
               locked={conversationLocked}
             />
+            <TypingIndicator names={typingNames} />
+
             <MessageComposer
               replyPill={
                 replyingTo ? (
@@ -1059,6 +1167,7 @@ const ChatPage = () => {
               pendingAttachments={activePending}
               onAddAttachment={addAttachment}
               onRemoveAttachment={removeAttachment}
+              onTypingChange={handleComposerActivity}
             />
           </>
         ) : (

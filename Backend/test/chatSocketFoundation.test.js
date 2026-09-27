@@ -1189,7 +1189,7 @@ describe('33.1 lifecycle', () => {
     assert.ok(!logs.at(-1).includes('Bearer'));
     // 33.5/33.6 register the chat product events on top of the 33.1
     // lifecycle handlers; the connection must still never register anything
-    // else (no typing/presence/read-marker events).
+    // else (no presence events, no read-receipt broadcasts).
     assert.deepEqual(
       socketEvents.map((entry) => entry.event).sort(),
       [
@@ -1198,13 +1198,18 @@ describe('33.1 lifecycle', () => {
         'chat:message:delete',
         'chat:message:edit',
         // 34.1 — reactions: a fixed icon/text set, no free emoji, one shared
-        // rate-limit budget for both events. Still no typing/presence here.
+        // rate-limit budget for both events.
         'chat:message:react',
         'chat:message:send',
         // 33.10 — FILE send: references only, ids revalidated server-side.
         'chat:message:sendFile',
         'chat:message:unreact',
         'chat:readUpTo',
+        // 34.5 — typing: the ONE 33-era exclusion this phase reverses. Two
+        // events, in-memory per-socket throttle, no storage, relay to the room
+        // MINUS the sender. Presence/last-seen stay out of this list forever.
+        'chat:typing:start',
+        'chat:typing:stop',
         'disconnect',
         'error',
       ],
@@ -1443,14 +1448,15 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
     }
   });
 
-  // 33.5 registers join/leave/send, 33.6 adds edit/delete and 33.7 adds
-  // readUpTo, so the earlier "no chat events" pin is inverted again: the
-  // ONLY chat events that may exist are join / leave / message:send /
-  // message:edit / message:delete / readUpTo (client→server) and
-  // message:created / message:updated / message:deleted (server→client).
-  // Anything surveillance-shaped (typing, presence, last-seen, per-message
-  // receipt broadcasts) stays forbidden across the whole socket layer.
-  test('only the 33.5/33.6/33.7 chat events exist; no presence/typing/seen-by', () => {
+  // 33.5 registers join/leave/send, 33.6 adds edit/delete, 33.7 adds readUpTo
+  // and 34.1 adds the two reaction events, so the earlier "no chat events" pin
+  // has been inverted four times. 34.5 inverts ONE line of it: typing is now an
+  // expected event pair (ephemeral, conversation-scoped, never stored), because
+  // the Phase 34 prompt explicitly reverses the Phase 33 typing exclusion —
+  // typing ONLY. Presence, availability, last-seen, per-message receipt
+  // broadcasts and seen-by stay forbidden across the whole socket layer, and
+  // the typing pair must remain the only addition.
+  test('only the shipped chat events exist; no presence/last-seen/seen-by', () => {
     const socketDir = path.join(here, '..', 'src', 'socket');
     const combined = fs
       .readdirSync(socketDir)
@@ -1475,28 +1481,47 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
       'chat:message:edit', 'chat:message:delete', 'chat:readUpTo',
       // 34.1 — reactions (guarded like every other write).
       'chat:message:react', 'chat:message:unreact',
+      // 34.5 — typing (guarded like everything else that awaits a service).
+      'chat:typing:start', 'chat:typing:stop',
     ]) {
-      assert.ok(registered.has(allowed), `${allowed} must be registered (33.5/33.6/33.7/33.10)`);
+      assert.ok(registered.has(allowed), `${allowed} must be registered (33.5/33.6/33.7/33.10/34.1/34.5)`);
     }
 
     for (const emitted of [
       'chat:message:created', 'chat:message:updated', 'chat:message:deleted',
       // 33.8-fix: data-less list-change nudge to member personal rooms.
       'chat:conversations:changed',
+      // 34.5 — the typing relay: three fields, room minus the sender.
+      'chat:typing',
     ]) {
       assert.ok(combined.includes(`'${emitted}'`), `${emitted} must be emitted`);
     }
 
     // 33.7 added chat:readUpTo (the caller's own C1 cursor, ACK-only), so
-    // 'chat:read' as a blanket substring can no longer be forbidden. The
-    // surveillance-shaped events and any per-message receipt broadcast stay
-    // forbidden.
+    // 'chat:read' as a blanket substring can no longer be forbidden. 34.5 then
+    // removed 'chat:typing' from this list — deliberately and in writing: the
+    // product now has an ephemeral, conversation-scoped typing indicator. What
+    // did NOT change is the surveillance line: presence, last-seen, seen-by and
+    // any per-message receipt broadcast stay forbidden.
     for (const forbidden of [
-      'chat:typing', 'chat:presence', 'chat:lastSeen',
-      'chat:readReceipt', 'chat:seenBy',
+      'chat:presence', 'chat:lastSeen', 'chat:readReceipt', 'chat:seenBy',
+      // The typing pair is exactly two client events and one relay: a third
+      // 'chat:typing:*' name (a "stoppedNSecondsAgo", a "typingUntil") would be
+      // storing state in the vocabulary.
+      'chat:typing:seen', 'chat:typing:state', 'chat:typing:history',
     ]) {
       assert.ok(!combined.includes(forbidden), `${forbidden} must not exist`);
     }
+
+    // And typing must not have gained a storage-shaped sibling: the ONLY
+    // typing names in the layer are the three above.
+    const typingNames = [...combined.matchAll(/'chat:typing[^']*'/g)].map((match) => match[0]);
+
+    assert.deepEqual(
+      [...new Set(typingNames)].sort(),
+      ["'chat:typing'", "'chat:typing:start'", "'chat:typing:stop'"],
+      'typing is exactly start/stop/relay — nothing else may wear the name',
+    );
   });
 
   test('the socket folder holds the foundation + the 33.5 chat modules', () => {

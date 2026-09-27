@@ -552,6 +552,14 @@ test('every writing socket event is gated by an identity limit', () => {
     ['chat:message:react', { conversationId: String(id()), messageId: String(id()), reactionType: 'LIKE' }],
     ['chat:message:unreact', { conversationId: String(id()), messageId: String(id()), reactionType: 'LIKE' }],
     ['chat:readUpTo', { conversationId: String(id()), lastReadSeq: 1 }],
+    // 34.5 — typing is the ONE event pair that is deliberately NOT
+    // identity-gated: it writes nothing, notifies nobody outside the room, and
+    // its whole lifetime is one broadcast, so a shared Redis counter would be
+    // cost without benefit (and would put a keystroke path in Redis). Its abuse
+    // control is the per-socket, in-memory throttle in chatTypingService.
+    // These two calls therefore add NOTHING to `actions` — asserted below.
+    ['chat:typing:start', { conversationId: String(id()) }],
+    ['chat:typing:stop', { conversationId: String(id()) }],
   ];
 
   return (async () => {
@@ -590,6 +598,18 @@ test('every writing socket event is gated by an identity limit', () => {
     // chat:leave does NOT need a limit (it frees a room) — it must not be gated.
     assert.equal(socket.handlers.has('chat:leave'), true);
     assert.equal(actions.includes('socket.leave'), false);
+
+    // 34.5 — typing contributed no identity action, and owns no policy: the
+    // ephemeral path is provably free of Redis buckets. If a future edit gives
+    // typing a shared budget, THIS is where it must be justified (and the test
+    // above must be extended on purpose) instead of arriving silently.
+    assert.equal(actions.includes('typing.start'), false);
+    assert.equal(actions.includes('typing.stop'), false);
+    assert.equal(
+      Object.keys(CHAT_SOCKET_LIMITS).some((key) => key.includes('typing')),
+      false,
+      'no chat identity bucket may exist for typing',
+    );
   })();
 });
 

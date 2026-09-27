@@ -38,8 +38,20 @@
 //  33.6 edit/delete are sender-only and Mongo-authoritative. 33.7's
 //  chat:readUpTo advances the caller's own C1 cursor and ACKs to the caller
 //  ONLY — read state is never broadcast (it would be presence-ish
-//  surveillance). No presence, typing or last-seen events here. NO tokens,
-//  Redis ids, job ids or debug metadata in any payload or log.
+//  surveillance). NO tokens, Redis ids, job ids or debug metadata in any
+//  payload or log.
+//
+//  34.5 TYPING (the one 33-era exclusion this phase reverses):
+//    client → server : chat:typing:start { conversationId }
+//                      chat:typing:stop  { conversationId }
+//    server → client : chat:typing { conversationId, userId, isTyping }
+//  A typing frame is EPHEMERAL: nothing is written, nothing is cached, nothing
+//  outlives the broadcast, and the relay reaches the conversation room MINUS
+//  the sender (socket.to) — never the personal room, never company-wide. The
+//  only gate is the membership+tenant read every other event already uses, and
+//  the only state on this path is a per-socket throttle that dies with the
+//  socket. Presence, availability, last-seen and per-message receipts remain
+//  forbidden across this layer, exactly as before.
 //
 //  34.1 REACTIONS: react/unreact are membership-scoped writes with a fixed
 //  vocabulary (LIKE/HEART/LAUGH/THANKS). The broadcast is VIEWER-NEUTRAL
@@ -66,7 +78,12 @@ import {
   validateReadUpToPayload,
   validateSendFilePayload,
   validateReactionPayload,
+  validateTypingPayload,
 } from './chatSocketValidators.js';
+// 34.5 — typing. Ephemeral by construction: this module holds the wire names
+// and a per-socket throttle, and NOTHING else (no store, no map of who is
+// typing, no Redis).
+import { createTypingThrottle } from '../services/chat/chatTypingService.js';
 import {
   loadWritableConversation,
   sendFileMessage,
@@ -309,6 +326,10 @@ export const registerChatSocketHandlers = ({
       ack(cb, fail(CHAT_SOCKET_ERROR_CODES.UNAUTHORIZED, 'Authentication required.')));
     socket.on('chat:message:unreact', (_p, cb) =>
       ack(cb, fail(CHAT_SOCKET_ERROR_CODES.UNAUTHORIZED, 'Authentication required.')));
+    socket.on('chat:typing:start', (_p, cb) =>
+      ack(cb, fail(CHAT_SOCKET_ERROR_CODES.UNAUTHORIZED, 'Authentication required.')));
+    socket.on('chat:typing:stop', (_p, cb) =>
+      ack(cb, fail(CHAT_SOCKET_ERROR_CODES.UNAUTHORIZED, 'Authentication required.')));
 
     return;
   }
@@ -320,6 +341,12 @@ export const registerChatSocketHandlers = ({
   socket.join(userRoom(userId));
 
   const allowWrite = createWriteGuard();
+
+  // 34.5 — ONE throttle per connection: the min-gap between relayed starts and
+  // the frame ceiling that keeps the relay from becoming an amplifier. It is
+  // per-socket on purpose (see chatTypingService.js): nothing about a person's
+  // typing may outlive their connection, let alone reach Redis.
+  const typingThrottle = createTypingThrottle();
 
   // 33.11 — THE identity gate for ONE socket event. The identity comes from
   // socket.data (written during the JWT handshake), so a payload can never
@@ -378,6 +405,74 @@ export const registerChatSocketHandlers = ({
 
     ack(cb, { ok: true });
   });
+
+  // ── 34.5 typing ─────────────────────────────────────────────────────────
+  //
+  // ONE factory for both directions of the pair, because they differ by a
+  // single boolean and duplicating the gate would be two places to get the
+  // tenancy wrong.
+  const typingHandler = (isTyping) => async (payload, cb) => {
+    const parsed = validateTypingPayload(payload);
+
+    if (!parsed.ok) {
+      return ack(cb, fail(CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR, parsed.message));
+    }
+
+    // The abuse ceiling comes FIRST: a socket spamming frames must not even
+    // reach the membership read. Ignored, not refused — see the service.
+    if (!typingThrottle.allowFrame()) return ack(cb, { ok: true, data: { relayed: false } });
+
+    // The SAME membership + tenant read every other chat event uses: a
+    // non-member, another tenant and a missing conversation are one answer.
+    const conversation = await loadConversation({
+      companyId,
+      userId,
+      conversationId: parsed.conversationId,
+    });
+
+    if (!conversation) {
+      return ack(cb, fail(
+        CHAT_SOCKET_ERROR_CODES.NOT_FOUND_OR_FORBIDDEN,
+        'Conversation not found.',
+      ));
+    }
+
+    // A locked conversation stays quiet: the composer is disabled there, so
+    // an indicator would be a signal the room cannot act on.
+    if (conversation.isDisabled) {
+      return ack(cb, fail(
+        CHAT_SOCKET_ERROR_CODES.CONVERSATION_DISABLED,
+        'This conversation is disabled.',
+      ));
+    }
+
+    // Only a START is throttled (locked decision: a stop is how the room
+    // goes quiet). A suppressed start is acknowledged as NOT relayed so the
+    // client knows the room did not see it, without an error to retry on.
+    if (isTyping && !typingThrottle.allowStart(parsed.conversationId)) {
+      return ack(cb, { ok: true, data: { relayed: false } });
+    }
+
+    // A stop releases the conversation's stamp, so the NEXT session in this
+    // room is never delayed by the previous session's remainder.
+    if (!isTyping) typingThrottle.forget(parsed.conversationId);
+
+    // socket.to(...) = the conversation room MINUS the sender: a client never
+    // receives its own echo, and nothing reaches the personal room or any
+    // other room. The payload is exactly three keys — three, so no name, no
+    // timestamp and no seq can be smuggled into a keystroke frame.
+    socket.to(conversationRoom(parsed.conversationId)).emit('chat:typing', {
+      conversationId: parsed.conversationId,
+      userId,
+      isTyping,
+    });
+    return ack(cb, { ok: true, data: { relayed: true } });
+  };
+
+  // Registered as two literals (not a loop over a constant) so the socket-layer
+  // source pins still SEE both events inside the guard.
+  guard(socket, log, 'chat:typing:start', typingHandler(true));
+  guard(socket, log, 'chat:typing:stop', typingHandler(false));
 
   guard(socket, log, 'chat:message:send', async (payload, cb) => {
     const parsed = validateSendPayload(payload);

@@ -13,6 +13,7 @@ is described here only once its code exists in the repository.
 | **34.2** | Threads (reply-to + thread root, thread REST list, socket reply, thread panel) | **IMPLEMENTED** (this document) |
 | **34.3** | Mentions (`@user` autocomplete, server-validated `mentions[]`, in-app notifications only) | **IMPLEMENTED** (this document) |
 | **34.4** | Search (conversation-scoped only) | **IMPLEMENTED** (this document) |
+| **34.5** | Typing indicators (ephemeral, no storage) | **IMPLEMENTED** (this document) |
 | 34.5 | Typing indicator (socket-only, ephemeral, never stored) | NOT BUILT YET |
 
 Explicitly **out of scope for the whole phase**: presence, availability, last
@@ -942,6 +943,172 @@ npm run dev
 
 ---
 
-*Unit 34.5 is not described here yet: this document gains a section per unit,
-written when that unit is built. No later unit is in progress while 34.4 is
-awaiting localhost acceptance.*
+## 34.5 Typing Indicators
+
+### Implemented changes
+
+**Ephemeral, conversation-scoped, stored nowhere.** A typing frame is born in a
+keystroke, lives for one room broadcast, and dies — there is no table, no cache,
+no counter, and no "who was typing" map anywhere in the stack. The one piece of
+server state is a per-socket throttle that is destroyed with the socket.
+
+- **Added `Backend/src/services/chat/chatTypingService.js`** — the throttle and
+  the timing constants, and nothing else: it imports nothing at all (pinned).
+- **Modified `Backend/src/socket/chatSocketValidators.js`** —
+  `validateTypingPayload` (a conversation id, validated before any query runs).
+- **Modified `Backend/src/socket/chatSocketHandlers.js`** — the two guarded
+  listeners and the relay; the header comment records the one Phase 33
+  exclusion this phase reverses.
+- **Modified the 33-era pins** that forbade typing (see "Pin inversions").
+- **Frontend** — `TypingIndicator.jsx` (text + three CSS dots), a
+  `chat:typing` listener with a 5 s missed-frame TTL in the socket client,
+  `typingStart` / `typingStop` emitters, `typing` state in `chatSlice`
+  (`typingChanged` / `typingExpired` / `typingCleared`), the emit timers in
+  `ChatPage`, and one new `onTypingChange` prop on the composer.
+- **Tests** — new hermetic `Backend/test/chatTyping.test.js` (16 tests).
+
+### Event contracts
+
+```jsonc
+// client → server   (ACK: { ok: true, data: { relayed: boolean } })
+{ "conversationId": "<id>" }     // chat:typing:start
+{ "conversationId": "<id>" }     // chat:typing:stop
+
+// server → client   (relay; three fields, exactly three)
+{ "conversationId": "<id>", "userId": "<server-derived id>", "isTyping": true }
+```
+
+- The relay goes to `conversationRoom(conversationId)` through **`socket.to(...)`**
+  — the room **minus the sender** — so a client never receives its own echo.
+  Never the personal room, never company-wide, never another room.
+- `userId` is always the socket's own server-derived identity: a payload that
+  names somebody else is ignored (the validator keeps only `conversationId`).
+- Refusals: `VALIDATION_ERROR` (malformed frame, before any query),
+  `NOT_FOUND_OR_FORBIDDEN` (non-member **or** other tenant **or** missing —
+  one indistinguishable answer), `CONVERSATION_DISABLED` (a locked room stays
+  quiet; its composer is disabled anyway), `UNAUTHORIZED` (no principal).
+- A throttled frame answers **`{ ok: true, data: { relayed: false } }`**: an
+  ignored frame is not an error, because an error on a keystroke path only
+  teaches a client to retry.
+
+### Membership enforcement
+
+The typing path reuses the **same** gate as every other chat event:
+`loadWritableConversation` (`_id` + `companyId` + `members.userId`, `.lean()`),
+injected once into the handler factory. There is no second membership
+implementation to review, and because the gate is a read, a typing frame cannot
+write even by accident (a test wires the model fake to throw on any write).
+
+### Anti-spam throttle
+
+Per-socket, in-memory, bounded — deliberately **not** the 33.11 identity
+limiter: a shared Redis counter for something that stores nothing would be cost
+without benefit, and would put a keystroke path in Redis at all.
+
+| Knob | Value | Why |
+| --- | --- | --- |
+| min gap between **relayed** starts, per conversation | 1000 ms | the client heartbeats at 3 s, so a real typist is never throttled and a loop is |
+| frame ceiling per socket (both directions) | 60 frames / 10 s | a client cannot turn the relay into a broadcast amplifier |
+| tracked conversations per socket | 50 (LRU) | bounded memory; an unbounded map is a leak |
+| `stop` | never start-throttled | a stop is how the room goes quiet; delaying it leaves a ghost |
+
+Exceeding the ceiling is **ignored**, and a `stop` releases its conversation's
+stamp so a new session starts immediately. There is no fail-open path: the
+ceiling refuses the relay, not the safety check.
+
+### Privacy statement
+
+- **Not stored.** No typing field exists on any model (a test asserts
+  `ChatMessage` / `ChatConversation` declare neither `isTyping` nor `typingAt`),
+  nothing is written to Redis, and there is no typing history to delete.
+- **Not presence.** Typing says one thing — "someone has text in the box in
+  THIS conversation" — and it expires on its own 5 s after the last frame. It is
+  never paired with availability, never rendered outside the open conversation,
+  and a closed tab changes nothing for anyone else.
+- **Not logged.** The typing path contains no `console` and no logger call
+  (pinned). At most it is never logged at all — a keystroke firehose must not
+  become a log stream, which is also how "we can see when people type" would
+  start.
+- **No surveillance vocabulary.** Presence, availability, last-seen, seen-by and
+  per-message receipt broadcasts remain forbidden across the socket layer, and
+  typing must be exactly three names: `chat:typing:start`, `chat:typing:stop`,
+  `chat:typing` (pinned).
+- **The receiver's TTL is a missed-frame deadline, not a session length**: if the
+  stop frame never arrives, the indicator expires instead of claiming activity
+  that is no longer happening.
+
+### Behaviour notes
+
+- **The client heartbeats (3 s) while the text keeps changing.** The plan said
+  "emit start once per session", but a session can outlast the receiver's 5 s
+  TTL, so a single start would let the indicator vanish while the person is
+  still typing. Re-emitting start every 3 s is the minimum that stays honest;
+  the server's 1 s throttle allows it and the cost is one tiny frame per 3 s per
+  typing person.
+- **Stop fires on three signals**: 2.5 s of no input, a successful send (the
+  message is the signal now), and a conversation switch or page unmount (the
+  previous room is told before the new one is announced).
+- The indicator renders only for the **open** conversation, filters the
+  viewer's own id defensively, and falls back to "Someone is typing" when the
+  name cannot be resolved — never to a raw id.
+
+### Pin inversions (honest, not silent)
+
+Phase 33 deliberately forbade typing events; Phase 34.5 reverses exactly that
+one decision. Three existing pins were updated rather than deleted:
+
+1. `chatSocketFoundation.test.js` — the exhaustive registered-event inventory
+   gains the two events; the allowed/emitted lists gain the typing pair and the
+   relay; `chat:typing` leaves the forbidden list **and** the test now asserts
+   typing is exactly three names, so a fourth ("…:state", "…:history") fails.
+2. `chatSocketResilience.test.js` — the guard pin and the raw-stub inventory
+   gain both events (typing awaits a service, so an unguarded listener would be
+   an unhandled rejection).
+3. `chatHardening.test.js` — typing frames are added to the gate enumeration
+   and the test asserts they contribute **no identity action** and own **no
+   policy entry**, so a future edit that quietly puts a Redis bucket on this
+   path fails here instead of shipping.
+
+Nothing was weakened: presence, last-seen, seen-by and receipt broadcasts stay
+forbidden, and the "no surveillance fields on models" test is untouched.
+
+### Localhost verification steps
+
+```powershell
+# Terminal 1 — API + socket server
+cd Backend
+npm run dev
+
+# Terminal 2 — web app
+cd Frontend
+npm run dev
+```
+
+1. Sign in as **two different users** in two browsers (or one normal + one
+   private window) and open the **same** conversation in both.
+2. Type in Browser A: Browser B shows "<name> is typing" with animated dots
+   within about a second. A itself must never show its own indicator.
+3. Stop typing: the indicator clears after ~2.5 s (the idle stop), and again
+   after ~5 s at the latest (the receiver's TTL) if a frame is ever lost.
+4. Keep typing continuously for 20 s: the indicator must NOT disappear (that is
+   the 3 s heartbeat doing its job).
+5. Press Enter to send: the indicator disappears in B immediately, before or as
+   the message arrives.
+6. Switch conversations in A while the indicator is showing in B: B's indicator
+   clears, and the new conversation shows none.
+7. Open three windows: two typers produce "<A> and <B> are typing"; a third
+   message-less member sees the same sentence.
+8. Lock the conversation as an admin (History stays readable) and try typing in
+   A: no indicator appears anywhere (the room is quiet) and the composer says
+   why.
+9. Kill the backend (Ctrl+C in Terminal 1): indicators clear, the realtime
+   banner appears, and nothing lingers after a page refresh (there is nothing
+   to linger — the state never left memory).
+10. Optional (Postman/socket test): call `chat:typing:start` with a
+    conversation id from another tenant and with a random id — both must answer
+    the same `NOT_FOUND_OR_FORBIDDEN`, and no indicator may appear in any room.
+
+---
+
+*Every unit of Phase 34 is now documented here. No further unit is in progress
+while 34.5 is awaiting localhost acceptance.*

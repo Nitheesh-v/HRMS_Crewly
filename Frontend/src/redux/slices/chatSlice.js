@@ -27,6 +27,14 @@ const initialState = {
   // conversation so closing and reopening a thread is instant and two threads
   // in the same conversation cannot collide.
   threads: {}, // rootMessageId -> { conversationId, root, items, nextCursor, hasMore, status, error }
+  // 34.5 — who is typing, per conversation. EPHEMERAL by construction: the
+  // entries exist only while a socket frame keeps refreshing them, they are
+  // never persisted, never sent anywhere, and the socket client clears a
+  // (room, user) pair on its TTL if the stop frame never arrives. Rendered for
+  // the ACTIVE conversation only — an indicator for a room you are not looking
+  // at would be exactly the ambient awareness this product refuses to build.
+  typing: {}, // conversationId -> [userId, ...]
+
   // 34.4 — conversation-scoped search. ONE search at a time (the panel belongs
   // to the conversation it was opened in), so the state is flat rather than
   // keyed by conversation: switching rooms clears it.
@@ -167,6 +175,56 @@ const chatSlice = createSlice({
       entry.status = 'ready';
       entry.error = '';
       entry.jump = { targetSeq: Number(targetSeq) };
+    },
+
+    // 34.5 — one typing frame. A Set would not survive Immer/Redux devtools, so
+    // the list is rebuilt without duplicates: the frame is idempotent, and two
+    // hearts-beating frames for the same person never double-render.
+    typingChanged: (state, action) => {
+      const { conversationId, userId, isTyping } = action.payload;
+      const key = String(conversationId ?? '');
+      const who = String(userId ?? '');
+
+      if (!key || !who) return;
+
+      const current = state.typing[key] ?? [];
+
+      if (isTyping) {
+        state.typing[key] = current.includes(who) ? current : [...current, who];
+        return;
+      }
+
+      const next = current.filter((entry) => entry !== who);
+
+      if (next.length > 0) state.typing[key] = next;
+      else delete state.typing[key];
+    },
+
+    // The TTL expiry: a stop frame that never arrived (closed laptop, dead
+    // network) must not leave a permanent "…is typing" on the other side.
+    typingExpired: (state, action) => {
+      const { conversationId, userId } = action.payload;
+      const key = String(conversationId ?? '');
+      const who = String(userId ?? '');
+      const current = state.typing[key] ?? [];
+      const next = current.filter((entry) => entry !== who);
+
+      if (next.length > 0) state.typing[key] = next;
+      else delete state.typing[key];
+    },
+
+    // Leaving a room, or losing the socket: every indicator in it was a claim
+    // about a connection we no longer have. With no conversationId the whole
+    // map goes (disconnect).
+    typingCleared: (state, action) => {
+      const key = action.payload?.conversationId;
+
+      if (!key) {
+        state.typing = {};
+        return;
+      }
+
+      delete state.typing[String(key)];
     },
 
     searchStarted: (state, action) => {
@@ -489,6 +547,9 @@ export const {
   searchMoreLoaded,
   searchFailed,
   searchCleared,
+  typingChanged,
+  typingExpired,
+  typingCleared,
   readUpToApplied,
 } = chatSlice.actions;
 

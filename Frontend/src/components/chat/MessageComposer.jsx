@@ -44,6 +44,10 @@ const MessageComposer = ({
   // projected by the backend read path (no directory lookup, no new endpoint).
   mentionMembers = [],
   meId = null,
+  // 34.5 — the composer reports "there is text in the box" and nothing else.
+  // The page owns the timers, the socket and the conversation boundary, so the
+  // box stays a box (and a keystroke can never reach the network from here).
+  onTypingChange = null,
 }) => {
   const [text, setText] = useState('');
   const [error, setError] = useState('');
@@ -146,6 +150,10 @@ const MessageComposer = ({
     setText('');
     setMentions([]);
     setCaret(0);
+    // 34.5 — sending ends the indicator at once: the message itself is the
+    // signal now, and a lingering "…is typing" beside a delivered message
+    // reads as a lie.
+    onTypingChange?.(false);
   };
 
   return (
@@ -196,6 +204,8 @@ const MessageComposer = ({
             onChange={(event) => {
               setText(event.target.value);
               setCaret(event.target.selectionStart ?? event.target.value.length);
+              // 34.5 — one boolean per keystroke; the page debounces it.
+              onTypingChange?.(hasVisibleText(event.target.value));
               setDismissed(false);
               setActiveIndex(0);
             }}

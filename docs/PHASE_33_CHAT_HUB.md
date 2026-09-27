@@ -2362,6 +2362,15 @@ API #1       API #2        API #N      ← node src/server.js
 ONE prefix law for every namespace: BULLMQ_PREFIX when set, else crewly:<NODE_ENV>.
 ```
 
+**34.5 update** — the socket layer gained exactly three typing names:
+`chat:typing:start` / `chat:typing:stop` (client→server) and `chat:typing`
+(server→client, relayed to the conversation room minus the sender). A typing
+frame is ephemeral: nothing is written to Mongo or Redis, the only server state
+is a per-socket throttle that dies with the connection, and the receiver expires
+an indicator 5 s after the last frame. Presence, availability, last-seen and
+per-message receipts remain forbidden. Details: `docs/PHASE_34_CHAT_ENHANCEMENTS.md`
+(§34.5).
+
 **34.4 update** — the chat surface gained a conversation-scoped search endpoint
 (`GET /api/chat/conversations/:conversationId/search?q=&cursor=&limit=`,
 TEXT messages only, tombstones excluded, cursor by `seq`, ≤ 20 rows). It adds no

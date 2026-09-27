@@ -207,6 +207,10 @@ test('every authenticated listener is registered through the guard (source pin)'
     // other write (a rejection here would be an unhandledRejection).
     'chat:message:react',
     'chat:message:unreact',
+    // 34.5 — typing awaits the membership read, so it needs the same guard:
+    // a throw on a keystroke path must never reach the process.
+    'chat:typing:start',
+    'chat:typing:stop',
   ]) {
     assert.match(
       source,
@@ -241,6 +245,10 @@ test('every authenticated listener is registered through the guard (source pin)'
       'chat:message:sendFile',
       'chat:message:unreact',
       'chat:readUpTo',
+      // 34.5 — the typing pair is stubbed raw for an unauthenticated socket,
+      // exactly like every other chat event.
+      'chat:typing:start',
+      'chat:typing:stop',
     ],
     'raw registrations must be exactly the unauthenticated stubs',
   );

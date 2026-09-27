@@ -44,6 +44,24 @@ export const validateJoinPayload = (payload) => {
 };
 
 /**
+ * 34.5 — a typing frame carries ONE field and nothing else. The rules are the
+ * join payload's rules (a valid conversation id) because that is exactly what
+ * the handler needs; refusing anything extra here keeps the ephemeral path
+ * from ever becoming a channel for a client-supplied name, timestamp or state.
+ */
+export const validateTypingPayload = (payload) => {
+  const body = asObject(payload);
+
+  if (!body) return validationError('A typing payload is required.');
+
+  if (!mongoose.isValidObjectId(String(body.conversationId || ''))) {
+    return validationError('conversationId is not a valid identifier.');
+  }
+
+  return { ok: true, conversationId: String(body.conversationId) };
+};
+
+/**
  * 34.2 — one definition of "an optional reply target": absent, null and the
  * empty string all mean "no reply"; anything else must be a valid ObjectId.
  * Returns { ok, value } so a malformed id is refused at the edge instead of
