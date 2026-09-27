@@ -50,6 +50,17 @@
 //    same root, so a thread can never fork into a tree the UI cannot render.
 //    Both fields are immutable once written — a message that could change its
 //    parent would silently move between threads.
+//
+//  34.3 — MENTIONS ARE STRUCTURED, AND VISIBLE
+//    mentions[] holds { userId, token } where token is the EXACT visible
+//    fragment ('@Name') that the sender's autocomplete inserted. The client
+//    sends user IDs only; the server resolves them (same company, member of
+//    this conversation) and derives the token, so a highlight can never point
+//    at somebody the server did not validate. A mention whose token does not
+//    appear in the body is dropped before it reaches here: an invisible mention
+//    would be a silent ping. No index is declared for this array on purpose —
+//    nothing reads by mention yet, and a multikey index would tax every message
+//    write for a query that does not exist (see docs §34.3 Limitations).
 // ═══════════════════════════════════════════════════════════════════════════
 
 import mongoose from 'mongoose';
@@ -159,6 +170,27 @@ const chatMessageSchema = new Schema(
       immutable: true,
     },
 
+    // ── Mentions (34.3) ──────────────────────────────────────────────────
+    // Bounded (CHAT_MENTION_MAX_PER_MESSAGE = 10) at the write path, resolved
+    // server-side, and tombstoned away with the text. `token` is a copy of a
+    // fragment ALREADY visible in the body — never a new disclosure.
+    mentions: {
+      type: [
+        new Schema(
+          {
+            userId: {
+              type: Schema.Types.ObjectId,
+              ref: 'User',
+              required: true,
+            },
+            token: { type: String, trim: true, maxlength: 120 },
+          },
+          { _id: false }
+        ),
+      ],
+      default: [],
+    },
+
     // ── Edits ────────────────────────────────────────────────────────────
     // editVersion 0 means "never edited". Each edit increments it and appends
     // a ChatMessageEdit row. 33.6 enforces the retention cap and the
@@ -266,6 +298,10 @@ chatMessageSchema.pre('validate', function clearTombstonedText() {
     this.editVersion = 0;
     this.editedAt = null;
     this.editedByUserId = null;
+    // 34.3 — a deleted message mentions nobody: keeping the rows would leave a
+    // surviving pointer to people who were addressed by text that no longer
+    // exists (and the UI would try to highlight tokens that are gone).
+    this.mentions = [];
   }
 });
 

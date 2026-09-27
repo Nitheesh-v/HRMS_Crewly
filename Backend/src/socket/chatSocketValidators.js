@@ -14,6 +14,8 @@
 
 import mongoose from 'mongoose';
 
+import { parseMentionIds } from '../utils/chatMentionRules.js';
+
 import { CHAT_MESSAGE_TEXT_MAX } from '../models/ChatMessage.js';
 import { hasVisibleText } from '../utils/chatTextRules.js';
 import { CHAT_ATTACHMENT_MAX_PER_MESSAGE } from '../utils/chatFileRules.js';
@@ -47,6 +49,11 @@ export const validateJoinPayload = (payload) => {
  * Returns { ok, value } so a malformed id is refused at the edge instead of
  * reaching a query.
  */
+// 34.3 — the wire shape of an optional mention list. The RULES live in
+// utils/chatMentionRules (one definition, shared with the service); this is
+// only the edge check that keeps a malformed array from reaching a query.
+const parseMentions = (raw) => parseMentionIds(raw);
+
 const parseReplyTarget = (raw) => {
   if (raw === undefined || raw === null || raw === '') return { ok: true, value: null };
 
@@ -89,12 +96,17 @@ export const validateSendPayload = (payload) => {
 
   if (!replyTo.ok) return validationError('replyToMessageId is not a valid identifier.');
 
+  const mentions = parseMentions(body.mentions);
+
+  if (!mentions.ok) return validationError(mentions.message);
+
   return {
     ok: true,
     conversationId: String(body.conversationId),
     clientMessageId,
     text,
     replyToMessageId: replyTo.value,
+    mentions: mentions.ids,
   };
 };
 
@@ -300,6 +312,10 @@ export const validateSendFilePayload = (payload) => {
 
   if (!replyTo.ok) return validationError('replyToMessageId is not a valid identifier.');
 
+  const mentions = parseMentions(body.mentions);
+
+  if (!mentions.ok) return validationError(mentions.message);
+
   return {
     ok: true,
     conversationId: String(body.conversationId),
@@ -307,5 +323,6 @@ export const validateSendFilePayload = (payload) => {
     attachmentIds,
     text: caption.length > 0 ? caption : null,
     replyToMessageId: replyTo.value,
+    mentions: mentions.ids,
   };
 };

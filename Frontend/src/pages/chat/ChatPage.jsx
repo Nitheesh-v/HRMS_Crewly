@@ -143,6 +143,19 @@ const ChatPage = () => {
     return map;
   }, [chat.conversations]);
 
+  // 34.3 — WHO CAN BE MENTIONED: exactly the members of the conversation being
+  // written into, taken from the backend read projection that already carries
+  // them (`members[].user`). No directory call, no company-wide search, and the
+  // server will accept a mention from this same list only.
+  const mentionMembers = useMemo(
+    () =>
+      (activeConversation?.members ?? []).map((member) => ({
+        userId: String(member.userId),
+        user: member.user ? { name: member.user.name } : null,
+      })),
+    [activeConversation]
+  );
+
   const nameOfUserId = useCallback(
     (userId) => {
       const user =
@@ -306,7 +319,12 @@ const ChatPage = () => {
    * difference between them is the reply target, so the optimistic pending row,
    * the FILE-vs-TEXT decision and the failure copy cannot drift apart.
    */
-  const sendMessage = async ({ text, attachments = [], replyToMessageId = null }) => {
+  const sendMessage = async ({
+    text,
+    attachments = [],
+    replyToMessageId = null,
+    mentionUserIds = [],
+  }) => {
     const clientMessageId = newClientMessageId();
 
     dispatch(pendingAdd({
@@ -342,12 +360,15 @@ const ChatPage = () => {
           attachmentIds: attachments.map((entry) => entry._id),
           text: caption,
           replyToMessageId: replyTarget,
+          // 34.3 — a caption can mention people just like a text body.
+          mentions: mentionUserIds,
         })
       : await chatRealtime.send({
           conversationId,
           clientMessageId,
           text,
           replyToMessageId: replyTarget,
+          mentions: mentionUserIds,
         });
 
     if (!ack.ok) {
@@ -370,8 +391,13 @@ const ChatPage = () => {
   };
 
   // The main composer: answers whichever message "Reply" last selected.
-  const handleSend = (text, attachments = []) =>
-    sendMessage({ text, attachments, replyToMessageId: replyingTo?._id ?? null }).then((failure) => {
+  const handleSend = (text, attachments = [], mentionUserIds = []) =>
+    sendMessage({
+      text,
+      attachments,
+      replyToMessageId: replyingTo?._id ?? null,
+      mentionUserIds,
+    }).then((failure) => {
       // The reply target is consumed by a successful send only: a failed send
       // keeps the context so the retry answers the same message.
       if (!failure) setReplyingTo(null);
@@ -381,7 +407,7 @@ const ChatPage = () => {
 
   // The thread panel: answers the ROOT (see ThreadPanel for why the flat
   // two-level model makes the root the honest target).
-  const handleThreadReply = (text, attachments = []) =>
+  const handleThreadReply = (text, attachments = [], mentionUserIds = []) =>
     sendMessage({
       text,
       attachments,
@@ -389,6 +415,7 @@ const ChatPage = () => {
       // threadRootMessageId), so the panel always answers the thread's first
       // message — see ThreadPanel for why that is the honest target.
       replyToMessageId: openThreadRoot,
+      mentionUserIds,
     }).then((failure) => {
       if (!failure) setPendingAttachments((current) => ({ ...current, [conversationId]: [] }));
 
@@ -782,6 +809,8 @@ const ChatPage = () => {
               }
               onSend={handleSend}
               conversationId={conversationId}
+              meId={meId}
+              mentionMembers={mentionMembers}
               pendingAttachments={activePending}
               onAddAttachment={addAttachment}
               onRemoveAttachment={removeAttachment}
@@ -807,6 +836,8 @@ const ChatPage = () => {
               : undefined
           }
           onSendReply={handleThreadReply}
+          meId={meId}
+          mentionMembers={mentionMembers}
           disabled={chat.realtimeStatus !== 'connected' || conversationLocked}
           disabledReason={
             conversationLocked

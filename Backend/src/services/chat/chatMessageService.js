@@ -45,6 +45,8 @@ import logger from '../../config/logger.js';
 // 34.2 — threads. The resolver lives in its own module (the read path needs it
 // too); importing it here keeps ONE definition of "may this be replied to".
 import { resolveReplyTarget, toReplyPreview } from './chatThreadService.js';
+// 34.3 — mentions: resolve (membership + tenant + visibility) and notify.
+import { notifyMentionedUsers, resolveMentions } from './chatMentionService.js';
 
 const PREVIEW_MAX = 200; // matches ChatConversation.lastMessagePreview maxlength
 
@@ -100,6 +102,8 @@ const persistMessage = async ({
   preview,
   // 34.2 — optional. When present, this message answers that message.
   replyToMessageId = null,
+  // 34.3 — optional. User ids the sender wants to address (@mentions).
+  mentionUserIds = [],
 }) => {
   if (unrenderableMutation(mutation)) {
     // Refused before any DB work. Logged with safe scalars only — never the
@@ -147,6 +151,27 @@ const persistMessage = async ({
     mutation.threadRootMessageId = parent.threadRootMessageId ?? parent._id;
     replyTo = toReplyPreview(parent);
   }
+
+  // 34.3 — mentions are resolved BEFORE the write, against the conversation
+  // that was just loaded: every id must be a user of THIS company AND a member
+  // of THIS conversation, and the mention must be VISIBLE in the body. A
+  // refused id (unknown, another tenant, not a member) refuses the whole send;
+  // an id that resolves but has no visible '@Name' is simply dropped. The
+  // function does nothing at all — not even a query — when nobody was
+  // mentioned, so an ordinary send is byte-for-byte the send it was before.
+  const mentioned = await resolveMentions({
+    companyId,
+    conversation,
+    text: mutation.text,
+    mentionUserIds,
+    actorUserId: senderUserId,
+  });
+
+  if (!mentioned.ok) {
+    return { ok: false, code: mentioned.code, message: mentioned.message };
+  }
+
+  mutation.mentions = mentioned.mentions;
 
   // Idempotency pre-check: a retry of an already-stored intent returns the
   // stored message instead of writing a second one.
@@ -205,6 +230,19 @@ const persistMessage = async ({
       ...mutation,
     });
 
+    // 34.3 — notify ONLY for a genuinely created message (an idempotent retry
+    // returns above and must never ring a bell twice), and AFTER the write, so
+    // nothing about a notification can fail a send. Best-effort by design.
+    if (mentioned.mentions.length > 0) {
+      await notifyMentionedUsers({
+        companyId,
+        conversation,
+        mentions: mentioned.mentions,
+        actorUserId: senderUserId,
+        actorName: mentioned.actorName,
+      });
+    }
+
     return { ok: true, message: message.toObject(), created: true, replyTo };
   } catch (error) {
     // Duplicate-key race: a concurrent send with the same clientMessageId won.
@@ -232,6 +270,8 @@ export const sendTextMessage = async ({
   text,
   // 34.2 — optional reply target (same tenant + conversation, verified inside).
   replyToMessageId = null,
+  // 34.3 — optional mention targets (same rules, verified inside).
+  mentionUserIds = [],
 }) =>
   persistMessage({
     companyId,
@@ -241,6 +281,7 @@ export const sendTextMessage = async ({
     mutation: { type: 'TEXT', text },
     preview: text,
     replyToMessageId,
+    mentionUserIds,
   });
 
 // 33.10 — a FILE message carries references, never bytes. `attachments` is
@@ -262,6 +303,9 @@ export const sendFileMessage = async ({
   // 34.2 — a FILE message may answer a message too. Without this the reply
   // context would be silently dropped whenever the composer had an attachment.
   replyToMessageId = null,
+  // 34.3 — …and it may mention people too (the caption is the body the token
+  // must be visible in).
+  mentionUserIds = [],
 }) => {
   const caption = hasVisibleText(text) ? String(text).trim() : null;
 
@@ -273,5 +317,6 @@ export const sendFileMessage = async ({
     mutation: { type: 'FILE', text: caption, attachments },
     preview: caption ?? CHAT_FILE_PREVIEW_TEXT,
     replyToMessageId,
+    mentionUserIds,
   });
 };

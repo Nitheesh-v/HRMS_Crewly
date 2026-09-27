@@ -834,6 +834,13 @@ carries `replyToMessageId`, `threadRootMessageId` and a bounded
 documented in `docs/PHASE_34_CHAT_ENHANCEMENTS.md` (§34.2); nothing else in this
 document changes.
 
+**34.3 update** — the same two events accept an optional `mentions: [userId]`
+list (≤ 10, members of that conversation only), and every `message` payload
+additionally carries `mentions: [{ userId, token }]`, where `token` is the
+visible `@Name` fragment already present in the body. Mentions are documented in
+`docs/PHASE_34_CHAT_ENHANCEMENTS.md` (§34.3); no new socket event, no new REST
+endpoint, and nothing else in this document changes.
+
 Rooms: `chat:conv:<id>` (`utils/chatKeys.js`); `chat:company:<id>` and
 `chat:user:<id>` reserved for future targeted fan-out.
 

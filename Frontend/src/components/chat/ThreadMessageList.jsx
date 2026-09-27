@@ -10,11 +10,21 @@
 //
 // Text is always a React text node. Nothing here can render HTML.
 import Avatar from './Avatar.jsx';
+import MentionText from './MentionText.jsx';
 import ReactionBar from './ReactionBar.jsx';
 import { hasVisibleText } from '../../utils/chatText.js';
 import { timeOf } from '../../utils/chatFormat.js';
 
-const ThreadMessageList = ({ items, nameOfUserId, status, error, hasMore, onOlder, loadingOlder }) => {
+const ThreadMessageList = ({
+  items,
+  nameOfUserId,
+  meId = null,
+  status,
+  error,
+  hasMore,
+  onOlder,
+  loadingOlder,
+}) => {
   if (status === 'loading' && items.length === 0) {
     return <p className="p-4 text-xs text-crewly-dim">Loading replies…</p>;
   }
@@ -93,9 +103,7 @@ const ThreadMessageList = ({ items, nameOfUserId, status, error, hasMore, onOlde
                     </p>
                   )}
                   {hasBody && (
-                    <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-crewly-text">
-                      {message.text}
-                    </p>
+                    <MentionText text={message.text} mentions={message.mentions} meId={meId} />
                   )}
                   {!hasBody && attachments.length === 0 && (
                     <p className="text-sm italic text-crewly-dim">

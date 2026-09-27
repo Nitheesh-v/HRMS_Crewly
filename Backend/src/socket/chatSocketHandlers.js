@@ -246,6 +246,14 @@ const toBroadcastMessage = (message, replyTo = null) => ({
   replyToMessageId: message.replyToMessageId ?? null,
   threadRootMessageId: message.threadRootMessageId ?? null,
   replyTo,
+  // 34.3 — mentions, as stored: [{ userId, token }]. `token` is a fragment
+  // ALREADY visible in the body, so this adds no disclosure; the client needs
+  // it to highlight exactly what the server validated (no name guessing, no
+  // ambiguity when two members share a name). An empty array, never undefined.
+  mentions: (message.mentions ?? []).map((mention) => ({
+    userId: mention.userId,
+    token: mention.token ?? null,
+  })),
   // 33.10 — references only (id + display metadata). Never a storage key,
   // never a URL: the download is a separate, auth-gated request.
   // 33.10-fix3 — ONE definition, shared with the REST history projection so
@@ -394,6 +402,9 @@ export const registerChatSocketHandlers = ({
       text: parsed.text,
       // 34.2 — null for a top-level message; the service verifies the target.
       replyToMessageId: parsed.replyToMessageId ?? null,
+      // 34.3 — the service verifies each id (same company + member of THIS
+      // conversation + visible in the body) before anything is written.
+      mentionUserIds: parsed.mentions ?? [],
     });
 
     if (!result.ok) {
@@ -403,6 +414,15 @@ export const registerChatSocketHandlers = ({
         return ack(cb, fail(
           CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR,
           result.message || 'A message must not be empty.',
+        ));
+      }
+
+      // 34.3 — a refused mention is the caller's mistake, like an empty body:
+      // answer with the RULE, not with "retry".
+      if (result.code === 'VALIDATION_ERROR') {
+        return ack(cb, fail(
+          CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR,
+          result.message || 'That mention is not allowed.',
         ));
       }
 
@@ -477,6 +497,8 @@ export const registerChatSocketHandlers = ({
       text: parsed.text,
       // 34.2 — a FILE message may answer a message too.
       replyToMessageId: parsed.replyToMessageId ?? null,
+      // 34.3 — …and its caption can mention people the same way.
+      mentionUserIds: parsed.mentions ?? [],
     });
 
     if (!result.ok) {
@@ -486,6 +508,15 @@ export const registerChatSocketHandlers = ({
         return ack(cb, fail(
           CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR,
           result.message || 'A message must not be empty.',
+        ));
+      }
+
+      // 34.3 — a refused mention is the caller's mistake, like an empty body:
+      // answer with the RULE, not with "retry".
+      if (result.code === 'VALIDATION_ERROR') {
+        return ack(cb, fail(
+          CHAT_SOCKET_ERROR_CODES.VALIDATION_ERROR,
+          result.message || 'That mention is not allowed.',
         ));
       }
 

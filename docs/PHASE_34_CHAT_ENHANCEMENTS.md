@@ -11,7 +11,7 @@ is described here only once its code exists in the repository.
 | --- | --- | --- |
 | **34.1** | Message reactions (fixed icon/text set) | **IMPLEMENTED** (this document) |
 | **34.2** | Threads (reply-to + thread root, thread REST list, socket reply, thread panel) | **IMPLEMENTED** (this document) |
-| 34.3 | Mentions (`@user` autocomplete, server-validated `mentions[]`, in-app notifications only) | NOT BUILT YET |
+| **34.3** | Mentions (`@user` autocomplete, server-validated `mentions[]`, in-app notifications only) | **IMPLEMENTED** (this document) |
 | 34.4 | Search (conversation-scoped only) | NOT BUILT YET |
 | 34.5 | Typing indicator (socket-only, ephemeral, never stored) | NOT BUILT YET |
 
@@ -496,6 +496,213 @@ Signed in as a normal customer user with Redis available:
 
 ---
 
-*Units 34.3 – 34.5 are not described here yet: this document gains a section per
-unit, written when that unit is built. No later unit is in progress while 34.2 is
+## 34.3 Mentions
+
+### Implemented changes
+
+**Mentions are structured, never parsed.** The client sends USER IDS; the server
+resolves them and derives the visible token. Name-based parsing would need a
+name→user lookup (a directory-enumeration surface: "does a person called X work
+here?") and would be ambiguous the moment two colleagues share a first name.
+Everything stored is something the server verified.
+
+- **Added `Backend/src/utils/chatMentionRules.js`** — the pure rules, shared by
+  the socket validator and the service so the wire rules and the stored rules
+  cannot drift: `CHAT_MENTION_MAX_PER_MESSAGE = 10`,
+  `CHAT_MENTION_TOKEN_MAX = 120`, `mentionTokenFor(name)` (whitespace-collapsed
+  `@Name`, bounded), `tokenAppearsInText(text, token)` (literal, case-sensitive)
+  and `parseMentionIds(raw)` (absent → `[]`; otherwise a list of ≤ 10 valid
+  ObjectIds, de-duplicated).
+- **Added `Backend/src/services/chat/chatMentionService.js`**:
+  - `resolveMentions` — ONE tenant-scoped query
+    (`User.find({ _id: { $in: ids + actor }, companyId })`) that simultaneously
+    proves existence, enforces the tenant, and fetches the names. An id that is
+    unknown, from **another tenant**, or **not a member of this conversation**
+    refuses the whole send with `VALIDATION_ERROR`; an id that resolves but whose
+    `@Name` is **not visible in the body** is dropped (the visibility rule). No
+    ids at all → no query, no behaviour change.
+  - `notifyMentionedUsers` — the in-app fan-out described below.
+- **Modified `Backend/src/models/ChatMessage.js`** — `mentions: [{ userId, token }]`
+  (`_id: false`, `userId` required and refs `User`, `token` ≤ 120, default `[]`),
+  and the tombstone hook now clears `mentions` with the text: a deleted message
+  mentions nobody.
+- **Modified `Backend/src/services/chat/chatMessageService.js`** — mentions are
+  resolved **before** the write (on the already-loaded conversation), so a
+  refused id writes nothing and notifies nobody; both `sendTextMessage` and
+  `sendFileMessage` accept `mentionUserIds`; notifications fire **only** on a
+  genuinely created message (`created: true`), after the insert.
+- **Modified `Backend/src/utils/notify.js`** — additive `notifyUsers(companyId, userIds, payload)`
+  (one `insertMany`, same never-throws law as `notifyUser`). `notifySmart` is
+  **deliberately not used** here: it queues email.
+- **Modified `Backend/src/socket/chatSocketValidators.js`** — `chat:message:send`
+  and `chat:message:sendFile` accept an optional `mentions` list, shape-checked at
+  the edge; a malformed value is refused before any database read.
+- **Modified `Backend/src/socket/chatSocketHandlers.js`** — both send paths
+  forward the ids, `toBroadcastMessage` projects `mentions: [{ userId, token }]`
+  (same shape as the REST history projection), and a refused mention is answered
+  with the **rule** (`VALIDATION_ERROR`), not with a retry hint.
+- **Modified `Backend/src/services/chat/chatService.js`** — the history
+  projection carries the same `mentions` rows.
+- **Frontend** — `MentionAutocomplete` (suggestions = members of the active
+  conversation, me excluded), `MentionText` (the body rendered as text nodes with
+  the server's tokens tinted), `utils/chatMentions.js` (caret scan, insert,
+  reconcile), and wiring through `MessageComposer` (both composers),
+  `MessageBubble`, `MessageList`, `ThreadMessageList`, `ThreadPanel` and
+  `ChatPage`.
+- **Tests** — new hermetic `Backend/test/chatMentions.test.js` (18 tests) plus
+  mention pins in `chatModels.test.js`.
+
+### API + socket contracts
+
+```jsonc
+// emit -> chat:message:send   (chat:message:sendFile takes the same field)
+{
+  "conversationId": "<id>",
+  "clientMessageId": "<key>",
+  "text": "please review @Bob Iyer",
+  "replyToMessageId": null,          // 34.2, unchanged
+  "mentions": ["<userId>", "<userId>"]   // 34.3 — optional, ≤ 10, ids only
+}
+```
+
+The ACK and the room broadcast carry the **stored** rows, and the REST history
+projection carries exactly the same shape:
+
+```jsonc
+{
+  "mentions": [ { "userId": "<id>", "token": "@Bob Iyer" } ]
+}
+```
+
+`token` is the fragment the sender's autocomplete inserted — text the reader
+already sees in the body, so it is not new disclosure. It is the highlight
+authority: the UI never guesses a name. Refusals: `VALIDATION_ERROR` with the
+rule in `message` for an unknown / other-tenant / non-member id or a malformed
+list; the existing `CONVERSATION_DISABLED`, `NOT_FOUND_OR_FORBIDDEN`,
+`RATE_LIMITED`, `RETRYABLE` are unchanged. Mentions ride the existing
+`message.send` budget — no new limit action, no new socket event, no new REST
+endpoint.
+
+### Security + tenancy rules
+
+- **Membership is the denominator.** You can only mention a member of the
+  conversation you are writing into. Mentioning someone who cannot read the
+  message would notify them about something they can never open.
+- **Tenant isolation.** The lookup filters by `companyId` and `_id` together, so
+  a foreign id behaves exactly like a missing one: the send is refused and
+  nothing is written. A mention cannot be used to probe another tenant.
+- **Visibility.** A mention is stored (and can therefore notify) only when its
+  token is really in the body — no invisible pings, no notification about text
+  that does not address you.
+- **Bounded.** ≤ 10 mentions per message, enforced at the edge **and** in the
+  service, with duplicates collapsed.
+- **No user document leaks.** The wire shape is exactly `{ userId, token }`;
+  names are not re-broadcast as profile objects, and the client resolves names
+  from the member list it already has.
+- **Notifications are private and internal.** In-app only (`utils/notify.js`,
+  never the email path), the actor is excluded, one batch per message, and the
+  payload contains **no message text** — not even the token. Best-effort: a
+  notification failure can never fail a send.
+- **No surveillance.** Nothing records who read a mention, when, or whether they
+  followed it. A mention is an event about a message, never an observation of a
+  person.
+
+### Notification behaviour (in-app only)
+
+| Field | Value |
+| --- | --- |
+| `type` | `CHAT` |
+| `title` | `You were mentioned in chat` |
+| `message` | `<actor name> mentioned you in "<conversation title>"` (or `a direct message` / `a conversation`) |
+| `link` | `/app/chat/<conversationId>` — opens the conversation |
+| recipients | every stored mention, **excluding the sender** |
+| delivery | one `insertMany` per message, best-effort, only for a genuinely created message |
+| email | **none** — `notifySmart` is deliberately avoided in this unit |
+
+### Limitations
+
+- **No index on `mentions.userId` in 34.3.** Nothing reads by mention yet, and a
+  fifth multikey index on `ChatMessage` would tax every message write for a query
+  that does not exist. When a "my mentions" surface ships, add
+  `{ companyId: 1, conversationId: 1, 'mentions.userId': 1, createdAt: -1 }` and
+  measure before and after. (This is deliberate, not an oversight.)
+- **Names, not handles.** The token is `@` + display name, so a name with spaces
+  is one token and two people with the same name produce the same visible token
+  — the *stored* rows stay unambiguous (each has its own `userId`), and "mentions
+  you" is decided by id, so a collision is cosmetic only.
+- **Renames are not retroactive.** A message keeps the token it was sent with. If
+  a person is renamed later, the old message still highlights the old spelling
+  and the person's user id still resolves for notifications.
+- **A stale pick is dropped, not fixed.** If the text no longer contains the
+  token (deleted before sending, or the name changed between load and send), the
+  mention is dropped and the message still sends. The sender sees the truth in
+  the ACK/broadcast rather than an error they cannot act on.
+- **Directory-wide mentions are impossible by design.** The autocomplete lists
+  conversation members only; a company directory picker is not part of 34.3 and
+  would need its own permission review.
+- **No mention of a non-member, ever.** Not even by hand-crafting a socket
+  payload: the server refuses it.
+- **Typing an `@Name` manually does not create a mention.** Only a picked
+  suggestion is sent as a mention id; plain text stays plain text (it is not
+  highlighted and notifies nobody). That is the honest behaviour of a structured
+  mention system.
+- **Mentions in a FILE message** work when the caption carries the token; a file
+  with no caption has no body to mention anyone in.
+
+### Localhost verification steps
+
+```powershell
+# Terminal 1 — API + socket server
+cd Backend
+npm run dev
+
+# Terminal 2 — web app
+cd Frontend
+npm run dev
+```
+
+Signed in as a normal customer user, in a conversation with at least two members:
+
+1. In the composer type `@`: a suggestion list appears with the conversation's
+   members (you are not listed).
+2. Keep typing letters — the list filters by name. `ArrowUp`/`ArrowDown` move the
+   highlight, `Enter` or `Tab` picks, `Escape` closes.
+3. Pick a name: `@Name ` is inserted and the caret lands after it. Press `Enter`
+   — while the list is open `Enter` picks instead of sending.
+4. Send the message: the mention is **tinted** in the bubble, and in a second
+   browser window signed in as the mentioned person the **bell count rises**
+   within its polling interval.
+5. Open the bell (or Notifications): the entry reads "You were mentioned in
+   chat" / "<your name> mentioned you in "<conversation>"" and clicking it opens
+   the conversation. Confirm the notification shows **no message text**.
+6. React/refresh: the highlight survives a page reload (it comes from the stored
+   rows, not from socket state).
+7. **Invisible-mention check** — type `@`, pick a name, then **delete the token**
+   before sending: the message sends normally and nobody is notified (the pick is
+   reconciled away, and the server drops non-visible mentions regardless).
+8. **Self-mention check** — mention yourself: the token is highlighted, and you
+   receive **no** notification for it.
+9. **Non-member check (Postman/socket)** — from the browser console or a socket
+   client, send `chat:message:send` with `mentions: ["<a user id who is not in
+   this conversation>"]`: the ACK is
+   `VALIDATION_ERROR` / "You can only mention people who are in this
+   conversation." and no message is written.
+10. **Cross-tenant check** — repeat with an id from another company (or a random
+    ObjectId): the same refusal, with nothing created. Neither case reveals
+    whether the id exists.
+11. **Cap check** — try to pick more than 10 people: the list says a message can
+    mention at most 10, and a hand-crafted payload with 11 ids is refused at the
+    edge.
+12. **Thread check** — mention someone from inside a thread reply: the mention is
+    highlighted in the panel row and the notification opens the conversation.
+13. **Locked conversation check** — as a moderator, disable the conversation:
+    mentions cannot be sent (the whole send is refused like any other write),
+    while history keeps its highlights.
+14. **FILE check** — attach a file, type a caption containing a picked mention,
+    and send: the caption is highlighted and the mentioned person is notified.
+
+---
+
+*Units 34.4 – 34.5 are not described here yet: this document gains a section per
+unit, written when that unit is built. No later unit is in progress while 34.3 is
 awaiting localhost acceptance.*

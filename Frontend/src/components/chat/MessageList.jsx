@@ -156,6 +156,7 @@ const MessageList = ({
                 onReply={onReply}
                 onOpenThread={onOpenThread}
                 nameOfUserId={nameOfUserId}
+                meId={meId}
                 canModerate={canModerate}
                 locked={locked}
               />

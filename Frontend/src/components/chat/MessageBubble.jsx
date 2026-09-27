@@ -12,6 +12,7 @@ import { CornerUpLeft, MessagesSquare, Pencil, ShieldAlert, Trash2 } from 'lucid
 
 import AttachmentBubble from './AttachmentBubble.jsx';
 import Avatar from './Avatar.jsx';
+import MentionText from './MentionText.jsx';
 import ReactionBar from './ReactionBar.jsx';
 import ReactionPicker from './ReactionPicker.jsx';
 import { hasVisibleText } from '../../utils/chatText.js';
@@ -49,6 +50,7 @@ const MessageBubble = ({
   onReply,
   onOpenThread,
   nameOfUserId,
+  meId = null,
   canModerate = false,
   locked = false,
 }) => {
@@ -155,9 +157,9 @@ const MessageBubble = ({
                 </div>
               )}
               {hasBody && (
-                <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-crewly-text">
-                  {message.text}
-                </p>
+                // 34.3 — the body renders through MentionText: plain text nodes
+                // with the server-validated mention tokens tinted. No HTML.
+                <MentionText text={message.text} mentions={message.mentions} meId={meId} />
               )}
             </>
           )}

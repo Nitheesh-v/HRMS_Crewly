@@ -183,6 +183,27 @@ test('ChatMessage: thread fields are nullable, immutable and never required', ()
   }
 });
 
+test('ChatMessage: mentions are structured, bounded and id-free (34.3)', () => {
+  const path = ChatMessage.schema.path('mentions');
+
+  assert.ok(path, 'mentions must exist');
+  assert.equal(path.instance, 'Array');
+
+  const inner = path.schema ?? path.casterConstructor?.schema;
+
+  assert.ok(inner, 'mentions is an array of subdocuments');
+  assert.equal(inner.options._id, false, 'no per-mention id noise');
+  assert.equal(inner.path('userId').isRequired, true, 'every mention names a user');
+  assert.equal(inner.path('userId').options.ref, 'User');
+  assert.equal(inner.path('token').options.maxlength, 120, 'the visible token is bounded');
+  assert.equal(
+    keySequences(ChatMessage).some((keys) => keys.includes('mentions.userId')),
+    false,
+    'no mention index in 34.3 — nothing reads by mention yet, and the write cost '
+      + 'is not worth pre-paying for a query that does not exist',
+  );
+});
+
 test('ChatMessage: idempotent-send index is unique over the client key', () => {
   const options = optionsFor(ChatMessage, [
     'companyId',

@@ -30,6 +30,8 @@ const ThreadPanel = ({
   conversationId,
   thread,
   nameOfUserId,
+  meId = null,
+  mentionMembers = [],
   onClose,
   onLoadOlder,
   onSendReply,
@@ -117,6 +119,7 @@ const ThreadPanel = ({
         <ThreadMessageList
           items={thread?.items ?? []}
           nameOfUserId={nameOfUserId}
+          meId={meId}
           status={thread?.status ?? 'idle'}
           error={thread?.error ?? ''}
           hasMore={Boolean(thread?.hasMore)}
@@ -139,6 +142,8 @@ const ThreadPanel = ({
             disabledReason={disabledReason}
             onSend={onSendReply}
             conversationId={conversationId}
+            meId={meId}
+            mentionMembers={mentionMembers}
             pendingAttachments={pendingAttachments}
             onAddAttachment={onAddAttachment}
             onRemoveAttachment={onRemoveAttachment}

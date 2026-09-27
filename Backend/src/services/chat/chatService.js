@@ -545,6 +545,16 @@ export const sanitizeMessageForHistory = (
   // Count of replies in the thread this message ROOTS. Derived, never stored:
   // a delete can therefore never leave a stale number behind.
   threadReplyCount: Number(threadReplyCount) || 0,
+
+  // ── 34.3 mentions ──────────────────────────────────────────────────────
+  // Stored, already validated rows: [{ userId, token }]. The token is the
+  // exact visible fragment the client inserted, so the renderer highlights
+  // what the server actually verified instead of guessing from names. A
+  // tombstone carries none (the model clears them with the text).
+  mentions: (message.mentions ?? []).map((mention) => ({
+    userId: mention.userId,
+    token: mention.token ?? null,
+  })),
 });
 
 // Newest-first keyset pagination over the 33.2 index
