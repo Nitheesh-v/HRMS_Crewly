@@ -5,6 +5,7 @@ import Modal from '../../components/Modal';
 import useAuth from '../../hooks/useAuth';
 import permissionService from '../../services/permissionService.js';
 import { ROLES, CREATION_RIGHTS, ROLE_STYLES, roleLabel } from '../../utils/roles';
+import { notify } from '../../utils/notify.js';
 
 
 
@@ -47,7 +48,6 @@ export default function UsersPage() {
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({ search: '', role: '', department: '', status: '' });
   const [loading, setLoading] = useState(true);
-  const [banner, setBanner] = useState(null);
 
   const [modal, setModal] = useState({ open: false, mode: 'create', user: null });
   const [form, setForm] = useState(EMPTY_FORM);
@@ -55,9 +55,22 @@ export default function UsersPage() {
   const [pwModal, setPwModal] = useState({ open: false, user: null, password: '', confirm: '' });
   const [pwSaving, setPwSaving] = useState(false);
 
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
   const flash = (type, text) => {
-    setBanner({ type, text });
-    setTimeout(() => setBanner(null), 4000);
+    const body = typeof text === 'string' && text ? text : '';
+
+    if (!body) return;
+
+    const kind = String(type).toLowerCase();
+
+    if (kind === 'error' || kind === 'danger' || kind === 'failed') notify.error(body);
+    else if (kind === 'warning' || kind === 'warn') notify.warning(body);
+    else if (kind === 'info') notify.info(body);
+    else notify.success(body);
   };
   const errText = (err) => err?.response?.data?.message || err?.message || 'Something went wrong';
 
@@ -196,11 +209,6 @@ export default function UsersPage() {
         )}
       </div>
 
-      {banner && (
-        <div className={`card px-4 py-3 text-sm ${banner.type === 'error' ? 'text-crewly-red' : 'text-crewly-green'}`}>
-          {banner.text}
-        </div>
-      )}
 
       {/* filters — stack on mobile, row on desktop */}
       <div className="card p-3 sm:p-4 flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:gap-3">

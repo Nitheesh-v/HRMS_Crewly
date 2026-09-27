@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { AlertTriangle, CheckCircle2, MapPin, QrCode } from 'lucide-react';
+import { CheckCircle2, MapPin, QrCode } from 'lucide-react';
 import attendanceCaptureService from '../../services/attendanceCaptureService.js';
+import { notify } from '../../utils/notify.js';
 
 // Phase 31.14 — employee QR punch (scan → confirm → punch). The URL
 // carries the token to the SPA route only; resolve + redeem are
@@ -57,25 +58,24 @@ const QrPunchPage = () => {
   const { token } = useParams();
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [redeeming, setRedeeming] = useState('');
   const [locating, setLocating] = useState(false);
   const [done, setDone] = useState(null);
 
   const resolve = useCallback(async () => {
     setLoading(true);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     try {
       const res = await attendanceCaptureService.resolveChallenge(token);
       setPreview(res.data);
     } catch (resolveError) {
       const status = resolveError?.response?.status || resolveError?.status;
       if (status === 410) {
-        setError('This QR code has expired or was already used. Please scan a fresh one at the workplace.');
+        notify.error('This QR code has expired or was already used. Please scan a fresh one at the workplace.');
       } else if (status === 404) {
-        setError('This QR code was not recognized. Please scan a fresh one at the workplace.');
+        notify.error('This QR code was not recognized. Please scan a fresh one at the workplace.');
       } else {
-        setError(resolveError?.message || 'Could not read this QR code');
+        notify.error(resolveError?.message || 'Could not read this QR code');
       }
     } finally {
       setLoading(false);
@@ -88,7 +88,7 @@ const QrPunchPage = () => {
 
   const handleRedeem = async (action) => {
     setRedeeming(action);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     // 31.16 D-08 — CLOCK_IN redeems carry the one-shot GPS fix the
     // geofence gate verifies against the challenge's bound location.
     // Break/out redeems send no position (never collected, by design).
@@ -98,7 +98,7 @@ const QrPunchPage = () => {
       try {
         position = await readSinglePosition();
       } catch (positionError) {
-        setError(positionError?.message || 'Could not determine your location — please retry');
+        notify.error(positionError?.message || 'Could not determine your location — please retry');
         setLocating(false);
         setRedeeming('');
         return;
@@ -116,9 +116,9 @@ const QrPunchPage = () => {
     } catch (redeemError) {
       const status = redeemError?.response?.status || redeemError?.status;
       if (status === 410) {
-        setError('This QR code has expired or was already used. Please scan a fresh one at the workplace.');
+        notify.error('This QR code has expired or was already used. Please scan a fresh one at the workplace.');
       } else {
-        setError(redeemError?.message || 'Could not record the punch');
+        notify.error(redeemError?.message || 'Could not record the punch');
       }
     } finally {
       setRedeeming('');
@@ -146,11 +146,6 @@ const QrPunchPage = () => {
         </div>
       )}
 
-      {error && (
-        <div className="flex items-start gap-2 rounded-xl border border-crewly-red/40 bg-crewly-red/10 p-4 text-sm text-crewly-red">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {error}
-        </div>
-      )}
 
       {done && (
         <div className="rounded-xl border border-green-500/40 bg-green-500/10 p-6 text-center">

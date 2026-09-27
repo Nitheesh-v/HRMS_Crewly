@@ -5,8 +5,9 @@ import { useParams } from 'react-router-dom';
 
 import payrollAnalyticsService from '../../../services/payrollAnalyticsService.js';
 
-import { AccessDenied, Banner, DataTable, PageHeader, SectionCard } from './analyticsShared.jsx';
+import { AccessDenied, DataTable, PageHeader, SectionCard } from './analyticsShared.jsx';
 import { count, formatDate, money, monthLabel } from './analyticsShared.js';
+import { notify } from '../../../utils/notify.js';
 
 // ───────────────────────────────────────────────────────────────────────────
 // §23 — One employee's salary history.
@@ -29,19 +30,17 @@ const SalaryHistoryPage = () => {
   const [history, setHistory] = useState(null);
   const [loading, setLoading] = useState(true);
   const [denied, setDenied] = useState(false);
-  const [error, setError] = useState(null);
 
   const load = useCallback(async () => {
     if (!employeeId) return;
     setLoading(true);
-    setError(null);
     try {
       const data = await payrollAnalyticsService.employeeHistory(employeeId);
       setHistory(data || null);
       setDenied(false);
     } catch (err) {
       if (err?.status === 403 || err?.status === 401) setDenied(true);
-      else setError(err?.message || 'Unable to load this salary history');
+      else notify.error(err, 'Unable to load this salary history');
     } finally {
       setLoading(false);
     }
@@ -64,7 +63,6 @@ const SalaryHistoryPage = () => {
         subtitle={`${employee.employeeName || 'Employee'} ${employee.employeeCode || ''} · §23 what was paid, and what was contracted`}
       />
 
-      {error ? <div className="mb-4"><Banner type="error" text={error} onClose={() => {}} /></div> : null}
       {denied ? <AccessDenied message="This employee is outside your payroll scope." /> : null}
       {loading ? <p className="text-sm text-crewly-dim">Loading the salary history…</p> : null}
 

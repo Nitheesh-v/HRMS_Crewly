@@ -3,6 +3,7 @@ import { Building2, Check, Copy, ExternalLink, FileText, Globe2, ImagePlus, Tras
 import companyService from '../../services/companyService';
 import useAuth from '../../hooks/useAuth';
 import { ROLES } from '../../utils/roles';
+import { notify } from '../../utils/notify.js';
 
 
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -28,7 +29,6 @@ const CompanyProfilePage = () => {
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [banner, setBanner] = useState(null);
   const [copied, setCopied] = useState(false);
   const [branding, setBranding] = useState(null);
   const [layoutForm, setLayoutForm] = useState({ width: 34, maxHeight: 30, fit: 'CONTAIN', alignment: 'LEFT' });
@@ -37,9 +37,22 @@ const CompanyProfilePage = () => {
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [previewBusy, setPreviewBusy] = useState(false);
 
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
   const flash = (type, text) => {
-    setBanner({ type, text });
-    setTimeout(() => setBanner(null), 4000);
+    const body = typeof text === 'string' && text ? text : '';
+
+    if (!body) return;
+
+    const kind = String(type).toLowerCase();
+
+    if (kind === 'error' || kind === 'danger' || kind === 'failed') notify.error(body);
+    else if (kind === 'warning' || kind === 'warn') notify.warning(body);
+    else if (kind === 'info') notify.info(body);
+    else notify.success(body);
   };
 
   useEffect(() => {
@@ -215,11 +228,6 @@ const CompanyProfilePage = () => {
         <p className="text-sm text-crewly-dim">This name &amp; address is printed on every payslip you generate.</p>
       </div>
 
-      {banner && (
-        <div className={`card px-4 py-3 text-sm ${banner.type === 'error' ? 'text-crewly-red' : 'text-crewly-green'}`}>
-          {banner.text}
-        </div>
-      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* ── form ── */}

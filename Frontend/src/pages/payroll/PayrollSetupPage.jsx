@@ -11,6 +11,7 @@ import {
 import Modal from '../../components/Modal.jsx';
 import usePermission from '../../hooks/usePermission.js';
 import payrollSetupService from '../../services/payrollSetupService.js';
+import { notify } from '../../utils/notify.js';
 
 // ─────────────────────────────────────────────────────────────
 // Phase 29.1 — Company Payroll Setup
@@ -105,8 +106,6 @@ const PayrollSetupPage = () => {
   } = usePermission();
 
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [banner, setBanner] = useState(null);
   const [payload, setPayload] = useState(null);
   const [form, setForm] = useState(clone(emptyForm));
   const [step, setStep] = useState(1);
@@ -136,9 +135,27 @@ const PayrollSetupPage = () => {
   const summary = payload?.summary;
   const status = config?.status || 'NOT_CONFIGURED';
 
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
   const flash = useCallback((type, text) => {
-    setBanner({ type, text });
-    setTimeout(() => setBanner(null), 4000);
+    const body = typeof text === 'string' && text ? text : '';
+
+    if (!body) return;
+
+    const kind = String(type).toLowerCase();
+
+    if (kind === 'error' || kind === 'danger' || kind === 'failed') notify.error(body);
+    else if (kind === 'warning' || kind === 'warn') notify.warning(body);
+    else if (kind === 'info') notify.info(body);
+    else notify.success(body);
   }, []);
 
   const load = useCallback(async () => {
@@ -179,13 +196,13 @@ const PayrollSetupPage = () => {
       next.BANK.accountNumber = ''; // never pre-fill the stored number
       setForm(next);
       setDirty(false);
-      setError('');
+      /* 35.1 — nothing to report (failure state cleared) */
     } catch (err) {
       if (err?.status === 403 || err?.code === 'PERMISSION_DENIED') {
         setAccessDenied(true);
-        setError('');
+        /* 35.1 — nothing to report (failure state cleared) */
       } else {
-        setError(err.message || 'Unable to load payroll setup');
+        notify.error(err.message || 'Unable to load payroll setup');
       }
     } finally {
       setLoading(false);
@@ -223,7 +240,7 @@ const PayrollSetupPage = () => {
         const detail = err?.data?.errors?.length
           ? err.data.errors.map((fieldError) => fieldError.message).join(' · ')
           : err.message;
-        setError(detail || 'Could not save this section');
+        notify.error(detail || 'Could not save this section');
       }
     }, 1800);
 
@@ -255,7 +272,7 @@ const PayrollSetupPage = () => {
       setStep(1);
       flash('ok', 'Payroll setup started');
     } catch (err) {
-      setError(err.message || 'Unable to start payroll setup');
+      notify.error(err.message || 'Unable to start payroll setup');
     } finally {
       setSaving(false);
     }
@@ -265,7 +282,7 @@ const PayrollSetupPage = () => {
     const activeKey = STEPS[step - 1]?.key;
     if (!activeKey) return false;
     setSaving(true);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     try {
       const data = await payrollSetupService.saveSection(activeKey, clone(form[activeKey]));
       setPayload(data);
@@ -281,9 +298,9 @@ const PayrollSetupPage = () => {
       const detail = err?.data?.errors?.length
           ? err.data.errors.map((fieldError) => fieldError.message).join(' · ')
           : err.message;
-        setError(detail || 'Could not save this section');
+        notify.error(detail || 'Could not save this section');
       if (err?.data?.errors?.length) {
-        setError(err.data.errors.map((e) => e.message).join(' · '));
+        notify.error(err.data.errors.map((e) => e.message).join(' · '));
       }
       return false;
     } finally {
@@ -303,7 +320,7 @@ const PayrollSetupPage = () => {
       const detail = err?.data?.errors?.length
         ? err.data.errors.map((e) => e.message).join(' · ')
         : err.message;
-      setError(detail || 'Unable to activate payroll');
+      notify.error(detail || 'Unable to activate payroll');
       setConfirmActivate(false);
     } finally {
       setSaving(false);
@@ -319,7 +336,7 @@ const PayrollSetupPage = () => {
       setSuspendReason('');
       flash('ok', 'Payroll suspended');
     } catch (err) {
-      setError(err.message || 'Unable to suspend payroll');
+      notify.error(err.message || 'Unable to suspend payroll');
     } finally {
       setSaving(false);
     }
@@ -350,12 +367,17 @@ const PayrollSetupPage = () => {
     return <div className="card text-crewly-dim">Loading payroll setup…</div>;
   }
 
-  if (error && !payload) {
+  /*
+   * 35.1 — a failed load already raised a toast (services/failureReporter.js),
+   * so this branch no longer repeats its text; it only keeps the person from
+   * landing on a configuration form with nothing behind it.
+   */
+  if (!payload) {
     return (
       <div className="space-y-4">
         <h1 className="text-2xl font-bold">Payroll Setup</h1>
         <div className="rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">
-          {error}
+          Payroll setup could not be loaded. Please refresh and try again.
         </div>
       </div>
     );
@@ -366,16 +388,6 @@ const PayrollSetupPage = () => {
     return (
       <div className="space-y-5">
         <h1 className="text-2xl font-bold">Payroll Setup</h1>
-        {banner && (
-          <div className="rounded-lg border border-crewly-green/40 bg-crewly-green/10 px-4 py-3 text-sm text-crewly-green">
-            {banner.text}
-          </div>
-        )}
-        {error && (
-          <div className="rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">
-            {error}
-          </div>
-        )}
         <div className="card space-y-4 text-center">
           <h2 className="text-lg font-semibold">Payroll Setup Required</h2>
           <p className="text-sm text-crewly-dim">
@@ -415,17 +427,6 @@ const PayrollSetupPage = () => {
           <h1 className="text-2xl font-bold">Payroll Configuration</h1>
           <span className={`badge ${statusBadgeClass(status)}`}>{status}</span>
         </div>
-
-        {banner && (
-          <div className="rounded-lg border border-crewly-green/40 bg-crewly-green/10 px-4 py-3 text-sm text-crewly-green">
-            {banner.text}
-          </div>
-        )}
-        {error && (
-          <div className="rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">
-            {error}
-          </div>
-        )}
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <div className="card">
@@ -571,17 +572,6 @@ const PayrollSetupPage = () => {
         <h1 className="text-2xl font-bold">Payroll Setup</h1>
         <span className={`badge ${statusBadgeClass(status)}`}>{status}</span>
       </div>
-
-      {banner && (
-        <div className="rounded-lg border border-crewly-green/40 bg-crewly-green/10 px-4 py-3 text-sm text-crewly-green">
-          {banner.text}
-        </div>
-      )}
-      {error && (
-        <div className="rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">
-          {error}
-        </div>
-      )}
 
       <div className="grid gap-5 lg:grid-cols-[260px_1fr]">
         {/* Stepper */}

@@ -14,6 +14,7 @@ import {
   Users,
 } from 'lucide-react';
 import superAdminService from '../../services/superAdminService.js';
+import { notify } from '../../utils/notify.js';
 
 // Phase 30.11 — internal BGV operations dashboard (platform-only).
 // Everything shown is DERIVED server-side from the authoritative Phase
@@ -82,8 +83,6 @@ const SuperAdminBgvOpsDashboardPage = () => {
   const [filters, setFilters] = useState({ state: '', checkType: '', orderCode: '', sla: '', sort: 'age_desc' });
   const [page, setPage] = useState(1);
   const [slaForm, setSlaForm] = useState(null);
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState('');
 
   const loadSummary = useCallback(async () => {
@@ -91,7 +90,7 @@ const SuperAdminBgvOpsDashboardPage = () => {
       const result = await superAdminService.bgvOpsDashboard();
       setSummary(result);
     } catch (requestError) {
-      setError(requestError?.message || 'Could not load the operations dashboard');
+      notify.error(requestError, 'Could not load the operations dashboard');
     }
   }, []);
 
@@ -105,7 +104,7 @@ const SuperAdminBgvOpsDashboardPage = () => {
       const result = await superAdminService.bgvOpsQueue(params);
       setQueue(result);
     } catch (requestError) {
-      setError(requestError?.message || 'Could not load the queue');
+      notify.error(requestError, 'Could not load the queue');
     }
   }, [page, filters]);
 
@@ -114,7 +113,7 @@ const SuperAdminBgvOpsDashboardPage = () => {
       const result = await superAdminService.bgvOpsWorkload();
       setWorkload(result);
     } catch (requestError) {
-      setError(requestError?.message || 'Could not load verifier workload');
+      notify.error(requestError, 'Could not load verifier workload');
     }
   }, []);
 
@@ -130,13 +129,13 @@ const SuperAdminBgvOpsDashboardPage = () => {
         unassignedTargetHours: result?.policy?.unassignedTargetHours ?? '',
       });
     } catch (requestError) {
-      setError(requestError?.message || 'Could not load SLA settings');
+      notify.error(requestError, 'Could not load SLA settings');
     }
   }, []);
 
   useEffect(() => {
-    setError('');
-    setNotice('');
+
+
     if (tab === 'overview') loadSummary();
     if (tab === 'queues') loadQueue();
     if (tab === 'workload') loadWorkload();
@@ -145,8 +144,8 @@ const SuperAdminBgvOpsDashboardPage = () => {
 
   const saveSla = async () => {
     setBusy('sla');
-    setError('');
-    setNotice('');
+
+
     try {
       const targets = {};
       for (const type of CHECK_TYPES) {
@@ -160,11 +159,11 @@ const SuperAdminBgvOpsDashboardPage = () => {
         unassignedTargetHours:
           slaForm.unassignedTargetHours === '' ? null : Number(slaForm.unassignedTargetHours),
       });
-      setNotice('SLA policy saved — dashboard statuses now use the new targets.');
+      notify.success('SLA policy saved — dashboard statuses now use the new targets.');
       await loadSla();
       setSla(result);
     } catch (requestError) {
-      setError(requestError?.response?.data?.message || requestError?.message || 'Could not save SLA settings');
+      notify.error(requestError?.response?.data?.message || requestError?.message || 'Could not save SLA settings');
     } finally {
       setBusy('');
     }
@@ -222,8 +221,8 @@ const SuperAdminBgvOpsDashboardPage = () => {
         </div>
       </div>
 
-      {error && <div className="card border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-300">{error}</div>}
-      {notice && <div className="card border-crewly-green/30 bg-crewly-green/10 p-3 text-sm text-crewly-green">{notice}</div>}
+
+
 
       <div className="flex flex-wrap gap-2">
         {TABS.map(({ id, label, icon: Icon }) => (

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import departmentService from '../../../services/departmentService.js';
 import payrollAnalyticsService from '../../../services/payrollAnalyticsService.js';
+import { notify } from '../../../utils/notify.js';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Phase 29.12 — formatting helpers and data hooks for the analytics pages.
@@ -154,7 +155,10 @@ export const useReport = ({ reportKey, filters = {}, enabled = true }) => {
       setDenied(false);
     } catch (err) {
       if (err?.status === 403 || err?.status === 401) setDenied(true);
-      else setError(err?.message || 'Unable to load this report');
+      else {
+        setError(err?.message || 'Unable to load this report');
+        notify.error(err, 'Unable to load this report');
+      }
     } finally {
       setLoading(false);
     }

@@ -11,6 +11,7 @@ import {
   ReceiptText,
   ShieldX,
 } from "lucide-react";
+import { notify } from '../../utils/notify.js';
 
 const money = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 const fmtDate = (d) =>
@@ -49,13 +50,25 @@ export default function BillingPage() {
   const [usage, setUsage] = useState(null);
   const [payments, setPayments] = useState([]);
   const [months, setMonths] = useState(1);
-  const [banner, setBanner] = useState(null);
   const [payModal, setPayModal] = useState(null); // { order }
   const [busy, setBusy] = useState(false);
 
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
   const flash = (type, text) => {
-    setBanner({ type, text });
-    setTimeout(() => setBanner(null), 8000);
+    const body = typeof text === 'string' && text ? text : '';
+
+    if (!body) return;
+
+    const kind = String(type).toLowerCase();
+
+    if (kind === 'error' || kind === 'danger' || kind === 'failed') notify.error(body);
+    else if (kind === 'warning' || kind === 'warn') notify.warning(body);
+    else if (kind === 'info') notify.info(body);
+    else notify.success(body);
   };
   const errText = (err) =>
     err?.response?.data?.message || err?.message || "Something went wrong";
@@ -191,13 +204,6 @@ export default function BillingPage() {
         </p>
       </div>
 
-      {banner && (
-        <div
-          className={`card px-4 py-3 text-sm ${banner.type === "error" ? "text-crewly-red" : "text-crewly-green"}`}
-        >
-          {banner.text}
-        </div>
-      )}
 
       {/* current subscription */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">

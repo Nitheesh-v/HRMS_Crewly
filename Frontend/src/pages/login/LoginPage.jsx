@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import authService from "../../services/authService.js";
 import useAuth from "../../hooks/useAuth.jsx";
 import { getDashboardPath } from "../../utils/roles.js";
 import AuthLayout from "../../layout/AuthLayout.jsx";
 import PasswordField from "../../components/auth/PasswordField.jsx";
+import { notify } from '../../utils/notify.js';
 
 const REMEMBER_KEY = "crewly.rememberedLogin";
 
@@ -43,11 +44,23 @@ const LoginPage = () => {
   const [searchParams] = useSearchParams();
   const initial = rememberedLogin();
 
+  /*
+   * 35.1 — the "password changed" / "account is set up" notice that the reset
+   * and setup flows hand back through the URL is a toast now: it is a message
+   * about something that happened elsewhere, not a strip that belongs to the
+   * form. Raised once, on arrival.
+   */
+  useEffect(() => {
+    const notice = noticeFor(searchParams);
+
+    if (notice) {
+      notify.info(notice, { id: 'login-arrival-notice' });
+    }
+  }, [searchParams]);
+
   const [form, setForm] = useState(initial.form);
   const [remember, setRemember] = useState(initial.remember);
-  const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
-  const [notice, setNotice] = useState(() => noticeFor(searchParams));
   const [loading, setLoading] = useState(false);
 
   const onChange = (e) => {
@@ -78,8 +91,8 @@ const LoginPage = () => {
 
   const onSubmit = async (e) => {
     e.preventDefault();
-    setError("");
-    setNotice("");
+    /* 35.1 — nothing to report (failure state cleared) */
+    /* 35.1 — nothing to report (failure state cleared) */
 
     if (!validate()) return;
 
@@ -99,7 +112,7 @@ const LoginPage = () => {
       login(data.user);
       navigate(getDashboardPath(data.user.role), { replace: true });
     } catch (err) {
-      setError(err.message);
+      notify.error(err.message);
     } finally {
       setLoading(false);
     }
@@ -121,25 +134,7 @@ const LoginPage = () => {
           Sign in with your company code to continue to your workspace.
         </p>
 
-        {notice && (
-          <div
-            role="status"
-            className="mt-5 flex items-start gap-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200"
-          >
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-            <span>{notice}</span>
-          </div>
-        )}
 
-        {error && (
-          <div
-            role="alert"
-            className="mt-5 flex items-start gap-2.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200"
-          >
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-            <span>{error}</span>
-          </div>
-        )}
 
         <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate aria-busy={loading}>
           <div>

@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, Copy, Plus, Trash2 } from 'lucide-react';
 import Modal from '../../components/Modal.jsx';
 import usePermission from '../../hooks/usePermission.js';
 import salaryStructureService from '../../services/salaryStructureService.js';
+import { notify } from '../../utils/notify.js';
 
 // ── display mirrors of the backend rules (the server always decides) ────────
 
@@ -83,7 +84,6 @@ const SalaryStructuresPage = () => {
   const [structures, setStructures] = useState([]);
   const [components, setComponents] = useState([]);
   const [meta, setMeta] = useState({ total: 0, page: 1, limit: 25, pages: 1 });
-  const [banner, setBanner] = useState(null);
   const [accessDenied, setAccessDenied] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -107,9 +107,27 @@ const SalaryStructuresPage = () => {
   const canActivate = hasPermission('SALARY_STRUCTURE_ACTIVATE');
   const noAccess = !permsLoading && !canView;
 
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
   const flash = useCallback((type, text) => {
-    setBanner({ type, text });
-    setTimeout(() => setBanner(null), 5000);
+    const body = typeof text === 'string' && text ? text : '';
+
+    if (!body) return;
+
+    const kind = String(type).toLowerCase();
+
+    if (kind === 'error' || kind === 'danger' || kind === 'failed') notify.error(body);
+    else if (kind === 'warning' || kind === 'warn') notify.warning(body);
+    else if (kind === 'info') notify.info(body);
+    else notify.success(body);
   }, []);
 
   const load = useCallback(async () => {
@@ -359,18 +377,6 @@ const SalaryStructuresPage = () => {
           </button>
         )}
       </div>
-
-      {banner && (
-        <div
-          className={`card text-sm ${
-            banner.type === 'error'
-              ? 'border-red-500/40 text-red-300'
-              : 'border-emerald-500/40 text-emerald-300'
-          }`}
-        >
-          {banner.text}
-        </div>
-      )}
 
       {/* §15 — filters */}
       <div className="card grid gap-3 md:grid-cols-3">

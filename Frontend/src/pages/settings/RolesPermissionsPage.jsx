@@ -5,6 +5,7 @@ import permissionService from "../../services/permissionService.js";
 import usePermission from "../../hooks/usePermission.js";
 import Can from "../../components/Can.jsx";
 import { Save, ShieldCheck, X } from "lucide-react";
+import { notify } from '../../utils/notify.js';
 
 const panel = "rounded-xl border border-slate-700 bg-slate-900 p-4";
 
@@ -32,7 +33,6 @@ const RolesPermissionsPage = () => {
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
   const [templates, setTemplates] = useState([]);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
 
@@ -69,7 +69,7 @@ const RolesPermissionsPage = () => {
       const response = await permissionService.users();
       setUsers(normalizeUsers(response));
     } catch (error) {
-      setMessage(error?.message || "Could not load users");
+      notify.error(error, 'Could not load users');
     }
   };
 
@@ -83,7 +83,7 @@ const RolesPermissionsPage = () => {
 
   const load = async () => {
     setLoading(true);
-    setMessage("");
+    /* 35.1 — nothing to report; failures are toasted by api.js */;
 
     try {
       const [roleRows, permissionData] = await Promise.all([
@@ -108,7 +108,7 @@ const RolesPermissionsPage = () => {
         selectRole(currentRole);
       }
     } catch (error) {
-      setMessage(error?.message || "Could not load roles and permissions");
+      notify.error(error, 'Could not load roles and permissions');
     } finally {
       setLoading(false);
     }
@@ -141,7 +141,7 @@ const RolesPermissionsPage = () => {
     if (!selectedRoleId) return;
 
     setBusy(true);
-    setMessage("");
+    /* 35.1 — nothing to report; failures are toasted by api.js */;
 
     try {
       const updatedRole =
@@ -158,10 +158,10 @@ const RolesPermissionsPage = () => {
         ),
       );
       selectRole(updatedRole);
-      setMessage("Role permissions updated successfully");
+      notify.success("Role permissions updated successfully");
       await refreshPermissions();
     } catch (error) {
-      setMessage(error?.message || "Could not save permissions");
+      notify.error(error, 'Could not save permissions');
     } finally {
       setBusy(false);
     }
@@ -175,7 +175,7 @@ const RolesPermissionsPage = () => {
     const description = window.prompt("Role description", "") || "";
 
     setBusy(true);
-    setMessage("");
+    /* 35.1 — nothing to report; failures are toasted by api.js */;
 
     try {
       const role = await permissionService.createRole({
@@ -184,11 +184,11 @@ const RolesPermissionsPage = () => {
         permissions: [],
       });
 
-      setMessage("Custom role created");
+      notify.success("Custom role created");
       await load();
       selectRole(role);
     } catch (error) {
-      setMessage(error?.message || "Could not create role");
+      notify.error(error, 'Could not create role');
     } finally {
       setBusy(false);
     }
@@ -199,7 +199,7 @@ const RolesPermissionsPage = () => {
   // administrator picks one here.
   const createRoleFromTemplate = async (template) => {
     setBusy(true);
-    setMessage("");
+    /* 35.1 — nothing to report; failures are toasted by api.js */;
 
     try {
       const role = await permissionService.createRole({
@@ -210,13 +210,11 @@ const RolesPermissionsPage = () => {
       });
 
       setTemplatePickerOpen(false);
-      setMessage(
-        `${template.name} role created — review its permissions and assign users.`,
-      );
+      notify.success(`${template.name} role created — review its permissions and assign users.`,);
       await load();
       selectRole(role);
     } catch (error) {
-      setMessage(error?.message || "Could not create role from template");
+      notify.error(error, 'Could not create role from template');
     } finally {
       setBusy(false);
     }
@@ -234,10 +232,10 @@ const RolesPermissionsPage = () => {
         name: name.trim(),
       });
 
-      setMessage("Role duplicated");
+      notify.success("Role duplicated");
       await load();
     } catch (error) {
-      setMessage(error?.message || "Could not duplicate role");
+      notify.error(error, 'Could not duplicate role');
     }
   };
 
@@ -282,11 +280,9 @@ const RolesPermissionsPage = () => {
 
       await permissionService.deactivateRole(selectedRole._id, payload);
 
-      setMessage(
-        members > 0
+      notify.success(members > 0
           ? `Role deactivated — ${members} user(s) moved to ${reassignTo}`
-          : "Role deactivated"
-      );
+          : "Role deactivated");
 
       setSelectedRoleId("");
       await load();
@@ -300,14 +296,17 @@ const RolesPermissionsPage = () => {
         .filter(Boolean)
         .join(", ");
 
-      setMessage(
-        [
-          error?.message || "Could not deactivate role",
-          details.assignedUsers ? ` (${details.assignedUsers} user(s)${names ? `: ${names}${details.assignedUsers > 3 ? "…" : ""}` : ""})` : "",
-          Array.isArray(details.reassignOptions) && details.reassignOptions.length
-            ? ` Move them first: Users → edit user → Role (options: ${details.reassignOptions.join(", ")})`
-            : "",
-        ].join("")
+      /*
+       * 35.1 — the server names the members who still hold the role; that
+       * sentence is the reason the action was refused, so it travels as the
+       * toast's description instead of a page banner.
+       */
+      notify.error(
+        error,
+        'Could not deactivate role',
+        names
+          ? { description: `Still held by ${names}${who.length > 3 ? ' and others' : ''}.` }
+          : undefined,
       );
     }
   };
@@ -325,7 +324,7 @@ const RolesPermissionsPage = () => {
 
       setUserPermissionData(result);
     } catch (error) {
-      setMessage(error?.message || "Could not load user permissions");
+      notify.error(error, 'Could not load user permissions');
     }
   };
 
@@ -335,12 +334,12 @@ const RolesPermissionsPage = () => {
     try {
       await permissionService.assignUserRole(selectedUserId, roleId);
 
-      setMessage("User role updated");
+      notify.success("User role updated");
 
       await loadUserPermissions(selectedUserId);
       await loadUsers();
     } catch (error) {
-      setMessage(error?.message || "Could not assign role");
+      notify.error(error, 'Could not assign role');
     }
   };
 
@@ -394,11 +393,11 @@ const RolesPermissionsPage = () => {
     try {
       await permissionService.saveUserOverrides(selectedUserId, overrides);
 
-      setMessage("User permission overrides saved");
+      notify.success("User permission overrides saved");
 
       await loadUserPermissions(selectedUserId);
     } catch (error) {
-      setMessage(error?.message || "Could not save overrides");
+      notify.error(error, 'Could not save overrides');
     }
   };
 
@@ -419,11 +418,6 @@ const RolesPermissionsPage = () => {
         </p>
       </div>
 
-      {message && (
-        <div className="rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-4 py-3 text-sm text-indigo-200">
-          {message}
-        </div>
-      )}
 
       <div className="flex gap-2">
         <button
@@ -549,11 +543,6 @@ const RolesPermissionsPage = () => {
                       <p className="text-xs text-slate-500">
                         {selectedPermissions.length} permissions selected
                       </p>
-                      {message && (
-                        <p className="mt-1 text-xs text-indigo-300">
-                          {message}
-                        </p>
-                      )}
                     </div>
 
                     <Can permission="SETTINGS_MANAGE">

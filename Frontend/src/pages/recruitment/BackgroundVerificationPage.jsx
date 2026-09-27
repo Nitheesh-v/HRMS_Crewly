@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { RefreshCw, ShieldCheck } from 'lucide-react';
 import usePermission from '../../hooks/usePermission.js';
 import bgvService from '../../services/bgvService.js';
+import { notify } from '../../utils/notify.js';
 
 const StatusPill = ({ status }) => (
   <span className="rounded-full border border-slate-700 bg-slate-800 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-300">
@@ -19,12 +20,11 @@ const BackgroundVerificationPage = () => {
   const [meta, setMeta] = useState({ kpis: {} });
   const [filters, setFilters] = useState({ status: '', search: '' });
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
 
   const load = useCallback(async () => {
     if (!canRead) return;
     setLoading(true);
-    setError('');
+
     try {
       const result = await bgvService.list({
         status: filters.status || undefined,
@@ -33,7 +33,7 @@ const BackgroundVerificationPage = () => {
       setRows(result.cases || []);
       setMeta(result.meta || {});
     } catch (requestError) {
-      setError(requestError.message || 'BGV cases could not be loaded');
+      notify.error(requestError, 'BGV cases could not be loaded');
     } finally {
       setLoading(false);
     }
@@ -131,11 +131,7 @@ const BackgroundVerificationPage = () => {
         </div>
       </section>
 
-      {error ? (
-        <p role="alert" className="rounded-xl border border-rose-500/25 bg-rose-500/10 p-3 text-sm text-rose-200">
-          {error}
-        </p>
-      ) : null}
+
 
       <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
         <div className="overflow-x-auto">

@@ -26,6 +26,7 @@ import useAuth from '../../hooks/useAuth.jsx';
 import usePermission from '../../hooks/usePermission.js';
 import requisitionService from '../../services/requisitionService.js';
 import { ROLES } from '../../utils/roles.js';
+import { notify } from '../../utils/notify.js';
 
 const STATUS_COLUMNS = [
   { key: 'DRAFT', label: 'Draft', accent: 'bg-slate-400' },
@@ -266,7 +267,6 @@ const RequisitionsPage = () => {
   const [view, setView] = useState('KANBAN');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [banner, setBanner] = useState(null);
   const [formModal, setFormModal] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [detail, setDetail] = useState(null);
@@ -274,9 +274,22 @@ const RequisitionsPage = () => {
   const [submitComment, setSubmitComment] = useState('');
 
   const errorText = (error) => error?.message || 'Something went wrong';
-  const flash = (type, message) => {
-    setBanner({ type, message });
-    window.setTimeout(() => setBanner(null), 5000);
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
+  const flash = (type, text) => {
+    const body = typeof text === 'string' && text ? text : '';
+
+    if (!body) return;
+
+    const kind = String(type).toLowerCase();
+
+    if (kind === 'error' || kind === 'danger' || kind === 'failed') notify.error(body);
+    else if (kind === 'warning' || kind === 'warn') notify.warning(body);
+    else if (kind === 'info') notify.info(body);
+    else notify.success(body);
   };
 
   const load = useCallback(async () => {
@@ -506,17 +519,6 @@ const RequisitionsPage = () => {
         </Link>
       </nav>
 
-      {banner && (
-        <div
-          className={`rounded-xl border px-4 py-3 text-sm ${
-            banner.type === 'error'
-              ? 'border-rose-500/30 bg-rose-500/10 text-rose-300'
-              : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-          }`}
-        >
-          {banner.message}
-        </div>
-      )}
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[

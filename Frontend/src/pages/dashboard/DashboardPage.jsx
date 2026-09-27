@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { dashboardService } from "../../services/selfService";
 import useAuth from "../../hooks/useAuth";
+import { notify } from '../../utils/notify.js';
 
 const SENIORS = ["COMPANY_ADMIN", "HR_MANAGER", "MANAGER", "TEAM_LEAD"];
 
@@ -106,11 +107,10 @@ const DashboardPage = () => {
   const [data, setData] = useState(null);
   const [team, setTeam] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError("");
+    /* 35.1 — nothing to report (failure state cleared) */
     try {
       const calls = [dashboardService.employeeOverview()];
       if (isSenior) calls.push(dashboardService.managerOverview());
@@ -118,7 +118,7 @@ const DashboardPage = () => {
       setData(self?.data || self);
       if (teamRes) setTeam(teamRes?.data || teamRes);
     } catch (err) {
-      setError(errMsg(err, "Failed to load dashboard"));
+      notify.error(errMsg(err, "Failed to load dashboard"));
     } finally {
       setLoading(false);
     }
@@ -194,11 +194,6 @@ const DashboardPage = () => {
         </div>
       </div>
 
-      {error && (
-        <div className="mb-5 rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">
-          {error}
-        </div>
-      )}
 
       {/* ── MY TEAM panel (Phase 10 — seniors only) ── */}
       {isSenior && team && (

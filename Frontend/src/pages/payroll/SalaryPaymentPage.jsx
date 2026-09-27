@@ -2,21 +2,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  AlertTriangle,
   Ban,
-  Banknote,
-  Building2,
-  CheckCircle2,
+  Banknote,  CheckCircle2,
   Download,
-  FileSpreadsheet,
-  History,
-  Loader2,
-  Lock,
-  RefreshCcw,
+  FileSpreadsheet,  Loader2,  RefreshCcw,
   RotateCcw,
-  Search,
-  Send,
-  ShieldCheck,
+  Search,  ShieldCheck,
   Users,
   Wallet,
   XCircle,
@@ -25,6 +16,7 @@ import {
 import Modal from '../../components/Modal.jsx';
 import usePermission from '../../hooks/usePermission.js';
 import payrollPaymentService from '../../services/payrollPaymentService.js';
+import { notify } from '../../utils/notify.js';
 
 // ─────────────────────────────────────────────────────────────
 // Phase 29.8 — Salary Payment (bank transfer file preparation)
@@ -147,7 +139,6 @@ const SalaryPaymentPage = () => {
   const [month, setMonth] = useState(currentMonth());
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [banner, setBanner] = useState(null);
   const [accessDenied, setAccessDenied] = useState(false);
 
   const [kpis, setKpis] = useState({});
@@ -155,9 +146,27 @@ const SalaryPaymentPage = () => {
   const [detailId, setDetailId] = useState(null);
   const [prompt, setPrompt] = useState(null);
 
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
   const flash = useCallback((type, text) => {
-    setBanner({ type, text });
-    setTimeout(() => setBanner(null), 6000);
+    const body = typeof text === 'string' && text ? text : '';
+
+    if (!body) return;
+
+    const kind = String(type).toLowerCase();
+
+    if (kind === 'error' || kind === 'danger' || kind === 'failed') notify.error(body);
+    else if (kind === 'warning' || kind === 'warn') notify.warning(body);
+    else if (kind === 'info') notify.info(body);
+    else notify.success(body);
   }, []);
 
   const load = useCallback(async () => {
@@ -269,15 +278,6 @@ const SalaryPaymentPage = () => {
         </div>
       </div>
 
-      {banner ? (
-        <div
-          className={`card border-l-4 text-sm ${
-            banner.type === 'error' ? 'border-red-500 text-red-200' : 'border-emerald-500 text-emerald-200'
-          }`}
-        >
-          {banner.text}
-        </div>
-      ) : null}
 
       {/* §17 — KPI cards */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">

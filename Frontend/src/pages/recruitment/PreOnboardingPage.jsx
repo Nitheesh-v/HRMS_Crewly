@@ -11,6 +11,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import PreOnboardingStatusBadge from '../../components/recruitment/PreOnboardingStatusBadge.jsx';
 import usePermission from '../../hooks/usePermission.js';
 import preOnboardingService from '../../services/preOnboardingService.js';
+import { notify } from '../../utils/notify.js';
 
 const dateLabel = (value) =>
   value
@@ -39,11 +40,10 @@ const PreOnboardingPage = () => {
   const [meta, setMeta] = useState({ kpis: {} });
   const [filters, setFilters] = useState({ status: '', search: '' });
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError('');
+
     try {
       const result = await preOnboardingService.list({
         ...filters,
@@ -53,7 +53,7 @@ const PreOnboardingPage = () => {
       setCases(result.cases);
       setMeta(result.meta || {});
     } catch (requestError) {
-      setError(requestError.message || 'Pre-onboarding cases could not be loaded');
+      notify.error(requestError, 'Pre-onboarding cases could not be loaded');
     } finally {
       setLoading(false);
     }
@@ -163,11 +163,7 @@ const PreOnboardingPage = () => {
         </div>
       </section>
 
-      {error ? (
-        <p role="alert" className="rounded-xl border border-rose-500/25 bg-rose-500/10 p-3 text-sm text-rose-200">
-          {error}
-        </p>
-      ) : null}
+
 
       <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
         <div className="overflow-x-auto">

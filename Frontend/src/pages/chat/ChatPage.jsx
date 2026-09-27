@@ -66,6 +66,7 @@ import ChatEmptyState from '../../components/chat/ChatEmptyState.jsx';
 import Avatar from '../../components/chat/Avatar.jsx';
 import EditMessageModal from '../../components/chat/EditMessageModal.jsx';
 import NewConversationModal from '../../components/chat/NewConversationModal.jsx';
+import { notify } from '../../utils/notify.js';
 
 const PAGE_SIZE = 30;
 
@@ -694,6 +695,7 @@ const ChatPage = () => {
           deletedAt: new Date().toISOString(),
           deletedByUserId: meId,
         }));
+        notify.success('Message removed for everyone.');
       } catch (err) {
         setModerationNotice(chatErrorMessage(err, 'The message could not be removed.'));
       }
@@ -981,7 +983,10 @@ const ChatPage = () => {
 
       const updated = result?.conversation;
 
-      if (updated) dispatch(conversationUpdated(updated));
+      if (updated) {
+        dispatch(conversationUpdated(updated));
+        notify.success(isDisabled ? 'Conversation re-opened.' : 'Conversation disabled.');
+      }
     } catch (err) {
       setModerationNotice(chatErrorMessage(err, 'The conversation could not be updated.'));
     } finally {
@@ -1011,6 +1016,9 @@ const ChatPage = () => {
 
     try {
       applyProjected(await chatService.addMembers(conversationId, memberUserIds));
+      notify.success(
+        memberUserIds.length === 1 ? 'Member added.' : `${memberUserIds.length} members added.`,
+      );
 
       return null;
     } catch (err) {
@@ -1034,6 +1042,7 @@ const ChatPage = () => {
 
     try {
       applyProjected(await chatService.removeMember(conversationId, member.userId));
+      notify.success(`${name} removed from this group.`);
 
       return null;
     } catch (err) {
@@ -1060,6 +1069,7 @@ const ChatPage = () => {
       stopTyping(conversationId);
       chatRealtime.leave(conversationId);
       dispatch(conversationDropped({ conversationId }));
+      notify.success('You left the group.');
       navigate('/app/chat');
 
       return null;
@@ -1082,6 +1092,7 @@ const ChatPage = () => {
       if (!conversation) return 'The conversation could not be created.';
 
       dispatch(conversationAdded({ ...conversation, unreadCount: 0 }));
+      notify.success(conversation.type === 'GROUP' ? 'Group created.' : 'Conversation started.');
       navigate(`/app/chat/${conversation._id}`);
       return null;
     } catch (err) {

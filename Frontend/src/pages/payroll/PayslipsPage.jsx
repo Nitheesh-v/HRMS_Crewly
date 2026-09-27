@@ -20,6 +20,7 @@ import Modal from '../../components/Modal.jsx';
 import usePermission from '../../hooks/usePermission.js';
 import PayslipDocument, { downloadPayslipFile } from './PayslipDocument.jsx';
 import payslipService, { saveBlob } from '../../services/payslipService.js';
+import { notify } from '../../utils/notify.js';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Phase 29.9 — Payroll → Payslips (§27)
@@ -112,7 +113,6 @@ const PayslipsPage = () => {
   const [bulkFiles, setBulkFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [banner, setBanner] = useState(null);
   const [accessDenied, setAccessDenied] = useState(false);
 
   const [viewing, setViewing] = useState(null);
@@ -120,9 +120,27 @@ const PayslipsPage = () => {
   const [prompt, setPrompt] = useState(null);
   const [zipScope, setZipScope] = useState('COMPANY');
 
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
   const flash = useCallback((type, text) => {
-    setBanner({ type, text });
-    setTimeout(() => setBanner(null), 7000);
+    const body = typeof text === 'string' && text ? text : '';
+
+    if (!body) return;
+
+    const kind = String(type).toLowerCase();
+
+    if (kind === 'error' || kind === 'danger' || kind === 'failed') notify.error(body);
+    else if (kind === 'warning' || kind === 'warn') notify.warning(body);
+    else if (kind === 'info') notify.info(body);
+    else notify.success(body);
   }, []);
 
   const load = useCallback(async () => {
@@ -322,15 +340,6 @@ const PayslipsPage = () => {
         </div>
       </div>
 
-      {banner ? (
-        <div
-          className={`card border-l-4 text-sm ${
-            banner.type === 'error' ? 'border-red-500 text-red-200' : 'border-emerald-500 text-emerald-200'
-          }`}
-        >
-          {banner.text}
-        </div>
-      ) : null}
 
       {pendingArchive ? (
         <div className="card flex items-center gap-2 text-sm text-crewly-dim">

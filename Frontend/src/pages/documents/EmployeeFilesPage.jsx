@@ -9,6 +9,7 @@ import { useSelector } from 'react-redux';
 import {
   getEmployees, getEmployeeCabinet, getDocCategories,
   hrUploadDocument, createDocRequest, cancelDocRequest, deleteDocument, downloadDocument } from '../../services/docsService.js';
+import { notify } from '../../utils/notify.js';
 
 const FALLBACK_CATS = [
   { value: 'AADHAAR_ID', label: 'Aadhaar / ID' },
@@ -46,7 +47,9 @@ const ExpiryBadge = ({ expiryDate }) => {
 // GET /documents/:id/file endpoint with the caller's authentication.
 const download = async (d) => {
   try {
-    const res = await downloadDocument(d._id);
+    // 35.1 — this blob failure has a better sentence than the raw status code,
+    // so it raises its own toast instead of the generic one.
+    const res = await downloadDocument(d._id, { skipErrorToast: true });
     const blob = res?.data ?? res;
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob instanceof Blob ? blob : new Blob([blob]));
@@ -54,7 +57,7 @@ const download = async (d) => {
     a.click();
     URL.revokeObjectURL(a.href);
   } catch {
-    alert('This file could not be downloaded. You may not have access to it.');
+    notify.error('This file could not be downloaded. You may not have access to it.');
   }
 };
 
@@ -68,7 +71,6 @@ export default function EmployeeFilesPage() {
   const [search, setSearch] = useState('');
   const [cats, setCats] = useState(FALLBACK_CATS);
   const [cabinet, setCabinet] = useState(EmptyCabinet);
-  const [banner, setBanner] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const [showUpload, setShowUpload] = useState(false);
@@ -78,9 +80,14 @@ export default function EmployeeFilesPage() {
   const fileRef = useRef(null);
 
   const labelOf = (v) => cats.find((c) => c.value === v)?.label || v || 'Other';
+  /* 35.1 — feedback is a toast now; the signature is unchanged. */
   const flash = (ok, text) => {
-    setBanner({ ok, text });
-    setTimeout(() => setBanner(null), 3500);
+    const body = typeof text === 'string' && text ? text : '';
+
+    if (!body) return;
+
+    if (ok) notify.success(body);
+    else notify.error(body);
   };
 
   useEffect(() => {
@@ -182,11 +189,6 @@ export default function EmployeeFilesPage() {
         <span className="text-sm text-slate-400">{employees.length} employees</span>
       </div>
 
-      {banner && (
-        <div className={`rounded-lg px-4 py-2.5 text-sm font-medium ${banner.ok ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'}`}>
-          {banner.text}
-        </div>
-      )}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[300px,1fr]">
         {/* employee picker */}

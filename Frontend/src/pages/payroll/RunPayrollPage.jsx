@@ -17,6 +17,7 @@ import {
 import Modal from '../../components/Modal.jsx';
 import usePermission from '../../hooks/usePermission.js';
 import payrollRunService from '../../services/payrollRunService.js';
+import { notify } from '../../utils/notify.js';
 
 // ─────────────────────────────────────────────────────────────
 // Phase 29.6 — Run Payroll (the calculation workspace)
@@ -102,7 +103,6 @@ const RunPayrollPage = () => {
   const [month, setMonth] = useState(currentMonth());
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [banner, setBanner] = useState(null);
   const [accessDenied, setAccessDenied] = useState(false);
 
   const [run, setRun] = useState(null);
@@ -116,9 +116,27 @@ const RunPayrollPage = () => {
 
   const pollRef = useRef(null);
 
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
   const flash = useCallback((type, text) => {
-    setBanner({ type, text });
-    setTimeout(() => setBanner(null), 6000);
+    const body = typeof text === 'string' && text ? text : '';
+
+    if (!body) return;
+
+    const kind = String(type).toLowerCase();
+
+    if (kind === 'error' || kind === 'danger' || kind === 'failed') notify.error(body);
+    else if (kind === 'warning' || kind === 'warn') notify.warning(body);
+    else if (kind === 'info') notify.info(body);
+    else notify.success(body);
   }, []);
 
   const load = useCallback(async () => {
@@ -257,17 +275,6 @@ const RunPayrollPage = () => {
         </div>
       </div>
 
-      {banner ? (
-        <div
-          className={`card border-l-4 text-sm ${
-            banner.type === 'error'
-              ? 'border-red-500 text-red-200'
-              : 'border-emerald-500 text-emerald-200'
-          }`}
-        >
-          {banner.text}
-        </div>
-      ) : null}
 
       {/* §6 / §29 — pre-checks are visible before HR presses anything */}
       {!inputsLocked ? (

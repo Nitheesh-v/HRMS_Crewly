@@ -2,7 +2,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   AlertTriangle,
-  CheckCircle2,
   Download,
   FileText,
   Loader2,
@@ -12,6 +11,7 @@ import {
 
 import usePermission from '../../hooks/usePermission.js';
 import fnfService, { saveBlob } from '../../services/fnfService.js';
+import { notify } from '../../utils/notify.js';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Phase 29.11 §18 — My Payroll → Final Settlement
@@ -77,7 +77,6 @@ const MyFinalSettlementPage = () => {
   const [settlement, setSettlement] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [banner, setBanner] = useState(null);
   const [downloading, setDownloading] = useState(false);
 
   const load = useCallback(async () => {
@@ -102,10 +101,9 @@ const MyFinalSettlementPage = () => {
     try {
       const blob = await fnfService.downloadMyStatement();
       saveBlob(blob, `FNF-${settlement?.settlementNumber || 'statement'}.pdf`);
-      setBanner({ type: 'success', text: 'Your F&F statement has been downloaded.' });
-      setTimeout(() => setBanner(null), 6000);
+      notify.success('Your F&F statement has been downloaded.');
     } catch (requestError) {
-      setBanner({ type: 'error', text: requestError?.message || 'Unable to download your statement' });
+      notify.error(requestError?.message || 'Unable to download your statement');
     } finally {
       setDownloading(false);
     }
@@ -124,16 +122,6 @@ const MyFinalSettlementPage = () => {
         </p>
       </div>
 
-      {banner ? (
-        <div
-          className={`card flex items-center gap-2 text-sm ${
-            banner.type === 'error' ? 'border-red-500/40 text-red-300' : 'border-emerald-500/40 text-emerald-300'
-          }`}
-        >
-          {banner.type === 'error' ? <AlertTriangle size={16} /> : <CheckCircle2 size={16} />}
-          {banner.text}
-        </div>
-      ) : null}
 
       {!permsLoading && !canRead ? (
         <div className="card space-y-2">

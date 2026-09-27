@@ -5,7 +5,6 @@ import usePermission from '../../../hooks/usePermission.js';
 
 import {
   AccessDenied,
-  Banner,
   DataTable,
   ExportMenu,
   FilterBar,
@@ -40,10 +39,9 @@ const ReimbursementReportPage = () => {
   const months = usePayrollMonths(!permsLoading && canRead);
   const [month, setMonth] = useState(currentMonth());
   const [departmentId, setDepartmentId] = useState('');
-  const [banner, setBanner] = useState(null);
 
   const filters = { month, departmentId };
-  const { report, loading, denied, error } = useReport({
+  const { report, loading, denied } = useReport({
     reportKey: 'REIMBURSEMENT',
     filters,
     enabled: !permsLoading && canRead,
@@ -69,11 +67,9 @@ const ReimbursementReportPage = () => {
         icon={Receipt}
         title="Reimbursement Analytics"
         subtitle={`${monthLabel(month)} · §18 travel, food, fuel, internet, medical, mobile`}
-        actions={<ExportMenu reportKey="REIMBURSEMENT" filters={filters} onQueued={setBanner} />}
+        actions={<ExportMenu reportKey="REIMBURSEMENT" filters={filters} />}
       />
 
-      {banner ? <div className="mb-4"><Banner {...banner} onClose={() => setBanner(null)} /></div> : null}
-      {error ? <div className="mb-4"><Banner type="error" text={error} onClose={() => {}} /></div> : null}
 
       <FilterBar
         month={month}

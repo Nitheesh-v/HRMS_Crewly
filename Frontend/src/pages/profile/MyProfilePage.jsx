@@ -6,9 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Briefcase, Camera, Home, Landmark, Loader2, Save, Siren, User, UserCircle } from 'lucide-react';
 import profileService from '../../services/profileService';
-
-const errMsg = (err, fb) =>
-  err?.response?.data?.message || err?.data?.message || err?.message || fb;
+import { notify } from '../../utils/notify.js';
 
 // label + value read-only row
 const InfoRow = ({ label, value }) => (
@@ -24,18 +22,16 @@ const MyProfilePage = () => {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState('');
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
   const fileRef = useRef(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError('');
+    /* 35.1 — nothing to report; failures are toasted by api.js */;
     try {
       const res = await profileService.getMe();
       setProfile(res?.data || res);
     } catch (err) {
-      setError(errMsg(err, 'Failed to load profile'));
+      notify.error(err);
     } finally {
       setLoading(false);
     }
@@ -61,15 +57,15 @@ const MyProfilePage = () => {
     if (!file) return;
     setPreview(URL.createObjectURL(file));
     setUploading(true);
-    setError('');
-    setNotice('');
+    /* 35.1 — nothing to report; failures are toasted by api.js */;
+    /* 35.1 — nothing to report; failures are toasted by api.js */;
     try {
       const res = await profileService.uploadAvatar(file);
       const url = res?.avatarUrl || res?.data?.avatarUrl;
       setProfile((p) => ({ ...p, avatarUrl: url || p?.avatarUrl }));
-      setNotice('Photo updated! (Topbar shows it after next login)');
+      notify.success('Photo updated! (Topbar shows it after next login)');
     } catch (err) {
-      setError(errMsg(err, 'Photo upload failed'));
+      notify.error(err);
     } finally {
       setUploading(false);
       setPreview('');
@@ -78,13 +74,13 @@ const MyProfilePage = () => {
 
   const onRemovePhoto = async () => {
     setUploading(true);
-    setError('');
+    /* 35.1 — nothing to report; failures are toasted by api.js */;
     try {
       await profileService.removeAvatar();
       setProfile((p) => ({ ...p, avatarUrl: '' }));
-      setNotice('Photo removed');
+      notify.success('Photo removed');
     } catch (err) {
-      setError(errMsg(err, 'Remove failed'));
+      notify.error(err);
     } finally {
       setUploading(false);
     }
@@ -93,8 +89,8 @@ const MyProfilePage = () => {
   // ── save editable sections ────────────────────────────────────────
   const onSave = async () => {
     setSaving(true);
-    setError('');
-    setNotice('');
+    /* 35.1 — nothing to report; failures are toasted by api.js */;
+    /* 35.1 — nothing to report; failures are toasted by api.js */;
     try {
       const payload = {
         phone: profile.phone || '',
@@ -105,16 +101,20 @@ const MyProfilePage = () => {
       };
       const res = await profileService.updateMe(payload);
       setProfile(res?.data || res);
-      setNotice('Profile saved');
+      notify.success('Profile saved');
     } catch (err) {
-      setError(errMsg(err, 'Save failed'));
+      notify.error(err);
     } finally {
       setSaving(false);
     }
   };
 
   if (loading && !profile) return <p className="text-crewly-dim">Loading profile…</p>;
-  if (!profile) return <p className="text-crewly-red">{error || 'Profile unavailable'}</p>;
+  /*
+   * 35.1 — a failed load already raised a toast; this line only keeps the
+   * screen from rendering an empty form.
+   */
+  if (!profile) return <p className="text-crewly-red">Profile unavailable. Please refresh and try again.</p>;
 
   const dobValue = profile.dateOfBirth ? String(profile.dateOfBirth).slice(0, 10) : '';
   const photoSrc = preview || profile.avatarUrl;
@@ -126,8 +126,6 @@ const MyProfilePage = () => {
         Your photo & personal details. Employment info is managed by HR (read-only here).
       </p>
 
-      {error && <div className="mt-4 rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">{error}</div>}
-      {notice && <div className="mt-4 rounded-lg border border-crewly-green/40 bg-crewly-green/10 px-4 py-3 text-sm text-crewly-green">{notice}</div>}
 
       <div className="mt-6 grid gap-5 lg:grid-cols-[320px_1fr]">
         {/* ══ LEFT — photo + identity ═══════════════════════════════ */}

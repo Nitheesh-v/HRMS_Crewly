@@ -3,6 +3,7 @@ import { Loader2, LogIn } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import bgvVerifierAuthService from '../../services/bgvVerifierAuthService.js';
 import VerifierShell from './VerifierShell.jsx';
+import { notify } from '../../utils/notify.js';
 
 // Phase 30.6 — dedicated verifier login (never the tenant HRMS login).
 const BgvVerifierLoginPage = () => {
@@ -12,7 +13,6 @@ const BgvVerifierLoginPage = () => {
   const [code, setCode] = useState('');
   const [challengeId, setChallengeId] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
 
   useEffect(() => {
     document.title = 'Crewly BGV Operations — Sign in';
@@ -22,7 +22,7 @@ const BgvVerifierLoginPage = () => {
   const submit = async (event) => {
     event.preventDefault();
     setBusy(true);
-    setError('');
+
     try {
       const result = await bgvVerifierAuthService.login({ email, password, challengeId, code });
       if (result.requiresTwoFactor) {
@@ -33,7 +33,7 @@ const BgvVerifierLoginPage = () => {
       bgvVerifierAuthService.setToken(result.token);
       navigate('/bgv-verifier', { replace: true });
     } catch (requestError) {
-      setError(requestError.message || 'Sign-in failed');
+      notify.error(requestError, 'Sign-in failed');
       setBusy(false);
     }
   };
@@ -55,7 +55,7 @@ const BgvVerifierLoginPage = () => {
             <input className="input" inputMode="numeric" required value={code} onChange={(e) => setCode(e.target.value)} autoComplete="one-time-code" />
           </div>
         ) : null}
-        {error ? <p role="alert" className="rounded-lg border border-crewly-red/30 bg-crewly-red/10 px-3 py-2 text-xs text-crewly-red">{error}</p> : null}
+
         <button type="submit" className="btn-primary w-full gap-2" disabled={busy}>
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />} Sign in
         </button>

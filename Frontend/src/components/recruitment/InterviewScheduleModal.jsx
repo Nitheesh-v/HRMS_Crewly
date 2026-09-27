@@ -8,6 +8,7 @@ import {
   X,
 } from 'lucide-react';
 import interviewService from '../../services/interviewService.js';
+import { notify } from '../../utils/notify.js';
 
 const baseForm = {
   roundKey: 'TECHNICAL_1',
@@ -77,7 +78,6 @@ const InterviewScheduleModal = ({
   const [interviewerSearch, setInterviewerSearch] = useState('');
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -128,7 +128,7 @@ const InterviewScheduleModal = ({
       })
       .catch((requestError) => {
         if (active) {
-          setError(requestError?.message || 'Interview options could not be loaded');
+          notify.error(requestError, 'Interview options could not be loaded');
         }
       })
       .finally(() => {
@@ -152,7 +152,7 @@ const InterviewScheduleModal = ({
 
   const update = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
-    setError('');
+
   };
 
   const toggleInterviewer = (interviewerId) => {
@@ -168,7 +168,7 @@ const InterviewScheduleModal = ({
     event.preventDefault();
     if (busy) return;
     setBusy(true);
-    setError('');
+
 
     try {
       const common = {
@@ -196,7 +196,7 @@ const InterviewScheduleModal = ({
           });
       await onSaved?.(result, result?.stageTransition?.warning || '');
     } catch (requestError) {
-      setError(requestError?.message || 'Interview could not be saved');
+      notify.error(requestError, 'Interview could not be saved');
     } finally {
       setBusy(false);
     }
@@ -472,11 +472,7 @@ const InterviewScheduleModal = ({
             </section>
           )}
 
-          {error ? (
-            <p role="alert" className="rounded-xl border border-rose-500/25 bg-rose-500/10 p-3 text-sm text-rose-200">
-              {error}
-            </p>
-          ) : null}
+
 
           <footer className="flex justify-end gap-3 border-t border-slate-800 pt-5">
             <button type="button" className="btn-ghost" onClick={onClose} disabled={busy}>

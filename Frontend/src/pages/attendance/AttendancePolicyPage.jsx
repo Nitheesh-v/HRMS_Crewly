@@ -19,6 +19,7 @@ import {
 import usePermission from '../../hooks/usePermission.js';
 import attendancePolicyService from '../../services/attendancePolicyService.js';
 import attendanceLocationService from '../../services/attendanceLocationService.js';
+import { notify } from '../../utils/notify.js';
 
 const DEFAULT_FORM = {
   name: 'Attendance Policy',
@@ -269,7 +270,6 @@ const AttendancePolicyPage = () => {
   const [history, setHistory] = useState([]);
   const [form, setForm] = useState(() => structuredClone(DEFAULT_FORM));
   const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
 
   // Phase 31.3 — office locations share this page (no extra route).
   const [locations, setLocations] = useState([]);
@@ -353,7 +353,7 @@ const AttendancePolicyPage = () => {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
 
     try {
       const [current, past] = await Promise.all([
@@ -365,7 +365,7 @@ const AttendancePolicyPage = () => {
       setForm(toForm(current?.data));
       setHistory(Array.isArray(past?.data) ? past.data : []);
     } catch (loadError) {
-      setError(loadError?.message || 'Could not load the attendance policy');
+      notify.error(loadError?.message || 'Could not load the attendance policy');
     } finally {
       setLoading(false);
     }
@@ -400,7 +400,7 @@ const AttendancePolicyPage = () => {
   const save = async () => {
     setSaving(true);
     setMessage('');
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
 
     try {
       const result = await attendancePolicyService.saveDraft(
@@ -413,7 +413,7 @@ const AttendancePolicyPage = () => {
       const past = await attendancePolicyService.history({ limit: 10 }).catch(() => null);
       if (past) setHistory(Array.isArray(past.data) ? past.data : []);
     } catch (saveError) {
-      setError(saveError?.message || 'Could not save the draft');
+      notify.error(saveError?.message || 'Could not save the draft');
     } finally {
       setSaving(false);
     }
@@ -430,7 +430,7 @@ const AttendancePolicyPage = () => {
 
     setActivating(true);
     setMessage('');
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
 
     try {
       const result = await attendancePolicyService.activate(policy?.configVersion ?? null);
@@ -441,7 +441,7 @@ const AttendancePolicyPage = () => {
       const past = await attendancePolicyService.history({ limit: 10 }).catch(() => null);
       if (past) setHistory(Array.isArray(past.data) ? past.data : []);
     } catch (activationError) {
-      setError(activationError?.message || 'Could not activate the policy');
+      notify.error(activationError?.message || 'Could not activate the policy');
     } finally {
       setActivating(false);
     }
@@ -554,11 +554,6 @@ const AttendancePolicyPage = () => {
         </div>
       )}
 
-      {error && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-red-200">
-          {error}
-        </div>
-      )}
 
       <Section icon={Briefcase} title="General">
         <div className="grid gap-4 md:grid-cols-2">

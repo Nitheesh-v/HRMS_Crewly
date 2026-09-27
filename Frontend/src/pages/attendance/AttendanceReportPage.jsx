@@ -3,6 +3,7 @@ import { Download, TrendingUp } from 'lucide-react';
 import attendanceService from '../../services/attendanceService.js';
 import departmentService from '../../services/departmentService.js';
 import { ROLE_STYLES, roleLabel } from '../../utils/roles.js';
+import { notify } from '../../utils/notify.js';
 
 const fmtTime = (d) => (d ? new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—');
 const todayStr = () => new Date().toLocaleDateString('en-CA');
@@ -16,14 +17,13 @@ const AttendanceReportPage = () => {
   const [departments, setDepartments] = useState([]);
   const [todayData, setTodayData] = useState(null);
   const [report, setReport] = useState(null);
-  const [error, setError] = useState('');
 
   useEffect(() => { departmentService.getAll().then(setDepartments).catch(() => {}); }, []);
   useEffect(() => {
-    if (tab === 'today') attendanceService.company(date).then(setTodayData).catch((e) => setError(e.message));
+    if (tab === 'today') attendanceService.company(date).then(setTodayData).catch((e) => notify.error(e));
   }, [tab, date]);
   useEffect(() => {
-    if (tab === 'monthly') attendanceService.report(month, department).then(setReport).catch((e) => setError(e.message));
+    if (tab === 'monthly') attendanceService.report(month, department).then(setReport).catch((e) => notify.error(e));
   }, [tab, month, department]);
 
   const exportCSV = () => {
@@ -50,7 +50,7 @@ const AttendanceReportPage = () => {
         {tab === 'monthly' && report && <button className="btn-ghost" onClick={exportCSV}><Download className="mr-1 inline h-4 w-4" />Export CSV</button>}
       </div>
 
-      {error && <div className="rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">{error}</div>}
+
 
       {/* Tabs */}
       <div className="flex gap-2">

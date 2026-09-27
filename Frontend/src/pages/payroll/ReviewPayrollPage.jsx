@@ -25,6 +25,7 @@ import {
 import Modal from '../../components/Modal.jsx';
 import usePermission from '../../hooks/usePermission.js';
 import payrollReviewService from '../../services/payrollReviewService.js';
+import { notify } from '../../utils/notify.js';
 
 // ─────────────────────────────────────────────────────────────
 // Phase 29.7 — Review & Approve Payroll
@@ -168,7 +169,6 @@ const ReviewPayrollPage = () => {
   const [tab, setTab] = useState('employees');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [banner, setBanner] = useState(null);
   const [accessDenied, setAccessDenied] = useState(false);
 
   const [review, setReview] = useState(null);
@@ -189,9 +189,27 @@ const ReviewPayrollPage = () => {
   const [reasonPrompt, setReasonPrompt] = useState(null);
   const [remarkDraft, setRemarkDraft] = useState('');
 
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
   const flash = useCallback((type, text) => {
-    setBanner({ type, text });
-    setTimeout(() => setBanner(null), 6000);
+    const body = typeof text === 'string' && text ? text : '';
+
+    if (!body) return;
+
+    const kind = String(type).toLowerCase();
+
+    if (kind === 'error' || kind === 'danger' || kind === 'failed') notify.error(body);
+    else if (kind === 'warning' || kind === 'warn') notify.warning(body);
+    else if (kind === 'info') notify.info(body);
+    else notify.success(body);
   }, []);
 
   const status = review?.status || 'CALCULATED';
@@ -415,15 +433,6 @@ const ReviewPayrollPage = () => {
         </div>
       </div>
 
-      {banner ? (
-        <div
-          className={`card border-l-4 text-sm ${
-            banner.type === 'error' ? 'border-red-500 text-red-200' : 'border-emerald-500 text-emerald-200'
-          }`}
-        >
-          {banner.text}
-        </div>
-      ) : null}
 
       {status === 'REJECTED' && review?.rejectionReason ? (
         <div className="card flex items-start gap-3 border-l-4 border-red-500">

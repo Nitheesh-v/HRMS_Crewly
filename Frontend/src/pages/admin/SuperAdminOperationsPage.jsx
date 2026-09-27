@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import useAuth from "../../hooks/useAuth.jsx";
 import superAdminService from "../../services/superAdminService.js";
+import { notify } from '../../utils/notify.js';
 
 const panel = "rounded-xl border border-slate-800 bg-slate-900 p-4";
 
@@ -71,7 +72,6 @@ const SuperAdminOperationsPage = ({ mode }) => {
   const { user } = useAuth();
   const [data, setData] = useState(null);
   const [loadedMode, setLoadedMode] = useState('');
-  const [message, setMessage] = useState("");
 
   const [filters, setFilters] = useState({
     search: "",
@@ -85,7 +85,7 @@ const SuperAdminOperationsPage = ({ mode }) => {
   });
 
   const load = async () => {
-  setMessage('');
+
 
   try {
     let result;
@@ -218,7 +218,7 @@ const SuperAdminOperationsPage = ({ mode }) => {
   } catch (error) {
     setData(null);
     setLoadedMode('');
-    setMessage(error?.message || 'Could not load data');
+    notify.error(error, 'Could not load data');
   }
 };
   useEffect(() => {
@@ -231,10 +231,10 @@ const SuperAdminOperationsPage = ({ mode }) => {
         [field]: value,
       });
 
-      setMessage("Support ticket updated");
+      notify.success("Support ticket updated");
       await load();
     } catch (error) {
-      setMessage(error?.message || "Ticket update failed");
+      notify.error(error, "Ticket update failed");
     }
   };
 
@@ -275,10 +275,10 @@ const SuperAdminOperationsPage = ({ mode }) => {
         },
       });
 
-      setMessage("Platform settings updated");
+      notify.success("Platform settings updated");
       await load();
     } catch (error) {
-      setMessage(error?.message || "Settings update failed");
+      notify.error(error, "Settings update failed");
     }
   };
 
@@ -293,9 +293,9 @@ const SuperAdminOperationsPage = ({ mode }) => {
         newPassword: "",
       });
 
-      setMessage("Password changed and other sessions were revoked");
+      notify.success("Password changed and other sessions were revoked");
     } catch (error) {
-      setMessage(error?.message || "Password change failed");
+      notify.error(error, "Password change failed");
     }
   };
 
@@ -315,11 +315,7 @@ const SuperAdminOperationsPage = ({ mode }) => {
         </h1>
       </div>
 
-      {message && (
-        <div className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 text-orange-200">
-          {message}
-        </div>
-      )}
+
 
       {mode === "users" && (
         <>
@@ -733,9 +729,7 @@ const SuperAdminOperationsPage = ({ mode }) => {
                     await superAdminService.setTwoFactor(
                       !user?.twoFactorEnabled,
                     );
-                    setMessage(
-                      "2FA setting updated. Sign in again to refresh your profile.",
-                    );
+                    notify.success("2FA setting updated. Sign in again to refresh your profile.");
                   }}
                   className="rounded border border-slate-700 px-3 py-2 text-sm"
                 >
@@ -746,7 +740,7 @@ const SuperAdminOperationsPage = ({ mode }) => {
                   type="button"
                   onClick={async () => {
                     await superAdminService.logoutOthers();
-                    setMessage("Other sessions logged out");
+                    notify.success("Other sessions logged out");
                     await load();
                   }}
                   className="rounded border border-slate-700 px-3 py-2 text-sm"

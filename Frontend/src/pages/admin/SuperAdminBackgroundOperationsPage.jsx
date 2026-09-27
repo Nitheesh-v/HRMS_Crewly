@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import useAuth from "../../hooks/useAuth.jsx";
 import superAdminService from "../../services/superAdminService.js";
+import { notify } from '../../utils/notify.js';
 
 // ============================================================
 // 28.8 — Background Operations (Super Admin)
@@ -151,8 +152,6 @@ export default function SuperAdminBackgroundOperationsPage() {
 
   const [overview, setOverview] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [toast, setToast] = useState("");
 
   const [selectedQueue, setSelectedQueue] = useState(null);
   const [failed, setFailed] = useState({ rows: [], meta: { page: 1, pages: 1, total: 0 } });
@@ -171,19 +170,17 @@ export default function SuperAdminBackgroundOperationsPage() {
   const [cache, setCache] = useState(null);
   const [cacheCompanyId, setCacheCompanyId] = useState("");
 
-  const flash = (message) => {
-    setToast(message);
-    setTimeout(() => setToast(""), 4000);
-  };
+  /* 35.1 — feedback is a toast now; the signature is unchanged. */
+  const flash = (message) => notify.info(message);
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
-    setError("");
+    /* 35.1 — nothing to report (failure state cleared) */
     try {
       const data = await superAdminService.opsOverview();
       setOverview(data?.data ?? data);
     } catch (e) {
-      setError(e?.message || "Could not load the operations overview");
+      notify.error(e?.message || "Could not load the operations overview");
     } finally {
       setLoading(false);
     }
@@ -447,17 +444,6 @@ export default function SuperAdminBackgroundOperationsPage() {
         </div>
       )}
 
-      {error && (
-        <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-          {error}
-        </div>
-      )}
-
-      {toast && (
-        <div className="rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
-          {toast}
-        </div>
-      )}
 
       {/* Redis + Workers header */}
       <div className="grid gap-3 md:grid-cols-2">

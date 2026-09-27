@@ -17,6 +17,7 @@ import {
   formatDateTime,
   useDepartments,
 } from './analyticsShared.js';
+import { notify } from '../../../utils/notify.js';
 
 // ───────────────────────────────────────────────────────────────────────────
 // §20 — Scheduled Reports: standing instructions that generate themselves.
@@ -70,7 +71,6 @@ const ScheduledReportsPage = () => {
   const [schedules, setSchedules] = useState([]);
   const [loading, setLoading] = useState(true);
   const [denied, setDenied] = useState(false);
-  const [banner, setBanner] = useState(null);
   const [busy, setBusy] = useState('');
   const [downloading, setDownloading] = useState('');
 
@@ -92,7 +92,7 @@ const ScheduledReportsPage = () => {
       setDenied(false);
     } catch (error) {
       if (error?.status === 403 || error?.status === 401) setDenied(true);
-      else setBanner({ type: 'error', text: error?.message || 'Unable to load the schedules' });
+      else notify.error(error, 'Unable to load the schedules');
     } finally {
       setLoading(false);
     }
@@ -107,10 +107,10 @@ const ScheduledReportsPage = () => {
     setBusy(label);
     try {
       const result = await action();
-      setBanner({ type: 'success', text: typeof message === 'function' ? message(result) : message });
+      notify.success(typeof message === 'function' ? message(result) : message);
       await load();
     } catch (error) {
-      setBanner({ type: 'error', text: error?.message || 'Unable to complete the action' });
+      notify.error(error, 'Unable to complete the action');
     } finally {
       setBusy('');
     }
@@ -141,7 +141,7 @@ const ScheduledReportsPage = () => {
       const blob = await payrollAnalyticsService.downloadFile(row.lastFileId);
       saveBlob(blob, row.lastFilename || 'scheduled-report.xlsx');
     } catch (error) {
-      setBanner({ type: 'error', text: error?.message || 'Unable to download this report' });
+      notify.error(error, 'Unable to download this report');
     } finally {
       setDownloading('');
     }
@@ -168,7 +168,6 @@ const ScheduledReportsPage = () => {
         subtitle="§20 — standing instructions, generated automatically with BullMQ"
       />
 
-      {banner ? <div className="mb-4"><Banner {...banner} onClose={() => setBanner(null)} /></div> : null}
       {denied ? <AccessDenied message="Your role does not allow scheduling payroll reports." /> : null}
 
       {/* §20 — new schedule */}

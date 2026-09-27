@@ -5,7 +5,6 @@ import usePermission from '../../../hooks/usePermission.js';
 
 import {
   AccessDenied,
-  Banner,
   DataTable,
   ExportMenu,
   FilterBar,
@@ -42,10 +41,9 @@ const EmployerContributionPage = () => {
   const months = usePayrollMonths(!permsLoading && canRead);
   const [month, setMonth] = useState(currentMonth());
   const [departmentId, setDepartmentId] = useState('');
-  const [banner, setBanner] = useState(null);
 
   const filters = { month, departmentId };
-  const { report, loading, denied, error } = useReport({
+  const { report, loading, denied } = useReport({
     reportKey: 'EMPLOYER',
     filters,
     enabled: !permsLoading && canRead,
@@ -69,11 +67,9 @@ const EmployerContributionPage = () => {
         icon={Landmark}
         title="Employer Contribution"
         subtitle={`${monthLabel(month)} · §13 PF, ESI, gratuity, LWF — never part of an employee's net pay`}
-        actions={<ExportMenu reportKey="EMPLOYER" filters={filters} onQueued={setBanner} />}
+        actions={<ExportMenu reportKey="EMPLOYER" filters={filters} />}
       />
 
-      {banner ? <div className="mb-4"><Banner {...banner} onClose={() => setBanner(null)} /></div> : null}
-      {error ? <div className="mb-4"><Banner type="error" text={error} onClose={() => {}} /></div> : null}
 
       <FilterBar
         month={month}

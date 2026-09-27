@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import authService from "../../services/authService.js";
 import useAuth from "../../hooks/useAuth.jsx";
+import { notify } from '../../utils/notify.js';
 
 const formatDate = (value) =>
   value
@@ -31,11 +32,10 @@ const ActiveSessionsPage = () => {
 
   const [message, setMessage] = useState("");
 
-  const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     try {
-      setError("");
+      /* 35.1 — nothing to report (failure state cleared) */
 
       const result = await authService.sessions();
 
@@ -126,7 +126,7 @@ const ActiveSessionsPage = () => {
         loginHistory: historyRows,
       });
     } catch (requestError) {
-      setError(requestError.message);
+      notify.error(requestError.message);
     }
   }, []);
 
@@ -138,7 +138,7 @@ const ActiveSessionsPage = () => {
 
   const revoke = async (sessionId) => {
     setBusy(true);
-    setError("");
+    /* 35.1 — nothing to report (failure state cleared) */
 
     try {
       await authService.revokeSession(sessionId);
@@ -147,7 +147,7 @@ const ActiveSessionsPage = () => {
 
       await load();
     } catch (requestError) {
-      setError(requestError.message);
+      notify.error(requestError.message);
     } finally {
       setBusy(false);
     }
@@ -176,10 +176,10 @@ const ActiveSessionsPage = () => {
   const changePassword = async (event) => {
     event.preventDefault();
 
-    setError("");
+    /* 35.1 — nothing to report (failure state cleared) */
 
     if (passwords.newPassword !== passwords.confirmPassword) {
-      setError("New passwords do not match.");
+      notify.error("New passwords do not match.");
 
       return;
     }
@@ -201,7 +201,7 @@ const ActiveSessionsPage = () => {
         replace: true,
       });
     } catch (requestError) {
-      setError(requestError.message);
+      notify.error(requestError.message);
     } finally {
       setBusy(false);
     }
@@ -237,11 +237,6 @@ const ActiveSessionsPage = () => {
         </div>
       )}
 
-      {error && (
-        <div className="rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">
-          {error}
-        </div>
-      )}
 
       <section className="grid gap-4 md:grid-cols-2">
         {data.sessions.map((session) => (

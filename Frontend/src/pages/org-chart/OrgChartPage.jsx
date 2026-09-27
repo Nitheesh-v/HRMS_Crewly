@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Building2, ChevronDown, ChevronRight, Lock, Network } from 'lucide-react';
 import api from '../../services/api';
 import useAuth from '../../hooks/useAuth';
+import { notify } from '../../utils/notify.js';
 
 
 
@@ -87,17 +88,16 @@ const OrgChartPage = () => {
   const [roots, setRoots] = useState([]);
   const [openMap, setOpenMap] = useState({});
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     try {
       const res = await api.get('/users/hierarchy');
       const list = Array.isArray(res) ? res : res?.data || [];
       setRoots(list);
     } catch (err) {
-      setError(errMsg(err, 'Failed to load org chart'));
+      notify.error(errMsg(err, 'Failed to load org chart'));
     } finally {
       setLoading(false);
     }
@@ -128,15 +128,10 @@ const OrgChartPage = () => {
         <span className="badge bg-crewly-green/15 text-crewly-green">{totalPeople} people</span>
       </div>
 
-      {error && (
-        <div className="mb-5 rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">
-          {error}
-        </div>
-      )}
 
       {loading && <p className="text-crewly-dim">Loading structure…</p>}
 
-      {!loading && !error && roots.length === 0 && (
+      {!loading && roots.length === 0 && (
         <div className="card text-center text-crewly-dim">
           No people to show yet — assign departments & managers in User Management.
         </div>

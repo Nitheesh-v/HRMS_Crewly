@@ -6,6 +6,7 @@ import { Backpack, IdCard, Keyboard, Laptop, Monitor, Mouse, Package, Plus, Send
 import { useSelector } from 'react-redux';
 import { getMyAssets, getAllAssets, createAsset, assignAsset, returnAsset, deleteAsset } from '../../services/assetService.js';
 import { getEmployees } from '../../services/docsService.js';
+import { notify } from '../../utils/notify.js';
 
 const inp = 'w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500';
 const btn = 'rounded-lg px-3 py-1.5 text-xs font-bold transition disabled:opacity-50';
@@ -37,10 +38,18 @@ export default function AssetsPage() {
   const [form, setForm] = useState({ name: '', category: 'LAPTOP', serialNumber: '', note: '' });
   const [assignTarget, setAssignTarget] = useState(null);
   const [assignForm, setAssignForm] = useState({ userId: '', note: '' });
-  const [banner, setBanner] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  const flash = (ok, text) => { setBanner({ ok, text }); setTimeout(() => setBanner(null), 3500); };
+  /* 35.1 — feedback is a toast now; the signature is unchanged. */
+  /* 35.1 — feedback is a toast now; the signature is unchanged. */
+  const flash = (ok, text) => {
+    const body = typeof text === 'string' && text ? text : '';
+
+    if (!body) return;
+
+    if (ok) notify.success(body);
+    else notify.error(body);
+  };
 
   const load = async () => {
     try {
@@ -95,8 +104,6 @@ export default function AssetsPage() {
   return (
     <div className="space-y-6">
       <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-100"><Monitor className="h-6 w-6 text-indigo-400" />Assets</h1>
-
-      {banner && <div className={`rounded-lg px-4 py-2.5 text-sm font-medium ${banner.ok ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'}`}>{banner.text}</div>}
 
       {/* my assets — everyone */}
       <section className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">

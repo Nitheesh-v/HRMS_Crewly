@@ -17,6 +17,7 @@ import {
 import { Link } from 'react-router-dom';
 import usePermission from '../../hooks/usePermission.js';
 import recruitmentAnalyticsService from '../../services/recruitmentAnalyticsService.js';
+import { notify } from '../../utils/notify.js';
 
 const formatNumber = (value) =>
   Number.isFinite(Number(value)) ? Number(value).toLocaleString('en-IN') : '0';
@@ -85,12 +86,11 @@ const RecruitmentDashboardPage = () => {
   const [filters, setFilters] = useState(emptyFilters);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
 
   const load = useCallback(async () => {
     if (!canRead) return;
     setLoading(true);
-    setError('');
+
     try {
       const params = Object.fromEntries(
         Object.entries(filters).filter(([, value]) => Boolean(value))
@@ -98,7 +98,7 @@ const RecruitmentDashboardPage = () => {
       const result = await recruitmentAnalyticsService.overview(params);
       setData(result);
     } catch (requestError) {
-      setError(requestError.message || 'Recruitment analytics could not be loaded');
+      notify.error(requestError, 'Recruitment analytics could not be loaded');
     } finally {
       setLoading(false);
     }
@@ -372,14 +372,7 @@ const RecruitmentDashboardPage = () => {
         </div>
       </section>
 
-      {error ? (
-        <p
-          role="alert"
-          className="rounded-xl border border-rose-500/25 bg-rose-500/10 p-3 text-sm text-rose-200"
-        >
-          {error}
-        </p>
-      ) : null}
+
 
       {loading ? (
         <div className="h-64 animate-pulse rounded-2xl bg-slate-900" />

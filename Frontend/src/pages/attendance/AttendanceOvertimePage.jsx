@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import usePermission from '../../hooks/usePermission.js';
 import attendanceOvertimeService from '../../services/attendanceOvertimeService.js';
+import { notify } from '../../utils/notify.js';
 
 // Phase 31.8 — Overtime / Comp-Off (one surface, two
 // permission-gated tabs). Recorded extra time becomes eligible
@@ -69,7 +70,6 @@ const AttendanceOvertimePage = () => {
   const [tab, setTab] = useState('mine');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [month, setMonth] = useState(currentMonth());
   const [days, setDays] = useState([]);
@@ -113,11 +113,11 @@ const AttendanceOvertimePage = () => {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     try {
       await Promise.all([loadEligibility(), loadMine(), loadPending()]);
     } catch (loadError) {
-      setError(loadError?.message || 'Could not load overtime requests');
+      notify.error(loadError?.message || 'Could not load overtime requests');
     } finally {
       setLoading(false);
     }
@@ -146,14 +146,14 @@ const AttendanceOvertimePage = () => {
   const openForm = (day) => {
     setForm({ attendanceDate: day.attendanceDate, requestedMinutes: String(day.eligibleMinutes), reason: '' });
     setFormOpen(true);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     setMessage('');
   };
 
   const submit = async () => {
     const candidate = candidateOf(form.attendanceDate);
     setBusy(true);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     setMessage('');
     try {
       await attendanceOvertimeService.submit({
@@ -167,7 +167,7 @@ const AttendanceOvertimePage = () => {
       setFormOpen(false);
       await load();
     } catch (submitError) {
-      setError(submitError?.message || 'Could not submit the request');
+      notify.error(submitError?.message || 'Could not submit the request');
     } finally {
       setBusy(false);
     }
@@ -175,14 +175,14 @@ const AttendanceOvertimePage = () => {
 
   const cancel = async (requestId) => {
     setBusy(true);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     setMessage('');
     try {
       await attendanceOvertimeService.cancel(requestId);
       setMessage('Request cancelled');
       await load();
     } catch (cancelError) {
-      setError(cancelError?.message || 'Could not cancel the request');
+      notify.error(cancelError?.message || 'Could not cancel the request');
     } finally {
       setBusy(false);
     }
@@ -190,7 +190,7 @@ const AttendanceOvertimePage = () => {
 
   const approve = async (row) => {
     setBusy(true);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     setMessage('');
     try {
       await attendanceOvertimeService.approve(row.id, {
@@ -203,7 +203,7 @@ const AttendanceOvertimePage = () => {
       setDecideReason('');
       await load();
     } catch (approveError) {
-      setError(approveError?.message || 'Could not approve the request');
+      notify.error(approveError?.message || 'Could not approve the request');
     } finally {
       setBusy(false);
     }
@@ -211,7 +211,7 @@ const AttendanceOvertimePage = () => {
 
   const reject = async (row) => {
     setBusy(true);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     setMessage('');
     try {
       await attendanceOvertimeService.reject(row.id, rejectReason.trim() || null);
@@ -220,7 +220,7 @@ const AttendanceOvertimePage = () => {
       setRejectReason('');
       await load();
     } catch (rejectError) {
-      setError(rejectError?.message || 'Could not reject the request');
+      notify.error(rejectError?.message || 'Could not reject the request');
     } finally {
       setBusy(false);
     }
@@ -254,12 +254,7 @@ const AttendanceOvertimePage = () => {
         Approvals grant time — payable minutes or leave credit — never a salary figure here.
       </p>
 
-      {error && (
-        <div className="rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">
-          {error}
-        </div>
-      )}
-      {message && !error && (
+      {message && (
         <div className="rounded-lg border border-crewly-green/40 bg-crewly-green/10 px-4 py-3 text-sm text-crewly-green">
           {message}
         </div>

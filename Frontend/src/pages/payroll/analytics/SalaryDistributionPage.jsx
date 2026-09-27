@@ -7,7 +7,6 @@ import payrollAnalyticsService from '../../../services/payrollAnalyticsService.j
 
 import {
   AccessDenied,
-  Banner,
   DataTable,
   ExportMenu,
   FilterBar,
@@ -25,6 +24,7 @@ import {
   useReport,
   usePayrollMonths,
 } from './analyticsShared.js';
+import { notify } from '../../../utils/notify.js';
 
 // ───────────────────────────────────────────────────────────────────────────
 // 29.13 §8 — the company's OWN salary bands.
@@ -44,7 +44,6 @@ import {
 const BandEditor = ({ bands, onSaved, onClose }) => {
   const [draft, setDraft] = useState(() => bands.map((band) => ({ ...band })));
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
 
   const update = (index, field, value) => {
     setDraft((current) => current.map((band, position) => (
@@ -69,7 +68,6 @@ const BandEditor = ({ bands, onSaved, onClose }) => {
 
   const save = async () => {
     setSaving(true);
-    setError('');
     try {
       const payload = draft.map((band, index) => ({
         key: band.key || `band-${index}`,
@@ -81,7 +79,7 @@ const BandEditor = ({ bands, onSaved, onClose }) => {
       await onSaved?.();
       onClose?.();
     } catch (err) {
-      setError(err?.message || 'Unable to save these bands');
+      notify.error(err, 'Unable to save these bands');
     } finally {
       setSaving(false);
     }
@@ -89,7 +87,6 @@ const BandEditor = ({ bands, onSaved, onClose }) => {
 
   return (
     <div className="mt-4 rounded-lg border border-white/10 bg-black/20 p-3">
-      {error ? <div className="mb-3"><Banner type="error" text={error} onClose={() => setError('')} /></div> : null}
 
       <div className="space-y-2">
         {draft.map((band, index) => (
@@ -194,7 +191,6 @@ const SalaryDistributionPage = () => {
   const months = usePayrollMonths(!permsLoading && canRead);
   const [month, setMonth] = useState(currentMonth());
   const [departmentId, setDepartmentId] = useState('');
-  const [banner, setBanner] = useState(null);
   const [editing, setEditing] = useState(false);
 
   const filters = { month, departmentId };
@@ -239,10 +235,9 @@ const SalaryDistributionPage = () => {
         icon={PieChart}
         title="Salary Distribution"
         subtitle={`${monthLabel(month)} · §10 bands and §8 designation analytics`}
-        actions={<ExportMenu reportKey="SALARY_BANDS" filters={filters} onQueued={setBanner} />}
+        actions={<ExportMenu reportKey="SALARY_BANDS" filters={filters} />}
       />
 
-      {banner ? <div className="mb-4"><Banner {...banner} onClose={() => setBanner(null)} /></div> : null}
 
       <FilterBar
         month={month}
@@ -271,7 +266,7 @@ const SalaryDistributionPage = () => {
                 {editing ? 'Close editor' : 'Edit bands'}
               </button>
             ) : null}
-            <ExportMenu reportKey="SALARY_BANDS" filters={filters} onQueued={setBanner} />
+            <ExportMenu reportKey="SALARY_BANDS" filters={filters} />
           </div>
         )}
       >
@@ -287,7 +282,7 @@ const SalaryDistributionPage = () => {
               const list = await loadBands();
               setStoredBands(list);
               await bands.reload();
-              setBanner({ type: 'success', text: 'Salary bands saved — the distribution below uses them now.' });
+              notify.success('Salary bands saved — the distribution below uses them now.');
             }}
             onClose={() => setEditing(false)}
           />
@@ -348,7 +343,7 @@ const SalaryDistributionPage = () => {
         className="mt-4"
         title="Designation analytics"
         subtitle="§8 — count, average, highest and lowest by designation"
-        actions={<ExportMenu reportKey="DESIGNATION" filters={filters} onQueued={setBanner} />}
+        actions={<ExportMenu reportKey="DESIGNATION" filters={filters} />}
       >
         {designations.loading ? (
           <p className="text-sm text-crewly-dim">Loading designation analytics…</p>

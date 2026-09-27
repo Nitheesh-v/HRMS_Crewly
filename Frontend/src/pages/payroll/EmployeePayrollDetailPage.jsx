@@ -6,6 +6,7 @@ import usePermission from '../../hooks/usePermission.js';
 import employeePayrollService from '../../services/employeePayrollService.js';
 import salaryStructureService from '../../services/salaryStructureService.js';
 import statutoryService from '../../services/statutoryService.js';
+import { notify } from '../../utils/notify.js';
 
 // ── display mirrors of the backend rules (the server always decides) ────────
 
@@ -99,7 +100,6 @@ const EmployeePayrollDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState(null);
   const [tab, setTab] = useState('overview');
-  const [banner, setBanner] = useState(null);
   const [busy, setBusy] = useState(false);
   const [forbidden, setForbidden] = useState(false);
 
@@ -120,9 +120,22 @@ const EmployeePayrollDetailPage = () => {
     'EMPLOYEE_SALARY_READ_SELF',
   ]);
 
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
   const flash = (type, text) => {
-    setBanner({ type, text });
-    setTimeout(() => setBanner(null), 5000);
+    const body = typeof text === 'string' && text ? text : '';
+
+    if (!body) return;
+
+    const kind = String(type).toLowerCase();
+
+    if (kind === 'error' || kind === 'danger' || kind === 'failed') notify.error(body);
+    else if (kind === 'warning' || kind === 'warn') notify.warning(body);
+    else if (kind === 'info') notify.info(body);
+    else notify.success(body);
   };
 
   // §17 — a bonus read: a missing statutory snapshot must never hide the
@@ -663,17 +676,6 @@ const EmployeePayrollDetailPage = () => {
         )}
       </div>
 
-      {banner && (
-        <div
-          className={`card text-sm ${
-            banner.type === 'error'
-              ? 'border-red-500/40 text-red-300'
-              : 'border-emerald-500/40 text-emerald-300'
-          }`}
-        >
-          {banner.text}
-        </div>
-      )}
 
       <div className="flex flex-wrap gap-2">
         {TABS.map((entry) => (

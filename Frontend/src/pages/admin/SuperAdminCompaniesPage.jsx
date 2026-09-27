@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { Link } from "react-router-dom";
 import superAdminService from "../../services/superAdminService.js";
+import { notify } from '../../utils/notify.js';
 
 const inp =
   "rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-orange-500";
@@ -57,7 +58,6 @@ const SuperAdminCompaniesPage = () => {
   const [form, setForm] = useState(emptyForm);
   const [showCreate, setShowCreate] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
 
   const load = async () => {
     try {
@@ -65,7 +65,7 @@ const SuperAdminCompaniesPage = () => {
 
       setResult(data);
     } catch (error) {
-      setMessage(error?.message || "Could not load companies");
+      notify.error(error, "Could not load companies");
     }
   };
 
@@ -91,19 +91,19 @@ const SuperAdminCompaniesPage = () => {
   const createCompany = async (event) => {
     event.preventDefault();
     setBusy(true);
-    setMessage("");
+
 
     try {
       const created = await superAdminService.createCompany(form);
 
-      setMessage(`Company created. Code: ${created.code}`);
+      notify.success(`Company created. Code: ${created.code}`);
 
       setShowCreate(false);
       setForm(emptyForm);
 
       await load();
     } catch (error) {
-      setMessage(error?.message || "Company creation failed");
+      notify.error(error, "Company creation failed");
     } finally {
       setBusy(false);
     }
@@ -122,11 +122,11 @@ const SuperAdminCompaniesPage = () => {
     try {
       await superAdminService.setCompanyStatus(company._id, status);
 
-      setMessage(`${company.name} is now ${status}`);
+      notify.success(`${company.name} is now ${status}`);
 
       await load();
     } catch (error) {
-      setMessage(error?.message || "Status update failed");
+      notify.error(error, "Status update failed");
     }
   };
 
@@ -150,11 +150,7 @@ const SuperAdminCompaniesPage = () => {
         </button>
       </div>
 
-      {message && (
-        <div className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 text-sm text-orange-200">
-          {message}
-        </div>
-      )}
+
 
       <form
         onSubmit={(event) => {

@@ -9,6 +9,7 @@ import payslipService from '../../services/payslipService.js';
 import statutoryService from '../../services/statutoryService.js';
 import usePermission from '../../hooks/usePermission.js';
 import fnfService from '../../services/fnfService.js';
+import { notify } from '../../utils/notify.js';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Phase 29.9 — Employee Salary Portal (§14 / §15 / §16)
@@ -65,7 +66,6 @@ const MyPayslipsPortalPage = () => {
   const [recent, setRecent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [banner, setBanner] = useState(null);
 
   const [search, setSearch] = useState('');
   const [financialYear, setFinancialYear] = useState('');
@@ -149,7 +149,7 @@ const MyPayslipsPortalPage = () => {
       const detail = await payslipService.mineDetail(row._id);
       setViewing(detail);
     } catch (requestError) {
-      setBanner({ type: 'error', text: requestError?.message || 'Unable to open this payslip' });
+      notify.error(requestError?.message || 'Unable to open this payslip');
     }
   };
 
@@ -164,7 +164,7 @@ const MyPayslipsPortalPage = () => {
       });
       await load();
     } catch (requestError) {
-      setBanner({ type: 'error', text: requestError?.message || 'Unable to download this payslip' });
+      notify.error(requestError?.message || 'Unable to download this payslip');
     } finally {
       setDownloadingId(null);
     }
@@ -220,9 +220,6 @@ const MyPayslipsPortalPage = () => {
         </div>
       ) : null}
 
-      {banner ? (
-        <div className="card border-l-4 border-red-500 text-sm text-red-200">{banner.text}</div>
-      ) : null}
       {error ? (
         <div className="card border-l-4 border-red-500 text-sm text-red-200">{error}</div>
       ) : null}

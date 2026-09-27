@@ -8,6 +8,7 @@ import {
   submitExpense, getMyExpenses, getApprovals,
   managerDecide, financeDecide, markReimbursed, cancelExpense, getAllExpenses, downloadReceipt,
 } from '../../services/expenseService.js';
+import { notify } from '../../utils/notify.js';
 
 const inp = 'w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500';
 const btn = 'rounded-lg px-3 py-1.5 text-xs font-bold transition disabled:opacity-50';
@@ -20,7 +21,8 @@ const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-di
 const hasReceipt = (e) => Boolean(e?.receiptUrl || e?.receiptStorageProvider);
 const grabReceipt = async (e) => {
   try {
-    const res = await downloadReceipt(e._id);
+    // 35.1 — the page's own sentence beats the raw status code for a blob.
+    const res = await downloadReceipt(e._id, { skipErrorToast: true });
     const blob = res?.data ?? res;
     const url = URL.createObjectURL(blob instanceof Blob ? blob : new Blob([blob]));
     const link = document.createElement('a');
@@ -29,7 +31,7 @@ const grabReceipt = async (e) => {
     link.click();
     URL.revokeObjectURL(url);
   } catch {
-    alert('This receipt could not be downloaded. You may not have access to it.');
+    notify.error('This receipt could not be downloaded. You may not have access to it.');
   }
 };
 
@@ -71,11 +73,19 @@ export default function ExpensesPage() {
   const [queue, setQueue] = useState([]);
   const [allBox, setAllBox] = useState({ expenses: [], totals: {} });
   const [form, setForm] = useState({ category: 'TRAVEL', amount: '', expenseDate: '', description: '' });
-  const [banner, setBanner] = useState(null);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef(null);
 
-  const flash = (ok, text) => { setBanner({ ok, text }); setTimeout(() => setBanner(null), 3500); };
+  /* 35.1 — feedback is a toast now; the signature is unchanged. */
+  /* 35.1 — feedback is a toast now; the signature is unchanged. */
+  const flash = (ok, text) => {
+    const body = typeof text === 'string' && text ? text : '';
+
+    if (!body) return;
+
+    if (ok) notify.success(body);
+    else notify.error(body);
+  };
 
   const load = async () => {
     try {
@@ -141,8 +151,6 @@ export default function ExpensesPage() {
   return (
     <div className="space-y-6">
       <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-100"><Wallet className="h-6 w-6 text-indigo-400" />Expenses</h1>
-
-      {banner && <div className={`rounded-lg px-4 py-2.5 text-sm font-medium ${banner.ok ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'}`}>{banner.text}</div>}
 
       {/* submit */}
       <section className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">

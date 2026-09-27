@@ -7,6 +7,7 @@ import {
 } from "react-router-dom";
 import useAuth from "../../hooks/useAuth.jsx";
 import superAdminService from "../../services/superAdminService.js";
+import { notify } from '../../utils/notify.js';
 
 const inp =
   "w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-orange-500";
@@ -40,7 +41,6 @@ const SuperAdminAuthPage = () => {
 
   const [message, setMessage] = useState("");
 
-  const [error, setError] = useState("");
 
   const change = (event) =>
     setForm((current) => ({
@@ -51,7 +51,7 @@ const SuperAdminAuthPage = () => {
   const submit = async (event) => {
     event.preventDefault();
     setBusy(true);
-    setError("");
+    /* 35.1 — nothing to report (failure state cleared) */
     setMessage("");
 
     try {
@@ -100,7 +100,7 @@ const SuperAdminAuthPage = () => {
         }
       }
     } catch (requestError) {
-      setError(requestError?.message || "Request failed");
+      notify.error(requestError?.message || "Request failed");
     } finally {
       setBusy(false);
     }
@@ -128,11 +128,6 @@ const SuperAdminAuthPage = () => {
           Separate secure access for SaaS platform administrators.
         </p>
 
-        {error && (
-          <div className="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-            {error}
-          </div>
-        )}
 
         {message && (
           <div className="mt-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">

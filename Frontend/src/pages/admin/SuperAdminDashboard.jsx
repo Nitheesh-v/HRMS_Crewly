@@ -8,6 +8,7 @@ import { Ban, Building2, Gem, Hourglass, Landmark, RefreshCw, TrendingUp } from 
 import { useNavigate } from 'react-router-dom';
 import useAuth from '../../hooks/useAuth.jsx';
 import adminService from '../../services/adminService';
+import { notify } from '../../utils/notify.js';
 
 const money = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 const errMsg = (err, fallback) =>
@@ -42,13 +43,12 @@ const SuperAdminDashboard = () => {
   const [companies, setCompanies] = useState([]);
   const [revenue, setRevenue] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [busyId, setBusyId] = useState(null);
   const [updatedAt, setUpdatedAt] = useState(null);
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     try {
       const [ov, comps, rev] = await Promise.all([
         adminService.overview(),
@@ -60,7 +60,7 @@ const SuperAdminDashboard = () => {
       setRevenue(Array.isArray(rev) ? rev : rev?.months || []);
       setUpdatedAt(new Date());
     } catch (err) {
-      setError(errMsg(err, 'Failed to load platform data'));
+      notify.error(errMsg(err, 'Failed to load platform data'));
     } finally {
       setLoading(false);
     }
@@ -78,12 +78,12 @@ const SuperAdminDashboard = () => {
     );
     if (!ok) return;
     setBusyId(c.id);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     try {
       await adminService.setCompanyStatus(c.id, next);
       await load(true);
     } catch (err) {
-      setError(errMsg(err, 'Status update failed'));
+      notify.error(errMsg(err, 'Status update failed'));
     } finally {
       setBusyId(null);
     }
@@ -129,11 +129,6 @@ const SuperAdminDashboard = () => {
           )}
         </div>
 
-        {error && (
-          <div className="mb-5 rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">
-            {error}
-          </div>
-        )}
 
         {loading && !overview ? (
           <p className="text-crewly-dim">Loading platform data…</p>

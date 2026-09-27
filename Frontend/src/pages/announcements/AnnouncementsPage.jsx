@@ -4,9 +4,9 @@ import { Megaphone, Pin, Send } from 'lucide-react';
 import { announcementService } from '../../services/selfService.js';
 import useAuth from '../../hooks/useAuth';
 import Modal from '../../components/Modal.jsx';
+import { notify } from '../../utils/notify.js';
 
 
-const errMsg = (err, fb) => err?.response?.data?.message || err?.data?.message || err?.message || fb;
 const POSTERS = ['COMPANY_ADMIN', 'HR_MANAGER'];
 
 const AnnouncementsPage = () => {
@@ -14,37 +14,41 @@ const AnnouncementsPage = () => {
   const canPost = POSTERS.includes(user?.role);
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ title: '', body: '', pinned: false });
 
   const load = useCallback(async () => {
-    setLoading(true); setError('');
+    setLoading(true); /* 35.1 — nothing to report; failures are toasted by api.js */;
     try {
       const res = await announcementService.list();
       setList(Array.isArray(res) ? res : res?.data || []);
-    } catch (err) { setError(errMsg(err, 'Failed to load announcements')); }
+    } catch (err) { notify.error(err); }
     finally { setLoading(false); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
   const onPost = async () => {
-    if (!form.title.trim() || !form.body.trim()) { setError('Title and message are required'); return; }
-    setSaving(true); setError('');
+    if (!form.title.trim() || !form.body.trim()) { notify.warning('Title and message are required'); return; }
+    setSaving(true); /* 35.1 — nothing to report; failures are toasted by api.js */;
     try {
       await announcementService.create(form);
+      notify.success('Announcement posted.');
       setOpen(false); setForm({ title: '', body: '', pinned: false });
       await load();
-    } catch (err) { setError(errMsg(err, 'Post failed')); }
+    } catch (err) { notify.error(err); }
     finally { setSaving(false); }
   };
 
   const onDelete = async (a) => {
     if (!window.confirm(`Delete announcement "${a.title}"?`)) return;
-    try { await announcementService.remove(a._id); setList((l) => l.filter((x) => x._id !== a._id)); }
-    catch (err) { setError(errMsg(err, 'Delete failed')); }
+    try {
+      await announcementService.remove(a._id);
+      setList((l) => l.filter((x) => x._id !== a._id));
+      notify.success('Announcement deleted.');
+    }
+    catch (err) { notify.error(err); }
   };
 
   return (
@@ -57,7 +61,6 @@ const AnnouncementsPage = () => {
         {canPost && <button className="btn-primary px-5 py-2.5 text-sm" onClick={() => setOpen(true)}>+ New Announcement</button>}
       </div>
 
-      {error && <div className="mt-4 rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">{error}</div>}
 
       <div className="mt-5 space-y-3">
         {loading && <p className="text-crewly-dim">Loading…</p>}

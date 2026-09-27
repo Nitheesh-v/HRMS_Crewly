@@ -8,7 +8,6 @@ import payrollAnalyticsService, { saveBlob } from '../../../services/payrollAnal
 
 import {
   AccessDenied,
-  Banner,
   DataTable,
   ExportMenu,
   FilterBar,
@@ -28,6 +27,7 @@ import {
   useReport,
   usePayrollMonths,
 } from './analyticsShared.js';
+import { notify } from '../../../utils/notify.js';
 
 // ───────────────────────────────────────────────────────────────────────────
 // §17 — the Payroll Register, the master record: employee ID, name,
@@ -98,13 +98,12 @@ const PayrollRegisterPage = () => {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const PAGE_SIZE = 25;
-  const [banner, setBanner] = useState(null);
   const [files, setFiles] = useState([]);
   const [filesLoading, setFilesLoading] = useState(false);
   const [downloading, setDownloading] = useState('');
 
   const filters = { month, departmentId, status, designation, employmentStatus, structureId, page, limit: PAGE_SIZE, search };
-  const { report, loading, denied, error, reload } = useReport({
+  const { report, loading, denied, reload } = useReport({
     reportKey: 'REGISTER',
     filters,
     enabled: !permsLoading && canRead,
@@ -161,7 +160,7 @@ const PayrollRegisterPage = () => {
       const blob = await payrollAnalyticsService.downloadFile(file._id);
       saveBlob(blob, file.filename || 'payroll-register.xlsx');
     } catch (err) {
-      setBanner({ type: 'error', text: err?.message || 'Unable to download this file' });
+      notify.error(err, 'Unable to download this file');
     } finally {
       setDownloading('');
     }
@@ -182,16 +181,9 @@ const PayrollRegisterPage = () => {
         icon={FileSpreadsheet}
         title="Payroll Register"
         subtitle={`${monthLabel(month)} · §17 the master payroll record`}
-        actions={<ExportMenu reportKey="REGISTER" filters={filters} onQueued={(result) => {
-          setBanner(result?.queued
-            ? { type: 'success', text: 'Register queued — it will appear under Generated files' }
-            : { type: 'success', text: 'Register downloaded' });
-          loadFiles();
-        }} />}
+        actions={<ExportMenu reportKey="REGISTER" filters={filters} onQueued={() => loadFiles()} />}
       />
 
-      {banner ? <div className="mb-4"><Banner {...banner} onClose={() => setBanner(null)} /></div> : null}
-      {error ? <div className="mb-4"><Banner type="error" text={error} onClose={() => {}} /></div> : null}
 
       <FilterBar
         month={month}

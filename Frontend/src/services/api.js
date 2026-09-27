@@ -3,6 +3,7 @@ import store from '../redux/store.js';
 import {
   logout as logoutAction,
 } from '../redux/slices/AuthSlices.js';
+import { attachFailureReporter } from './failureReporter.js';
 
 const baseURL =
   import.meta.env.VITE_API_URL ||
@@ -15,6 +16,14 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+/*
+ * 35.1 — the app-wide failure report. Attached FIRST so it observes the raw
+ * axios error (and can tell a dead network from a 4xx) before the interceptor
+ * below normalises it and, on a 401, retries. It only observes: the error
+ * travels on unchanged. `{ skipErrorToast: true }` on a request opts it out.
+ */
+attachFailureReporter(api);
 
 /*
  * Separate client avoids sending the expired access token and prevents

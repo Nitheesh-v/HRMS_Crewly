@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import usePermission from '../../hooks/usePermission.js';
 import employeePayrollService from '../../services/employeePayrollService.js';
+import { notify } from '../../utils/notify.js';
 
 // ── display mirrors of the backend rules (the server always decides) ────────
 
@@ -51,7 +52,6 @@ const EmployeePayrollPage = () => {
   const [profiles, setProfiles] = useState([]);
   const [structures, setStructures] = useState([]);
   const [withoutProfile, setWithoutProfile] = useState([]);
-  const [banner, setBanner] = useState(null);
   const [accessDenied, setAccessDenied] = useState(false);
 
   const [filters, setFilters] = useState({
@@ -68,9 +68,27 @@ const EmployeePayrollPage = () => {
   ]);
   const noAccess = !permsLoading && !canView;
 
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
   const flash = useCallback((type, text) => {
-    setBanner({ type, text });
-    setTimeout(() => setBanner(null), 5000);
+    const body = typeof text === 'string' && text ? text : '';
+
+    if (!body) return;
+
+    const kind = String(type).toLowerCase();
+
+    if (kind === 'error' || kind === 'danger' || kind === 'failed') notify.error(body);
+    else if (kind === 'warning' || kind === 'warn') notify.warning(body);
+    else if (kind === 'info') notify.info(body);
+    else notify.success(body);
   }, []);
 
   const load = useCallback(async () => {
@@ -137,18 +155,6 @@ const EmployeePayrollPage = () => {
           </p>
         </div>
       </div>
-
-      {banner && (
-        <div
-          className={`card text-sm ${
-            banner.type === 'error'
-              ? 'border-red-500/40 text-red-300'
-              : 'border-emerald-500/40 text-emerald-300'
-          }`}
-        >
-          {banner.text}
-        </div>
-      )}
 
       {/* §17 — filters */}
       <div className="card grid gap-3 md:grid-cols-4">

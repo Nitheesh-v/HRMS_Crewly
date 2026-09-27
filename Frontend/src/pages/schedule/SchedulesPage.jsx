@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { AlarmClock, Building2, CalendarDays, Coffee, Lock, MapPin, Pencil, Shuffle, Target, Trash2, Users } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import scheduleService from '../../services/scheduleService';
+import { notify } from '../../utils/notify.js';
 
 const inp = 'w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500';
 const primary = 'rounded-lg bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-50';
@@ -15,18 +16,17 @@ export default function SchedulesPage() {
   const isHR = ['COMPANY_ADMIN', 'HR_MANAGER'].includes(user?.role);
   const [schedules, setSchedules] = useState([]);
   const [departments, setDepartments] = useState([]);
-  const [toast, setToast] = useState('');
   const [modal, setModal] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  const flash = (m) => { setToast(m); setTimeout(() => setToast(''), 3000); };
+  /* 35.1 — feedback is a toast now (see ../../utils/notify.js). */
   const load = async () => {
     try {
       const d = await scheduleService.listSchedules();
       setSchedules(d.schedules || []);
       const deps = await scheduleService.getDepartments();
       setDepartments(deps.departments || []);
-    } catch (e) { flash(e?.response?.data?.message || e.message); }
+    } catch { /* 35.1 — api.js reports every failed request */ }
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
@@ -38,8 +38,10 @@ export default function SchedulesPage() {
       const f = modal.form;
       const payload = { name: f.name, workingDays: f.workingDays, startTime: f.startTime, endTime: f.endTime, breakMinutes: +f.breakMinutes, graceMinutes: +f.graceMinutes, minWorkingHours: +f.minWorkingHours, halfDayHours: +f.halfDayHours, overtimeEligible: !!f.overtimeEligible, branch: f.branch, departments: f.departments || [], lateRule: { graceMinutes: +f.lateGrace, maxLatePerMonth: +f.maxLatePerMonth }, earlyCheckoutRule: { graceMinutes: +f.earlyGrace } };
       const r = modal.mode === 'create' ? await scheduleService.createSchedule(payload) : await scheduleService.updateSchedule(modal.id, payload);
-      flash(r.message || 'Saved'); setModal(null); load();
-    } catch (e) { flash(e?.response?.data?.message || e.message); }
+      notify.successFrom(r, 'Schedule saved.');
+      setModal(null);
+      load();
+    } catch { /* 35.1 — api.js reports every failed request */ }
     setSaving(false);
   };
 
@@ -52,8 +54,6 @@ export default function SchedulesPage() {
         </div>
         <button onClick={() => setModal({ mode: 'create', form: { ...emptyForm, departments: [] } })} className={primary}>＋ New Schedule</button>
       </div>
-
-      {toast && <div className="rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-4 py-2 text-sm text-indigo-200">{toast}</div>}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {schedules.map((s) => (

@@ -3,6 +3,7 @@ import { AlarmClock, Banknote, Building2, Circle, Coffee, Dumbbell, Moon, Pencil
 import { useSelector } from 'react-redux';
 import scheduleService from '../../services/scheduleService';
 import { getEmployees } from '../../services/docsService';
+import { notify } from '../../utils/notify.js';
 
 const inp = 'w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500';
 const primary = 'rounded-lg bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-50';
@@ -26,14 +27,13 @@ export default function ShiftsPage() {
   const [employees, setEmployees] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [mine, setMine] = useState(null);
-  const [toast, setToast] = useState('');
   const [modal, setModal] = useState(null);     // create/edit
   const [assignFor, setAssignFor] = useState(null); // shift being assigned
   const [historyFor, setHistoryFor] = useState('');
   const [history, setHistory] = useState([]);
   const [saving, setSaving] = useState(false);
 
-  const flash = (m) => { setToast(m); setTimeout(() => setToast(''), 3500); };
+  /* 35.1 — feedback is a toast now (see ../../utils/notify.js). */
   const empList = Array.isArray(employees) ? employees : employees?.employees || [];
 
   const load = async () => {
@@ -48,7 +48,7 @@ export default function ShiftsPage() {
       }
       const m = await scheduleService.myShift();
       setMine(m);
-    } catch (e) { flash(e?.response?.data?.message || e.message); }
+    } catch { /* 35.1 — api.js reports every failed request */ }
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
@@ -61,14 +61,20 @@ export default function ShiftsPage() {
       const f = modal.form;
       const payload = { name: f.name, type: f.type, startTime: f.startTime, endTime: f.endTime, breakMinutes: +f.breakMinutes, graceMinutes: +f.graceMinutes, overtimeEligible: !!f.overtimeEligible, overtimeRatePerHour: +f.overtimeRatePerHour, shiftAllowance: +f.shiftAllowance, nightAllowance: +f.nightAllowance, lateRule: { graceMinutes: +f.lateGrace, maxLatePerMonth: +f.maxLatePerMonth }, earlyCheckoutRule: { graceMinutes: +f.earlyGrace } };
       const r = modal.mode === 'create' ? await scheduleService.createShift(payload) : await scheduleService.updateShift(modal.id, payload);
-      flash(r.message || 'Saved'); setModal(null); load();
-    } catch (e) { flash(e?.response?.data?.message || e.message); }
+      notify.successFrom(r, 'Shift saved.');
+      setModal(null);
+      load();
+    } catch { /* 35.1 — api.js reports every failed request */ }
     setSaving(false);
   };
 
   const deactivate = async (s) => {
     if (!window.confirm(`Deactivate "${s.name}"?`)) return;
-    const r = await scheduleService.deleteShift(s.id); flash(r.message || 'Done'); load();
+    try {
+      const r = await scheduleService.deleteShift(s.id);
+      notify.successFrom(r, 'Shift deactivated.');
+      load();
+    } catch { /* 35.1 — api.js reports every failed request, so nothing to do here */ }
   };
 
   const loadHistory = async (uid) => {
@@ -88,8 +94,6 @@ export default function ShiftsPage() {
         </div>
         {isHR && <button onClick={openCreate} className={primary}>＋ New Shift</button>}
       </div>
-
-      {toast && <div className="rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-4 py-2 text-sm text-indigo-200">{toast}</div>}
 
       {/* ── MY SHIFT CARD (all roles) ── */}
       <div className="rounded-xl border border-slate-700 bg-slate-900 p-5">
@@ -277,8 +281,10 @@ export default function ShiftsPage() {
                 setSaving(true);
                 try {
                   const r = await scheduleService.assignShift(assignFor.id, { userIds: assignFor.mode === 'EMPLOYEE' ? assignFor.userIds : [], departmentId: assignFor.mode === 'DEPARTMENT' ? assignFor.departmentId : null, effectiveFrom: assignFor.effectiveFrom, reason: assignFor.reason });
-                  flash(r.message || 'Assigned'); setAssignFor(null); load();
-                } catch (e) { flash(e?.response?.data?.message || e.message); }
+                  notify.successFrom(r, 'Shift assigned.');
+                  setAssignFor(null);
+                  load();
+                } catch { /* 35.1 — api.js reports every failed request */ }
                 setSaving(false);
               }} disabled={saving || (assignFor.mode === 'EMPLOYEE' ? !assignFor.userIds.length : !assignFor.departmentId)}>
                 {saving ? 'Assigning…' : 'Assign'}

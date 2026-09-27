@@ -9,6 +9,7 @@ import {
   getMyJourney, getCompanyLifecycles, getUserJourney,
   setStage, promoteUser, transferUser, getDepartments,
 } from '../../services/lifecycleService.js';
+import { notify } from '../../utils/notify.js';
 
 const inp = 'w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500';
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
@@ -115,12 +116,20 @@ export default function LifecyclePage() {
   const [stageFilter, setStageFilter] = useState('');
   const [journey, setJourney] = useState(null);
   const [departments, setDepartments] = useState([]);
-  const [banner, setBanner] = useState(null);
   const [busy, setBusy] = useState(false);
   const [action, setAction] = useState(null); // 'confirm'|'probation'|'extend'|'notice'|'exit'|'alumni'|'promote'|'transfer'
   const [form, setForm] = useState({ note: '', probationMonths: 3, noticeDays: 30, designation: '', role: '', departmentId: '' });
 
-  const flash = (okv, text) => { setBanner({ ok: okv, text }); setTimeout(() => setBanner(null), 3500); };
+  /* 35.1 — feedback is a toast now; the signature is unchanged. */
+  /* 35.1 — feedback is a toast now; the signature is unchanged. */
+  const flash = (ok, text) => {
+    const body = typeof text === 'string' && text ? text : '';
+
+    if (!body) return;
+
+    if (ok) notify.success(body);
+    else notify.error(body);
+  };
 
   const loadList = async () => setList(await getCompanyLifecycles(stageFilter || undefined));
   useEffect(() => { if (isHR) loadList(); }, [isHR, stageFilter]);
@@ -187,7 +196,6 @@ export default function LifecyclePage() {
     return (
       <div className="max-w-3xl space-y-5">
         <h1 className="text-2xl font-bold text-slate-100"><Dna className="mr-2 inline h-6 w-6 text-indigo-400" />My Journey</h1>
-        {banner && <div className={`rounded-lg px-4 py-2.5 text-sm font-medium ${banner.ok ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'}`}>{banner.text}</div>}
         {journey ? <JourneyCard journey={journey} /> : <p className="rounded-xl border border-slate-700 bg-slate-800/40 p-8 text-center text-sm text-slate-400">Loading your journey…</p>}
       </div>
     );
@@ -200,8 +208,6 @@ export default function LifecyclePage() {
         <h1 className="text-2xl font-bold text-slate-100"><Dna className="mr-2 inline h-6 w-6 text-indigo-400" />Employee Lifecycle</h1>
         <span className="text-sm text-slate-400">{list.length} record(s)</span>
       </div>
-
-      {banner && <div className={`rounded-lg px-4 py-2.5 text-sm font-medium ${banner.ok ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'}`}>{banner.text}</div>}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[320px,1fr]">
         <aside className="rounded-xl border border-slate-700 bg-slate-800/60 p-3">

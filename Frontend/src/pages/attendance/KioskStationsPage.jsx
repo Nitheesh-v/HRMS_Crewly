@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  AlertTriangle,
-  CheckCircle2,
   Copy,
   KeyRound,
   MapPin,
@@ -12,6 +10,7 @@ import {
 import attendanceCaptureService from '../../services/attendanceCaptureService.js';
 import attendanceLocationService from '../../services/attendanceLocationService.js';
 import usePermission from '../../hooks/usePermission.js';
+import { notify } from '../../utils/notify.js';
 
 // Phase 31.14 — kiosk station management (HR/admin). Stations are
 // trusted shared devices: the secret is shown ONCE at create /
@@ -25,15 +24,13 @@ const KioskStationsPage = () => {
   const [stations, setStations] = useState([]);
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
   const [once, setOnce] = useState(null); // { title, secret }
   const [form, setForm] = useState({ name: '', locationId: '' });
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     try {
       const [stationRes, locationRes] = await Promise.all([
         attendanceCaptureService.listStations(),
@@ -42,7 +39,7 @@ const KioskStationsPage = () => {
       setStations(stationRes.data?.stations || []);
       setLocations(locationRes.data?.locations || locationRes.data || []);
     } catch (loadError) {
-      setError(loadError?.message || 'Could not load kiosk stations');
+      notify.error(loadError?.message || 'Could not load kiosk stations');
     } finally {
       setLoading(false);
     }
@@ -67,17 +64,17 @@ const KioskStationsPage = () => {
     if (!once?.secret) return;
     try {
       await navigator.clipboard.writeText(once.secret);
-      setNotice('Secret copied to clipboard.');
+      notify.error('Secret copied to clipboard.');
     } catch {
-      setNotice('Copy failed — select the secret text manually.');
+      notify.error('Copy failed — select the secret text manually.');
     }
   };
 
   const handleCreate = async (event) => {
     event.preventDefault();
     setSaving(true);
-    setError('');
-    setNotice('');
+    /* 35.1 — nothing to report (failure state cleared) */
+    /* 35.1 — nothing to report (failure state cleared) */
     try {
       const res = await attendanceCaptureService.createStation({
         name: form.name.trim(),
@@ -85,30 +82,30 @@ const KioskStationsPage = () => {
       });
       setOnce({ title: `Station secret — ${res.data?.station?.name || ''}`, secret: res.data?.secret || '' });
       setForm({ name: '', locationId: '' });
-      setNotice('Station registered. Store the secret now — it cannot be shown again.');
+      notify.error('Station registered. Store the secret now — it cannot be shown again.');
       await load();
     } catch (saveError) {
-      setError(saveError?.message || 'Could not register the station');
+      notify.error(saveError?.message || 'Could not register the station');
     } finally {
       setSaving(false);
     }
   };
 
   const handleToggle = async (station) => {
-    setError('');
-    setNotice('');
+    /* 35.1 — nothing to report (failure state cleared) */
+    /* 35.1 — nothing to report (failure state cleared) */
     try {
       await attendanceCaptureService.updateStation(station.id, {
         status: station.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE',
       });
-      setNotice(
+      notify.error(
         station.status === 'ACTIVE'
           ? 'Station deactivated — its kiosk sessions stop working immediately.'
           : 'Station reactivated.'
       );
       await load();
     } catch (toggleError) {
-      setError(toggleError?.message || 'Could not update the station');
+      notify.error(toggleError?.message || 'Could not update the station');
     }
   };
 
@@ -117,15 +114,15 @@ const KioskStationsPage = () => {
     if (!window.confirm(`Rotate the secret for "${station.name}"? All kiosk sessions on this station stop working immediately.`)) {
       return;
     }
-    setError('');
-    setNotice('');
+    /* 35.1 — nothing to report (failure state cleared) */
+    /* 35.1 — nothing to report (failure state cleared) */
     try {
       const res = await attendanceCaptureService.rotateStationSecret(station.id);
       setOnce({ title: `New secret — ${station.name}`, secret: res.data?.secret || '' });
-      setNotice('Secret rotated. Store the new secret now — it cannot be shown again.');
+      notify.error('Secret rotated. Store the new secret now — it cannot be shown again.');
       await load();
     } catch (rotateError) {
-      setError(rotateError?.message || 'Could not rotate the secret');
+      notify.error(rotateError?.message || 'Could not rotate the secret');
     }
   };
 
@@ -150,16 +147,6 @@ const KioskStationsPage = () => {
         </button>
       </div>
 
-      {error && (
-        <div className="flex items-start gap-2 rounded-xl border border-crewly-red/40 bg-crewly-red/10 p-4 text-sm text-crewly-red">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {error}
-        </div>
-      )}
-      {notice && (
-        <div className="flex items-start gap-2 rounded-xl border border-green-500/40 bg-green-500/10 p-4 text-sm text-green-300">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> {notice}
-        </div>
-      )}
 
       {once?.secret && (
         <div className="rounded-xl border border-crewly-orange/50 bg-crewly-orange/10 p-4">
@@ -296,9 +283,9 @@ const KioskStationsPage = () => {
                       onClick={async () => {
                         try {
                           await navigator.clipboard.writeText(station.id);
-                          setNotice(`Station ID for "${station.name}" copied — paste it on the terminal.`);
+                          notify.error(`Station ID for "${station.name}" copied — paste it on the terminal.`);
                         } catch {
-                          setError('Copy failed — the station ID is shown in the address of its row.');
+                          notify.error('Copy failed — the station ID is shown in the address of its row.');
                         }
                       }}
                       className="rounded-lg border border-crewly-line px-3 py-1.5 text-xs text-crewly-ink hover:bg-crewly-card"

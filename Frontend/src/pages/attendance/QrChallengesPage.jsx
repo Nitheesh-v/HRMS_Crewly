@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, QrCode, RefreshCw, Timer } from 'lucide-react';
+import { QrCode, RefreshCw, Timer } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import attendanceCaptureService from '../../services/attendanceCaptureService.js';
 import attendanceLocationService from '../../services/attendanceLocationService.js';
 import usePermission from '../../hooks/usePermission.js';
+import { notify } from '../../utils/notify.js';
 
 // Phase 31.14 — QR challenge issuance (HR/admin). Each challenge is
 // single-use and expires in 5 minutes; the QR encodes an SPA path,
@@ -23,7 +24,6 @@ const QrChallengesPage = () => {
   const [issued, setIssued] = useState(null);
   const [remainingMs, setRemainingMs] = useState(0);
   const [issuing, setIssuing] = useState(false);
-  const [error, setError] = useState('');
 
   useEffect(() => {
     if (!canManage) return;
@@ -63,7 +63,7 @@ const QrChallengesPage = () => {
   const handleIssue = async (event) => {
     event.preventDefault();
     setIssuing(true);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     try {
       const res = await attendanceCaptureService.createChallenge({
         locationId: locationId || null,
@@ -71,7 +71,7 @@ const QrChallengesPage = () => {
       });
       setIssued(res.data);
     } catch (issueError) {
-      setError(issueError?.message || 'Could not issue the challenge');
+      notify.error(issueError?.message || 'Could not issue the challenge');
     } finally {
       setIssuing(false);
     }
@@ -89,11 +89,6 @@ const QrChallengesPage = () => {
         </p>
       </div>
 
-      {error && (
-        <div className="flex items-start gap-2 rounded-xl border border-crewly-red/40 bg-crewly-red/10 p-4 text-sm text-crewly-red">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {error}
-        </div>
-      )}
 
       <form onSubmit={handleIssue} className="rounded-xl border border-crewly-line bg-crewly-card p-4">
         <div className="grid gap-3 sm:grid-cols-3">

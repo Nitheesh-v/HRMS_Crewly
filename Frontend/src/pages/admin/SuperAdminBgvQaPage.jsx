@@ -9,6 +9,7 @@ import {
   Undo2,
 } from 'lucide-react';
 import superAdminService from '../../services/superAdminService.js';
+import { notify } from '../../utils/notify.js';
 
 // Phase 30.10 — internal BGV QA review + final report release.
 // QA approves or returns verifier findings; it NEVER hires/rejects — those
@@ -24,8 +25,6 @@ const QA_BADGE = {
 const SuperAdminBgvQaPage = () => {
   const [rows, setRows] = useState(null);
   const [filters, setFilters] = useState({ status: 'awaiting', checkType: '', orderCode: '' });
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState('');
   const [selected, setSelected] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -37,7 +36,7 @@ const SuperAdminBgvQaPage = () => {
       const result = await superAdminService.bgvQaQueue(filters);
       setRows(result.rows || []);
     } catch (requestError) {
-      setError(requestError?.message || 'Could not load the QA queue');
+      notify.error(requestError, 'Could not load the QA queue');
     }
   }, [filters]);
 
@@ -56,20 +55,20 @@ const SuperAdminBgvQaPage = () => {
       setDetail(detailResult);
       setReport(reportResult);
     } catch (requestError) {
-      setError(requestError?.message || 'Could not load QA detail');
+      notify.error(requestError, 'Could not load QA detail');
     }
   };
 
   const act = async (key, action, message) => {
     setBusy(key);
-    setError('');
+
     try {
       await action();
-      setNotice(message);
+      notify.success(message);
       await load();
       if (selected) await openDetail(selected);
     } catch (requestError) {
-      setError(requestError?.message || 'Action failed');
+      notify.error(requestError, 'Action failed');
     } finally {
       setBusy('');
     }
@@ -102,8 +101,8 @@ const SuperAdminBgvQaPage = () => {
         </button>
       </div>
 
-      {error ? <div className="rounded-lg border border-crewly-red/30 bg-crewly-red/10 p-3 text-xs text-crewly-red">{error}</div> : null}
-      {notice ? <div className="rounded-lg border border-crewly-green/30 bg-crewly-green/10 p-3 text-xs text-crewly-green">{notice}</div> : null}
+
+
 
       <div className="card">
         <div className="mb-3 flex flex-wrap gap-2">

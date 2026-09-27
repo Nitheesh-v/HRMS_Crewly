@@ -5,7 +5,6 @@ import usePermission from '../../../hooks/usePermission.js';
 
 import {
   AccessDenied,
-  Banner,
   DataTable,
   ExportMenu,
   FilterBar,
@@ -43,7 +42,6 @@ const StatutorySummaryPage = () => {
   const [month, setMonth] = useState(currentMonth());
   const [departmentId, setDepartmentId] = useState('');
   const [financialYear, setFinancialYear] = useState(currentFinancialYear());
-  const [banner, setBanner] = useState(null);
 
   const filters = { month, departmentId };
   const monthly = useReport({ reportKey: 'STATUTORY', filters, enabled: !permsLoading && canRead });
@@ -74,10 +72,9 @@ const StatutorySummaryPage = () => {
         icon={Landmark}
         title="Statutory Summary"
         subtitle={`${monthLabel(month)} · §15 consolidated statutory liability`}
-        actions={<ExportMenu reportKey="STATUTORY" filters={filters} onQueued={setBanner} />}
+        actions={<ExportMenu reportKey="STATUTORY" filters={filters} />}
       />
 
-      {banner ? <div className="mb-4"><Banner {...banner} onClose={() => setBanner(null)} /></div> : null}
 
       <FilterBar
         month={month}
@@ -174,7 +171,7 @@ const StatutorySummaryPage = () => {
                 <ExportMenu
                   reportKey="STATUTORY"
                   filters={{ financialYear, departmentId }}
-                  onQueued={setBanner}
+                 
                 />
               </div>
             }

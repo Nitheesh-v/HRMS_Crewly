@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FileText, Save, X } from 'lucide-react';
 import offerService from '../../services/offerService.js';
+import { notify } from '../../utils/notify.js';
 
 const isoDate = (value) => (value ? new Date(value).toISOString().slice(0, 10) : '');
 const futureDate = (days) => {
@@ -50,7 +51,6 @@ const OfferEditor = ({ offer = null, revisionSource = null, presetCandidateId = 
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -75,7 +75,7 @@ const OfferEditor = ({ offer = null, revisionSource = null, presetCandidateId = 
           reportingManagerId: current.reportingManagerId || candidate?.hiringManagerId || '',
         }));
       })
-      .catch((requestError) => setError(requestError.message || 'Offer editor could not be loaded'))
+      .catch((requestError) => notify.error(requestError, 'Offer editor could not be loaded'))
       .finally(() => active && setLoading(false));
     return () => { active = false; };
   }, [presetCandidateId, sourceOffer]);
@@ -143,7 +143,7 @@ const OfferEditor = ({ offer = null, revisionSource = null, presetCandidateId = 
   const submit = async (event) => {
     event.preventDefault();
     setBusy(true);
-    setError('');
+    
     const payload = {
       ...(offer ? {} : {
         candidateId: form.candidateId,
@@ -176,7 +176,7 @@ const OfferEditor = ({ offer = null, revisionSource = null, presetCandidateId = 
       const saved = offer ? await offerService.update(offer._id, payload) : await offerService.create(payload);
       onSaved?.(saved);
     } catch (requestError) {
-      setError(requestError.message || 'Offer could not be saved');
+      notify.error(requestError, 'Offer could not be saved');
     } finally {
       setBusy(false);
     }
@@ -194,7 +194,7 @@ const OfferEditor = ({ offer = null, revisionSource = null, presetCandidateId = 
         {onCancel ? <button type="button" className="btn-ghost" onClick={onCancel} aria-label="Close editor"><X className="h-4 w-4" /></button> : null}
       </div>
 
-      {error ? <p role="alert" className="rounded-xl border border-rose-500/25 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</p> : null}
+      
 
       <div className="grid gap-4 md:grid-cols-2">
         {!offer ? (

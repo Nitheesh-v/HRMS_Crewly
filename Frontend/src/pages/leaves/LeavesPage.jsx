@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { AlertTriangle, FileText, Palmtree } from 'lucide-react';
 import leaveService from '../../services/leaveService.js';
 import Modal from '../../components/Modal.jsx';
+import { notify } from '../../utils/notify.js';
 
 const STATUS_STYLE = {
   PENDING: 'bg-crewly-orange/15 text-crewly-orange',
@@ -22,28 +23,32 @@ const LeavesPage = () => {
   const [data, setData] = useState({ leaves: [], balance: [], year: '' });
   const [showApply, setShowApply] = useState(false);
   const [form, setForm] = useState(emptyForm);
-  const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const load = () => leaveService.my().then(setData).catch((e) => setError(e.message));
+  const load = () => leaveService.my().then(setData).catch((e) => notify.error(e));
   useEffect(() => { load(); }, []);
 
   const submit = async (e) => {
     e.preventDefault();
-    setError(''); setSaving(true);
+    /* 35.1 — nothing to report; failures are toasted by api.js */; setSaving(true);
     try {
       await leaveService.apply(form);
+      notify.success('Leave request submitted.');
       setShowApply(false);
       setForm(emptyForm);
       load();
-    } catch (err) { setError(err.message); } finally { setSaving(false); }
+    } catch (err) { notify.error(err); } finally { setSaving(false); }
   };
 
   const cancel = async (leave) => {
     if (!window.confirm('Cancel this leave request?')) return;
-    setError('');
-    try { await leaveService.cancel(leave._id); load(); }
-    catch (err) { setError(err.message); }
+    /* 35.1 — nothing to report; failures are toasted by api.js */;
+    try {
+      await leaveService.cancel(leave._id);
+      notify.success('Leave request cancelled.');
+      load();
+    }
+    catch (err) { notify.error(err); }
   };
 
   const availableOf = (type) => data.balance.find((b) => b.type === type)?.available ?? 0;
@@ -60,7 +65,6 @@ const LeavesPage = () => {
         <button className="btn-primary" onClick={() => setShowApply(true)}>+ Apply Leave</button>
       </div>
 
-      {error && <div className="rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">{error}</div>}
 
       {/* Balance cards */}
       <div className="grid gap-3 sm:grid-cols-3">

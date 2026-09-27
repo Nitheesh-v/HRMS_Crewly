@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, Plus, RefreshCw } from 'lucide-react';
 import usePermission from '../../hooks/usePermission.js';
 import bgvService from '../../services/bgvService.js';
+import { notify } from '../../utils/notify.js';
 
 const BackgroundVerificationSettingsPage = () => {
   const { hasPermission } = usePermission();
@@ -20,13 +21,11 @@ const BackgroundVerificationSettingsPage = () => {
   });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
 
   const load = useCallback(async () => {
     if (!canRead) return;
     setLoading(true);
-    setError('');
+
     try {
       const [settingsData, typeRows] = await Promise.all([
         bgvService.getSettings(),
@@ -35,7 +34,7 @@ const BackgroundVerificationSettingsPage = () => {
       setSettings(settingsData);
       setTypes(typeRows || []);
     } catch (requestError) {
-      setError(requestError.message || 'Settings could not be loaded');
+      notify.error(requestError, 'Settings could not be loaded');
     } finally {
       setLoading(false);
     }
@@ -49,8 +48,8 @@ const BackgroundVerificationSettingsPage = () => {
     event.preventDefault();
     if (!canManage || !settings) return;
     setBusy(true);
-    setError('');
-    setMessage('');
+
+
     try {
       const updated = await bgvService.updateSettings({
         enabled: settings.enabled,
@@ -60,9 +59,9 @@ const BackgroundVerificationSettingsPage = () => {
         bgvRequiredBeforeJoining: settings.bgvRequiredBeforeJoining,
       });
       setSettings(updated);
-      setMessage('Settings saved');
+      notify.success('Settings saved');
     } catch (requestError) {
-      setError(requestError.message || 'Settings could not be saved');
+      notify.error(requestError, 'Settings could not be saved');
     } finally {
       setBusy(false);
     }
@@ -72,7 +71,7 @@ const BackgroundVerificationSettingsPage = () => {
     event.preventDefault();
     if (!canManage) return;
     setBusy(true);
-    setError('');
+
     try {
       await bgvService.createCheckType(form);
       setForm({
@@ -84,7 +83,7 @@ const BackgroundVerificationSettingsPage = () => {
       });
       await load();
     } catch (requestError) {
-      setError(requestError.message || 'Check type could not be created');
+      notify.error(requestError, 'Check type could not be created');
     } finally {
       setBusy(false);
     }
@@ -113,16 +112,8 @@ const BackgroundVerificationSettingsPage = () => {
         <h1 className="mt-3 text-2xl font-bold text-slate-100">BGV settings</h1>
       </div>
 
-      {error ? (
-        <p className="rounded-xl border border-rose-500/25 bg-rose-500/10 p-3 text-sm text-rose-200">
-          {error}
-        </p>
-      ) : null}
-      {message ? (
-        <p className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3 text-sm text-emerald-200">
-          {message}
-        </p>
-      ) : null}
+
+
 
       <div className="grid gap-6 xl:grid-cols-2">
         <form onSubmit={saveSettings} className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900 p-5">

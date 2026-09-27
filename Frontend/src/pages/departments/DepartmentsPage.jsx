@@ -4,6 +4,7 @@ import departmentService from '../../services/departmentService.js';
 import Modal from '../../components/Modal.jsx';
 import useAuth from '../../hooks/useAuth.jsx';
 import { ROLES } from '../../utils/roles.js';
+import { notify } from '../../utils/notify.js';
 
 const emptyForm = { name: '', description: '' };
 
@@ -15,37 +16,42 @@ const DepartmentsPage = () => {
   const [departments, setDepartments] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [editing, setEditing] = useState(null); // department being edited
-  const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const load = () => departmentService.getAll().then(setDepartments).catch((e) => setError(e.message));
+  const load = () => departmentService.getAll().then(setDepartments).catch((e) => notify.error(e));
   useEffect(() => { load(); }, []);
 
   const submitCreate = async (e) => {
     e.preventDefault();
-    setError(''); setSaving(true);
+    /* 35.1 — nothing to report; failures are toasted by api.js */; setSaving(true);
     try {
       await departmentService.create(form);
+      notify.success('Department created.');
       setForm(emptyForm);
       load();
-    } catch (err) { setError(err.message); } finally { setSaving(false); }
+    } catch (err) { notify.error(err); } finally { setSaving(false); }
   };
 
   const submitEdit = async (e) => {
     e.preventDefault();
-    setError(''); setSaving(true);
+    /* 35.1 — nothing to report; failures are toasted by api.js */; setSaving(true);
     try {
       await departmentService.update(editing._id, { name: editing.name, description: editing.description, status: editing.status });
+      notify.success('Department updated.');
       setEditing(null);
       load();
-    } catch (err) { setError(err.message); } finally { setSaving(false); }
+    } catch (err) { notify.error(err); } finally { setSaving(false); }
   };
 
   const remove = async (dept) => {
     if (!window.confirm(`Delete department "${dept.name}"?`)) return;
-    setError('');
-    try { await departmentService.remove(dept._id); load(); }
-    catch (err) { setError(err.message); }
+    /* 35.1 — nothing to report; failures are toasted by api.js */;
+    try {
+      await departmentService.remove(dept._id);
+      notify.success('Department deleted.');
+      load();
+    }
+    catch (err) { notify.error(err); }
   };
 
   return (
@@ -55,7 +61,6 @@ const DepartmentsPage = () => {
         <span className="text-sm text-crewly-dim">{departments.length} total</span>
       </div>
 
-      {error && <div className="rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">{error}</div>}
 
       {canManage && (
         <form onSubmit={submitCreate} className="card flex flex-col gap-3 sm:flex-row sm:items-end">

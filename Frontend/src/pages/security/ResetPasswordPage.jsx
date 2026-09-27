@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import authService from "../../services/authService.js";
 import AuthLayout from "../../layout/AuthLayout.jsx";
 import PasswordField from "../../components/auth/PasswordField.jsx";
+import { notify } from '../../utils/notify.js';
 
 const Check = ({ ok }) => (
   <svg
@@ -60,7 +61,6 @@ const ResetPasswordPage = () => {
     confirmPassword: "",
   });
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
   const [done, setDone] = useState(false);
 
   // Repo-truth policy: minimum 10 characters with uppercase, lowercase,
@@ -81,10 +81,10 @@ const ResetPasswordPage = () => {
 
   const submit = async (event) => {
     event.preventDefault();
-    setError("");
+    /* 35.1 — nothing to report (failure state cleared) */
 
     if (!token) {
-      setError(
+      notify.error(
         isSetup
           ? "This account setup link is incomplete. Ask HR to resend the invitation."
           : "This reset link is incomplete. Request a new link."
@@ -93,7 +93,7 @@ const ResetPasswordPage = () => {
     }
 
     if (form.newPassword !== form.confirmPassword) {
-      setError("Passwords do not match.");
+      notify.error("Passwords do not match.");
       return;
     }
 
@@ -106,7 +106,7 @@ const ResetPasswordPage = () => {
       });
       setDone(true); // success screen; Back to Login carries the query states
     } catch (requestError) {
-      setError(requestError.message);
+      notify.error(requestError.message);
     } finally {
       setBusy(false);
     }
@@ -138,11 +138,6 @@ const ResetPasswordPage = () => {
           uppercase, lowercase, a number and a special character.
         </p>
 
-        {error && (
-          <div className="mt-6 rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
-            {error}
-          </div>
-        )}
 
         <form onSubmit={submit} className="mt-7 space-y-4" noValidate>
           <div>

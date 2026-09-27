@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, KeyRound } from 'lucide-react';
+import { KeyRound } from 'lucide-react';
 import attendanceCaptureService from '../../services/attendanceCaptureService.js';
+import { notify } from '../../utils/notify.js';
 
 // Phase 31.14 completion — Kiosk PIN self-service (My Attendance).
 // The employee sets/changes ONLY their own PIN (backend identity
@@ -15,8 +16,6 @@ const KioskPinCard = () => {
   const [pin, setPin] = useState('');
   const [confirm, setConfirm] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
 
   useEffect(() => {
     attendanceCaptureService.getKioskPinStatus().then(
@@ -27,14 +26,14 @@ const KioskPinCard = () => {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    setError('');
-    setNotice('');
+
+
     if (pin.length < 4) {
-      setError('Kiosk PIN must be 4–12 digits.');
+      notify.warning('Kiosk PIN must be 4–12 digits.');
       return;
     }
     if (pin !== confirm) {
-      setError('The PIN entries do not match.');
+      notify.warning('The PIN entries do not match.');
       return;
     }
     setBusy(true);
@@ -46,9 +45,9 @@ const KioskPinCard = () => {
       setCurrentPin('');
       setPin('');
       setConfirm('');
-      setNotice(configured ? 'Kiosk PIN changed.' : 'Kiosk PIN set — you can now punch at the shared terminal.');
+      notify.success(configured ? 'Kiosk PIN changed.' : 'Kiosk PIN set — you can now punch at the shared terminal.');
     } catch (saveError) {
-      setError(saveError?.message || 'Could not save the Kiosk PIN');
+      notify.error(saveError, 'Could not save the Kiosk PIN');
     } finally {
       setBusy(false);
     }
@@ -65,16 +64,8 @@ const KioskPinCard = () => {
         {configured === true && 'PIN configured. Change it any time — changing signs out pending terminal verifications.'}
       </p>
 
-      {error && (
-        <div className="mt-3 flex items-start gap-2 rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {error}
-        </div>
-      )}
-      {notice && (
-        <div className="mt-3 flex items-start gap-2 rounded-lg border border-green-500/40 bg-green-500/10 px-4 py-3 text-sm text-green-300">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> {notice}
-        </div>
-      )}
+
+
 
       {configured !== null && (
         <form onSubmit={handleSubmit} className="mt-3 grid gap-3 sm:grid-cols-4">

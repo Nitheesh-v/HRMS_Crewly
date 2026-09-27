@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import usePermission from '../../hooks/usePermission.js';
 import requisitionService from '../../services/requisitionService.js';
+import { notify } from '../../utils/notify.js';
 
 const DECISIONS = {
   APPROVED: {
@@ -170,11 +171,28 @@ const RequisitionApprovalsPage = () => {
   const [comment, setComment] = useState('');
   const [decisionError, setDecisionError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [banner, setBanner] = useState(null);
 
-  const flash = useCallback((type, message) => {
-    setBanner({ type, message });
-    window.setTimeout(() => setBanner(null), 5000);
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
+  const flash = useCallback((type, text) => {
+    const body = typeof text === 'string' && text ? text : '';
+
+    if (!body) return;
+
+    const kind = String(type).toLowerCase();
+
+    if (kind === 'error' || kind === 'danger' || kind === 'failed') notify.error(body);
+    else if (kind === 'warning' || kind === 'warn') notify.warning(body);
+    else if (kind === 'info') notify.info(body);
+    else notify.success(body);
   }, []);
 
   const loadQueue = useCallback(async () => {
@@ -362,18 +380,6 @@ const RequisitionApprovalsPage = () => {
           Analytics
         </span>
       </nav>
-
-      {banner && (
-        <div
-          className={`rounded-xl border px-4 py-3 text-sm ${
-            banner.type === 'error'
-              ? 'border-rose-500/30 bg-rose-500/10 text-rose-300'
-              : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-          }`}
-        >
-          {banner.message}
-        </div>
-      )}
 
       {!permissionsLoading && !canDecide && (
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">

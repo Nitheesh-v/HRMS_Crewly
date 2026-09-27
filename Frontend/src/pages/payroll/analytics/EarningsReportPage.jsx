@@ -44,10 +44,9 @@ const EarningsReportPage = () => {
   const months = usePayrollMonths(!permsLoading && canRead);
   const [month, setMonth] = useState(currentMonth());
   const [departmentId, setDepartmentId] = useState('');
-  const [banner, setBanner] = useState(null);
 
   const filters = { month, departmentId };
-  const { report, loading, denied, error } = useReport({
+  const { report, loading, denied } = useReport({
     reportKey: 'EARNINGS',
     filters,
     enabled: !permsLoading && canRead,
@@ -71,11 +70,9 @@ const EarningsReportPage = () => {
         icon={Coins}
         title="Earnings Analytics"
         subtitle={`${monthLabel(month)} · §11 components split into fixed, variable, overtime and reimbursements`}
-        actions={<ExportMenu reportKey="EARNINGS" filters={filters} onQueued={setBanner} />}
+        actions={<ExportMenu reportKey="EARNINGS" filters={filters} />}
       />
 
-      {banner ? <div className="mb-4"><Banner {...banner} onClose={() => setBanner(null)} /></div> : null}
-      {error ? <div className="mb-4"><Banner type="error" text={error} onClose={() => {}} /></div> : null}
 
       <FilterBar
         month={month}

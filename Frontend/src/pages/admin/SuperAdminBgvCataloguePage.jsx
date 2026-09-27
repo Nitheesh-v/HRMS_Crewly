@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { IndianRupee, Pencil, RefreshCw, ShieldCheck } from 'lucide-react';
 import Modal from '../../components/Modal.jsx';
 import superAdminService from '../../services/superAdminService.js';
+import { notify } from '../../utils/notify.js';
 
 // Phase 30.2 — BGV SERVICE CATALOGUE & PRICING (Super Admin portal).
 // Backend is the only price authority: this page only displays and submits
@@ -9,8 +10,6 @@ import superAdminService from '../../services/superAdminService.js';
 const SuperAdminBgvCataloguePage = () => {
   const [view, setView] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
   const [editing, setEditing] = useState(null);
   const [price, setPrice] = useState('');
   const [description, setDescription] = useState('');
@@ -20,12 +19,12 @@ const SuperAdminBgvCataloguePage = () => {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError('');
+
     try {
       const data = await superAdminService.bgvCatalogue();
       setView(data);
     } catch (requestError) {
-      setError(requestError?.message || 'BGV catalogue could not be loaded');
+      notify.error(requestError, 'BGV catalogue could not be loaded');
     } finally {
       setLoading(false);
     }
@@ -58,11 +57,9 @@ const SuperAdminBgvCataloguePage = () => {
         description,
         active,
       });
-      setMessage(
-        `${result?.name || editing.name}: ${
+      notify.success(`${result?.name || editing.name}: ${
           result?.priceDisplay || ''
-        } saved (${result?.active ? 'active' : 'inactive'})`
-      );
+        } saved (${result?.active ? 'active' : 'inactive'})`);
       setEditing(null);
       await load();
     } catch (requestError) {
@@ -112,16 +109,8 @@ const SuperAdminBgvCataloguePage = () => {
         </button>
       </header>
 
-      {message ? (
-        <p className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
-          {message}
-        </p>
-      ) : null}
-      {error ? (
-        <p className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-300">
-          {error}
-        </p>
-      ) : null}
+
+
 
       {loading && !view ? (
         <p className="text-sm text-slate-400">Loading catalogue…</p>

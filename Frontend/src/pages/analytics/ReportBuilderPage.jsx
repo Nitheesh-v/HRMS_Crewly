@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BarChart3, Download, FileText, Play, Printer } from 'lucide-react';
 import analyticsService from '../../services/analyticsService';
+import { notify } from '../../utils/notify.js';
 
 const inp = 'rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500';
 const primary = 'rounded-lg bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-50';
@@ -21,9 +22,6 @@ export default function ReportBuilderPage() {
   const [result, setResult] = useState(null);
   const [page, setPage] = useState(1);
   const [busy, setBusy] = useState(false);
-  const [toast, setToast] = useState('');
-
-  const flash = (message) => { setToast(message); setTimeout(() => setToast(''), 3500); };
 
   // chosen module's full definition (fields list etc.)
   const currentModule = modules.find((m) => m.key === module);
@@ -39,7 +37,8 @@ export default function ReportBuilderPage() {
           setFields(list[0].fields.map((f) => f.key)); // all fields ticked by default
         }
       })
-      .catch((e) => flash(e?.response?.data?.message || e.message));
+      // 35.1 — api.js reports every failed request.
+      .catch(() => {});
   }, []);
 
   // when the module changes, re-tick its default fields
@@ -74,8 +73,8 @@ export default function ReportBuilderPage() {
     try {
       const d = await analyticsService.runReport(buildPayload(pageNumber));
       setResult(d);
-    } catch (e) {
-      flash(e?.response?.data?.message || e.message);
+    } catch {
+      // 35.1 — api.js reports every failed request.
     }
     setBusy(false);
   };
@@ -89,9 +88,9 @@ export default function ReportBuilderPage() {
       link.download = `${module}-report.${format === 'xls' ? 'xls' : 'csv'}`;
       link.click();
       URL.revokeObjectURL(link.href);
-      flash(`Exported ${format.toUpperCase()} (logged in audit)`);
-    } catch (e) {
-      flash(e?.response?.data?.message || 'Export failed');
+      notify.success(`Exported ${format.toUpperCase()} (logged in audit).`);
+    } catch {
+      // 35.1 — api.js reports every failed request.
     }
   };
 
@@ -106,8 +105,6 @@ export default function ReportBuilderPage() {
         </div>
         <Link to="/app/analytics" className={ghost}><BarChart3 className="mr-1 inline h-4 w-4" />Analytics</Link>
       </div>
-
-      {toast && <div className="rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-4 py-2 text-sm text-indigo-200">{toast}</div>}
 
       {/* configuration card */}
       <div className="rounded-xl border border-slate-700 bg-slate-900 p-4 space-y-4">

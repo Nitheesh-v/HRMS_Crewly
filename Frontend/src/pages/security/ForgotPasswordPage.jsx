@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import authService from "../../services/authService.js";
 import AuthLayout from "../../layout/AuthLayout.jsx";
+import { notify } from '../../utils/notify.js';
 
 const ForgotPasswordPage = () => {
   const navigate = useNavigate();
@@ -12,13 +13,12 @@ const ForgotPasswordPage = () => {
 
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
 
   const submit = async (event) => {
     event.preventDefault();
 
     setBusy(true);
-    setError("");
+    /* 35.1 — nothing to report (failure state cleared) */
     setMessage("");
 
     try {
@@ -28,7 +28,7 @@ const ForgotPasswordPage = () => {
         "If the account exists, a reset link has been sent. Check your inbox and spam folder.",
       );
     } catch (requestError) {
-      setError(requestError.message);
+      notify.error(requestError.message);
     } finally {
       setBusy(false);
     }
@@ -51,11 +51,6 @@ const ForgotPasswordPage = () => {
           </div>
         )}
 
-        {error && (
-          <div className="mt-6 rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
-            {error}
-          </div>
-        )}
 
         <form onSubmit={submit} className="mt-7 space-y-4" noValidate>
           <div>

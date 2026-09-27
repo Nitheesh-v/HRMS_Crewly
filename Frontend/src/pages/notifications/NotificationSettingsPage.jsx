@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlarmClock, Banknote, Bell, CalendarDays, CreditCard, FileText, FolderOpen, ListTodo, Mail, Megaphone, Palmtree, Settings, Ticket } from 'lucide-react';
 import { getNotifyPrefs, saveNotifyPrefs, obj } from '../../services/workService.js';
+import { notify } from '../../utils/notify.js';
 
 const LABELS = {
   LEAVE: [Palmtree, 'Leaves'],
@@ -33,8 +34,6 @@ export default function NotificationSettingsPage() {
   const [email, setEmail] = useState({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState('');
-  const [msgOk, setMsgOk] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -44,8 +43,7 @@ export default function NotificationSettingsPage() {
       setInapp(d?.inapp || {});
       setEmail(d?.email || {});
     } catch (e) {
-      setMsg('Could not load preferences');
-      setMsgOk(false);
+      notify.error('Could not load preferences');
     }
     setLoading(false);
   }, []);
@@ -56,15 +54,11 @@ export default function NotificationSettingsPage() {
 
   const save = async () => {
     setBusy(true);
-    setMsg('');
     try {
       await saveNotifyPrefs({ inapp, email });
-      setMsg('Preferences saved');
-      setMsgOk(true);
-      setTimeout(() => setMsg(''), 3000);
+      notify.success('Preferences saved');
     } catch (e) {
-      setMsg('Could not save');
-      setMsgOk(false);
+      notify.error('Could not save');
     }
     setBusy(false);
   };
@@ -81,9 +75,7 @@ export default function NotificationSettingsPage() {
         </button>
       </div>
 
-      {msg && (
-        <div className={`mb-3 rounded-lg px-3 py-2 text-sm ${msgOk ? 'bg-green-500/10 text-green-300' : 'bg-red-500/10 text-red-300'}`}>{msg}</div>
-      )}
+
       {loading && <p className="text-sm text-slate-500">Loading preferences…</p>}
 
       {!loading && (

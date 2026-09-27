@@ -6,6 +6,7 @@ import OfferEditor from '../../components/recruitment/OfferEditor.jsx';
 import OfferStatusBadge from '../../components/recruitment/OfferStatusBadge.jsx';
 import usePermission from '../../hooks/usePermission.js';
 import offerService from '../../services/offerService.js';
+import { notify } from '../../utils/notify.js';
 
 const dateLabel = (value) => value ? new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value)) : 'Not set';
 const money = (value, currency) => {
@@ -28,18 +29,17 @@ const OffersPage = () => {
   const [meta, setMeta] = useState({ kpis: {} });
   const [filters, setFilters] = useState({ status: '', search: '' });
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError('');
+
     try {
       const result = await offerService.list({ ...filters, search: filters.search || undefined, status: filters.status || undefined });
       setOffers(result.offers);
       setMeta(result.meta);
     } catch (requestError) {
-      setError(requestError.message || 'Offers could not be loaded');
+      notify.error(requestError, 'Offers could not be loaded');
     } finally {
       setLoading(false);
     }
@@ -80,7 +80,7 @@ const OffersPage = () => {
           <button type="button" className="btn-ghost gap-2" onClick={load}><RefreshCw className="h-4 w-4" />Refresh</button>
         </div>
 
-        {error ? <p role="alert" className="m-4 rounded-xl border border-rose-500/25 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</p> : null}
+
         {loading ? <div className="m-4 h-64 animate-pulse rounded-xl bg-slate-950/50" /> : offers.length ? (
           <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-left text-sm"><thead className="border-b border-slate-800 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Offer</th><th className="px-5 py-3">Candidate</th><th className="px-5 py-3">Role</th><th className="px-5 py-3">Compensation</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Created by</th><th className="px-5 py-3">Expires</th><th className="px-5 py-3 text-right">Action</th></tr></thead><tbody className="divide-y divide-slate-800">{offers.map((offer) => <tr key={offer._id} className="hover:bg-slate-950/30"><td className="px-5 py-4"><p className="font-mono font-semibold text-indigo-300">{offer.offerCode}</p><p className="mt-1 text-xs text-slate-500">Revision {offer.revisionNumber}</p></td><td className="px-5 py-4"><p className="font-medium text-slate-200">{offer.candidateSnapshot.name}</p><p className="mt-1 text-xs text-slate-500">{offer.candidateSnapshot.candidateCode}</p></td><td className="px-5 py-4"><p className="text-slate-300">{offer.terms.designation}</p><p className="mt-1 text-xs text-slate-500">{offer.jobSnapshot.departmentName || 'No department'}</p></td><td className="px-5 py-4 font-medium text-slate-300">{money(offer.compensationSnapshot.annualCTC, offer.compensationSnapshot.currency)}</td><td className="px-5 py-4"><OfferStatusBadge status={offer.status} /></td><td className="px-5 py-4 text-slate-400">{offer.createdBy?.name || 'Tenant user'}</td><td className="px-5 py-4 text-slate-400">{dateLabel(offer.terms.expiryDate)}</td><td className="px-5 py-4 text-right"><Link className="text-sm font-medium text-indigo-300 hover:text-indigo-200" to={`/app/recruitment/offers/${offer._id}`}>Open offer</Link></td></tr>)}</tbody></table></div>
         ) : <div className="p-12 text-center"><FileText className="mx-auto h-9 w-9 text-slate-600" /><p className="mt-3 text-sm text-slate-400">No offers match these filters.</p></div>}

@@ -10,6 +10,7 @@ import {
   getCycles, getMyAppraisal, getTeamBoard, createCycle, transitionCycle,
   saveGoals, updateProgress, submitSelfReview, submitReview, getHistory, enrollMissing,
 } from '../../services/perfService.js';
+import { notify } from '../../utils/notify.js';
 
 const inp = 'w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500';
 const btn = 'rounded-lg px-3 py-1.5 text-xs font-bold transition disabled:opacity-50';
@@ -68,7 +69,6 @@ export default function PerformancePage() {
   const [reviewForm, setReviewForm] = useState({ rating: 0, feedback: '' });
   const [cycleForm, setCycleForm] = useState({ name: '', startDate: '', endDate: '' });
   const [showNewCycle, setShowNewCycle] = useState(false);
-  const [banner, setBanner] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const current = useMemo(() => {
@@ -76,7 +76,16 @@ export default function PerformancePage() {
     return list.find((c) => c._id === cyclesBox.currentId) || list[0] || null;
   }, [cyclesBox]);
 
-  const flash = (okv, text) => { setBanner({ ok: okv, text }); setTimeout(() => setBanner(null), 3500); };
+  /* 35.1 — feedback is a toast now; the signature is unchanged. */
+  /* 35.1 — feedback is a toast now; the signature is unchanged. */
+  const flash = (ok, text) => {
+    const body = typeof text === 'string' && text ? text : '';
+
+    if (!body) return;
+
+    if (ok) notify.success(body);
+    else notify.error(body);
+  };
 
   const loadAll = async () => {
     try {
@@ -182,8 +191,6 @@ export default function PerformancePage() {
         <h1 className="text-2xl font-bold text-slate-100"><Target className="mr-2 inline h-6 w-6 text-indigo-400" />Performance</h1>
         {cycle && <span className="text-sm text-slate-400">{cycle.name} {cycle.startDate ? `· ${fmtDate(cycle.startDate)} → ${fmtDate(cycle.endDate)}` : ''}</span>}
       </div>
-
-      {banner && <div className={`rounded-lg px-4 py-2.5 text-sm font-medium ${banner.ok ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'}`}>{banner.text}</div>}
 
       {!cycle ? (
         <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-8 text-center text-sm text-slate-400">

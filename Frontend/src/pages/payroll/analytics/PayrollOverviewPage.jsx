@@ -42,7 +42,6 @@ const PayrollOverviewPage = () => {
   const months = usePayrollMonths(!permsLoading && canRead);
   const [month, setMonth] = useState(currentMonth());
   const [departmentId, setDepartmentId] = useState('');
-  const [banner, setBanner] = useState(null);
 
   const filters = { month, departmentId };
 
@@ -84,10 +83,9 @@ const PayrollOverviewPage = () => {
         icon={BarChart3}
         title="Payroll Overview"
         subtitle={`${monthLabel(month)} · §6 payroll summary`}
-        actions={<ExportMenu reportKey="OVERVIEW" filters={filters} onQueued={setBanner} />}
+        actions={<ExportMenu reportKey="OVERVIEW" filters={filters} />}
       />
 
-      {banner ? <div className="mb-4"><Banner {...banner} onClose={() => setBanner(null)} /></div> : null}
 
       <FilterBar
         month={month}
@@ -170,7 +168,7 @@ const PayrollOverviewPage = () => {
         className="mt-4"
         title="Cost to Company"
         subtitle="§16 — what each employee really costs the company"
-        actions={canSeeFinancial ? <ExportMenu reportKey="CTC" filters={filters} onQueued={setBanner} /> : null}
+        actions={canSeeFinancial ? <ExportMenu reportKey="CTC" filters={filters} /> : null}
       >
         {!canSeeFinancial ? (
           <p className="text-sm text-crewly-dim">

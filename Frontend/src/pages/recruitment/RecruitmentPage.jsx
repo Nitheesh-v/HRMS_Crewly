@@ -31,6 +31,7 @@ import {
   PIPELINE_STAGE_LABELS,
   POSITIVE_PIPELINE_STAGES,
 } from './pipelineStages.js';
+import { notify } from '../../utils/notify.js';
 
 const STAGE_DOTS = [
   'bg-slate-400',
@@ -148,7 +149,6 @@ const RecruitmentPage = () => {
   const [departments, setDepartments] = useState([]);
   const [careerCompany, setCareerCompany] = useState(null);
   const [copiedJobCode, setCopiedJobCode] = useState('');
-  const [banner, setBanner] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const [jobModal, setJobModal] = useState({
@@ -164,9 +164,27 @@ const RecruitmentPage = () => {
   const [convModal, setConvModal] = useState(null);   // { candidate, result }
   const [busy, setBusy] = useState(false);
 
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
   const flash = useCallback((type, text) => {
-    setBanner({ type, text });
-    window.setTimeout(() => setBanner(null), 5000);
+    const body = typeof text === 'string' && text ? text : '';
+
+    if (!body) return;
+
+    const kind = String(type).toLowerCase();
+
+    if (kind === 'error' || kind === 'danger' || kind === 'failed') notify.error(body);
+    else if (kind === 'warning' || kind === 'warn') notify.warning(body);
+    else if (kind === 'info') notify.info(body);
+    else notify.success(body);
   }, []);
 
   const loadJobs = useCallback(async () => {
@@ -528,10 +546,6 @@ const RecruitmentPage = () => {
           Analytics
         </span>
       </nav>
-
-      {banner && (
-        <div className={`card px-4 py-3 text-sm ${banner.type === 'error' ? 'text-crewly-red' : 'text-crewly-green'}`}>{banner.text}</div>
-      )}
 
       {/* job chips */}
       {loading ? (

@@ -22,6 +22,7 @@ import {
   PIPELINE_STAGE_LABELS,
   POSITIVE_PIPELINE_STAGES,
 } from './pipelineStages.js';
+import { notify } from '../../utils/notify.js';
 
 const EMPTY_FILTERS = {
   search: '',
@@ -71,7 +72,6 @@ const CandidateInboxPage = () => {
   const [meta, setMeta] = useState({ page: 1, pages: 1, total: 0 });
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
   const [pipelineOptions, setPipelineOptions] = useState({
     stages: PIPELINE_STAGES,
@@ -106,7 +106,7 @@ const CandidateInboxPage = () => {
 
   const loadCandidates = useCallback(async () => {
     setLoading(true);
-    setError('');
+
 
     try {
       const params = {
@@ -126,7 +126,7 @@ const CandidateInboxPage = () => {
       });
     } catch (requestError) {
       setCandidates([]);
-      setError(requestError?.message || 'Candidates could not be loaded');
+      notify.error(requestError, 'Candidates could not be loaded');
     } finally {
       setLoading(false);
     }
@@ -315,11 +315,7 @@ const CandidateInboxPage = () => {
         </div>
       </form>
 
-      {error ? (
-        <div role="alert" className="rounded-xl border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-          {error}
-        </div>
-      ) : null}
+
 
       {canUpdateCandidates && candidates.length > 0 ? (
         <div className="flex flex-col gap-3 rounded-2xl border border-indigo-500/20 bg-indigo-500/5 p-4 sm:flex-row sm:items-center sm:justify-between">

@@ -9,6 +9,7 @@ import {
   getMyDocuments, getMyDocRequests, getDocCategories,
   uploadMyDocument, fulfillDocRequest, downloadDocument,
 } from '../../services/docsService.js';
+import { notify } from '../../utils/notify.js';
 
 const FALLBACK_CATS = [
   { value: 'AADHAAR_ID', label: 'Aadhaar / ID' },
@@ -46,7 +47,8 @@ const REQ_CHIP = {
 // GET /documents/:id/file endpoint with the caller's authentication.
 const download = async (d) => {
   try {
-    const res = await downloadDocument(d._id);
+    // 35.1 — the page's own sentence beats the raw status code for a blob.
+    const res = await downloadDocument(d._id, { skipErrorToast: true });
     const blob = res?.data ?? res;
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob instanceof Blob ? blob : new Blob([blob]));
@@ -54,7 +56,7 @@ const download = async (d) => {
     a.click();
     URL.revokeObjectURL(a.href);
   } catch {
-    alert('This file could not be downloaded. You may not have access to it.');
+    notify.error('This file could not be downloaded. You may not have access to it.');
   }
 };
 
@@ -62,7 +64,6 @@ export default function MyDocumentsPage() {
   const [docs, setDocs] = useState([]);
   const [requests, setRequests] = useState([]);
   const [cats, setCats] = useState(FALLBACK_CATS);
-  const [banner, setBanner] = useState(null);
   const [busy, setBusy] = useState(false);
   const [cat, setCat] = useState('OTHER');
   const [docName, setDocName] = useState('');
@@ -77,14 +78,19 @@ export default function MyDocumentsPage() {
       setRequests(r);
       if (c.length) setCats(c);
     } catch {
-      setBanner({ ok: false, text: 'Could not load documents — refresh to retry.' });
+      notify.error('Could not load documents — refresh to retry.');
     }
   };
   useEffect(() => { load(); }, []);
 
+  /* 35.1 — feedback is a toast now; the signature is unchanged. */
   const flash = (ok, text) => {
-    setBanner({ ok, text });
-    setTimeout(() => setBanner(null), 3500);
+    const body = typeof text === 'string' && text ? text : '';
+
+    if (!body) return;
+
+    if (ok) notify.success(body);
+    else notify.error(body);
   };
 
   const doSelfUpload = async () => {
@@ -135,11 +141,6 @@ export default function MyDocumentsPage() {
         <span className="text-sm text-slate-400">{docs.length} file(s) · {pending.length} pending request(s)</span>
       </div>
 
-      {banner && (
-        <div className={`rounded-lg px-4 py-2.5 text-sm font-medium ${banner.ok ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'}`}>
-          {banner.text}
-        </div>
-      )}
 
       {/* Requested by HR */}
       {pending.length > 0 && (

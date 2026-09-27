@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import usePermission from '../../hooks/usePermission.js';
 import attendanceWorkModeService from '../../services/attendanceWorkModeService.js';
+import { notify } from '../../utils/notify.js';
 
 // Phase 31.4 — Work Mode Requests (one surface, two permission-gated
 // tabs). Requests authorize a later CLOCK_IN under a non-office mode;
@@ -60,7 +61,6 @@ const AttendanceWorkModePage = () => {
   const [tab, setTab] = useState('mine');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [requests, setRequests] = useState([]);
   const [requestableModes, setRequestableModes] = useState([]);
@@ -94,11 +94,11 @@ const AttendanceWorkModePage = () => {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     try {
       await Promise.all([loadMine(), loadPending()]);
     } catch (loadError) {
-      setError(loadError?.message || 'Could not load work-mode requests');
+      notify.error(loadError?.message || 'Could not load work-mode requests');
     } finally {
       setLoading(false);
     }
@@ -121,7 +121,7 @@ const AttendanceWorkModePage = () => {
 
   const submit = async () => {
     setBusy(true);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     setMessage('');
     try {
       await attendanceWorkModeService.submit({
@@ -137,7 +137,7 @@ const AttendanceWorkModePage = () => {
       setFormOpen(false);
       await loadMine();
     } catch (submitError) {
-      setError(submitError?.message || 'Could not submit the request');
+      notify.error(submitError?.message || 'Could not submit the request');
     } finally {
       setBusy(false);
     }
@@ -145,14 +145,14 @@ const AttendanceWorkModePage = () => {
 
   const cancel = async (id) => {
     setBusy(true);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     setMessage('');
     try {
       await attendanceWorkModeService.cancel(id);
       setMessage('Request cancelled');
       await Promise.all([loadMine(), loadPending()]);
     } catch (cancelError) {
-      setError(cancelError?.message || 'Could not cancel the request');
+      notify.error(cancelError?.message || 'Could not cancel the request');
     } finally {
       setBusy(false);
     }
@@ -160,14 +160,14 @@ const AttendanceWorkModePage = () => {
 
   const approve = async (id) => {
     setBusy(true);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     setMessage('');
     try {
       await attendanceWorkModeService.approve(id);
       setMessage('Request approved');
       await loadPending();
     } catch (approveError) {
-      setError(approveError?.message || 'Could not approve the request');
+      notify.error(approveError?.message || 'Could not approve the request');
     } finally {
       setBusy(false);
     }
@@ -175,11 +175,11 @@ const AttendanceWorkModePage = () => {
 
   const reject = async (id) => {
     if (!rejectReason.trim()) {
-      setError('A rejection reason is required');
+      notify.error('A rejection reason is required');
       return;
     }
     setBusy(true);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     setMessage('');
     try {
       await attendanceWorkModeService.reject(id, rejectReason.trim());
@@ -188,7 +188,7 @@ const AttendanceWorkModePage = () => {
       setRejectReason('');
       await loadPending();
     } catch (rejectError) {
-      setError(rejectError?.message || 'Could not reject the request');
+      notify.error(rejectError?.message || 'Could not reject the request');
     } finally {
       setBusy(false);
     }
@@ -222,11 +222,6 @@ const AttendanceWorkModePage = () => {
         </p>
       </div>
 
-      {error && (
-        <div className="rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">
-          {error}
-        </div>
-      )}
       {message && (
         <div className="rounded-lg border border-crewly-green/40 bg-crewly-green/10 px-4 py-3 text-sm text-crewly-green">
           {message}

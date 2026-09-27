@@ -5,7 +5,6 @@ import usePermission from '../../../hooks/usePermission.js';
 
 import {
   AccessDenied,
-  Banner,
   DataTable,
   ExportMenu,
   FilterBar,
@@ -49,13 +48,12 @@ const PayrollVariancePage = () => {
   const [fromMonth, setFromMonth] = useState(currentMonth());
   const [toMonth, setToMonth] = useState(currentMonth());
   const [departmentId, setDepartmentId] = useState('');
-  const [banner, setBanner] = useState(null);
 
   const filters = preset === 'CUSTOM'
     ? { preset, fromMonth, toMonth, departmentId }
     : { month, preset, departmentId };
 
-  const { report, loading, denied, error } = useReport({
+  const { report, loading, denied } = useReport({
     reportKey: 'VARIANCE',
     filters,
     enabled: !permsLoading && canRead,
@@ -78,11 +76,9 @@ const PayrollVariancePage = () => {
         icon={GitCompareArrows}
         title="Payroll Variance"
         subtitle={`§21 ${monthLabel(month)} · every line carries a direction, not just a difference`}
-        actions={<ExportMenu reportKey="VARIANCE" filters={filters} onQueued={setBanner} />}
+        actions={<ExportMenu reportKey="VARIANCE" filters={filters} />}
       />
 
-      {banner ? <div className="mb-4"><Banner {...banner} onClose={() => setBanner(null)} /></div> : null}
-      {error ? <div className="mb-4"><Banner type="error" text={error} onClose={() => {}} /></div> : null}
 
       <FilterBar
         month={month}

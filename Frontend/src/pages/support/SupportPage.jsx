@@ -4,9 +4,9 @@ import { MessageCircle, Plus, Ticket, Wrench } from 'lucide-react';
 import { supportService } from '../../services/selfService';
 import useAuth from '../../hooks/useAuth';
 import Modal from '../../components/Modal';
+import { notify } from '../../utils/notify.js';
 
 
-const errMsg = (err, fb) => err?.response?.data?.message || err?.data?.message || err?.message || fb;
 const HR_SIDE = ['COMPANY_ADMIN', 'HR_MANAGER'];
 const CATEGORIES = ['PAYROLL', 'ATTENDANCE', 'LEAVE', 'IT', 'FACILITIES', 'HR', 'OTHER'];
 const STATUS_STYLE = {
@@ -22,7 +22,6 @@ const SupportPage = () => {
   const [view, setView] = useState('my'); // 'my' | 'all'
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [active, setActive] = useState(null); // open ticket thread
   const [reply, setReply] = useState('');
@@ -30,24 +29,25 @@ const SupportPage = () => {
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    setLoading(true); setError('');
+    setLoading(true); /* 35.1 — nothing to report; failures are toasted by api.js */;
     try {
       const res = view === 'all' && isHR ? await supportService.listAll() : await supportService.my();
       setTickets(Array.isArray(res) ? res : res?.data || []);
-    } catch (err) { setError(errMsg(err, 'Failed to load tickets')); }
+    } catch (err) { notify.error(err); }
     finally { setLoading(false); }
   }, [view, isHR]);
 
   useEffect(() => { load(); }, [load]);
 
   const onCreate = async () => {
-    if (!form.subject.trim() || !form.message.trim()) { setError('Subject and message are required'); return; }
-    setBusy(true); setError('');
+    if (!form.subject.trim() || !form.message.trim()) { notify.warning('Subject and message are required'); return; }
+    setBusy(true); /* 35.1 — nothing to report; failures are toasted by api.js */;
     try {
       await supportService.create(form);
+      notify.success('Support ticket raised.');
       setCreateOpen(false); setForm({ subject: '', category: 'OTHER', message: '' });
       await load();
-    } catch (err) { setError(errMsg(err, 'Failed to raise ticket')); }
+    } catch (err) { notify.error(err); }
     finally { setBusy(false); }
   };
 
@@ -57,14 +57,15 @@ const SupportPage = () => {
     try {
       const res = await supportService.reply(active._id, reply.trim());
       setActive(res?.data || res); setReply('');
+      notify.success('Reply sent.');
       await load();
-    } catch (err) { setError(errMsg(err, 'Reply failed')); }
+    } catch (err) { notify.error(err); }
     finally { setBusy(false); }
   };
 
   const onStatus = async (id, status) => {
     try { await supportService.setStatus(id, status); setActive(null); await load(); }
-    catch (err) { setError(errMsg(err, 'Status update failed')); }
+    catch (err) { notify.error(err); }
   };
 
   return (
@@ -77,7 +78,6 @@ const SupportPage = () => {
         <button className="btn-primary px-5 py-2.5 text-sm" onClick={() => setCreateOpen(true)}>+ Raise Ticket</button>
       </div>
 
-      {error && <div className="mt-4 rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">{error}</div>}
 
       {isHR && (
         <div className="mt-5 flex gap-2">

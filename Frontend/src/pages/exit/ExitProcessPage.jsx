@@ -4,6 +4,7 @@ import exitService from '../../services/exitService';
 import Modal from '../../components/Modal';
 import useAuth from '../../hooks/useAuth';
 import { ROLES, roleLabel } from '../../utils/roles';
+import { notify } from '../../utils/notify.js';
 
 
 
@@ -23,7 +24,6 @@ export default function ExitProcessPage() {
   const [mine, setMine] = useState([]);
   const [requests, setRequests] = useState([]);
   const [tab, setTab] = useState('PENDING');
-  const [banner, setBanner] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const [resignModal, setResignModal] = useState(false);
@@ -32,7 +32,23 @@ export default function ExitProcessPage() {
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const flash = (type, text) => { setBanner({ type, text }); setTimeout(() => setBanner(null), 6000); };
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
+  const flash = (type, text) => {
+    const body = typeof text === 'string' && text ? text : '';
+
+    if (!body) return;
+
+    const kind = String(type).toLowerCase();
+
+    if (kind === 'error' || kind === 'danger' || kind === 'failed') notify.error(body);
+    else if (kind === 'warning' || kind === 'warn') notify.warning(body);
+    else if (kind === 'info') notify.info(body);
+    else notify.success(body);
+  };
   const errText = (err) => err?.response?.data?.message || err?.message || 'Something went wrong';
 
   const loadMine = useCallback(async () => {
@@ -104,9 +120,6 @@ export default function ExitProcessPage() {
         )}
       </div>
 
-      {banner && (
-        <div className={`card px-4 py-3 text-sm ${banner.type === 'error' ? 'text-crewly-red' : 'text-crewly-green'}`}>{banner.text}</div>
-      )}
 
       {/* ── my resignation ── */}
       <div className="card p-5 space-y-3">

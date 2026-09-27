@@ -17,6 +17,7 @@ import InterviewDetailModal from '../../components/recruitment/InterviewDetailMo
 import InterviewFeedbackModal from '../../components/recruitment/InterviewFeedbackModal.jsx';
 import usePermission from '../../hooks/usePermission.js';
 import interviewService from '../../services/interviewService.js';
+import { notify } from '../../utils/notify.js';
 
 const DEFAULT_ROUNDS = [
   { key: 'TECHNICAL_1', name: 'Technical Round 1' },
@@ -137,7 +138,6 @@ export const InterviewWorkspace = ({ assignmentOnly = false }) => {
   const [meta, setMeta] = useState({ page: 1, pages: 1, total: 0, kpis: {} });
   const [options, setOptions] = useState({ rounds: DEFAULT_ROUNDS, interviewers: [] });
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [selectedInterviewId, setSelectedInterviewId] = useState('');
   const [feedbackInterviewId, setFeedbackInterviewId] = useState('');
 
@@ -158,7 +158,7 @@ export const InterviewWorkspace = ({ assignmentOnly = false }) => {
 
   const loadInterviews = useCallback(async () => {
     setLoading(true);
-    setError('');
+
     try {
       const params = {
         page,
@@ -180,7 +180,7 @@ export const InterviewWorkspace = ({ assignmentOnly = false }) => {
       });
     } catch (requestError) {
       setInterviews([]);
-      setError(requestError?.message || 'Interviews could not be loaded');
+      notify.error(requestError, 'Interviews could not be loaded');
     } finally {
       setLoading(false);
     }
@@ -327,9 +327,7 @@ export const InterviewWorkspace = ({ assignmentOnly = false }) => {
         </form>
       </section>
 
-      {error ? (
-        <div className="rounded-xl border border-rose-500/25 bg-rose-500/10 p-4 text-sm text-rose-200">{error}</div>
-      ) : null}
+
 
       <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
         {loading ? (

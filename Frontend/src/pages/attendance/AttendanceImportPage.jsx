@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  AlertTriangle,
-  CheckCircle2,
   Download,
   FileUp,
   History,
@@ -10,6 +8,7 @@ import {
 } from 'lucide-react';
 import attendanceCaptureService from '../../services/attendanceCaptureService.js';
 import usePermission from '../../hooks/usePermission.js';
+import { notify } from '../../utils/notify.js';
 
 // Phase 31.14 — CSV attendance import (HR/admin).
 // UPLOAD → PARSE → PREVIEW → VALIDATE → CONFIRM → IMPORT. Preview
@@ -35,8 +34,6 @@ const AttendanceImportPage = () => {
   const [history, setHistory] = useState([]);
   const [detail, setDetail] = useState(null);
   const [busy, setBusy] = useState('');
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
 
   const loadHistory = useCallback(async () => {
     try {
@@ -65,8 +62,8 @@ const AttendanceImportPage = () => {
     setPreview(null);
     setResult(null);
     setDetail(null);
-    setError('');
-    setNotice('');
+    /* 35.1 — nothing to report (failure state cleared) */
+    /* 35.1 — nothing to report (failure state cleared) */
   };
 
   const handlePreview = async () => {
@@ -76,9 +73,9 @@ const AttendanceImportPage = () => {
     try {
       const res = await attendanceCaptureService.previewImport(file);
       setPreview(res.data);
-      setNotice('Preview ready — nothing was saved. Review, then confirm to import.');
+      notify.error('Preview ready — nothing was saved. Review, then confirm to import.');
     } catch (previewError) {
-      setError(previewError?.message || 'Could not preview the file');
+      notify.error(previewError?.message || 'Could not preview the file');
     } finally {
       setBusy('');
     }
@@ -87,30 +84,30 @@ const AttendanceImportPage = () => {
   const handleConfirm = async () => {
     if (!file) return;
     setBusy('confirm');
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     try {
       const res = await attendanceCaptureService.confirmImport(file);
       setResult(res.data);
-      setNotice(
+      notify.error(
         res.data?.duplicate
           ? 'This file was already imported — showing the stored result.'
           : `Imported ${res.data?.importedCount || 0} events (${res.data?.skippedCount || 0} skipped, ${res.data?.rejectedCount || 0} rejected).`
       );
       await loadHistory();
     } catch (confirmError) {
-      setError(confirmError?.message || 'Could not confirm the import');
+      notify.error(confirmError?.message || 'Could not confirm the import');
     } finally {
       setBusy('');
     }
   };
 
   const handleDetail = async (importId) => {
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     try {
       const res = await attendanceCaptureService.getImport(importId);
       setDetail(res.data?.import || res.data);
     } catch (detailError) {
-      setError(detailError?.message || 'Could not load the import');
+      notify.error(detailError?.message || 'Could not load the import');
     }
   };
 
@@ -136,16 +133,6 @@ const AttendanceImportPage = () => {
         </button>
       </div>
 
-      {error && (
-        <div className="flex items-start gap-2 rounded-xl border border-crewly-red/40 bg-crewly-red/10 p-4 text-sm text-crewly-red">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {error}
-        </div>
-      )}
-      {notice && (
-        <div className="flex items-start gap-2 rounded-xl border border-green-500/40 bg-green-500/10 p-4 text-sm text-green-300">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> {notice}
-        </div>
-      )}
 
       <div className="rounded-xl border border-crewly-line bg-crewly-card p-4">
         <div className="flex flex-wrap items-center gap-3">

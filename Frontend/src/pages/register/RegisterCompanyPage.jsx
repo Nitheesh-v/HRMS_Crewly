@@ -1,18 +1,18 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { AlertCircle, Check, Loader2 } from 'lucide-react';
+import { Check, Loader2 } from 'lucide-react';
 import authService from '../../services/authService.js';
 import useAuth from "../../hooks/useAuth.jsx"
 import { getDashboardPath } from '../../utils/roles.js';
 import AuthLayout from '../../layout/AuthLayout.jsx';
 import PasswordField from '../../components/auth/PasswordField.jsx';
+import { notify } from '../../utils/notify.js';
 
 const RegisterCompanyPage = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
 
   const [form, setForm] = useState({ companyName: '', adminName: '', email: '', password: '', confirmPassword: '' });
-  const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
 
@@ -49,10 +49,10 @@ const RegisterCompanyPage = () => {
 
   const onSubmit = async (e) => {
     e.preventDefault();
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
 
     if (form.password !== form.confirmPassword) {
-      return setError('Passwords do not match');
+      return notify.error('Passwords do not match');
     }
 
     if (!validate()) return;
@@ -67,7 +67,7 @@ const RegisterCompanyPage = () => {
       login(data.user);
       navigate(getDashboardPath(data.user.role), { replace: true });
     } catch (err) {
-      setError(err.message);
+      notify.error(err.message);
     } finally {
       setLoading(false);
     }
@@ -83,15 +83,6 @@ const RegisterCompanyPage = () => {
           Free for 14 days. Your Company Admin account is created automatically.
         </p>
 
-        {error && (
-          <div
-            role="alert"
-            className="mt-5 flex items-start gap-2.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200"
-          >
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-            <span>{error}</span>
-          </div>
-        )}
 
         <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate aria-busy={loading}>
           <div>

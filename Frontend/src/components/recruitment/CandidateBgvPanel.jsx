@@ -5,6 +5,7 @@ import usePermission from '../../hooks/usePermission.js';
 import bgvService from '../../services/bgvService.js';
 import CandidateBgvDecisionSection from './CandidateBgvDecisionSection.jsx';
 import BgvPurchasePanel from './BgvPurchasePanel.jsx';
+import { notify } from '../../utils/notify.js';
 
 const CandidateBgvPanel = ({ candidate }) => {
   const { candidateRef } = useParams();
@@ -13,8 +14,6 @@ const CandidateBgvPanel = ({ candidate }) => {
   const canStart = hasPermission('BACKGROUND_VERIFICATION_CREATE');
   const [summary, setSummary] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
   // Phase 30.12 — a purchased Crewly-managed BGV order means the legacy
   // internal 'Start BGV' track must not invite duplicate work (same
   // contradiction logic as the waiver guard).
@@ -48,11 +47,11 @@ const CandidateBgvPanel = ({ candidate }) => {
   const start = async () => {
     if (!canStart || !ref) return;
     setBusy(true);
-    setError('');
-    setMessage('');
+
+
     try {
       const result = await bgvService.start(ref);
-      setMessage(result.idempotent ? 'BGV case already exists' : 'Background verification started');
+      notify.success(result.idempotent ? 'BGV case already exists' : 'Background verification started');
       setSummary({
         hasCase: true,
         case: {
@@ -66,7 +65,7 @@ const CandidateBgvPanel = ({ candidate }) => {
         },
       });
     } catch (requestError) {
-      setError(requestError.message || 'BGV could not be started');
+      notify.error(requestError, 'BGV could not be started');
     } finally {
       setBusy(false);
     }
@@ -112,8 +111,8 @@ const CandidateBgvPanel = ({ candidate }) => {
                 {caseData.discrepancyCount} discrepancy recorded — candidate is not auto-rejected.
               </p>
             ) : null}
-            {error ? <p className="mt-2 text-sm text-rose-300">{error}</p> : null}
-            {message ? <p className="mt-2 text-sm text-emerald-300">{message}</p> : null}
+
+
           </div>
         </div>
         <div className="flex flex-wrap gap-2">

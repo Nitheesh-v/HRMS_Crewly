@@ -6,6 +6,7 @@ import {
   listMeetings, getMeetingHistory, createMeeting, updateMeeting, cancelMeeting, deleteMeeting,
 } from '../../services/meetingService.js';
 import { arr } from '../../services/workService.js';
+import { notify } from '../../utils/notify.js';
 
 const CREATE_ROLES = ['COMPANY_ADMIN', 'MANAGER', 'TEAM_LEAD'];
 const DAY_MS = 86400000;
@@ -269,9 +270,10 @@ export default function MeetingsPage() {
     try {
       await cancelMeeting(m._id, reason);
       setSelected(null);
+      notify.success('Meeting cancelled.');
       load();
-    } catch (e) {
-      alert(e?.response?.data?.message || 'Cancel failed');
+    } catch {
+      // 35.1 — api.js already raised the failure toast.
     }
   };
 
@@ -280,9 +282,10 @@ export default function MeetingsPage() {
     try {
       await deleteMeeting(m._id);
       setSelected(null);
+      notify.success('Meeting deleted.');
       load();
-    } catch (e) {
-      alert(e?.response?.data?.message || 'Delete failed');
+    } catch {
+      // 35.1 — api.js already raised the failure toast.
     }
   };
 

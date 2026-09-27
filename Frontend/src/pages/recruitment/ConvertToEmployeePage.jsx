@@ -9,6 +9,7 @@ import {
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import usePermission from '../../hooks/usePermission.js';
 import conversionService from '../../services/conversionService.js';
+import { notify } from '../../utils/notify.js';
 
 const toDateInput = (value) => {
   if (!value) return '';
@@ -26,7 +27,6 @@ const ConvertToEmployeePage = () => {
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
   const [result, setResult] = useState(null);
   const [form, setForm] = useState({
     employeeCode: '',
@@ -43,7 +43,7 @@ const ConvertToEmployeePage = () => {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError('');
+
     try {
       const data = await conversionService.preview(candidateRef);
       setPreview(data);
@@ -69,7 +69,7 @@ const ConvertToEmployeePage = () => {
         });
       }
     } catch (requestError) {
-      setError(requestError.message || 'Conversion preview failed');
+      notify.error(requestError, 'Conversion preview failed');
     } finally {
       setLoading(false);
     }
@@ -83,7 +83,7 @@ const ConvertToEmployeePage = () => {
     event.preventDefault();
     if (!canConvert) return;
     setBusy(true);
-    setError('');
+
     try {
       const payload = {
         ...form,
@@ -98,7 +98,7 @@ const ConvertToEmployeePage = () => {
       const data = await conversionService.convert(candidateRef, payload);
       setResult(data);
     } catch (requestError) {
-      setError(requestError.message || 'Conversion failed');
+      notify.error(requestError, 'Conversion failed');
     } finally {
       setBusy(false);
     }
@@ -225,11 +225,7 @@ const ConvertToEmployeePage = () => {
         </div>
       </header>
 
-      {error ? (
-        <p role="alert" className="rounded-xl border border-rose-500/25 bg-rose-500/10 p-3 text-sm text-rose-200">
-          {error}
-        </p>
-      ) : null}
+
 
       {!eligible ? (
         <section className="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-5 text-sm text-amber-100">

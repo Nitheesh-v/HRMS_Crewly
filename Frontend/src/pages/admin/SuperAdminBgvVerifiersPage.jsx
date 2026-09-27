@@ -9,6 +9,7 @@ import {
   UserX,
 } from 'lucide-react';
 import superAdminService from '../../services/superAdminService.js';
+import { notify } from '../../utils/notify.js';
 
 const SPECIALIZATIONS = ['IDENTITY', 'ADDRESS', 'EDUCATION', 'EMPLOYMENT', 'REFERENCE'];
 
@@ -25,8 +26,6 @@ const STATUS_STYLE = {
 // No temporary passwords: invites send a one-time setup link by email.
 const SuperAdminBgvVerifiersPage = () => {
   const [rows, setRows] = useState(null);
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState('');
 
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -41,7 +40,7 @@ const SuperAdminBgvVerifiersPage = () => {
       const result = await superAdminService.bgvVerifiers();
       setRows(result.verifiers || []);
     } catch (requestError) {
-      setError(requestError?.response?.data?.message || requestError.message || 'Could not load verifiers');
+      notify.error(requestError?.response?.data?.message || requestError.message || 'Could not load verifiers');
     }
   }, []);
 
@@ -52,14 +51,14 @@ const SuperAdminBgvVerifiersPage = () => {
 
   const run = async (key, action, message) => {
     setBusy(key);
-    setError('');
-    setNotice('');
+
+
     try {
       await action();
-      setNotice(message);
+      notify.success(message);
       await load();
     } catch (requestError) {
-      setError(requestError?.response?.data?.message || requestError.message || 'Action failed');
+      notify.error(requestError?.response?.data?.message || requestError.message || 'Action failed');
     } finally {
       setBusy('');
     }
@@ -95,12 +94,8 @@ const SuperAdminBgvVerifiersPage = () => {
         </button>
       </div>
 
-      {notice ? (
-        <p className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">{notice}</p>
-      ) : null}
-      {error ? (
-        <p className="rounded-lg border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">{error}</p>
-      ) : null}
+
+
 
       {rows === null ? (
         <div className="flex items-center justify-center py-16 text-slate-500">

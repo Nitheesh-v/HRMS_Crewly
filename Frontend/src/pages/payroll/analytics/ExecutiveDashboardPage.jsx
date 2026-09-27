@@ -24,7 +24,6 @@ import payrollAnalyticsService from '../../../services/payrollAnalyticsService.j
 
 import {
   AccessDenied,
-  Banner,
   EmptyState,
   ExportMenu,
   KpiCard,
@@ -39,6 +38,7 @@ import {
   monthLabel,
   percent,
 } from './analyticsShared.js';
+import { notify } from '../../../utils/notify.js';
 
 // ───────────────────────────────────────────────────────────────────────────
 // §5 / §6 / §9 — the executive dashboard.
@@ -88,7 +88,6 @@ const ExecutiveDashboardPage = () => {
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [denied, setDenied] = useState(false);
-  const [banner, setBanner] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
@@ -99,7 +98,7 @@ const ExecutiveDashboardPage = () => {
       setDenied(false);
     } catch (error) {
       if (error?.status === 403 || error?.status === 401) setDenied(true);
-      else setBanner({ type: 'error', text: error?.message || 'Unable to load the payroll dashboard' });
+      else notify.error(error, 'Unable to load the payroll dashboard');
     } finally {
       setLoading(false);
     }
@@ -114,15 +113,14 @@ const ExecutiveDashboardPage = () => {
     setRefreshing(true);
     try {
       const result = await payrollAnalyticsService.refresh(month);
-      setBanner({
-        type: 'success',
-        text: result?.queued
+      notify.success(
+        result?.queued
           ? 'Executive dashboard refresh queued'
           : `Executive dashboard refreshed for ${monthLabel(month)}`,
-      });
+      );
       await load();
     } catch (error) {
-      setBanner({ type: 'error', text: error?.message || 'Unable to refresh the dashboard' });
+      notify.error(error, 'Unable to refresh the dashboard');
     } finally {
       setRefreshing(false);
     }
@@ -193,7 +191,6 @@ const ExecutiveDashboardPage = () => {
         }
       />
 
-      {banner ? <div className="mb-4"><Banner {...banner} onClose={() => setBanner(null)} /></div> : null}
 
       {denied ? <AccessDenied /> : null}
 
@@ -271,7 +268,7 @@ const ExecutiveDashboardPage = () => {
             <SectionCard
               title="Headcount & Cost"
               subtitle="§9 — joins, exits and cost per head"
-              actions={<ExportMenu reportKey="HEADCOUNT" filters={{ month }} onQueued={setBanner} />}
+              actions={<ExportMenu reportKey="HEADCOUNT" filters={{ month }} />}
             >
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                 {[

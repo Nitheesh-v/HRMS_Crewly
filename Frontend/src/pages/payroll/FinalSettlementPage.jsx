@@ -1,10 +1,8 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useCallback, useEffect, useState } from 'react';
 import {
-  AlertTriangle,
   BadgeIndianRupee,
   Calculator,
-  CheckCircle2,
   ClipboardCheck,
   Download,
   FileSpreadsheet,
@@ -25,6 +23,7 @@ import usePermission from '../../hooks/usePermission.js';
 import exitService from '../../services/exitService.js';
 import userService from '../../services/userService.js';
 import fnfService, { saveBlob } from '../../services/fnfService.js';
+import { notify } from '../../utils/notify.js';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Phase 29.11 — Payroll → Final Settlement (§19 / §25)
@@ -204,7 +203,6 @@ const FinalSettlementPage = () => {
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [banner, setBanner] = useState(null);
   const [accessDenied, setAccessDenied] = useState(false);
 
   // §5 — creating a settlement from an approved resignation. HR picks an exit
@@ -236,9 +234,27 @@ const FinalSettlementPage = () => {
 
   const [checklist, setChecklist] = useState({});
 
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
+  /*
+   * 35.1 — feedback is a toast now. The signature is unchanged so every call
+   * site keeps working; only the destination moved (out of the page flow and
+   * into the app-wide stack).
+   */
   const flash = useCallback((type, text) => {
-    setBanner({ type, text });
-    setTimeout(() => setBanner(null), 7000);
+    const body = typeof text === 'string' && text ? text : '';
+
+    if (!body) return;
+
+    const kind = String(type).toLowerCase();
+
+    if (kind === 'error' || kind === 'danger' || kind === 'failed') notify.error(body);
+    else if (kind === 'warning' || kind === 'warn') notify.warning(body);
+    else if (kind === 'info') notify.info(body);
+    else notify.success(body);
   }, []);
 
   // ── loads ────────────────────────────────────────────────────────────────
@@ -601,16 +617,6 @@ const FinalSettlementPage = () => {
         </div>
       </div>
 
-      {banner ? (
-        <div
-          className={`card flex items-start gap-2 text-sm ${
-            banner.type === 'error' ? 'border-red-500/40 text-red-300' : 'border-emerald-500/40 text-emerald-300'
-          }`}
-        >
-          {banner.type === 'error' ? <AlertTriangle size={16} className="mt-0.5" /> : <CheckCircle2 size={16} className="mt-0.5" />}
-          <span>{banner.text}</span>
-        </div>
-      ) : null}
 
       {/* ── tabs ───────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap gap-1 border-b border-white/10 pb-2">

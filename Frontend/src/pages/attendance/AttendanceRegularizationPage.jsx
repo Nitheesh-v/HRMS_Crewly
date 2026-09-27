@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import usePermission from '../../hooks/usePermission.js';
 import attendanceRegularizationService from '../../services/attendanceRegularizationService.js';
+import { notify } from '../../utils/notify.js';
 
 // Phase 31.5 — Attendance Regularization & Exception Center (one
 // surface, two permission-gated tabs). CORRECTION requests fix
@@ -100,7 +101,6 @@ const AttendanceRegularizationPage = () => {
   const [tab, setTab] = useState('mine');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [requests, setRequests] = useState([]);
   const [pending, setPending] = useState([]);
@@ -135,11 +135,11 @@ const AttendanceRegularizationPage = () => {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     try {
       await Promise.all([loadMine(), loadPending()]);
     } catch (loadError) {
-      setError(loadError?.message || 'Could not load regularization requests');
+      notify.error(loadError?.message || 'Could not load regularization requests');
     } finally {
       setLoading(false);
     }
@@ -174,7 +174,7 @@ const AttendanceRegularizationPage = () => {
 
   const submit = async () => {
     setBusy(true);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     setMessage('');
     try {
       const proposal = {};
@@ -200,7 +200,7 @@ const AttendanceRegularizationPage = () => {
       setFormOpen(false);
       await loadMine();
     } catch (submitError) {
-      setError(submitError?.message || 'Could not submit the request');
+      notify.error(submitError?.message || 'Could not submit the request');
     } finally {
       setBusy(false);
     }
@@ -208,14 +208,14 @@ const AttendanceRegularizationPage = () => {
 
   const cancel = async (id) => {
     setBusy(true);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     setMessage('');
     try {
       await attendanceRegularizationService.cancel(id);
       setMessage('Request cancelled');
       await Promise.all([loadMine(), loadPending()]);
     } catch (cancelError) {
-      setError(cancelError?.message || 'Could not cancel the request');
+      notify.error(cancelError?.message || 'Could not cancel the request');
     } finally {
       setBusy(false);
     }
@@ -223,14 +223,14 @@ const AttendanceRegularizationPage = () => {
 
   const approve = async (id) => {
     setBusy(true);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     setMessage('');
     try {
       await attendanceRegularizationService.approve(id);
       setMessage('Request approved — the day was rebuilt from the correction');
       await Promise.all([loadMine(), loadPending()]);
     } catch (approveError) {
-      setError(approveError?.message || 'Could not approve the request');
+      notify.error(approveError?.message || 'Could not approve the request');
     } finally {
       setBusy(false);
     }
@@ -238,11 +238,11 @@ const AttendanceRegularizationPage = () => {
 
   const reject = async (id) => {
     if (!rejectReason.trim()) {
-      setError('A rejection reason is required');
+      notify.error('A rejection reason is required');
       return;
     }
     setBusy(true);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     setMessage('');
     try {
       await attendanceRegularizationService.reject(id, rejectReason.trim());
@@ -251,7 +251,7 @@ const AttendanceRegularizationPage = () => {
       setRejectReason('');
       await Promise.all([loadMine(), loadPending()]);
     } catch (rejectError) {
-      setError(rejectError?.message || 'Could not reject the request');
+      notify.error(rejectError?.message || 'Could not reject the request');
     } finally {
       setBusy(false);
     }
@@ -366,11 +366,6 @@ const AttendanceRegularizationPage = () => {
         </p>
       </div>
 
-      {error && (
-        <div className="rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-4 py-3 text-sm text-crewly-red">
-          {error}
-        </div>
-      )}
       {message && (
         <div className="rounded-lg border border-crewly-green/40 bg-crewly-green/10 px-4 py-3 text-sm text-crewly-green">
           {message}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Clock, Delete, LogOut, MapPin, MonitorSmartphone } from 'lucide-react';
+import { CheckCircle2, Clock, Delete, LogOut, MapPin, MonitorSmartphone } from 'lucide-react';
 import attendanceCaptureService from '../../services/attendanceCaptureService.js';
+import { notify } from '../../utils/notify.js';
 
 // Phase 31.14 completion — shared Kiosk terminal. Chromeless by
 // design (no sidebar, no nav, no admin UI): this screen runs on
@@ -98,7 +99,6 @@ const KioskTerminalPage = () => {
   const [pin, setPin] = useState('');
   const [verified, setVerified] = useState(null);
   const [success, setSuccess] = useState(null);
-  const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
   const idleTimer = useRef(null);
   const successTimer = useRef(null);
@@ -119,7 +119,7 @@ const KioskTerminalPage = () => {
     setPin('');
     setVerified(null);
     setSuccess(null);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     setBusy('');
     setMode('kiosk');
   };
@@ -133,7 +133,7 @@ const KioskTerminalPage = () => {
     setSecret('');
     resetEmployee();
     setMode('provision');
-    setError(message || '');
+    notify.error(message || '');
   };
 
   // Inactivity: verified context 60s, half-typed form 90s.
@@ -156,7 +156,7 @@ const KioskTerminalPage = () => {
   const handleProvision = async (event) => {
     event.preventDefault();
     setBusy('provision');
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     try {
       const res = await attendanceCaptureService.openKioskSession({ stationId: stationId.trim(), secret });
       const session = {
@@ -171,7 +171,7 @@ const KioskTerminalPage = () => {
       setSecret('');
       setMode('kiosk');
     } catch (provisionError) {
-      setError(provisionError?.message || 'Terminal sign-in failed');
+      notify.error(provisionError?.message || 'Terminal sign-in failed');
     } finally {
       setBusy('');
     }
@@ -180,7 +180,7 @@ const KioskTerminalPage = () => {
   const handleIdentify = async (event) => {
     event.preventDefault();
     setBusy('identify');
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     try {
       const res = await attendanceCaptureService.identifyKioskEmployee(stored.token, {
         employeeCode: employeeCode.trim(),
@@ -195,7 +195,7 @@ const KioskTerminalPage = () => {
         dropSession(message);
         return;
       }
-      setError(message);
+      notify.error(message);
       setPin('');
     } finally {
       setBusy('');
@@ -204,7 +204,7 @@ const KioskTerminalPage = () => {
 
   const handlePunch = async (action) => {
     setBusy(action);
-    setError('');
+    /* 35.1 — nothing to report (failure state cleared) */
     // One logical action, one idempotency key — shared by the
     // first attempt and any verification-demanded GPS retry (the
     // refused first attempt writes nothing).
@@ -248,14 +248,14 @@ const KioskTerminalPage = () => {
       const message = punchError?.message || 'Could not record the punch';
       if (/invalid or expired/i.test(message)) {
         resetEmployee();
-        setError('Verification expired — please identify again.');
+        notify.error('Verification expired — please identify again.');
         return;
       }
       if (isSessionError(message)) {
         dropSession(message);
         return;
       }
-      setError(message);
+      notify.error(message);
     } finally {
       setBusy('');
     }
@@ -288,11 +288,6 @@ const KioskTerminalPage = () => {
           )}
         </div>
 
-        {error && (
-          <div className="flex items-start gap-2 rounded-xl border border-crewly-red/40 bg-crewly-red/10 p-4 text-sm text-crewly-red">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {error}
-          </div>
-        )}
 
         {mode === 'provision' && (
           <form onSubmit={handleProvision} className="space-y-4 rounded-xl border border-crewly-line bg-crewly-card p-6">

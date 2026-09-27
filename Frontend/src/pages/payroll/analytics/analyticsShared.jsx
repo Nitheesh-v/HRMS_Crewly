@@ -15,6 +15,7 @@ import usePermission from '../../../hooks/usePermission.js';
 import payrollAnalyticsService, { saveBlob } from '../../../services/payrollAnalyticsService.js';
 
 import { PERIOD_PRESETS, monthLabel } from './analyticsShared.js';
+import { notify } from '../../../utils/notify.js';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Phase 29.12 — the components the ten analytics pages share.
@@ -246,10 +247,18 @@ export const ExportMenu = ({ reportKey, filters = {}, disabled = false, onQueued
     try {
       if (queued) {
         const result = await payrollAnalyticsService.requestExport({ reportKey, format, ...filters });
+
+        /*
+         * 35.1 — a queued export answers with its own sentence. That sentence
+         * is the feedback, and it is raised HERE because this is the only place
+         * that knows the export was queued rather than downloaded immediately.
+         */
+        notify.success(result?.message || `Export queued as ${format}.`);
         onQueued?.(result, format);
       } else {
         const blob = await payrollAnalyticsService.exportReport({ reportKey, format, ...filters });
         saveBlob(blob, `${String(reportKey).toLowerCase()}-${filters.month || 'report'}.${format.toLowerCase()}`);
+        notify.success(`${format} download started.`);
         onQueued?.(null, format);
       }
     } finally {

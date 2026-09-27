@@ -4,6 +4,7 @@ import { ArrowLeft, Plus, RefreshCw, ToggleLeft } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import usePermission from '../../hooks/usePermission.js';
 import preOnboardingService from '../../services/preOnboardingService.js';
+import { notify } from '../../utils/notify.js';
 
 const CATEGORIES = [
   'IDENTITY',
@@ -34,17 +35,15 @@ const PreOnboardingRequirementsPage = () => {
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError('');
+
     try {
       const result = await preOnboardingService.listRequirements();
       setRows(result);
     } catch (requestError) {
-      setError(requestError.message || 'Requirements could not be loaded');
+      notify.error(requestError, 'Requirements could not be loaded');
     } finally {
       setLoading(false);
     }
@@ -58,15 +57,15 @@ const PreOnboardingRequirementsPage = () => {
     event.preventDefault();
     if (!canManage) return;
     setBusy(true);
-    setError('');
-    setMessage('');
+
+
     try {
       await preOnboardingService.createRequirement(form);
       setForm(emptyForm);
-      setMessage('Requirement created');
+      notify.success('Requirement created');
       await load();
     } catch (requestError) {
-      setError(requestError.message || 'Requirement could not be created');
+      notify.error(requestError, 'Requirement could not be created');
     } finally {
       setBusy(false);
     }
@@ -75,12 +74,12 @@ const PreOnboardingRequirementsPage = () => {
   const deactivate = async (requirementId) => {
     if (!canManage) return;
     setBusy(true);
-    setError('');
+
     try {
       await preOnboardingService.deactivateRequirement(requirementId);
       await load();
     } catch (requestError) {
-      setError(requestError.message || 'Requirement could not be deactivated');
+      notify.error(requestError, 'Requirement could not be deactivated');
     } finally {
       setBusy(false);
     }
@@ -111,16 +110,8 @@ const PreOnboardingRequirementsPage = () => {
         </button>
       </div>
 
-      {error ? (
-        <p role="alert" className="rounded-xl border border-rose-500/25 bg-rose-500/10 p-3 text-sm text-rose-200">
-          {error}
-        </p>
-      ) : null}
-      {message ? (
-        <p className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3 text-sm text-emerald-200">
-          {message}
-        </p>
-      ) : null}
+
+
 
       <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
         {canManage ? (

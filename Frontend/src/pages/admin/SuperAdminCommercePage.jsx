@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { Link } from "react-router-dom";
 import superAdminService from "../../services/superAdminService.js";
+import { notify } from '../../utils/notify.js';
 
 const panel = "rounded-xl border border-slate-800 bg-slate-900 p-4";
 
@@ -28,11 +29,10 @@ const Metric = ({ label, value }) => (
 const SuperAdminCommercePage = ({ mode }) => {
   const [data, setData] = useState(null);
   const [loadedMode, setLoadedMode] = useState('');
-  const [message, setMessage] = useState("");
   const [planForm, setPlanForm] = useState(null);
 
  const load = async () => {
-  setMessage('');
+
 
   try {
     let result;
@@ -116,7 +116,7 @@ const SuperAdminCommercePage = ({ mode }) => {
   } catch (error) {
     setData(null);
     setLoadedMode('');
-    setMessage(error?.message || 'Could not load data');
+    notify.error(error, 'Could not load data');
   }
 };
 
@@ -185,11 +185,11 @@ const SuperAdminCommercePage = ({ mode }) => {
 
       await superAdminService.savePlan(body);
 
-      setMessage("Plan saved");
+      notify.success("Plan saved");
       setPlanForm(null);
       await load();
     } catch (error) {
-      setMessage(error?.message || "Could not save plan");
+      notify.error(error, "Could not save plan");
     }
   };
 
@@ -203,10 +203,10 @@ const SuperAdminCommercePage = ({ mode }) => {
         status,
       });
 
-      setMessage("Payment updated");
+      notify.success("Payment updated");
       await load();
     } catch (error) {
-      setMessage(error?.message || "Payment update failed");
+      notify.error(error, "Payment update failed");
     }
   };
 
@@ -224,11 +224,7 @@ const SuperAdminCommercePage = ({ mode }) => {
         <h1 className="text-2xl font-black capitalize">{mode}</h1>
       </div>
 
-      {message && (
-        <div className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 text-orange-200">
-          {message}
-        </div>
-      )}
+
 
       {mode === "subscriptions" && (
         <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
