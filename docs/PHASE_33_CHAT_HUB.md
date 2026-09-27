@@ -2362,6 +2362,12 @@ API #1       API #2        API #N      ← node src/server.js
 ONE prefix law for every namespace: BULLMQ_PREFIX when set, else crewly:<NODE_ENV>.
 ```
 
+**34.4 update** — the chat surface gained a conversation-scoped search endpoint
+(`GET /api/chat/conversations/:conversationId/search?q=&cursor=&limit=`,
+TEXT messages only, tombstones excluded, cursor by `seq`, ≤ 20 rows). It adds no
+message field and changes no existing payload; it is documented in
+`docs/PHASE_34_CHAT_ENHANCEMENTS.md` (§34.4).
+
 Mongo is the only source of truth. Redis is fan-out + counters: lose Redis and
 history is still complete over REST — realtime is what degrades, and it says so.
 

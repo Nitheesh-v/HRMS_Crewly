@@ -789,7 +789,12 @@ test('the client can react, unreact, and apply the broadcast', () => {
   assert.match(slice, /myReaction/, 'and applies the per-viewer flag');
 });
 
-test('the bubble renders the bar and the picker, with icons and no emoji input', () => {
+test('the bubble renders the bar and the picker with the FIXED emoji set and no free emoji input', () => {
+  // 34.1 shipped this UI with icon-font drawings and the rule "no emojis in new
+  // UI". The user then asked for the real emojis, so this pin is INVERTED (not
+  // deleted): emojis are now required, and the rule that survives is the one
+  // that was doing the real work — the set is CLOSED and there is no free-emoji
+  // input anywhere.
   const bubble = readSource('Frontend/src/components/chat/MessageBubble.jsx');
 
   assert.match(bubble, /ReactionBar/, 'the bar is rendered under the bubble');
@@ -798,13 +803,39 @@ test('the bubble renders the bar and the picker, with icons and no emoji input',
 
   const picker = readSource('Frontend/src/components/chat/ReactionPicker.jsx');
   const icon = readSource('Frontend/src/components/chat/ReactionIcon.jsx');
+  const vocabulary = readSource('Frontend/src/utils/chatReactions.js');
 
   assert.match(picker, /CHAT_REACTION_TYPES/, 'the picker offers exactly the fixed vocabulary');
-  assert.match(icon, /ThumbsUp|Heart|FaceGrinning|HandHeart/, 'reactions are drawn as icons');
-  assert.ok(
-    !/\p{Extended_Pictographic}/u.test(picker + icon),
-    'no emoji characters anywhere in the reaction UI'
+  assert.match(icon, /reactionEmoji/, 'the glyph comes from the shared vocabulary');
+  assert.match(vocabulary, /CHAT_REACTION_EMOJI/, 'which has ONE definition');
+
+  // Every pictograph in the reaction UI must be one of the four mapped glyphs:
+  // nothing else can appear, and nothing can be typed in.
+  const mapped = new Set();
+
+  for (const value of vocabulary.match(/'(?:[^'\\]|\\.)*'/g) ?? []) {
+    for (const glyph of value.match(/\p{Extended_Pictographic}/gu) ?? []) mapped.add(glyph);
+  }
+
+  assert.equal(mapped.size, 4, 'exactly four reaction glyphs are defined');
+
+  // The glyphs are DEFINED in the vocabulary and RENDERED through the icon
+  // component (which delegates to it), so the whole reaction surface can only
+  // ever draw the four mapped characters.
+  const uiPictographs = new Set(
+    (bubble + picker + icon + vocabulary).match(/\p{Extended_Pictographic}/gu) ?? []
   );
+
+  assert.equal(uiPictographs.size, 4, 'the reaction UI draws exactly the four declared emojis');
+
+  for (const glyph of uiPictographs) {
+    assert.ok(mapped.has(glyph), `${glyph} is not a declared reaction glyph`);
+  }
+
+  // No free-emoji input: no text field, no contenteditable, no picker library.
+  for (const source of [picker, icon, bubble]) {
+    assert.equal(/<input|<textarea|contentEditable|emoji-picker/i.test(source), false);
+  }
 
   const page = readSource('Frontend/src/pages/chat/ChatPage.jsx');
 

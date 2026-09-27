@@ -20,6 +20,24 @@ export const CHAT_REACTION_LABELS = {
   THANKS: 'Thanks',
 };
 
+// The GLYPH each type is drawn with.
+//
+// 34.1 shipped the fixed set with icon-font drawings and the product rule "no
+// emojis in new UI". The user then asked for the real emojis to be shown, so
+// the presentation changed and the RULE DID NOT: the set is still exactly these
+// four types, chosen from a closed list, with no free-emoji input anywhere —
+// the emoji is a rendering of a stored enum value, never user input. The
+// text label is still rendered next to it in the picker, so the meaning never
+// depends on a font or on the reader recognising a glyph.
+export const CHAT_REACTION_EMOJI = {
+  LIKE: '👍',
+  HEART: '❤️',
+  LAUGH: '😂',
+  THANKS: '🙏',
+};
+
+export const reactionEmoji = (type) => CHAT_REACTION_EMOJI[type] ?? '';
+
 export const isChatReactionType = (value) => CHAT_REACTION_TYPES.includes(String(value ?? ''));
 
 export const reactionLabel = (type) => CHAT_REACTION_LABELS[type] ?? 'Reaction';

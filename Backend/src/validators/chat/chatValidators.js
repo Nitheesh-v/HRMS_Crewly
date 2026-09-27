@@ -21,6 +21,10 @@ import mongoose from 'mongoose';
 
 import ApiError from '../../utils/ApiError.js';
 import { CHAT_GROUP_MAX_MEMBERS } from '../../services/chat/chatService.js';
+import {
+  CHAT_SEARCH_MAX_QUERY,
+  CHAT_SEARCH_MIN_QUERY,
+} from '../../utils/chatSearchRules.js';
 
 const isObjectId = (value) => mongoose.isValidObjectId(String(value || ''));
 
@@ -154,6 +158,38 @@ export const threadMessagesValidator = [
     .optional({ nullable: true, checkFalsy: true })
     .isInt({ min: 1, max: 50 })
     .withMessage('limit must be an integer between 1 and 50.'),
+
+  validate,
+];
+
+// ── GET /api/chat/conversations/:conversationId/search ───────────────────
+// 34.4 — conversation-scoped search. The bounds live in chatSearchRules (one
+// definition, shared with the service) so the rule the client is told is the
+// rule the service enforces. The term itself is never logged.
+export const searchMessagesValidator = [
+  objectIdRule(param('conversationId'), 'conversationId'),
+
+  query('q')
+    .exists()
+    .withMessage('q is required.')
+    .bail()
+    .isString()
+    .withMessage('q must be text.')
+    .bail()
+    .isLength({ min: CHAT_SEARCH_MIN_QUERY, max: CHAT_SEARCH_MAX_QUERY })
+    .withMessage(
+      `q must be between ${CHAT_SEARCH_MIN_QUERY} and ${CHAT_SEARCH_MAX_QUERY} characters.`
+    ),
+
+  query('cursor')
+    .optional({ nullable: true, checkFalsy: true })
+    .isInt({ min: 1 })
+    .withMessage('cursor must be a positive integer (a message seq).'),
+
+  query('limit')
+    .optional({ nullable: true, checkFalsy: true })
+    .isInt({ min: 1, max: 20 })
+    .withMessage('limit must be an integer between 1 and 20.'),
 
   validate,
 ];

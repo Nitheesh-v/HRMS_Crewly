@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { AlertTriangle, ArrowLeft, Lock, Unlock, Users } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Lock, Search, Unlock, Users } from 'lucide-react';
 
 import usePermission from '../../hooks/usePermission.js';
 import chatService from '../../services/chatService.js';
@@ -38,6 +38,12 @@ import {
   threadOlderLoaded,
   threadFailed,
   threadMessageDeleted,
+  jumpLoaded,
+  searchStarted,
+  searchLoaded,
+  searchMoreLoaded,
+  searchFailed,
+  searchCleared,
   conversationUpdated,
 } from '../../redux/slices/chatSlice.js';
 
@@ -46,6 +52,9 @@ import MessageList from '../../components/chat/MessageList.jsx';
 // 34.2 — threads, feature-local: the panel, its rows and the reply pill.
 import ThreadPanel from '../../components/chat/ThreadPanel.jsx';
 import ReplyContextPill from '../../components/chat/ReplyContextPill.jsx';
+// 34.4 — conversation-scoped search (bar + results panel).
+import ConversationSearchBar from '../../components/chat/ConversationSearchBar.jsx';
+import ConversationSearchResults from '../../components/chat/ConversationSearchResults.jsx';
 import MessageComposer from '../../components/chat/MessageComposer.jsx';
 import ChatEmptyState from '../../components/chat/ChatEmptyState.jsx';
 import Avatar from '../../components/chat/Avatar.jsx';
@@ -91,6 +100,11 @@ const ChatPage = () => {
   //   openThreadRoot : the ROOT id of the thread shown in the panel
   // Both are view state and live and die with the page: a thread is a read, and
   // nothing about it is persisted (no per-thread cursor, no followers).
+  // 34.4 — search: the query lives here (the bar is presentational), and the
+  // RESULT state lives in the store so a re-render cannot lose it.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchingMore, setSearchingMore] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null);
   const [openThreadRoot, setOpenThreadRoot] = useState(null);
   const [threadLoadingOlder, setThreadLoadingOlder] = useState(false);
@@ -301,6 +315,9 @@ const ChatPage = () => {
       // either into another room would point at a message that is not there.
       setReplyingTo(null);
       setOpenThreadRoot(null);
+      setSearchOpen(false);
+      setSearchQuery('');
+      dispatch(searchCleared());
     };
   }, [conversationId, dispatch, applyRead]);
 
@@ -615,6 +632,158 @@ const ChatPage = () => {
 
   const closeThread = () => setOpenThreadRoot(null);
 
+  // ── 34.4 search ───────────────────────────────────────────────────────
+  //
+  // The debounce is a plain timer (no dependency, no hook library): 300 ms
+  // after the last keystroke, and only for a query the server will accept
+  // (>= 2 characters — the same floor as the backend rule, so the client does
+  // not spend requests on refusals).
+  const searchQ = chat.search.conversationId === conversationId ? chat.search : null;
+
+  useEffect(() => {
+    if (!conversationId || !searchOpen) return undefined;
+
+    const term = searchQuery.trim();
+
+    if (term.length < 2) {
+      // Below the floor there is nothing to ask for; clear whatever was shown.
+      if (searchQ && searchQ.q !== term) dispatch(searchCleared());
+
+      return undefined;
+    }
+
+    // Already asked for this exact term (loading, ready, OR failed): do not ask
+    // again on every store update. A failure stays failed until the reader edits
+    // the term — an automatic retry here would be a request loop against an
+    // endpoint that is already refusing.
+    if (searchQ?.q === term) return undefined;
+
+    const timer = setTimeout(async () => {
+      dispatch(searchStarted({ conversationId, q: term }));
+
+      try {
+        const result = await chatService.searchMessages(conversationId, { q: term, limit: PAGE_SIZE });
+
+        dispatch(searchLoaded({
+          conversationId,
+          q: result.q ?? term,
+          items: result.items,
+          nextCursor: result.nextCursor,
+          hasMore: result.hasMore,
+        }));
+      } catch (err) {
+        dispatch(searchFailed({
+          error: err?.response?.data?.message || 'The search could not be completed.',
+        }));
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [conversationId, searchOpen, searchQuery, searchQ, dispatch]);
+
+  const loadMoreMatches = async () => {
+    if (!conversationId || !searchQ?.nextCursor) return;
+
+    setSearchingMore(true);
+
+    try {
+      const result = await chatService.searchMessages(conversationId, {
+        q: searchQ.q,
+        cursor: searchQ.nextCursor,
+        limit: PAGE_SIZE,
+      });
+
+      dispatch(searchMoreLoaded({
+        items: result.items,
+        nextCursor: result.nextCursor,
+        hasMore: result.hasMore,
+      }));
+    } catch (err) {
+      dispatch(searchFailed({
+        error: err?.response?.data?.message || 'The search could not be completed.',
+      }));
+    } finally {
+      setSearchingMore(false);
+    }
+  };
+
+  /**
+   * 34.4 — show one search result.
+   *
+   * If the message is already in the loaded window, scroll to it (cheap, and
+   * the list keeps its place). Otherwise load ONE page that ENDS at the target
+   * (`cursor = seq + 1`) — bounded, one request, no page-walking loop — and
+   * mark the view as a jump so the reader is told where they are and can go
+   * back to the live tail.
+   */
+  const openSearchResult = async (row) => {
+    const loaded = (activeEntry?.items ?? []).some((message) => String(message._id) === String(row._id));
+
+    if (loaded) {
+      dispatch(jumpLoaded({
+        conversationId,
+        items: activeEntry.items,
+        nextCursor: activeEntry.nextCursor,
+        hasMore: activeEntry.hasMore,
+        targetSeq: row.seq,
+      }));
+
+      return;
+    }
+
+    try {
+      const result = await chatService.getMessages(conversationId, {
+        cursor: row.seq + 1,
+        limit: PAGE_SIZE,
+      });
+
+      // A targeted load must still contain the target; if the server's window
+      // somehow does not (a message deleted between search and click), say so
+      // instead of scrolling nowhere.
+      const found = (result.items ?? []).some((message) => String(message._id) === String(row._id));
+
+      if (!found) {
+        setModerationNotice('That message is no longer available.');
+
+        return;
+      }
+
+      dispatch(jumpLoaded({
+        conversationId,
+        items: result.items,
+        nextCursor: result.nextCursor,
+        hasMore: result.hasMore,
+        targetSeq: row.seq,
+      }));
+    } catch (err) {
+      setModerationNotice(err?.response?.data?.message || 'That message could not be opened.');
+    }
+  };
+
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setSearchQuery('');
+    dispatch(searchCleared());
+  };
+
+  // Leaving a conversation ends its search too: results belong to the room they
+  // were found in, and showing them beside another room's messages would be a
+  // quiet lie about what was searched.
+  const backToLatest = async () => {
+    try {
+      const result = await chatService.getMessages(conversationId, { limit: PAGE_SIZE });
+
+      dispatch(messagesLoaded({
+        conversationId,
+        items: result.items,
+        nextCursor: result.nextCursor,
+        hasMore: result.hasMore,
+      }));
+    } catch {
+      // keep what we have; the marker stays until the load succeeds
+    }
+  };
+
   const thread = openThreadRoot ? chat.threads[openThreadRoot] ?? null : null;
 
   // 33.9 — lock / unlock the conversation (CHAT_MODERATE only).
@@ -731,6 +900,20 @@ const ChatPage = () => {
             </p>
           </div>
 
+          {conversationId && (
+            <button
+              type="button"
+              onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
+              aria-label={searchOpen ? 'Close search' : 'Search in this conversation'}
+              title={searchOpen ? 'Close search' : 'Search in this conversation'}
+              className={`rounded-lg p-1.5 transition hover:bg-crewly-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-crewly-green/40 ${
+                searchOpen ? 'text-crewly-green' : 'text-crewly-dim hover:text-crewly-text'
+              }`}
+            >
+              <Search className="h-4 w-4" />
+            </button>
+          )}
+
           {canModerate && activeConversation && (
             <button
               type="button"
@@ -743,6 +926,30 @@ const ChatPage = () => {
             </button>
           )}
         </header>
+
+        {conversationId && searchOpen && (
+          <>
+            <ConversationSearchBar
+              value={searchQuery}
+              onChange={setSearchQuery}
+              onClose={closeSearch}
+              status={searchQ?.status ?? 'idle'}
+              resultCount={searchQ?.items?.length ?? 0}
+            />
+
+            <ConversationSearchResults
+              q={searchQuery}
+              items={searchQ?.items ?? []}
+              status={searchQ?.status ?? 'idle'}
+              error={searchQ?.error ?? ''}
+              hasMore={Boolean(searchQ?.hasMore)}
+              loadingMore={searchingMore}
+              nameOfUserId={nameOfUserId}
+              onOpen={openSearchResult}
+              onLoadMore={loadMoreMatches}
+            />
+          </>
+        )}
 
         {moderationNotice && (
           <div className="flex items-center gap-2 border-b border-crewly-red/40 bg-crewly-red/10 px-4 py-2 text-xs text-crewly-red">
@@ -786,6 +993,8 @@ const ChatPage = () => {
               onReact={handleReact}
               onReply={setReplyingTo}
               onOpenThread={openThreadFor}
+              jump={activeEntry?.jump ?? null}
+              onExitJump={backToLatest}
               canModerate={canModerate}
               locked={conversationLocked}
             />

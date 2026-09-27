@@ -27,6 +27,18 @@ const initialState = {
   // conversation so closing and reopening a thread is instant and two threads
   // in the same conversation cannot collide.
   threads: {}, // rootMessageId -> { conversationId, root, items, nextCursor, hasMore, status, error }
+  // 34.4 — conversation-scoped search. ONE search at a time (the panel belongs
+  // to the conversation it was opened in), so the state is flat rather than
+  // keyed by conversation: switching rooms clears it.
+  search: {
+    conversationId: null,
+    q: '',
+    status: 'idle', // idle | loading | ready | error
+    items: [],
+    nextCursor: null,
+    hasMore: false,
+    error: '',
+  },
 };
 
 const emptyBucket = () => ({
@@ -135,6 +147,86 @@ const chatSlice = createSlice({
       entry.hasMore = hasMore;
       entry.status = 'ready';
       entry.error = '';
+      // A full load of the newest page is exactly what "Back to latest" does,
+      // so the jump marker goes with it.
+      delete entry.jump;
+    },
+
+    // 34.4 — JUMP. A search result may be far outside the loaded window, and
+    // walking pages until it appeared would be an unbounded loop. Instead the
+    // page loads ONE window that ENDS at the target (cursor = target seq + 1)
+    // and says so: `jump` marks the view, the list scrolls the target into
+    // sight, and the banner offers the way back. What the reader sees is
+    // always a contiguous window, and it is never presented as the live tail.
+    jumpLoaded: (state, action) => {
+      const { conversationId, items, nextCursor, hasMore, targetSeq } = action.payload;
+      const entry = bucket(state, conversationId);
+      entry.items = [...items].sort((a, b) => a.seq - b.seq);
+      entry.nextCursor = nextCursor;
+      entry.hasMore = hasMore;
+      entry.status = 'ready';
+      entry.error = '';
+      entry.jump = { targetSeq: Number(targetSeq) };
+    },
+
+    searchStarted: (state, action) => {
+      const { conversationId, q } = action.payload;
+      state.search = {
+        conversationId,
+        q,
+        status: 'loading',
+        // Keep the previous results visible while the next request is in
+        // flight: the list is debounced, and blanking it on every keystroke
+        // would make the panel flicker.
+        items: state.search.conversationId === conversationId ? state.search.items : [],
+        nextCursor: state.search.conversationId === conversationId ? state.search.nextCursor : null,
+        hasMore: state.search.conversationId === conversationId ? state.search.hasMore : false,
+        error: '',
+      };
+    },
+
+    searchLoaded: (state, action) => {
+      const { conversationId, q, items, nextCursor, hasMore } = action.payload;
+      state.search = {
+        conversationId,
+        q,
+        status: 'ready',
+        items: items ?? [],
+        nextCursor,
+        hasMore,
+        error: '',
+      };
+    },
+
+    searchMoreLoaded: (state, action) => {
+      const { items, nextCursor, hasMore } = action.payload;
+      const known = new Set(state.search.items.map((row) => String(row._id)));
+      const fresh = (items ?? []).filter((row) => !known.has(String(row._id)));
+
+      state.search.items = [...state.search.items, ...fresh];
+      state.search.nextCursor = nextCursor;
+      state.search.hasMore = hasMore;
+      state.search.status = 'ready';
+    },
+
+    searchFailed: (state, action) => {
+      state.search = {
+        ...state.search,
+        status: 'error',
+        error: action.payload.error ?? '',
+      };
+    },
+
+    searchCleared: (state) => {
+      state.search = {
+        conversationId: null,
+        q: '',
+        status: 'idle',
+        items: [],
+        nextCursor: null,
+        hasMore: false,
+        error: '',
+      };
     },
 
     messagesFailed: (state, action) => {
@@ -391,6 +483,12 @@ export const {
   threadOlderLoaded,
   threadFailed,
   threadMessageDeleted,
+  jumpLoaded,
+  searchStarted,
+  searchLoaded,
+  searchMoreLoaded,
+  searchFailed,
+  searchCleared,
   readUpToApplied,
 } = chatSlice.actions;
 

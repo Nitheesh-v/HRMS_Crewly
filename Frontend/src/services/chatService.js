@@ -42,6 +42,26 @@ const chatService = {
   getConversation: async (conversationId) =>
     bare(await api.get(`/chat/conversations/${conversationId}`)),
 
+  // 34.4 — conversation-scoped search. Same cursor contract as history (a
+  // message seq), plus the term. The term is never logged and never stored.
+  // -> { q, items, nextCursor, hasMore }
+  searchMessages: async (conversationId, { q, cursor, limit } = {}) => {
+    const params = { q };
+    if (cursor) params.cursor = cursor;
+    if (limit) params.limit = limit;
+
+    const { data, meta } = withMeta(
+      await api.get(`/chat/conversations/${conversationId}/search`, { params })
+    );
+
+    return {
+      q: data?.q ?? q,
+      items: data?.items ?? [],
+      nextCursor: data?.nextCursor ?? meta.nextCursor ?? null,
+      hasMore: data?.hasMore ?? meta.hasMore ?? false,
+    };
+  },
+
   // 34.2 — one thread page. Same cursor contract as history, one extra param.
   // -> { root, items, nextCursor, hasMore }
   getThread: async (conversationId, rootMessageId, { cursor, limit } = {}) => {

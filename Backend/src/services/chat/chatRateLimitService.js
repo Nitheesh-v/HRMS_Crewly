@@ -46,6 +46,10 @@ export const CHAT_REST_LIMITS = Object.freeze({
   // 34.2 — a thread page is a history page with a narrower filter: same cost,
   // same budget shape, its own bucket so a hot thread cannot starve history.
   'thread.history': { windowMs: 60 * 1000, maximum: 60 },
+  // 34.4 — search is the most expensive chat read (a regex over a bounded seq
+  // window), so its own bucket keeps a search loop from starving history. The
+  // frontend debounces; this is the server side of the same contract.
+  'message.search': { windowMs: 60 * 1000, maximum: 60 },
   'message.read': { windowMs: 60 * 1000, maximum: 120 },
   'message.moderateDelete': { windowMs: 60 * 1000, maximum: 30 },
   // Locks and unlocks are state changes that notify and wake every member —
@@ -76,6 +80,7 @@ const REST_MESSAGES = Object.freeze({
   'conversation.members.remove': 'Too many membership changes. Please wait a few minutes.',
   'message.history': 'Too many history requests. Please slow down.',
   'thread.history': 'Too many thread requests. Please slow down.',
+  'message.search': 'Too many searches. Please slow down.',
   'message.read': 'Too many read updates. Please slow down.',
   'message.moderateDelete': 'Too many moderation actions. Please slow down.',
   'conversation.moderateState': 'Too many moderation actions. Please slow down.',

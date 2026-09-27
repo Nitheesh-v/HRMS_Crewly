@@ -11,6 +11,7 @@ import asyncHandler from '../../utils/asyncHandler.js';
 import ApiResponse from '../../utils/ApiResponse.js';
 import ApiError from '../../utils/ApiError.js';
 import * as chatService from '../../services/chat/chatService.js';
+import { searchConversationMessages } from '../../services/chat/chatSearchService.js';
 import * as chatReadService from '../../services/chat/chatReadService.js';
 // 33.8-fix: data-less list-change nudge. A no-op (false) when realtime is
 // off — REST already did the work; the client's next fetch catches up.
@@ -163,6 +164,47 @@ export const getThreadMessages = asyncHandler(async (req, res) => {
     data: {
       conversationId: result.conversationId,
       root: result.root,
+      items: result.items,
+      nextCursor: result.nextCursor,
+      hasMore: result.hasMore,
+    },
+    meta: { limit: result.limit },
+  });
+});
+
+export const searchMessages = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const { conversationId } = req.params;
+  const { q, cursor, limit } = req.query;
+
+  // DB Logic - DB logics
+  // 34.4 — the service owns its read gate (tenant + membership, and disabled is
+  // still readable): a non-member and another tenant both come back
+  // NOT_FOUND_OR_FORBIDDEN, so search can never be a way to learn which
+  // conversations exist.
+  const result = await searchConversationMessages({
+    companyId: req.companyId,
+    userId: req.user._id,
+    conversationId,
+    q,
+    cursor: cursor !== undefined ? Number(cursor) : undefined,
+    limit,
+  });
+
+  if (!result.ok) {
+    // The rule for a bad query; the 404 for anything the caller may not read.
+    // Neither branch ever includes the search term.
+    if (result.code === 'NOT_FOUND_OR_FORBIDDEN') throw ApiError.notFound('Conversation not found.');
+
+    throw ApiError.badRequest(result.message || 'That search is not valid.');
+  }
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, {
+    message: 'Search results fetched',
+    data: {
+      conversationId: result.conversationId,
+      q: result.q,
       items: result.items,
       nextCursor: result.nextCursor,
       hasMore: result.hasMore,

@@ -31,6 +31,8 @@ export const CHAT_LIMIT_ACTIONS = Object.freeze([
   'message.history',
   // 34.2 — thread reads are their own budget and their own log action.
   'thread.history',
+  // 34.4 — so is search. The action name is logged; the QUERY never is.
+  'message.search',
   'message.read',
   'message.send',
   'message.sendFile',

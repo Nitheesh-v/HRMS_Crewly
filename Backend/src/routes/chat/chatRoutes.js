@@ -36,6 +36,7 @@ import {
   moderateDeleteValidator,
   readMarkerValidator,
   removeMemberValidator,
+  searchMessagesValidator,
   threadMessagesValidator,
   uploadAttachmentValidator,
 } from '../../validators/chat/chatValidators.js';
@@ -86,6 +87,17 @@ router.get(
   chatRestLimiters['message.history'],
   messageHistoryValidator,
   chatController.getMessages
+);
+
+// 34.4 — conversation-scoped search. A READ like history and threads: same
+// membership gate, same tenant authority, no requirePermission (there is no
+// chat permission catalogue entry, and a member may already read every message
+// the search can return).
+router.get(
+  '/conversations/:conversationId/search',
+  chatRestLimiters['message.search'],
+  searchMessagesValidator,
+  chatController.searchMessages
 );
 
 // 34.2 — thread page. A THREAD IS A READ: it keeps the membership gate and the

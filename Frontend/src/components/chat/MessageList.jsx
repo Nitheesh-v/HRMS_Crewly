@@ -40,6 +40,10 @@ const MessageList = ({
   onReact,
   onReply,
   onOpenThread,
+  // 34.4 — jump view: { targetSeq } while the reader is looking at a search
+  // result rather than the live tail, plus the way back.
+  jump = null,
+  onExitJump,
   canModerate = false,
   locked = false,
 }) => {
@@ -62,6 +66,21 @@ const MessageList = ({
     stickToBottom.current = true;
     olderFix.current = null;
   }, [conversationId]);
+
+  // 34.4 — scroll the JUMP target into sight when a jump window renders.
+  // A layout effect (not a passive one) so the reader never sees the window
+  // scrolled to the wrong place for a frame; DOM-only work, no state set.
+  useLayoutEffect(() => {
+    if (!jump?.targetSeq) return;
+
+    const container = scrollRef.current;
+
+    if (!container) return;
+
+    const target = container.querySelector(`[data-message-seq="${Number(jump.targetSeq)}"]`);
+
+    if (target) target.scrollIntoView({ block: 'center' });
+  }, [jump?.targetSeq, conversationId, items.length]);
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
@@ -103,6 +122,24 @@ const MessageList = ({
 
   return (
     <div className="relative flex-1 overflow-hidden">
+      {/* 34.4 — the reader is looking at a search result, not the live tail.
+          Saying so (and offering the way back) is the difference between a jump
+          and a lie about where the conversation is. */}
+      {jump?.targetSeq ? (
+        <div className="flex items-center gap-2 border-b border-crewly-green/40 bg-crewly-green/10 px-3 py-1.5 text-[11px] text-crewly-text sm:px-4">
+          <span className="min-w-0 flex-1 truncate">
+            Showing the messages around your search result — not the latest.
+          </span>
+          <button
+            type="button"
+            onClick={onExitJump}
+            className="shrink-0 rounded border border-crewly-green/50 px-2 py-0.5 font-semibold text-crewly-green hover:bg-crewly-green/15"
+          >
+            Back to latest
+          </button>
+        </div>
+      ) : null}
+
       <div
         ref={scrollRef}
         onScroll={handleScroll}
@@ -139,7 +176,15 @@ const MessageList = ({
           const newDay = index === 0 || dayKey(previous?.createdAt) !== dayKey(message.createdAt);
 
           return (
-            <div key={message._id}>
+            <div
+              key={message._id}
+              data-message-seq={message.seq}
+              className={
+                jump?.targetSeq && Number(jump.targetSeq) === Number(message.seq)
+                  ? 'rounded-lg ring-2 ring-crewly-green/50'
+                  : undefined
+              }
+            >
               {newDay && (
                 <div className="chat-day-sep my-3">
                   <span>{dayLabel(message.createdAt)}</span>

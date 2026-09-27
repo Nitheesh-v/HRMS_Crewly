@@ -325,6 +325,27 @@ chatMessageSchema.index({
   seq: -1,
 });
 
+// 34.4 — SEARCH USES THE HISTORY INDEX, AND DELIBERATELY ADDS NOTHING.
+//
+// Conversation-scoped search filters { companyId, conversationId, type,
+// deletedAt, text: <escaped regex>, seq: { $lt: cursor } } and sorts by
+// seq desc — which is exactly the shape the history index above already
+// serves: the index walks the cursor range, and type/deletedAt/the regex are
+// filters applied to that bounded window.
+//
+// WHY NO TEXT INDEX (a decision, not an omission):
+//   · Mongo allows ONE text index per collection, and it cannot serve
+//     substring matching — "rev" would not find "review". A text index would
+//     tax every message write to make an unasked-for query shape faster.
+//   · The search is bounded twice over (cursor + limit ≤ 20, one conversation),
+//     so the worst case is a scan of one conversation's recent matches, not of
+//     the tenant.
+// ESCALATION PATH if a real deployment ever measures a slow search: add
+//   { companyId: 1, conversationId: 1, type: 1, deletedAt: 1, seq: -1 }
+// (a compound FILTER index, no text index), measure before and after, and
+// record the numbers. Do not add a text index to make substring search worse
+// and writes slower at the same time.
+
 // 33.10 — "is this attachment already referenced?" (one attachment belongs to
 // exactly one message). Multikey on the embedded array, tenant-first.
 chatMessageSchema.index({ companyId: 1, conversationId: 1, 'attachments.attachmentId': 1 });

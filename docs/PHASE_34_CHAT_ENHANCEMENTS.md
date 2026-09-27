@@ -12,7 +12,7 @@ is described here only once its code exists in the repository.
 | **34.1** | Message reactions (fixed icon/text set) | **IMPLEMENTED** (this document) |
 | **34.2** | Threads (reply-to + thread root, thread REST list, socket reply, thread panel) | **IMPLEMENTED** (this document) |
 | **34.3** | Mentions (`@user` autocomplete, server-validated `mentions[]`, in-app notifications only) | **IMPLEMENTED** (this document) |
-| 34.4 | Search (conversation-scoped only) | NOT BUILT YET |
+| **34.4** | Search (conversation-scoped only) | **IMPLEMENTED** (this document) |
 | 34.5 | Typing indicator (socket-only, ephemeral, never stored) | NOT BUILT YET |
 
 Explicitly **out of scope for the whole phase**: presence, availability, last
@@ -92,6 +92,25 @@ uniqueness becomes an index.
 - **Tests** — `Backend/test/chatReactions.test.js` (hermetic: real handlers +
   real service against in-memory model doubles) and the extended
   `Backend/test/chatHardening.test.js` gate pin.
+
+### Presentation update (user instruction, 34.4)
+
+34.1 shipped the four fixed types drawn with icon-font glyphs and the product
+rule "no emojis in new UI". **The user asked for the real emojis**, so the
+rendering changed and the rule underneath it did not:
+
+- `Frontend/src/utils/chatReactions.js` now owns `CHAT_REACTION_EMOJI`
+  (`LIKE 👍`, `HEART ❤️`, `LAUGH 😂`, `THANKS 🙏`) next to the labels, and
+  `ReactionIcon` renders that character.
+- The set is still **closed**: it is a mapping from a stored enum value to a
+  character, and there is still **no free-emoji input** anywhere (no text field,
+  no picker library, no `contenteditable`) — pinned by a test that asserts the
+  reaction UI contains exactly the four declared glyphs and nothing else.
+- Accessibility is unchanged: the glyph is decorative and the accessible name
+  comes from the text label, which the picker still shows beside every emoji, so
+  the meaning never depends on a font or on recognising a glyph.
+- The stored data is untouched (`LIKE/HEART/LAUGH/THANKS`), so no migration and
+  no API change.
 
 ### API + socket contracts
 
@@ -703,6 +722,194 @@ Signed in as a normal customer user, in a conversation with at least two members
 
 ---
 
-*Units 34.4 – 34.5 are not described here yet: this document gains a section per
-unit, written when that unit is built. No later unit is in progress while 34.3 is
+## 34.4 Search
+
+### Implemented changes
+
+**Conversation-scoped, bounded, tombstone-safe.** Search answers one question:
+"where in THIS conversation did somebody say this?" It is not a tenant-wide
+search, it does not search attachments, and it cannot see a deleted message —
+the tombstone *is* the redaction.
+
+- **Added `Backend/src/utils/chatSearchRules.js`** — the pure rules: query
+  normalization (whitespace collapsed, trimmed), the bounds
+  (`CHAT_SEARCH_MIN_QUERY = 2`, `CHAT_SEARCH_MAX_QUERY = 64`), the page clamp
+  (`CHAT_SEARCH_LIMIT_DEFAULT = 10`, `CHAT_SEARCH_LIMIT_MAX = 20`),
+  `escapeRegExp` and `buildSnippet`.
+- **Added `Backend/src/services/chat/chatSearchService.js`** — the read path:
+  its own membership+tenant gate (conversation loaded with
+  `companyId` + `members.userId`; disabled conversations stay searchable because
+  search is a *read*), the escaped literal regex, `type: 'TEXT'` and
+  `deletedAt: null`, a `seq < cursor` window, `sort({ seq: -1 })`, a `limit + 1`
+  probe and a bounded snippet per row.
+- **Modified `Backend/src/validators/chat/chatValidators.js`** — `searchMessagesValidator`
+  (id rule, `q` required and length-bounded from the shared constants, cursor ≥ 1,
+  limit 1..20).
+- **Modified `Backend/src/routes/chat/chatRoutes.js` + `controllers/chat/chatController.js`** —
+  `GET /conversations/:conversationId/search` with its own rate bucket and a
+  thin controller using the house comment convention. A non-member, another
+  tenant and a missing conversation all become the **same 404**.
+- **Modified `Backend/src/services/chat/chatRateLimitService.js` + `utils/chatObservability.js`** —
+  a `message.search` budget (60/min per identity, its own bucket) and the
+  matching log action.
+- **Modified `Backend/src/models/ChatMessage.js`** — the 34.4 index decision is
+  documented next to the indexes it affects (see §Index decision).
+- **Frontend** — `ConversationSearchBar` (input, match count, close),
+  `ConversationSearchResults` (sender, marked snippet, time, "reply" marker,
+  load more, explicit empty/loading/error states), `chatService.searchMessages`,
+  a `search` slice with `searchStarted/searchLoaded/searchMoreLoaded/searchFailed/searchCleared`,
+  a header toggle in `ChatPage`, a 300 ms debounce, and the **jump** view
+  (`jumpLoaded` + banner + scroll-to-target in `MessageList`).
+- **Tests** — new hermetic `Backend/test/chatSearch.test.js` (15 tests); the
+  34.1 emoji pin was inverted (see above) rather than deleted.
+
+### Endpoint contract
+
+```
+GET /api/chat/conversations/:conversationId/search?q=<term>&cursor=<seq>&limit=<n>
+```
+
+- **`q` is required**, 2..64 characters after normalization (internal whitespace
+  collapses, edges trim). Below 2 the result set is not a result set; above 64
+  it is a paste, not a search.
+- `cursor` is a message `seq` (same contract as history and threads); `limit` is
+  clamped 1..20 (default 10).
+- **Filters:** `companyId`, `conversationId`, `type: 'TEXT'`, `deletedAt: null`,
+  `text` matching an **escaped, case-insensitive** literal, `seq < cursor`.
+- **Order:** `seq desc` (newest first), with a `limit + 1` probe for `hasMore`.
+
+```jsonc
+{
+  "message": "Search results fetched",
+  "data": {
+    "conversationId": "<id>",
+    "q": "sprint review",
+    "items": [
+      {
+        "_id": "<id>",
+        "seq": 42,
+        "senderUserId": "<id>",
+        "textSnippet": "…the sprint review notes…",   // bounded, centred on the match
+        "createdAt": "2026-09-27T06:30:00.000Z",
+        "threadRootMessageId": null,                  // set when the hit is a reply
+        "replyToMessageId": null
+      }
+    ],
+    "nextCursor": 21,
+    "hasMore": true
+  },
+  "meta": { "limit": 10 }
+}
+```
+
+Refusals: `400` with the rule for a query outside the bounds (validated at the
+edge, so a bad query never reaches the database), and `404` for a conversation
+the caller may not read — **identical** to a conversation that does not exist, so
+search cannot be used to discover which rooms exist.
+
+### Membership + tenancy guarantees
+
+- **Gate first:** the conversation is loaded with `companyId` **and**
+  `members.userId`, before any message query runs. A non-member — including a
+  user from another tenant — produces `NOT_FOUND_OR_FORBIDDEN` → 404.
+- **Two layers:** the message query itself also carries `companyId` and
+  `conversationId`, so even a bug in the gate cannot cross a tenant boundary or
+  reach another room.
+- **The lock does not hide history:** a disabled conversation is still
+  searchable (search is a read; the 33.9 law keeps history readable). Sending
+  remains refused as always.
+- **Deleted messages are invisible to search** — filtered in the query, not by
+  the caller, so no code path can forget.
+- **The term never reaches a log.** No `console`/logger call exists on the
+  search path (pinned by a test), the controller's errors carry the rule and not
+  the term, and the response echoes the normalized term back to its author only.
+- **Bounded:** ≤ 20 rows per request, own 60/min per-identity budget, escapes
+  applied to the pattern before Mongo sees it.
+
+### Index decision (why no text index)
+
+Search filters `{ companyId, conversationId, type, deletedAt, text: <escaped> }`
+with a `seq` range and sorts by `seq desc` — the exact shape the existing
+`(companyId, conversationId, seq: -1)` history index already serves. Mongo
+allows **one** text index per collection and it cannot do substring matching
+("rev" would not find "review"), so a text index would tax every message write
+to speed up a query shape nobody asked for. **No index was added.** If a real
+deployment ever measures a slow search, the documented escalation is a compound
+*filter* index `{ companyId: 1, conversationId: 1, type: 1, deletedAt: 1, seq: -1 }`,
+measured before and after — never a text index.
+
+### Limitations
+
+- **Conversation-scoped only.** There is no "search all conversations" in v1:
+  that needs its own permission story (which rooms may a role see?), its own
+  ranking and its own leak review. The bar says "Search in this conversation" so
+  the product does not imply otherwise.
+- **Substring, not relevance.** An escaped regex scan answers "contains",
+  case-insensitively. There is no stemming ("reviews" ≠ "review"), no ranking
+  and no fuzzy matching — deliberate, since ranking would need the index this
+  unit refused to add.
+- **Text messages only.** A FILE caption is a body, but the row is a FILE
+  message and is not searched; attachment *content* is never searchable (the
+  bytes live in private storage and are not indexed).
+- **Deleted messages never appear**, including while they still occupy a `seq`.
+- **`q` is echoed back** in the response (to the caller who typed it) and is
+  never logged or stored. There is no search history anywhere.
+- **Jump shows a window, not the tail.** Clicking a result loads one page that
+  *ends* at that message and shows a banner with **Back to latest** — the reader
+  is told they are not at the live end, instead of the app pretending the
+  missing newer messages do not exist.
+- **The debounce is client-side (300 ms)** and the floor is 2 characters on both
+  sides: a server refusal is never used as a rate limiter for typing.
+
+### Localhost verification steps
+
+```powershell
+# Terminal 1 — API + socket server
+cd Backend
+npm run dev
+
+# Terminal 2 — web app
+cd Frontend
+npm run dev
+```
+
+1. Open a conversation with known messages and click the **search icon** in the
+   header: the bar appears with the hint that typing two characters searches this
+   conversation only.
+2. Type a word you know is in a message: after a short pause, matches appear with
+   sender name, the term marked inside the snippet, and the timestamp.
+3. **Deleted check** — delete a message that contains the word, then search for it
+   again: the deleted message never appears (its text is gone, and it is filtered
+   even if a stale row existed).
+4. **FILE check** — attach a file with a caption containing the word and search:
+   the caption is not returned (search is TEXT-only).
+5. Type a single character: the panel says at least two characters are needed and
+   no request is sent.
+6. Type `a+b?` (or any symbols): the search returns only messages containing that
+   literal text — no error, and no "match everything" behaviour. A lone `.*`
+   returns the messages containing the literal `.*` (usually none).
+7. Click a **result far up the history**: the window loads around that message, the
+   message is ringed and scrolled into view, and the banner says
+   "Showing the messages around your search result — not the latest." Press
+   **Back to latest** and confirm the live tail comes back.
+8. Click a result that was **already on screen**: it is scrolled to and marked
+   without any reload.
+9. Load more: with many matches, **Load more matches** appends the next page with
+   no duplicates and no gap (cursor by `seq`).
+10. **Non-member/other-tenant check (Postman):** call the endpoint with a token
+    from a user who is not a member of that conversation, then with another
+    tenant's token, then with a random conversation id — all three must return
+    404 with the same body.
+11. **Bounds check (Postman):** `q=` (empty), `q=a` (one char) and a 65-character
+    `q` must each return 400 with the rule; `limit=500` must come back with a
+    clamped page (max 20).
+12. **Reactions check (the newest change):** hover a message, open the picker and
+    confirm the four options now show real emojis (thumbs up, heart, laughing
+    face, folded hands) with their text labels, and that pills under a message
+    show the emoji with the count.
+
+---
+
+*Unit 34.5 is not described here yet: this document gains a section per unit,
+written when that unit is built. No later unit is in progress while 34.4 is
 awaiting localhost acceptance.*
