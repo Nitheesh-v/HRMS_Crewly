@@ -2362,6 +2362,15 @@ API #1       API #2        API #N      ← node src/server.js
 ONE prefix law for every namespace: BULLMQ_PREFIX when set, else crewly:<NODE_ENV>.
 ```
 
+**34.6 update** — group membership gained its UI (members panel in the group
+header: list with roles, add from the existing directory, admin-only removal,
+"Leave group") on top of the 33.2 endpoints. Two defects were fixed with it: the
+four mutating conversation endpoints (add / remove / disable / enable) now answer
+through the read projection instead of returning the raw document — no other
+member's read cursor leaves the service (C1) — and a removal now also evicts the
+removed member's sockets from the conversation room. Details:
+`docs/PHASE_34_CHAT_ENHANCEMENTS.md` (§34.6).
+
 **34.5 update** — the socket layer gained exactly three typing names:
 `chat:typing:start` / `chat:typing:stop` (client→server) and `chat:typing`
 (server→client, relayed to the conversation room minus the sender). A typing

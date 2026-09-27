@@ -15,7 +15,12 @@ import { searchConversationMessages } from '../../services/chat/chatSearchServic
 import * as chatReadService from '../../services/chat/chatReadService.js';
 // 33.8-fix: data-less list-change nudge. A no-op (false) when realtime is
 // off — REST already did the work; the client's next fetch catches up.
-import { notifyConversationsChanged } from '../../socket/realtimeNudge.js';
+// 34.6 — plus the removal eviction: dropping someone from the member list must
+// also take their sockets out of the room.
+import {
+  evictConversationMember,
+  notifyConversationsChanged,
+} from '../../socket/realtimeNudge.js';
 import * as chatModerationService from '../../services/chat/chatModerationService.js';
 import * as chatAttachmentService from '../../services/chat/chatAttachmentService.js';
 import { resolveChatAttachmentDelivery } from '../../services/chat/chatAttachmentStorage.js';
@@ -34,6 +39,14 @@ const canManageAnyGroup = async (req) => {
     return false;
   }
 };
+
+// 34.6 — a mutation response is a READ as far as the client is concerned: it
+// merges the row into the list it already has. So it leaves through the same
+// projection as list/detail, which is why a membership change can no longer
+// hand the actor every other member's read cursor (C1 law), and why the
+// members panel receives names (`members[].user`) instead of bare ids.
+const projectForActor = (conversation, req) =>
+  chatReadService.projectConversationForActor(conversation, req.user?._id ?? req.user?.id);
 
 export const createConversation = asyncHandler(async (req, res) => {
   // Data from frontend - requests from frontend
@@ -234,7 +247,7 @@ export const addMembers = asyncHandler(async (req, res) => {
   // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: 'Members added',
-    data: { conversation, added },
+    data: { conversation: await projectForActor(conversation, req), added },
   });
 });
 
@@ -254,10 +267,18 @@ export const removeMember = asyncHandler(async (req, res) => {
   // 33.8-fix: the removed user's list loses the conversation live.
   if (removed) notifyConversationsChanged([removedUserId]);
 
+  // 34.6 — and their SOCKETS leave the room. Without this a removed member who
+  // was already connected keeps receiving the conversation's broadcasts: every
+  // chat write re-checks membership in Mongo, but a broadcast is a room emit.
+  // Self-removal (leaving a group) takes the same path on purpose.
+  // The service's verdict (`removed`) is the id that was really taken out —
+  // never the path parameter, so a refusal or a no-op cannot evict anybody.
+  if (removed) evictConversationMember(conversationId, removed);
+
   // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: 'Member removed',
-    data: { conversation, removed },
+    data: { conversation: await projectForActor(conversation, req), removed },
   });
 });
 
@@ -326,7 +347,10 @@ export const disableConversation = asyncHandler(async (req, res) => {
   // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: result.changed ? 'Conversation disabled' : 'Conversation was already disabled',
-    data: { conversation: result.conversation, changed: result.changed },
+    data: {
+      conversation: await projectForActor(result.conversation, req),
+      changed: result.changed,
+    },
   });
 });
 
@@ -348,7 +372,10 @@ export const enableConversation = asyncHandler(async (req, res) => {
   // Data to frontend - response to frontend
   return ApiResponse.success(res, {
     message: result.changed ? 'Conversation enabled' : 'Conversation was already enabled',
-    data: { conversation: result.conversation, changed: result.changed },
+    data: {
+      conversation: await projectForActor(result.conversation, req),
+      changed: result.changed,
+    },
   });
 });
 

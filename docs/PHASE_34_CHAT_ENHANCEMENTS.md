@@ -14,6 +14,7 @@ is described here only once its code exists in the repository.
 | **34.3** | Mentions (`@user` autocomplete, server-validated `mentions[]`, in-app notifications only) | **IMPLEMENTED** (this document) |
 | **34.4** | Search (conversation-scoped only) | **IMPLEMENTED** (this document) |
 | **34.5** | Typing indicators (ephemeral, no storage) | **IMPLEMENTED** (this document) |
+| **34.6** | Group membership (add / remove / leave) | **IMPLEMENTED** (this document) |
 | 34.5 | Typing indicator (socket-only, ephemeral, never stored) | NOT BUILT YET |
 
 Explicitly **out of scope for the whole phase**: presence, availability, last
@@ -1110,5 +1111,153 @@ npm run dev
 
 ---
 
+## 34.6 Group membership (add / remove / leave)
+
+### Implemented changes
+
+**The rules already existed; the surface and two real defects did not.** The
+endpoints, guards and limits were built in 33.2/33.9 and are unchanged. This
+unit adds the UI, fixes a privacy leak on those responses, and makes a removal
+actually remove someone from the live room.
+
+- **Added `projectConversationForActor` (`Backend/src/services/chat/chatReadService.js`)** —
+  the one way a conversation leaves a **mutating** endpoint.
+- **Modified `Backend/src/controllers/chat/chatController.js`** — add / remove /
+  disable / enable now answer with the **projected** conversation, and a real
+  removal evicts the removed member's sockets.
+- **Modified `Backend/src/socket/realtimeNudge.js`** — `evictConversationMember`
+  (`io.in(userRoom).socketsLeave(conversationRoom)`), with the multi-instance
+  limit documented in the source.
+- **Frontend** — `chatService.addMembers` / `removeMember`,
+  `GroupMembersModal.jsx` (member list with roles, "Add people" picker, remove,
+  leave), a members entry point in the group header, `conversationDropped` in
+  the slice, and the removed-while-open path in `ChatPage`.
+- **Tests** — new hermetic `Backend/test/chatMembers.test.js` (11 tests).
+
+### The privacy leak this unit closes (flagged, not silent)
+
+`POST/DELETE .../members` and `PATCH .../disable|enable` answered with the
+**raw** lean conversation — every other member's `lastReadSeq` and `joinedAtSeq`
+— while the 33.7 C1 law says no other member's read cursor leaves the service.
+The read paths (`list` / `detail`) were projected; these four writes were not.
+
+The projection is now shared, which fixes the leak *and* is what makes the panel
+work: the response carries `members[].user` (names), `role`, `joinedAt`,
+`myLastReadSeq` and `unreadCount` — and nothing private. A test asserts no
+member cursor appears in the answer, that the caller's own cursor survives, and
+that all four endpoints use the projection.
+
+### The eviction (a removal must actually remove)
+
+Every chat **write** re-checks membership against Mongo, but a **broadcast** is a
+room emit: a socket that is still in `conv:<id>` keeps receiving messages after
+its user was taken out of the member list. So removal now also calls
+`io.in(userRoom(userId)).socketsLeave(conversationRoom(conversationId))`.
+
+**Stated limit, not assumed away:** with the Redis adapter, `socketsLeave` is
+applied by the adapter and `@socket.io/redis-adapter` does not fan it across
+nodes, so a socket of the same user on another API instance is not evicted by
+that call. The client half covers it in practice (below), and the member's next
+write or join is refused by the membership gate regardless.
+
+### Frontend behaviour
+
+- **Entry point:** the group avatar in the conversation header (it already shows
+  the member count) opens the members panel. A 1:1 conversation has no
+  membership to manage and stays a plain avatar.
+- **The panel** lists every member with their name, a **You** badge and an
+  **Admin** badge; only an admin sees the remove control, and only for other
+  people. Removing yourself is "**Leave group**" (with a confirm step) — one
+  path, not two spellings of it.
+- **Adding** reuses the directory the New-conversation modal already uses
+  (active people this reader can see) minus current members, with a filter. The
+  member cap is **not** duplicated in the UI: the server's refusal message is
+  shown verbatim.
+- **Every refusal is the server's**: non-admin, last admin, "cannot be emptied",
+  cap, same-company-ACTIVE — the panel prints the API's own sentence instead of
+  inventing one.
+- **Removed while reading:** when the refetched list no longer contains the open
+  conversation, the page leaves the socket room, drops that conversation's
+  cached messages / thread / search / typing state, and says *"You are no longer
+  a member of this conversation."* The composer goes away with it.
+- **Leaving** goes back to the conversation list and clears the room locally.
+
+### API contracts (unchanged shapes)
+
+```jsonc
+// POST /api/chat/conversations/:conversationId/members
+// body { "memberUserIds": ["<id>", "..."] }              limiter 20 / 10 min
+{ "message": "Members added", "data": { "conversation": { /* projected */ }, "added": 2 } }
+
+// DELETE /api/chat/conversations/:conversationId/members/:userId
+{ "message": "Member removed", "data": { "conversation": { /* projected */ }, "removed": "<id>" } }
+```
+
+`conversation` is the same projection the list and detail return: `members[]`
+with `{ userId, role, joinedAt, user }`, plus `myLastReadSeq`, `lastMessageSeq`
+and `unreadCount`. Both routes keep `checkWriteAccess` and their own rate
+budgets; the server decides everything.
+
+### Limitations
+
+- **No role changes.** There is no promote/demote endpoint, so the creator stays
+  the only admin and **the last admin cannot leave** (the server refuses with
+  "A group must keep at least one admin."). That is a server rule, not a UI
+  choice; adding roles is its own unit.
+- **No rename, no avatar, no group description** — untouched.
+- **Removal is silent by design**: the removed person gets the existing
+  data-less list nudge (`chat:conversations:changed`) and the room eviction, and
+  no email, no notification and no message is created. Adding someone nudges
+  them the same way.
+- **The eviction is best-effort across instances** (see above); it is exact for
+  same-node sockets, which is what a single-instance deployment has.
+- **The directory is the same one the create modal uses** (active users this
+  reader can already see). People outside that scope cannot be added from this
+  panel — the server would refuse them anyway.
+
+### Localhost verification steps
+
+```powershell
+# Terminal 1 — API + socket server
+cd Backend
+npm run dev
+
+# Terminal 2 — web app
+cd Frontend
+npm run dev
+```
+
+1. Open a **group** conversation and click the group avatar in the header: the
+   panel lists every member with names, **You** on your row and **Admin** on the
+   admin's row.
+2. As the admin, add someone: filter for them, select, **Add to group** — the
+   count in the header rises, their row appears, and (in their window) the
+   conversation appears in their list within a second.
+3. In the newly added person's window: open the group and send a message — the
+   admin sees it live (they are a real member).
+4. As the admin, remove that person: their row disappears for you; in **their**
+   window the open conversation is replaced by "You are no longer a member of
+   this conversation.", the composer is gone, and their list no longer shows it.
+   Send a message from another member afterwards — nothing arrives in the
+   removed window (their socket left the room).
+5. As a **non-admin** member: open the panel — members and roles are visible, no
+   remove buttons, and the note "Only group admins can add or remove other
+   members." is shown.
+6. Try to remove the **last admin** (as that admin, via Leave): the server
+   refuses with "A group must keep at least one admin." and the panel shows that
+   sentence verbatim.
+7. Bring a group down to two people and try to remove one: "A group needs at
+   least two members; it cannot be emptied."
+8. **Leave group** as a normal member: confirm the prompt, and you land back on
+   the conversation list with the group gone; reopening it (if you had the URL)
+   shows no history.
+9. Open a **1:1** conversation: the header avatar is not a button (no membership
+   to manage).
+10. Postman: add with another tenant's user id, with an inactive user, and with
+    a non-admin token — each refusal must be the API's own message, and no
+    response body may contain another member's `lastReadSeq`.
+
+---
+
 *Every unit of Phase 34 is now documented here. No further unit is in progress
-while 34.5 is awaiting localhost acceptance.*
+while 34.6 is awaiting localhost acceptance.*

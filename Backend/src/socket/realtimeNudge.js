@@ -30,7 +30,7 @@
 //    nothing.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { userRoom } from '../utils/chatKeys.js';
+import { conversationRoom, userRoom } from '../utils/chatKeys.js';
 
 let ioRef = null;
 
@@ -58,6 +58,35 @@ export const notifyConversationsChanged = (userIds = []) => {
     seen.add(key);
     ioRef.to(userRoom(key)).emit('chat:conversations:changed', {});
   }
+
+  return true;
+};
+
+/**
+ * 34.6 — a removed member stops receiving the room.
+ *
+ * Every chat WRITE re-checks membership against Mongo, but a broadcast is a
+ * room emit: a socket that is still a member of `conv:<id>` keeps receiving
+ * messages even after its user was removed. Removing someone must therefore
+ * take them OUT of the room, not just out of the member list.
+ *
+ * `io.in(personalRoom).socketsLeave(conversationRoom)` is the socket.io 4.8
+ * broadcast-operator form: it matches that user's sockets and makes them leave
+ * the conversation room. KNOWN LIMIT, stated rather than hidden: with the
+ * Redis adapter this operator is applied by the adapter, and @socket.io/
+ * redis-adapter does not fan it out across nodes — a socket of the same user
+ * living on ANOTHER API instance is not evicted by this call. The client-side
+ * half (the removed member's page leaves the room when its list drops the
+ * conversation) covers that case in practice, and the member's next write or
+ * join is refused by the membership gate regardless.
+ *
+ * Returns true when a live socket server handled it; false when realtime is
+ * off. Callers MUST treat false as fine — the REST call already did the work.
+ */
+export const evictConversationMember = (conversationId, userId) => {
+  if (!ioRef || conversationId == null || userId == null) return false;
+
+  ioRef.in(userRoom(String(userId))).socketsLeave(conversationRoom(String(conversationId)));
 
   return true;
 };

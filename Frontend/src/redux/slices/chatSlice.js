@@ -27,6 +27,12 @@ const initialState = {
   // conversation so closing and reopening a thread is instant and two threads
   // in the same conversation cannot collide.
   threads: {}, // rootMessageId -> { conversationId, root, items, nextCursor, hasMore, status, error }
+  // 34.6 — the conversation we were reading stopped being ours (removed from
+  // the group). Not a permission cache and not a ban list: one id, set when the
+  // refetched list no longer contains the open conversation, cleared as soon as
+  // the reader moves to another room.
+  droppedId: null,
+
   // 34.5 — who is typing, per conversation. EPHEMERAL by construction: the
   // entries exist only while a socket frame keeps refreshing them, they are
   // never persisted, never sent anywhere, and the socket client clears a
@@ -139,8 +145,39 @@ const chatSlice = createSlice({
       state.conversations[index] = { ...state.conversations[index], ...payload };
     },
 
+    // 34.6 — the reader lost access to a conversation mid-read. Everything the
+    // page cached for that room goes with it: a removed member must not keep a
+    // rendered window, a thread panel, a search result set or a typing claim
+    // for a room they are no longer in.
+    conversationDropped: (state, action) => {
+      const key = String(action.payload?.conversationId ?? '');
+
+      if (!key) return;
+
+      delete state.messages[key];
+      delete state.typing[key];
+      state.droppedId = key;
+
+      for (const [rootId, thread] of Object.entries(state.threads ?? {})) {
+        if (String(thread?.conversationId) === key) delete state.threads[rootId];
+      }
+
+      if (String(state.search.conversationId) === key) {
+        state.search = {
+          conversationId: null,
+          q: '',
+          status: 'idle',
+          items: [],
+          nextCursor: null,
+          hasMore: false,
+          error: '',
+        };
+      }
+    },
+
     setActive: (state, action) => {
       state.activeId = action.payload;
+      state.droppedId = null;
     },
 
     messagesLoading: (state, action) => {
@@ -550,6 +587,7 @@ export const {
   typingChanged,
   typingExpired,
   typingCleared,
+  conversationDropped,
   readUpToApplied,
 } = chatSlice.actions;
 

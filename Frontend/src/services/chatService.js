@@ -42,6 +42,21 @@ const chatService = {
   getConversation: async (conversationId) =>
     bare(await api.get(`/chat/conversations/${conversationId}`)),
 
+  // 34.6 — group membership. Both answers carry the PROJECTED conversation
+  // (the same shape the list/detail reads return: members with names and
+  // roles, the caller's own cursor), so the page can merge the row straight
+  // into the list. The server is the authority on every rule: only an in-group
+  // ADMIN may add or remove others, anyone may remove themselves (leave), a
+  // group keeps at least two members and at least one admin, and adding is
+  // capped. The UI only hides what the server would refuse.
+  // -> { conversation, added }
+  addMembers: async (conversationId, memberUserIds) =>
+    bare(await api.post(`/chat/conversations/${conversationId}/members`, { memberUserIds })),
+
+  // -> { conversation, removed }
+  removeMember: async (conversationId, userId) =>
+    bare(await api.delete(`/chat/conversations/${conversationId}/members/${userId}`)),
+
   // 34.4 — conversation-scoped search. Same cursor contract as history (a
   // message seq), plus the term. The term is never logged and never stored.
   // -> { q, items, nextCursor, hasMore }

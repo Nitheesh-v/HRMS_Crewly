@@ -82,6 +82,32 @@ export const buildMemberDirectory = async (
   );
 };
 
+/**
+ * 34.6 — the ONE way a conversation leaves a MUTATING endpoint.
+ *
+ * addMembers / removeMember / disable / enable used to answer with the raw
+ * lean document: every OTHER member's lastReadSeq and joinedAtSeq, which the
+ * 33.7 C1 law keeps out of every read path. A mutation response is a read as
+ * far as the client is concerned — it merges the row straight into the list —
+ * so it goes through the same projection list/detail use.
+ *
+ * The projection is also what makes the members panel possible: it carries
+ * `members[].user` (names, from the directory the caller can already see), the
+ * caller's own cursor and the unread count, and it never carries anyone else's
+ * cursor. `findUsers` is injectable so a hermetic test needs no Mongo.
+ */
+export const projectConversationForActor = async (
+  conversation,
+  userId,
+  { findUsers } = {}
+) => {
+  if (!conversation) return null;
+
+  const directory = await buildMemberDirectory([conversation], findUsers);
+
+  return sanitizeConversationForMember(conversation, userId, directory);
+};
+
 // Read-side projection: keep membership bookkeeping (userId, role, joinedAt)
 // but never another member's cursor. Adds the caller's own cursor + the C1
 // unread count at the top level, and (33.8-fix) a slim identity object per

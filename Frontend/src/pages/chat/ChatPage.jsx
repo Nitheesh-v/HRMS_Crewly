@@ -45,6 +45,7 @@ import {
   searchFailed,
   searchCleared,
   typingCleared,
+  conversationDropped,
   conversationUpdated,
 } from '../../redux/slices/chatSlice.js';
 
@@ -58,6 +59,8 @@ import ConversationSearchBar from '../../components/chat/ConversationSearchBar.j
 import ConversationSearchResults from '../../components/chat/ConversationSearchResults.jsx';
 // 34.5 — "…is typing" for the open conversation only.
 import TypingIndicator from '../../components/chat/TypingIndicator.jsx';
+// 34.6 — group membership: who is in the group, add, remove, leave.
+import GroupMembersModal from '../../components/chat/GroupMembersModal.jsx';
 import MessageComposer from '../../components/chat/MessageComposer.jsx';
 import ChatEmptyState from '../../components/chat/ChatEmptyState.jsx';
 import Avatar from '../../components/chat/Avatar.jsx';
@@ -141,6 +144,12 @@ const ChatPage = () => {
   // nothing about it is persisted (no per-thread cursor, no followers).
   // 34.4 — search: the query lives here (the bar is presentational), and the
   // RESULT state lives in the store so a re-render cannot lose it.
+  // 34.6 — the members panel (group conversations only) and its own busy/error
+  // state, so a refusal from the server is shown inside the panel that caused
+  // it rather than as a page-level notice.
+  const [membersOpen, setMembersOpen] = useState(false);
+  const [membersBusy, setMembersBusy] = useState(false);
+  const [membersError, setMembersError] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchingMore, setSearchingMore] = useState(false);
@@ -430,6 +439,32 @@ const ChatPage = () => {
       dispatch(typingCleared({ conversationId }));
     };
   }, [conversationId, dispatch, applyRead, stopTyping]);
+
+  // ── 34.6 losing access to the open conversation ───────────────────────
+  //
+  // The server nudges a removed member's personal room; this page refetches the
+  // list. If the conversation we KNEW a moment ago is no longer in it, we were
+  // removed: leave the socket room (the client half of the server eviction),
+  // drop everything cached for that room, and let the reader read the reason.
+  const knownConversationIds = useRef(new Set());
+
+  useEffect(() => {
+    const ids = new Set(chat.conversations.map((entry) => String(entry._id)));
+    const active = conversationId ? String(conversationId) : '';
+
+    const wasKnown = active && knownConversationIds.current.has(active);
+    const stillKnown = active && ids.has(active);
+
+    knownConversationIds.current = ids;
+
+    if (!active || !wasKnown || stillKnown) return;
+    if (chat.conversationsStatus !== 'ready') return;
+
+    chatRealtime.leave(active);
+    dispatch(conversationDropped({ conversationId: active }));
+  }, [chat.conversations, chat.conversationsStatus, conversationId, dispatch]);
+
+  const dropped = Boolean(conversationId) && String(chat.droppedId ?? '') === String(conversationId);
 
   // ── mark read when new messages land while open ───────────────────────
   const newestSeq = activeEntry?.items?.length
@@ -954,6 +989,91 @@ const ChatPage = () => {
     }
   };
 
+  // ── 34.6 group membership ─────────────────────────────────────────────
+  //
+  // The page owns the calls; the panel stays presentational. Every handler
+  // returns a FAILURE STRING (or null) for the same reason NewConversationModal
+  // does: the panel shows the server's own words next to the control that
+  // caused them.
+
+  const applyProjected = (result) => {
+    const updated = result?.conversation;
+
+    // The response is the PROJECTED conversation (same shape as list/detail),
+    // so merging it keeps names, roles, the caller's own cursor and the unread
+    // count consistent.
+    if (updated) dispatch(conversationUpdated(updated));
+  };
+
+  const handleAddMembers = async (memberUserIds) => {
+    setMembersBusy(true);
+    setMembersError('');
+
+    try {
+      applyProjected(await chatService.addMembers(conversationId, memberUserIds));
+
+      return null;
+    } catch (err) {
+      const message = chatErrorMessage(err, 'Those members could not be added.');
+
+      setMembersError(message);
+
+      return message;
+    } finally {
+      setMembersBusy(false);
+    }
+  };
+
+  const handleRemoveMember = async (member) => {
+    const name = nameOfUserId(member.userId) ?? 'this person';
+
+    if (!globalThis.confirm(`Remove ${name} from this group?`)) return null;
+
+    setMembersBusy(true);
+    setMembersError('');
+
+    try {
+      applyProjected(await chatService.removeMember(conversationId, member.userId));
+
+      return null;
+    } catch (err) {
+      const message = chatErrorMessage(err, 'That member could not be removed.');
+
+      setMembersError(message);
+
+      return message;
+    } finally {
+      setMembersBusy(false);
+    }
+  };
+
+  const handleLeaveGroup = async () => {
+    setMembersBusy(true);
+    setMembersError('');
+
+    try {
+      await chatService.removeMember(conversationId, meId);
+
+      // Leaving removes this conversation from our list, so the page must not
+      // stay on it: close the room, drop the panel and go back to the list.
+      setMembersOpen(false);
+      stopTyping(conversationId);
+      chatRealtime.leave(conversationId);
+      dispatch(conversationDropped({ conversationId }));
+      navigate('/app/chat');
+
+      return null;
+    } catch (err) {
+      const message = chatErrorMessage(err, 'You could not leave this group.');
+
+      setMembersError(message);
+
+      return message;
+    } finally {
+      setMembersBusy(false);
+    }
+  };
+
   const handleCreate = async (payload) => {
     try {
       const result = await chatService.createConversation(payload);
@@ -1016,9 +1136,21 @@ const ChatPage = () => {
             (headerIsDirect ? (
               <Avatar name={title} seed={title} size="md" />
             ) : (
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-crewly-border/40 text-crewly-dim">
+              // 34.6 — the group avatar IS the members entry point: it opens the
+              // panel where membership is managed. (A 1:1 conversation has no
+              // membership to manage, so it stays a plain avatar above.)
+              <button
+                type="button"
+                onClick={() => {
+                  setMembersError('');
+                  setMembersOpen(true);
+                }}
+                aria-label={`View members (${memberCount})`}
+                title="View members"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-crewly-border/40 text-crewly-dim transition hover:bg-crewly-card hover:text-crewly-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-crewly-green/40"
+              >
                 <Users className="h-4 w-4" aria-hidden="true" />
-              </span>
+              </button>
             ))}
 
           <div className="min-w-0 flex-1">
@@ -1093,6 +1225,13 @@ const ChatPage = () => {
           </>
         )}
 
+        {dropped && (
+          <div className="border-b border-crewly-red/40 bg-crewly-red/10 px-3 py-2 text-xs text-crewly-red sm:px-4">
+            You are no longer a member of this conversation. It has been removed from your list;
+            anything it showed you is gone from this window.
+          </div>
+        )}
+
         {moderationNotice && (
           <div className="flex items-center gap-2 border-b border-crewly-red/40 bg-crewly-red/10 px-4 py-2 text-xs text-crewly-red">
             <AlertTriangle className="h-3.5 w-3.5" />
@@ -1142,6 +1281,7 @@ const ChatPage = () => {
             />
             <TypingIndicator names={typingNames} />
 
+            {!dropped && (
             <MessageComposer
               replyPill={
                 replyingTo ? (
@@ -1169,6 +1309,7 @@ const ChatPage = () => {
               onRemoveAttachment={removeAttachment}
               onTypingChange={handleComposerActivity}
             />
+            )}
           </>
         ) : (
           <ChatEmptyState onNew={() => setShowNew(true)} />
@@ -1202,6 +1343,20 @@ const ChatPage = () => {
           onAddAttachment={addAttachment}
           onRemoveAttachment={removeAttachment}
           loadingOlder={threadLoadingOlder}
+        />
+      )}
+
+      {membersOpen && activeConversation && (
+        <GroupMembersModal
+          conversation={activeConversation}
+          users={users}
+          meId={meId}
+          busy={membersBusy}
+          error={membersError}
+          onClose={() => setMembersOpen(false)}
+          onAdd={handleAddMembers}
+          onRemove={handleRemoveMember}
+          onLeave={handleLeaveGroup}
         />
       )}
 
