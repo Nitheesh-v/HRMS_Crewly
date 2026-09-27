@@ -760,8 +760,31 @@ the tombstone *is* the redaction.
   a `search` slice with `searchStarted/searchLoaded/searchMoreLoaded/searchFailed/searchCleared`,
   a header toggle in `ChatPage`, a 300 ms debounce, and the **jump** view
   (`jumpLoaded` + banner + scroll-to-target in `MessageList`).
-- **Tests** — new hermetic `Backend/test/chatSearch.test.js` (15 tests); the
+- **Tests** — new hermetic `Backend/test/chatSearch.test.js` (17 tests); the
   34.1 emoji pin was inverted (see above) rather than deleted.
+
+**Post-verification fix (first localhost run).** The UI rendered but every
+search answered *"The search could not be completed."* Two real defects, both in
+the client, both now fixed and pinned:
+
+1. **Wrong page size.** `ChatPage` passed its history `PAGE_SIZE` (30) to the
+   search endpoint, whose validator refuses anything above 20 — so the request
+   was a 400 before it ever reached the database. The page now has its own
+   `SEARCH_PAGE_SIZE = 20`, and a test reads that constant out of the page and
+   asserts it is inside the server's bound and used by *both* search calls (the
+   first page and "load more"). The server keeps refusing over-sized pages
+   rather than silently trimming them.
+2. **The error text was unreachable.** `api.js` rejects with `normalizeError()` —
+   a plain `Error` whose `.message` holds the server's words and whose
+   `.response` does **not** exist. Every `err?.response?.data?.message` read in
+   the page therefore fell through to its generic fallback, which is how a 400
+   about the page size arrived as a sentence about the search. One
+   `chatErrorMessage(err, fallback)` helper now reads both shapes and is used by
+   every error path on the page (a test asserts the raw read is gone).
+3. **A failure is no longer a dead end.** The panel shows the server's own
+   message with a **Try again** button. Retrying is explicit by design: the
+   automatic path still refuses to re-ask the same term, so a refusing endpoint
+   cannot be turned into a request loop by a timer.
 
 ### Endpoint contract
 
@@ -772,8 +795,12 @@ GET /api/chat/conversations/:conversationId/search?q=<term>&cursor=<seq>&limit=<
 - **`q` is required**, 2..64 characters after normalization (internal whitespace
   collapses, edges trim). Below 2 the result set is not a result set; above 64
   it is a paste, not a search.
-- `cursor` is a message `seq` (same contract as history and threads); `limit` is
-  clamped 1..20 (default 10).
+- `cursor` is a message `seq` (same contract as history and threads). `limit` is
+  validated at the edge to 1..20 (default 10) and clamped again inside the
+  service as a second line of defence, so an internal caller cannot widen it.
+  The web app asks for **20** per search page (history and threads keep their own
+  30) — the client never exceeds the contract, and the server never silently
+  trims what it was asked for.
 - **Filters:** `companyId`, `conversationId`, `type: 'TEXT'`, `deletedAt: null`,
   `text` matching an **escaped, case-insensitive** literal, `seq < cursor`.
 - **Order:** `seq desc` (newest first), with a `limit + 1` probe for `hasMore`.
@@ -860,6 +887,8 @@ measured before and after — never a text index.
   missing newer messages do not exist.
 - **The debounce is client-side (300 ms)** and the floor is 2 characters on both
   sides: a server refusal is never used as a rate limiter for typing.
+- **A failed search waits for the reader.** No timer re-asks a term that already
+  failed; the panel shows the server's message plus **Try again**.
 
 ### Localhost verification steps
 
@@ -885,6 +914,9 @@ npm run dev
    the caption is not returned (search is TEXT-only).
 5. Type a single character: the panel says at least two characters are needed and
    no request is sent.
+5b. **Failure path** — stop the backend, search for a word, and confirm the panel
+   shows a real message (not a silent blank) with a **Try again** button; restart
+   the backend, press **Try again**, and the matches appear.
 6. Type `a+b?` (or any symbols): the search returns only messages containing that
    literal text — no error, and no "match everything" behaviour. A lone `.*`
    returns the messages containing the literal `.*` (usually none).

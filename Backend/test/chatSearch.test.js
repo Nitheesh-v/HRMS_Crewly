@@ -506,6 +506,59 @@ test('a disabled conversation is still searchable (search is a read, and the loc
 // 4. Pins that keep the contract honest
 // ══════════════════════════════════════════════════════════════════════════
 
+test('the frontend asks for a search page the server accepts', () => {
+  // The first localhost run of 34.4 failed EVERY search with a 400: ChatPage
+  // passed its history PAGE_SIZE (30) to an endpoint whose maximum is 20. This
+  // pins the two halves of that contract against each other — a named search
+  // size, inside the server's bound, used by every searchMessages() call.
+  const page = readSource('Frontend/src/pages/chat/ChatPage.jsx');
+
+  const declared = page.match(/const SEARCH_PAGE_SIZE = (\d+);/);
+
+  assert.ok(declared, 'ChatPage declares its search page size');
+
+  const searchPageSize = Number(declared[1]);
+
+  assert.ok(
+    searchPageSize >= 1 && searchPageSize <= CHAT_SEARCH_LIMIT_MAX,
+    `the search page size (${searchPageSize}) is within 1..${CHAT_SEARCH_LIMIT_MAX}`
+  );
+
+  const calls = page.match(/chatService\.searchMessages\([\s\S]*?\n\s*\}\);/g) ?? [];
+
+  assert.ok(calls.length >= 2, 'both search calls exist (first page and load more)');
+
+  for (const call of calls) {
+    assert.ok(
+      call.includes('limit: SEARCH_PAGE_SIZE'),
+      'searchMessages asks with the search page size, never the history one'
+    );
+  }
+});
+
+test('the page surfaces the API message it is handed', () => {
+  // api.js rejects with normalizeError() — a plain Error carrying the server
+  // text in `.message` and NO `.response`. Reading err.response.data.message
+  // always fell through to a generic fallback (which is how a 400 about the
+  // page size reached the reader as "The search could not be completed."). One
+  // helper now reads both shapes; this pins that the raw read is gone.
+  const page = readSource('Frontend/src/pages/chat/ChatPage.jsx');
+
+  assert.ok(page.includes('const chatErrorMessage = '), 'the page reads both error shapes');
+
+  // Comments are skipped on purpose: this page EXPLAINS the old read next to
+  // the helper that replaced it, and a source scan that counted prose would
+  // punish the documentation (the same trap 34.3 hit).
+  const rawReads = page
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => !/^(\/\/|\*|\/\*)/.test(line))
+    .filter((line) => line.includes('err?.response?.data?.message'))
+    .filter((line) => !line.includes('err?.message'));
+
+  assert.deepEqual(rawReads, [], 'no call site reads the removed .response shape directly');
+});
+
 test('the search path never logs the term', () => {
   const service = readSource('Backend/src/services/chat/chatSearchService.js');
   const controller = readSource('Backend/src/controllers/chat/chatController.js');

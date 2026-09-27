@@ -33,6 +33,7 @@ const ConversationSearchResults = ({
   nameOfUserId,
   onOpen,
   onLoadMore,
+  onRetry,
 }) => {
   if (status === 'idle' || q.trim().length < 2) {
     return (
@@ -44,9 +45,18 @@ const ConversationSearchResults = ({
   }
 
   if (status === 'error') {
+    // A failed search is never retried automatically (that would be a request
+    // loop); the reader gets the server's own words and a way to ask again.
     return (
-      <div className="border-b border-crewly-red/40 bg-crewly-red/10 px-3 py-2 text-xs text-crewly-red sm:px-4">
-        {error || 'The search could not be completed.'}
+      <div className="flex items-center gap-2 border-b border-crewly-red/40 bg-crewly-red/10 px-3 py-2 text-xs text-crewly-red sm:px-4">
+        <span className="min-w-0 flex-1">{error || 'The search could not be completed.'}</span>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="shrink-0 rounded border border-crewly-red/50 px-2 py-0.5 font-semibold hover:bg-crewly-red/15"
+        >
+          Try again
+        </button>
       </div>
     );
   }

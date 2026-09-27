@@ -63,6 +63,26 @@ import NewConversationModal from '../../components/chat/NewConversationModal.jsx
 
 const PAGE_SIZE = 30;
 
+// 34.4 — the search endpoint accepts AT MOST 20 rows per page (the server
+// refuses more), while history and threads take 30. Asking for PAGE_SIZE here
+// was the bug the first localhost run found: every search came back 400.
+const SEARCH_PAGE_SIZE = 20;
+
+/*
+ * Error text.
+ *
+ * The axios layer rejects with `normalizeError(...)` — a PLAIN Error that
+ * carries the server's message in `.message` and copies `.status`/`.code`, but
+ * has NO `.response`. Reading `err?.response?.data?.message` therefore always
+ * fell through to the generic fallback, which is how a real 400 ("limit must be
+ * an integer between 1 and 20.") reached the reader as "The search could not be
+ * completed." Both shapes are read below, so either one wins.
+ */
+const chatErrorMessage = (err, fallback) =>
+  err?.response?.data?.message || err?.message || fallback;
+
+const chatErrorStatus = (err) => err?.response?.status ?? err?.status;
+
 const newClientMessageId = () =>
   globalThis.crypto?.randomUUID?.() ??
   `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -207,7 +227,7 @@ const ChatPage = () => {
       const result = await chatService.listConversations({ limit: PAGE_SIZE });
       dispatch(conversationsLoaded(result.conversations));
     } catch (err) {
-      dispatch(conversationsFailed(err?.response?.data?.message || 'Failed to load conversations.'));
+      dispatch(conversationsFailed(chatErrorMessage(err, 'Failed to load conversations.')));
     }
   }, [dispatch]);
 
@@ -298,7 +318,7 @@ const ChatPage = () => {
         if (!cancelled) {
           dispatch(messagesFailed({
             conversationId,
-            error: err?.response?.data?.message || 'Failed to load history.',
+            error: chatErrorMessage(err, 'Failed to load history.'),
           }));
         }
       }
@@ -550,7 +570,7 @@ const ChatPage = () => {
           deletedByUserId: meId,
         }));
       } catch (err) {
-        setModerationNotice(err?.response?.data?.message || 'The message could not be removed.');
+        setModerationNotice(chatErrorMessage(err, 'The message could not be removed.'));
       }
 
       return;
@@ -615,7 +635,7 @@ const ChatPage = () => {
         }));
       }
     } catch (err) {
-      const status = err?.response?.status;
+      const status = chatErrorStatus(err);
 
       dispatch(threadFailed({
         conversationId,
@@ -623,7 +643,7 @@ const ChatPage = () => {
         error:
           status === 404
             ? 'This thread is no longer available.'
-            : err?.response?.data?.message || 'The thread could not be loaded.',
+            : chatErrorMessage(err, 'The thread could not be loaded.'),
       }));
     } finally {
       if (cursor) setThreadLoadingOlder(false);
@@ -640,6 +660,29 @@ const ChatPage = () => {
   // not spend requests on refusals).
   const searchQ = chat.search.conversationId === conversationId ? chat.search : null;
 
+  const runSearch = useCallback(async (term) => {
+    dispatch(searchStarted({ conversationId, q: term }));
+
+    try {
+      const result = await chatService.searchMessages(conversationId, {
+        q: term,
+        limit: SEARCH_PAGE_SIZE,
+      });
+
+      dispatch(searchLoaded({
+        conversationId,
+        q: result.q ?? term,
+        items: result.items,
+        nextCursor: result.nextCursor,
+        hasMore: result.hasMore,
+      }));
+    } catch (err) {
+      dispatch(searchFailed({
+        error: chatErrorMessage(err, 'The search could not be completed.'),
+      }));
+    }
+  }, [conversationId, dispatch]);
+
   useEffect(() => {
     if (!conversationId || !searchOpen) return undefined;
 
@@ -654,32 +697,16 @@ const ChatPage = () => {
 
     // Already asked for this exact term (loading, ready, OR failed): do not ask
     // again on every store update. A failure stays failed until the reader edits
-    // the term — an automatic retry here would be a request loop against an
-    // endpoint that is already refusing.
+    // the term or presses "Try again" — an automatic retry here would be a
+    // request loop against an endpoint that is already refusing.
     if (searchQ?.q === term) return undefined;
 
-    const timer = setTimeout(async () => {
-      dispatch(searchStarted({ conversationId, q: term }));
-
-      try {
-        const result = await chatService.searchMessages(conversationId, { q: term, limit: PAGE_SIZE });
-
-        dispatch(searchLoaded({
-          conversationId,
-          q: result.q ?? term,
-          items: result.items,
-          nextCursor: result.nextCursor,
-          hasMore: result.hasMore,
-        }));
-      } catch (err) {
-        dispatch(searchFailed({
-          error: err?.response?.data?.message || 'The search could not be completed.',
-        }));
-      }
+    const timer = setTimeout(() => {
+      runSearch(term);
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [conversationId, searchOpen, searchQuery, searchQ, dispatch]);
+  }, [conversationId, searchOpen, searchQuery, searchQ, runSearch, dispatch]);
 
   const loadMoreMatches = async () => {
     if (!conversationId || !searchQ?.nextCursor) return;
@@ -690,7 +717,7 @@ const ChatPage = () => {
       const result = await chatService.searchMessages(conversationId, {
         q: searchQ.q,
         cursor: searchQ.nextCursor,
-        limit: PAGE_SIZE,
+        limit: SEARCH_PAGE_SIZE,
       });
 
       dispatch(searchMoreLoaded({
@@ -700,7 +727,7 @@ const ChatPage = () => {
       }));
     } catch (err) {
       dispatch(searchFailed({
-        error: err?.response?.data?.message || 'The search could not be completed.',
+        error: chatErrorMessage(err, 'The search could not be completed.'),
       }));
     } finally {
       setSearchingMore(false);
@@ -756,8 +783,16 @@ const ChatPage = () => {
         targetSeq: row.seq,
       }));
     } catch (err) {
-      setModerationNotice(err?.response?.data?.message || 'That message could not be opened.');
+      setModerationNotice(chatErrorMessage(err, 'That message could not be opened.'));
     }
+  };
+
+  // The panel's "Try again": one explicit attempt on the same term (or the term
+  // that failed). Deliberately manual — see the effect above.
+  const retrySearch = () => {
+    const term = (searchQ?.q || searchQuery).trim();
+
+    if (term.length >= 2) runSearch(term);
   };
 
   const closeSearch = () => {
@@ -807,7 +842,7 @@ const ChatPage = () => {
 
       if (updated) dispatch(conversationUpdated(updated));
     } catch (err) {
-      setModerationNotice(err?.response?.data?.message || 'The conversation could not be updated.');
+      setModerationNotice(chatErrorMessage(err, 'The conversation could not be updated.'));
     } finally {
       setModerationBusy(false);
     }
@@ -824,7 +859,7 @@ const ChatPage = () => {
       navigate(`/app/chat/${conversation._id}`);
       return null;
     } catch (err) {
-      return err?.response?.data?.message || 'The conversation could not be created.';
+      return chatErrorMessage(err, 'The conversation could not be created.');
     }
   };
 
@@ -947,6 +982,7 @@ const ChatPage = () => {
               nameOfUserId={nameOfUserId}
               onOpen={openSearchResult}
               onLoadMore={loadMoreMatches}
+              onRetry={retrySearch}
             />
           </>
         )}
