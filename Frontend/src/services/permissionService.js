@@ -74,10 +74,13 @@ const permissionService = {
       )
       .then(unwrap),
 
+  // 35.2 — the API caps a list read at 200 rows (`Math.min(200, limit)`), so
+  // ask for what the server will actually return instead of a number it
+  // silently discards.
   users: () =>
     api
       .get('/users', {
-        params: { limit: 500 },
+        params: { limit: 200 },
       })
       .then(unwrap),
 

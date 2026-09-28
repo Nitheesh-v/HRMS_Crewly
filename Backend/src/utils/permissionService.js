@@ -228,13 +228,64 @@ export const ensureCompanyRoles = async (
   // multi-instance-safe) before any role provisioning reads it.
   await ensurePermissions({ PermissionModel });
 
+  // ── 35.2 READ GATE ─────────────────────────────────────────────────────
+  // Provisioning used to write UNCONDITIONALLY: five upserts plus five
+  // version-gated updates on every call — ten round-trips per tenant, per
+  // permission-cache miss, forever, even for a company whose roles have not
+  // changed since the day it was created. On a remote database that was the
+  // single most expensive thing an ordinary page load could trigger.
+  //
+  // One indexed read now answers the only question that matters — "is there
+  // anything to do?" — and the answer for an established tenant is no. The
+  // writes still happen the instant they are needed (a missing role, or one
+  // whose permissionVersion is behind the current catalogue), so NO
+  // semantics change: same documents, same idempotency, same concurrency
+  // safety. rbacBootstrap.test.js is the pin for exactly that.
+  const existingRoles = await CompanyRoleModel.find({
+    companyId,
+    code: { $in: SYSTEM_COMPANY_ROLES },
+  }).lean();
+
+  const roleState = new Map(
+    (existingRoles || []).map((row) => [String(row.code), row]),
+  );
+
+  const isBehind = (roleKey) => {
+    const row = roleState.get(roleKey);
+
+    if (!row) return true; // never provisioned for this tenant
+
+    return (
+      row.permissionVersion === undefined ||
+      row.permissionVersion < SYSTEM_PERMISSION_VERSION
+    );
+  };
+
+  const pendingKeys = SYSTEM_COMPANY_ROLES.filter(isBehind);
+
+  if (pendingKeys.length === 0) {
+    // Steady state: nothing to write, nothing to invalidate. The read above
+    // is the entire cost of an ensure for an up-to-date tenant.
+    if (!fetchRoles) return null;
+
+    return CompanyRoleModel.find({
+      companyId,
+      isActive: true,
+    })
+      .populate('permissions')
+      .lean();
+  }
+
   // Provisioning NEVER reuses a cached/memoized catalogue snapshot: role
   // documents must reference the CURRENT live Permission ObjectIds. A
   // process-lifetime memo can outlive the database it was read from (e.g.
   // a dropped-and-recreated database under a running API), and role ids
   // built from that memo dangle silently — populate() drops them and the
   // role resolves to ZERO effective permissions. One lean indexed read
-  // per ensure call keeps every provisioned id live and correct.
+  // keeps every provisioned id live and correct.
+  //
+  // Read only when there is work to do — the permission ids are needed to
+  // write, and not otherwise.
   const permissions = await PermissionModel.find(
     { isActive: true },
     { _id: 1, name: 1 },
@@ -356,7 +407,7 @@ export const ensureCompanyRoles = async (
   };
 
   const migratedFlags = await Promise.all(
-    SYSTEM_COMPANY_ROLES.map((roleKey) => migrateRole(roleKey)),
+    pendingKeys.map((roleKey) => migrateRole(roleKey)),
   );
 
   if (migratedFlags.some(Boolean)) {

@@ -9,9 +9,25 @@ const baseURL =
   import.meta.env.VITE_API_URL ||
   '/api';
 
+/*
+ * 35.2 — A REQUEST MUST BE ALLOWED TO FAIL.
+ *
+ * Without a timeout axios waits forever. A page whose data never arrives and
+ * never errors is a page that "does not open": the spinner stays, the guard
+ * stays on "Checking permissions…", and nothing is ever reported. A bounded
+ * wait turns that silence into an ordinary, retryable failure — the 35.1
+ * failure layer already knows how to render a timeout ("The server took too
+ * long to respond."), and every page's own catch block can then offer Retry.
+ *
+ * 25 s is deliberately generous: it is above the slowest legitimate payroll
+ * or analytics query, and far below "the person has given up".
+ */
+const REQUEST_TIMEOUT_MS = 25000;
+
 const api = axios.create({
   baseURL,
   withCredentials: true,
+  timeout: REQUEST_TIMEOUT_MS,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -32,6 +48,7 @@ attachFailureReporter(api);
 const refreshClient = axios.create({
   baseURL,
   withCredentials: true,
+  timeout: REQUEST_TIMEOUT_MS,
   headers: {
     'Content-Type': 'application/json',
   },

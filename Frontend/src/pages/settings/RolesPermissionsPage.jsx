@@ -81,15 +81,27 @@ const RolesPermissionsPage = () => {
     );
   };
 
+  /*
+   * 35.2 — one page open, one parallel batch.
+   *
+   * The page used to fire four requests on mount, and the heaviest of them
+   * (`/users?limit=500`, which the API caps at 200 rows with two joins) was
+   * for a list nobody had asked to see yet — it belongs to the "User
+   * Assignments" tab and is now fetched when that tab is opened.
+   * Role templates ride along with the batch the page actually needs.
+   */
   const load = async () => {
     setLoading(true);
-    /* 35.1 — nothing to report; failures are toasted by api.js */;
+    /* 35.1 — nothing to report; failures are toasted by api.js */
 
     try {
-      const [roleRows, permissionData] = await Promise.all([
+      const [roleRows, permissionData, templateData] = await Promise.all([
         permissionService.roles(),
         permissionService.permissions(),
+        permissionService.roleTemplates().catch(() => ({ templates: [] })),
       ]);
+
+      setTemplates(templateData?.templates || []);
 
       const normalizedRoles = Array.isArray(roleRows)
         ? roleRows
@@ -116,18 +128,20 @@ const RolesPermissionsPage = () => {
 
   useEffect(() => {
     load();
-    loadUsers();
-    loadTemplates();
   }, []);
 
-  const loadTemplates = async () => {
-    try {
-      const data = await permissionService.roleTemplates();
-      setTemplates(data?.templates || []);
-    } catch {
-      setTemplates([]);
+  /*
+   * The user list belongs to the assignments tab — it is fetched the first
+   * time that tab is opened, never as a cost of looking at roles.
+   */
+  const [usersLoaded, setUsersLoaded] = useState(false);
+
+  useEffect(() => {
+    if (tab === 'users' && !usersLoaded) {
+      setUsersLoaded(true);
+      loadUsers();
     }
-  };
+  }, [tab, usersLoaded]);
 
   const togglePermission = (permissionId) => {
     setSelectedPermissions((current) =>
@@ -141,7 +155,7 @@ const RolesPermissionsPage = () => {
     if (!selectedRoleId) return;
 
     setBusy(true);
-    /* 35.1 — nothing to report; failures are toasted by api.js */;
+    /* 35.1 — nothing to report; failures are toasted by api.js */
 
     try {
       const updatedRole =
@@ -175,7 +189,7 @@ const RolesPermissionsPage = () => {
     const description = window.prompt("Role description", "") || "";
 
     setBusy(true);
-    /* 35.1 — nothing to report; failures are toasted by api.js */;
+    /* 35.1 — nothing to report; failures are toasted by api.js */
 
     try {
       const role = await permissionService.createRole({
@@ -199,7 +213,7 @@ const RolesPermissionsPage = () => {
   // administrator picks one here.
   const createRoleFromTemplate = async (template) => {
     setBusy(true);
-    /* 35.1 — nothing to report; failures are toasted by api.js */;
+    /* 35.1 — nothing to report; failures are toasted by api.js */
 
     try {
       const role = await permissionService.createRole({

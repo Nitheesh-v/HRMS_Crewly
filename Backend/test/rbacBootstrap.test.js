@@ -298,6 +298,11 @@ class FakeCompanyRoleCollection {
     const matched = this.query(filter);
 
     return {
+      // 35.2 — the read gate asks this collection a plain question
+      // ("which of the five system roles already exist, and at what
+      // version?"), so the emulation answers a bare lean() as well.
+      lean: async () => matched,
+
       populate: () => ({
         lean: async () => matched.map((doc) => this.populateRole(doc)),
       }),
