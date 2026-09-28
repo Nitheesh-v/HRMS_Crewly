@@ -245,8 +245,11 @@ const AttendanceImportPage = () => {
       {outcomes.length > 0 && (
         <div className="rounded-xl border border-crewly-line p-4">
           <div className="text-sm font-semibold text-crewly-ink">
-            {result ? 'Import result' : `Batch ${detail?.id || ''}`} — {result?.importedCount ?? detail?.importedCount} imported,{' '}
-            {result?.skippedCount ?? detail?.skippedCount} skipped, {result?.rejectedCount ?? detail?.rejectedCount} rejected
+            {/* 35.6 — a count that was never stored prints as a number, never as a dangling word */}
+            {result ? 'Import result' : `Batch ${detail?.id || ''}`} —{' '}
+            {result?.importedCount ?? detail?.importedCount ?? 0} imported,{' '}
+            {result?.skippedCount ?? detail?.skippedCount ?? 0} skipped,{' '}
+            {result?.rejectedCount ?? detail?.rejectedCount ?? 0} rejected
           </div>
           <div className="mt-2 max-h-72 overflow-auto text-xs">
             <table className="w-full text-left">
@@ -303,7 +306,8 @@ const AttendanceImportPage = () => {
               {batch.status}
             </span>
             <span className="text-crewly-dim">
-              {batch.importedCount} imported · {batch.skippedCount} skipped · {batch.rejectedCount} rejected
+              {batch.importedCount || 0} imported · {batch.skippedCount || 0} skipped ·{' '}
+              {batch.rejectedCount || 0} rejected
             </span>
             <span className="ml-auto text-xs text-crewly-dim">{fmtInstant(batch.confirmedAt || batch.createdAt)}</span>
           </button>

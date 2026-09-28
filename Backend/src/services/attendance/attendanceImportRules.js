@@ -53,8 +53,35 @@ const IMPORT_TRANSITIONS = Object.freeze({
   [IMPORT_STATUS.FAILED]: [],
 });
 
-export const canTransitionImport = (from, to) =>
-  (IMPORT_TRANSITIONS[from] || []).includes(to);
+/*
+ * 35.6 — A CONFIRMED batch that recorded NOTHING is not a finished import.
+ *
+ * The fingerprint is what makes the import idempotent, and CONFIRMED used to
+ * be final — so a file whose every row was refused (or a batch that predates
+ * the outcome fix) locked its own fingerprint forever: the very same file
+ * could never be imported again, not even after the reason was fixed. The
+ * only way out was to edit the CSV content so its fingerprint changed.
+ *
+ * So a retry edge exists, and it is deliberately narrow: only CONFIRMED →
+ * CONFIRMING, and only when the stored batch shows that nothing landed
+ * (no imported rows and no rows already recorded). Anything that recorded
+ * something stays final and replays its stored result.
+ *
+ * The counts must be passed EXPLICITLY — a caller that does not know them
+ * gets the old strict answer, so this can never be satisfied by accident.
+ */
+export const canTransitionImport = (from, to, evidence = null) => {
+  if ((IMPORT_TRANSITIONS[from] || []).includes(to)) return true;
+
+  if (from === IMPORT_STATUS.CONFIRMED && to === IMPORT_STATUS.CONFIRMING) {
+    if (!evidence || typeof evidence !== 'object') return false;
+    const { importedCount, skippedCount } = evidence;
+    if (importedCount === undefined || skippedCount === undefined) return false;
+    return Number(importedCount || 0) === 0 && Number(skippedCount || 0) === 0;
+  }
+
+  return false;
+};
 
 // ── CSV ──────────────────────────────────────────────────────
 // 29.5 splitCsvLine pattern: quote-aware, "" escapes, trims cells.

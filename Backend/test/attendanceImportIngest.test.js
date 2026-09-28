@@ -383,6 +383,91 @@ test('35.5 · a rejected row reaches the page with its reason, and the counts ad
   assert.ok(imported.at, 'an imported outcome carries the event instant');
 });
 
+// ── 3. a batch that recorded nothing must not lock its file forever ──
+
+test('35.6 · a confirm that imported nothing can be retried with the SAME file', async () => {
+  const { deps } = buildImportWorld({ failLines: new Set([2, 3]) });
+
+  const first = await confirmImport({ companyId: COMPANY, content: GOOD_CSV, deps });
+  assert.equal(first.importedCount, 0, 'the world refuses both rows');
+  assert.equal(first.rejectedCount, 2);
+  assert.equal(first.duplicate, false);
+
+  // Same file (same fingerprint), now that the world accepts the rows.
+  deps.recordEvent = async () => ({ replayed: false });
+  const retry = await confirmImport({ companyId: COMPANY, content: GOOD_CSV, deps });
+
+  assert.equal(retry.duplicate, false, 'nothing had landed, so this is not a replay');
+  assert.equal(retry.id, first.id, 'the retry happens IN PLACE — one history row, no duplicate batch');
+  assert.equal(retry.status, 'CONFIRMED');
+  assert.equal(retry.importedCount, 2, 'the data finally lands');
+  assert.equal(retry.rejectedCount, 0, 'and the stale rejection counts are replaced');
+  assert.equal(retry.outcomes.length, 2, 'outcomes are rewritten, not appended');
+  assert.ok(retry.outcomes.every((outcome) => outcome.status === 'IMPORTED'));
+});
+
+test('35.6 · an import that DID land stays final and replays its stored result', async () => {
+  const { deps } = buildImportWorld();
+  const first = await confirmImport({ companyId: COMPANY, content: GOOD_CSV, deps });
+  assert.equal(first.importedCount, 2);
+
+  const callsBefore = [];
+  const spy = {
+    ...deps,
+    recordEvent: async (args) => {
+      callsBefore.push(args);
+      return { replayed: false };
+    },
+  };
+  const second = await confirmImport({ companyId: COMPANY, content: GOOD_CSV, deps: spy });
+
+  assert.equal(second.duplicate, true, 'a real replay keeps answering "already imported"');
+  assert.equal(second.id, first.id);
+  assert.equal(second.importedCount, 2);
+  assert.equal(callsBefore.length, 0, 'and it never re-runs the ingest');
+});
+
+test('35.6 · a batch that only found already-recorded rows is final too', async () => {
+  const { deps } = buildImportWorld();
+  // The backstop reads with .select('_id').lean() — answer it in that shape.
+  deps.EventModel.findOne = () => ({ select: () => ({ lean: async () => ({ _id: 'evt-existing' }) }) });
+
+  const first = await confirmImport({ companyId: COMPANY, content: GOOD_CSV, deps });
+  assert.equal(first.importedCount, 0);
+  assert.equal(first.skippedCount, 2, 'every row was already in the ledger');
+
+  const second = await confirmImport({ companyId: COMPANY, content: GOOD_CSV, deps });
+  assert.equal(second.duplicate, true, 'skippable rows are a completed import, not a failure');
+});
+
+test('35.6 · the retry edge is narrow and must be given evidence', async () => {
+  const { canTransitionImport } = await import('../src/services/attendance/attendanceImportRules.js');
+
+  // The documented state machine is unchanged when the counts are not known.
+  assert.equal(canTransitionImport('DRAFT', 'CONFIRMING'), true);
+  assert.equal(canTransitionImport('CONFIRMED', 'CONFIRMING'), false);
+  assert.equal(canTransitionImport('CONFIRMED', 'DRAFT'), false);
+  assert.equal(canTransitionImport('FAILED', 'CONFIRMING'), false);
+
+  // Nothing landed → the file stays importable.
+  assert.equal(
+    canTransitionImport('CONFIRMED', 'CONFIRMING', { importedCount: 0, skippedCount: 0 }),
+    true,
+  );
+  // Anything recorded → final.
+  assert.equal(
+    canTransitionImport('CONFIRMED', 'CONFIRMING', { importedCount: 1, skippedCount: 0 }),
+    false,
+  );
+  assert.equal(
+    canTransitionImport('CONFIRMED', 'CONFIRMING', { importedCount: 0, skippedCount: 1 }),
+    false,
+  );
+  // Half-answered evidence is refused: no accidental retries.
+  assert.equal(canTransitionImport('CONFIRMED', 'CONFIRMING', { importedCount: 0 }), false);
+  assert.equal(canTransitionImport('CONFIRMED', 'CONFIRMING', {}), false);
+});
+
 // ── 3. the page must not lie about a successful import ──
 
 test('35.5 · the page reports success as success (and old rows honestly)', () => {
@@ -397,6 +482,9 @@ test('35.5 · the page reports success as success (and old rows honestly)', () =
   );
   assert.match(page, /const outcomeLabel = \(status\) => status \|\| 'UNKNOWN'/);
   assert.match(page, /\{outcomeLabel\(outcome\.status\)\}/, 'no blank outcome pill, ever');
+  // 35.6 — a count that was never stored must still print as a number.
+  assert.match(page, /\?\? 0\} skipped,\{' '\}/);
+  assert.match(page, /\{batch\.rejectedCount \|\| 0\} rejected/);
 });
 
 // ── 4. the import service keeps passing the planned session day ──

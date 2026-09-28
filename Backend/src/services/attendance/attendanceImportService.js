@@ -271,9 +271,16 @@ export const confirmImport = async ({
   const BatchModel = deps.BatchModel || AttendanceImport;
   const fingerprint = fingerprintImportContent(content);
 
-  // Idempotent replay: the same file returns its stored summary.
+  // Idempotent replay: the same file returns its stored summary — but ONLY
+  // when that stored batch actually recorded something. A batch that landed
+  // nothing (every row refused, or one confirmed before the outcomes/schema
+  // fix) is not a finished import: replaying it would tell a person "already
+  // imported" while their data is missing, and the fingerprint would lock the
+  // file forever. Those batches are retried in place below.
   const prior = await BatchModel.findOne({ companyId, fingerprint }).lean();
-  if (prior?.status === IMPORT_STATUS.CONFIRMED) {
+  const recordedBefore =
+    Number(prior?.importedCount || 0) + Number(prior?.skippedCount || 0);
+  if (prior?.status === IMPORT_STATUS.CONFIRMED && recordedBefore > 0) {
     return { ...safeBatch(prior), duplicate: true };
   }
   if (prior?.status === IMPORT_STATUS.CONFIRMING) {
@@ -291,7 +298,10 @@ export const confirmImport = async ({
     throw ApiError.badRequest('No valid rows to import — fix the errors and retry');
   }
 
-  let batch = prior && canTransitionImport(prior.status, IMPORT_STATUS.CONFIRMING)
+  let batch = prior && canTransitionImport(prior.status, IMPORT_STATUS.CONFIRMING, {
+    importedCount: prior.importedCount,
+    skippedCount: prior.skippedCount,
+  })
     ? prior
     : null;
   if (!batch) {
@@ -317,19 +327,38 @@ export const confirmImport = async ({
       batch = raced;
     }
   }
-  if (!batch || !canTransitionImport(batch.status, IMPORT_STATUS.CONFIRMING)) {
+  if (
+    !batch ||
+    !canTransitionImport(batch.status, IMPORT_STATUS.CONFIRMING, {
+      importedCount: batch.importedCount,
+      skippedCount: batch.skippedCount,
+    })
+  ) {
     throw ApiError.conflict('This file cannot be imported in its current state');
   }
 
-  // Atomic DRAFT → CONFIRMING claim (exactly one confirmer wins).
+  // Atomic claim (exactly one confirmer wins): DRAFT → CONFIRMING for a fresh
+  // file, and CONFIRMED → CONFIRMING for a retry of a batch that recorded
+  // nothing — guarded on those zero counts so a retry can never race a
+  // completed import into being overwritten.
   const claimed = await BatchModel.findOneAndUpdate(
-    { _id: batch._id, status: IMPORT_STATUS.DRAFT },
+    {
+      _id: batch._id,
+      status: batch.status,
+      ...(batch.status === IMPORT_STATUS.CONFIRMED
+        ? { importedCount: 0, skippedCount: 0 }
+        : {}),
+    },
     { $set: { status: IMPORT_STATUS.CONFIRMING, confirmedBy: actor?._id || null, confirmedAt: new Date() } },
     { returnDocument: 'after' }
   ).lean();
   if (!claimed) {
     const raced = await BatchModel.findOne({ companyId, fingerprint }).lean();
-    if (raced?.status === IMPORT_STATUS.CONFIRMED) return { ...safeBatch(raced), duplicate: true };
+    const racedRecorded =
+      Number(raced?.importedCount || 0) + Number(raced?.skippedCount || 0);
+    if (raced?.status === IMPORT_STATUS.CONFIRMED && racedRecorded > 0) {
+      return { ...safeBatch(raced), duplicate: true };
+    }
     throw ApiError.conflict('This file is already being imported — please wait, then refresh');
   }
 
