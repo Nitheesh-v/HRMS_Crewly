@@ -58,9 +58,15 @@ export const postImportConfirm = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, {
     message: result.duplicate
       ? 'This file was already imported — showing the stored result'
-      : 'Import confirmed',
+      : result.done
+        ? 'Import confirmed'
+        : `Import in progress — ${result.processedCount} of ${result.totalCount} rows saved`,
     data: result,
-    meta: result.duplicate ? { idempotentReplay: true } : undefined,
+    meta: result.duplicate
+      ? { idempotentReplay: true }
+      : result.done
+        ? undefined
+        : { inProgress: true },
   });
 });
 

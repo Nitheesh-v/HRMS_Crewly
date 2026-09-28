@@ -97,16 +97,53 @@ test('closeout: confirming the same file twice replays the stored summary (no re
   assert.equal(validated, false);
 });
 
-test('closeout: confirming while a confirm is in flight conflicts (no parallel apply)', async () => {
-  const full = {
-    BatchModel: {
-      findOne: () => ({ lean: async () => ({ _id: 'b2', status: IMPORT_STATUS.CONFIRMING }) }),
-    },
-  };
-  await assert.rejects(
-    confirmImport({ companyId: COMPANY, content: 'a,b,c', actor: admin, deps: full }),
-    /already being imported/
+/*
+ * 35.7 — this used to assert a CONFLICT ("already being imported — please
+ * wait") for a batch that is mid-confirm. That lock is exactly what made an
+ * interrupted import un-resumable: a 156-row file on a slow database cannot
+ * finish inside one request, and once the client timed out the batch stayed
+ * CONFIRMING forever while every retry was refused.
+ *
+ * The guarantee — no parallel double-apply — is now enforced per ROW instead
+ * of per batch: every row is written with its own idempotency key
+ * (`import:<batchId>:<line>`) plus the exists-backstop, and a row that
+ * already has a stored outcome is never re-attempted. So the contract this
+ * test protects is kept, by construction:
+ *
+ *   · the same batch id is reused for a continuation (same keys → replays);
+ *   · stored outcomes are skipped, so a continued chunk only ever processes
+ *     rows that have no outcome yet;
+ *   · the state machine still refuses an unqualified CONFIRMING → CONFIRMING.
+ */
+test('closeout: confirming a batch that is mid-confirm continues it, and rows stay idempotent', async () => {
+  const { canTransitionImport } = await import('../src/services/attendance/attendanceImportRules.js');
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+
+  const source = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'services', 'attendance', 'attendanceImportService.js'),
+    'utf8'
   );
+
+  // A continuation is allowed only when the caller says so — never by accident.
+  assert.equal(canTransitionImport(IMPORT_STATUS.CONFIRMING, IMPORT_STATUS.CONFIRMING), false);
+  assert.equal(
+    canTransitionImport(IMPORT_STATUS.CONFIRMING, IMPORT_STATUS.CONFIRMING, { continuation: true }),
+    true
+  );
+
+  // The old dead end — a conflict that left a batch un-importable — is gone.
+  assert.doesNotMatch(source, /ApiError\.conflict\('This file is already being imported/);
+  // Even the two-tabs race resolves into a continuation, never a refusal.
+  assert.match(source, /if \(raced\?\.status === IMPORT_STATUS\.CONFIRMING\) \{\s*\n\s*claimed = raced;/);
+
+  // One key per (batch, row): a re-processed row can only ever replay.
+  assert.match(source, /const requestId = `import:\$\{claimed\._id\}:\$\{row\.line\}`/);
+
+  // Rows that already have an outcome are never applied a second time.
+  assert.match(source, /const isPending = \(row\) => !outcomeMap\.has\(Number\(row\.line\)\);/);
+  assert.match(source, /if \(!isPending\(row\)\) continue;/);
 });
 
 // ── Analytics cross-tenant / out-of-scope ──────────────────────

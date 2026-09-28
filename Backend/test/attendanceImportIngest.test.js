@@ -468,6 +468,134 @@ test('35.6 · the retry edge is narrow and must be given evidence', async () => 
   assert.equal(canTransitionImport('CONFIRMED', 'CONFIRMING', {}), false);
 });
 
+// ── 3b. a large import runs in chunks and can never wedge ──
+
+// A file whose rows are all valid, with no existing history: the import has
+// to CREATE every session, which is the expensive shape the reporter hit.
+const BULK_CSV = [
+  'employeeCode,timestamp,eventType,workMode,sourceReference',
+  ...[2, 3, 4].flatMap((day) => {
+    const date = `2026-08-0${day}`;
+    return [
+      `EMP001,${date}T09:00:00+05:30,CLOCK_IN,OFFICE,d${day}a`,
+      `EMP001,${date}T18:00:00+05:30,CLOCK_OUT,,d${day}b`,
+    ];
+  }),
+].join('\n');
+
+test('35.7 · a chunk returns inside its budget and says how far it got', async () => {
+  const { deps } = buildImportWorld();
+  // 0ms budget → exactly one valid row per call (deterministic chunking).
+  const first = await confirmImport({ companyId: COMPANY, content: BULK_CSV, deps, budgetMs: 0 });
+
+  assert.equal(first.done, false, 'a chunked import is NOT finished after one call');
+  assert.equal(first.status, 'CONFIRMING', 'and it says so, instead of pretending to be complete');
+  assert.equal(first.processedCount, 1);
+  assert.equal(first.totalCount, 6);
+  assert.equal(first.remainingCount, 5);
+  assert.equal(first.importedCount, 1, 'progress is persisted, not held in the request');
+});
+
+test('35.7 · continuing finishes the import, and no row is ever written twice', async () => {
+  const { deps } = buildImportWorld();
+  const seen = [];
+  const spy = {
+    ...deps,
+    recordEvent: async (args) => {
+      seen.push(args.idempotencyKey);
+      return deps.recordEvent(args);
+    },
+  };
+
+  let data = await confirmImport({ companyId: COMPANY, content: BULK_CSV, deps: spy, budgetMs: 0 });
+  let calls = 1;
+  while (!data.done && calls < 20) {
+    data = await confirmImport({ companyId: COMPANY, content: BULK_CSV, deps: spy, budgetMs: 0 });
+    calls += 1;
+  }
+
+  assert.ok(calls > 1, 'a 6-row file at one row per call needs several chunks');
+  assert.ok(calls <= 7, `and not more than the rows: ${calls}`);
+  assert.equal(data.done, true);
+  assert.equal(data.status, 'CONFIRMED');
+  assert.equal(data.importedCount, 6);
+  assert.equal(data.rejectedCount, 0);
+  assert.equal(data.processedCount, 6);
+  assert.equal(data.outcomes.length, 6);
+  assert.deepEqual(
+    [...new Set(seen)].length,
+    seen.length,
+    'every row keeps ONE idempotency key — a re-processed row is a replay, never a duplicate',
+  );
+});
+
+test('35.7 · an interrupted batch (CONFIRMING) is CONTINUED, never refused', async () => {
+  const { deps } = buildImportWorld();
+  const first = await confirmImport({ companyId: COMPANY, content: BULK_CSV, deps, budgetMs: 0 });
+  assert.equal(first.status, 'CONFIRMING');
+
+  // The request that started it is gone (timeout / closed tab). The next
+  // confirm must pick the SAME batch up — this was the reported dead end.
+  const second = await confirmImport({ companyId: COMPANY, content: BULK_CSV, deps, budgetMs: 0 });
+  assert.equal(second.id, first.id, 'the same history row is continued in place');
+  assert.equal(second.processedCount, 2, 'and it resumes where the stored outcomes ended');
+  assert.equal(second.importedCount, 2);
+  assert.equal(second.duplicate, false);
+});
+
+test('35.7 · the continuation edge needs explicit evidence', async () => {
+  const { canTransitionImport } = await import('../src/services/attendance/attendanceImportRules.js');
+
+  assert.equal(canTransitionImport('CONFIRMING', 'CONFIRMING'), false, 'no evidence → refused');
+  assert.equal(canTransitionImport('CONFIRMING', 'CONFIRMING', {}), false);
+  assert.equal(canTransitionImport('CONFIRMING', 'CONFIRMING', { continuation: true }), true);
+  // The rest of the machine is untouched.
+  assert.equal(canTransitionImport('CONFIRMING', 'CONFIRMED'), true);
+  assert.equal(canTransitionImport('DRAFT', 'CONFIRMED'), false);
+  assert.equal(canTransitionImport('FAILED', 'CONFIRMING'), false);
+});
+
+test('35.7 · a run that finished having recorded nothing is retried from scratch', async () => {
+  const { deps } = buildImportWorld();
+  // Every row is refused by the world, so the batch FINISHES with nothing
+  // recorded — the 35.6 retry case, reached through chunking.
+  const refused = { ...deps, recordEvent: async () => { throw new Error('engine refused'); } };
+  const first = await confirmImport({ companyId: COMPANY, content: BULK_CSV, deps: refused, budgetMs: 60000 });
+  assert.equal(first.done, true, 'all six rows were answered (as refusals)');
+  assert.equal(first.status, 'CONFIRMED');
+  assert.equal(first.importedCount, 0);
+  assert.equal(first.rejectedCount, 6);
+
+  // Now the world accepts the rows: the finished-but-empty batch must be
+  // retried from scratch — stale refusals are NOT progress.
+  const retry = await confirmImport({ companyId: COMPANY, content: BULK_CSV, deps, budgetMs: 60000 });
+  assert.equal(retry.done, true);
+  assert.equal(retry.duplicate, false);
+  assert.equal(retry.importedCount, 6, 'the stale refusals are replaced by real imports');
+  assert.equal(retry.rejectedCount, 0);
+  assert.equal(retry.outcomes.length, 6, 'outcomes are rewritten, not appended');
+});
+
+test('35.7 · a run that recorded SOMETHING replays instead of re-importing', async () => {
+  const { deps } = buildImportWorld();
+  // The 5th row is refused by the engine; the rest land.
+  const refused = {
+    ...deps,
+    recordEvent: async (args) => {
+      if (String(args.idempotencyKey).endsWith(':5')) throw new Error('engine refused');
+      return deps.recordEvent(args);
+    },
+  };
+
+  const first = await confirmImport({ companyId: COMPANY, content: BULK_CSV, deps: refused, budgetMs: 60000 });
+  assert.equal(first.importedCount, 5);
+  assert.equal(first.rejectedCount, 1);
+
+  const again = await confirmImport({ companyId: COMPANY, content: BULK_CSV, deps, budgetMs: 60000 });
+  assert.equal(again.duplicate, true, 'a completed import is final — replay, never re-import');
+  assert.equal(again.importedCount, 5);
+});
+
 // ── 3. the page must not lie about a successful import ──
 
 test('35.5 · the page reports success as success (and old rows honestly)', () => {
@@ -485,6 +613,12 @@ test('35.5 · the page reports success as success (and old rows honestly)', () =
   // 35.6 — a count that was never stored must still print as a number.
   assert.match(page, /\?\? 0\} skipped,\{' '\}/);
   assert.match(page, /\{batch\.rejectedCount \|\| 0\} rejected/);
+
+  // 35.7 — the page must drive the chunks to completion and show progress.
+  assert.match(page, /const runConfirmChunks = async \(\) => \{/);
+  assert.match(page, /if \(data\?\.done \|\| data\?\.status !== 'CONFIRMING'\) return data;/);
+  assert.match(page, /setProgress\(\{/);
+  assert.match(page, /Importing… \$\{progress\.processed\}\/\$\{progress\.total\}/);
 });
 
 // ── 4. the import service keeps passing the planned session day ──

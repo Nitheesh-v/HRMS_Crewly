@@ -34,6 +34,7 @@ const AttendanceImportPage = () => {
   const [history, setHistory] = useState([]);
   const [detail, setDetail] = useState(null);
   const [busy, setBusy] = useState('');
+  const [progress, setProgress] = useState(null);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -62,6 +63,7 @@ const AttendanceImportPage = () => {
     setPreview(null);
     setResult(null);
     setDetail(null);
+    setProgress(null);
     /* 35.1 — nothing to report (failure state cleared) */
     /* 35.1 — nothing to report (failure state cleared) */
   };
@@ -81,12 +83,53 @@ const AttendanceImportPage = () => {
     }
   };
 
+  /*
+   * 35.7 — an import runs in CHUNKS on the server and each call is bounded by
+   * its own time budget, so this loop is what finishes the job. It keeps
+   * calling confirm until the server says the batch is done, showing progress
+   * as it goes. Every row is idempotent server-side, so a retried or
+   * duplicated call can only ever replay a row — never double-write it.
+   */
+  const MAX_CHUNK_CALLS = 400;
+  const MAX_TRANSIENT_RETRIES = 2;
+
+  const runConfirmChunks = async () => {
+    let transientRetries = 0;
+
+    for (let call = 0; call < MAX_CHUNK_CALLS; call += 1) {
+      let response;
+      try {
+        response = await attendanceCaptureService.confirmImport(file);
+      } catch (error) {
+        // A timeout or a dropped connection is not a failed import: the
+        // server keeps whatever it already stored, and the next call
+        // continues from there.
+        const transient = !error?.response;
+        if (!transient || transientRetries >= MAX_TRANSIENT_RETRIES) throw error;
+        transientRetries += 1;
+        continue;
+      }
+
+      transientRetries = 0;
+      const data = response.data;
+      setProgress({
+        processed: Number(data?.processedCount || 0),
+        total: Number(data?.totalCount || data?.rowCount || 0),
+      });
+
+      if (data?.done || data?.status !== 'CONFIRMING') return data;
+    }
+
+    throw new Error('The import is taking longer than expected — press Confirm to continue');
+  };
+
   const handleConfirm = async () => {
     if (!file) return;
     setBusy('confirm');
+    setProgress(null);
     /* 35.1 — nothing to report (failure state cleared) */
     try {
-      const res = await attendanceCaptureService.confirmImport(file);
+      const res = { data: await runConfirmChunks() };
       setResult(res.data);
       /*
        * 31.14 fix — this said `notify.error` for a SUCCESSFUL import, so a
@@ -181,7 +224,11 @@ const AttendanceImportPage = () => {
               onClick={handleConfirm}
               className="rounded-lg border border-green-500/50 bg-green-500/15 px-4 py-2 text-sm font-semibold text-green-200 disabled:opacity-50"
             >
-              {busy === 'confirm' ? 'Importing…' : `Confirm — import ${preview.validCount} rows`}
+              {busy === 'confirm'
+                ? progress?.total
+                  ? `Importing… ${progress.processed}/${progress.total}`
+                  : 'Importing…'
+                : `Confirm — import ${preview.validCount} rows`}
             </button>
           )}
         </div>
@@ -241,6 +288,13 @@ const AttendanceImportPage = () => {
           </div>
         </div>
       )}
+
+      {busy === 'confirm' && progress?.total ? (
+        <div className="rounded-xl border border-crewly-line bg-crewly-card px-4 py-3 text-sm text-crewly-dim">
+          Importing — {progress.processed} of {progress.total} rows saved. Keep this tab open; the
+          import continues in the background and can be resumed with Confirm if it is interrupted.
+        </div>
+      ) : null}
 
       {outcomes.length > 0 && (
         <div className="rounded-xl border border-crewly-line p-4">

@@ -80,6 +80,22 @@ export const canTransitionImport = (from, to, evidence = null) => {
     return Number(importedCount || 0) === 0 && Number(skippedCount || 0) === 0;
   }
 
+  /*
+   * 35.7 — an import runs in CHUNKS, so CONFIRMING is a working state, not a
+   * lock. A large file on a slow database cannot finish inside one request,
+   * and a request that is abandoned (browser closed, client timeout) must
+   * never strand the batch: the next confirm continues the same batch from
+   * the outcomes already stored. Safe because every row is written with its
+   * own idempotency key (`import:<batchId>:<line>`) plus the exists-backstop,
+   * so re-processing a row can only ever replay it.
+   *
+   * Still evidence-gated: only a caller that says `continuation: true` gets
+   * this edge, so it cannot be reached by accident.
+   */
+  if (from === IMPORT_STATUS.CONFIRMING && to === IMPORT_STATUS.CONFIRMING) {
+    return evidence?.continuation === true;
+  }
+
   return false;
 };
 
