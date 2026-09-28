@@ -73,9 +73,16 @@ const makeAttendanceModel = () => {
       }
       return String(row[key] ?? '') === String(value ?? '');
     });
+  // Thenable so both call shapes work: a plain `await findOne(...)` and the
+  // engine's `findOne(...).sort({ date: -1 })` open-session lookup.
+  const chainable = (value) => ({
+    sort: () => chainable(value),
+    lean: async () => value,
+    then: (onOk, onErr) => Promise.resolve(value).then(onOk, onErr),
+  });
   return {
     sessions,
-    findOne: async (filter) => sessions.find((row) => matches(row, filter)) || null,
+    findOne: (filter) => chainable(sessions.find((row) => matches(row, filter)) || null),
     findOneAndUpdate: async (filter, update, opts = {}) => {
       const row = sessions.find((candidate) => matches(candidate, filter));
       if (!row) return null;
@@ -130,7 +137,8 @@ const makeEventModel = () => {
   };
 };
 
-const policy = () => ({
+const policy = (overrides = {}) => ({
+  ...overrides,
   version: 3,
   timezone: TZ,
   thresholds: { fullDayMinutes: 480, halfDayMinutes: 240 },
@@ -158,16 +166,26 @@ const engine = () => ({
   dayKey: sched.dayKey,
 });
 
-const makePunchCtx = ({ nowMs }) => {
+const makePunchCtx = ({ nowMs, policy: policyOverride = null }) => {
   const AttendanceModel = makeAttendanceModel();
   const AttendanceEventModel = makeEventModel();
   const deps = {
     AttendanceModel,
     AttendanceEventModel,
     AttendanceLocationModel: { findOne: async () => null },
-    WorkModeRequestModel: { findOne: async () => null },
+    // No approved work-mode request exists in this world.
+    WorkModeRequestModel: {
+      findOne: () => ({
+        lean: async () => null,
+        then: (onOk, onErr) => Promise.resolve(null).then(onOk, onErr),
+      }),
+    },
     CompanyModel: { findById: () => ({ select: () => ({ lean: async () => ({ timezone: TZ }) }) }) },
-    policyReader: async () => ({ policy: policy(), configured: true, hasActive: true }),
+    policyReader: async () => ({
+      policy: policyOverride || policy(),
+      configured: true,
+      hasActive: true,
+    }),
     engine: engine(),
     // Payroll-grade schedule resolution is out of scope here; the day is
     // deliberately unresolved so the punch math stays the engine's own.
@@ -245,6 +263,116 @@ test('35.5 · only a CLOCK_IN may open a session, even for IMPORT', async () => 
   );
 
   assert.equal(AttendanceModel.sessions.length, 0, 'a clock-out never invents the day it closes');
+});
+
+// ── 1b. live-punch gates must not apply to an imported row ──
+
+// A company with geofencing ON and WFH needing approval: the exact policy the
+// reporter has (their 156 rows were all refused with the geofence message).
+const strictPolicy = () =>
+  policy({
+    locationEnforcement: 'REQUIRED',
+    workModes: { office: true, wfh: true, field: false, clientSite: false, businessTravel: false },
+    workModeApproval: { wfh: true, field: true, clientSite: true, businessTravel: true },
+  });
+
+test('35.8 · an imported OFFICE clock-in is not stopped by a REQUIRED geofence', async () => {
+  const { deps, AttendanceModel, AttendanceEventModel } = makePunchCtx({
+    nowMs: IN_AT,
+    policy: strictPolicy(),
+  });
+
+  await recordEvent({
+    companyId: COMPANY,
+    userId: USER_A,
+    action: 'CLOCK_IN',
+    workMode: 'OFFICE',
+    date: DAY,
+    idempotencyKey: 'import:batch:2',
+    ingest: { source: 'IMPORT', provenance: { importBatchId: BATCH_ID } },
+    deps,
+  });
+
+  assert.equal(AttendanceModel.sessions.length, 1, 'the row is imported, not refused');
+  const fact = AttendanceEventModel.rows[0];
+  assert.equal(fact.source, 'IMPORT');
+  assert.ok(
+    !('locationVerification' in fact),
+    'and the fact claims NO verification — a file has no position',
+  );
+  assert.ok(!('authorization' in fact), 'nor a work-mode approval it never had');
+});
+
+test('35.8 · an imported WFH clock-in is not stopped by the approval gate', async () => {
+  const { deps, AttendanceModel, AttendanceEventModel } = makePunchCtx({
+    nowMs: IN_AT,
+    policy: strictPolicy(),
+  });
+
+  await recordEvent({
+    companyId: COMPANY,
+    userId: USER_A,
+    action: 'CLOCK_IN',
+    workMode: 'WFH',
+    date: DAY,
+    idempotencyKey: 'import:batch:3',
+    ingest: { source: 'IMPORT', provenance: { importBatchId: BATCH_ID } },
+    deps,
+  });
+
+  assert.equal(AttendanceModel.sessions.length, 1);
+  assert.equal(AttendanceEventModel.rows[0].workMode, 'WFH');
+  assert.ok(!('authorization' in AttendanceEventModel.rows[0]));
+});
+
+test('35.8 · the live gates are UNTOUCHED for every self-service punch', async () => {
+  // OFFICE without a position, geofence REQUIRED.
+  const office = makePunchCtx({ nowMs: IN_AT, policy: strictPolicy() });
+  await assert.rejects(
+    recordEvent({
+      companyId: COMPANY,
+      userId: USER_A,
+      action: 'CLOCK_IN',
+      workMode: 'OFFICE',
+      deps: office.deps,
+    }),
+    /Attendance location verification is required by company policy/,
+  );
+  assert.equal(office.AttendanceModel.sessions.length, 0, 'nothing was written');
+  assert.equal(office.AttendanceEventModel.rows.length, 0);
+
+  // WFH with the same policy, no approved request.
+  const wfh = makePunchCtx({ nowMs: IN_AT, policy: strictPolicy() });
+  await assert.rejects(
+    recordEvent({
+      companyId: COMPANY,
+      userId: USER_A,
+      action: 'CLOCK_IN',
+      workMode: 'WFH',
+      deps: wfh.deps,
+    }),
+    /request required for/,
+  );
+  assert.equal(wfh.AttendanceModel.sessions.length, 0);
+});
+
+test('35.8 · a punch that only CLAIMS to be an import is not exempt', async () => {
+  // The ingest context is server-assembled; a WEB punch cannot smuggle it in
+  // through the body, and any other source is still governed by the gates.
+  const { deps, AttendanceModel } = makePunchCtx({ nowMs: IN_AT, policy: strictPolicy() });
+
+  await assert.rejects(
+    recordEvent({
+      companyId: COMPANY,
+      userId: USER_A,
+      action: 'CLOCK_IN',
+      workMode: 'OFFICE',
+      ingest: { source: 'WEB' },
+      deps,
+    }),
+    /Invalid ingest context|required by company policy/,
+  );
+  assert.equal(AttendanceModel.sessions.length, 0);
 });
 
 // ── 2. what the service writes must be what the model stores ──

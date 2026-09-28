@@ -1162,25 +1162,59 @@ const clockIn = async ({ full, companyId, userId, at, todayKey, timezone, policy
   } catch {
     // Attribution must never break punching — calendar day stands.
   }
-  const authorization = await findClockInAuthorization({
-    WorkModeRequestModel,
-    companyId,
-    userId,
-    mode,
-    date: businessDate,
-    policy,
-  });
+  /*
+   * 35.8 — LIVE-PUNCH GATES DO NOT APPLY TO AN IMPORTED ROW.
+   *
+   * Two of this function's gates protect the MOMENT of punching:
+   *
+   *   · the geofence (OFFICE CLOCK_IN must arrive with a position, when the
+   *     policy says REQUIRED), and
+   *   · the non-office work-mode approval (WFH/FIELD/... need an APPROVED
+   *     request covering the day).
+   *
+   * A CSV export of a biometric device can satisfy NEITHER: a file has no
+   * GPS, and a historical day has no live request to match. Applying them
+   * refused every row of a legitimate backfill — the report was 156 rows
+   * rejected with "Attendance location verification is required by company
+   * policy" and, for their clock-outs, "No attendance session for that date".
+   *
+   * So an IMPORT row records the honest absence instead of a fake:
+   * `authorization` and `locationVerification` stay ABSENT from the fact
+   * (never "VERIFIED"), while `provenance` names the batch/sourceReference and
+   * the batch itself is audited. The admin path that can do this is the same
+   * one that may run an import (ATTENDANCE_CAPTURE_MANAGE), and the fact still
+   * cannot contradict recorded history — the planner refuses conflicts.
+   *
+   * Everything else still applies to imported rows: the mode must be enabled
+   * by policy (checked per row at preview), the day must be free, the month
+   * must not be finalized, and the session state machine decides every
+   * transition.
+   */
+  const importedRow = ingest?.source === EVENT_SOURCE.IMPORT;
+
+  const authorization = importedRow
+    ? null
+    : await findClockInAuthorization({
+        WorkModeRequestModel,
+        companyId,
+        userId,
+        mode,
+        date: businessDate,
+        policy,
+      });
 
   // Phase 31.3 — geofence gate (OFFICE CLOCK_IN only). Refusals throw
   // here, before anything is written: no control, no event.
-  const verification = await verifyClockInLocation({
-    AttendanceLocationModel,
-    companyId,
-    policy,
-    mode,
-    location,
-    now: at,
-  });
+  const verification = importedRow
+    ? { snapshot: null }
+    : await verifyClockInLocation({
+        AttendanceLocationModel,
+        companyId,
+        policy,
+        mode,
+        location,
+        now: at,
+      });
 
   // Phase 31.6 — payroll verdict from schedule + policy grace.
   const verdict = deriveAttendanceVerdict({
