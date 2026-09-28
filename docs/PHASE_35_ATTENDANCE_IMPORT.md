@@ -122,10 +122,11 @@ the schema drift — and they pass with the fixes.
 * `test:attendance-import-ingest` → **7/7**; existing `attendanceImport` suite → **19/19**;
   attendance engine suites (events, kiosk, QR, presence, reconciliation, finalization,
   regularization) → **278/278**.
-* `test:all` → **2679 tests / 98 suites**, 2678 pass. The one failure was
-  `payslipBranding.test.js` comparing two generated PDFs whose `/CreationDate` differed by one
-  second (`…064244Z` vs `…064245Z`) — a pre-existing, timing-boundary flake in a file this unit
-  does not touch: it passes **7/7 in isolation, twice**.
+* `test:all` → **2679 tests / 98 suites / 0 fail** (final run, verified after pushing). An earlier
+  run of the same suite hit exactly one failure: `payslipBranding.test.js` compared two generated
+  PDFs whose `/CreationDate` differed by a second (`…064244Z` vs `…064245Z`) — a pre-existing
+  timing-boundary flake in a file this unit does not touch, which passes **7/7 in isolation twice**
+  and passed in the next full run.
 * Frontend build **✓ 1.39 s**; eslint **127 (108 errors / 19 warnings) — 0 new**.
 
 ## 7. Limitations (honest)
@@ -175,5 +176,8 @@ npm run dev
 5. Integrity check: as an employee (or via the API), try to punch with an explicit past date —
    it must still be refused with *"No attendance session for that date"*. Only the import adapter
    can open a backdated day.
+
+Command reference: `cd Backend; npm run test:attendance-import-ingest` runs this unit's pins;
+`npm run test:all` runs the whole hermetic suite.
 
 Sign-off line for the unit: **Phase 35.5 awaiting localhost acceptance.**
