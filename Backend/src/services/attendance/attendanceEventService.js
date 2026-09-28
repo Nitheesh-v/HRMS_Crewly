@@ -648,7 +648,42 @@ export const recordEvent = async ({
   let control = null;
   if (date !== null) {
     control = await AttendanceModel.findOne({ companyId, user: userId, date });
-    if (!control) throw ApiError.notFound('No attendance session for that date');
+    if (!control) {
+      /*
+       * 31.14 fix — a BACKDATED CLOCK_IN may OPEN its session, but only
+       * when it comes from a trusted server-side adapter (the CSV import).
+       *
+       * Requiring a pre-existing session is right for a self-service punch:
+       * a WEB request naming a past date must not be able to fabricate a
+       * day of attendance. It was wrong for the import, whose whole job is
+       * bulk-loading device exports for days that have no session yet —
+       * every such row died here with "No attendance session for that
+       * date", including the CLOCK_IN that was supposed to create it, so a
+       * confirmed import reliably imported nothing.
+       *
+       * The adapter has already validated the row: employee active, within
+       * the 12-month window, not future, not in a finalized month, no open
+       * session, no conflicting recorded event. It then passes the session
+       * day explicitly, so the session is created on THAT day — never on the
+       * wall-clock day.
+       */
+      if (action === EVENT_TYPE.CLOCK_IN && ingest?.source === EVENT_SOURCE.IMPORT) {
+        return clockIn({
+          full,
+          companyId,
+          userId,
+          at,
+          todayKey: date,
+          timezone,
+          policy,
+          workMode,
+          idempotencyKey,
+          location,
+          ingest,
+        });
+      }
+      throw ApiError.notFound('No attendance session for that date');
+    }
   } else {
     control = await AttendanceModel.findOne({ companyId, user: userId, date: todayKey });
     if (!control) {

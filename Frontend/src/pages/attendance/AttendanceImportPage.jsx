@@ -73,7 +73,7 @@ const AttendanceImportPage = () => {
     try {
       const res = await attendanceCaptureService.previewImport(file);
       setPreview(res.data);
-      notify.error('Preview ready — nothing was saved. Review, then confirm to import.');
+      notify.info('Preview ready — nothing was saved. Review, then confirm to import.');
     } catch (previewError) {
       notify.error(previewError?.message || 'Could not preview the file');
     } finally {
@@ -88,11 +88,22 @@ const AttendanceImportPage = () => {
     try {
       const res = await attendanceCaptureService.confirmImport(file);
       setResult(res.data);
-      notify.error(
-        res.data?.duplicate
-          ? 'This file was already imported — showing the stored result.'
-          : `Imported ${res.data?.importedCount || 0} events (${res.data?.skippedCount || 0} skipped, ${res.data?.rejectedCount || 0} rejected).`
-      );
+      /*
+       * 31.14 fix — this said `notify.error` for a SUCCESSFUL import, so a
+       * working import reported itself in red. A duplicate replay is a
+       * notice, not a failure: the stored result is what is on screen.
+       */
+      if (res.data?.duplicate) {
+        notify.warning('This file was already imported — showing the stored result.');
+      } else if (res.data?.rejectedCount) {
+        notify.warning(
+          `Imported ${res.data?.importedCount || 0} events — ${res.data.rejectedCount} row(s) could not be imported. See the result table for the reason.`
+        );
+      } else {
+        notify.success(
+          `Imported ${res.data?.importedCount || 0} events (${res.data?.skippedCount || 0} skipped).`
+        );
+      }
       await loadHistory();
     } catch (confirmError) {
       notify.error(confirmError?.message || 'Could not confirm the import');
@@ -112,6 +123,13 @@ const AttendanceImportPage = () => {
   };
 
   const outcomes = result?.outcomes || detail?.outcomes || [];
+
+  /*
+   * 31.14 fix — outcome rows were persisted without their status for every
+   * batch confirmed before the model/schema was aligned, so an old history
+   * entry renders a blank pill. Show the honest unknown instead.
+   */
+  const outcomeLabel = (status) => status || 'UNKNOWN';
 
   return (
     <div className="space-y-5 p-6">
@@ -246,7 +264,7 @@ const AttendanceImportPage = () => {
                           : outcome.status === 'SKIPPED' ? 'bg-blue-400/15 text-blue-300'
                             : 'bg-crewly-red/15 text-crewly-red'
                       }`}>
-                        {outcome.status}
+                        {outcomeLabel(outcome.status)}
                       </span>
                     </td>
                     <td className="px-2 py-1 text-crewly-dim">{outcome.message || `${outcome.eventType || ''} ${outcome.at ? fmtInstant(outcome.at) : ''}`}</td>

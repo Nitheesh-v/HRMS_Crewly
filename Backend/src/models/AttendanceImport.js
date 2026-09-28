@@ -20,14 +20,29 @@ import { Schema, model } from 'mongoose';
  */
 export const ATTENDANCE_IMPORT_STATUS = ['DRAFT', 'CONFIRMING', 'CONFIRMED', 'FAILED'];
 
+/*
+ * 31.14 fix — the per-row outcome is the ONLY place the reason a row did not
+ * import ever exists (the raw CSV is never persisted). Its paths must match
+ * exactly what the import service writes and what the page renders. They did
+ * not: the service wrote status/message/at while this schema declared
+ * outcome/reason/occurredAt, so Mongoose's strict mode dropped every one of
+ * them on the way in — and the batch kept only the line numbers. That is why
+ * a failed import showed five blank outcome pills and no explanation.
+ */
 const importOutcomeSchema = new Schema(
   {
     line: { type: Number, required: true, min: 1 },
     employeeCode: { type: String, default: '' },
     eventType: { type: String, default: '' },
-    occurredAt: { type: Date, default: null },
-    outcome: { type: String, enum: ['IMPORTED', 'SKIPPED', 'REJECTED'], required: true },
-    reason: { type: String, default: '' },
+    // The event instant, written for IMPORTED rows.
+    at: { type: Date, default: null },
+    status: {
+      type: String,
+      enum: ['IMPORTED', 'SKIPPED', 'REJECTED'],
+      required: true,
+    },
+    // Why a row was SKIPPED or REJECTED ('' when it imported).
+    message: { type: String, default: '' },
   },
   { _id: false }
 );
@@ -53,6 +68,9 @@ const attendanceImportSchema = new Schema(
     invalidCount: { type: Number, default: 0, min: 0 },
     importedCount: { type: Number, default: 0, min: 0 },
     skippedCount: { type: Number, default: 0, min: 0 },
+    // 31.14 fix — the service has always written this; without the path
+    // Mongoose dropped it, so the page rendered "0 skipped,  rejected".
+    rejectedCount: { type: Number, default: 0, min: 0 },
     // Affected YYYY-MM months (bounded: derived from valid rows).
     months: { type: [String], default: [] },
     outcomes: { type: [importOutcomeSchema], default: [] },
