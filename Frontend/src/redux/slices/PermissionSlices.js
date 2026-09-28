@@ -18,9 +18,28 @@ export const fetchMyPermissions = createAsyncThunk(
   "permissions/fetchMine",
 
   async (_, { getState, rejectWithValue }) => {
-    const { user, token } = getState().auth;
+    /*
+     * 35.4 — THE PERMISSION PAYLOAD THE APP NEVER ASKED FOR.
+     *
+     * This thunk used to bail out with an EMPTY permission set whenever
+     * `state.auth.token` was falsy. Since the 33.14 cookie migration a
+     * CUSTOMER session has `token === null` BY DESIGN (see AuthSlices /
+     * useAuth: "a null token is what keeps api.js from attaching a header at
+     * all"), so for every company user — including a Company Admin whose role
+     * carries all 227 permissions — the API was never called and the app
+     * believed the person had NO permissions whatsoever. Every gated page
+     * answered "Your account cannot open this page yet", while the Roles
+     * screen (the one screen with no guard) happily rendered the full matrix:
+     * "all are selected, but not coming inside".
+     *
+     * The cookie IS the session and axios sends it (`withCredentials: true`);
+     * a missing/expired cookie comes back as a 401 that this thunk already
+     * reports through its fail-closed path. So the only thing worth skipping
+     * the request for is a missing USER.
+     */
+    const { user } = getState().auth;
 
-    if (!user || !token) {
+    if (!user) {
       return {
         ...emptyPermissionData,
         loadedUserId: null,
@@ -66,11 +85,17 @@ export const fetchMyPermissions = createAsyncThunk(
     condition: (_, { getState }) => {
       const state = getState();
 
-      const { user, token } = state.auth;
+      const { user } = state.auth;
 
       const permissions = state.permissions;
 
-      if (!user || !token) {
+      /*
+       * 35.4 — same trap as the thunk body: a customer has no JS-visible
+       * token, and "no token" used to mean "let it through" on every single
+       * dispatch. Keying the dedupe on the USER (which is what the payload is
+       * about) is both correct and quieter.
+       */
+      if (!user) {
         return true;
       }
 
