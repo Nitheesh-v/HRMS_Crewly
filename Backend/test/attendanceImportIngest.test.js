@@ -742,6 +742,24 @@ test('35.5 · the page reports success as success (and old rows honestly)', () =
   assert.match(page, /\?\? 0\} skipped,\{' '\}/);
   assert.match(page, /\{batch\.rejectedCount \|\| 0\} rejected/);
 
+  // 35.9 — the failures must be one click away (and downloadable).
+  assert.match(page, /const \[outcomeFilter, setOutcomeFilter\] = useState\('ALL'\)/);
+  assert.match(
+    page,
+    /setOutcomeFilter\(Number\(res\.data\?\.rejectedCount \|\| 0\) > 0 \? 'REJECTED' : 'ALL'\)/,
+    'a result with failures opens ON the failures',
+  );
+  assert.match(
+    page,
+    /\{ IMPORTED: 0, SKIPPED: 0,[\s\S]{0,40}REJECTED: 0, UNKNOWN: 0 \}/,
+    'every outcome bucket is counted for the filter',
+  );
+  assert.match(page, /const visibleOutcomes =/);
+  assert.match(page, /const downloadOutcomes = \(\) => \{/);
+  assert.match(page, /'\\uFEFF'|\\uFEFF/, 'the CSV carries a BOM so Excel reads it as UTF-8');
+  assert.match(page, /attendance-import-\$\{batchId\}-outcomes\.csv/);
+  assert.match(page, /Download results CSV/);
+
   // 35.7 — the page must drive the chunks to completion and show progress.
   assert.match(page, /const runConfirmChunks = async \(\) => \{/);
   assert.match(page, /if \(data\?\.done \|\| data\?\.status !== 'CONFIRMING'\) return data;/);

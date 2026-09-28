@@ -35,6 +35,7 @@ const AttendanceImportPage = () => {
   const [detail, setDetail] = useState(null);
   const [busy, setBusy] = useState('');
   const [progress, setProgress] = useState(null);
+  const [outcomeFilter, setOutcomeFilter] = useState('ALL');
 
   const loadHistory = useCallback(async () => {
     try {
@@ -131,6 +132,8 @@ const AttendanceImportPage = () => {
     try {
       const res = { data: await runConfirmChunks() };
       setResult(res.data);
+      // Open on what failed, when something failed.
+      setOutcomeFilter(Number(res.data?.rejectedCount || 0) > 0 ? 'REJECTED' : 'ALL');
       /*
        * 31.14 fix — this said `notify.error` for a SUCCESSFUL import, so a
        * working import reported itself in red. A duplicate replay is a
@@ -159,7 +162,9 @@ const AttendanceImportPage = () => {
     /* 35.1 — nothing to report (failure state cleared) */
     try {
       const res = await attendanceCaptureService.getImport(importId);
-      setDetail(res.data?.import || res.data);
+      const batch = res.data?.import || res.data;
+      setDetail(batch);
+      setOutcomeFilter(Number(batch?.rejectedCount || 0) > 0 ? 'REJECTED' : 'ALL');
     } catch (detailError) {
       notify.error(detailError?.message || 'Could not load the import');
     }
@@ -173,6 +178,60 @@ const AttendanceImportPage = () => {
    * entry renders a blank pill. Show the honest unknown instead.
    */
   const outcomeLabel = (status) => status || 'UNKNOWN';
+
+  /*
+   * 35.9 — "why did those rows fail?" must be one click, not a scroll hunt.
+   * A 156-row result buried its failures in the middle of the table, so the
+   * counts said 21 rejected and the reasons were effectively invisible. The
+   * table now filters by outcome, and it OPENS on the failures when there are
+   * any: after a confirm, the first thing on screen is what did not import.
+   */
+  const outcomeCounts = outcomes.reduce(
+    (acc, outcome) => {
+      const key = outcomeLabel(outcome.status);
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    },
+    { IMPORTED: 0, SKIPPED: 0, REJECTED: 0, UNKNOWN: 0 }
+  );
+  const visibleOutcomes =
+    outcomeFilter === 'ALL'
+      ? outcomes
+      : outcomes.filter((outcome) => outcomeLabel(outcome.status) === outcomeFilter);
+
+  /*
+   * The reasons only exist here (the raw CSV is never persisted), so the
+   * result is downloadable as a CSV the person can keep, mail, or attach to a
+   * support question. Excel-friendly: UTF-8 BOM, quoted cells.
+   */
+  const downloadOutcomes = () => {
+    const batchId = result?.id || detail?.id || 'import';
+    const cell = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const lines = [
+      ['Line', 'Employee', 'Event', 'Outcome', 'Detail', 'At'].map(cell).join(','),
+      ...outcomes.map((outcome) =>
+        [
+          outcome.line,
+          outcome.employeeCode,
+          outcome.eventType,
+          outcomeLabel(outcome.status),
+          outcome.message || '',
+          outcome.at ? new Date(outcome.at).toISOString() : '',
+        ]
+          .map(cell)
+          .join(',')
+      ),
+    ];
+    const blob = new Blob([`\uFEFF${lines.join('\n')}`], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `attendance-import-${batchId}-outcomes.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-5 p-6">
@@ -298,20 +357,55 @@ const AttendanceImportPage = () => {
 
       {outcomes.length > 0 && (
         <div className="rounded-xl border border-crewly-line p-4">
-          <div className="text-sm font-semibold text-crewly-ink">
-            {/* 35.6 — a count that was never stored prints as a number, never as a dangling word */}
-            {result ? 'Import result' : `Batch ${detail?.id || ''}`} —{' '}
-            {result?.importedCount ?? detail?.importedCount ?? 0} imported,{' '}
-            {result?.skippedCount ?? detail?.skippedCount ?? 0} skipped,{' '}
-            {result?.rejectedCount ?? detail?.rejectedCount ?? 0} rejected
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm font-semibold text-crewly-ink">
+              {/* 35.6 — a count that was never stored prints as a number, never as a dangling word */}
+              {result ? 'Import result' : `Batch ${detail?.id || ''}`} —{' '}
+              {result?.importedCount ?? detail?.importedCount ?? 0} imported,{' '}
+              {result?.skippedCount ?? detail?.skippedCount ?? 0} skipped,{' '}
+              {result?.rejectedCount ?? detail?.rejectedCount ?? 0} rejected
+            </div>
+            <button
+              type="button"
+              onClick={downloadOutcomes}
+              className="inline-flex items-center gap-1 rounded-lg border border-crewly-line px-2 py-1 text-xs text-crewly-ink hover:bg-crewly-card"
+            >
+              <Download className="h-3.5 w-3.5" /> Download results CSV
+            </button>
           </div>
+
+          {/* 35.9 — every reason is one click away, never a scroll hunt */}
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+            {['ALL', 'REJECTED', 'IMPORTED', 'SKIPPED', 'UNKNOWN']
+              .filter((key) => key === 'ALL' || outcomeCounts[key] > 0)
+              .map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setOutcomeFilter(key)}
+                  className={`rounded-full border px-2 py-0.5 ${
+                    outcomeFilter === key
+                      ? 'border-crewly-accent text-crewly-accent'
+                      : 'border-crewly-line text-crewly-dim hover:bg-crewly-card'
+                  }`}
+                >
+                  {key === 'ALL' ? `All ${outcomes.length}` : `${key} ${outcomeCounts[key]}`}
+                </button>
+              ))}
+            {outcomeFilter !== 'ALL' && (
+              <span className="text-crewly-dim">
+                showing {visibleOutcomes.length} of {outcomes.length}
+              </span>
+            )}
+          </div>
+
           <div className="mt-2 max-h-72 overflow-auto text-xs">
             <table className="w-full text-left">
               <thead className="sticky top-0 bg-crewly-card text-crewly-dim">
                 <tr><th className="px-2 py-1">Line</th><th className="px-2 py-1">Employee</th><th className="px-2 py-1">Outcome</th><th className="px-2 py-1">Detail</th></tr>
               </thead>
               <tbody>
-                {outcomes.map((outcome) => (
+                {visibleOutcomes.map((outcome) => (
                   <tr key={outcome.line} className="border-t border-crewly-line text-crewly-ink">
                     <td className="px-2 py-1">{outcome.line}</td>
                     <td className="px-2 py-1">{outcome.employeeCode}</td>
