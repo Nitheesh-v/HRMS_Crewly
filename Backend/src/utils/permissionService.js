@@ -600,6 +600,29 @@ const repairSystemRoleIfNeeded = async (
   }).populate("permissions");
 };
 
+// One read, only when a caller passed unpopulated overrides — see the loop in
+// resolveUserPermissions.
+const resolveOverrideNames = async (overrides, PermissionModel) => {
+  const pending = (overrides || []).filter(
+    (override) => override?.permission && !override.permission.name,
+  );
+
+  if (pending.length === 0) return new Map();
+
+  const ids = [
+    ...new Set(
+      pending.map((override) => String(override.permission?._id || override.permission)),
+    ),
+  ];
+
+  const rows = await PermissionModel.find(
+    { _id: { $in: ids } },
+    { _id: 1, name: 1 },
+  ).lean();
+
+  return new Map(rows.map((permission) => [String(permission._id), permission.name]));
+};
+
 export const resolveUserPermissions = async (
   userOrId,
   { PermissionModel = Permission, CompanyRoleModel = CompanyRole } = {},
@@ -663,8 +686,29 @@ export const resolveUserPermissions = async (
 
   const denied = new Set();
 
+  /*
+   * 35.2 — OVERRIDES MUST SURVIVE THE REQUEST PATH.
+   *
+   * `protect` hands over a plain User document, where
+   * `permissionOverrides.permission` is an ObjectId rather than a populated
+   * document — so `override.permission?.name` was undefined and this loop
+   * skipped every override in silence. Saving was never broken; READING was:
+   * an administrator granted a permission and the affected person's own
+   * screens never changed ("I saved it and it was gone").
+   *
+   * Names are resolved with ONE extra read, and only when an override is
+   * present and unpopulated (the User Assignments endpoint passes populated
+   * documents and still costs nothing extra).
+   */
+  const overrideNames = await resolveOverrideNames(
+    user.permissionOverrides,
+    PermissionModel,
+  );
+
   (user.permissionOverrides || []).forEach((override) => {
-    const name = override.permission?.name;
+    const name =
+      override.permission?.name ||
+      overrideNames.get(String(override.permission?._id || override.permission));
 
     if (!name) return;
 

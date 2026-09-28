@@ -28,14 +28,40 @@ import {
 } from '../utils/roleAssignmentRules.js';
 
 // ── role membership ────────────────────────────────────────────────────────
-// A user "holds" a role through `roleRef` (permissionService resolves
-// permissions from it first), so membership is counted on roleRef and only
-// ACTIVE users count — an inactive user must not block housekeeping.
-const roleMemberCounts = async (companyId) => {
-  const rows = await User.aggregate([
+// Only ACTIVE users count — an inactive user must not block housekeeping.
+//
+// A user "holds" a role in one of the two ways permissionService accepts:
+//   1. `roleRef` — the modern link, resolved first, and
+//   2. the legacy `role` string — the fallback `systemRoleKey === user.role`
+//      (see findUserRole). The company founder is created with
+//      role: COMPANY_ADMIN and NO roleRef, and so is every user an admin adds
+//      through the legacy CREATION_RIGHTS path.
+// Counting only (1) made the roles screen report "0 user(s) hold this role"
+// for the one person who does. `systemRoleKey` is the only key the runtime
+// fallback honours, so custom roles (systemRoleKey is always '') never pick
+// up phantom members this way.
+// Exported for the membership pin (test/roleMemberCount.test.js) — the HTTP
+// handlers are covered through these helpers.
+export const roleHoldersQuery = (role) => ({
+  $or: [
+    { roleRef: role._id },
+    ...(role.systemRoleKey
+      ? [{ roleRef: null, role: role.systemRoleKey }]
+      : []),
+  ],
+});
+
+export const roleMemberCounts = async (
+  companyId,
+  roles = [],
+  { UserModel = User } = {},
+) => {
+  const tenantId = new mongoose.Types.ObjectId(String(companyId));
+
+  const rows = await UserModel.aggregate([
     {
       $match: {
-        companyId: new mongoose.Types.ObjectId(String(companyId)),
+        companyId: tenantId,
         roleRef: { $ne: null },
         status: 'ACTIVE',
       },
@@ -43,11 +69,47 @@ const roleMemberCounts = async (companyId) => {
     { $group: { _id: '$roleRef', count: { $sum: 1 } } },
   ]);
 
-  return new Map(rows.map((row) => [String(row._id), row.count]));
+  const counts = new Map(rows.map((row) => [String(row._id), row.count]));
+
+  // One extra aggregation resolves every legacy holder in the tenant,
+  // instead of one count per role.
+  const legacyRoleIds = new Map();
+  roles.forEach((role) => {
+    if (role.systemRoleKey) legacyRoleIds.set(role.systemRoleKey, String(role._id));
+  });
+
+  if (legacyRoleIds.size === 0) return counts;
+
+  const legacyRows = await UserModel.aggregate([
+    {
+      $match: {
+        companyId: tenantId,
+        roleRef: null,
+        status: 'ACTIVE',
+        role: { $in: [...legacyRoleIds.keys()] },
+      },
+    },
+    { $group: { _id: '$role', count: { $sum: 1 } } },
+  ]);
+
+  legacyRows.forEach((row) => {
+    const roleId = legacyRoleIds.get(row._id);
+    if (!roleId) return;
+    counts.set(roleId, (counts.get(roleId) || 0) + row.count);
+  });
+
+  return counts;
 };
 
-const membersOfRole = async (companyId, roleId, limit = 10) =>
-  User.find({ companyId, roleRef: roleId, status: 'ACTIVE' })
+export const roleMemberCount = (companyId, role, { UserModel = User } = {}) =>
+  UserModel.countDocuments({
+    companyId,
+    status: 'ACTIVE',
+    ...roleHoldersQuery(role),
+  });
+
+export const membersOfRole = async (companyId, role, limit = 10, { UserModel = User } = {}) =>
+  UserModel.find({ companyId, status: 'ACTIVE', ...roleHoldersQuery(role) })
     .select('name email')
     .limit(limit)
     .lean();
@@ -277,7 +339,7 @@ export const listRoles = async (req, res) => {
 
     // How many active users hold each role — the UI needs this to explain
     // why a role can or cannot be deactivated.
-    const counts = await roleMemberCounts(req.companyId);
+    const counts = await roleMemberCounts(req.companyId, roles);
     const withCounts = roles.map((role) => ({
       ...role,
       memberCount: counts.get(String(role._id)) || 0,
@@ -505,12 +567,8 @@ export const getRole = async (req, res) => {
     }
 
     const [memberCount, members] = await Promise.all([
-      User.countDocuments({
-        companyId: req.companyId,
-        roleRef: role._id,
-        status: 'ACTIVE',
-      }),
-      membersOfRole(req.companyId, role._id),
+      roleMemberCount(req.companyId, role),
+      membersOfRole(req.companyId, role),
     ]);
 
     return ok(
@@ -1077,11 +1135,7 @@ export const updateRolePermissions = async (
     // Data to frontend - response to frontend
     // memberCount rides along so the UI keeps showing how many people hold
     // the role without a second round trip.
-    const memberCount = await User.countDocuments({
-      companyId: req.companyId,
-      roleRef: updatedRole._id,
-      status: 'ACTIVE',
-    });
+    const memberCount = await roleMemberCount(req.companyId, updatedRole);
 
     return ok(
       res,
