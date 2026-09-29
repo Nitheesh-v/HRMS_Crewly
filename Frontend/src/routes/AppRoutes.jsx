@@ -45,6 +45,8 @@ const SecuritySettingsPage = lazy(() => import("../pages/security/SecuritySettin
 
 const DashboardPage = lazy(() => import("../pages/dashboard/DashboardPage.jsx"));
 const ChatPage = lazy(() => import("../pages/chat/ChatPage.jsx")); // Phase 33.8 — Chat Hub
+
+const AiAssistantPage = lazy(() => import("../pages/AIAssistant/AiAssistantPage.jsx")); // Phase 36.3 — AI Assistant
 const DepartmentsPage = lazy(() => import("../pages/departments/DepartmentsPage.jsx"));
 const UsersPage = lazy(() => import("../pages/users/UsersPage.jsx"));
 const OrgChartPage = lazy(() => import("../pages/org-chart/OrgChartPage.jsx"));
@@ -358,6 +360,12 @@ const AppRoutes = () => (
       <Route
         path="chat"
         element={<ChatPage />}
+      />
+
+      {/* Phase 36.3 — AI Assistant (session-only conversation) */}
+      <Route
+        path="ai-assistant"
+        element={<AiAssistantPage />}
       />
       <Route
         path="chat/:conversationId"

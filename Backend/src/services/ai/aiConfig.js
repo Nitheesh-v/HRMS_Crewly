@@ -112,9 +112,40 @@ export const AI_ERROR_TYPES = Object.freeze([
 
 // Feature labels. Closed on purpose: a usage row with an unknown feature is
 // a coding error, not something to accept from a request body.
-export const AI_FEATURES = Object.freeze(['hr.chat']);
+//
+// Phase 36.3 adds 'chatbot' so an employee-facing turn is distinguishable in
+// AIUsageLog from a raw /chat verification call. Additive: 'hr.chat' keeps its
+// meaning and every 36.1 assertion still holds.
+export const AI_FEATURES = Object.freeze(['hr.chat', 'chatbot']);
 
 export const AI_FEATURE_HR_CHAT = 'hr.chat';
+
+export const AI_FEATURE_CHATBOT = 'chatbot';
+
+// Phase 36.3 — how much conversation history reaches the vendor.
+//
+// The system prompt carries the whole HR context, which is already several
+// hundred tokens before the person types anything. Sending ten more turns on
+// top of that would spend the budget on history the model rarely needs, so
+// the cap is deliberately tighter than the UI's 20-message display cap: the
+// person can scroll back further than the model can remember, and that is the
+// honest trade (a chatbot that silently forgot turn 3 is worse than one that
+// never claimed to remember it).
+export const AI_CHATBOT_HISTORY_LIMIT = 6;
+
+// The two roles a CLIENT may send. 'system' is refused at the validator: the
+// system prompt is server-owned, and a client that could write it could
+// instruct the model to ignore the HR context.
+export const AI_CHATBOT_CLIENT_ROLES = Object.freeze(['user', 'assistant']);
+
+// Phase 36.3 — the chatbot gets its own 32.4 tier. A separate store keeps the
+// budgets independent: exhausting the raw /chat allowance must not lock a
+// person out of the employee assistant, and vice versa.
+export const AI_CHATBOT_RATE_LIMIT = Object.freeze({
+  sharedName: 'ai-chatbot',
+  windowMs: 60_000,
+  maximum: 20,
+});
 
 // Phase 36.2 — HR context categories the retriever can assemble. This is the
 // SINGLE source of truth: the AITenantConfig enum, the request validator and

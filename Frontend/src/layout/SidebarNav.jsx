@@ -54,12 +54,14 @@ import {
   Users,
   Wallet,
   X,
+  Bot,
 } from "lucide-react";
 
 // ── icons (moved out of AppLayout) ────────────────────────────────────────
 
 const NAV_ICON_BY_PATH = {
   "/app": LayoutDashboard,
+  "/app/ai-assistant": Bot,
   "/app/meetings": CalendarDays,
   "/app/org-chart": Network,
   "/app/users": Users,
@@ -210,7 +212,12 @@ const NAV_GROUPS = [
     id: "me",
     label: "Me",
     icon: UserCircle,
-    paths: ["/app/profile", "/app/notifications", "/app/notification-settings"],
+    paths: [
+      "/app/profile",
+      "/app/notifications",
+      "/app/notification-settings",
+      "/app/ai-assistant",
+    ],
   },
 
   // ── behind "More"

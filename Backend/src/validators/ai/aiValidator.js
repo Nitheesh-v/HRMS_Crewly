@@ -15,6 +15,7 @@ import { body, query, validationResult } from 'express-validator';
 import ApiError from '../../utils/ApiError.js';
 
 import {
+  AI_CHATBOT_CLIENT_ROLES,
   AI_CONTEXT_CATEGORIES,
   AI_MESSAGE_MAX_CHARS,
   AI_MESSAGE_MAX_COUNT,
@@ -206,5 +207,71 @@ export const previewContextValidator = [
 
       return true;
     }),
+  validate,
+];
+
+// ── Phase 36.3 — the employee chatbot ──────────────────────────────────────
+//
+// The system prompt is SERVER-OWNED, so 'system' is refused from a client by
+// simply not listing it: a client that could write the system prompt could
+// instruct the model to ignore the HR context or to invent data. The cap here
+// is the UI's display cap (20); the service caps the payload further, to the
+// last 6 turns, which is where the token budget is actually protected.
+
+const chatbotIdentityOverride = body().custom((_value, { req }) => {
+  const payload = req.body || {};
+
+  for (const field of ['companyId', 'company', 'userId', 'user', 'feature']) {
+    if (payload[field] !== undefined) {
+      throw new Error(`${field} must not be supplied by the client`);
+    }
+  }
+
+  return true;
+});
+
+export const chatbotValidator = [
+  chatbotIdentityOverride,
+
+  body('messages')
+    .isArray({ min: 1, max: 20 })
+    .withMessage('messages must be an array of 1 to 20 entries.'),
+
+  body('messages.*.role')
+    .isIn([...AI_CHATBOT_CLIENT_ROLES])
+    .withMessage(
+      `role must be one of: ${AI_CHATBOT_CLIENT_ROLES.join(', ')}. The system prompt is added by the server.`,
+    ),
+
+  body('messages.*.content')
+    .isString()
+    .withMessage('content must be a string.')
+    .bail()
+    .trim()
+    .isLength({ min: 1, max: AI_MESSAGE_MAX_CHARS })
+    .withMessage(`content must be 1 to ${AI_MESSAGE_MAX_CHARS} characters.`),
+
+  // Optional narrowing of the tenant's own allowlist. Unknown values are
+  // dropped by the retriever rather than refused here, so a typo cannot turn a
+  // working chat into an error — but a NON-ARRAY is a client bug and is caught.
+  body('categories')
+    .optional()
+    .isArray()
+    .withMessage('categories must be an array.')
+    .bail()
+    .custom((value) => {
+      const unknown = value.filter(
+        (entry) => !AI_CONTEXT_CATEGORIES.includes(entry),
+      );
+
+      if (unknown.length > 0) {
+        throw new Error(
+          `categories may only contain: ${AI_CONTEXT_CATEGORIES.join(', ')}.`,
+        );
+      }
+
+      return true;
+    }),
+
   validate,
 ];

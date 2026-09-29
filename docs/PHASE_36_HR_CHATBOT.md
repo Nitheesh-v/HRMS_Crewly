@@ -30,27 +30,26 @@ their own laws.
 | --- | --- | --- |
 | **36.1** | AI Provider Foundation & Guardrails — config, PII redactor, usage tracking, quota, kill switch, rate limit, `POST /api/ai/chat` | **IMPLEMENTED** (this document) |
 | **36.2** | HR Context Retriever & Tenant AI Config — `AITenantConfig`, tenant service + cache, the read-only redacted context retriever, config & preview endpoints | **CLOSED** (see [PHASE_36_2](PHASE_36_2_HR_CONTEXT_RETRIEVER.md)) |
-| **36.3** | HR Policy Chatbot (RAG) — documents → chunks → embeddings → vector store → answer with citations; employee UI at `/app/ai-assistant` | NOT BUILT YET |
-| **36.4** | Conversational HR self-service — leave balance, payslip explanation, policy Q&A over the 36.3 retrieval base | NOT BUILT YET |
+| **36.3** | HR Chatbot UI & Conversational API — one employee-facing turn per request: `POST /api/ai/chatbot`, `hrChatbotService`, the `/app/ai-assistant` page and sidebar entry. **No RAG, no embeddings, no vector store** — the retriever from 36.2 is the retrieval. | **CLOSED** (see [PHASE_36_3](PHASE_36_3_HR_CHATBOT_UI.md)) |
+| **36.4** | Close-out & hardening — kill-switch runbook rehearsal, cost display, the remaining gaps listed in PHASE_36_3 §9 | NOT BUILT YET |
 
 Later candidates, **not scheduled**: chat-hub AI (summarise/translate/smart
 replies inside Phase 33 conversations), document Q&A beyond policy, admin
 analytics NL queries. Each needs its own phase number and its own laws before it
 is built.
 
-### Current state (end of 36.2)
+### Current state (end of 36.3)
 
-36.1 made an AI call safe. 36.2 made it **informed and controllable**: a tenant
-can now switch AI off for itself, set its own token cap and choose which HR
-context categories its employees may ask about, and the backend can assemble a
-calling user's authorized HR data — leave balances, shift, profile, upcoming
-holidays and announcements — into one string that is redacted before it leaves
-the server.
+36.1 made an AI call safe. 36.2 made it **informed and controllable**. 36.3 made
+it **usable**: an employee can now open `/app/ai-assistant`, ask a question, and
+get one answer built from their own authorized, redacted HR context.
 
 The retriever is **read-only across every HR domain** and its signature is its
 authorisation: there is no parameter through which another user's context can be
-requested. It is deliberately **not yet wired into the chat path** — that is
-36.3.
+requested. As of 36.3 it **is wired into the chat path** — `hrChatbotService`
+calls it on every turn, prepends a server-owned system prompt, re-redacts every
+user turn, and makes exactly **one** vendor call through the 36.1 choke point.
+The client receives `{ reply, usage, categoriesUsed }` and never the context.
 
 Two things 36.2 could not deliver and has recorded rather than papered over:
 there is **no `ai:admin` permission** in the registry (the config endpoints reuse
@@ -58,6 +57,12 @@ there is **no `ai:admin` permission** in the registry (the config endpoints reus
 `requirePermission` refuses `SUPER_ADMIN` by design, so a platform super-admin
 still has **no route** to a tenant's AI config. Both are in
 [PHASE_36_2 §6 and §8](PHASE_36_2_HR_CONTEXT_RETRIEVER.md).
+
+36.3 records its own limitation rather than hiding it: the history is capped to
+the **last 6 turns**, tighter than the UI's 20-message display cap, because the
+system prompt already carries several hundred tokens of context. The person can
+scroll back further than the model can remember. See
+[PHASE_36_3 §4](PHASE_36_3_HR_CHATBOT_UI.md).
 
 ## Explicitly out of scope for the whole phase
 
@@ -192,5 +197,15 @@ verification) plus the per-tenant config endpoints from 36.2.
 | The vendor is down | Nothing to do: every failure is already one generic `503 AI_VENDOR_ERROR`. |
 | Check what a tenant has spent this month | `GET /api/ai/config` as that tenant's admin — token total, call count and a per-status breakdown. |
 
-A dedicated runbook file arrives with 36.3, when the chat surface gives operators
-something to operate.
+**Operational runbook for 36.3** (the chatbot surface):
+
+| Situation | What to do |
+| --- | --- |
+| An employee is hammering the assistant | The `ai-chatbot` 32.4 store allows 20 turns per 60 s per (tenant, user). Over the cap they get `429 AI_RATE_LIMITED`. No admin action needed; it clears itself. |
+| An employee says the assistant "made up" an answer | The system prompt forbids it and the context is the only source, but the model can still be wrong — this is why 36.3 shows `Answered using:` so the person can see which categories were consulted. AI output is informational only and is never authoritative. |
+| A tenant's employees all see "switched off" | That tenant's `AITenantConfig.enabled` is `false`, or the global `AI_ENABLED` is off. `PUT /api/ai/config` with `{"enabled":true}` restores it. |
+| A question comes back as "I do not have that information" | Correct behaviour: the answer was not in that employee's own authorized context. Check the tenant's `allowedCategories`. |
+| An employee typed their PAN into the chat | It was redacted before the vendor ever saw it. The assistant's reply quotes `[PAN_REDACTED]`. |
+
+The dedicated per-unit runbook is
+[PHASE_36_3 §10](PHASE_36_3_HR_CHATBOT_UI.md).

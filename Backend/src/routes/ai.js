@@ -6,6 +6,7 @@ import { requirePermission } from '../middlewares/permissionMiddleware.js';
 
 import {
   aiChatValidator,
+  chatbotValidator,
   previewContextValidator,
   updateConfigValidator,
 } from '../validators/ai/aiValidator.js';
@@ -15,6 +16,7 @@ import * as aiController from '../controllers/aiController.js';
 // Phase 36.1/36.2 — AI suite HTTP surface.
 //
 //   POST /api/ai/chat              one guarded completion (36.1)
+//   POST /api/ai/chatbot           one employee-facing turn (36.3)
 //   GET  /api/ai/config            this tenant's AI config + month spend (36.2)
 //   PUT  /api/ai/config            the tenant's kill switch / quota / allowlist (36.2)
 //   GET  /api/ai/context/preview   the caller's own redacted context (36.2)
@@ -37,6 +39,11 @@ const router = Router();
 router.use(protect, tenantContext);
 
 router.route('/chat').post(aiChatValidator, aiController.chat);
+
+// Phase 36.3 - the employee chatbot. The rate limit is enforced inside the
+// controller (its own 32.4 tier), NOT as route middleware, so one request is
+// charged exactly once.
+router.route('/chatbot').post(chatbotValidator, aiController.askChatbot);
 
 router
   .route('/config')

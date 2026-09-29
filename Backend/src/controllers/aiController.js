@@ -16,6 +16,7 @@
 import asyncHandler from '../utils/asyncHandler.js';
 
 import {
+  AI_CHATBOT_RATE_LIMIT,
   AI_CONTEXT_CATEGORIES,
   AI_FEATURE_HR_CHAT,
   AI_PREVIEW_RATE_LIMIT,
@@ -34,6 +35,8 @@ import {
 
 import { getUserHRContext } from '../services/ai/hrContextRetriever.js';
 
+import { askHRAssistant } from '../services/ai/hrChatbotService.js';
+
 import { createRateLimitStore } from '../utils/rateLimitStore.js';
 
 // Phase 36.2 — the preview endpoint returns a whole HR context string, which
@@ -44,6 +47,14 @@ import { createRateLimitStore } from '../utils/rateLimitStore.js';
 const previewLimiter = createRateLimitStore({
   sharedName: AI_PREVIEW_RATE_LIMIT.sharedName,
   windowMs: AI_PREVIEW_RATE_LIMIT.windowMs,
+});
+
+// Phase 36.3 — the chatbot gets its OWN tier for the same reason: a person
+// exhausting the verification endpoint's budget must not be locked out of the
+// employee assistant, and vice versa. Enforced HERE and nowhere else.
+const chatbotLimiter = createRateLimitStore({
+  sharedName: AI_CHATBOT_RATE_LIMIT.sharedName,
+  windowMs: AI_CHATBOT_RATE_LIMIT.windowMs,
 });
 
 /** Turn `?categories=a,b` into ['a','b'], or null when nothing usable was asked for. */
@@ -223,6 +234,69 @@ export const previewContext = asyncHandler(async (req, res) => {
         categoriesUsed: result.categoriesUsed,
       },
       message: 'AI context preview ready',
+    });
+  } catch (error) {
+    if (error instanceof AIError) {
+      return sendAIError(res, error);
+    }
+
+    throw error;
+  }
+});
+
+// POST /api/ai/chatbot — one employee-facing turn.
+//
+// This is the ONLY employee-visible AI endpoint. It differs from /chat in
+// three ways, all deliberate:
+//   · the system prompt and the HR context are assembled SERVER-SIDE, so the
+//     client cannot supply either;
+//   · the caller receives { reply, usage, categoriesUsed } and NEVER the
+//     context, which stays on the server (Phase 36 §10);
+//   · the feature label is 'chatbot', so a usage row says which surface spent
+//     the tokens.
+export const askChatbot = asyncHandler(async (req, res) => {
+  try {
+    // Guard first: one request, one charge, in exactly one place. A second
+    // check inside the service would double-count this turn (36.1 lesson).
+    let limited = false;
+
+    try {
+      const verdict = await chatbotLimiter.hit(
+        `${req.companyId}:${req.user._id}`,
+        AI_CHATBOT_RATE_LIMIT.maximum,
+      );
+
+      limited = verdict?.limited === true;
+    } catch {
+      // The store never throws by contract. If it somehow does, refuse rather
+      // than guess — the same direction as the chat limiter.
+      limited = true;
+    }
+
+    if (limited) {
+      throw AIError.rateLimited();
+    }
+
+    // Data from frontend - requests from frontend
+    const { messages, categories } = req.body;
+
+    // DB Logic - DB logics
+    const response = await askHRAssistant({
+      messages,
+      categories,
+
+      // Tenant authority and caller identity are SERVER-DERIVED. The validator
+      // refuses any client-supplied identity outright.
+      companyId: req.companyId,
+      userId: req.user._id,
+    });
+
+    // Data to frontend - response to frontend
+    return res.status(200).json({
+      statusCode: 200,
+      success: true,
+      data: response,
+      message: 'Chatbot reply generated',
     });
   } catch (error) {
     if (error instanceof AIError) {
