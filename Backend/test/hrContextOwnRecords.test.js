@@ -471,6 +471,39 @@ describe('documents', () => {
     assert.equal(select.args[0].includes('fileUrl'), false);
   });
 
+  test('the payslip query never selects the salary sub-document', () => {
+    // Matrix row 7, pinned at the QUERY rather than at the render.
+    //
+    // `snapshot` contains snapshot.salary.{grossSalary, netSalary, ...} - the
+    // most sensitive numbers in the product. Selecting `snapshot` whole would
+    // pull every one of them into memory on every chat turn. The renderer
+    // never emitted them and the redactor would have masked them, so the
+    // guarantee held anyway; but a guarantee resting on two later layers is
+    // weaker than one that holds at the query, so the select is narrowed to
+    // the two label fields the renderer actually reads.
+    const PayslipModel = makeModelByOp();
+
+    return (async () => {
+      await getUserHRContext({
+        companyId: COMPANY,
+        userId: USER,
+        deps: baseDeps({ PayslipModel }),
+      });
+
+      const select = PayslipModel.calls.find((c) => c.name === 'select');
+
+      assert.ok(select, 'the payslip query never called select()');
+
+      const fields = select.args[0];
+
+      assert.equal(fields.includes('snapshot.payroll.month'), true);
+      assert.equal(fields.includes('snapshot.payroll.monthLabel'), true);
+
+      // The salary block is never named, so it can never be selected.
+      assert.equal(/salary|gross|netSalary|deduction/i.test(fields), false);
+    })();
+  });
+
   test('it renders name and category', async () => {
     const DocumentModel = makeModelByOp({ list: [
       { name: 'PAN Card.pdf', category: 'IDENTITY' },

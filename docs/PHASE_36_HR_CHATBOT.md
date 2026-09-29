@@ -1,5 +1,10 @@
 # CREWLY — PHASE 36: THE HR CHATBOT SUITE (AI)
 
+> **STATUS: 100% CLOSED.** All five units (36.1, 36.2, 36.3, 36.3b, 36.4)
+> are shipped. The fourteen structural guarantees are pinned by
+> `Backend/test/phase36Closeout.test.js` (44 tests), and
+> `npm run test:all` is **2985 tests / 155 suites / 0 fail**.
+
 This document is the running record of Phase 36. **One unit at a time**, each
 unit shipped with its own tests, its own limitations and its own localhost
 acceptance steps. Nothing here is a promise about a later unit: a unit is
@@ -38,7 +43,7 @@ replies inside Phase 33 conversations), document Q&A beyond policy, admin
 analytics NL queries. Each needs its own phase number and its own laws before it
 is built.
 
-### Current state (end of 36.4)
+### Final state (Phase 36 CLOSED)
 
 36.1 made an AI call safe. 36.2 made it **informed and controllable**. 36.3 made
 it **usable**: an employee can now open `/app/ai-assistant`, ask a question, and
@@ -228,10 +233,44 @@ Rows 14, 15 and the redaction row are additionally pinned by
 `Backend/test/aiTenantConfig.test.js` (45) and
 `Backend/test/hrContextRetriever.test.js` (47).
 
-36.4 added `Backend/test/hrContextOwnRecords.test.js` (38), which pins the
-nine new categories and the authorization law behind them, and took
-`Backend/test/hrChatbotService.test.js` from 48 to 48 tests across thirteen
-prompt rules. `npm run test:all` is **2939 tests / 145 suites / 0 fail**.
+36.4 added `Backend/test/hrContextOwnRecords.test.js` (39), which pins the
+nine new categories and the authorization law behind them.
+
+The close-out unit added `Backend/test/phase36Closeout.test.js` (**44
+tests**), which re-proves the fourteen structural guarantees HERMETICALLY
+through the 36.1 dependency-injection seam — no live Mongo, no Redis, no
+network — and took `Backend/test/hrChatbotService.test.js` from 48 to 49
+tests across **fourteen** prompt rules.
+
+`npm run test:all` is **2985 tests / 155 suites / 0 fail**. Frontend is
+**31 tests / 5 suites / 0 fail**, the build is clean and eslint is at the
+pre-existing 127-problem baseline.
+
+### The fourteen guarantees, and where each is pinned
+
+| # | Guarantee | Pinned by |
+| --- | --- | --- |
+| 1 | `AI_ENABLED=false` → `503 AI_UNAVAILABLE` | close-out row 1 + `aiProviderFoundation` |
+| 2 | A disabled tenant → `503`, with an explanatory sentence | close-out row 2 |
+| 3 | Quota exhausted → `429 QUOTA_EXCEEDED` | close-out row 3 + `aiProviderFoundation` |
+| 4 | Every identifier class stripped; idempotent; Aadhaar+UAN share a row | close-out row 4 + `aiProviderFoundation` |
+| 5 | `AIUsageLog` has no text column, and its String columns are an allowlist | close-out row 5 |
+| 6 | The retriever signature forces `companyId` + `userId`, with no cross-user parameter | close-out row 6 + `hrContextRetriever` |
+| 7 | No query selects a salary or bank field | close-out row 7 + `hrContextOwnRecords` |
+| 8 | Exactly one `redactPII()` call, on the assembled string | close-out row 8 |
+| 9 | The system prompt carries all fourteen rules verbatim | close-out row 9 + `hrChatbotService` |
+| 10 | History capped to the LAST 6 turns, system message first | close-out row 10 |
+| 11 | The validator refuses client-supplied identity and the `system` role | close-out row 11 + `aiProviderFoundation` |
+| 12 | The rate limit is enforced in exactly one place per endpoint | close-out row 12 |
+| 13 | Every vendor failure → one generic `503`, four response keys | close-out row 13 |
+| 14 | Every Phase 36 document exists and agrees with the code | close-out row 14 |
+
+> **A correction recorded rather than hidden.** The close-out brief asked
+> for "all 7 rules verbatim". Seven was the count when Phase 36 was first
+> scoped. `5757006` added rules 8 and 9, 36.4 added 10—13, and the
+> close-out added 14. Pinning seven would have passed while the model
+> ignored eleven instructions the product relies on, so the pin is the real
+> count and the drift is written into the test itself.
 
 ## Runbooks
 

@@ -127,7 +127,7 @@ describe('system prompt construction (Phase 36 §5 step 3)', () => {
     assert.equal(system.includes(CONTEXT), true);
   });
 
-  test('the system message contains all thirteen rules verbatim', async () => {
+  test('the system message contains all fourteen rules verbatim', async () => {
     const aiChatFn = recordingAiChat();
 
     await askHRAssistant({
@@ -141,8 +141,9 @@ describe('system prompt construction (Phase 36 §5 step 3)', () => {
 
     // A prompt that drifted silently would be an instruction the product never
     // approved, so the rules are pinned as text, not as behaviour. 36.4 took
-    // the count from nine to thirteen.
-    for (let rule = 1; rule <= 13; rule += 1) {
+    // the count from nine to thirteen, and the close-out unit took it to
+    // fourteen.
+    for (let rule = 1; rule <= 14; rule += 1) {
       assert.equal(system.includes(`${rule}. `), true, `rule ${rule} is missing`);
     }
 
@@ -151,9 +152,13 @@ describe('system prompt construction (Phase 36 §5 step 3)', () => {
       true,
     );
 
+    // 36.4 close-out: rule 3 used to END at the bare refusal. Rule 14 replaced
+    // that with a requirement to follow it with something useful, so the
+    // sentence is deliberately gone and its absence is pinned below.
     assert.equal(
       system.includes('I do not have that information. Please contact your HR team.'),
-      true,
+      false,
+      'rule 3 still ends at a bare refusal',
     );
 
     assert.equal(
@@ -178,6 +183,40 @@ describe('system prompt construction (Phase 36 §5 step 3)', () => {
 
     // 36.4 rule 13 — the model must not turn a count into a person.
     assert.equal(system.includes('YOU ONLY KNOW THIS EMPLOYEE'), true);
+  });
+
+  test('rule 14 makes a refusal useful instead of a dead end', async () => {
+    // THE OWNER'S ASK: "if the answer does not know for that question make
+    // reply with relevant answer". A bare "I do not have that information"
+    // tells the employee nothing they can act on, so rule 14 requires three
+    // things in order: say what is missing, give the closest thing that IS
+    // known, then say what to do next.
+    const aiChatFn = recordingAiChat();
+
+    await askHRAssistant({
+      companyId: COMPANY,
+      userId: USER,
+      messages: history(1),
+      deps: baseDeps({ aiChatFn }),
+    });
+
+    const system = aiChatFn.calls[0].messages[0].content;
+
+    assert.equal(
+      system.includes('WHEN YOU CANNOT ANSWER, STILL BE USEFUL'),
+      true,
+    );
+
+    // Rule 3 no longer tells the model to stop at a bare refusal.
+    assert.equal(
+      system.includes('say "I do not have that information. Please contact your HR team."'),
+      false,
+      'rule 3 still ends at a bare refusal',
+    );
+
+    // The hard limit must survive: being helpful is never a licence to guess.
+    assert.equal(system.includes('Never estimate'), true);
+    assert.equal(system.includes('Rule 4 still wins over rule 14'), true);
   });
 
   test('rule 8 teaches that "none" IS an answer', async () => {

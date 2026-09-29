@@ -185,8 +185,16 @@ confidently sending an employee to a screen that was never built.
 
 ## 6. Prompt rules 10–13
 
-The system prompt went from nine rules to thirteen. Rules 8 and 9 came from
-`5757006`; 10–13 are 36.4's.
+The system prompt went from nine rules to thirteen, and the close-out unit took
+it to fourteen. Rules 8 and 9 came from `5757006`; 10–13 are 36.4's; 14 came
+from the owner's own ask in this unit.
+
+**Rule 3 no longer ends at a bare refusal.** It used to read *"say I do not
+have that information. Please contact your HR team"* – which is a dead end:
+the employee learns nothing they can act on. Rule 14 requires three things in
+order: name what is missing, give the closest thing that IS known, then say
+what to do next. The hard limit is explicit and pinned – **rule 4 still wins
+over rule 14**, so being useful is never a licence to invent a number.
 
 | Rule | What it pins |
 | --- | --- |
@@ -194,6 +202,7 @@ The system prompt went from nine rules to thirteen. Rules 8 and 9 came from
 | **11** | **Name your source.** An answer drawn from the context says which section it came from. |
 | **12** | **Never state a salary figure.** Point at My Payslips; never estimate, never repeat `[AMOUNT_REDACTED]` as if it were a number. |
 | **13** | **You only know this employee.** A count is not a person; never turn one into a name; never speculate about a colleague. |
+| **14** | **When you cannot answer, still be useful** – say what is missing, give the closest thing you do have, then say what to do next. Rule 4 still wins over rule 14. |
 
 All thirteen are pinned verbatim by `test/hrChatbotService.test.js`, which loops
 `1..13` and fails if any rule number is missing. A prompt that drifted silently
@@ -287,9 +296,12 @@ and it now prints thirteen sections instead of four.
 
 ## 11. Still open (carried forward)
 
-- The original 36.4 "close-out & hardening" scope: kill-switch runbook
-  rehearsal, cost display, the remaining gaps in
-  [PHASE_36_3 §9](PHASE_36_3_HR_CHATBOT_UI.md).
+- The original 36.4 "close-out & hardening" scope has since been DELIVERED by
+  the close-out unit: `Backend/test/phase36Closeout.test.js` (44 tests)
+  re-proves the fourteen structural guarantees hermetically, and
+  [PHASE_36_RUNBOOKS.md](PHASE_36_RUNBOOKS.md) plus
+  [PHASE_36_MEMORY_CAPSULE.md](PHASE_36_MEMORY_CAPSULE.md) record the
+  operational and architectural knowledge. **Phase 36 is closed.**
 - No `ai:admin` permission in the registry; `requirePermission` refuses
   `SUPER_ADMIN`, so a platform super-admin still has no route to a tenant's AI
   config ([PHASE_36_2 §6 and §8](PHASE_36_2_HR_CONTEXT_RETRIEVER.md)).

@@ -847,7 +847,17 @@ export const getUserHRContext = async ({
       })
         .sort({ month: -1 })
         .limit(AI_PAYSLIP_LIMIT)
-        .select('month status snapshot')
+        // NARROWED ON PURPOSE (36.4 close-out, matrix row 7). Selecting
+        // `snapshot` pulls the WHOLE sub-document, and that sub-document
+        // contains snapshot.salary.{grossSalary, netSalary, ...} - the
+        // most sensitive numbers in the product. The renderer never emits
+        // them and the redactor would mask them, so the guarantee held
+        // anyway; but a guarantee that depends on two later layers is
+        // weaker than one that holds at the query. Only the two payroll
+        // label fields are actually read, so only those are selected.
+        .select(
+          'month status snapshot.payroll.month snapshot.payroll.monthLabel',
+        )
         .lean();
 
       return renderPayslips(rows);

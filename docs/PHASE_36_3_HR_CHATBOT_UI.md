@@ -81,6 +81,13 @@ Rules you must follow:
 The seven rules are asserted **as text** in `test/hrChatbotService.test.js`, not
 merely as behaviour, so a prompt that drifted silently would fail the suite.
 
+> **Superseded (36.4 / close-out).** The count is no longer seven. `5757006`
+> added rules 8 and 9, 36.4 added 10-13, and the close-out unit added 14, so
+> the prompt now carries **fourteen** rules and the test loops `1..14`. The
+> block above is kept as the 36.3-as-shipped record; the current text is in
+> `Backend/src/services/ai/hrChatbotService.js`. See
+> [PHASE_36_MEMORY_CAPSULE.md](PHASE_36_MEMORY_CAPSULE.md) §3.
+
 ---
 
 ## 3. One call per turn — and why there is no agent loop
