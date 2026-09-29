@@ -10,7 +10,7 @@ guardrails and 36.2's context retriever.
 | Depends on | 36.1 (provider + guardrails), 36.2 (context retriever + tenant config) |
 | Tests | `npm run test:ai-chatbot` — **46 tests, 8 suites, 0 fail** |
 | Full suite | `npm run test:all` — **2897 tests, 132 suites, 0 fail** (was 2851/124) |
-| Frontend tests | `npm test` (in `Frontend/`) — **10 tests, 1 suite, 0 fail** |
+| Frontend tests | `npm test` (in `Frontend/`) — **15 tests, 2 suites, 0 fail** |
 | Mutation check | **11 mutations, 11 caught** |
 
 ---
@@ -194,7 +194,7 @@ answered.
 | `redux/slices/aiChatSlice.js` | session-only state + `sendChatMessage` thunk |
 | `pages/AIAssistant/AiAssistantPage.jsx` | the page |
 | `pages/AIAssistant/ChatMessageBubble.jsx` | one bubble + the typing indicator |
-| `pages/AIAssistant/QuickPromptPills.jsx` | six starting questions |
+| `pages/AIAssistant/QuickPromptPills.jsx` + `chatPrompts.js` | six starting questions, every one answerable (see §10.3) |
 | `pages/AIAssistant/ChatInputBar.jsx` | controlled textarea, Enter to send |
 | `pages/AIAssistant/chatLimits.js` | mirrors the server's 2000-char limit |
 
@@ -349,6 +349,46 @@ with `config:check`. Pinned by a test that fails if the config is dropped.
 change, the server did not restart. `Ctrl+C` and `npm run dev` — or trust the
 `nodemonConfig` above to do it for you. A `config:check` that disagrees with the
 running app is telling you the app is stale, not that the config is wrong.
+
+### 10.3 "I do not have that information" is the assistant working correctly
+
+Once the vendor call succeeded, asking **"Explain the leave policy to me"**
+returned *"I do not have that information. Please contact your HR team."* That is
+**not** a bug — it is rules 3 and 4 of the system prompt doing their job.
+
+**There is no leave-policy document source in this repository.** The model list
+has `AttendancePolicy`, `BgvSlaPolicy` and `CompanySecurityPolicy`, and no
+leave-policy model of any kind. 36.2's `policies` category therefore carries
+**upcoming holidays and recent announcement titles, and nothing else** — its
+name is broader than its contents.
+
+**What was a real defect:** `QuickPromptPills` shipped a **"Leave policy"** pill.
+A quick prompt that is guaranteed to be refused is worse than no quick prompt at
+all, because it teaches the employee that the assistant is broken.
+
+**Fix:** the pill is now **"Latest announcements"**, which the context genuinely
+holds. The prompt data moved to `pages/AIAssistant/chatPrompts.js` (a `.js`
+module, so a test can import it without a JSX transform), and
+`Frontend/test/aiChatPills.test.js` enforces the rule:
+
+- no prompt may promise a policy document, handbook or manual;
+- every prompt must map to one of the four categories the retriever fills;
+- the set must cover at least three of them.
+
+**The rule to remember:** before adding a quick prompt, check that its answer can
+be assembled from `profile`, `leaves`, `attendance` or `policies`
+(= holidays + announcements). If it cannot, the assistant will refuse —
+correctly.
+
+**To see exactly what the assistant sees**, ask for the preview (36.2):
+
+```powershell
+curl.exe -s -b cookies.txt http://localhost:5000/api/ai/context/preview
+```
+
+That prints the whole redacted context string, section by section. If a section
+reads `(none posted)` or `(none scheduled)`, the tenant simply has no data
+there — and the assistant is right to say so.
 
 **Not verified:** anything against the real Groq API — there is no key and no
 network in the build sandbox.
