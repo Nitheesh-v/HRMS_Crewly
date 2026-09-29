@@ -119,6 +119,23 @@ const shortDate = (value) => {
 // Each returns a string (possibly empty). None of them throw: a failure is
 // caught by the caller and rendered as a placeholder.
 
+/*
+ * THE TWO KINDS OF "NOTHING" - and why they must never look alike.
+ *
+ * A section can be empty in two very different ways, and conflating them is
+ * what made the assistant answer "I do not have that information" to a question
+ * it could actually answer:
+ *
+ *   NONE        - the data was read successfully and the answer is that nothing
+ *                 exists. Rendered by each builder as plain words ("none
+ *                 assigned to you"). The assistant MUST state this as the
+ *                 answer. See system-prompt rule 8.
+ *   UNAVAILABLE - the read FAILED. Produced here. The assistant must say it
+ *                 could not retrieve the section and suggest HR. See rule 9.
+ *
+ * The parenthesised `(x unavailable)` form is deliberately visually distinct
+ * from a "none" line, so the model can tell them apart at a glance.
+ */
 const UNAVAILABLE = (label) => `(${label} unavailable)`;
 
 const renderProfile = (user, departmentName) => {
@@ -194,7 +211,7 @@ const renderLeaves = (balances, pending) => {
   const lines = ['Leave Balances:'];
 
   if (balances.length === 0) {
-    lines.push('- (no leave balances configured)');
+    lines.push('- Leave balances: none configured for you');
   } else {
     balances.forEach((balance) => {
       lines.push(
@@ -207,7 +224,7 @@ const renderLeaves = (balances, pending) => {
   lines.push('', 'Pending Leave Requests:');
 
   if (!pending || pending.length === 0) {
-    lines.push('- (none pending)');
+    lines.push('- none - you have no pending leave requests');
   } else {
     pending.forEach((request) => {
       lines.push(
@@ -236,13 +253,15 @@ const renderAttendance = ({ record, shift, weekHours }) => {
     // There is no stored ABSENT row in this schema (the Attendance status enum
     // is PRESENT / LATE / HALF_DAY only), so the honest answer is that no
     // record exists — inventing ABSENT would be a guess presented as fact.
-    lines.push('- Status: NO_RECORD (no attendance record for today)');
+    lines.push(
+      '- Status: NO_RECORD - none recorded, you have not been marked present today',
+    );
   }
 
   if (shift) {
     lines.push(`- Shift: ${shift.name} (${shift.startTime} - ${shift.endTime})`);
   } else {
-    lines.push('- Shift: (no shift assigned)');
+    lines.push('- Shift: none assigned to you');
   }
 
   if (weekHours !== null) {
@@ -258,7 +277,7 @@ const renderPolicies = ({ holidays, announcements }) => {
   const lines = [`Upcoming Holidays (next ${AI_POLICY_LOOKAHEAD_DAYS} days):`];
 
   if (!holidays || holidays.length === 0) {
-    lines.push('- (none scheduled)');
+    lines.push('- none scheduled in the next 30 days');
   } else {
     holidays.forEach((holiday) => {
       lines.push(`- ${shortDate(holiday.date)}: ${holiday.name}`);
@@ -268,7 +287,7 @@ const renderPolicies = ({ holidays, announcements }) => {
   lines.push('', 'Recent Announcements:');
 
   if (!announcements || announcements.length === 0) {
-    lines.push('- (none posted)');
+    lines.push('- none posted');
   } else {
     announcements.forEach((announcement) => {
       const title = String(announcement.title || '').trim();

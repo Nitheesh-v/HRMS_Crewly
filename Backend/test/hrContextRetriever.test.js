@@ -347,10 +347,10 @@ describe('leaves section (Phase 36 §8 step 2.2)', () => {
     );
   });
 
-  test('no pending requests renders an explicit "(none pending)"', async () => {
+  test('no pending requests renders an explicit "none", never a blank', async () => {
     const { context } = await run({ LeaveModel: makeLeaveModel() });
 
-    assert.equal(context.includes('- (none pending)'), true);
+    assert.equal(context.includes('- none - you have no pending leave requests'), true);
   });
 
   test('every leave query is scoped by companyId AND user', async () => {
@@ -430,6 +430,9 @@ describe('attendance section (Phase 36 §8 step 2.3)', () => {
   });
 
   test('no record for today renders NO_RECORD, never an invented ABSENT', async () => {
+    // 36.4: the phrasing now says the fact plainly, because a stated negative is
+    // the ANSWER - the model must not turn it into "I do not have that
+    // information".
     // The Attendance status enum has no ABSENT value, so there is no stored
     // absent row. Guessing would present an assumption as a fact.
     const { context } = await run({ AttendanceModel: makeModel(null) });

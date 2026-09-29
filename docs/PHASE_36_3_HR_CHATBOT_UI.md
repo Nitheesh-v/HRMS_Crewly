@@ -8,8 +8,8 @@ guardrails and 36.2's context retriever.
 | Unit | 36.3 |
 | Parent doc | [PHASE_36_HR_CHATBOT.md](PHASE_36_HR_CHATBOT.md) |
 | Depends on | 36.1 (provider + guardrails), 36.2 (context retriever + tenant config) |
-| Tests | `npm run test:ai-chatbot` — **46 tests, 8 suites, 0 fail** |
-| Full suite | `npm run test:all` — **2897 tests, 132 suites, 0 fail** (was 2851/124) |
+| Tests | `npm run test:ai-chatbot` — **48 tests, 8 suites, 0 fail** |
+| Full suite | `npm run test:all` — **2901 tests, 133 suites, 0 fail** (was 2851/124) |
 | Frontend tests | `npm test` (in `Frontend/`) — **27 tests, 3 suites, 0 fail** |
 | Mutation check | **11 mutations, 11 caught** |
 
@@ -49,6 +49,10 @@ POST /api/ai/chatbot
 ---
 
 ## 2. The system prompt (verbatim, pinned by test)
+
+Nine rules. Rules 8 and 9 were added by §10.5 and are the reason a **stated
+negative is answered rather than refused** — read that section before editing
+this prompt.
 
 The prompt is **server-owned**. A client that could write it could instruct the
 model to ignore the HR context or to invent data, so the validator refuses the
@@ -426,6 +430,37 @@ restyling of this one:
 
 The chatbot answers all three questions conversationally today, from the
 employee's own context.
+
+### 10.5 "What are my shift timings?" answered "I do not have that information"
+
+The owner reported that asking for their own shift timings returned the refusal
+sentence, even though `attendance` was listed in `Answered using:`.
+
+**The context was not empty.** It contained `- Shift: (no shift assigned)`. The
+bug was that the context has **two different kinds of "nothing"** and the system
+prompt only taught one of them:
+
+| Phrasing | Meaning | Correct reply |
+| --- | --- | --- |
+| `none`, `NO_RECORD`, `no ... assigned` | the read succeeded and the answer **is** "nothing" | **state it plainly** |
+| `(x unavailable)` | the read **failed** | say it could not be retrieved, suggest HR |
+
+Rule 3 of the prompt said only *"if the answer is NOT in the context, say 'I do
+not have that information'"* — so the model read a stated negative as missing
+data and refused. A confirmed fact was being reported as ignorance.
+
+**Fix, two parts:**
+
+1. **The prompt gained rules 8 and 9**, which name the distinction explicitly
+   and give the model a worked example of each.
+2. **The retriever's phrasing was made unambiguous**, so the two classes are
+   visually distinct at a glance: `none assigned to you` versus
+   `(attendance unavailable)`. The `UNAVAILABLE` helper now carries a comment
+   explaining why the two must never look alike.
+
+**The rule to remember:** a negative fact is still an answer. If the context says
+`none`, the employee gets *"You do not have a shift assigned to you yet"* — not
+*"I do not have that information"*.
 
 **To see exactly what the assistant sees**, ask for the preview (36.2):
 

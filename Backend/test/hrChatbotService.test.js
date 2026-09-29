@@ -127,7 +127,7 @@ describe('system prompt construction (Phase 36 §5 step 3)', () => {
     assert.equal(system.includes(CONTEXT), true);
   });
 
-  test('the system message contains all seven rules verbatim', async () => {
+  test('the system message contains all nine rules verbatim', async () => {
     const aiChatFn = recordingAiChat();
 
     await askHRAssistant({
@@ -141,7 +141,7 @@ describe('system prompt construction (Phase 36 §5 step 3)', () => {
 
     // A prompt that drifted silently would be an instruction the product never
     // approved, so the rules are pinned as text, not as behaviour.
-    for (let rule = 1; rule <= 7; rule += 1) {
+    for (let rule = 1; rule <= 9; rule += 1) {
       assert.equal(system.includes(`${rule}. `), true, `rule ${rule} is missing`);
     }
 
@@ -159,6 +159,47 @@ describe('system prompt construction (Phase 36 §5 step 3)', () => {
       system.includes('NEVER offer to take actions on behalf of the employee'),
       true,
     );
+  });
+
+  test('rule 8 teaches that "none" IS an answer', async () => {
+    // THE 36.4 FIX: the assistant used to answer "I do not have that
+    // information" to "what are my shift timings?" because the context said
+    // "no shift assigned" and the prompt only taught the refusal. A stated
+    // negative is a confirmed fact and must be delivered as the answer.
+    const aiChatFn = recordingAiChat();
+
+    await askHRAssistant({
+      companyId: COMPANY,
+      userId: USER,
+      messages: [{ role: 'user', content: 'What are my shift timings?' }],
+      deps: baseDeps({ aiChatFn }),
+    });
+
+    const system = aiChatFn.calls[0].messages[0].content;
+
+    assert.equal(system.includes('"NONE" IS AN ANSWER'), true);
+    assert.equal(
+      system.includes('NEVER say you lack information when the context names the answer'),
+      true,
+    );
+  });
+
+  test('rule 9 teaches that "unavailable" is NOT an answer', async () => {
+    // The other half: a failed read must not be reported as "none", and must
+    // not be guessed at.
+    const aiChatFn = recordingAiChat();
+
+    await askHRAssistant({
+      companyId: COMPANY,
+      userId: USER,
+      messages: [{ role: 'user', content: 'What is my leave balance?' }],
+      deps: baseDeps({ aiChatFn }),
+    });
+
+    const system = aiChatFn.calls[0].messages[0].content;
+
+    assert.equal(system.includes('"UNAVAILABLE" IS NOT AN ANSWER'), true);
+    assert.equal(system.includes('the system could not READ that section'), true);
   });
 
   test('an empty context still produces a valid system message', async () => {
