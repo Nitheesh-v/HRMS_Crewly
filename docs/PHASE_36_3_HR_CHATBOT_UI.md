@@ -10,6 +10,7 @@ guardrails and 36.2's context retriever.
 | Depends on | 36.1 (provider + guardrails), 36.2 (context retriever + tenant config) |
 | Tests | `npm run test:ai-chatbot` — **46 tests, 8 suites, 0 fail** |
 | Full suite | `npm run test:all` — **2897 tests, 132 suites, 0 fail** (was 2851/124) |
+| Frontend tests | `npm test` (in `Frontend/`) — **10 tests, 1 suite, 0 fail** |
 | Mutation check | **11 mutations, 11 caught** |
 
 ---
@@ -203,9 +204,48 @@ and reachable from the sidebar for **all five tenant roles** via
 not one) with a `Bot` icon from `NAV_ICON_BY_PATH` in `layout/SidebarNav.jsx`.
 **No permission gate** and no new permission string.
 
+**The assistant gets its OWN sidebar group.** 36.3 first put the entry inside
+the existing "Me" group, which made it read as a profile sub-page. It now has
+its own `NAV_GROUPS` entry in `layout/SidebarNav.jsx` (`id: "ai"`, `Bot` icon,
+placed just before "Me"). A group with exactly one non-soon item renders as a
+**direct icon button** when the sidebar is collapsed, which is what "a separate
+icon" means in this codebase.
+
 **Privacy in the client:** the conversation is React state for the life of the
 tab. Nothing is persisted server-side and **nothing is written to
 `localStorage`**. `usage` reports tokens only — never text.
+
+### 8.1 The blank-page bug, and why it happened
+
+`/app/ai-assistant` rendered a **completely black page** — no sidebar, no
+error, nothing.
+
+**Cause:** 36.3 shipped the `aiChatSlice` **without registering it** in
+`Frontend/src/redux/store.js`. `state.aiChat` was therefore `undefined`, and
+`AiAssistantPage`'s destructuring of it threw during the very first render. A
+React crash with no error boundary is a blank screen, which is why it looked
+like a routing problem rather than a store problem.
+
+**Fix (two parts, deliberately):**
+
+1. Register the reducer: `aiChat: aiChatReducer` in `store.js`.
+2. Give the page safe defaults so a future slice slip degrades to an **empty
+   chat** instead of a blank screen.
+
+**Test:** `Frontend/test/aiChatStore.test.js` asserts against the **real**
+store that `state.aiChat` exists and that all four slices are present. This is
+the regression pin — it fails loudly on the exact omission that shipped.
+
+Note for anyone extending this: the slice imports the service, the service
+imports `api.js`, and `api.js` imports the store — a real cycle. It resolves
+cleanly **when the store is loaded first**, which is the app's entry order. A
+test that imports the slice before the store will hit a TDZ error that has
+nothing to do with the app.
+
+Because plain Node has no `import.meta.env`, the frontend tests run through a
+small test-only loader (`Frontend/test/loaders/`) registered by the `test`
+script. It rewrites `import.meta.env` for the duration of a run and never
+touches the dev server or the production build.
 
 **Degraded states are honest:** a failed turn renders **outside** the message
 list, so an error can never be mistaken for the assistant's answer, and each

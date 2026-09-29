@@ -60,8 +60,24 @@ const ERROR_HINTS = Object.freeze({
 const AiAssistantPage = () => {
   const dispatch = useDispatch();
 
-  const { messages, sending, error, errorCode, categoriesUsed, usage } =
-    useSelector((state) => state.aiChat);
+  /*
+   * 36.3-fix — THE BLANK-PAGE GUARD.
+   *
+   * 36.3 first shipped with the aiChat slice NOT registered in redux/store.js,
+   * so state.aiChat was undefined and this destructuring threw during the very
+   * first render: the route rendered a completely black page with no sidebar
+   * and no error. Registering the slice is the fix; the defaults below are the
+   * safety net, so that any future slice slip degrades to an empty chat rather
+   * than to a blank screen.
+   */
+  const {
+    messages = [],
+    sending = false,
+    error = '',
+    errorCode = '',
+    categoriesUsed = [],
+    usage = null,
+  } = useSelector((state) => state.aiChat) ?? {};
 
   const [draft, setDraft] = useState('');
 

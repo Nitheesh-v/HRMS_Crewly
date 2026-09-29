@@ -64,6 +64,13 @@ system prompt already carries several hundred tokens of context. The person can
 scroll back further than the model can remember. See
 [PHASE_36_3 §4](PHASE_36_3_HR_CHATBOT_UI.md).
 
+36.3 also shipped one real defect and fixed it: the assistant page rendered a
+**blank screen** because the Redux slice was never registered in `store.js`. The
+cause, the two-part fix and the regression test are in
+[PHASE_36_3 §8.1](PHASE_36_3_HR_CHATBOT_UI.md) — worth reading before adding a
+slice to this store, because the slice → service → `api.js` → store cycle only
+resolves when the store is loaded first.
+
 ## Explicitly out of scope for the whole phase
 
 * Presence, availability, last-seen (unchanged from Phase 33/34).

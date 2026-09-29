@@ -208,16 +208,22 @@ const NAV_GROUPS = [
     paths: ["/app/analytics", "/app/reports"],
   },
 
+  // ── Phase 36.3 — the HR Assistant gets its OWN group and its own icon, not
+  // a line inside "Me". A single-item group renders as a direct icon button
+  // when the sidebar is collapsed, which is the point.
+  {
+    id: "ai",
+    label: "AI Assistant",
+    icon: Bot,
+    paths: ["/app/ai-assistant"],
+    prefixes: ["/app/ai-assistant"],
+  },
+
   {
     id: "me",
     label: "Me",
     icon: UserCircle,
-    paths: [
-      "/app/profile",
-      "/app/notifications",
-      "/app/notification-settings",
-      "/app/ai-assistant",
-    ],
+    paths: ["/app/profile", "/app/notifications", "/app/notification-settings"],
   },
 
   // ── behind "More"
