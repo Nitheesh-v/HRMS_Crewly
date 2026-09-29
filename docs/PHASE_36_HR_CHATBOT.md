@@ -79,6 +79,14 @@ key, the network and the code were all fine. The default is now
 [PHASE_36_3 §10.1](PHASE_36_3_HR_CHATBOT_UI.md) — including how to read
 `ai.vendor.error` to tell a dead model from a bad key without guessing.
 
+A second, subtler failure followed: the model was fixed on disk but the chatbot
+**still** 503'd, because `nodemon` does not watch `.env` and the running server
+kept the old config in memory while `config:check` reported the new one. Fixed
+with an explicit `nodemonConfig`; see
+[PHASE_36_3 §10.2](PHASE_36_3_HR_CHATBOT_UI.md). The general lesson is worth
+keeping: **a `config:check` that disagrees with the running app means the app is
+stale, not that the config is wrong.**
+
 ## Explicitly out of scope for the whole phase
 
 * Presence, availability, last-seen (unchanged from Phase 33/34).

@@ -319,5 +319,36 @@ the privacy law. `errorType` is one of `auth` (401/403 → bad key),
 `rate_limit` (429 → the vendor's own limit), `timeout`, `network` (no
 internet/DNS) or `vendor` (anything else, including a dead model).
 
+### 10.2 The trap that made a correct config look broken
+
+After the model default was fixed, the chatbot **still** failed with the same
+generic 503 — while `npm run config:check` reported the new, correct model.
+
+**Cause:** `nodemon` watches `.js` and `.json` by default and **not `.env`**.
+Editing `Backend/.env` therefore never restarted the dev server. The running
+process kept sending the old, decommissioned model; `config:check` is a
+**separate process** that read the file fresh and showed the new one. The two
+disagreed, and the browser could only ever show the generic 503 — so a
+perfectly correct `.env` looked exactly like a vendor fault.
+
+**Fix:** `Backend/package.json` now carries an explicit `nodemonConfig` that
+watches `.env`:
+
+```json
+"nodemonConfig": {
+  "watch": ["src", ".env"],
+  "ext": "js,json,env",
+  "ignore": ["test/*", "docs/*"]
+}
+```
+
+With this, saving `.env` restarts the server and the running process agrees
+with `config:check`. Pinned by a test that fails if the config is dropped.
+
+**The rule to remember:** if you edit `Backend/.env` and the behaviour does not
+change, the server did not restart. `Ctrl+C` and `npm run dev` — or trust the
+`nodemonConfig` above to do it for you. A `config:check` that disagrees with the
+running app is telling you the app is stale, not that the config is wrong.
+
 **Not verified:** anything against the real Groq API — there is no key and no
 network in the build sandbox.

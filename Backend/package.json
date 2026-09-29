@@ -127,6 +127,11 @@
     "test:ai-chatbot": "node --test test/hrChatbotService.test.js",
     "test:ai-foundation": "node --test test/aiProviderFoundation.test.js"
   },
+  "nodemonConfig": {
+    "watch": ["src", ".env"],
+    "ext": "js,json,env",
+    "ignore": ["test/*", "docs/*"]
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",

@@ -1344,3 +1344,66 @@ describe('POST /api/ai/chat — the verification pipeline', () => {
     assert.equal(AI_DEFAULT_MODEL, 'openai/gpt-oss-120b');
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 36.3-fix — the dev server must actually pick up .env changes
+// ═══════════════════════════════════════════════════════════════════════════
+describe('36.3-fix — the dev server picks up .env changes', () => {
+  /*
+   * THE TRAP: nodemon watches .js/.json by DEFAULT and NOT .env. Editing
+   * Backend/.env therefore never restarted the dev server, so the running
+   * process kept serving the OLD config while `npm run config:check` - a
+   * separate process - reported the NEW one. That mismatch is what made a
+   * correctly-set AI_MODEL look like a vendor fault: the server was still
+   * sending the decommissioned model and Groq answered 404.
+   *
+   * A wrong AI_MODEL is invisible in the browser, because the opaque-error
+   * law collapses every vendor failure into one generic 503. So it is pinned
+   * here rather than rediscovered at runtime.
+   */
+  test('nodemonConfig watches .env', () => {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(here, '..', 'package.json'), 'utf8'),
+    );
+
+    const config = pkg.nodemonConfig;
+
+    assert.ok(
+      config,
+      'nodemonConfig is missing - .env edits will not restart the dev server',
+    );
+
+    assert.ok(
+      config.watch.includes('.env'),
+      'nodemon must watch .env, or an env change is invisible to the running server',
+    );
+
+    assert.ok(
+      String(config.ext).split(',').includes('env'),
+      "the 'env' extension must be watched",
+    );
+  });
+
+  test('the AI npm scripts are all registered', () => {
+    // 36.3 shipped once with the Redux slice unregistered; a missing npm
+    // script is the same class of omission - everything passes except the
+    // thing nobody ran.
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(here, '..', 'package.json'), 'utf8'),
+    );
+
+    for (const script of [
+      'test:ai-foundation',
+      'test:ai-tenant-config',
+      'test:ai-context',
+      'test:ai-chatbot',
+    ]) {
+      assert.ok(pkg.scripts[script], `${script} is missing from package.json`);
+    }
+
+    assert.ok(
+      pkg.scripts['test:all'].includes('test/hrChatbotService.test.js'),
+      'test:all must include the chatbot suite',
+    );
+  });
+});
