@@ -66,6 +66,27 @@ export const AI_RATE_LIMIT = Object.freeze({
   maximum: 20,
 });
 
+// Phase 36.2 — the context-retrieval preview endpoint is a DEBUG surface: it
+// returns a whole HR context string, which makes it a data-dump tool if it is
+// not throttled harder than the chat itself. A separate 32.4 store keeps the
+// two budgets independent — burning the chat budget must not lock a person
+// out of previewing their own context, and vice versa.
+export const AI_PREVIEW_RATE_LIMIT = Object.freeze({
+  sharedName: 'ai-context-preview',
+  windowMs: 60_000,
+  maximum: 10,
+});
+
+// Phase 36.2 — per-tenant AI config caching. Short TTL on purpose (Phase 36
+// §1.7): a disable flipped by an admin must take effect quickly, and a stale
+// 10 minutes of "enabled" is the acceptable cost of not hitting Mongo on
+// every AI request.
+export const AI_TENANT_CONFIG_CACHE = Object.freeze({
+  namespace: 'ai-config',
+  version: 1,
+  ttlSeconds: 600,
+});
+
 // ── STABLE VOCABULARIES ────────────────────────────────────────────────────
 // Usage-log status. QUOTA_EXCEEDED is a REFUSAL, not a vendor error: the call
 // never reached the model, so its token counts are zero by construction.
@@ -94,6 +115,36 @@ export const AI_ERROR_TYPES = Object.freeze([
 export const AI_FEATURES = Object.freeze(['hr.chat']);
 
 export const AI_FEATURE_HR_CHAT = 'hr.chat';
+
+// Phase 36.2 — HR context categories the retriever can assemble. This is the
+// SINGLE source of truth: the AITenantConfig enum, the request validator and
+// the retriever all read it, so a category cannot exist in one and not the
+// others.
+//
+// Deliberately absent (Phase 36 §10): 'payroll' and 'performance'. Reading a
+// payslip runs the payslipScope authorisation chain and reading an appraisal
+// runs the appraisal access chain; a config flag must never be able to switch
+// either on.
+export const AI_CONTEXT_CATEGORIES = Object.freeze([
+  'profile',
+  'leaves',
+  'attendance',
+  'policies',
+]);
+
+// Phase 36.2 — how far ahead the policies section looks, and how much of each
+// list it returns. Bounded on purpose: an unbounded holiday or announcement
+// list would turn one context string into a document, and the prompt budget
+// (AI_MAX_TOKENS) is shared with the answer.
+export const AI_POLICY_LOOKAHEAD_DAYS = 30;
+
+export const AI_POLICY_HOLIDAY_LIMIT = 10;
+
+export const AI_POLICY_ANNOUNCEMENT_LIMIT = 5;
+
+// Rolling window for "this week" worked hours. Seven calendar days back from
+// today, inclusive — a working week, not a payroll week.
+export const AI_WEEK_HOURS_DAYS = 7;
 
 // ── STRICT PARSERS ─────────────────────────────────────────────────────────
 // The Phase 28.1 law, applied to AI: NEVER `Boolean(env)`. An explicit

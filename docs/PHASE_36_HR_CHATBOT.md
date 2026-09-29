@@ -29,7 +29,7 @@ their own laws.
 | Unit | Scope | Status |
 | --- | --- | --- |
 | **36.1** | AI Provider Foundation & Guardrails — config, PII redactor, usage tracking, quota, kill switch, rate limit, `POST /api/ai/chat` | **IMPLEMENTED** (this document) |
-| **36.2** | AI Tenant Config + Super-Admin Dashboard — per-tenant enable/disable, quota dial, usage visibility, cost estimate | NOT BUILT YET |
+| **36.2** | HR Context Retriever & Tenant AI Config — `AITenantConfig`, tenant service + cache, the read-only redacted context retriever, config & preview endpoints | **CLOSED** (see [PHASE_36_2](PHASE_36_2_HR_CONTEXT_RETRIEVER.md)) |
 | **36.3** | HR Policy Chatbot (RAG) — documents → chunks → embeddings → vector store → answer with citations; employee UI at `/app/ai-assistant` | NOT BUILT YET |
 | **36.4** | Conversational HR self-service — leave balance, payslip explanation, policy Q&A over the 36.3 retrieval base | NOT BUILT YET |
 
@@ -37,6 +37,27 @@ Later candidates, **not scheduled**: chat-hub AI (summarise/translate/smart
 replies inside Phase 33 conversations), document Q&A beyond policy, admin
 analytics NL queries. Each needs its own phase number and its own laws before it
 is built.
+
+### Current state (end of 36.2)
+
+36.1 made an AI call safe. 36.2 made it **informed and controllable**: a tenant
+can now switch AI off for itself, set its own token cap and choose which HR
+context categories its employees may ask about, and the backend can assemble a
+calling user's authorized HR data — leave balances, shift, profile, upcoming
+holidays and announcements — into one string that is redacted before it leaves
+the server.
+
+The retriever is **read-only across every HR domain** and its signature is its
+authorisation: there is no parameter through which another user's context can be
+requested. It is deliberately **not yet wired into the chat path** — that is
+36.3.
+
+Two things 36.2 could not deliver and has recorded rather than papered over:
+there is **no `ai:admin` permission** in the registry (the config endpoints reuse
+`SETTINGS_MANAGE`, which `COMPANY_ADMIN` already inherits), and
+`requirePermission` refuses `SUPER_ADMIN` by design, so a platform super-admin
+still has **no route** to a tenant's AI config. Both are in
+[PHASE_36_2 §6 and §8](PHASE_36_2_HR_CONTEXT_RETRIEVER.md).
 
 ## Explicitly out of scope for the whole phase
 
@@ -141,16 +162,35 @@ is built.
 | 11 | `AIUsageLog` has no text field, and schema/writer agreement is pinned | ✅ 36.1 |
 | 12 | Client-supplied `companyId`/`userId`/`feature` refused by the validator | ✅ 36.1 |
 | 13 | `config:check` reports the AI block; `--production` exits 1 on both AI misconfigurations | ✅ 36.1 |
-| 14 | Per-tenant enable/disable (36.2) | ⬜ 36.2 |
-| 15 | Super-admin usage/cost dashboard (36.2) | ⬜ 36.2 |
+| 14 | Per-tenant enable/disable, quota dial and category allowlist (`PUT /api/ai/config`) | ✅ 36.2 |
+| 15 | Month-to-date token usage visible to a tenant admin (`GET /api/ai/config`) | ✅ 36.2 |
+| 15b | **Platform super-admin** route to a tenant's AI config | ⬜ blocked — `requirePermission` refuses `SUPER_ADMIN` by design; needs the `superAdminAuth` chain (36.3/36.4) |
+| 15c | Cost *estimate* per tenant | ⬜ not built — no billing model exists in this phase |
 | 16 | Policy documents → RAG answer with citations (36.3) | ⬜ 36.3 |
 | 17 | Employee assistant UI at `/app/ai-assistant` (36.3/36.4) | ⬜ 36.3/36.4 |
 
 Rows 1–13 are pinned by `Backend/test/aiProviderFoundation.test.js` (66 tests)
 and by the runtime probe recorded in `docs/PHASE_36_1_FOUNDATION.md` §6.
+Rows 14, 15 and the redaction row are additionally pinned by
+`Backend/test/aiTenantConfig.test.js` (45) and
+`Backend/test/hrContextRetriever.test.js` (47).
 
 ## Runbooks
 
 See `docs/PHASE_36_1_FOUNDATION.md` §3.12 (degraded states) and §8 (localhost
-verification). A dedicated runbook file arrives with 36.2, when there is an
-operational surface to operate.
+verification) plus the per-tenant config endpoints from 36.2.
+
+**Operational runbook for 36.2:**
+
+| Situation | What to do |
+| --- | --- |
+| One tenant must lose AI immediately | `PUT /api/ai/config` with `{"enabled":false}` as that tenant's admin. Effect is instant (the config cache is invalidated on write). No restart. |
+| One tenant is overspending | `PUT /api/ai/config` with `{"monthlyQuotaTokens":<n>}`. Over the cap the tenant gets a hard `429 QUOTA_EXCEEDED`, never a soft overage. |
+| A tenant should stop asking about attendance | `PUT /api/ai/config` with `{"allowedCategories":["profile","leaves","policies"]}`. The allowlist cannot be emptied — disabling the tenant is the one-switch way to say "nothing". |
+| Reset a tenant to platform defaults | `PUT /api/ai/config` with `{"monthlyQuotaTokens":null}` and the full category list. |
+| AI must be off everywhere | `AI_ENABLED=false` + restart. This is the global switch and it beats every tenant row. |
+| The vendor is down | Nothing to do: every failure is already one generic `503 AI_VENDOR_ERROR`. |
+| Check what a tenant has spent this month | `GET /api/ai/config` as that tenant's admin — token total, call count and a per-status breakdown. |
+
+A dedicated runbook file arrives with 36.3, when the chat surface gives operators
+something to operate.

@@ -3,11 +3,11 @@
 //
 //  WHAT THIS MODULE GUARANTEES
 //    Every call to `aiChat` enforces, IN THIS ORDER:
-//      1. the GLOBAL kill switch (AI_ENABLED)      → 503 AI_UNAVAILABLE
-//      2. the PER-TENANT kill switch (36.2 wires it) → 503 AI_UNAVAILABLE
-//      3. the 32.4 shared rate limit               → 429 RATE_LIMITED
-//      4. the monthly token quota                  → 429 QUOTA_EXCEEDED
-//      5. PII REDACTION of every message           → before the vendor call
+//      1. the GLOBAL kill switch (AI_ENABLED)       → 503 AI_UNAVAILABLE
+//      2. the PER-TENANT kill switch (AITenantConfig, 36.2) → 503 AI_UNAVAILABLE
+//      3. the 32.4 shared rate limit                → 429 RATE_LIMITED
+//      4. the monthly token quota (per-tenant, 36.2) → 429 QUOTA_EXCEEDED
+//      5. PII REDACTION of every message            → before the vendor call
 //      6. the vendor call itself (bounded timeout)  → 503 on any failure
 //      7. usage recording (fire-and-forget)         → never blocks the answer
 //
@@ -48,6 +48,11 @@ import {
 import { redactMessages } from './piiRedactor.js';
 
 import { checkQuota, recordUsage } from './aiUsageTracker.js';
+
+import {
+  isTenantAIEnabled,
+  resolveTenantQuota,
+} from './aiTenantConfigService.js';
 
 // ── PROCESS STATE ──────────────────────────────────────────────────────────
 // One client per API process. The SDK pools its own connections; there is no
@@ -191,8 +196,13 @@ export const aiChat = async ({
 } = {}) => {
   const {
     getConfig = () => getAIConfig(),
-    isTenantEnabled = async () => true,
-    resolveQuota = async () => getAIConfig().monthlyQuotaTokens,
+    // Phase 36.2 — the per-tenant kill switch now reads AITenantConfig. The
+    // seam is unchanged: a test still passes its own `isTenantEnabled` and
+    // gets the same control flow.
+    isTenantEnabled = async ({ companyId }) => isTenantAIEnabled(companyId),
+    // Phase 36.2 — the quota is now the tenant's own cap when it has one,
+    // falling back to the env default (36.1 behaviour) otherwise.
+    resolveQuota = async ({ companyId }) => resolveTenantQuota(companyId),
     checkQuotaFn = checkQuota,
     limiter = aiLimiter,
     redact = redactMessages,
@@ -236,20 +246,32 @@ export const aiChat = async ({
     throw AIError.configInvalid();
   }
 
-  // Guard 2 — PER-TENANT kill switch. 36.2 replaces the default resolver
-  // with an AITenantConfig read; the seam exists now so that unit does not
-  // have to reopen this one.
+  // Guard 2 — PER-TENANT kill switch. The default resolver reads
+  // AITenantConfig (Phase 36.2); tests still inject their own.
   let tenantEnabled = true;
 
   try {
     tenantEnabled = await isTenantEnabled({ companyId, config });
-  } catch {
-    // A tenant-config read failure must not silently allow the call.
+  } catch (error) {
+    // A tenant-config read failure must not silently allow the call. The
+    // reply stays AI_UNAVAILABLE (503) because 36.1 pinned that contract for
+    // a failing resolver and §10 forbids changing a shipped code; the
+    // classification is what an operator reads, and it is metadata only.
+    logger.warn('ai.tenant.resolver_error', {
+      feature,
+      errorType: error instanceof AIError && error.code ===
+        AI_ERROR_CODES.CONFIG_READ_FAILED
+        ? 'config'
+        : 'vendor',
+    });
+
     throw AIError.unavailable();
   }
 
   if (!tenantEnabled) {
-    throw AIError.unavailable();
+    // A distinct sentence: the organisation switched AI off, so retrying is
+    // pointless. Same code and status, so no client has to change.
+    throw AIError.tenantDisabled();
   }
 
   // Guard 3 — 32.4 shared rate limit (per company + per user).

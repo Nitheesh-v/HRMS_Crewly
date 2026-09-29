@@ -159,3 +159,79 @@ export const checkQuota = async ({
     windowEnd: window.end,
   };
 };
+
+/**
+ * Phase 36.2 — this tenant's spend for the current calendar month, for the
+ * admin config screen.
+ *
+ * NEW function: nothing above changed. The admin needs to see what the quota
+ * is being measured against, and the only honest source is the same rows
+ * checkQuota sums. Deliberately returns ZEROS rather than throwing when the
+ * read fails — this is a DISPLAY number, and a broken dashboard must not turn
+ * into a broken AI call the way a broken quota read must.
+ *
+ * Metadata only: counts and the window. No feature names, no rows, no text.
+ */
+export const getMonthUsage = async ({
+  companyId,
+  now = new Date(),
+  UsageModel = AIUsageLog,
+} = {}) => {
+  const window = monthWindow(now);
+
+  try {
+    const rows = await UsageModel.aggregate([
+      {
+        $match: {
+          companyId,
+          createdAt: { $gte: window.start, $lt: window.end },
+        },
+      },
+      {
+        $group: {
+          _id: '$status',
+          totalTokens: { $sum: '$totalTokens' },
+          calls: { $sum: 1 },
+        },
+      },
+    ]);
+
+    let totalTokens = 0;
+
+    let calls = 0;
+
+    const byStatus = {};
+
+    (rows || []).forEach((row) => {
+      const tokens = toSafeCount(row?.totalTokens);
+
+      const count = toSafeCount(row?.calls);
+
+      totalTokens += tokens;
+
+      calls += count;
+
+      byStatus[String(row?._id || 'UNKNOWN')] = { totalTokens: tokens, calls: count };
+    });
+
+    return {
+      totalTokens,
+      calls,
+      byStatus,
+      windowStart: window.start,
+      windowEnd: window.end,
+    };
+  } catch (error) {
+    logger.warn('ai.usage.read_failed', {
+      errorCode: String(error?.code || error?.name || 'error'),
+    });
+
+    return {
+      totalTokens: 0,
+      calls: 0,
+      byStatus: {},
+      windowStart: window.start,
+      windowEnd: window.end,
+    };
+  }
+};

@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Phase 36.1 — AI chat request validators.
+// Phase 36.1/36.2 — AI request validators.
 //
 // STRUCTURAL checks only: shape, roles, sizes, and the refusal of any
 // client-supplied identity. The guards that actually protect the vendor
@@ -10,14 +10,16 @@
 // express-validator chain only collects errors until something reads them, so
 // omitting that half would let malformed input reach the service unchecked.
 // ─────────────────────────────────────────────────────────────────────────────
-import { body, validationResult } from 'express-validator';
+import { body, query, validationResult } from 'express-validator';
 
 import ApiError from '../../utils/ApiError.js';
 
 import {
+  AI_CONTEXT_CATEGORIES,
   AI_MESSAGE_MAX_CHARS,
   AI_MESSAGE_MAX_COUNT,
   AI_MESSAGE_ROLES,
+  AI_MONTHLY_QUOTA_CEILING,
 } from '../../services/ai/aiConfig.js';
 
 const validate = (req, _res, next) => {
@@ -50,6 +52,21 @@ const noIdentityOverride = body().custom((_value, { req }) => {
   return true;
 });
 
+// Same rule for a GET: a query string is just as much client input as a body,
+// and `?companyId=` on a context preview would be an attempt to read another
+// tenant's employees.
+const noQueryIdentityOverride = query().custom((_value, { req }) => {
+  const payload = req.query || {};
+
+  for (const field of ['companyId', 'company', 'userId', 'user', 'feature']) {
+    if (payload[field] !== undefined) {
+      throw new Error(`${field} must not be supplied by the client`);
+    }
+  }
+
+  return true;
+});
+
 export const aiChatValidator = [
   noIdentityOverride,
 
@@ -69,5 +86,125 @@ export const aiChatValidator = [
     .isLength({ min: 1, max: AI_MESSAGE_MAX_CHARS })
     .withMessage(`content must be 1 to ${AI_MESSAGE_MAX_CHARS} characters.`),
 
+  validate,
+];
+
+// ── Phase 36.2 — per-tenant AI configuration ────────────────────────────────
+//
+// The three updatable fields are checked individually so a payload mixing a
+// valid `enabled` with a nonsense `monthlyQuotaTokens` is refused as a whole
+// rather than half-applied. `undefined` means "not supplied" and is skipped;
+// `null` is a real value (reset the quota to the env default) and is kept.
+
+const parseQuota = (value) => {
+  if (value === null) return null;
+
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw new Error(
+      'monthlyQuotaTokens must be null (use the platform default) or an integer of 0 (unlimited) or more',
+    );
+  }
+
+  if (value > AI_MONTHLY_QUOTA_CEILING) {
+    throw new Error(
+      `monthlyQuotaTokens must not exceed ${AI_MONTHLY_QUOTA_CEILING}`,
+    );
+  }
+
+  return value;
+};
+
+const quotaBody = body('monthlyQuotaTokens').custom((value, { req }) => {
+  if (value === undefined) return true;
+
+  const parsed = parseQuota(value);
+
+  // Write the coerced value back so the controller never re-parses.
+  req.body.monthlyQuotaTokens = parsed;
+
+  return true;
+});
+
+const enabledBody = body('enabled')
+  .optional()
+  .isBoolean()
+  .withMessage('enabled must be a boolean');
+
+const categoriesBody = body('allowedCategories')
+  .optional()
+  .isArray({ min: 1 })
+  .withMessage('allowedCategories must be a non-empty array')
+  .custom((value) => {
+    const unknown = (value || []).filter(
+      (entry) => !AI_CONTEXT_CATEGORIES.includes(entry),
+    );
+
+    if (unknown.length > 0) {
+      throw new Error(
+        `allowedCategories may only contain: ${AI_CONTEXT_CATEGORIES.join(', ')}.`,
+      );
+    }
+
+    if (new Set(value || []).size !== (value || []).length) {
+      throw new Error('allowedCategories must not contain duplicates.');
+    }
+
+    return true;
+  });
+
+// A payload with none of the three fields is a no-op dressed as a change.
+const atLeastOneField = body().custom((_value, { req }) => {
+  const payload = req.body || {};
+
+  const supplied = ['enabled', 'monthlyQuotaTokens', 'allowedCategories'].filter(
+    (field) => Object.prototype.hasOwnProperty.call(payload, field),
+  );
+
+  if (supplied.length === 0) {
+    throw new Error(
+      'Supply at least one of: enabled, monthlyQuotaTokens, allowedCategories.',
+    );
+  }
+
+  return true;
+});
+
+export const updateConfigValidator = [
+  noIdentityOverride,
+  enabledBody,
+  quotaBody,
+  categoriesBody,
+  atLeastOneField,
+  validate,
+];
+
+// GET /api/ai/context/preview?categories=profile,leaves
+//
+// Optional CSV. An absent value means "everything the tenant allows"; an
+// empty value is treated the same way rather than as an error, because
+// `?categories=` is what a browser sends when a field is left blank.
+export const previewContextValidator = [
+  noQueryIdentityOverride,
+
+  query('categories')
+    .optional({ values: 'falsy' })
+    .custom((value) => {
+      const list = String(value)
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+
+      const unknown = list.filter(
+        (entry) => !AI_CONTEXT_CATEGORIES.includes(entry),
+      );
+
+      if (unknown.length > 0) {
+        throw new Error(
+          `categories may only contain: ${AI_CONTEXT_CATEGORIES.join(', ')}.`,
+        );
+      }
+
+      return true;
+    }),
   validate,
 ];

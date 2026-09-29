@@ -40,6 +40,12 @@ export const AI_ERROR_CODES = Object.freeze({
   // the key, never carries a vendor message.
   CONFIG_INVALID: 'AI_CONFIG_INVALID',
 
+  // Phase 36.2 — the per-tenant config could not be READ (Mongo down, cache
+  // unavailable, corrupt row). 503 because the honest answer is "we cannot
+  // tell you whether AI is on for you", and guessing would mean either a
+  // refused call or a bypassed kill switch.
+  CONFIG_READ_FAILED: 'AI_CONFIG_READ_FAILED',
+
   // Anything the vendor said that is not one of the above. Always 503 and
   // always the same sentence.
   VENDOR_ERROR: 'AI_VENDOR_ERROR',
@@ -66,6 +72,9 @@ export const AI_CLIENT_MESSAGES = Object.freeze({
   [AI_ERROR_CODES.CONFIG_INVALID]:
     'AI is not configured correctly on this server. Contact your administrator.',
 
+  [AI_ERROR_CODES.CONFIG_READ_FAILED]:
+    'AI settings could not be read right now. Please try again shortly.',
+
   [AI_ERROR_CODES.VENDOR_ERROR]:
     'The AI service could not complete your request. Please try again shortly.',
 
@@ -77,19 +86,43 @@ export const AI_CLIENT_MESSAGES = Object.freeze({
  * An operational AI failure that carries a stable code.
  *
  * Extends ApiError so `next(error)` still produces a correct status/message
- * if a caller forgets to use sendAIError — the code is simply lost, exactly
+ * if a caller forgets to use sendAIError - the code is simply lost, exactly
  * as the shared error pipeline has always behaved. The code is only ever
  * emitted by sendAIError.
+ *
+ * The optional 4th argument is a sentence specific to ONE failure mode. It is
+ * still generic - never vendor text, never a Mongo message - and sendAIError
+ * prefers it over the per-code sentence. Every 36.1 factory leaves it null, so
+ * every 36.1 reply is byte-identical to before.
  */
 export class AIError extends ApiError {
-  constructor(statusCode, code, message = AI_CLIENT_MESSAGES[code]) {
+  constructor(
+    statusCode,
+    code,
+    message = AI_CLIENT_MESSAGES[code],
+    clientMessage = null,
+  ) {
     super(statusCode, message);
 
     this.code = code;
+
+    this.clientMessage = clientMessage;
   }
 
   static unavailable() {
     return new AIError(503, AI_ERROR_CODES.UNAVAILABLE);
+  }
+
+  /**
+   * Phase 36.2 - the per-tenant switch is OFF. Same code and status as
+   * `unavailable()` (the frontend contract is unchanged), but the sentence
+   * tells the employee it is their organisation's decision rather than a
+   * transient outage, so they do not retry into a rate limit.
+   */
+  static tenantDisabled() {
+    const sentence = 'AI features are disabled for your organization.';
+
+    return new AIError(503, AI_ERROR_CODES.UNAVAILABLE, sentence, sentence);
   }
 
   static quotaExceeded() {
@@ -106,6 +139,11 @@ export class AIError extends ApiError {
 
   static configInvalid() {
     return new AIError(500, AI_ERROR_CODES.CONFIG_INVALID);
+  }
+
+  /** Phase 36.2 — the per-tenant config could not be read. Fail closed. */
+  static configReadFailed() {
+    return new AIError(503, AI_ERROR_CODES.CONFIG_READ_FAILED);
   }
 
   static vendorError() {
@@ -136,8 +174,14 @@ export const sendAIError = (res, error) => {
   // forbids.
   const statusCode = known ? Number(error?.statusCode) || 503 : 503;
 
+  // A failure-specific sentence wins when one was supplied (36.2's
+  // tenant-disabled case). It is still generic by construction, so this can
+  // never leak a vendor or database message: the only strings that can reach
+  // here are the ones written in this file.
   const message =
-    AI_CLIENT_MESSAGES[code] || AI_CLIENT_MESSAGES[AI_ERROR_CODES.VENDOR_ERROR];
+    error?.clientMessage ??
+    AI_CLIENT_MESSAGES[code] ??
+    AI_CLIENT_MESSAGES[AI_ERROR_CODES.VENDOR_ERROR];
 
   return res.status(statusCode).json({
     statusCode,
