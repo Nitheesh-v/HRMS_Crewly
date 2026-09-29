@@ -1336,8 +1336,11 @@ describe('POST /api/ai/chat — the verification pipeline', () => {
   test('the default model is the one the unit specifies', () => {
     assert.equal(
       getAIConfig({}).model,
-      'llama-3.3-70b-versatile',
+      'openai/gpt-oss-120b',
     );
-    assert.equal(AI_DEFAULT_MODEL, 'llama-3.3-70b-versatile');
+    // 36.3-fix: the previous default was decommissioned by Groq, which made
+    // every call a generic 503. A dead vendor default is a product defect, so
+    // it is pinned here rather than rediscovered at runtime.
+    assert.equal(AI_DEFAULT_MODEL, 'openai/gpt-oss-120b');
   });
 });

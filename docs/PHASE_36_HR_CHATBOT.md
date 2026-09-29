@@ -71,6 +71,14 @@ cause, the two-part fix and the regression test are in
 slice to this store, because the slice → service → `api.js` → store cycle only
 resolves when the store is loaded first.
 
+36.3 also hit a **vendor-side** failure that is worth recording: the shipped
+default model `llama-3.3-70b-versatile` was decommissioned by Groq on
+2026-08-16, so every call returned a generic `503 AI_VENDOR_ERROR` while the
+key, the network and the code were all fine. The default is now
+`openai/gpt-oss-120b` and is pinned by a test. See
+[PHASE_36_3 §10.1](PHASE_36_3_HR_CHATBOT_UI.md) — including how to read
+`ai.vendor.error` to tell a dead model from a bad key without guessing.
+
 ## Explicitly out of scope for the whole phase
 
 * Presence, availability, last-seen (unchanged from Phase 33/34).

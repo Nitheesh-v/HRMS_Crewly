@@ -292,5 +292,32 @@ Expected: an answer drawn only from your own data; `Answered using:` in the
 header naming the categories; the PAN rendered as `[PAN_REDACTED]` in the
 reply; a 20-turn-per-minute ceiling returning a red **wait a few seconds** banner.
 
+### 10.1 The vendor retired the model — and how it looked
+
+The first localhost run failed on **every** turn with a generic
+`503 AI_VENDOR_ERROR` ("The AI provider did not answer"). The key was valid, the
+network was fine and the code was correct.
+
+**Cause:** `llama-3.3-70b-versatile` — the shipped default — was
+**decommissioned by Groq on the free/developer tier on 2026-08-16**
+([deprecations](https://console.groq.com/docs/deprecations)). Groq answers a
+dead model with a 404 "the model does not exist or you do not have access to
+it", and the opaque-vendor-error law correctly collapses that into one generic
+503. So the product behaved *as designed* while being completely broken — the
+only place the real cause appeared was the backend log line
+`ai.vendor.error { errorType: 'vendor', status: 404 }`.
+
+**Fix:** the default is now `openai/gpt-oss-120b`, Groq's own recommended
+replacement, and it is **pinned by a test** (`test/aiProviderFoundation.test.js`
+asserts `AI_DEFAULT_MODEL`). A vendor retiring a model is not a one-off, so a
+dead default is treated as product rot rather than an environment problem.
+
+**How to diagnose this class of failure yourself:** read the backend terminal,
+not the browser. Every vendor failure logs
+`ai.vendor.error { feature, errorType, status, latencyMs }` — metadata only, by
+the privacy law. `errorType` is one of `auth` (401/403 → bad key),
+`rate_limit` (429 → the vendor's own limit), `timeout`, `network` (no
+internet/DNS) or `vendor` (anything else, including a dead model).
+
 **Not verified:** anything against the real Groq API — there is no key and no
 network in the build sandbox.

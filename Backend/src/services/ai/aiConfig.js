@@ -26,7 +26,23 @@
 // AI_BASE_URL + AI_API_KEY and NOTHING else — no code change, by design.
 export const AI_DEFAULT_BASE_URL = 'https://api.groq.com/openai/v1';
 
-export const AI_DEFAULT_MODEL = 'llama-3.3-70b-versatile';
+/*
+ * 36.3-fix — THE MODEL DEFAULT WAS DEAD.
+ *
+ * The original default was llama-3.3-70b-versatile. Groq decommissioned that
+ * model on the free/developer tier on 2026-08-16 (see
+ * console.groq.com/docs/deprecations), so every call now fails with a 404
+ * "the model does not exist or you do not have access to it" — which the
+ * opaque-error law turns into one generic 503 AI_VENDOR_ERROR. Nothing is
+ * wrong with the key, the network or the code; the model string is simply
+ * gone.
+ *
+ * openai/gpt-oss-120b is Groq's own recommended replacement. A vendor retiring
+ * a model is not a one-off, so this default is treated as ROT and pinned by a
+ * test — if it ever stops working again, the suite says so rather than every
+ * tenant discovering it as an unexplained 503.
+ */
+export const AI_DEFAULT_MODEL = 'openai/gpt-oss-120b';
 
 export const AI_DEFAULT_MAX_TOKENS = 1024;
 
