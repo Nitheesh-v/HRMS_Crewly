@@ -1,6 +1,11 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+import {
+  getAIConfig,
+  validateAIConfig,
+} from '../services/ai/aiConfig.js';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 32.15 — CONFIGURATION VALIDATION (§10/§11/§95/§102)
 //
@@ -40,6 +45,13 @@ export const validateProductionConfig = (source = process.env) => {
     errors.push(`JWT_SECRET: too short for production (minimum ${MIN_PRODUCTION_JWT_SECRET_LENGTH} characters)`);
   }
 
+  // Phase 36.1 — the AI suite. Same law, same place, same secret hygiene:
+  // AI_API_KEY is required the moment AI is switched on, and the PII
+  // redaction override is REFUSED in production (redaction is mandatory
+  // before any text leaves the server). AI_ENABLED defaults to false, so a
+  // deployment that does not use AI contributes no errors at all.
+  errors.push(...validateAIConfig(source).errors);
+
   return { ok: errors.length === 0, errors };
 };
 
@@ -50,6 +62,14 @@ const env = {
   CLIENT_URL: process.env.CLIENT_URL || 'http://localhost:5173',
   JWT_SECRET: process.env.JWT_SECRET || 'dev_secret_change_me',
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '7d',
+
+  // Phase 36.1 — resolved AI configuration. Resolved HERE (not read key by
+  // key at each call site) so one snapshot exists, but the parsers themselves
+  // stay pure and re-runnable against any source for the config:check CLI and
+  // the hermetic tests. Carries the key because the provider needs it — see
+  // services/ai/aiConfig.js for why describeAIConfig is the only printable
+  // shape.
+  AI: getAIConfig(),
 };
 
 // Always-enforced requirement (all environments): Mongo is authoritative.

@@ -66,6 +66,7 @@ if (isProductionTarget) {
 }
 
 // ── REDIS (optional subsystem — strict parse, bounded) ──────────────────────
+const { getAIConfig } = await import('../src/services/ai/aiConfig.js');
 const { getRedisConfig } = await import('../src/config/redis.js');
 const redisConfig = getRedisConfig(process.env);
 report.push({ name: 'REDIS_ENABLED', status: String(redisConfig.enabled) });
@@ -153,6 +154,31 @@ report.push({
     ? 'shared (Redis) — one budget across instances'
     : 'local per-process (degraded but ENFORCED — never unlimited)',
 });
+
+// ── AI SUITE (36.1 - enablement, vendor, redaction, quota) ──────────────────────────
+// Names and statuses only. AI_API_KEY is reported as configured|missing and
+// NEVER as a value, a length or a fingerprint (32.15 §22).
+const aiConfig = getAIConfig(process.env);
+report.push({ name: 'AI_ENABLED', status: String(aiConfig.enabled) });
+report.push({ name: 'AI_PROVIDER', status: aiConfig.enabled ? 'groq (OpenAI-compatible)' : 'n/a (disabled)' });
+report.push({ name: 'AI_BASE_URL', status: aiConfig.baseUrl });
+report.push({ name: 'AI_MODEL', status: aiConfig.model });
+report.push(state('AI_API_KEY', aiConfig.apiKey, { secret: true }));
+report.push({ name: 'AI_MAX_TOKENS', status: String(aiConfig.maxTokens) });
+report.push({ name: 'AI_MONTHLY_QUOTA_TOKENS', status: String(aiConfig.monthlyQuotaTokens) });
+report.push({ name: 'AI_TIMEOUT_MS', status: String(aiConfig.timeoutMs) });
+report.push({
+  name: 'AI_PII_REDACTION',
+  status: aiConfig.redactionEnforced
+    ? 'enforced (redaction always runs before the vendor)'
+    : 'OVERRIDDEN - development/test only, production refuses this',
+});
+
+// A missing key with the suite switched on is a deployment error, not a
+// warning: the API would boot and 503 every /api/ai/chat call.
+if (aiConfig.enabled && !aiConfig.hasApiKey) {
+  problems.push('AI_API_KEY: required when AI_ENABLED=true (the AI provider cannot authenticate)');
+}
 
 // ── EMAIL / STORAGE (feature-off capable; never validated as mandatory) ─────
 for (const name of ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_FROM']) {

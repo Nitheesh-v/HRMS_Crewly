@@ -56,6 +56,7 @@ import bgvVerifierAuthRoutes from "./bgv/bgvVerifierAuthRoutes.js";
 import bgvVerifierWorkRoutes from "./bgv/bgvVerifierWorkRoutes.js";
 import publicCandidatePreOnboardingRoutes from "./recruitment/publicCandidatePreOnboardingRoutes.js";
 import insightsAnalyticsRoutes from "./insightsAnalyticsRoutes.js";
+import aiRoutes from "./ai.js";
 import reportBuilderRoutes from "./reportBuilderRoutes.js";
 
 const router = Router();
@@ -123,6 +124,13 @@ router.use("/attendance/regularizations", attendanceRegularizationRoutes);
 router.use("/attendance/overtime", attendanceOvertimeRoutes);
 
 router.use("/attendance", attendanceRoutes);
+
+// Phase 36.1 - AI suite (protect + tenantContext inside the router).
+// ONE endpoint in this unit: the guarded chat pipeline the rest of the
+// phase builds on. Mounted after the tenant modules so the existing
+// ordering rules (literal routes before /:id, attendance sub-routers
+// before /attendance) are untouched.
+router.use("/ai", aiRoutes);
 
 // Phase 31.14 — kiosk punch router (separate kioskAuth trust boundary).
 router.use("/kiosk", attendanceKioskRoutes);

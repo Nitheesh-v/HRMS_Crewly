@@ -46,6 +46,7 @@ import {
   stopProcessDiagnostics,
   getInstanceId,
 } from './infrastructure/observability/processDiagnostics.js';
+import { initAIProvider } from './services/ai/aiProvider.js';
 
 const startServer = async () => {
   try {
@@ -89,6 +90,16 @@ const startServer = async () => {
     // results) now runs in the WORKER process at startup, and on
     // demand via `npm run processing:reconcile`. The API only
     // enqueues; Mongo holds the durable intent.
+
+    // Phase 36.1 - AI provider foundation (default OFF via AI_ENABLED).
+    //
+    // FAIL-FAST BY DESIGN: AI_ENABLED=true without AI_API_KEY is a
+    // misconfigured deployment, and booting an API that will 503 every
+    // /api/ai/chat call is worse than refusing to start. The existing
+    // try/catch below logs the message (the KEY name only - AIError never
+    // carries a value) and exits 1. With the suite switched off this is a
+    // silent, cheap no-op.
+    initAIProvider();
 
     const server = http.createServer(app);
 
