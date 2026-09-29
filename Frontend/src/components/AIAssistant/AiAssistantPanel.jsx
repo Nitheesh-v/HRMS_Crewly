@@ -19,11 +19,17 @@
 //
 // NO STREAMING, NO AGENT BEHAVIOUR: one turn is one request, and the reply
 // arrives whole.
+//
+// 36.4 — RETRY AND COPY. A transient vendor failure used to leave the person
+// retyping the question. The retry button re-sends the conversation exactly as
+// it stands; the server is stateless and rebuilds the context itself, so
+// retrying is safe and needs no extra state. Copy is offered on the answer,
+// because the reply is the only thing this UI ever produces.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { AlertTriangle, Bot, Info, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Bot, Info, RotateCcw, Trash2, X } from 'lucide-react';
 
 import { useDispatch, useSelector } from 'react-redux';
 
@@ -42,7 +48,7 @@ const WELCOME = {
   id: 'welcome',
   role: 'assistant',
   content:
-    'Hi, I am your Crewly HR assistant. I can answer questions about your own leave balance, attendance, shift timings, holidays, profile and company announcements. Ask me anything below.',
+    'Hi, I am your Crewly HR assistant. I can answer questions about your own leave balance and history, attendance, shift timings, holidays, profile, tasks, projects, expenses, payslips and documents. I can also tell you how to apply for leave, punch in, or claim an expense. Ask me anything below.',
 };
 
 /**
@@ -128,7 +134,38 @@ const AiAssistantPanel = ({ onClose }) => {
     [dispatch, messages, sending],
   );
 
+  /**
+   * Re-send the conversation as it stands.
+   *
+   * No new state and no queue: the server is stateless, rebuilds the HR
+   * context from scratch on every call and caps the history itself, so the
+   * exact same payload that just failed is the exact payload to send again.
+   * Deliberately does NOT append a duplicate user turn — the question is
+   * already on screen, and repeating it would read as the person having asked
+   * twice.
+   */
+  const retry = useCallback(async () => {
+    if (sending || messages.length === 0) return;
+
+    await dispatch(
+      sendChatMessage({
+        messages: messages
+          .slice(-MAX_MESSAGES)
+          .map(({ role: roleName, content: body }) => ({
+            role: roleName,
+            content: body,
+          })),
+      }),
+    );
+  }, [dispatch, messages, sending]);
+
   const shown = messages.length > 0 ? messages : [WELCOME];
+
+  // Copy is offered on the newest answer only. A button on every bubble turns
+  // the transcript into a wall of controls.
+  const lastAssistantId = [...shown]
+    .reverse()
+    .find((message) => message.role === 'assistant')?.id;
 
   return (
     <>
@@ -196,13 +233,27 @@ const AiAssistantPanel = ({ onClose }) => {
             aria-hidden="true"
             strokeWidth={1.8}
           />
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="font-semibold">{error}</p>
             <p className="mt-0.5 text-crewly-red/80">
               {ERROR_HINTS[errorCode] ||
                 'Try again, or contact your HR team if this keeps happening.'}
             </p>
           </div>
+
+          {/* 36.4 — retry. Shown on the error itself, where the person is
+              already looking, and disabled while a send is in flight so two
+              requests can never race. */}
+          <button
+            type="button"
+            onClick={retry}
+            disabled={sending}
+            title="Ask again"
+            className="flex shrink-0 items-center gap-1 rounded border border-crewly-red/40 px-2 py-1 text-[11px] font-semibold text-crewly-red transition hover:bg-crewly-red/10 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RotateCcw className="h-3 w-3" aria-hidden="true" strokeWidth={2} />
+            Try again
+          </button>
         </div>
       )}
 
@@ -212,6 +263,11 @@ const AiAssistantPanel = ({ onClose }) => {
             key={message.id}
             role={message.role}
             content={message.content}
+            onCopy={
+              message.id === lastAssistantId && message.id !== 'welcome'
+                ? () => {}
+                : undefined
+            }
           />
         ))}
 

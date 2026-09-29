@@ -31,14 +31,14 @@ their own laws.
 | **36.1** | AI Provider Foundation & Guardrails — config, PII redactor, usage tracking, quota, kill switch, rate limit, `POST /api/ai/chat` | **IMPLEMENTED** (this document) |
 | **36.2** | HR Context Retriever & Tenant AI Config — `AITenantConfig`, tenant service + cache, the read-only redacted context retriever, config & preview endpoints | **CLOSED** (see [PHASE_36_2](PHASE_36_2_HR_CONTEXT_RETRIEVER.md)) |
 | **36.3** | HR Chatbot UI & Conversational API — one employee-facing turn per request: `POST /api/ai/chatbot`, `hrChatbotService`, the `/app/ai-assistant` page and sidebar entry. **No RAG, no embeddings, no vector store** — the retriever from 36.2 is the retrieval. | **CLOSED** (see [PHASE_36_3](PHASE_36_3_HR_CHATBOT_UI.md)) |
-| **36.4** | Close-out & hardening — kill-switch runbook rehearsal, cost display, the remaining gaps listed in PHASE_36_3 §9 | NOT BUILT YET |
+| **36.4** | Advanced HR Assistant — nine new own-record context categories, a static capability catalogue, role-aware aggregate counts, stricter prompt rules, retry/copy UX | **CLOSED** (see [PHASE_36_4](PHASE_36_4_ADVANCED_HR_ASSISTANT.md)) |
 
 Later candidates, **not scheduled**: chat-hub AI (summarise/translate/smart
 replies inside Phase 33 conversations), document Q&A beyond policy, admin
 analytics NL queries. Each needs its own phase number and its own laws before it
 is built.
 
-### Current state (end of 36.3)
+### Current state (end of 36.4)
 
 36.1 made an AI call safe. 36.2 made it **informed and controllable**. 36.3 made
 it **usable**: an employee can now open `/app/ai-assistant`, ask a question, and
@@ -57,6 +57,22 @@ there is **no `ai:admin` permission** in the registry (the config endpoints reus
 `requirePermission` refuses `SUPER_ADMIN` by design, so a platform super-admin
 still has **no route** to a tenant's AI config. Both are in
 [PHASE_36_2 §6 and §8](PHASE_36_2_HR_CONTEXT_RETRIEVER.md).
+
+36.4 widened the context catalogue from four categories to **thirteen**, so the
+assistant can now answer about the caller's own payslips, expenses, tasks,
+projects, documents, full leave history and month-to-date attendance, plus a
+**static capability catalogue** for the "how do I…" questions that need no data
+at all. Role-aware aggregates give a manager their team's counts and an HR user
+the company's counts — **counts only, never rows, never a name, never a salary
+figure**. The authorization law did not bend: every new query is still scoped by
+`companyId` and the field that owns the row.
+
+The one thing 36.4 refuses to do is render a salary figure. The redactor masks a
+salary-labelled number **by design**, so putting `net pay 45000` in the context
+would only produce `net pay [AMOUNT_REDACTED]` — and the assistant would report
+the employee's own net pay as redacted. The payslip section therefore carries
+which months exist and points at My Payslips. See
+[PHASE_36_4 §3](PHASE_36_4_ADVANCED_HR_ASSISTANT.md).
 
 36.3 records its own limitation rather than hiding it: the history is capped to
 the **last 6 turns**, tighter than the UI's 20-message display cap, because the
@@ -203,14 +219,19 @@ stale, not that the config is wrong.**
 | 15 | Month-to-date token usage visible to a tenant admin (`GET /api/ai/config`) | ✅ 36.2 |
 | 15b | **Platform super-admin** route to a tenant's AI config | ⬜ blocked — `requirePermission` refuses `SUPER_ADMIN` by design; needs the `superAdminAuth` chain (36.3/36.4) |
 | 15c | Cost *estimate* per tenant | ⬜ not built — no billing model exists in this phase |
-| 16 | Policy documents → RAG answer with citations (36.3) | ⬜ 36.3 |
-| 17 | Employee assistant UI at `/app/ai-assistant` (36.3/36.4) | ⬜ 36.3/36.4 |
+| 16 | Policy documents → RAG answer with citations | ⬜ **NOT DOING** — there is no leave-policy model, handbook or manual anywhere in this repo. 36.2's `policies` category is upcoming holidays + recent announcement titles and nothing else. This is why the 36.3 "Leave policy" quick prompt was removed. |
+| 17 | Employee assistant UI | ✅ **36.3 / 36.3b / 36.4** — as a **floating widget**, not the `/app/ai-assistant` page. The route and the sidebar entry were removed in 36.3b. |
 
 Rows 1–13 are pinned by `Backend/test/aiProviderFoundation.test.js` (66 tests)
 and by the runtime probe recorded in `docs/PHASE_36_1_FOUNDATION.md` §6.
 Rows 14, 15 and the redaction row are additionally pinned by
 `Backend/test/aiTenantConfig.test.js` (45) and
 `Backend/test/hrContextRetriever.test.js` (47).
+
+36.4 added `Backend/test/hrContextOwnRecords.test.js` (38), which pins the
+nine new categories and the authorization law behind them, and took
+`Backend/test/hrChatbotService.test.js` from 48 to 48 tests across thirteen
+prompt rules. `npm run test:all` is **2939 tests / 145 suites / 0 fail**.
 
 ## Runbooks
 
@@ -236,8 +257,21 @@ verification) plus the per-tenant config endpoints from 36.2.
 | An employee is hammering the assistant | The `ai-chatbot` 32.4 store allows 20 turns per 60 s per (tenant, user). Over the cap they get `429 AI_RATE_LIMITED`. No admin action needed; it clears itself. |
 | An employee says the assistant "made up" an answer | The system prompt forbids it and the context is the only source, but the model can still be wrong — this is why 36.3 shows `Answered using:` so the person can see which categories were consulted. AI output is informational only and is never authoritative. |
 | A tenant's employees all see "switched off" | That tenant's `AITenantConfig.enabled` is `false`, or the global `AI_ENABLED` is off. `PUT /api/ai/config` with `{"enabled":true}` restores it. |
-| A question comes back as "I do not have that information" | Correct behaviour: the answer was not in that employee's own authorized context. Check the tenant's `allowedCategories`. |
+| A question comes back as "I do not have that information" | **Check before calling it correct.** Since `5757006` a stated negative is an answer, so a refusal is only correct when the answer genuinely was not in the context. Read `GET /api/ai/context/preview`: if the section says `none` / `NO_RECORD` and the model still refused, that is a **prompt bug** (rules 8/9); if it says `(x unavailable)`, the read failed. |
 | An employee typed their PAN into the chat | It was redacted before the vendor ever saw it. The assistant's reply quotes `[PAN_REDACTED]`. |
 
 The dedicated per-unit runbook is
 [PHASE_36_3 §10](PHASE_36_3_HR_CHATBOT_UI.md).
+
+**Operational runbook for 36.4** (the wider context catalogue):
+
+| Situation | What to do |
+| --- | --- |
+| A tenant should stop seeing payslips in chat | `PUT /api/ai/config` with an `allowedCategories` list that omits `payslips`. The category is then never queried at all — not queried and hidden. |
+| "What is my net pay?" comes back without a figure | Correct behaviour. The redactor masks a salary-labelled number by design, so the context carries no amount and the assistant points at My Payslips. |
+| A manager asks how many are on leave | They get their team's counts. An employee is told their role does not include company-wide figures. No one ever gets a name. |
+| "How do I apply for leave?" is refused | The capability catalogue is static and always present, so this should never happen. If it does, `AI_CAPABILITIES` in `src/services/ai/aiConfig.js` was edited — check the entry still names a screen that exists. |
+| The context preview shows fewer sections than expected | Compare it against the 13 entries in `AI_CONTEXT_CATEGORIES` and the tenant's `allowedCategories`. |
+
+The dedicated per-unit runbook is
+[PHASE_36_4 §10 and §12](PHASE_36_4_ADVANCED_HR_ASSISTANT.md).

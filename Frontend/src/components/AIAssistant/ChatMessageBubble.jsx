@@ -6,13 +6,42 @@
 // to run an HTML parser on them.
 //
 // No emojis anywhere in this UI — the icon set is lucide-react only.
+//
+// 36.4 — an optional COPY affordance. The reply is the only thing this UI ever
+// shows, and people paste it into tickets and emails, so the panel offers it
+// rather than making them select the text by hand.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { Bot, User } from 'lucide-react';
+import { useState } from 'react';
+
+import { Bot, Check, Copy, User } from 'lucide-react';
 
 
-const ChatMessageBubble = ({ role = 'user', content = '' }) => {
+const ChatMessageBubble = ({ role = 'user', content = '', onCopy }) => {
   const isAssistant = role === 'assistant';
+
+  // Local, transient, and never persisted: it exists only to swap the icon for
+  // a moment so the person knows the click landed.
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    const text = String(content || '');
+
+    if (!text) return;
+
+    try {
+      // The clipboard API is unavailable in insecure contexts and in some
+      // embedded frames. A missing button is a better failure than a thrown
+      // promise the user cannot act on, so this degrades silently.
+      await navigator.clipboard.writeText(text);
+
+      setCopied(true);
+
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      /* nothing to do — the text is still selectable by hand */
+    }
+  };
 
   return (
     <div
@@ -38,6 +67,23 @@ const ChatMessageBubble = ({ role = 'user', content = '' }) => {
       >
         {/* Whitespace is preserved so a multi-line answer reads as written. */}
         <p className="whitespace-pre-wrap break-words">{content}</p>
+
+        {onCopy && (
+          <button
+            type="button"
+            onClick={copy}
+            title={copied ? 'Copied' : 'Copy this answer'}
+            aria-label={copied ? 'Answer copied' : 'Copy this answer'}
+            className="mt-1.5 flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-semibold text-crewly-dim transition hover:text-crewly-text"
+          >
+            {copied ? (
+              <Check className="h-3 w-3" aria-hidden="true" strokeWidth={2} />
+            ) : (
+              <Copy className="h-3 w-3" aria-hidden="true" strokeWidth={1.8} />
+            )}
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        )}
       </div>
 
       {!isAssistant && (

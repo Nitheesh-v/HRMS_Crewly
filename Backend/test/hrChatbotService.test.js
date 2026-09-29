@@ -127,7 +127,7 @@ describe('system prompt construction (Phase 36 §5 step 3)', () => {
     assert.equal(system.includes(CONTEXT), true);
   });
 
-  test('the system message contains all nine rules verbatim', async () => {
+  test('the system message contains all thirteen rules verbatim', async () => {
     const aiChatFn = recordingAiChat();
 
     await askHRAssistant({
@@ -140,8 +140,9 @@ describe('system prompt construction (Phase 36 §5 step 3)', () => {
     const system = aiChatFn.calls[0].messages[0].content;
 
     // A prompt that drifted silently would be an instruction the product never
-    // approved, so the rules are pinned as text, not as behaviour.
-    for (let rule = 1; rule <= 9; rule += 1) {
+    // approved, so the rules are pinned as text, not as behaviour. 36.4 took
+    // the count from nine to thirteen.
+    for (let rule = 1; rule <= 13; rule += 1) {
       assert.equal(system.includes(`${rule}. `), true, `rule ${rule} is missing`);
     }
 
@@ -159,6 +160,24 @@ describe('system prompt construction (Phase 36 §5 step 3)', () => {
       system.includes('NEVER offer to take actions on behalf of the employee'),
       true,
     );
+
+    // 36.4 rule 10 — the "how do I..." questions must be answerable from
+    // the capability catalogue, which is the whole reason the catalogue exists.
+    assert.equal(
+      system.includes('QUESTIONS ARE ANSWERED FROM THE CAPABILITY LIST'),
+      true,
+    );
+
+    // 36.4 rule 11 — the answer must say where it came from.
+    assert.equal(system.includes('NAME YOUR SOURCE'), true);
+
+    // 36.4 rule 12 — no salary figure, ever. This is the redactor's rule
+    // restated for the model, because the context has no amounts to leak.
+    assert.equal(system.includes('NEVER STATE A SALARY FIGURE'), true);
+    assert.equal(system.includes('My Payslips'), true);
+
+    // 36.4 rule 13 — the model must not turn a count into a person.
+    assert.equal(system.includes('YOU ONLY KNOW THIS EMPLOYEE'), true);
   });
 
   test('rule 8 teaches that "none" IS an answer', async () => {

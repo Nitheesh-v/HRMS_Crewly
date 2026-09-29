@@ -28,6 +28,7 @@ const AITenantConfig = (await import('../src/models/AITenantConfig.js'))
 const {
   AI_TENANT_CONFIG_CACHE,
   AI_DEFAULT_MONTHLY_QUOTA_TOKENS,
+  AI_CONTEXT_CATEGORIES,
 } = await import('../src/services/ai/aiConfig.js');
 
 const {
@@ -200,20 +201,27 @@ describe('AITenantConfig model (Phase 36 §5)', () => {
     );
   });
 
-  test('the enum is closed to the four HR context categories', () => {
+  test('the enum is closed to the HR context categories and nothing else', () => {
     const options = AITenantConfig.schema.path('allowedCategories').options;
 
-    assert.deepEqual([...options.enum].sort(), [
-      'attendance',
-      'leaves',
-      'policies',
-      'profile',
-    ]);
+    assert.deepEqual([...options.enum].sort(), [...AI_CONTEXT_CATEGORIES].sort());
 
-    // 'payroll' and 'performance' must NOT be grantable by a config row:
-    // reading either runs its own authorisation chain.
-    assert.equal(options.enum.includes('payroll'), false);
+    // 36.4 widened the list from four to thirteen. Pinned so a future
+    // category cannot be added to the retriever without also reaching the
+    // tenant allowlist, which is what would let an operator switch on a
+    // category nobody authorised.
+    assert.equal(AI_CONTEXT_CATEGORIES.length, 13);
+
+    // 'performance' must NOT be grantable by a config row: reading an
+    // appraisal runs its own authorisation chain, and an employee must not
+    // be able to read another employee's rating through a chat box.
+    //
+    // 'payslips' IS grantable since 36.4, but only for the caller's OWN
+    // payslips - the builder scopes on employeeId = req.user._id, the same
+    // rule payslipController pins as "only ever their own".
     assert.equal(options.enum.includes('performance'), false);
+    assert.equal(options.enum.includes('payslips'), true);
+    assert.equal(options.enum.includes('payroll'), false);
   });
 
   test('a negative quota is refused at the schema level', () => {

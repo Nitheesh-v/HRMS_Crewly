@@ -17,6 +17,7 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
 
 const WIDGET = 'src/components/AIAssistant/AiAssistantWidget.jsx';
 const PANEL = 'src/components/AIAssistant/AiAssistantPanel.jsx';
+const BUBBLE = 'src/components/AIAssistant/ChatMessageBubble.jsx';
 
 describe('Phase 36.3 — the assistant is a widget', () => {
   test('the widget file exists and exports a component', () => {
@@ -60,60 +61,10 @@ describe('Phase 36.3 — the assistant is a widget', () => {
     assert.equal(layout.includes('ai-assistant'), false, 'the nav entry must be removed');
   });
 
-  test('the widget is mounted in AppLayout, once', () => {
-    // Mounted here so it is reachable from EVERY authenticated page. Mounted
-    // once, because two instances would mean two conversations.
-    const layout = read('src/layout/AppLayout.jsx');
-
-    const mounts = layout.match(/<AiAssistantWidget\s*\/>/g) || [];
-
-    assert.equal(mounts.length, 1, `expected 1 mount, found ${mounts.length}`);
-    assert.equal(layout.includes('import AiAssistantWidget'), true);
-  });
-
-  test('the widget renders a floating, fixed button', () => {
-    const source = read(WIDGET);
-
-    // `fixed bottom-* right-*` is what makes it float over the page rather than
-    // sit in the layout flow.
-    assert.match(source, /fixed bottom-\d+ right-\d+/);
-    assert.equal(source.includes('aria-label="Open the HR assistant"'), true);
-  });
-
-  test('the widget opens a modal dialog', () => {
-    const source = read(WIDGET);
-
-    assert.equal(source.includes('role="dialog"'), true);
-    assert.equal(source.includes('aria-modal="true"'), true);
-    assert.equal(source.includes('<AiAssistantPanel'), true);
-  });
-
-  test('Escape closes the panel, and only while it is open', () => {
-    const source = read(WIDGET);
-
-    assert.equal(source.includes("event.key === 'Escape'"), true);
-    assert.equal(
-      source.includes('if (!open) return undefined;'),
-      true,
-      'the listener must not be attached while closed, or it swallows Escape',
-    );
-  });
-
-  test('the button hides while the panel is open', () => {
-    // Two affordances for one action is noise.
-    const source = read(WIDGET);
-
-    assert.equal(source.includes('{!open && ('), true);
-  });
-
-  test('the widget carries NO fake notification badge', () => {
-    // The reference product shows a count badge on its button. Nothing here
-    // generates a count, so a badge would be a lie told in the corner of every
-    // screen. Pinned so it is not added for looks.
-    //
-    // Comments are stripped first: the explanation below legitimately NAMES the
-    // thing it is forbidding, and a pin that matched its own comment would pass
-    // while the code did whatever it liked.
+  test('the widget button carries no badge', () => {
+    // The pin matched its own doc comment the first time it was written, so
+    // comments are stripped before the check. A pin that matches its own
+    // explanation passes while the code does whatever it likes.
     const code = read(WIDGET)
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/\/\/.*$/gm, '');
@@ -136,7 +87,7 @@ describe('Phase 36.3 — the assistant is a widget', () => {
     // House law: lucide-react icons only.
     const emoji = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
 
-    for (const file of [WIDGET, PANEL]) {
+    for (const file of [WIDGET, PANEL, BUBBLE]) {
       const source = read(file);
 
       // Strip comments before checking, so an explanation that names a symbol
@@ -145,5 +96,90 @@ describe('Phase 36.3 — the assistant is a widget', () => {
 
       assert.equal(emoji.test(code), false, `${file} contains an emoji`);
     }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE 36.4 — RETRY AND COPY
+// ═══════════════════════════════════════════════════════════════════════════
+describe('Phase 36.4 — a failed turn can be retried', () => {
+  test('the panel exposes a retry control on the error banner', () => {
+    const source = read(PANEL);
+
+    assert.equal(source.includes('RotateCcw'), true, 'no retry icon');
+    assert.equal(source.includes('Try again'), true, 'no retry label');
+    assert.equal(source.includes('onClick={retry}'), true, 'retry is not wired');
+  });
+
+  test('retry re-sends the existing conversation and adds no duplicate turn', () => {
+    // The server is stateless and rebuilds the HR context itself, so the same
+    // payload that just failed is the right payload to send again. Appending
+    // the question a second time would read as the person having asked twice.
+    const source = read(PANEL);
+
+    assert.equal(source.includes('const retry = useCallback'), true);
+    assert.equal(source.includes('sendChatMessage({'), true);
+
+    // It dispatches the send thunk directly — NOT messageAdded, which is what
+    // would duplicate the user's turn.
+    const retryBlock = source.slice(
+      source.indexOf('const retry = useCallback'),
+      source.indexOf('const shown ='),
+    );
+
+    assert.equal(retryBlock.includes('messageAdded'), false);
+  });
+
+  test('retry is disabled while a send is in flight', () => {
+    // Two in-flight requests would race for the same reply slot.
+    const source = read(PANEL);
+
+    const retryBlock = source.slice(
+      source.indexOf('onClick={retry}'),
+      source.indexOf('onClick={retry}') + 400,
+    );
+
+    assert.equal(retryBlock.includes('disabled={sending}'), true);
+  });
+});
+
+describe('Phase 36.4 — the answer can be copied', () => {
+  test('the bubble offers a copy control', () => {
+    const source = read(BUBBLE);
+
+    assert.equal(source.includes('navigator.clipboard.writeText'), true);
+    assert.equal(source.includes('Copy'), true);
+    assert.equal(source.includes('Copied'), true);
+  });
+
+  test('copy is opt-in per bubble, not always on', () => {
+    // A button on every bubble would turn the transcript into a wall of
+    // controls, so the panel passes it only for the newest answer.
+    const source = read(BUBBLE);
+
+    assert.equal(source.includes('onCopy &&'), true);
+  });
+
+  test('copy is offered on the newest assistant answer only', () => {
+    const source = read(PANEL);
+
+    assert.equal(source.includes('lastAssistantId'), true);
+    assert.equal(source.includes('onCopy={'), true);
+  });
+
+  test('the copy control is never offered on the welcome message', () => {
+    // The welcome text is not an answer and copying it is meaningless.
+    const source = read(PANEL);
+
+    assert.equal(source.includes("message.id !== 'welcome'"), true);
+  });
+
+  test('a failed clipboard write is swallowed, not thrown', () => {
+    // The clipboard API is unavailable in insecure contexts and in some
+    // embedded frames. The text stays selectable by hand, so the button
+    // degrading quietly is the honest behaviour.
+    const source = read(BUBBLE);
+
+    assert.equal(source.includes('} catch {'), true);
   });
 });

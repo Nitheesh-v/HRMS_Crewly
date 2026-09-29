@@ -1,9 +1,8 @@
 // PHASE 36.3 — every quick prompt must be ANSWERABLE.
 //
-// The retriever fills exactly four categories: profile, leaves, attendance and
-// policies (= upcoming holidays + recent announcement titles). There is NO
-// leave-policy document source in this repository, so a pill that promises one
-// is guaranteed to be refused - and a guaranteed refusal is worse than no pill.
+// The retriever fills the categories listed below. There is NO leave-policy
+// document source in this repository, so a pill that promises one is guaranteed
+// to be refused - and a guaranteed refusal is worse than no pill.
 //
 // This test fails if a pill promises something the context cannot deliver.
 import { describe, test } from 'node:test';
@@ -11,7 +10,12 @@ import assert from 'node:assert/strict';
 
 import { QUICK_PROMPTS } from '../src/components/AIAssistant/chatPrompts.js';
 
-/** What 36.2's retriever can actually put in the context string. */
+/**
+ * What the retriever can actually put in the context string. 36.4 widened the
+ * catalogue from four categories to thirteen, and the pills widened with it —
+ * but the rule did not change: a pill is only allowed if its answer can be
+ * assembled from one of these.
+ */
 const ANSWERABLE = Object.freeze({
   profile: [
     'profile',
@@ -21,6 +25,14 @@ const ANSWERABLE = Object.freeze({
     'date of joining',
     'employee code',
   ],
+  // WHICH payslips exist and their status. The figures are deliberately NOT in
+  // the context, so a pill asking "what is my net pay" would be a lie.
+  payslips: ['payslip'],
+  expenses: ['expense', 'expense claim'],
+  tasks: ['task'],
+  projects: ['project'],
+  documents: ['document'],
+  'leave-requests': ['leave request', 'leave history', 'recent leave'],
   leaves: ['leave balance', 'casual', 'sick', 'earned', 'comp off', 'pending leave'],
   attendance: [
     'attendance status',
@@ -31,15 +43,26 @@ const ANSWERABLE = Object.freeze({
     'shift',
     'work hours',
   ],
+  'attendance-month': ['attendance', 'this month'],
   // The `policies` category is holidays + announcements. NOTHING ELSE.
   policies: ['holiday', 'announcement'],
+  // The static capability catalogue: no data access at all.
+  capabilities: [
+    'how do i',
+    'apply for leave',
+    'punch',
+    'claim an expense',
+    'upload a document',
+  ],
 });
 
 const ALL_TERMS = Object.values(ANSWERABLE).flat();
 
 describe('Phase 36.3 quick prompts', () => {
-  test('there are six pills, each with a label and a prompt', () => {
-    assert.equal(QUICK_PROMPTS.length, 6);
+  test('every pill has a label and a prompt', () => {
+    // 36.4 widened the set from six to fifteen so the empty state introduces
+    // the new own-record categories, not just the original four.
+    assert.equal(QUICK_PROMPTS.length, 15);
 
     for (const pill of QUICK_PROMPTS) {
       assert.equal(typeof pill.label, 'string', 'label');
@@ -84,7 +107,7 @@ describe('Phase 36.3 quick prompts', () => {
     );
   });
 
-  test('the pills cover three of the four categories', () => {
+  test('the pills cover most of the categories', () => {
     // A pill set that only asks about one thing is a poor introduction.
     const haystack = QUICK_PROMPTS.map(
       (pill) => `${pill.label} ${pill.prompt}`.toLowerCase(),
@@ -95,8 +118,23 @@ describe('Phase 36.3 quick prompts', () => {
     );
 
     assert.ok(
-      covered.length >= 3,
+      covered.length >= 10,
       `only ${covered.length} categories are represented: ${covered.join(', ')}`,
     );
+  });
+
+  test('no pill asks for a salary figure', () => {
+    // 36.4 — the context deliberately carries no net pay, gross or deduction
+    // amount (the redactor masks salary-labelled numbers by design), so a pill
+    // asking for one is guaranteed to be refused. "Which payslips do I have?"
+    // is answerable; "what is my net pay?" is not.
+    for (const pill of QUICK_PROMPTS) {
+      assert.ok(
+        !/net pay|gross pay|salary|ctc|take[\s-]?home|in[\s-]hand|how much (do i|am i) (earn|paid|get)/i.test(
+          pill.prompt,
+        ),
+        `"${pill.prompt}" asks for a figure the context cannot supply`,
+      );
+    }
   });
 });

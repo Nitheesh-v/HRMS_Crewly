@@ -18,9 +18,10 @@
 //    authorisation, and a source pin greps for the forbidden names.
 //
 //  READ-ONLY
-//    find / findOne / aggregate. No save, no update, no delete, no counter.
-//    Nothing in Leave, Attendance, ShiftAssignment, User, Holiday or
-//    Announcement is ever written by this module (Phase 36 §10).
+//    find / findOne / findById / aggregate / countDocuments. No save, no
+//    update, no delete, no counter. Nothing in Leave, Attendance,
+//    ShiftAssignment, User, Holiday, Announcement, Payslip, Expense, Task,
+//    Project or Document is ever written by this module (Phase 36 §10).
 //
 //  PARTIAL > NOTHING
 //    One category failing must not blank the whole context. A failed section
@@ -34,6 +35,27 @@
 //    reason are all things a human typed. The assembled string therefore goes
 //    through redactPII() before it is returned, so anything that slipped
 //    through the query is still masked before it can reach a prompt.
+//
+//  36.4 — WHAT WAS ADDED, AND THE ONE RULE THAT DID NOT BEND
+//    Nine more categories: the employee's own payslips, expenses, tasks,
+//    projects, documents, full leave history, a month view of attendance,
+//    role-aware aggregate COUNTS, and a static capability catalogue.
+//
+//    The authorization law above is unchanged and still absolute. Every new
+//    builder is scoped by `companyId` AND the field that owns the row, and
+//    every value still comes from the arguments this function was given.
+//    An employee still cannot read another employee's salary, leave or
+//    attendance through a chat box.
+//
+//    The one place the context is not strictly the caller's own data is
+//    `org-aggregates`, and it is written to be obviously safe: counts only,
+//    never a row, never an id, a name, a designation or a salary figure.
+//    See renderOrgAggregates for the four rules.
+//
+//    And the money rule: NO salary-labelled number is ever rendered, because
+//    the redactor masks it by design and a masked figure in a context string
+//    would make the assistant report the employee's own net pay as redacted.
+//    See the payslip renderer's note.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import User from '../../models/User.js';
@@ -52,11 +74,21 @@ import Holiday from '../../models/Holiday.js';
 
 import Announcement from '../../models/Announcement.js';
 
+import Payslip from '../../models/Payslip.js';
+
+import Expense from '../../models/Expense.js';
+
+import Task from '../../models/Task.js';
+
+import Project from '../../models/Project.js';
+
+import Document from '../../models/Document.js';
+
 import AITenantConfig from '../../models/AITenantConfig.js';
 
 import logger from '../../config/logger.js';
 
-import { LEAVE_TYPES } from '../../utils/constants.js';
+import { LEAVE_TYPES, ROLES } from '../../utils/constants.js';
 
 import { COMPANY_TIMEZONE } from '../../utils/dateHelpers.js';
 
@@ -66,6 +98,13 @@ import {
   AI_POLICY_HOLIDAY_LIMIT,
   AI_POLICY_ANNOUNCEMENT_LIMIT,
   AI_WEEK_HOURS_DAYS,
+  AI_PAYSLIP_LIMIT,
+  AI_EXPENSE_LIMIT,
+  AI_TASK_LIMIT,
+  AI_PROJECT_LIMIT,
+  AI_DOCUMENT_LIMIT,
+  AI_LEAVE_REQUEST_LIMIT,
+  AI_CAPABILITIES,
 } from './aiConfig.js';
 
 import { getTenantConfig } from './aiTenantConfigService.js';
@@ -299,6 +338,271 @@ const renderPolicies = ({ holidays, announcements }) => {
   return lines.join('\n');
 };
 
+// ── 36.4 SECTION RENDERERS (own records) ────────────────────────────────────
+// Every renderer below follows the same two laws as the 36.2 ones:
+//   NONE vs UNAVAILABLE — a failed read is parenthesised, an empty result is
+//   a plain statement (system-prompt rules 8 and 9).
+//   NO LABELLED MONEY — see the payslip renderer's note.
+//
+/**
+ * THE MONEY RULE, and why the payslip figures are not here.
+ *
+ * piiRedactor deliberately masks a number that carries a salary label:
+ *   "net pay 45000"  ->  "net pay [AMOUNT_REDACTED]"
+ * That is a 36.2 decision and it is correct — salary is the single most
+ * sensitive number in the product and the redactor's whole job is to keep it
+ * out of the vendor payload. It was verified, not assumed.
+ *
+ * So rendering "net pay 45000" here would produce a context that reads
+ * "net pay [AMOUNT_REDACTED]", and the assistant would then tell the
+ * employee their own net pay is redacted — which is both useless and
+ * confusing. Instead this section carries WHICH payslips exist and their
+ * status, and says plainly that the figures stay on the payslip screen.
+ *
+ * The redactor is NOT loosened to make the assistant look clever. The
+ * honest degraded state is the required behaviour, not a shortcut.
+ */
+const renderPayslips = (rows) => {
+  if (!rows) return UNAVAILABLE('payslips');
+
+  const lines = ['My Payslips (most recent first):'];
+
+  if (rows.length === 0) {
+    lines.push('- none generated for you yet');
+  } else {
+    rows.forEach((row) => {
+      const snapshot = row.snapshot || {};
+
+      const payroll = snapshot.payroll || {};
+
+      const label =
+        payroll.monthLabel || payroll.month || row.month || 'an earlier month';
+
+      const status = row.status || 'GENERATED';
+
+      lines.push(`- ${label}: ${status}`);
+    });
+
+    lines.push(
+      '- Earnings, deductions and net pay figures are not shown here by design. Open My Payslips to view them.',
+    );
+  }
+
+  return lines.join('\n');
+};
+
+/**
+ * Own expense claims. Unlike salary, an expense amount is an ordinary
+ * business number: the redactor leaves a bare number alone on purpose
+ * ("ordinary business numbers survive"), so it is rendered here. What is
+ * still never rendered is a receipt URL or a storage key.
+ */
+const renderExpenses = (rows) => {
+  if (!rows) return UNAVAILABLE('expenses');
+
+  const lines = ['My Expense Claims:'];
+
+  if (rows.length === 0) {
+    lines.push('- none submitted by you yet');
+  } else {
+    rows.forEach((row) => {
+      const when = row.expenseDate || shortDate(row.createdAt) || 'date not set';
+
+      const parts = [`- ${when}`, row.category || 'OTHER'];
+
+      const amount = Number(row.amount);
+
+      if (Number.isFinite(amount) && amount > 0) {
+        parts.push(`${amount} ${row.currency || 'INR'}`);
+      }
+
+      if (row.description) parts.push(row.description);
+
+      parts.push(`(${row.status || 'UNKNOWN'})`);
+
+      lines.push(parts.join(', '));
+    });
+  }
+
+  return lines.join('\n');
+};
+
+const renderTasks = (rows) => {
+  if (!rows) return UNAVAILABLE('tasks');
+
+  const lines = ['My Tasks:'];
+
+  if (rows.length === 0) {
+    lines.push('- none assigned to you');
+  } else {
+    rows.forEach((row) => {
+      const due = row.dueDate ? shortDate(row.dueDate) : 'no due date';
+
+      lines.push(`- ${row.title || 'untitled'} (${row.status || 'TODO'}), due ${due}`);
+    });
+  }
+
+  return lines.join('\n');
+};
+
+const renderProjects = (rows) => {
+  if (!rows) return UNAVAILABLE('projects');
+
+  const lines = ['My Projects:'];
+
+  if (rows.length === 0) {
+    lines.push('- none - you are not on any project');
+  } else {
+    rows.forEach((row) => {
+      lines.push(`- ${row.name || 'untitled'} (${row.status || 'NOT_STARTED'})`);
+    });
+  }
+
+  return lines.join('\n');
+};
+
+const renderDocuments = (rows) => {
+  if (!rows) return UNAVAILABLE('documents');
+
+  const lines = ['My Documents:'];
+
+  if (rows.length === 0) {
+    lines.push('- none uploaded for you');
+  } else {
+    rows.forEach((row) => {
+      lines.push(`- ${row.name || 'untitled'} (${row.category || 'OTHER'})`);
+    });
+  }
+
+  return lines.join('\n');
+};
+
+/**
+ * The full leave request history, newest first. Deliberately includes
+ * rejected and cancelled rows: "why was my leave rejected?" can only be
+ * answered from a rejected row, and the balances section has no concept of
+ * one.
+ */
+const renderLeaveRequests = (rows) => {
+  if (!rows) return UNAVAILABLE('leave requests');
+
+  const lines = ['My Leave Requests (newest first):'];
+
+  if (rows.length === 0) {
+    lines.push('- none - you have never applied for leave');
+  } else {
+    rows.forEach((row) => {
+      const label = LEAVE_TYPES[row.type]?.label || row.type || 'LEAVE';
+
+      const days = Number(row.days) || 0;
+
+      lines.push(
+        `- ${label}: ${row.startDate} to ${row.endDate} (${days} day(s)) ` +
+          `[${row.status || 'UNKNOWN'}]`,
+      );
+    });
+  }
+
+  return lines.join('\n');
+};
+
+/**
+ * Month-to-date attendance rollup. The `attendance` category answers
+ * "how am I doing today?"; this one answers "how has this month been?",
+ * which is a different question and was previously unanswerable.
+ */
+const renderAttendanceMonth = ({ buckets, minutes, daysInMonth, monthLabel }) => {
+  if (!buckets) return UNAVAILABLE('attendance for this month');
+
+  const lines = [`Attendance This Month (${monthLabel}):`];
+
+  const present = Number(buckets.PRESENT) || 0;
+
+  const late = Number(buckets.LATE) || 0;
+
+  const half = Number(buckets.HALF_DAY) || 0;
+
+  const recorded = present + late + half;
+
+  if (recorded === 0) {
+    lines.push('- none recorded so far this month');
+  } else {
+    lines.push(`- Days recorded: ${recorded} of ${daysInMonth}`);
+
+    lines.push(`- Present: ${present}, Late: ${late}, Half day: ${half}`);
+  }
+
+  const hours = Math.round((minutes / 60) * 10) / 10;
+
+  lines.push(`- Hours worked so far: ${hours}`);
+
+  return lines.join('\n');
+};
+
+/**
+ * ROLE-AWARE AGGREGATES — COUNTS ONLY, NEVER ROWS.
+ *
+ * This is the one place the context is not strictly the caller's own data,
+ * so it is written to be obviously safe:
+ *   §1 A count is not a person. "3 people are on leave today" names nobody.
+ *   §2 No employee id, name, employeeCode, email or designation is
+ *      ever put in an aggregate. Not in the query, not in the render.
+ *   §3 An EMPLOYEE gets nothing: the section says their role does not
+ *      include company-wide figures, which is an answer, not a refusal.
+ *   §4 No salary figure is aggregated, at any role. Payroll stays out.
+ *
+ * A manager sees their own team's counts because they can already open
+ * their team's leave list on screen. An HR user sees company counts because
+ * they can already open the company dashboard. Neither gets a new door.
+ */
+const renderOrgAggregates = ({ role, counts }) => {
+  if (!role) return UNAVAILABLE('role');
+
+  if (role === ROLES.EMPLOYEE) {
+    return [
+      'Team and Company Figures:',
+      '- none - your role does not include team or company-wide figures',
+    ].join('\n');
+  }
+
+  const isPeopleManager =
+    role === ROLES.MANAGER || role === ROLES.TEAM_LEAD;
+
+  const lines = [isPeopleManager ? 'My Team Figures:' : 'Company Figures:'];
+
+  if (isPeopleManager) {
+    lines.push(`- Direct reports: ${counts.reports}`);
+  } else {
+    lines.push(`- Total employees: ${counts.employees}`);
+  }
+
+  lines.push(`- On leave today: ${counts.onLeaveToday}`);
+
+  lines.push(`- Marked present today: ${counts.presentToday}`);
+
+  if (!isPeopleManager) {
+    lines.push(`- Pending leave requests: ${counts.pendingLeave}`);
+  }
+
+  lines.push(`- Pending expense claims: ${counts.pendingExpenses}`);
+
+  return lines.join('\n');
+};
+
+/**
+ * The static capability catalogue. Needs no database read, so it cannot
+ * fail and therefore has no unavailable branch.
+ */
+const renderCapabilities = () => {
+  const lines = ['What This Assistant Can Help You Do:'];
+
+  AI_CAPABILITIES.forEach((entry) => {
+    lines.push(`- ${entry.topic}: ${entry.how}`);
+  });
+
+  return lines.join('\n');
+};
+
 // ── THE RETRIEVER ───────────────────────────────────────────────────────────
 
 /**
@@ -336,6 +640,11 @@ export const getUserHRContext = async ({
     ShiftModel = Shift,
     HolidayModel = Holiday,
     AnnouncementModel = Announcement,
+    PayslipModel = Payslip,
+    ExpenseModel = Expense,
+    TaskModel = Task,
+    ProjectModel = Project,
+    DocumentModel = Document,
     ConfigModel = AITenantConfig,
     cacheIo,
     now = () => new Date(),
@@ -522,6 +831,214 @@ export const getUserHRContext = async ({
 
       return renderPolicies({ holidays, announcements });
     },
+
+    // ── 36.4 own-record builders ──────────────────────────────────────────
+    // Each one is scoped by companyId AND the field that owns the row, and
+    // every value comes from the arguments this function was given. There is
+    // no parameter anywhere in this module through which another employee's
+    // rows could be requested.
+
+    payslips: async () => {
+      // employeeId is the payslip's owner field and it is req.user._id —
+      // the same rule payslipController.js pins as "only ever their own".
+      const rows = await PayslipModel.find({
+        companyId,
+        employeeId: userId,
+      })
+        .sort({ month: -1 })
+        .limit(AI_PAYSLIP_LIMIT)
+        .select('month status snapshot')
+        .lean();
+
+      return renderPayslips(rows);
+    },
+
+    expenses: async () => {
+      const rows = await ExpenseModel.find({ companyId, user: userId })
+        .sort({ expenseDate: -1, createdAt: -1 })
+        .limit(AI_EXPENSE_LIMIT)
+        // receiptUrl is a signed delivery URL and receiptStorageKey is
+        // select:false anyway; neither is ever needed to describe a claim.
+        .select('category amount currency expenseDate description status')
+        .lean();
+
+      return renderExpenses(rows);
+    },
+
+    tasks: async () => {
+      const rows = await TaskModel.find({
+        company: companyId,
+        assignedTo: userId,
+      })
+        .sort({ dueDate: 1, createdAt: -1 })
+        .limit(AI_TASK_LIMIT)
+        .select('title status dueDate priority')
+        .lean();
+
+      return renderTasks(rows);
+    },
+
+    projects: async () => {
+      // Project has no scalar owner: membership is an array on three
+      // different fields. All three are checked, because a team lead is not
+      // in `members` and the manager is in neither array.
+      const rows = await ProjectModel.find({
+        company: companyId,
+        $or: [
+          { manager: userId },
+          { teamLeads: userId },
+          { members: userId },
+        ],
+      })
+        .sort({ updatedAt: -1 })
+        .limit(AI_PROJECT_LIMIT)
+        .select('name status startDate endDate')
+        .lean();
+
+      return renderProjects(rows);
+    },
+
+    documents: async () => {
+      const rows = await DocumentModel.find({ companyId, user: userId })
+        .sort({ createdAt: -1 })
+        .limit(AI_DOCUMENT_LIMIT)
+        // fileUrl is a private storage reference and is never selected.
+        .select('name category createdAt')
+        .lean();
+
+      return renderDocuments(rows);
+    },
+
+    'leave-requests': async () => {
+      const rows = await LeaveModel.find({ companyId, user: userId })
+        .sort({ startDate: -1 })
+        .limit(AI_LEAVE_REQUEST_LIMIT)
+        .select('type startDate endDate days status reason')
+        .lean();
+
+      return renderLeaveRequests(rows);
+    },
+
+    'attendance-month': async () => {
+      const monthPrefix = today.slice(0, 7);
+
+      const rows = await AttendanceModel.aggregate([
+        {
+          $match: {
+            companyId,
+            user: userId,
+            // Month start through today, never into the future.
+            date: { $gte: `${monthPrefix}-01`, $lte: today },
+          },
+        },
+        {
+          $group: {
+            _id: '$status',
+            days: { $sum: 1 },
+            minutes: { $sum: '$workMinutes' },
+          },
+        },
+      ]);
+
+      const buckets = {};
+
+      let minutes = 0;
+
+      (rows || []).forEach((row) => {
+        if (row?._id) buckets[row._id] = Number(row?.days) || 0;
+
+        minutes += Number(row?.minutes) || 0;
+      });
+
+      const daysInMonth = new Date(
+        Number(monthPrefix.slice(0, 4)),
+        Number(monthPrefix.slice(5, 7)),
+        0,
+      ).getDate();
+
+      return renderAttendanceMonth({
+        buckets,
+        minutes,
+        daysInMonth,
+        monthLabel: monthPrefix,
+      });
+    },
+
+    // Counts only. See renderOrgAggregates for the four rules that make
+    // this safe to hand to a vendor at all.
+    'org-aggregates': async () => {
+      const me = await UserModel.findOne({ _id: userId, companyId })
+        .select('role department reportingTo')
+        .lean();
+
+      if (!me) return UNAVAILABLE('role');
+
+      const role = String(me.role || '').toUpperCase();
+
+      if (role === ROLES.EMPLOYEE) {
+        return renderOrgAggregates({ role, counts: {} });
+      }
+
+      const isPeopleManager =
+        role === ROLES.MANAGER || role === ROLES.TEAM_LEAD;
+
+      const presentFilter = {
+        companyId,
+        date: today,
+        status: { $in: ['PRESENT', 'LATE'] },
+      };
+
+      const onLeaveFilter = {
+        companyId,
+        status: 'APPROVED',
+        startDate: { $lte: today },
+        endDate: { $gte: today },
+      };
+
+      const pendingExpenseFilter = {
+        companyId,
+        status: { $in: ['PENDING_MANAGER', 'PENDING_FINANCE'] },
+      };
+
+      const pendingLeaveFilter = { companyId, status: 'PENDING' };
+
+      const [
+        reports,
+        employees,
+        presentToday,
+        onLeaveToday,
+        pendingExpenses,
+        pendingLeave,
+      ] = await Promise.all([
+        isPeopleManager
+          ? UserModel.countDocuments({ companyId, reportingTo: userId })
+          : Promise.resolve(0),
+        isPeopleManager
+          ? Promise.resolve(0)
+          : UserModel.countDocuments({ companyId }),
+        AttendanceModel.countDocuments(presentFilter),
+        LeaveModel.countDocuments(onLeaveFilter),
+        ExpenseModel.countDocuments(pendingExpenseFilter),
+        isPeopleManager
+          ? Promise.resolve(0)
+          : LeaveModel.countDocuments(pendingLeaveFilter),
+      ]);
+
+      return renderOrgAggregates({
+        role,
+        counts: {
+          reports,
+          employees,
+          presentToday,
+          onLeaveToday,
+          pendingExpenses,
+          pendingLeave,
+        },
+      });
+    },
+
+    // No read, therefore no failure branch.
+    capabilities: async () => renderCapabilities(),
   };
 
   const settled = await Promise.all(

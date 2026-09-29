@@ -168,15 +168,41 @@ export const AI_CHATBOT_RATE_LIMIT = Object.freeze({
 // the retriever all read it, so a category cannot exist in one and not the
 // others.
 //
-// Deliberately absent (Phase 36 §10): 'payroll' and 'performance'. Reading a
-// payslip runs the payslipScope authorisation chain and reading an appraisal
-// runs the appraisal access chain; a config flag must never be able to switch
-// either on.
+// 36.4 — EXTENDED. The employee kept asking questions the assistant could not
+// answer because the data was simply not in the context, so the catalogue
+// now covers the day-to-day records an employee already owns: their
+// payslips, expenses, tasks, projects, documents, full leave history and a
+// month view of attendance. Plus `capabilities`, which needs no database.
+//
+// WHAT IS STILL DELIBERATELY ABSENT: 'performance'. Reading an appraisal runs
+// the appraisal access chain, and a config flag must never be able to switch
+// that on. An employee must not be able to read another employee's rating
+// through a chat box.
+//
+// WHY 'payslips' IS NOW HERE (a 36.2 decision reversed on purpose, and why
+// it is safe): 36.2 withheld it because reading a payslip needed the
+// payslipScope authorisation chain. That chain already exists and it is
+// exactly one rule — controllers/payroll/payslipController.js pins
+// `employeeId = req.user._id` with the comment "only ever their own". So
+// this category reads ONLY the caller's own payslips, on the same field and
+// the same rule the payslip screen itself uses. It grants no new
+// visibility: the employee could already open their own payslip. What is
+// still withheld is every OTHER employee's payslip — there is no
+// aggregate payroll figure in this phase.
 export const AI_CONTEXT_CATEGORIES = Object.freeze([
   'profile',
+  'payslips',
+  'expenses',
+  'tasks',
+  'projects',
+  'documents',
+  'leave-requests',
   'leaves',
   'attendance',
+  'attendance-month',
   'policies',
+  'org-aggregates',
+  'capabilities',
 ]);
 
 // Phase 36.2 — how far ahead the policies section looks, and how much of each
@@ -192,6 +218,109 @@ export const AI_POLICY_ANNOUNCEMENT_LIMIT = 5;
 // Rolling window for "this week" worked hours. Seven calendar days back from
 // today, inclusive — a working week, not a payroll week.
 export const AI_WEEK_HOURS_DAYS = 7;
+
+// Phase 36.4 — how many rows of each own-record list the context carries.
+// Every one is bounded on purpose. An unbounded expense or task list would
+// turn one context string into a document and crowd the answer out of the
+// shared AI_MAX_TOKENS budget, so the retriever takes the most recent few
+// and the assistant is told (by the count it also renders) that more exist.
+export const AI_PAYSLIP_LIMIT = 3;
+
+export const AI_EXPENSE_LIMIT = 8;
+
+export const AI_TASK_LIMIT = 10;
+
+export const AI_PROJECT_LIMIT = 10;
+
+export const AI_DOCUMENT_LIMIT = 10;
+
+// Full leave history. The `leaves` category is BALANCES (this year, one line
+// per type); `leave-requests` is the actual REQUESTS, newest first, including
+// rejected and cancelled ones — "why was my leave rejected last month?" is
+// a different question from "how many days do I have left?".
+export const AI_LEAVE_REQUEST_LIMIT = 12;
+
+// Phase 36.4 — THE CAPABILITY CATALOGUE.
+//
+// WHY IT EXISTS: the most common questions are not about data at all, they
+// are about how to DO something — "how do I apply for leave?", "where do I
+// upload my PAN card?", "how do I fix a missed punch?". None of those can be
+// answered from a database read, so before this existed the assistant could
+// only refuse, and refusing to a question it should answer is the bug the
+// owner reported.
+//
+// THE LAW: every entry below describes something the product REALLY does.
+// Each one was checked against the route that backs it. An entry naming a
+// screen or an action that does not exist is worse than no catalogue at
+// all, because the assistant would confidently send the employee somewhere
+// that is not there. If a feature is removed, its line is removed here in
+// the same change.
+//
+// It is STATIC and needs no database read, which is why the `capabilities`
+// context category cannot fail: there is nothing to read and therefore
+// nothing to be unavailable.
+export const AI_CAPABILITIES = Object.freeze([
+  {
+    topic: 'Applying for leave',
+    how: 'Open My Leaves, choose New Request, pick the leave type, set the from and to dates, add a reason, and submit. Your manager decides it; the result appears in the same list.',
+  },
+  {
+    topic: 'Checking leave balance and history',
+    how: 'Open My Leaves. Balances show what is remaining per leave type for the year, and the request list shows every past request including rejected and cancelled ones.',
+  },
+  {
+    topic: 'Cancelling a leave request',
+    how: 'Open My Leaves, find the request that is still pending or approved, and use Cancel. An already rejected request cannot be cancelled.',
+  },
+  {
+    topic: 'Punching in and out',
+    how: 'Open Attendance and use Punch In at the start of your day and Punch Out when you finish. Today\'s punches and total hours are shown on the same screen.',
+  },
+  {
+    topic: 'Fixing a missed or wrong punch',
+    how: 'Open Attendance, then Regularization, then raise a request for the date in question with the correct times and a reason. Your manager approves it; the attendance record is then corrected.',
+  },
+  {
+    topic: 'Viewing your attendance history',
+    how: 'Open Attendance and use My Attendance to see your day-by-day record, hours worked and status for any month.',
+  },
+  {
+    topic: 'Claiming an expense',
+    how: 'Open My Expenses, then New Expense, fill in the category, amount, date and description, attach the receipt, and submit. It goes to your manager first, then to finance, and the status is shown in the same list.',
+  },
+  {
+    topic: 'Tracking an expense claim',
+    how: 'Open My Expenses. Each claim shows its current stage - with your manager, with finance, approved, rejected or reimbursed.',
+  },
+  {
+    topic: 'Seeing the work assigned to you',
+    how: 'Open My Tasks to see every task assigned to you, its status and due date. You can update the status and add comments as you progress.',
+  },
+  {
+    topic: 'Seeing which projects you are on',
+    how: 'Open Projects and filter to the ones where you are a member, a team lead or the manager.',
+  },
+  {
+    topic: 'Downloading or viewing your payslip',
+    how: 'Open My Payslips and pick the month. Each payslip shows earnings, deductions and net pay for that month.',
+  },
+  {
+    topic: 'Uploading a personal document',
+    how: 'Open My Documents, then upload the file, give it a name and a category, and save. Your documents are private to you.',
+  },
+  {
+    topic: 'Updating your profile details',
+    how: 'Open My Profile to see your designation, department, reporting manager and date of joining, and to update the fields your company allows you to change.',
+  },
+  {
+    topic: 'Reading company announcements',
+    how: 'Announcements are posted on your dashboard. Pinned ones stay at the top.',
+  },
+  {
+    topic: 'Seeing upcoming holidays',
+    how: 'Open My Leaves or the dashboard holiday list to see the holidays scheduled in the coming weeks.',
+  },
+]);
 
 // ── STRICT PARSERS ─────────────────────────────────────────────────────────
 // The Phase 28.1 law, applied to AI: NEVER `Boolean(env)`. An explicit

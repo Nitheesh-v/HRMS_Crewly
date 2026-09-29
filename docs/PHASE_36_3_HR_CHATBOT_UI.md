@@ -11,6 +11,7 @@ guardrails and 36.2's context retriever.
 | Tests | `npm run test:ai-chatbot` — **48 tests, 8 suites, 0 fail** |
 | Full suite | `npm run test:all` — **2901 tests, 133 suites, 0 fail** (was 2851/124) |
 | Frontend tests | `npm test` (in `Frontend/`) — **27 tests, 3 suites, 0 fail** |
+| Superseded by | 36.4 — see §10.6 below for the current totals |
 | Mutation check | **11 mutations, 11 caught** |
 
 ---
@@ -474,3 +475,32 @@ there — and the assistant is right to say so.
 
 **Not verified:** anything against the real Groq API — there is no key and no
 network in the build sandbox.
+
+---
+
+## 10.6 Superseded by 36.4 (recorded, not erased)
+
+The counts in this document's header are the numbers **as 36.3 closed**. They
+are no longer current, and 36.4 changed them:
+
+| | 36.3 close | after 36.4 |
+| --- | --- | --- |
+| `npm run test:all` | 2901 / 133 / 0 fail | **2939 / 145 / 0 fail** |
+| Frontend `npm test` | 27 / 3 / 0 fail | **31 / 5 / 0 fail** |
+| Context categories | 4 | **13** |
+| System-prompt rules | 9 | **13** |
+| Quick prompts | 6 | **15** |
+
+What 36.4 changed about this unit's surface:
+
+- **Retry** on the error banner and **Copy** on the newest answer were added
+  to `AiAssistantPanel.jsx` and `ChatMessageBubble.jsx`.
+- **Quick prompts** went from 6 to 15, covering the new own-record categories
+  and two capability questions. The rule did not change: a pill is only
+  allowed if its answer can be assembled from a category the retriever fills.
+- **The welcome text** now names the new categories.
+- A new pin forbids a pill that asks for a salary figure, because 36.4's
+  context deliberately carries no amounts.
+
+Everything in §8.1 (the blank page), §10.1 — §10.5 still applies unchanged. The
+full record is [PHASE_36_4](PHASE_36_4_ADVANCED_HR_ASSISTANT.md).
