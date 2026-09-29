@@ -7,6 +7,7 @@ import NotificationBell from "../components/NotificationBell";
 import SubscriptionStatusBanner from "../components/SubscriptionStatusBanner.jsx";
 import { Power, Menu, X } from "lucide-react";
 import SidebarNav from "./SidebarNav.jsx";
+import AiAssistantWidget from "../components/AIAssistant/AiAssistantWidget.jsx";
 import { useEffect, useState } from "react";
 import { useDispatch } from "react-redux";
 import { startRealtimeSession, stopRealtimeSession } from "../services/realtime/realtimeClient.js";
@@ -18,7 +19,6 @@ const NAV_BY_ROLE = {
   [ROLES.COMPANY_ADMIN]: [
     { to: "/app", label: "Dashboard", end: true },
     { to: "/app/chat", label: "Chat" },
-    { to: "/app/ai-assistant", label: "AI Assistant" },
     { to: "/app/meetings", label: "Meetings" },
     { to: "/app/org-chart", label: "Organization" },
     { to: "/app/users", label: "User Management" },
@@ -63,7 +63,6 @@ const NAV_BY_ROLE = {
   [ROLES.HR_MANAGER]: [
     { to: "/app", label: "Dashboard", end: true },
     { to: "/app/chat", label: "Chat" },
-    { to: "/app/ai-assistant", label: "AI Assistant" },
     { to: "/app/users", label: "Employees" },
     {
       to: "/app/subscription",
@@ -102,7 +101,6 @@ const NAV_BY_ROLE = {
   [ROLES.MANAGER]: [
     { to: "/app", label: "Dashboard", end: true },
     { to: "/app/chat", label: "Chat" },
-    { to: "/app/ai-assistant", label: "AI Assistant" },
     { to: "/app/meetings", label: "Meetings" },
     { to: "/app/departments", label: "My Departments" },
     { to: "/app/analytics", label: "Team Analytics" },
@@ -139,7 +137,6 @@ const NAV_BY_ROLE = {
   [ROLES.TEAM_LEAD]: [
     { to: "/app", label: "Dashboard", end: true },
     { to: "/app/chat", label: "Chat" },
-    { to: "/app/ai-assistant", label: "AI Assistant" },
     { to: "/app/meetings", label: "Meetings" },
     { to: "/app/org-chart", label: "My Team" },
     { to: "/app/users", label: "Team Members" },
@@ -173,7 +170,6 @@ const NAV_BY_ROLE = {
   [ROLES.EMPLOYEE]: [
     { to: "/app", label: "Dashboard", end: true },
     { to: "/app/chat", label: "Chat" },
-    { to: "/app/ai-assistant", label: "AI Assistant" },
     { label: "Chat Hub", soon: true },
     { to: "/app/meetings", label: "Meetings" },
     { label: "Time Tracking", soon: true },
@@ -579,6 +575,11 @@ const AppLayout = () => {
           </div>
         </main>
       </div>
+
+      {/* Phase 36.3 — the AI assistant is a floating widget, not a page. It is
+          mounted here so it is reachable from every screen in the tenant app
+          without leaving the one you are on. */}
+      <AiAssistantWidget />
     </div>
   );
 };

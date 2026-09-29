@@ -9,7 +9,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { QUICK_PROMPTS } from '../src/pages/AIAssistant/chatPrompts.js';
+import { QUICK_PROMPTS } from '../src/components/AIAssistant/chatPrompts.js';
 
 /** What 36.2's retriever can actually put in the context string. */
 const ANSWERABLE = Object.freeze({

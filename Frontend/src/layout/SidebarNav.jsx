@@ -54,14 +54,12 @@ import {
   Users,
   Wallet,
   X,
-  Bot,
 } from "lucide-react";
 
 // ── icons (moved out of AppLayout) ────────────────────────────────────────
 
 const NAV_ICON_BY_PATH = {
   "/app": LayoutDashboard,
-  "/app/ai-assistant": Bot,
   "/app/meetings": CalendarDays,
   "/app/org-chart": Network,
   "/app/users": Users,
@@ -206,17 +204,6 @@ const NAV_GROUPS = [
     label: "Insights",
     icon: BarChart3,
     paths: ["/app/analytics", "/app/reports"],
-  },
-
-  // ── Phase 36.3 — the HR Assistant gets its OWN group and its own icon, not
-  // a line inside "Me". A single-item group renders as a direct icon button
-  // when the sidebar is collapsed, which is the point.
-  {
-    id: "ai",
-    label: "AI Assistant",
-    icon: Bot,
-    paths: ["/app/ai-assistant"],
-    prefixes: ["/app/ai-assistant"],
   },
 
   {

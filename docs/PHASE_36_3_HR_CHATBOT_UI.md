@@ -10,7 +10,7 @@ guardrails and 36.2's context retriever.
 | Depends on | 36.1 (provider + guardrails), 36.2 (context retriever + tenant config) |
 | Tests | `npm run test:ai-chatbot` — **46 tests, 8 suites, 0 fail** |
 | Full suite | `npm run test:all` — **2897 tests, 132 suites, 0 fail** (was 2851/124) |
-| Frontend tests | `npm test` (in `Frontend/`) — **15 tests, 2 suites, 0 fail** |
+| Frontend tests | `npm test` (in `Frontend/`) — **27 tests, 3 suites, 0 fail** |
 | Mutation check | **11 mutations, 11 caught** |
 
 ---
@@ -192,17 +192,26 @@ answered.
 | --- | --- |
 | `services/aiService.js` | one method, `askHRAssistant({ messages, categories })` |
 | `redux/slices/aiChatSlice.js` | session-only state + `sendChatMessage` thunk |
-| `pages/AIAssistant/AiAssistantPage.jsx` | the page |
-| `pages/AIAssistant/ChatMessageBubble.jsx` | one bubble + the typing indicator |
-| `pages/AIAssistant/QuickPromptPills.jsx` + `chatPrompts.js` | six starting questions, every one answerable (see §10.3) |
-| `pages/AIAssistant/ChatInputBar.jsx` | controlled textarea, Enter to send |
-| `pages/AIAssistant/chatLimits.js` | mirrors the server's 2000-char limit |
+| `components/AIAssistant/AiAssistantWidget.jsx` | the floating button + modal shell |
+| `components/AIAssistant/AiAssistantPanel.jsx` | the chat body |
+| `components/AIAssistant/ChatMessageBubble.jsx` | one bubble + the typing indicator |
+| `components/AIAssistant/QuickPromptPills.jsx` + `chatPrompts.js` | six starting questions, every one answerable (see §10.3) |
+| `components/AIAssistant/ChatInputBar.jsx` | controlled textarea, Enter to send |
+| `components/AIAssistant/chatLimits.js` | mirrors the server's 2000-char limit |
 
-Registered in `redux/store.js` as `aiChat`, routed in `routes/AppRoutes.jsx`,
-and reachable from the sidebar for **all five tenant roles** via
-`layout/AppLayout.jsx` (the nav is `NAV_BY_ROLE` — five separate per-role arrays,
-not one) with a `Bot` icon from `NAV_ICON_BY_PATH` in `layout/SidebarNav.jsx`.
-**No permission gate** and no new permission string.
+Registered in `redux/store.js` as `aiChat`. **No permission gate** and no new
+permission string — the API itself is the authority.
+
+**The assistant is a floating widget, not a page.** It is mounted once in
+`layout/AppLayout.jsx`, so it is reachable from every screen in the tenant app
+without leaving the one you are on. The `/app/ai-assistant` route and the
+sidebar entry that 36.3 first shipped have been removed: the floating button is
+the single entry point, and a dead route would let someone bookmark a screen the
+product no longer advertises.
+
+The conversation lives in the `aiChat` slice, so it is **shared across
+screens** — opening the panel on one page and then on another shows the same
+conversation, and closing the panel does not clear it.
 
 **The assistant gets its OWN sidebar group.** 36.3 first put the entry inside
 the existing "Me" group, which made it read as a profile sub-page. It now has
@@ -379,6 +388,44 @@ module, so a test can import it without a JSX transform), and
 be assembled from `profile`, `leaves`, `attendance` or `policies`
 (= holidays + announcements). If it cannot, the assistant will refuse —
 correctly.
+
+### 10.4 The floating-widget restructure
+
+36.3 shipped the assistant as a **page** at `/app/ai-assistant` with a sidebar
+entry under "Me". The owner asked for the pattern comparable HR tools use
+instead: a **floating robot button** in the corner that opens the assistant as a
+panel, reachable from any screen.
+
+| Before | After |
+| --- | --- |
+| Sidebar entry, nested in "Me" | Floating `Bot` button, bottom-right, fixed |
+| Full page at `/app/ai-assistant` | Modal panel, ~420px, bottom-right |
+| Route in `AppRoutes.jsx` | No route — mounted in `AppLayout.jsx` |
+| `pages/AIAssistant/` | `components/AIAssistant/` |
+
+**Two decisions worth recording:**
+
+1. **No notification badge.** The reference product shows a count badge on its
+   button. Nothing in this feature generates a count, so a badge would be a lie
+   told in the corner of every screen. Pinned by a test so it is not added for
+   looks.
+2. **The button hides while the panel is open.** Two affordances for one action
+   is noise; the panel carries its own close control, plus Escape and a backdrop
+   click. The Escape listener is attached **only while the panel is open**, so it
+   can never swallow an Escape meant for something else on the page.
+
+**Not built, and why:** the reference panel has three tabs — *Live Insights*,
+*Past History* and *Work Report*. Those are a different feature, not a
+restyling of this one:
+
+* *Past History* needs server-side persistence, which 36.3 forbids by design
+  (session-only, no `localStorage`). Building it would reverse a standing law.
+* *Live Insights* and *Work Report* are rule-based analytics over the tenant's
+  whole workforce, not the caller's own authorized data — a different
+  authorisation surface, and a separate unit with its own laws.
+
+The chatbot answers all three questions conversationally today, from the
+employee's own context.
 
 **To see exactly what the assistant sees**, ask for the preview (36.2):
 

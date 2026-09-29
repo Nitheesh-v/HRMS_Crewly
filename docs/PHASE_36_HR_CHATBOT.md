@@ -71,6 +71,15 @@ cause, the two-part fix and the regression test are in
 slice to this store, because the slice → service → `api.js` → store cycle only
 resolves when the store is loaded first.
 
+36.3 was also **restructured from a page into a floating widget** at the owner's
+request: a `Bot` button in the corner opens the assistant as a panel on any
+screen, replacing the `/app/ai-assistant` route and the sidebar entry. The three
+tabs the reference product shows (*Live Insights*, *Past History*, *Work
+Report*) were deliberately **not** built — *Past History* needs the server-side
+persistence 36.3 forbids, and the other two are workforce analytics with a
+different authorisation surface. See
+[PHASE_36_3 §10.4](PHASE_36_3_HR_CHATBOT_UI.md).
+
 36.3 also hit a **vendor-side** failure that is worth recording: the shipped
 default model `llama-3.3-70b-versatile` was decommissioned by Groq on
 2026-08-16, so every call returned a generic `503 AI_VENDOR_ERROR` while the
