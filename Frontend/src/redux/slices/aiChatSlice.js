@@ -17,6 +17,8 @@ import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 
 import { askHRAssistant } from '../../services/aiService.js';
 
+import { normalizeChatLanguage } from '../../components/AIAssistant/chatLanguages.js';
+
 /**
  * One turn. `messages` is the WHOLE conversation, because the server is
  * stateless: it caps the history itself (the last 6 turns) and rebuilds the HR
@@ -25,9 +27,17 @@ import { askHRAssistant } from '../../services/aiService.js';
 export const sendChatMessage = createAsyncThunk(
   'aiChat/send',
 
-  async ({ messages, categories }, { rejectWithValue }) => {
+  async ({ messages, categories, language }, { rejectWithValue }) => {
     try {
-      return await askHRAssistant({ messages, categories });
+      // Normalized here as well as in the selector, so a value that
+      // arrived some other way can never reach the server. The server
+      // normalizes a third time; three cheap checks is the right price
+      // for a field that must never be able to fail a question.
+      return await askHRAssistant({
+        messages,
+        categories,
+        language: normalizeChatLanguage(language),
+      });
     } catch (error) {
       // The code is what lets the page say "wait a moment" (RATE_LIMITED,
       // QUOTA_EXCEEDED) versus "ask HR" (everything else) honestly.
@@ -52,6 +62,15 @@ const initialState = {
 
   // null until the first successful turn. Tokens only — never text.
   usage: null,
+
+  // 36.5 — the reply language. A PRESENTATION preference, stored in Redux
+  // only and deliberately NOT in localStorage: a language choice is not
+  // sensitive, but this product keeps every chat-state key in memory, and
+  // one exception would become the precedent for the next one.
+  //
+  // Defaulting to English here rather than reading a stored value means a
+  // fresh tab always starts from the same honest place.
+  language: 'en',
 };
 
 const aiChatSlice = createSlice({
@@ -75,6 +94,17 @@ const aiChatSlice = createSlice({
       state.messages = [];
       state.error = '';
       state.errorCode = '';
+    },
+
+    languageSet: (state, action) => {
+      // Normalized in the reducer, not just the caller, so the state can
+      // never hold a value the selector would not offer. A bad payload
+      // falls back to English instead of poisoning the next request.
+      //
+      // Clearing the messages would be wrong: the transcript already on
+      // screen was answered in the previous language and is still true.
+      // The new language applies to the NEXT answer.
+      state.language = normalizeChatLanguage(action.payload);
     },
   },
 
@@ -110,6 +140,10 @@ const aiChatSlice = createSlice({
   },
 });
 
-export const { messageAdded, conversationCleared } = aiChatSlice.actions;
+export const {
+  conversationCleared,
+  languageSet,
+  messageAdded,
+} = aiChatSlice.actions;
 
 export default aiChatSlice.reducer;

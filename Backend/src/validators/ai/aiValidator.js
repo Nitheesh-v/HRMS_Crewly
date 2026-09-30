@@ -21,6 +21,7 @@ import {
   AI_MESSAGE_MAX_COUNT,
   AI_MESSAGE_ROLES,
   AI_MONTHLY_QUOTA_CEILING,
+  AI_SUPPORTED_LANGUAGES,
 } from '../../services/ai/aiConfig.js';
 
 const validate = (req, _res, next) => {
@@ -272,6 +273,30 @@ export const chatbotValidator = [
 
       return true;
     }),
+
+  // Optional reply language (Phase 36.5).
+  //
+  // OPTIONAL, so an absent key is legal: every 36.3 client that never sent
+  // one keeps working untouched, and the service defaults it to English.
+  //
+  // An UNSUPPORTED value is refused with a 400 rather than silently
+  // defaulted. The difference matters: a silent default would make the UI
+  // claim the employee is getting Tamil while the model answers in
+  // English, which is the kind of quiet lie this codebase refuses. The
+  // service still normalizes defensively, but it should never have to.
+  //
+  // This is a PRESENTATION preference. It is deliberately NOT in
+  // chatbotIdentityOverride: that list is the set of fields a client must
+  // never supply because they decide AUTHORITY, and language decides
+  // nothing about what the caller may read.
+  // `{ nullable: true }` because a JSON null is how a client says "no
+  // preference", and refusing it would fail a question over cosmetics.
+  body('language')
+    .optional({ nullable: true })
+    .isIn([...AI_SUPPORTED_LANGUAGES])
+    .withMessage(
+      `language must be one of: ${AI_SUPPORTED_LANGUAGES.join(', ')}.`,
+    ),
 
   validate,
 ];

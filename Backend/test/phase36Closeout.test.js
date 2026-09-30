@@ -46,6 +46,7 @@ const {
   AI_CHATBOT_CLIENT_ROLES,
   AI_CONTEXT_CATEGORIES,
   AI_CHATBOT_RATE_LIMIT,
+  AI_SUPPORTED_LANGUAGES,
   parseAiEnabled,
 } = await import('../src/services/ai/aiConfig.js');
 
@@ -747,6 +748,77 @@ describe('row 11: the validator refuses a client-supplied identity', () => {
 
     assert.equal(error, null);
   });
+
+  /*
+   * 36.5 — THE REPLY LANGUAGE.
+   *
+   * Two rules, and they pull in opposite directions on purpose.
+   *
+   * An UNSUPPORTED language is refused with a 400. Silently defaulting it
+   * would be worse: the UI would claim the employee is getting Tamil while
+   * the model answered in English, which is the quiet lie this codebase
+   * refuses to ship.
+   *
+   * An ABSENT language is accepted, because every 36.3 client that never
+   * sent one must keep working untouched, and the service defaults it to
+   * English.
+   */
+  test('an unsupported language is refused', async () => {
+    const error = await refuses({
+      messages: [{ role: 'user', content: 'What is my leave balance?' }],
+      language: 'fr',
+    });
+
+    assert.ok(error, 'an unsupported language was accepted');
+    assert.match(String(error.message), /language/);
+  });
+
+  test('an absent language is accepted', async () => {
+    const error = await refuses({
+      messages: [{ role: 'user', content: 'What is my leave balance?' }],
+    });
+
+    assert.equal(error, null);
+  });
+
+  test('a null language is accepted as no preference', async () => {
+    // JSON null is how a client says "no preference". Refusing it would
+    // fail a whole question over cosmetics.
+    const error = await refuses({
+      messages: [{ role: 'user', content: 'What is my leave balance?' }],
+      language: null,
+    });
+
+    assert.equal(error, null);
+  });
+
+  test('every supported language is accepted', async () => {
+    // The closed set, driven from the config so a new language cannot be
+    // added to the backend and left out of the validator by accident.
+    for (const language of AI_SUPPORTED_LANGUAGES) {
+      const error = await refuses({
+        messages: [{ role: 'user', content: 'What is my leave balance?' }],
+        language,
+      });
+
+      assert.equal(error, null, `${language} was refused`);
+    }
+  });
+
+  test('language is a preference, never an authority', async () => {
+    // The single most important property of this field. It must NOT sit in
+    // the identity-override list, because that list is the set of fields a
+    // client must never supply since they decide AUTHORIZATION. A language
+    // decides how an answer is phrased, never what the caller may read.
+    const source = read('src/validators/ai/aiValidator.js');
+
+    const override = source.slice(
+      source.indexOf('const chatbotIdentityOverride'),
+      source.indexOf('export const chatbotValidator'),
+    );
+
+    assert.equal(override.includes('language'), false);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -951,6 +1023,11 @@ describe('row 14: the documentation exists and agrees with the code', () => {
     'PHASE_36_RUNBOOKS.md',
     'PHASE_36_MEMORY_CAPSULE.md',
     'PHASE_36_HR_CHATBOT.md',
+    // 36.5. Registered here so the unit doc must EXIST and stay
+    // mojibake-free. It is deliberately NOT in the template-token list
+    // below: it legitimately quotes the rule 15 wording and the config
+    // snippets, which contain braces.
+    'PHASE_36_5_VOICE_MULTILINGUAL.md',
   ];
 
   test('every Phase 36 document exists', () => {

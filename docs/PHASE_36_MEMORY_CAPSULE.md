@@ -24,6 +24,7 @@ Four units, in dependency order:
 | **36.3** | `hrChatbotService`, `POST /api/ai/chatbot`, the employee chat surface |
 | **36.3b** | The surface became a **floating widget** — the `/app/ai-assistant` route and the sidebar entry were removed |
 | **36.4** | Nine more own-record context categories, a static capability catalogue, role-aware aggregate counts, prompt rules 10-14, retry/copy UX |
+| **36.5** | Voice (browser-native `SpeechRecognition` / `speechSynthesis`) and five reply languages. Prompt rule 15. No new package. |
 
 **It is strictly the HR Chatbot Suite.** Not recruitment AI, not payroll
 pipeline AI, not analytics AI. Those need their own phase numbers and their own
@@ -344,6 +345,37 @@ was in the **prompt**, not the retriever — the data had been there all along.
 
 ---
 
+### 36.5 traps, paid for in this unit
+
+**A `/**` doc block with no closing ` */` is invisible to `node --check`.**
+Three were written into `aiConfig.js` and the later `*/` terminated the
+comment, silently swallowing three `export const` declarations. The module
+loaded, the syntax checked, and `AI_LANGUAGE_LABELS` was simply `undefined`.
+**Always count `/*` against `*/` after a patch that inserts a comment block,
+and assert the exports exist at runtime before trusting `node --check`.**
+
+**`str.replace(anchor, new, 1)` hits the FIRST match, which is not always the
+one you meant.** The language chain landed in `aiChatValidator` instead of
+`chatbotValidator` because both end with the same `  validate,\n];\n`. Split on
+the enclosing `export const` marker instead.
+
+**`{/* comment */}` is illegal inside a JSX opening tag.** It parses as a
+spread attribute and the build fails with `Expected ... but found }`. Put
+the comment above the element or drop it.
+
+**`createSlice` action creators must be exported explicitly.** Adding
+`languageSet:` to `reducers` is not enough — the destructure
+`export const { ... } = slice.actions` has to name it, or the build fails
+with `"languageSet" is not exported by ...`.
+
+**`react-hooks/refs` and `react-hooks/set-state-in-effect` are enforced
+here.** Writing a ref during render, and calling `setState` in an effect
+body, both fail lint. The fixes are honest ones: move the ref write into an
+effect, and let the speech module set the marker through its own `onStart`
+hook instead of the caller.
+
+---
+
 ## 5. How to verify you have not broken anything
 
 ```powershell
@@ -351,15 +383,15 @@ cd Backend
 npm run test:ai-foundation      # 36.1
 npm run test:ai-tenant-config   # 36.2 config
 npm run test:ai-context         # 36.2 retriever
-npm run test:ai-chatbot         # 36.3 service
+npm run test:ai-chatbot         # 36.3 service + 36.5 language (58 tests)
 npm run test:ai-own-records     # 36.4 own-record categories
-node --test test/phase36Closeout.test.js   # the 14 structural guarantees
+node --test test/phase36Closeout.test.js   # the 14 guarantees + 36.5 validator (49 tests)
 npm run test:all                # the whole platform
 ```
 
 ```powershell
 cd Frontend
-npm test          # widget, pills, store, retry, copy
+npm test          # widget, pills, store, retry, copy, languages, voice wiring (61 tests)
 npm run build
 npx eslint src    # 127 problems at baseline — anything above that is yours
 ```
@@ -373,6 +405,31 @@ curl.exe -s -b cookies.txt http://localhost:5000/api/ai/context/preview
 Prints the whole redacted context, section by section. This is the fastest way
 to answer *"why did it refuse?"* — and if a section reads `(x unavailable)`,
 the read failed, whereas `none` means the answer genuinely is nothing.
+
+---
+
+## 5b. The 36.5 laws, in one place
+
+1. **English carries no language rule at all.** `languageRule` is replaced
+   with the empty string for `en`, so an English turn is byte-identical to a
+   36.3 turn.
+2. **Rule 15 is APPENDED.** The prompt had 14 rules and now has 15. Never
+   renumber.
+3. **Language is a preference, never an authority.** It is NOT in
+   `chatbotIdentityOverride`, and a test asserts that.
+4. **Validator refuses, service normalizes.** A 400 at the edge, a silent
+   fallback to `en` inside the service. Both, on purpose.
+5. **`sentViaVoice` lives on a ref.** A state flag would speak the reply
+   twice under strict mode.
+6. **No audio is persisted anywhere.** Neither voice module may reference
+   `MediaRecorder`, `Blob`, `FileReader`, `createObjectURL`, `FormData`,
+   `indexedDB` or `localStorage`.
+7. **No network call of ours.** Neither voice module may import `api.js` or
+   call `fetch`.
+8. **`language` lives in Redux only.** No `localStorage`, ever.
+9. **No server-side language detection and no backend auto-translation.**
+10. **The frontend voice features are NOT hermetically tested.**
+    `aiVoice.test.js` pins wiring only. The owner verifies in Chrome.
 
 ---
 

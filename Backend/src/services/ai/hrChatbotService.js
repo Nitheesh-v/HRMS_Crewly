@@ -32,7 +32,13 @@
 //    answer that happens to quote a masked placeholder.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { AI_CHATBOT_HISTORY_LIMIT, AI_FEATURE_CHATBOT } from './aiConfig.js';
+import {
+  AI_CHATBOT_HISTORY_LIMIT,
+  AI_DEFAULT_LANGUAGE,
+  AI_FEATURE_CHATBOT,
+  AI_LANGUAGE_LABELS,
+  normalizeLanguage,
+} from './aiConfig.js';
 
 import { redactPII } from './piiRedactor.js';
 
@@ -65,15 +71,43 @@ Rules you must follow:
 13. YOU ONLY KNOW THIS EMPLOYEE. The context is the caller's own records, plus counts where their role allows it. A count is not a person: never turn "3 people are on leave today" into a name, and never speculate about a colleague's leave, salary, attendance or performance. If asked about someone else, say you only have access to their own records.
 14. WHEN YOU CANNOT ANSWER, STILL BE USEFUL. A bare "I do not have that information" is a dead end, so instead give THREE things in this order: (a) say plainly that you do not have that; (b) give the closest thing you DO have — a related section from the context, or the screen where the answer lives, or the person who owns it; (c) if neither applies, say what the employee can do next. Worked example: asked "what is my bonus for last year?" — "I do not have your bonus figures. What I can see is that you have payslips for the months listed above, so the bonus would appear on your December payslip under My Payslips. If it is missing there, your payroll team can confirm it." Worked example: asked "what is my manager's salary?" — "I only have access to your own records, so I cannot see anyone else's salary." HARD LIMIT: (b) must come from the context or the capability list as written. Never estimate, never invent a number, never name a person, and never present a guess as a fact. Rule 4 still wins over rule 14.
 
+{languageRule}
+
 === EMPLOYEE HR CONTEXT ===
 {retrievedContext}
 === END CONTEXT ===`;
 
-const buildSystemPrompt = (retrievedContext) =>
-  SYSTEM_PROMPT_TEMPLATE.replace(
-    '{retrievedContext}',
-    typeof retrievedContext === 'string' ? retrievedContext : '',
-  );
+/**
+ * Rule 15 — the language instruction (Phase 36.5).
+ *
+ * Built as a SEPARATE string rather than a fifteenth line of the template
+ * for one reason: English is the base case and must not carry the rule at
+ * all. A template that always contained it would spend tokens on every
+ * English turn telling the model to reply in English, and the 36.3 owner
+ * measured a full turn at ~556 tokens against a 1024 ceiling.
+ *
+ * Everything else about the prompt is untouched, so a language change can
+ * never weaken a rule 1-14 guarantee.
+ */
+const buildLanguageRule = (languageLabel) =>
+  '15. REPLY IN THE LANGUAGE THE EMPLOYEE CHOSE: ' +
+  languageLabel +
+  '. Write your whole answer in that language and that script, using the '
+  + " employee's own words for their HR terms. Keep JSON field names, "
+  + 'proper nouns (Crewly), and any code or identifier exactly as they are. '
+  + 'If the employee mixes two languages, match the mix. Never answer in a '
+  + 'language the employee did not choose, and never translate an HR figure.';
+
+const buildSystemPrompt = (retrievedContext, languageLabel) =>
+  SYSTEM_PROMPT_TEMPLATE
+    .replace(
+      '{languageRule}',
+      languageLabel ? '\n' + buildLanguageRule(languageLabel) : '',
+    )
+    .replace(
+      '{retrievedContext}',
+      typeof retrievedContext === 'string' ? retrievedContext : '',
+    );
 
 /**
  * Redact every USER turn, leave assistant turns alone.
@@ -105,6 +139,7 @@ export const askHRAssistant = async ({
   userId,
   messages,
   categories,
+  language,
   deps = {},
 } = {}) => {
   const {
@@ -145,7 +180,25 @@ export const askHRAssistant = async ({
   });
 
   // STEP 3 — the server-owned system prompt.
-  const systemPrompt = buildSystemPrompt(context);
+  //
+  // The language is resolved HERE, once, and normalized silently: an
+  // unknown or missing value becomes English rather than an error. The
+  // validator already refuses an unsupported language with a 400, so this
+  // is the defence in depth for a direct caller, and failing a question
+  // over a cosmetic preference would be the wrong trade.
+  //
+  // This is a PREFERENCE and nothing more. It changes how the answer is
+  // phrased, never what the caller is allowed to read — the context was
+  // already scoped in STEP 2 and is not touched here.
+  const resolvedLanguage = normalizeLanguage(language);
+
+  // English needs no instruction at all, hence the empty label.
+  const languageLabel =
+    resolvedLanguage === AI_DEFAULT_LANGUAGE
+      ? ''
+      : AI_LANGUAGE_LABELS[resolvedLanguage];
+
+  const systemPrompt = buildSystemPrompt(context, languageLabel);
 
   // STEP 4 — redact every user turn (the context is already redacted by 36.2).
   const history = redactHistory(capped, redact);

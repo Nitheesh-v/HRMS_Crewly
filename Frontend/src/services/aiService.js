@@ -46,10 +46,14 @@ const normalizeError = (error) => {
  * multi-tenancy boundary: there is no client-side tenant id to send at all.
  *
  * @param {{messages: Array<{role: string, content: string}>,
- *          categories?: string[]}} payload
+ *          categories?: string[],
+ *          language?: string}} payload
+ *        `language` is a PRESENTATION preference only. It is omitted
+ *        entirely when it is English, so the base case sends the same
+ *        payload 36.3 sent and costs no extra tokens.
  * @returns {Promise<{reply: string, usage: object|null, categoriesUsed: string[]}>}
  */
-export const askHRAssistant = async ({ messages, categories } = {}) => {
+export const askHRAssistant = async ({ messages, categories, language } = {}) => {
   try {
     const payload = { messages };
 
@@ -57,6 +61,22 @@ export const askHRAssistant = async ({ messages, categories } = {}) => {
     // validator would accept as "narrow to nothing".
     if (Array.isArray(categories) && categories.length > 0) {
       payload.categories = categories;
+    }
+
+    // 36.5 — send the language ONLY when it is not English.
+    //
+    // English is the base case and the server adds no language rule for
+    // it, so sending `en` would be a key that changes nothing. Omitting it
+    // keeps the wire identical to 36.3 for the default and keeps the
+    // prompt as short as the owner measured it.
+    //
+    // The value is already normalized by the slice, but this client is
+    // also called directly from tests, so it re-checks rather than trust.
+    const wanted =
+      typeof language === 'string' && language.length > 0 ? language : '';
+
+    if (wanted && wanted !== 'en') {
+      payload.language = wanted;
     }
 
     const response = bare(await api.post('/ai/chatbot', payload));

@@ -1,9 +1,17 @@
 # CREWLY — PHASE 36: THE HR CHATBOT SUITE (AI)
 
-> **STATUS: 100% CLOSED.** All five units (36.1, 36.2, 36.3, 36.3b, 36.4)
-> are shipped. The fourteen structural guarantees are pinned by
-> `Backend/test/phase36Closeout.test.js` (44 tests), and
-> `npm run test:all` is **2985 tests / 155 suites / 0 fail**.
+> **STATUS: 36.1–36.4 CLOSED. 36.5 SHIPPED, pending owner localhost
+> verification.**
+>
+> The five original units (36.1, 36.2, 36.3, 36.3b, 36.4) are shipped and
+> accepted. The fourteen structural guarantees are pinned by
+> `Backend/test/phase36Closeout.test.js` (**49** tests), and
+> `npm run test:all` is **2999 tests / 156 suites / 0 fail**.
+>
+> 36.5 (voice and multilingual) is additive and does not reopen any of
+> them. It is **not** signed off until the owner has pressed the
+> microphone in Chrome — see
+> [PHASE_36_5 §12](PHASE_36_5_VOICE_MULTILINGUAL.md).
 
 This document is the running record of Phase 36. **One unit at a time**, each
 unit shipped with its own tests, its own limitations and its own localhost
@@ -314,3 +322,69 @@ The dedicated per-unit runbook is
 
 The dedicated per-unit runbook is
 [PHASE_36_4 §10 and §12](PHASE_36_4_ADVANCED_HR_ASSISTANT.md).
+
+---
+
+## 36.5 — Voice Assistant & Multilingual Support
+
+**SHIPPED, pending owner localhost verification.** An extension unit: 36.1—36.4
+are untouched. The full unit doc is
+[PHASE_36_5_VOICE_MULTILINGUAL.md](PHASE_36_5_VOICE_MULTILINGUAL.md).
+
+The assistant can now be **spoken to**, **spoken from**, and can **answer in
+five languages**. Both voice halves are the browser's own Web Speech API — no
+new npm package, no API key, no vendor.
+
+**The four things to remember.**
+
+1. **English is the base case and carries no language rule at all.**
+   `SYSTEM_PROMPT_TEMPLATE` has a `languageRule` slot that is filled with
+   the empty string for `en`, so an English turn is byte-identical to a 36.3
+   turn. The owner measured a full turn at ~556 tokens against a 1024 ceiling.
+
+2. **Rule 15 is APPENDED, never a renumber.** The prompt had 14 rules and now
+   has 15. Rule 8 (`"NONE" IS AN ANSWER`) and rule 14 (the relevant-answer
+   law) are unchanged, and a test asserts it.
+
+3. **Language is a preference, NEVER an authority.** It changes how an answer
+   is phrased, never what the caller may read. It is deliberately NOT in
+   `chatbotIdentityOverride`, and a test asserts that too.
+
+4. **The validator refuses an unsupported language with a 400; the service
+   normalizes silently.** Those are not in conflict — refusing at the edge
+   stops the UI claiming Tamil while the model answers in English, and
+   normalizing in the service is the defence in depth for a direct caller.
+
+**The language enum (closed):** `['en', 'ta', 'tanglish', 'hi', 'te']`,
+default `'en'`. BCP-47: `en—en-IN`, `ta—ta-IN`, `tanglish—en-IN` (Latin
+letters), `hi—hi-IN`, `te—te-IN`.
+
+**Privacy.** No audio is persisted anywhere — neither voice module references
+`MediaRecorder`, `Blob`, `FileReader`, `createObjectURL`, `FormData`,
+`indexedDB` or `localStorage`. No network call of ours: neither imports
+`api.js` or calls `fetch`. A spoken PAN is redacted by the same STEP 4 as a
+typed one. `language` lives in Redux only.
+
+**`sentViaVoice`.** A mic-composed question sets the flag on a **ref**, and
+the reply is auto-spoken exactly once. A ref, not state, because a state flag
+ would re-fire under strict mode and speak the reply twice.
+
+**Honest flags — do not skip these.** Web Speech support is uneven (Chrome/Edge
+full, Safari partial, Firefox behind a flag). Tamil/Telugu/Hindi voice
+quality depends on **OS-installed** voices. Tanglish STT is imperfect. And
+the frontend voice features are **not hermetically tested** — `aiVoice.test.js`
+pins the wiring only, so the owner must verify interactively in Chrome.
+
+**Operational runbook for 36.5:**
+
+| Situation | What to do |
+| --- | --- |
+| The mic button is not there | The browser has no working `SpeechRecognition`. Firefox needs `media.webspeech.recognition.enable` in `about:config`. The typing chat is complete on its own. |
+| The reply is read with an English voice | No Tamil/Telugu/Hindi voice is **installed** on the machine. Install one in the OS speech settings. An OS problem, not a code problem. |
+| Tanglish is misheard | Expected. It is Tamil in Latin letters and no recogniser is trained for it well. |
+| A spoken question came back in English | The selector was still on English. There is no language auto-detection, by design. |
+| A `400 AI_REQUEST_INVALID` on chat | The `language` value was outside the closed set. The client only ever writes values from `CHAT_LANGUAGES`. |
+| Changing the language did not change the transcript | Correct behaviour. The new language applies to the NEXT answer; the ones already on screen are still true. |
+
+The dedicated per-unit runbook is
+[PHASE_36_5 §10 and §12](PHASE_36_5_VOICE_MULTILINGUAL.md).

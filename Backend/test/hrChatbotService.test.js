@@ -1011,3 +1011,203 @@ describe('source pins', () => {
     );
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE 36.5 — THE REPLY LANGUAGE
+//
+// What is being pinned here is not "the prompt contains a language string".
+// It is four specific behaviours that are each easy to break and expensive to
+// notice:
+//
+//   1. ENGLISH IS THE BASE CASE AND CARRIES NO RULE AT ALL. Not a rule that
+//      says "reply in English" — no rule. The owner measured a full turn at
+//      ~556 tokens against a 1024 ceiling, and an instruction nobody needs is
+//      a tax paid on every single request.
+//
+//   2. EVERY SUPPORTED LANGUAGE INJECTS ITS OWN LABEL, VERBATIM. The labels
+//      name the SCRIPT, not just the language, because "reply in Tamil" is
+//      ambiguous to a model that can produce either Tamil script or a Roman
+//      transliteration.
+//
+//   3. AN UNSUPPORTED OR ABSENT LANGUAGE FALLS BACK TO ENGLISH SILENTLY. The
+//      validator refuses it with a 400 at the edge, so this is the defence in
+//      depth for a caller that reaches the service directly. Failing a
+//      question over a cosmetic preference would be the wrong trade.
+//
+//   4. A LANGUAGE CHANGE NEVER WEAKENS A RULE 1-14 GUARANTEE. Rule 15 is
+//      appended; nothing above it is touched. This is asserted, not assumed.
+//
+// The validator half is in phase36Closeout.test.js, which owns the chain
+// runner. This file owns the service.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('the reply language (Phase 36.5)', () => {
+  /** The system prompt the service actually handed to the vendor. */
+  const systemPromptFor = async (language) => {
+    const aiChatFn = recordingAiChat();
+
+    await askHRAssistant({
+      companyId: COMPANY,
+      userId: USER,
+      messages: history(1),
+      language,
+      deps: baseDeps({ aiChatFn }),
+    });
+
+    const payload = aiChatFn.calls[0].messages;
+
+    return payload.find((message) => message.role === 'system').content;
+  };
+
+  test('English is the base case and carries NO language rule', async () => {
+    const prompt = await systemPromptFor('en');
+
+    // Not "the rule says reply in English" — the rule is absent entirely. An
+    // English turn must cost exactly what a 36.3 turn cost.
+    assert.equal(prompt.includes('15. REPLY IN THE LANGUAGE'), false);
+
+    // And it still carries the rules and the context, so nothing else moved.
+    assert.equal(prompt.includes('1. '), true);
+    assert.equal(prompt.includes('14. WHEN YOU CANNOT ANSWER'), true);
+    assert.equal(prompt.includes(CONTEXT), true);
+  });
+
+  test('an absent language also carries no rule', async () => {
+    // A 36.3 client that never heard of this feature must send byte-identical
+    // requests and get byte-identical prompts.
+    const prompt = await systemPromptFor(undefined);
+
+    assert.equal(prompt.includes('15. REPLY IN THE LANGUAGE'), false);
+  });
+
+  test('each supported language injects its own label, verbatim', async () => {
+    // The labels are read from the config, not re-typed here, so a label edit
+    // cannot leave a test passing against wording the product no longer ships.
+    const { AI_LANGUAGE_LABELS, AI_SUPPORTED_LANGUAGES } = await import(
+      '../src/services/ai/aiConfig.js'
+    );
+
+    for (const language of AI_SUPPORTED_LANGUAGES) {
+      if (language === 'en') continue;
+
+      const prompt = await systemPromptFor(language);
+      const expected = AI_LANGUAGE_LABELS[language];
+
+      assert.equal(
+        prompt.includes(`15. REPLY IN THE LANGUAGE THE EMPLOYEE CHOSE: ${expected}`),
+        true,
+        `${language} did not receive its own label`,
+      );
+    }
+  });
+
+  test('Tanglish is described as Latin letters, not Tamil script', async () => {
+    // Tanglish is Tamil written in English/Roman letters. A label that just
+    // said "Tamil" would make the model answer in Tamil script, which is not
+    // what the person typed and not what they asked for.
+    const prompt = await systemPromptFor('tanglish');
+
+    assert.equal(prompt.includes('Tanglish (Tamil written in English/Roman letters'), true);
+    assert.equal(prompt.includes('script)'), false);
+  });
+
+  test('an unsupported language falls back to English silently', async () => {
+    // No throw, no error code, no rule 15. The question still gets answered.
+    const prompt = await systemPromptFor('fr');
+
+    assert.equal(prompt.includes('15. REPLY IN THE LANGUAGE'), false);
+    assert.equal(prompt.includes(CONTEXT), true);
+  });
+
+  test('a non-string language also falls back to English silently', async () => {
+    for (const bad of [null, 42, {}, [], true]) {
+      const prompt = await systemPromptFor(bad);
+
+      assert.equal(
+        prompt.includes('15. REPLY IN THE LANGUAGE'),
+        false,
+        `language ${JSON.stringify(bad)} was not normalized`,
+      );
+    }
+  });
+
+  test('rule 15 never weakens a rule 1-14 guarantee', async () => {
+    // A language instruction must not be able to talk the model out of
+    // "never invent" or out of the negatives rule. Appending is the whole
+    // design: everything above is untouched.
+    const english = await systemPromptFor('en');
+    const tamil = await systemPromptFor('ta');
+
+    const head = tamil.slice(0, tamil.indexOf('15. REPLY IN THE LANGUAGE'));
+
+    // Everything English carries before rule 15 is present, in order, before
+    // rule 15 in Tamil.
+    assert.equal(english.includes('4. '), true);
+    assert.equal(head.includes('14. WHEN YOU CANNOT ANSWER'), true);
+    assert.equal(head.includes('8. "NONE" IS AN ANSWER'), true);
+    assert.equal(head.includes('13. YOU ONLY KNOW THIS EMPLOYEE'), true);
+
+    // And the context block still comes AFTER the rules.
+    assert.equal(
+      tamil.indexOf('15. REPLY IN THE LANGUAGE') <
+        tamil.indexOf('=== EMPLOYEE HR CONTEXT ==='),
+      true,
+    );
+  });
+
+  test('the language changes the prompt and nothing else in the payload', async () => {
+    // A language is a presentation preference. It must not be able to change
+    // how many messages go out, what roles they carry, or what the history
+    // contains — that is the whole "language is not authority" rule, asserted
+    // on the wire rather than trusted.
+    const capture = async (language) => {
+      const aiChatFn = recordingAiChat();
+
+      await askHRAssistant({
+        companyId: COMPANY,
+        userId: USER,
+        messages: history(3),
+        language,
+        deps: baseDeps({ aiChatFn }),
+      });
+
+      const payload = aiChatFn.calls[0].messages;
+
+      return {
+        roles: payload.map((message) => message.role),
+        history: payload.slice(1).map((message) => message.content),
+      };
+    };
+
+    const english = await capture('en');
+    const tamil = await capture('ta');
+
+    assert.deepEqual(english.roles, tamil.roles);
+    assert.deepEqual(english.history, tamil.history);
+    assert.equal(tamil.roles[0], 'system');
+    assert.equal(tamil.roles.filter((role) => role === 'system').length, 1);
+  });
+
+  test('the vendor call itself is unchanged by the language', async () => {
+    // The language lives in the system prompt only. The aiChat payload is
+    // otherwise identical, which is what keeps the 36.1 guard ladder, the
+    // quota accounting and the usage log untouched by 36.5.
+    const aiChatFn = recordingAiChat();
+
+    await askHRAssistant({
+      companyId: COMPANY,
+      userId: USER,
+      messages: history(2),
+      language: 'te',
+      deps: baseDeps({ aiChatFn }),
+    });
+
+    const input = aiChatFn.calls[0];
+
+    // The DI seam and the guard arguments are whatever 36.1 defined — this
+    // assertion is here to fail if a future unit bolts a language-specific
+    // branch onto the vendor call.
+    assert.equal(typeof input.messages, 'object');
+    assert.equal(input.companyId, COMPANY);
+    assert.equal(input.userId, USER);
+  });
+});

@@ -154,6 +154,87 @@ export const AI_CHATBOT_HISTORY_LIMIT = 6;
 // instruct the model to ignore the HR context.
 export const AI_CHATBOT_CLIENT_ROLES = Object.freeze(['user', 'assistant']);
 
+// ── Phase 36.5 — SUPPORTED REPLY LANGUAGES ────────────────────────────────
+//
+// The assistant answers in the language the caller picked. This is a
+// PRESENTATION preference and nothing else: it is never authorization, it
+// never widens what the caller may read, and it is never stored in
+// AIUsageLog. A closed set on purpose — an open string would let a client
+// ask for a language the prompt has no instruction for, and the model would
+// fall back to English anyway while the UI claimed otherwise.
+//
+// Why these five and not more: they are the languages this product's
+// workforce actually asks in. Adding one is a one-line change here plus a
+// label, and the validator reads the same list.
+export const AI_SUPPORTED_LANGUAGES = Object.freeze([
+  'en',
+  'ta',
+  'tanglish',
+  'hi',
+  'te',
+]);
+
+/** The base case. English is the default and needs no extra instruction. */
+export const AI_DEFAULT_LANGUAGE = 'en';
+
+/**
+ * The label injected into the system prompt for each language.
+ *
+// The wording is deliberately specific about SCRIPT, because "reply in
+// Tamil" is ambiguous to a model that can produce either Tamil script or a
+// Roman transliteration, and the employee asked in one of them. Naming the
+// script removes the guess.
+//
+// `tanglish` is a real choice and not a joke: it is Tamil written in Latin
+// letters, mixed casually with English, which is how a large part of this
+// workforce actually types. Telling the model to match it is what makes the
+// answer feel like it came from someone who works here.
+//
+// Non-ASCII labels are stored as unicode escapes so this file stays pure
+// ASCII on disk while rendering correctly in the prompt.
+ */
+export const AI_LANGUAGE_LABELS = Object.freeze({
+  en: 'English',
+  // Tamil (தமிழ் script)
+  ta: 'Tamil (\u0ba4\u0bae\u0bbf\u0bb4\u0bcd script)',
+  // Tanglish (Tamil written in English/Roman letters, casual mix)
+  tanglish: 'Tanglish (Tamil written in English/Roman letters, casual mix)',
+  // Hindi (हिंदी script or Hinglish as natural)
+  hi: 'Hindi (\u0939\u093f\u0902\u0926\u0940 script or Hinglish as natural)',
+  // Telugu (తెలుగు script)
+  te: 'Telugu (\u0c24\u0c46\u0c32\u0c41\u0c17\u0c41 script)',
+});
+
+/**
+ * BCP-47 tags for the BROWSER speech APIs (Phase 36.5).
+ *
+// The backend never uses these — the AI model is multilingual on its own.
+// They exist so the Web Speech API is asked for the right locale, and they
+// live here so the frontend and the backend agree on one list.
+//
+// `tanglish` maps to `en-IN` on purpose: Tanglish is written in Latin
+// letters, so asking a recogniser for Tamil script would mis-hear it.
+ */
+export const AI_LANGUAGE_TO_BCP47 = Object.freeze({
+  en: 'en-IN',
+  ta: 'ta-IN',
+  tanglish: 'en-IN',
+  hi: 'hi-IN',
+  te: 'te-IN',
+});
+
+/**
+ * Resolve a caller-supplied language to one the prompt knows about.
+ *
+// An unknown, missing or non-string value falls back to English SILENTLY.
+// The validator already refuses an unsupported language with a 400, so this
+// branch is the defence in depth for a caller that reaches the service
+// directly (a test, a future internal caller) — and refusing there would
+// turn a cosmetic preference into a failed question.
+ */
+export const normalizeLanguage = (value) =>
+  AI_SUPPORTED_LANGUAGES.includes(value) ? value : AI_DEFAULT_LANGUAGE;
+
 // Phase 36.3 — the chatbot gets its own 32.4 tier. A separate store keeps the
 // budgets independent: exhausting the raw /chat allowance must not lock a
 // person out of the employee assistant, and vice versa.

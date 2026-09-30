@@ -278,12 +278,17 @@ export const askChatbot = asyncHandler(async (req, res) => {
     }
 
     // Data from frontend - requests from frontend
-    const { messages, categories } = req.body;
+    // `language` is the ONLY presentation field the client may send, and it
+    // carries no authority: it changes how the reply is phrased, never what
+    // the caller may read. Tenant authority and caller identity stay
+    // server-derived below, exactly as in 36.3.
+    const { messages, categories, language } = req.body;
 
     // DB Logic - DB logics
     const response = await askHRAssistant({
       messages,
       categories,
+      language,
 
       // Tenant authority and caller identity are SERVER-DERIVED. The validator
       // refuses any client-supplied identity outright.

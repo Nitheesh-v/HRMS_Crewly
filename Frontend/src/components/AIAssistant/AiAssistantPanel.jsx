@@ -25,16 +25,45 @@
 // it stands; the server is stateless and rebuilds the context itself, so
 // retrying is safe and needs no extra state. Copy is offered on the answer,
 // because the reply is the only thing this UI ever produces.
+//
+// 36.5 — VOICE AND LANGUAGE.
+//
+//   · A language selector in the header. Five options, English by default.
+//     The choice is stored in Redux and in Redux ONLY — never in
+//     localStorage, exactly like the rest of the chat state.
+//
+//   · A microphone in the input bar and a speaker on each reply. Both are the
+//     BROWSER's own Web Speech API: no package, no vendor, no API key, and
+//     nothing of ours is uploaded or stored. The transcript is redacted
+//     server-side exactly like typed text.
+//
+//   · Both affordances are hidden when the browser cannot do them. Firefox
+//     without a flag and most embedded webviews simply get the typing chat
+//     that 36.3 shipped, which is a complete product on its own.
+//
+//   · LANGUAGE IS A PREFERENCE, NOT AN AUTHORITY. It changes how an answer is
+//     phrased and never what the caller may read — the server scopes
+//     that from req.companyId and req.user._id before this value is looked at.
+//     There is no language auto-detection anywhere in this product.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
-import { AlertTriangle, Bot, Info, RotateCcw, Trash2, X } from 'lucide-react';
+import {
+  AlertTriangle,
+  Bot,
+  Info,
+  Languages,
+  RotateCcw,
+  Trash2,
+  X,
+} from 'lucide-react';
 
 import { useDispatch, useSelector } from 'react-redux';
 
 import {
   conversationCleared,
+  languageSet,
   messageAdded,
   sendChatMessage,
 } from '../../redux/slices/aiChatSlice.js';
@@ -43,6 +72,21 @@ import ChatInputBar from './ChatInputBar.jsx';
 import ChatMessageBubble, { ChatTypingBubble } from './ChatMessageBubble.jsx';
 import QuickPromptPills from './QuickPromptPills.jsx';
 import { MAX_MESSAGES } from './chatLimits.js';
+
+import {
+  CHAT_LANGUAGES,
+  chatLanguageBcp47,
+  getChatLanguage,
+} from './chatLanguages.js';
+
+import { useSpeechRecognition } from '../../hooks/useSpeechRecognition.js';
+
+import {
+  isSpeechSynthesisSupported,
+  speak,
+  stopSpeaking,
+  whenVoicesReady,
+} from '../../utils/speechSynthesis.js';
 
 const WELCOME = {
   id: 'welcome',
@@ -87,13 +131,62 @@ const AiAssistantPanel = ({ onClose }) => {
     sending = false,
     error = '',
     errorCode = '',
-    categoriesUsed = [],
+       categoriesUsed = [],
     usage = null,
+    language = 'en',
   } = useSelector((state) => state.aiChat) ?? {};
 
   const [draft, setDraft] = useState('');
 
   const endRef = useRef(null);
+
+  // The selector needs a real id so its sr-only label points at it. A
+  // generated id is used rather than a literal so two panels can never
+  // collide, even though only one is ever mounted.
+  const languageId = useId();
+
+  /*
+   * 36.5 — THE SPEECH STATE, ALL OF IT LOCAL AND TRANSIENT.
+   *
+   * `speakingId` is which bubble is being read aloud. It is a single id and
+   * not a boolean because speechSynthesis has ONE queue per tab: two
+   * bubbles that both believed they were speaking would talk over each
+   * other. An empty string means nothing is being read.
+   *
+   * `canSpeak` is resolved once at mount. It is the browser's own answer
+   * and it does not change, so re-checking per render would be noise.
+   */
+  const [canSpeak] = useState(() => isSpeechSynthesisSupported());
+
+  const [speakingId, setSpeakingId] = useState('');
+
+  // The draft as of the last COMMITTED render, so a speech callback can read
+  // it without being re-created every keystroke.
+  //
+  // Written in an effect, not during render: a ref mutated in the render body
+  // is exactly the pattern React warns about, because a render that is thrown
+  // away would still have left the new value behind.
+  const draftRef = useRef('');
+
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
+
+  // What the person had typed BEFORE the microphone started filling the box.
+  // Null means "not currently accumulating speech", which is how the effect
+  // below knows when to capture the base.
+  const voiceBaseRef = useRef(null);
+
+  /*
+   * The auto-speak latch.
+   *
+   * Set when a mic-composed question is sent, consumed when that question's
+   * reply lands. It is a ref and not state because it is a one-shot signal
+   * between two renders, and a state flag would fire the effect twice under
+   * React's strict-mode double-invoke — which is exactly the "speak the
+   * same reply twice" bug this guard exists to prevent.
+   */
+  const pendingVoiceSpeakRef = useRef(false);
 
   // Keep the newest turn in view. Guarded on `open` so the panel does not
   // scroll itself while it is closed and invisible.
@@ -101,8 +194,77 @@ const AiAssistantPanel = ({ onClose }) => {
     endRef.current?.scrollIntoView({ block: 'end' });
   }, [messages.length, sending]);
 
+  /**
+   * 36.5 — read one reply aloud.
+   *
+   * Guarded on `canSpeak` so a browser without synthesis never reaches the
+   * API. The voice list is awaited first: Chrome and Safari populate
+   * getVoices() asynchronously, and skipping that wait is how a Tamil reply
+   * ends up read by an English voice for no reason except a race.
+   *
+   * The language is the one currently selected in the header, which is also
+   * the language the reply was written in. Asking for anything else would
+   * read Tamil text with an English voice.
+   */
+  const speakReply = useCallback(
+    async (id, text) => {
+      if (!canSpeak || !text) return;
+
+      // Wait for the voice list BEFORE marking anything as speaking.
+      //
+      // Two reasons, and the second is the interesting one. Chrome and
+      // Safari populate getVoices() asynchronously, so speaking before the
+      // list lands is how a Tamil reply gets read by an English voice. And
+      // because the await puts this state update OUTSIDE the caller's
+      // synchronous effect body, it also satisfies the rule against setting
+      // state directly in an effect — which matters here because the
+      // auto-speak path runs inside one.
+      await whenVoicesReady();
+
+      speak(text, {
+        lang: chatLanguageBcp47(language),
+
+        // The marker is set by the speech module's own start hook, not by
+        // this function, so the "which bubble is being read" state is owned
+        // by the thing that actually knows. It also keeps this callback free
+        // of a direct state write, which is what the auto-speak path needs.
+        onStart: () => setSpeakingId(id),
+
+        onEnd: () => {
+          // Only clear the marker if it is still OURS. A newer reply may
+          // already have taken over, and clearing that would leave its
+          // button stuck in the "speaking" state.
+          setSpeakingId((current) => (current === id ? '' : current));
+        },
+      });
+    },
+    [canSpeak, language],
+  );
+
+  /** Click the speaker: start reading, or stop if this bubble already is. */
+  const toggleSpeak = useCallback(
+    (id, text) => {
+      if (!canSpeak) return;
+
+      if (speakingId === id) {
+        stopSpeaking();
+        setSpeakingId('');
+
+        return;
+      }
+
+      // A different bubble was being read: stop it first so the two never
+      // overlap. speak() also cancels, but doing it here makes the intent
+      // explicit and keeps the old bubble's marker honest.
+      if (speakingId) stopSpeaking();
+
+      speakReply(id, text);
+    },
+    [canSpeak, speakingId, speakReply],
+  );
+
   const send = useCallback(
-    async (text) => {
+    async (text, meta = {}) => {
       const content = String(text || '').trim();
 
       if (!content || sending) return;
@@ -120,18 +282,31 @@ const AiAssistantPanel = ({ onClose }) => {
         messageAdded({ id: next[next.length - 1].id, role: 'user', content }),
       );
 
+      // 36.5 — remember whether this question was SPOKEN. The reply to a
+      // spoken question is read aloud once; the reply to a typed one is not,
+      // because reading back text the person just typed is noise.
+      //
+      // The flag is a ref, so it survives the async dispatch without ever
+      // entering Redux — a voice interaction is session-local and must
+      // not outlive the tab.
+      pendingVoiceSpeakRef.current = meta?.sentViaVoice === true;
+
       await dispatch(
         sendChatMessage({
           messages: trimmed.map(({ role: roleName, content: body }) => ({
             role: roleName,
             content: body,
           })),
+
+          // The language the person picked. English is omitted by the client
+          // so the default request is byte-identical to the 36.3 one.
+          language,
         }),
       );
 
       setDraft('');
     },
-    [dispatch, messages, sending],
+    [dispatch, messages, sending, language],
   );
 
   /**
@@ -155,9 +330,122 @@ const AiAssistantPanel = ({ onClose }) => {
             role: roleName,
             content: body,
           })),
+
+        // 36.5 — a retry answers in the SAME language as the failed
+        // attempt. Silently switching to English would be the quiet lie this
+        // codebase refuses.
+        language,
       }),
     );
-  }, [dispatch, messages, sending]);
+  }, [dispatch, messages, sending, language]);
+
+  /*
+   * 36.5 — THE RECOGNISER.
+   *
+   * Declared AFTER `send` so the final-transcript callback can call it
+   * directly rather than through another ref.
+   *
+   * `lang` is the BCP-47 tag for whatever is currently selected, so the
+   * browser listens in the language the person is asking in. Note that
+   * `tanglish` maps to `en-IN` on purpose: it is written in Latin letters,
+   * and asking a recogniser for Tamil script would mis-hear it.
+   *
+   * `continuous: false` — one utterance, then stop. A chat box is not a
+   * dictation pad, and a recogniser that never ends is how a microphone
+   * stays open long after the person finished talking.
+   */
+  const voice = useSpeechRecognition({
+    lang: chatLanguageBcp47(language),
+    continuous: false,
+    interimResults: true,
+    onFinal: (text) => {
+      // Whatever was typed before the microphone started is kept, and the
+      // spoken words are appended after it. Sending ONLY the transcript
+      // would silently drop half a question.
+      const base = voiceBaseRef.current ?? '';
+      const combined = [base, text].filter(Boolean).join(' ').trim();
+
+      // Reset before the async send, so a stray interim event cannot
+      // re-append to a base that was already consumed.
+      voiceBaseRef.current = null;
+
+      setDraft('');
+
+      if (combined) send(combined, { sentViaVoice: true });
+    },
+  });
+
+  /*
+   * Live transcript in the textarea.
+   *
+   * The base is captured the first time an interim result arrives, which is
+   * the moment the box stops being purely the person's typing. Without the
+   * ref, every interim event would append to the previous interim and the
+   * text would repeat itself.
+   */
+  useEffect(() => {
+    if (!voice.listening) {
+      voiceBaseRef.current = null;
+
+      return;
+    }
+
+    if (!voice.interim) return;
+
+    if (voiceBaseRef.current === null) {
+      voiceBaseRef.current = draftRef.current;
+    }
+
+    const merged = [voiceBaseRef.current, voice.interim]
+      .filter(Boolean)
+      .join(' ');
+
+    setDraft(merged);
+  }, [voice.listening, voice.interim]);
+
+  /*
+   * 36.5 — AUTO-SPEAK THE REPLY TO A SPOKEN QUESTION, ONCE.
+   *
+   * The whole rule is the latch. It is set when a spoken question is sent
+   * and consumed the moment the matching reply lands, so:
+   *
+   *   · a typed question never triggers it;
+   *   · a re-render, a language change or a scroll does not re-fire it;
+   *   · React's strict-mode double-invoke cannot speak the reply twice,
+   *     because the second pass finds the latch already cleared.
+   *
+   * The welcome bubble is excluded: it is not an answer to anything.
+   */
+  useEffect(() => {
+    if (messages.length === 0) return;
+
+    const last = messages[messages.length - 1];
+
+    if (last.role !== 'assistant') return;
+
+    if (!pendingVoiceSpeakRef.current) return;
+
+    pendingVoiceSpeakRef.current = false;
+
+    if (last.id === 'welcome') return;
+
+    speakReply(last.id, last.content);
+  }, [messages, speakReply]);
+
+  /*
+   * Closing the panel must stop the voice.
+   *
+   * Two reasons, and the first is a privacy one: a recogniser left running
+   * after the person closed the window is a microphone nobody is watching.
+   * The second is that an utterance still playing after unmount keeps the
+   * tab's audio busy for no visible reason.
+   */
+  useEffect(
+    () => () => {
+      stopSpeaking();
+    },
+    [],
+  );
 
   const shown = messages.length > 0 ? messages : [WELCOME];
 
@@ -211,6 +499,52 @@ const AiAssistantPanel = ({ onClose }) => {
           <X className="h-4 w-4" aria-hidden="true" strokeWidth={1.8} />
         </button>
       </header>
+
+      {/*
+       * 36.5 — THE LANGUAGE SELECTOR.
+       *
+       * A native <select> and not a custom dropdown: it is keyboard
+       * accessible, screen-reader labelled and touch friendly for free,
+       * and there is nothing here that needs to look clever.
+       *
+       * The option text shows the language in BOTH English and its own
+       * script, because that is what a person actually scans for.
+       *
+       * The hint under it names the script, so nobody picks Tamil
+       * expecting Roman letters or Tanglish expecting Tamil script.
+       *
+       * CHANGING IT DOES NOT CLEAR THE TRANSCRIPT. The answers already on
+       * screen were given in the previous language and are still true.
+       * The new choice applies to the NEXT answer.
+       */}
+      <div className="flex items-center gap-2 border-b border-crewly-border px-3 py-2 sm:px-4">
+        <Languages
+          className="h-3.5 w-3.5 shrink-0 text-crewly-dim"
+          aria-hidden="true"
+          strokeWidth={1.8}
+        />
+
+        <label htmlFor={languageId} className="sr-only">
+          Reply language
+        </label>
+
+        <select
+          id={languageId}
+          value={language}
+          onChange={(event) => dispatch(languageSet(event.target.value))}
+          className="min-w-0 flex-1 rounded border border-crewly-border bg-crewly-card px-2 py-1 text-[11px] font-semibold text-crewly-text outline-none transition focus:border-crewly-green"
+        >
+          {CHAT_LANGUAGES.map((entry) => (
+            <option key={entry.value} value={entry.value}>
+              {entry.label} — {entry.native}
+            </option>
+          ))}
+        </select>
+
+        <span className="shrink-0 text-[10px] text-crewly-dim">
+          {getChatLanguage(language).hint}
+        </span>
+      </div>
 
       {/* What actually answered. Shown only after the first successful turn,
           so the header is not cluttered before there is anything to report. */}
@@ -268,6 +602,13 @@ const AiAssistantPanel = ({ onClose }) => {
                 ? () => {}
                 : undefined
             }
+
+            onSpeak={
+              canSpeak && message.role === 'assistant'
+                ? () => toggleSpeak(message.id, message.content)
+                : undefined
+            }
+            speaking={speakingId === message.id}
           />
         ))}
 
@@ -283,7 +624,13 @@ const AiAssistantPanel = ({ onClose }) => {
           <QuickPromptPills onSelect={send} disabled={sending} />
         )}
 
-        <ChatInputBar onSend={send} sending={sending} value={draft} onChange={setDraft} />
+        <ChatInputBar
+          onSend={send}
+          sending={sending}
+          value={draft}
+          onChange={setDraft}
+          voice={voice}
+        />
       </div>
     </>
   );

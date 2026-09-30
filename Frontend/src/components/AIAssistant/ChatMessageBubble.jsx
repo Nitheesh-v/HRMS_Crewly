@@ -10,14 +10,38 @@
 // 36.4 — an optional COPY affordance. The reply is the only thing this UI ever
 // shows, and people paste it into tickets and emails, so the panel offers it
 // rather than making them select the text by hand.
+//
+// 36.5 — an optional SPEAK affordance, and only on the assistant's own
+// replies. Reading a person their own question back to them is noise.
+// Browser-native speechSynthesis: no vendor, no audio file, nothing stored.
+//
+// The button is offered only when the browser can synthesise at all, and it
+// toggles: a second press stops a reply that is already being read. The
+// `speaking` prop is the panel's answer to "is THIS bubble the one being
+// read", so two bubbles never both claim to be speaking.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { useState } from 'react';
 
-import { Bot, Check, Copy, User } from 'lucide-react';
+import { Bot, Check, Copy, User, Volume2, VolumeX } from 'lucide-react';
 
 
-const ChatMessageBubble = ({ role = 'user', content = '', onCopy }) => {
+/**
+ * @param {object}   props
+ * @param {string}   props.role
+ * @param {string}   props.content
+ * @param {Function} [props.onCopy]
+ * @param {Function} [props.onSpeak]  Provided only on assistant replies,
+ *        and only when the browser can synthesise. Absent means no button.
+ * @param {boolean}  [props.speaking] True when THIS bubble is being read.
+ */
+const ChatMessageBubble = ({
+  role = 'user',
+  content = '',
+  onCopy,
+  onSpeak,
+  speaking = false,
+}) => {
   const isAssistant = role === 'assistant';
 
   // Local, transient, and never persisted: it exists only to swap the icon for
@@ -68,22 +92,52 @@ const ChatMessageBubble = ({ role = 'user', content = '', onCopy }) => {
         {/* Whitespace is preserved so a multi-line answer reads as written. */}
         <p className="whitespace-pre-wrap break-words">{content}</p>
 
-        {onCopy && (
-          <button
-            type="button"
-            onClick={copy}
-            title={copied ? 'Copied' : 'Copy this answer'}
-            aria-label={copied ? 'Answer copied' : 'Copy this answer'}
-            className="mt-1.5 flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-semibold text-crewly-dim transition hover:text-crewly-text"
-          >
-            {copied ? (
-              <Check className="h-3 w-3" aria-hidden="true" strokeWidth={2} />
-            ) : (
-              <Copy className="h-3 w-3" aria-hidden="true" strokeWidth={1.8} />
-            )}
-            {copied ? 'Copied' : 'Copy'}
-          </button>
-        )}
+        {/* The two affordances share one row. They are small on purpose:
+            the reply is the content, these are conveniences. */}
+        <div className="mt-1.5 flex items-center gap-2">
+          {onCopy && (
+            <button
+              type="button"
+              onClick={copy}
+              title={copied ? 'Copied' : 'Copy this answer'}
+              aria-label={copied ? 'Answer copied' : 'Copy this answer'}
+              className="flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-semibold text-crewly-dim transition hover:text-crewly-text"
+            >
+              {copied ? (
+                <Check className="h-3 w-3" aria-hidden="true" strokeWidth={2} />
+              ) : (
+                <Copy className="h-3 w-3" aria-hidden="true" strokeWidth={1.8} />
+              )}
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+          )}
+
+          {/* 36.5 — read this answer aloud. Only ever on an assistant
+              reply, and only when the browser can speak. */}
+          {isAssistant && onSpeak && (
+            <button
+              type="button"
+              onClick={onSpeak}
+              title={speaking ? 'Stop reading' : 'Read this answer aloud'}
+              aria-label={
+                speaking ? 'Stop reading this answer' : 'Read this answer aloud'
+              }
+              aria-pressed={speaking}
+              className={`flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-semibold transition ${
+                speaking
+                  ? 'text-crewly-green'
+                  : 'text-crewly-dim hover:text-crewly-text'
+              }`}
+            >
+              {speaking ? (
+                <VolumeX className="h-3 w-3" aria-hidden="true" strokeWidth={2} />
+              ) : (
+                <Volume2 className="h-3 w-3" aria-hidden="true" strokeWidth={1.8} />
+              )}
+              {speaking ? 'Stop' : 'Listen'}
+            </button>
+          )}
+        </div>
       </div>
 
       {!isAssistant && (
