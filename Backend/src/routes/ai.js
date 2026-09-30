@@ -20,6 +20,7 @@ import * as aiController from '../controllers/aiController.js';
 //   GET  /api/ai/config            this tenant's AI config + month spend (36.2)
 //   PUT  /api/ai/config            the tenant's kill switch / quota / allowlist (36.2)
 //   GET  /api/ai/context/preview   the caller's own redacted context (36.2)
+//   GET  /api/ai/usage             the admin token dashboard (36.6)
 //
 // Middleware order is the project law: auth → tenant, then RBAC, then the
 // handler. Subscription gating is deliberately absent — the AI suite has no
@@ -60,6 +61,20 @@ router
 router
   .route('/context/preview')
   .get(previewContextValidator, aiController.previewContext);
+
+// Phase 36.6 — the admin usage dashboard.
+//
+// SETTINGS_MANAGE for the same reason the config endpoints use it: there is
+// no `ai:admin` permission in this repo, and inventing one would mean a
+// registry change plus a SYSTEM_PERMISSION_VERSION bump plus a migration
+// for every existing tenant. COMPANY_ADMIN already inherits
+// SETTINGS_MANAGE, so this reaches exactly the people who need it.
+//
+// Placed AFTER /config so the RBAC note above stays attached to the
+// preview route it describes.
+router
+  .route('/usage')
+  .get(requirePermission('SETTINGS_MANAGE'), aiController.getUsage);
 
 export default router;
 

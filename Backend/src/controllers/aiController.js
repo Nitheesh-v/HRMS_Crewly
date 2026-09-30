@@ -26,7 +26,10 @@ import { AIError, sendAIError } from '../services/ai/aiErrors.js';
 
 import { aiChat } from '../services/ai/aiProvider.js';
 
-import { getMonthUsage } from '../services/ai/aiUsageTracker.js';
+import {
+  getMonthUsage,
+  getUsageBreakdown,
+} from '../services/ai/aiUsageTracker.js';
 
 import {
   getTenantConfig,
@@ -302,6 +305,66 @@ export const askChatbot = asyncHandler(async (req, res) => {
       success: true,
       data: response,
       message: 'Chatbot reply generated',
+    });
+  } catch (error) {
+    if (error instanceof AIError) {
+      return sendAIError(res, error);
+    }
+
+    throw error;
+  }
+});
+
+// GET /api/ai/usage — the admin token dashboard (Phase 36.6).
+//
+// Answers "where did this month's AI budget go?" for a company admin.
+// The route is behind protect → tenantContext → SETTINGS_MANAGE, so the
+// only rows that can come back are this tenant's own.
+//
+// WHAT IT DELIBERATELY DOES NOT RETURN: any prompt, any reply, any
+// category list and any per-user timestamp. `topUsers` carries a name, a
+// designation and a token count — the name and designation are already
+// visible to this admin on the employee screen, and the token count is the
+// number the quota is made of. Nothing new about anyone is exposed.
+export const getUsage = asyncHandler(async (req, res) => {
+  try {
+    // Data from frontend - requests from frontend
+    // Nothing is read from the body or the query. `now` is server-side, so
+    // a client cannot ask for another tenant's window or another month.
+    const now = new Date();
+
+    // DB Logic - DB logics
+    // Tenant authority is req.companyId ONLY. There is no companyId in the
+    // request and no way to supply one.
+    const [config, breakdown] = await Promise.all([
+      getTenantConfig(req.companyId),
+      getUsageBreakdown({ companyId: req.companyId, now }),
+    ]);
+
+    // Data to frontend - response to frontend
+    return res.status(200).json({
+      statusCode: 200,
+      success: true,
+      data: {
+        window: {
+          start: breakdown.windowStart,
+          end: breakdown.windowEnd,
+        },
+
+        totals: {
+          totalTokens: breakdown.totalTokens,
+          calls: breakdown.calls,
+
+          // null means "use the platform default", which the config
+          // service has already resolved. The UI shows a real ceiling.
+          quotaTokens: config.monthlyQuotaTokens,
+        },
+
+        byFeature: breakdown.byFeature,
+        byStatus: breakdown.byStatus,
+        topUsers: breakdown.topUsers,
+      },
+      message: 'AI usage breakdown ready',
     });
   } catch (error) {
     if (error instanceof AIError) {

@@ -41,6 +41,24 @@
 //     without a flag and most embedded webviews simply get the typing chat
 //     that 36.3 shipped, which is a complete product on its own.
 //
+// 36.6 — THE INTELLIGENCE & UX PACK.
+//
+//   · PROGRESSIVE REVEAL. The reply types itself out instead of appearing
+//     all at once, which is the ChatGPT-like feel the owner asked for. This
+//     is CLIENT-SIDE rendering of a complete reply, NOT server streaming —
+//     see the note in docs/PHASE_36_6_ADVANCED_CHATBOT_UX.md for why SSE was
+//     deliberately not used.
+//
+//   · FOLLOW-UP CHIPS and DEEP-LINK CHIPS, both rendered by the bubble.
+//     A deep link NAVIGATES. It never performs an action.
+//
+//   · A TRANSCRIPT EXPORT. Client-side Blob only, no server call.
+//
+//   · A RICHER EMPTY STATE that says what the assistant can actually do.
+//
+//   · Typing while the assistant is speaking stops the speech, because a
+//     voice talking over someone who has started typing is just noise.
+//
 //   · LANGUAGE IS A PREFERENCE, NOT AN AUTHORITY. It changes how an answer is
 //     phrased and never what the caller may read — the server scopes
 //     that from req.companyId and req.user._id before this value is looked at.
@@ -52,9 +70,13 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Bot,
+  Download,
   Info,
   Languages,
+  Mic,
   RotateCcw,
+  ShieldCheck,
+  Sparkles,
   Trash2,
   X,
 } from 'lucide-react';
@@ -70,7 +92,6 @@ import {
 
 import ChatInputBar from './ChatInputBar.jsx';
 import ChatMessageBubble, { ChatTypingBubble } from './ChatMessageBubble.jsx';
-import QuickPromptPills from './QuickPromptPills.jsx';
 import { MAX_MESSAGES } from './chatLimits.js';
 
 import {
@@ -87,6 +108,83 @@ import {
   stopSpeaking,
   whenVoicesReady,
 } from '../../utils/speechSynthesis.js';
+
+import { downloadTranscript } from './chatTranscript.js';
+
+import { QUICK_PROMPTS } from './chatPrompts.js';
+
+/**
+ * 36.6 — the empty state.
+ *
+ * WHY IT EXISTS. 36.3 opened with a single welcome sentence and a row of
+ * pills. That tells a first-time user what the assistant IS, but not what
+ * it can DO for them, and the pills are undifferentiated — a leave question
+ * and a holiday question look equally likely to be answered.
+ *
+ * The four badges are the honest summary of the whole Phase 36 design:
+ * answers come only from the caller's own data, everything is redacted
+ * before it leaves the server, five languages are available, and the mic
+ * and speaker are the browser's own.
+ *
+ * THE EXAMPLES ARE GROUPED, not listed flat, so a person can find the
+ * thing they came for. Every example is a REAL quick prompt from
+ * chatPrompts.js — the same list the pills test proves is answerable — so
+ * nothing here promises what the context cannot deliver.
+ */
+const ONBOARDING_BADGES = Object.freeze([
+  Object.freeze({ icon: Sparkles, label: 'Instant Answers' }),
+  Object.freeze({ icon: ShieldCheck, label: '100% Private & Redacted' }),
+  Object.freeze({ icon: Languages, label: 'Multilingual' }),
+  Object.freeze({ icon: Mic, label: 'Voice Enabled' }),
+]);
+
+/**
+ * The example groups, in the order a new employee is most likely to want
+ * them. Each entry names a quick prompt that already exists, so the two
+ * lists can never disagree.
+ */
+//
+// THE LABELS ARE THE REAL ONES from chatPrompts.js, and they are RESOLVED
+// against that list rather than trusted. A prompt that is renamed or
+// removed degrades to fewer chips here, never to a chip that promises
+// something the context cannot answer — which is the rule
+// Frontend/test/aiChatPills.test.js already enforces for the pills.
+const ONBOARDING_GROUPS = Object.freeze([
+  Object.freeze({
+    title: 'Leaves',
+    labels: Object.freeze([
+      'My leave balance',
+      'How do I apply for leave',
+      'My leave history',
+    ]),
+  }),
+  Object.freeze({
+    title: 'Attendance & Shifts',
+    labels: Object.freeze([
+      'My shift timing',
+      'Am I present today',
+      'This month so far',
+    ]),
+  }),
+  Object.freeze({
+    title: 'Payslips & Holidays',
+    labels: Object.freeze(['My payslips', 'Upcoming holidays']),
+  }),
+]);
+
+/**
+ * Resolve the onboarding groups to real quick prompts.
+ *
+ * Built once at module load. A label with no matching prompt is dropped,
+ * so a stale group entry simply produces one fewer chip instead of a
+ * question the assistant cannot answer.
+ */
+const ONBOARDING_SECTIONS = ONBOARDING_GROUPS.map((group) => ({
+  title: group.title,
+  prompts: group.labels
+    .map((label) => QUICK_PROMPTS.find((entry) => entry.label === label))
+    .filter(Boolean),
+})).filter((group) => group.prompts.length > 0);
 
 const WELCOME = {
   id: 'welcome',
@@ -404,6 +502,35 @@ const AiAssistantPanel = ({ onClose }) => {
   }, [voice.listening, voice.interim]);
 
   /*
+   * 36.6 — TYPING STOPS THE SPEECH.
+   *
+   * The assistant reads its reply aloud. The moment the person starts
+   * typing, that voice is noise competing with what they are trying to
+   * say, so it stops.
+   *
+   * Two deliberate choices:
+   *
+   *   · It only fires when something is actually speaking. Without the
+   *     guard, every keystroke would cancel the speech engine, which is
+   *     harmless in practice but pointless and hard to reason about.
+   *
+   *   · The draft still updates normally. Stopping the voice must never
+   *     swallow a character — the person typed it, they get it.
+   */
+  const handleDraftChange = useCallback(
+    (next) => {
+      if (speakingId) {
+        stopSpeaking();
+
+        setSpeakingId('');
+      }
+
+      setDraft(next);
+    },
+    [speakingId],
+  );
+
+  /*
    * 36.5 — AUTO-SPEAK THE REPLY TO A SPOKEN QUESTION, ONCE.
    *
    * The whole rule is the latch. It is set when a spoken question is sent
@@ -447,6 +574,46 @@ const AiAssistantPanel = ({ onClose }) => {
     [],
   );
 
+  /**
+   * 36.6 — export the transcript.
+   *
+   * ZERO server calls. The file is built from the messages already in
+   * Redux and handed straight to the browser. Nothing is uploaded, nothing
+   * is logged, and nothing is stored by this product — the file belongs to
+   * the person who clicked the button, on the machine they are sitting at.
+   *
+   * `false` means there was nothing to export (an empty conversation), so
+   * the button is disabled in that state rather than silently doing
+   * nothing.
+   */
+  const exportTranscript = useCallback(() => {
+    if (messages.length === 0) return;
+
+    downloadTranscript(messages);
+  }, [messages]);
+
+  /**
+   * 36.6 — a follow-up chip was clicked.
+   *
+   * It is sent exactly as if the person had typed it. There is no special
+   * path and no extra state: the chip is a shortcut for a keystroke, and
+   * treating it as anything else would let a model-supplied string reach
+   * the server by a route the tests do not cover.
+   *
+   * `sentViaVoice` is deliberately false: the person clicked, they did not
+   * speak, so the reply must not be read aloud.
+   */
+  const askFollowUp = useCallback(
+    (question) => {
+      const text = String(question || '').trim();
+
+      if (!text || sending) return;
+
+      send(text, { sentViaVoice: false });
+    },
+    [send, sending],
+  );
+
   const shown = messages.length > 0 ? messages : [WELCOME];
 
   // Copy is offered on the newest answer only. A button on every bubble turns
@@ -473,6 +640,21 @@ const AiAssistantPanel = ({ onClose }) => {
             change anything.
           </p>
         </div>
+
+        {/* 36.6 — export the transcript. Rendered always but disabled until
+            there is something to export, so the feature is discoverable
+            rather than appearing out of nowhere after the first turn. */}
+        <button
+          type="button"
+          onClick={exportTranscript}
+          disabled={messages.length === 0}
+          title="Download this conversation as a text file"
+          aria-label="Download this conversation as a text file"
+          className="flex shrink-0 items-center gap-1.5 rounded border border-crewly-border px-2 py-1 text-[11px] font-semibold text-crewly-dim transition hover:text-crewly-text disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Download className="h-3.5 w-3.5" aria-hidden="true" strokeWidth={1.8} />
+          <span className="hidden sm:inline">Export</span>
+        </button>
 
         {messages.length > 0 && (
           <button
@@ -609,6 +791,20 @@ const AiAssistantPanel = ({ onClose }) => {
                 : undefined
             }
             speaking={speakingId === message.id}
+
+            // 36.6 — the chips travel WITH the message, not with the panel, so
+            // scrolling back to an earlier answer never shows the newest
+            // answer's suggestions on it. The welcome bubble is excluded: it
+            // is not an answer to anything and has nothing to suggest.
+            followUpQuestions={
+              message.id === 'welcome' ? [] : message.followUpQuestions
+            }
+            deepLinks={message.id === 'welcome' ? [] : message.deepLinks}
+            onFollowUp={
+              message.role === 'assistant' && message.id !== 'welcome'
+                ? askFollowUp
+                : undefined
+            }
           />
         ))}
 
@@ -618,17 +814,76 @@ const AiAssistantPanel = ({ onClose }) => {
       </div>
 
       <div className="space-y-3 border-t border-crewly-border px-3 py-3 sm:px-4">
-        {/* Pills are an introduction: they step aside once the conversation
-            has started, rather than sitting on top of the replies forever. */}
+        {/*
+         * 36.6 — THE EMPTY STATE.
+         *
+         * Replaces the flat row of pills 36.3 shipped. Same prompts, but
+         * grouped by what a new employee came for, and with the four badges
+         * that say what the assistant actually is.
+         *
+         * It still steps aside the moment the conversation starts — an
+         * introduction that never leaves is a permanent toolbar.
+         */}
         {messages.length === 0 && (
-          <QuickPromptPills onSelect={send} disabled={sending} />
+          <div className="space-y-3">
+            <div className="rounded-xl border border-crewly-border bg-crewly-card p-3">
+              <h3 className="text-[13px] font-bold text-crewly-text">
+                Welcome to CREWLY HR Assistant
+              </h3>
+
+              <p className="mt-1 text-[11px] leading-relaxed text-crewly-dim">
+                Ask about your own leave, attendance, shifts, holidays, payslip
+                status, tasks, projects, expenses and documents. Answers come
+                only from records you are already allowed to see, and the
+                assistant can never approve, apply or change anything.
+              </p>
+
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {ONBOARDING_BADGES.map((badge) => (
+                  <span
+                    key={badge.label}
+                    className="flex items-center gap-1 rounded-full border border-crewly-green/30 bg-crewly-green/10 px-2 py-0.5 text-[10px] font-semibold text-crewly-green"
+                  >
+                    <badge.icon
+                      className="h-3 w-3 shrink-0"
+                      aria-hidden="true"
+                      strokeWidth={2}
+                    />
+                    {badge.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {ONBOARDING_SECTIONS.map((group) => (
+              <div key={group.title}>
+                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-crewly-dim">
+                  {group.title}
+                </p>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {group.prompts.map((item) => (
+                    <button
+                      key={item.label}
+                      type="button"
+                      disabled={sending}
+                      onClick={() => send(item.prompt)}
+                      className="rounded-full border border-crewly-border bg-crewly-card px-2.5 py-1 text-[11px] text-crewly-dim transition hover:border-crewly-green hover:text-crewly-text disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         )}
 
         <ChatInputBar
           onSend={send}
           sending={sending}
           value={draft}
-          onChange={setDraft}
+          onChange={handleDraftChange}
           voice={voice}
         />
       </div>

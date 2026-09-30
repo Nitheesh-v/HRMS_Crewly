@@ -270,12 +270,29 @@ describe('Phase 36.5 voice wiring', () => {
   });
 
   test('the client still sends no identity fields', () => {
-    // 36.3's boundary must survive 36.5 untouched. A language field must not
-    // become the camel's nose for a client-supplied tenant id.
+    // 36.3's boundary must survive 36.5 and 36.6 untouched. A language field
+    // must not become the camel's nose for a client-supplied tenant id.
+    //
+    // THE PIN IS SCOPED TO THE REQUEST, NOT THE WHOLE FILE. It used to search
+    // all of aiService.js, which was right while the file only ever built one
+    // request. 36.6 added getAiUsage, which READS a `userId` out of the
+    // server's response — reading it is not sending it. Searching the whole
+    // file flagged a field the client never transmits, and the fix would have
+    // been to stop naming the server's own payload shape in a comment, which
+    // is the wrong thing to change.
     const source = code('services/aiService.js');
 
+    const requestBlock = source.slice(
+      source.indexOf('const payload = {'),
+      source.indexOf('const response = bare('),
+    );
+
     for (const field of ['companyId', 'userId', 'user', 'feature']) {
-      assert.equal(source.includes(field), false, `client sends ${field}`);
+      assert.equal(
+        requestBlock.includes(field),
+        false,
+        `client sends ${field}`,
+      );
     }
 
     assert.equal(source.includes("'/ai/chatbot'"), true);

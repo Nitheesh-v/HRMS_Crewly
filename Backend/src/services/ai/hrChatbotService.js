@@ -35,7 +35,11 @@
 import {
   AI_CHATBOT_HISTORY_LIMIT,
   AI_DEFAULT_LANGUAGE,
+  AI_DEEP_LINKS,
+  AI_DEEP_LINK_ORDER,
   AI_FEATURE_CHATBOT,
+  AI_FOLLOW_UP_FALLBACKS,
+  AI_FOLLOW_UP_MAX,
   AI_LANGUAGE_LABELS,
   normalizeLanguage,
 } from './aiConfig.js';
@@ -71,6 +75,8 @@ Rules you must follow:
 13. YOU ONLY KNOW THIS EMPLOYEE. The context is the caller's own records, plus counts where their role allows it. A count is not a person: never turn "3 people are on leave today" into a name, and never speculate about a colleague's leave, salary, attendance or performance. If asked about someone else, say you only have access to their own records.
 14. WHEN YOU CANNOT ANSWER, STILL BE USEFUL. A bare "I do not have that information" is a dead end, so instead give THREE things in this order: (a) say plainly that you do not have that; (b) give the closest thing you DO have — a related section from the context, or the screen where the answer lives, or the person who owns it; (c) if neither applies, say what the employee can do next. Worked example: asked "what is my bonus for last year?" — "I do not have your bonus figures. What I can see is that you have payslips for the months listed above, so the bonus would appear on your December payslip under My Payslips. If it is missing there, your payroll team can confirm it." Worked example: asked "what is my manager's salary?" — "I only have access to your own records, so I cannot see anyone else's salary." HARD LIMIT: (b) must come from the context or the capability list as written. Never estimate, never invent a number, never name a person, and never present a guess as a fact. Rule 4 still wins over rule 14.
 
+{followUpRule}
+
 {languageRule}
 
 === EMPLOYEE HR CONTEXT ===
@@ -90,13 +96,33 @@ Rules you must follow:
  * never weaken a rule 1-14 guarantee.
  */
 const buildLanguageRule = (languageLabel) =>
-  '15. REPLY IN THE LANGUAGE THE EMPLOYEE CHOSE: ' +
+  '16. REPLY IN THE LANGUAGE THE EMPLOYEE CHOSE: ' +
   languageLabel +
   '. Write your whole answer in that language and that script, using the '
   + " employee's own words for their HR terms. Keep JSON field names, "
   + 'proper nouns (Crewly), and any code or identifier exactly as they are. '
   + 'If the employee mixes two languages, match the mix. Never answer in a '
   + 'language the employee did not choose, and never translate an HR figure.';
+
+/**
+ * The follow-up instruction (Phase 36.6).
+ *
+ * ALWAYS present, unlike the language rule: it is not a preference, it is
+ * how the UI gets its suggestion chips. Kept short on purpose — every
+ * token here is spent on every English turn too, and the owner measured a
+ * full turn at ~556 tokens against a 1024 ceiling.
+ *
+ * The marker is a fixed, machine-readable token so the parser has one
+ * shape to look for. A model that ignores it costs nothing: the parser
+ * falls back to the deterministic suggestions and the reply is simply
+ * shown without chips.
+ */
+const FOLLOW_UP_RULE =
+  '15. IF IT HELPS, END WITH 2 SHORT FOLLOW-UP QUESTIONS the employee ' +
+  'might ask next, on ONE final line, in exactly this shape: ' +
+  '"Follow-up: <question one> | <question two>". Ask about things the ' +
+  'context above can actually answer. If nothing useful follows, omit ' +
+  'the line entirely. Never invent a question the context cannot answer.';
 
 const buildSystemPrompt = (retrievedContext, languageLabel) =>
   SYSTEM_PROMPT_TEMPLATE
@@ -105,9 +131,166 @@ const buildSystemPrompt = (retrievedContext, languageLabel) =>
       languageLabel ? '\n' + buildLanguageRule(languageLabel) : '',
     )
     .replace(
+      '{followUpRule}',
+      '\n' + FOLLOW_UP_RULE,
+    )
+    .replace(
       '{retrievedContext}',
       typeof retrievedContext === 'string' ? retrievedContext : '',
     );
+
+/**
+ * Phase 36.6 — the navigational deep links for a turn.
+ *
+ * Built from the categories the RETRIEVER actually filled, never from the
+ * model. A model-chosen path would be a model-chosen action, and no model
+ * output is allowed to move this product.
+ *
+ * Deduplicated and ordered by AI_DEEP_LINK_ORDER, so two turns that used
+ * the same categories always produce the same chips in the same order.
+ *
+ * @param {string[]} categoriesUsed
+ * @returns {Array<{label: string, path: string}>}
+ */
+export const buildDeepLinks = (categoriesUsed) => {
+  if (!Array.isArray(categoriesUsed)) return [];
+
+  const used = new Set(categoriesUsed);
+
+  const seen = new Set();
+
+  // Deliberately written with array methods and NO loop. Two reasons.
+  //
+  // The first is that it reads better for a four-element ordered list. The
+  // second is the one that matters: test/hrChatbotService.test.js pins
+  // this module as loop-free to prove there is no agent behaviour — no
+  // retry, no "ask the model again" cycle. Writing this as a counted loop
+  // would trip that pin, and the pin is protecting a real law.
+  return AI_DEEP_LINK_ORDER.filter((category) => used.has(category))
+    .map((category) => AI_DEEP_LINKS[category])
+    .filter((link) => Boolean(link))
+    .filter((link) => {
+      if (seen.has(link.path)) return false;
+
+      seen.add(link.path);
+
+      return true;
+    })
+    .map((link) => ({ label: link.label, path: link.path }));
+};
+
+/**
+ * Phase 36.6 — pull the follow-up questions out of the model's reply.
+ *
+ * TWO THINGS THIS MUST GET RIGHT, and the second is the one that matters.
+ *
+ * 1. The marker line is STRIPPED from the reply the employee reads. A raw
+ *    "Follow-up: ..." line leaking into the answer is a bug the person would
+ *    notice immediately.
+ *
+ * 2. Nothing is ever INVENTED. When the model supplies nothing usable, the
+ *    fallback is the static, known-answerable list in AI_FOLLOW_UP_FALLBACKS
+ *    — never a generated guess. Rule 4 (never invent) and rule 14's hard
+ *    limit still win over the convenience of a full chip row.
+ *
+ * Tolerant by design: the marker is matched case-insensitively, the
+ * separator may be a pipe with or without padding, and a stray bracket
+ * pair is stripped. A model that formats it slightly differently still
+ * works; a model that omits it costs nothing.
+ *
+ * @param {string}   reply
+ * @param {string[]} categoriesUsed
+ * @returns {{cleanReply: string, questions: string[]}}
+ */
+export const parseFollowUps = (reply, categoriesUsed) => {
+  const text = typeof reply === 'string' ? reply : '';
+
+  const lines = text.split('\n');
+
+  const kept = [];
+
+  const found = [];
+
+  // True as soon as ANY marker line matches, even one that yields no
+  // usable question. Without this, a malformed "Follow-up:" line would
+  // stay visible in the answer the employee reads.
+  let sawMarker = false;
+
+  // A single pass, so a reply with several candidate lines keeps them all
+  // but never duplicates one.
+  lines.forEach((line) => {
+    // `(.*)` and not `(.+)`. A model that emits a bare "Follow-up:" with
+    // nothing after it must still have that line STRIPPED from the answer:
+    // it is a prompt artefact, not content. With `(.+)` the line never
+    // matched, so `sawMarker` never fired and the marker stayed visible.
+    // The empty case is what the 36.6 test "an EMPTY marker leaks nothing"
+    // pins.
+    const match = /^\s*follow[- ]?ups?\s*:\s*(.*)$/i.exec(line);
+
+    if (!match) {
+      kept.push(line);
+
+      return;
+    }
+
+    sawMarker = true;
+
+    // ' | ' is the documented separator, but a model that pads differently
+    // or uses a bare pipe should not break the feature.
+    match[1].split('|').forEach((part) => {
+      const cleaned = part
+        .trim()
+        // The prompt's own template shows the questions in brackets. They
+        // are placeholders, not literal characters.
+        .replace(/^\[\s*/, '')
+        .replace(/\s*\]$/, '')
+        .replace(/^['\"]+|['\"]+$/g, '')
+        .trim();
+
+      if (cleaned.length > 0) found.push(cleaned);
+    });
+  });
+
+  const capped = found.slice(0, AI_FOLLOW_UP_MAX);
+
+  if (capped.length > 0) {
+    // The marker line is gone; what is left is the answer.
+    return { cleanReply: kept.join('\n').trim(), questions: capped };
+  }
+
+  // Deterministic fallback. Every string in AI_FOLLOW_UP_FALLBACKS is a
+  // static question the retriever can actually answer, which is the same
+  // rule chatPrompts.js enforces for the quick-prompt pills.
+  const fallback = [];
+
+  const seen = new Set();
+
+  (Array.isArray(categoriesUsed) ? categoriesUsed : []).forEach(
+    (category) => {
+      const suggestions = AI_FOLLOW_UP_FALLBACKS[category];
+
+      if (!suggestions) return;
+
+      suggestions.forEach((question) => {
+        const key = question.toLowerCase();
+
+        if (seen.has(key)) return;
+
+        seen.add(key);
+
+        fallback.push(question);
+      });
+    },
+  );
+
+  return {
+    // When a marker was present but unusable, the marker line is still
+    // stripped: it is a formatting artefact, not content. When there was
+    // no marker at all, the reply is returned exactly as written.
+    cleanReply: sawMarker ? kept.join('\n').trim() : text.trim(),
+    questions: fallback.slice(0, AI_FOLLOW_UP_MAX),
+  };
+};
 
 /**
  * Redact every USER turn, leave assistant turns alone.
@@ -132,7 +315,8 @@ const redactHistory = (messages, redact) =>
  * @param {string[]} [input.categories] optional narrowing of the tenant allowlist
  * @param {object}   [input.deps]      DI seam: aiChat / getUserHRContext / redactPII
  *
- * @returns {Promise<{reply: string, usage: object, categoriesUsed: string[]}>}
+ * @returns {Promise<{reply: string, usage: object, categoriesUsed: string[],
+ *   followUpQuestions: string[], deepLinks: Array<{label: string, path: string}>}>}
  */
 export const askHRAssistant = async ({
   companyId,
@@ -218,10 +402,32 @@ export const askHRAssistant = async ({
   });
 
   // STEP 7 — what the browser gets. The context and the prompt stay here.
+  //
+  // Phase 36.6 adds two fields, and both are derived from things this
+  // function already knows:
+  //
+  //   followUpQuestions — parsed out of the model's own reply, or the
+  //     deterministic fallback. Never invented.
+  //   deepLinks — built from categoriesUsed, which is server-derived
+  //     truth. Never from the model.
+  //
+  // Neither is persisted anywhere. They live for one HTTP response.
+  const { cleanReply, questions } = parseFollowUps(
+    String(response?.content ?? ''),
+    categoriesUsed,
+  );
+
   return {
-    reply: String(response?.content ?? ''),
+    // The reply the employee reads, with the marker line stripped.
+    reply: cleanReply,
     usage: response?.usage ?? null,
     categoriesUsed: Array.isArray(categoriesUsed) ? categoriesUsed : [],
+
+    // 2-3 short next questions, or the static fallback.
+    followUpQuestions: questions,
+
+    // Navigation only. The assistant never performs an action.
+    deepLinks: buildDeepLinks(categoriesUsed),
   };
 };
 

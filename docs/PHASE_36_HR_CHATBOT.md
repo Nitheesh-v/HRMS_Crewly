@@ -1,17 +1,18 @@
 # CREWLY — PHASE 36: THE HR CHATBOT SUITE (AI)
 
-> **STATUS: 36.1–36.4 CLOSED. 36.5 SHIPPED, pending owner localhost
+> **STATUS: 36.1–36.5 SHIPPED. 36.6 BUILT, pending owner localhost
 > verification.**
 >
 > The five original units (36.1, 36.2, 36.3, 36.3b, 36.4) are shipped and
 > accepted. The fourteen structural guarantees are pinned by
 > `Backend/test/phase36Closeout.test.js` (**49** tests), and
-> `npm run test:all` is **2999 tests / 156 suites / 0 fail**.
+> `npm run test:all` is **3024 tests / 160 suites / 0 fail**.
 >
-> 36.5 (voice and multilingual) is additive and does not reopen any of
-> them. It is **not** signed off until the owner has pressed the
-> microphone in Chrome — see
-> [PHASE_36_5 §12](PHASE_36_5_VOICE_MULTILINGUAL.md).
+> 36.5 (voice and multilingual) and 36.6 (intelligence and UX) are both
+> additive and reopen nothing. Neither is signed off until the owner has
+> pressed through it — see
+> [PHASE_36_5 §12](PHASE_36_5_VOICE_MULTILINGUAL.md) and
+> [PHASE_36_6 §11](PHASE_36_6_ADVANCED_CHATBOT_UX.md).
 
 This document is the running record of Phase 36. **One unit at a time**, each
 unit shipped with its own tests, its own limitations and its own localhost
@@ -388,3 +389,57 @@ pins the wiring only, so the owner must verify interactively in Chrome.
 
 The dedicated per-unit runbook is
 [PHASE_36_5 §10 and §12](PHASE_36_5_VOICE_MULTILINGUAL.md).
+
+---
+
+## Phase 36.6 — the intelligence and UX pack
+
+Nine deliverables, all additive. The full record, including the two decisions
+that went against the build prompt, is
+[PHASE_36_6_ADVANCED_CHATBOT_UX.md](PHASE_36_6_ADVANCED_CHATBOT_UX.md).
+
+| # | Deliverable | Shipped as |
+| --- | --- | --- |
+| 1 | Streaming responses | Progressive client-side reveal, **no SSE** |
+| 2 | Follow-up chips | `parseFollowUps` + a static fallback table |
+| 3 | Deep-link chips | `AI_DEEP_LINKS`, navigation only |
+| 4 | Structured cards | `parseReplyBlocks`, deliberately conservative |
+| 5 | Own payslip Q&A | The category existed; the *output* changed |
+| 6 | Empty state | Grouped chips + four capability badges |
+| 7 | Transcript export | Client-side Blob, zero server calls |
+| 8 | Voice polish | Typing stops the speech |
+| 9 | Usage dashboard | `GET /ai/usage` + `AiUsagePage` |
+
+**The two decisions that went against the build prompt. Both are argued in
+full in the per-unit doc, and neither should be re-litigated without reading
+it.**
+
+1. **No SSE.** An SSE path would have to run through `aiProvider.js`, whose
+   guard ladder is pinned by 68 tests and closed. Progressive client-side
+   rendering was explicitly permitted and needs no package.
+2. **The payslip format was refused.** The prompt asked for Gross Salary, Net
+   Pay and Total Deductions in the context. `Total Deductions` is **not** in
+   the redactor's salary-label list, so that figure would have survived into
+   the vendor payload. The three fields are *named* instead, which is a useful
+   answer rather than a leak.
+
+**The rule numbers moved.** 36.6's follow-up rule is unconditional and 36.5's
+language rule is conditional (omitted for English). With language=15 and
+follow-up=16 the default prompt read `1..14, 16` — a gap no `RULE_COUNT`
+could satisfy. So **follow-up is 15, language is 16**, and the default
+English prompt is a clean `1–15`.
+
+**The route that does not exist.** The prompt named
+`/app/attendance/my-attendance`. It is not in `AppRoutes.jsx`. The real route
+is `/app/attendance`, and a test pins each deep-link path.
+
+**Numbers after 36.6:**
+
+```
+Backend   npm run test:all   3024 tests / 160 suites / 0 fail   (was 2999 / 156)
+Frontend  npm test            111 tests /  19 suites / 0 fail   (was  61 /   7)
+Frontend  npm run build       clean
+Frontend  npm run lint        128 problems (was 127 — one more
+                              set-state-in-effect, a rule that already
+                              fires 66 times across the codebase)
+```

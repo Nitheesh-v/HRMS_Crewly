@@ -42,6 +42,7 @@ const ActiveSessionsPage = lazy(() => import("../pages/security/ActiveSessionsPa
 const SecurityDashboardPage = lazy(() => import("../pages/security/SecurityDashboardPage.jsx"));
 const AuditLogsPage = lazy(() => import("../pages/security/AuditLogsPage.jsx"));
 const SecuritySettingsPage = lazy(() => import("../pages/security/SecuritySettingsPage.jsx"));
+const AiUsagePage = lazy(() => import("../pages/settings/AiUsagePage.jsx")); // 36.6 — admin AI usage dashboard
 
 const DashboardPage = lazy(() => import("../pages/dashboard/DashboardPage.jsx"));
 const ChatPage = lazy(() => import("../pages/chat/ChatPage.jsx")); // Phase 33.8 — Chat Hub
@@ -393,6 +394,20 @@ const AppRoutes = () => (
         element={
           <RequireRole roles={COMPANY_ADMIN}>
             <SecuritySettingsPage />
+          </RequireRole>
+        }
+      />
+
+      {/* 36.6 — admin AI usage dashboard. Same guard as security/settings:
+          COMPANY_ADMIN only. The route is the only thing standing between a
+          normal employee and another company's aggregate token counts, and
+          the server independently refuses a caller without SETTINGS_MANAGE,
+          so this is defence in depth rather than the only check. */}
+      <Route
+        path="settings/ai-usage"
+        element={
+          <RequireRole roles={COMPANY_ADMIN}>
+            <AiUsagePage />
           </RequireRole>
         }
       />

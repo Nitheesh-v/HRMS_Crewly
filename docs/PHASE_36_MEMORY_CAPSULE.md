@@ -15,7 +15,7 @@ An **HR conversational assistant** inside a multi-tenant SaaS HR platform. An
 employee asks *"what is my leave balance"* and gets an answer built only from
 data they are already authorized to see.
 
-Four units, in dependency order:
+Seven units, in dependency order:
 
 | Unit | What it added |
 | --- | --- |
@@ -24,7 +24,8 @@ Four units, in dependency order:
 | **36.3** | `hrChatbotService`, `POST /api/ai/chatbot`, the employee chat surface |
 | **36.3b** | The surface became a **floating widget** — the `/app/ai-assistant` route and the sidebar entry were removed |
 | **36.4** | Nine more own-record context categories, a static capability catalogue, role-aware aggregate counts, prompt rules 10-14, retry/copy UX |
-| **36.5** | Voice (browser-native `SpeechRecognition` / `speechSynthesis`) and five reply languages. Prompt rule 15. No new package. |
+| **36.5** | Voice (browser-native `SpeechRecognition` / `speechSynthesis`) and five reply languages. No new package. |
+| **36.6** | Progressive reveal, follow-up chips, deep-link navigation chips, structured answer cards, named payslip fields, onboarding empty state, transcript export, typing-stops-speech, admin usage dashboard. No new package. |
 
 **It is strictly the HR Chatbot Suite.** Not recruitment AI, not payroll
 pipeline AI, not analytics AI. Those need their own phase numbers and their own
@@ -33,8 +34,11 @@ laws.
 ### What it is deliberately NOT
 
 - **Not RAG.** No embeddings, no vector store. The retriever *is* the retrieval.
-- **Not agentic.** No tool calling, no streaming, no multi-step plans. One turn
-  is one request and the reply arrives whole.
+- **Not agentic.** No tool calling, no multi-step plans. One turn is one
+  request and the reply arrives whole.
+- **Not streamed.** 36.6 added a client-side *reveal* animation. There is
+  still no SSE and no second HTTP connection — see
+  [PHASE_36_6 §2](PHASE_36_6_ADVANCED_CHATBOT_UX.md).
 - **Not authoritative.** AI output is text shown to a human. It never approves,
   applies, punches, pays or decides anything.
 
@@ -413,8 +417,11 @@ the read failed, whereas `none` means the answer genuinely is nothing.
 1. **English carries no language rule at all.** `languageRule` is replaced
    with the empty string for `en`, so an English turn is byte-identical to a
    36.3 turn.
-2. **Rule 15 is APPENDED.** The prompt had 14 rules and now has 15. Never
-   renumber.
+2. **The language rule is 16, and it is CONDITIONAL.** It is omitted for
+   English. 36.6 put the follow-up rule at 15 because that one is
+   unconditional, so the default English prompt reads a clean 1—15.
+   If you ever add another unconditional rule it goes at 17 and
+   `RULE_COUNT` moves with it.
 3. **Language is a preference, never an authority.** It is NOT in
    `chatbotIdentityOverride`, and a test asserts that.
 4. **Validator refuses, service normalizes.** A 400 at the edge, a silent
@@ -430,6 +437,92 @@ the read failed, whereas `none` means the answer genuinely is nothing.
 9. **No server-side language detection and no backend auto-translation.**
 10. **The frontend voice features are NOT hermetically tested.**
     `aiVoice.test.js` pins wiring only. The owner verifies in Chrome.
+
+---
+
+## 5c. The 36.6 laws, in one place
+
+1. **The assistant NAVIGATES. It never ACTS.** `AI_DEEP_LINKS` is hardcoded in
+   `aiConfig.js` and keyed by the category the retriever filled. It is never
+   taken from the model. No chip calls an API, dispatches or mutates.
+2. **No chip path may contain `://`, `?` or `#`.** An absolute URL leaves the
+   product; a query string can carry data. Pinned by test.
+3. **`/app/attendance`, NOT `/app/attendance/my-attendance`.** The latter does
+   not exist in `AppRoutes.jsx`. Every path in the map was verified before it
+   was written down.
+4. **A card may RE-RENDER information. It may never REMOVE or CHANGE it.**
+   `parseReplyBlocks` requires a run of two or more lines that ALL match
+   `- Label: value`, renders label and value verbatim, and collapses the whole
+   run back to text if any line fails. A misparse degrades to 36.3, never
+   worse.
+5. **A bullet with no colon is never a card.** `- none assigned to you` is an
+   ANSWER (rule 8), and a card row would strip the prose that makes it
+   readable.
+6. **The money rule did not move.** `renderPayslips` still carries month and
+   status only. 36.6 only NAMED the three withheld fields. The query's
+   `.select()` is still narrowed so `snapshot.salary.*` is never read from
+   Mongo.
+7. **`Total Deductions` is NOT a salary label in the redactor.** That is the
+   decisive reason the prompt's payslip format was refused " + D + " that one
+   figure would have survived into the vendor payload.
+8. **No SSE.** The reveal is client-side. An SSE path would have to reopen
+   `aiProvider.js`'s guard ladder, which 68 tests pin.
+9. **`prefers-reduced-motion` disables the reveal.** Checked per render, not
+   once at load.
+10. **The transcript is never sent anywhere.** `buildTranscript` is a pure
+    string function; `downloadTranscript` is the only function that touches a
+    browser API, and it revokes its object URL.
+11. **A message with no timestamp prints `[unknown time]`.** Never the export
+    time. A transcript that lies about when a question was asked is worthless.
+12. **`getUsage` reads NOTHING from the request.** No body, no query, no
+    params. `now` is server-side and the company comes from the caller's token.
+13. **`byStatus` is an OBJECT keyed by status, not an array.** Treating it as
+    an array renders nothing and looks like an empty dashboard.
+14. **`SETTINGS_MANAGE`, never `ai:admin`.** There is no `ai:admin` permission
+    in this repo; inventing one needs a registry change and a migration.
+15. **`QuickPromptPills.jsx` was DELETED** in 36.6. The grouped onboarding
+    chips replaced it and nothing else imported it.
+
+---
+
+## 5d. Pitfalls paid for during 36.6
+
+- **A source pin can match the module's own doc comment.** Three of them did.
+  " + `"Nothing is written to localStorage"` + " is a sentence about NOT using
+  the thing the pin bans. **Strip comments before grepping** " + D + " `aiChatUx.test.js`
+  has a `readCode()` helper for exactly this, and `aiVoice.test.js` already had
+  one.
+- **A pin on the whole file is not a pin on the request.** The 36.5
+  " + `"client sends no identity fields"` + " test searched all of
+  `aiService.js`. 36.6 added `getAiUsage`, which *reads* a `userId` out of the
+  *response*. Reading is not sending. Scope such a pin to the request block.
+- **A slice-to-EOF pin breaks the moment something is appended.** Two pins
+  sliced `routes/ai.js` from `/context/preview` to the end. Adding `GET /usage`
+  after it failed both, for reasons that had nothing to do with the preview
+  route. Bound them at the next `route(`.
+- **`(.+)` vs `(.*)` in the follow-up marker.** With `(.+)` a bare
+  `Follow-up:` never matched, so `sawMarker` never fired and the marker leaked
+  into the answer. The flag was correct; the regex starved it.
+- **`parseFollowUps` returns `cleanReply`. `askHRAssistant` returns `reply`.**
+  The names are close enough that a find-and-replace broke four pre-existing
+  tests and two new ones.
+- **A recording fake that REPLACES the vendor result drops `usage`.** Pass the
+  whole object, not just `content`.
+- **A Python raw string turns `\n` into a literal backslash-n.** One comment
+  swallowed the line after it and the module failed at runtime with
+  " + `"match is not defined"` + ". `node --check` passed.
+- **`{/* comment */}` is illegal inside a JSX opening tag.** It parses as a
+  spread. Hit again in 36.6. Put the comment above the element.
+- **`await import()` in a file that already uses it at top level.** Add the
+  name to the EXISTING destructuring, or hold the module in a variable. A
+  second `await import` between an import and its `.default` breaks the file.
+- **The Unicode Extended_Pictographic property, not a hand-built emoji
+  range.** A literal
+  class containing U+FE0F is a combining character and
+  `no-misleading-character-class` rejects it.
+- **`npm run test:<one-suite>` prints a describe-level failure that a
+  `# tests`/`# pass` grep will hide.** Always read `# fail` too. " + D + " this is how
+  a broken `aiTenantConfig` suite looked green for one whole turn.
 
 ---
 

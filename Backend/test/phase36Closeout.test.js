@@ -529,8 +529,24 @@ describe('row 9: the system prompt carries every rule', () => {
    * unit added 14. Pinning seven would pass while the model ignored eleven
    * instructions the product actually relies on, so the pin is the real count
    * and the drift is recorded here instead.
+   *
+   * 36.6 added rule 15 (the follow-up instruction). It is ALWAYS present.
+   *
+   * WHY THE FOLLOW-UP RULE IS 15 AND THE LANGUAGE RULE IS 16. 36.5 shipped
+   * the language rule as 15, but it is CONDITIONAL — omitted for English,
+   * which is the default and the case this pin builds. The default prompt
+   * would have read 1..14 then 16, leaving a visible gap and breaking the
+   * contiguity check below. Renumbering puts the unconditional rule first,
+   * so the default prompt is a clean 1..15 and the gap check keeps its
+   * teeth. The language rule is now 16 and appears only when the employee
+   * picked a non-English language.
+   *
+   * THE CONSEQUENCE: this pin builds the prompt with NO language, so it sees
+   * rules 1-15 and never 16. A test that wants to see 16 must pass a language
+   * explicitly — which is what the 36.5 language tests in
+   * hrChatbotService.test.js do.
    */
-  const RULE_COUNT = 14;
+  const RULE_COUNT = 15;
 
   const buildPrompt = async () => {
     let captured = null;

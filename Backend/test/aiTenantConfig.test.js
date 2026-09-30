@@ -22,8 +22,15 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const backendRoot = path.join(here, '..');
 const read = (rel) => fs.readFileSync(path.join(backendRoot, rel), 'utf8');
 
-const AITenantConfig = (await import('../src/models/AITenantConfig.js'))
-  .default;
+// 36.6 — held in a variable so the DEFAULT export and the named
+// AI_TENANT_CATEGORY_DEFAULT come from ONE await import. Writing a second
+// `await import` between the import and its `.default` is what broke this
+// file once already.
+const tenantConfigModule = await import('../src/models/AITenantConfig.js');
+
+const AITenantConfig = tenantConfigModule.default;
+
+const AI_TENANT_CATEGORY_DEFAULT = tenantConfigModule.AI_TENANT_CATEGORY_DEFAULT;
 
 const {
   AI_TENANT_CONFIG_CACHE,
@@ -222,6 +229,29 @@ describe('AITenantConfig model (Phase 36 §5)', () => {
     assert.equal(options.enum.includes('performance'), false);
     assert.equal(options.enum.includes('payslips'), true);
     assert.equal(options.enum.includes('payroll'), false);
+  });
+
+  test('payslips is ON BY DEFAULT, so own-payslip Q&A needs no operator action', () => {
+    // 36.6 — the deliverable is "own payslip Q&A". Being in the enum is
+    // not enough: if the DEFAULT allowlist omitted it, a new tenant would
+    // get the feature only after somebody edited their config, and the
+    // assistant would answer "I do not have that information" for a
+    // category that was never actually switched on.
+    //
+    // AI_TENANT_CATEGORY_DEFAULT is built from AI_CONTEXT_CATEGORIES, so
+    // this also pins the invariant that the two lists cannot drift.
+    assert.equal(AI_TENANT_CATEGORY_DEFAULT.includes('payslips'), true);
+
+    assert.deepEqual(
+      [...AI_TENANT_CATEGORY_DEFAULT].sort(),
+      [...AI_CONTEXT_CATEGORIES].sort(),
+    );
+
+    // And the schema default really is that list, not a stale copy.
+    assert.deepEqual(
+      [...AITenantConfig.schema.path('allowedCategories').options.default].sort(),
+      [...AI_TENANT_CATEGORY_DEFAULT].sort(),
+    );
   });
 
   test('a negative quota is refused at the schema level', () => {
@@ -986,7 +1016,19 @@ describe('source pins', () => {
 
     assert.equal(configBlock.includes("requirePermission('SETTINGS_MANAGE')"), true);
 
-    const previewBlock = source.slice(source.indexOf("route('/context/preview')"));
+    // Slice EXACTLY the preview route's own registration. This pin used to
+    // slice to the end of the file, which held only while /context/preview
+    // was the last route registered. 36.6 appended GET /usage after it, and
+    // the pin failed for a reason that had nothing to do with the preview
+    // route. Bounding it at the next `route(` makes it test what it claims.
+    const previewStart = source.indexOf("route('/context/preview'");
+
+    const previewRest = source.slice(previewStart);
+
+    const previewEnd = previewRest.indexOf('route(', 1);
+
+    const previewBlock =
+      previewEnd === -1 ? previewRest : previewRest.slice(0, previewEnd);
 
     assert.equal(previewBlock.includes('requirePermission'), false);
   });

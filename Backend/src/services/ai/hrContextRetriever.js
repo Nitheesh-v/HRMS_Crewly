@@ -361,6 +361,30 @@ const renderPolicies = ({ holidays, announcements }) => {
  *
  * The redactor is NOT loosened to make the assistant look clever. The
  * honest degraded state is the required behaviour, not a shortcut.
+ *
+ * 36.6 — THE PROMPT ASKED FOR THE FIGURES. IT DID NOT GET THEM.
+ *
+ * The 36.6 build prompt asked this section to carry Gross Salary, Net Pay
+ * and Total Deductions, with a format example that showed two of the three
+ * as `[AMOUNT_REDACTED]`. That example is the tell: the author knew they
+ * would be masked. Rendering them would have produced a context reading
+ *
+ *   Gross Salary: [AMOUNT_REDACTED]
+ *   Net Pay: [AMOUNT_REDACTED]
+ *   Total Deductions: 8000
+ *
+ * which is strictly WORSE than what ships today. Two lines are noise, and
+ * the third is a real leak: `Total Deductions` is NOT in the redactor's
+ * salary-label list, so that figure would survive into the vendor payload
+ * — exactly the number the money rule exists to keep out.
+ *
+ * So the decision stands. What 36.6 DOES add is naming the three fields
+ * explicitly, so the assistant can answer "what is on my payslip?" and
+ * point at the right screen instead of gesturing at "figures".
+ *
+ * The query's `.select()` stays narrowed to month and status, so
+ * `snapshot.salary.*` is never read from Mongo at all. That 36.4 decision
+ * is not reversed here.
  */
 const renderPayslips = (rows) => {
   if (!rows) return UNAVAILABLE('payslips');
@@ -383,8 +407,12 @@ const renderPayslips = (rows) => {
       lines.push(`- ${label}: ${status}`);
     });
 
+    // 36.6 — the three fields are NAMED, not hidden behind "figures".
+    // The employee learns what a payslip contains and where to see it,
+    // which is a useful answer, rather than being told that something
+    // unspecified is unavailable, which is not.
     lines.push(
-      '- Earnings, deductions and net pay figures are not shown here by design. Open My Payslips to view them.',
+      '- Gross salary, total deductions and net pay are not shown here by design. Open My Payslips to view them.',
     );
   }
 

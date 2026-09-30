@@ -35,7 +35,17 @@ const {
 const {
   AI_CHATBOT_HISTORY_LIMIT,
   AI_CHATBOT_RATE_LIMIT,
+
+  // 36.6
+  AI_DEEP_LINK_ORDER,
+  AI_FOLLOW_UP_MAX,
 } = await import('../src/services/ai/aiConfig.js');
+
+// 36.6 — the two pure helpers, imported so they can be tested directly
+// rather than only through a full turn.
+const { buildDeepLinks, parseFollowUps } = await import(
+  '../src/services/ai/hrChatbotService.js'
+);
 
 const { createRateLimitStore } = await import(
   '../src/utils/rateLimitStore.js'
@@ -1063,7 +1073,7 @@ describe('the reply language (Phase 36.5)', () => {
 
     // Not "the rule says reply in English" — the rule is absent entirely. An
     // English turn must cost exactly what a 36.3 turn cost.
-    assert.equal(prompt.includes('15. REPLY IN THE LANGUAGE'), false);
+    assert.equal(prompt.includes('16. REPLY IN THE LANGUAGE'), false);
 
     // And it still carries the rules and the context, so nothing else moved.
     assert.equal(prompt.includes('1. '), true);
@@ -1076,7 +1086,7 @@ describe('the reply language (Phase 36.5)', () => {
     // requests and get byte-identical prompts.
     const prompt = await systemPromptFor(undefined);
 
-    assert.equal(prompt.includes('15. REPLY IN THE LANGUAGE'), false);
+    assert.equal(prompt.includes('16. REPLY IN THE LANGUAGE'), false);
   });
 
   test('each supported language injects its own label, verbatim', async () => {
@@ -1093,7 +1103,7 @@ describe('the reply language (Phase 36.5)', () => {
       const expected = AI_LANGUAGE_LABELS[language];
 
       assert.equal(
-        prompt.includes(`15. REPLY IN THE LANGUAGE THE EMPLOYEE CHOSE: ${expected}`),
+        prompt.includes(`16. REPLY IN THE LANGUAGE THE EMPLOYEE CHOSE: ${expected}`),
         true,
         `${language} did not receive its own label`,
       );
@@ -1114,7 +1124,7 @@ describe('the reply language (Phase 36.5)', () => {
     // No throw, no error code, no rule 15. The question still gets answered.
     const prompt = await systemPromptFor('fr');
 
-    assert.equal(prompt.includes('15. REPLY IN THE LANGUAGE'), false);
+    assert.equal(prompt.includes('16. REPLY IN THE LANGUAGE'), false);
     assert.equal(prompt.includes(CONTEXT), true);
   });
 
@@ -1123,7 +1133,7 @@ describe('the reply language (Phase 36.5)', () => {
       const prompt = await systemPromptFor(bad);
 
       assert.equal(
-        prompt.includes('15. REPLY IN THE LANGUAGE'),
+        prompt.includes('16. REPLY IN THE LANGUAGE'),
         false,
         `language ${JSON.stringify(bad)} was not normalized`,
       );
@@ -1137,7 +1147,7 @@ describe('the reply language (Phase 36.5)', () => {
     const english = await systemPromptFor('en');
     const tamil = await systemPromptFor('ta');
 
-    const head = tamil.slice(0, tamil.indexOf('15. REPLY IN THE LANGUAGE'));
+    const head = tamil.slice(0, tamil.indexOf('16. REPLY IN THE LANGUAGE'));
 
     // Everything English carries before rule 15 is present, in order, before
     // rule 15 in Tamil.
@@ -1148,7 +1158,7 @@ describe('the reply language (Phase 36.5)', () => {
 
     // And the context block still comes AFTER the rules.
     assert.equal(
-      tamil.indexOf('15. REPLY IN THE LANGUAGE') <
+      tamil.indexOf('16. REPLY IN THE LANGUAGE') <
         tamil.indexOf('=== EMPLOYEE HR CONTEXT ==='),
       true,
     );
@@ -1209,5 +1219,284 @@ describe('the reply language (Phase 36.5)', () => {
     assert.equal(typeof input.messages, 'object');
     assert.equal(input.companyId, COMPANY);
     assert.equal(input.userId, USER);
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE 36.6 — FOLLOW-UP QUESTIONS, DEEP LINKS, PAYSLIP INTEGRATION
+// ═══════════════════════════════════════════════════════════════════════════
+// Three new pieces of the payload:
+//
+//   followUpQuestions  string[]                    suggestion chips
+//   deepLinks          [{label, path}]             navigation chips
+//   payslips           a category that can now be used in a chat turn
+//
+// The parsing and the link building are PURE functions exported from the
+// service, so they are tested directly rather than only through a full turn.
+describe('follow-up parsing (Phase 36.6)', () => {
+  test('the marker is stripped from the reply and both questions are returned', () => {
+    const reply =
+      'You have 4 sick leaves remaining.\n\nFollow-up: How do I apply for leave? | What is my leave history?';
+
+    const result = parseFollowUps(reply, ['leaves']);
+
+    assert.deepEqual(result.questions, [
+      'How do I apply for leave?',
+      'What is my leave history?',
+    ]);
+
+    // The marker and everything after it must NOT be shown to the employee.
+    // A visible "Follow-up:" line is a prompt artefact leaking into the UI.
+    assert.equal(result.cleanReply.includes('Follow-up'), false);
+    assert.equal(result.cleanReply.includes('How do I apply for leave?'), false);
+    assert.equal(result.cleanReply.trim(), 'You have 4 sick leaves remaining.');
+  });
+
+  test('no marker at all falls back to the category suggestions', () => {
+    const reply = 'You have 4 sick leaves remaining.';
+
+    const result = parseFollowUps(reply, ['leaves']);
+
+    assert.equal(result.cleanReply, reply);
+    assert.ok(result.questions.length > 0);
+
+    // Every fallback must be a real string, because each one becomes a button.
+    result.questions.forEach((question) => {
+      assert.equal(typeof question, 'string');
+      assert.ok(question.length > 0);
+    });
+  });
+
+  test('four questions are capped at three', () => {
+    const reply =
+      'Here is your answer.\n\nFollow-up: One? | Two? | Three? | Four?';
+
+    const result = parseFollowUps(reply, ['leaves']);
+
+    // AI_FOLLOW_UP_MAX. A fourth chip is a fourth thing to read past, and the
+    // row wraps ugly on a phone.
+    assert.equal(result.questions.length, AI_FOLLOW_UP_MAX);
+    assert.deepEqual(result.questions, ['One?', 'Two?', 'Three?']);
+  });
+
+  test('an EMPTY marker leaks nothing into the reply and still suggests', () => {
+    // This is the bug that shipped once already: an empty `Follow-up:` line
+    // survived into the visible reply because the fallback branch returned the
+    // raw trimmed text instead of the stripped lines.
+    const reply = 'You have 4 sick leaves remaining.\n\nFollow-up:';
+
+    const result = parseFollowUps(reply, ['leaves']);
+
+    assert.equal(result.cleanReply.includes('Follow-up'), false);
+    assert.equal(result.cleanReply.trim(), 'You have 4 sick leaves remaining.');
+    assert.ok(result.questions.length > 0);
+  });
+
+  test('the singular FOLLOW-UPS: variant is recognised too', () => {
+    const reply = 'Here is your answer.\n\nFOLLOW-UPS: One? | Two?';
+
+    const result = parseFollowUps(reply, ['leaves']);
+
+    assert.deepEqual(result.questions, ['One?', 'Two?']);
+    assert.equal(result.cleanReply.includes('FOLLOW-UPS'), false);
+  });
+
+  test('a multi-line answer keeps every line except the marker', () => {
+    const reply =
+      'You have 4 sick leaves remaining.\n\n- Sick Leave: 4 remaining\n- Casual Leave: 6 remaining\n\nFollow-up: What about earned leave?';
+
+    const result = parseFollowUps(reply, ['leaves']);
+
+    // The bullets are the answer. They must survive verbatim, because the
+    // card parser in the frontend re-renders them.
+    assert.equal(result.cleanReply.includes('- Sick Leave: 4 remaining'), true);
+    assert.equal(result.cleanReply.includes('- Casual Leave: 6 remaining'), true);
+    assert.equal(result.cleanReply.includes('Follow-up'), false);
+    assert.deepEqual(result.questions, ['What about earned leave?']);
+  });
+
+  test('an unknown category still yields a usable suggestion, never an empty chip row', () => {
+    const result = parseFollowUps('Here is your answer.', ['capabilities']);
+
+    // A chip row that renders nothing is worse than no chip row. Whatever
+    // happens, the employee is offered something they can actually ask.
+    assert.ok(Array.isArray(result.questions));
+    result.questions.forEach((question) => {
+      assert.equal(typeof question, 'string');
+      assert.ok(question.length > 0);
+    });
+  });
+});
+
+describe('deep-link generation (Phase 36.6)', () => {
+  test('leaves, attendance and payslips each map to their verified route', () => {
+    const leaves = buildDeepLinks(['leaves']);
+
+    assert.deepEqual(leaves, [
+      { label: 'Apply Leave / View Ledger', path: '/app/leaves' },
+    ]);
+
+    const attendance = buildDeepLinks(['attendance']);
+
+    // /app/attendance, NOT the /app/attendance/my-attendance the build prompt
+    // named. That route does not exist and a chip pointing at it would 404.
+    assert.deepEqual(attendance, [
+      { label: 'View Attendance Records', path: '/app/attendance' },
+    ]);
+
+    const payslips = buildDeepLinks(['payslips']);
+
+    assert.deepEqual(payslips, [
+      { label: 'View Full Payslips', path: '/app/payroll/my-payslips' },
+    ]);
+  });
+
+  test('a category with no destination produces no chip at all', () => {
+    // profile, expenses, tasks, projects and the rest are read-only summaries.
+    // Offering a link there would be decoration, and a decoration that goes
+    // nowhere is worse than nothing.
+    assert.deepEqual(buildDeepLinks(['profile']), []);
+    assert.deepEqual(buildDeepLinks(['expenses']), []);
+    assert.deepEqual(buildDeepLinks(['capabilities']), []);
+    assert.deepEqual(buildDeepLinks([]), []);
+  });
+
+  test('the chip order is deterministic, not the order the model used', () => {
+    const links = buildDeepLinks(['policies', 'payslips', 'attendance', 'leaves']);
+
+    assert.deepEqual(
+      links.map((link) => link.path),
+      [
+        '/app/leaves',
+        '/app/attendance',
+        '/app/payroll/my-payslips',
+        '/app/documents',
+      ],
+    );
+  });
+
+  test('the same category twice yields one chip', () => {
+    const links = buildDeepLinks(['leaves', 'leaves', 'leaves']);
+
+    assert.equal(links.length, 1);
+  });
+
+  test('every deep link is a whitelisted, absolute in-app path', () => {
+    // The single most important pin in this file. A path is only ever offered
+    // because it is hardcoded in AI_DEEP_LINKS, so a model can never choose
+    // where the employee is sent.
+    const all = buildDeepLinks([
+      'leaves',
+      'attendance',
+      'payslips',
+      'policies',
+    ]);
+
+    all.forEach((link) => {
+      assert.equal(typeof link.path, 'string');
+      assert.equal(link.path.startsWith('/app/'), true);
+      assert.equal(typeof link.label, 'string');
+      assert.ok(link.label.length > 0);
+
+      // No protocol, no host, no query, no fragment. An absolute URL would
+      // take the employee off-site; a query string could carry data.
+      assert.equal(link.path.includes('://'), false);
+      assert.equal(link.path.includes('?'), false);
+      assert.equal(link.path.includes('#'), false);
+    });
+
+    // And the map itself is closed: nothing outside AI_DEEP_LINK_ORDER.
+    assert.deepEqual([...AI_DEEP_LINK_ORDER].sort(), [
+      'attendance',
+      'leaves',
+      'payslips',
+      'policies',
+    ]);
+  });
+});
+
+describe('the 36.6 payload shape', () => {
+  // The fake REPLACES the whole vendor result, so `content` alone would
+  // leave `usage` undefined and the service would normalise it to null.
+  // Spreading the default keeps the token counters real.
+  const turn = async (reply, categoriesUsed = ['leaves']) =>
+    askHRAssistant({
+      companyId: COMPANY,
+      userId: USER,
+      messages: [{ role: 'user', content: 'What is my leave balance?' }],
+      deps: baseDeps({
+        aiChatFn: recordingAiChat({
+          content: reply,
+          usage: { promptTokens: 120, completionTokens: 18, totalTokens: 138 },
+          latencyMs: 240,
+        }),
+        getContextFn: contextFn({ categoriesUsed }),
+      }),
+    });
+
+  test('a turn returns reply, usage, categoriesUsed, followUpQuestions and deepLinks', async () => {
+    const result = await turn(
+      'You have 4 sick leaves remaining.\n\nFollow-up: How do I apply? | What is my history?',
+    );
+
+    // The SERVICE payload is `reply`; only parseFollowUps returns
+    // `cleanReply`. The two names are close enough to trip a find-and-
+    // replace, which is exactly how this line was wrong once.
+    assert.equal(result.reply, 'You have 4 sick leaves remaining.');
+    assert.deepEqual(result.followUpQuestions, [
+      'How do I apply?',
+      'What is my history?',
+    ]);
+    assert.deepEqual(result.deepLinks, [
+      { label: 'Apply Leave / View Ledger', path: '/app/leaves' },
+    ]);
+    assert.deepEqual(result.categoriesUsed, ['leaves']);
+    assert.equal(result.usage.totalTokens, 138);
+  });
+
+  test('the deep links come from the categories the RETRIEVER filled, not the reply', async () => {
+    // The reply mentions nothing about attendance, but the retriever did read
+    // attendance, so the attendance chip is offered. This is what keeps a chip
+    // honest: it reflects where the answer actually came from.
+    const result = await turn('You are present today.', ['attendance']);
+
+    assert.deepEqual(result.deepLinks, [
+      { label: 'View Attendance Records', path: '/app/attendance' },
+    ]);
+  });
+
+  test('a turn with no mappable category returns an empty deep-link array', async () => {
+    const result = await turn('Your designation is Software Engineer.', [
+      'profile',
+    ]);
+
+    assert.deepEqual(result.deepLinks, []);
+    assert.ok(Array.isArray(result.followUpQuestions));
+  });
+
+  test('the payslip category reaches the payload and yields its link', async () => {
+    // 36.6's fifth deliverable, end to end: the retriever fills `payslips`,
+    // the assistant answers from month + status only, and the chip points at
+    // the screen where the figures actually live.
+    const result = await turn(
+      'Your January payslip is released. Gross salary, total deductions and net pay are not shown here by design. Open My Payslips to view them.',
+      ['payslips'],
+    );
+
+    assert.equal(result.categoriesUsed.includes('payslips'), true);
+    assert.deepEqual(result.deepLinks, [
+      { label: 'View Full Payslips', path: '/app/payroll/my-payslips' },
+    ]);
+  });
+
+  test('nothing is persisted by a turn', async () => {
+    // The no-storage law, restated for 36.6. Two new arrays entered the
+    // payload; neither may end up anywhere but the HTTP response.
+    const source = read('src/services/ai/hrChatbotService.js');
+
+    assert.equal(source.includes('AIUsageLog'), false);
+    assert.equal(source.includes('.create('), false);
+    assert.equal(source.includes('save('), false);
   });
 });

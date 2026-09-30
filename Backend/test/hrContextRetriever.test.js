@@ -973,10 +973,182 @@ describe('source pins', () => {
   test('the preview route carries no RBAC and the config routes do', () => {
     const source = read('src/routes/ai.js');
 
-    const previewBlock = source.slice(
-      source.indexOf("route('/context/preview')"),
-    );
+    // Slice EXACTLY the preview route's own registration, up to the next
+    // `route(`. The original pin sliced to the end of the file, which only
+    // held while /context/preview happened to be the last route registered.
+    // 36.6 appended GET /usage after it and the pin started failing for a
+    // reason that had nothing to do with the preview route — a false alarm
+    // that would send the next reader looking in the wrong place.
+    const start = source.indexOf("route('/context/preview'");
+
+    const rest = source.slice(start);
+
+    const end = rest.indexOf('route(', 1);
+
+    const previewBlock = end === -1 ? rest : rest.slice(0, end);
 
     assert.equal(previewBlock.includes('requirePermission'), false);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// G. PAYSLIPS — the money rule, and how 36.6 changed it
+// ═══════════════════════════════════════════════════════════════════════════
+// This file was written for the original four categories and never grew a
+// payslip section, because 36.4 put the own-records tests in
+// hrContextOwnRecords.test.js instead. 36.6 changed what renderPayslips
+// OUTPUTS, so the assertion belongs here with the other render tests.
+//
+// THE MONEY RULE, restated because it is the most counter-intuitive decision
+// in the whole AI feature: a salary figure is NOT rendered into the context,
+// even though the employee is asking about their own payslip. The redactor
+// would mask it on the way out, so the assistant would reply "your net pay is
+// [AMOUNT_REDACTED]" — which is worse than saying nothing.
+describe('payslips section (Phase 36.6 — the money rule)', () => {
+  const PAYSLIP_CATEGORIES = [...ALL, 'payslips'];
+
+  const withPayslips = (rows, overrides = {}) =>
+    run({
+      ConfigModel: tenantConfigModel({
+        allowedCategories: PAYSLIP_CATEGORIES,
+      }),
+      PayslipModel: makeModel(rows),
+      ...overrides,
+    });
+
+  test('the three withheld fields are NAMED, so "what is on my payslip?" has an answer', async () => {
+    const { context } = await withPayslips([
+      {
+        month: '2026-01',
+        status: 'RELEASED',
+        snapshot: {
+          payroll: { month: '2026-01', monthLabel: 'January 2026' },
+          salary: {
+            grossSalary: 62000,
+            netSalary: 54000,
+            totalDeductions: 8000,
+          },
+        },
+      },
+    ]);
+
+    // 36.6 — this is the change. Before it the line read "Earnings, deductions
+    // and net pay figures are not shown here", which told the employee that
+    // something unspecified was unavailable. Now the three fields are named,
+    // so the assistant can say what a payslip contains and where to open it.
+    assert.equal(context.includes('Gross salary'), true);
+    assert.equal(context.includes('total deductions'), true);
+    assert.equal(context.includes('net pay'), true);
+    assert.equal(context.includes('Open My Payslips'), true);
+  });
+
+  test('not one of the three figures appears, even when the row carries them', async () => {
+    const { context } = await withPayslips([
+      {
+        month: '2026-01',
+        status: 'RELEASED',
+        snapshot: {
+          payroll: { month: '2026-01', monthLabel: 'January 2026' },
+          salary: {
+            grossSalary: 62000,
+            netSalary: 54000,
+            totalDeductions: 8000,
+          },
+        },
+      },
+    ]);
+
+    // The fake deliberately returns rows the REAL query would never fetch.
+    // That is the point: narrowing `.select()` is the first line of defence,
+    // and the renderer refusing to print a figure is the second. A future
+    // widening of the select must not silently start leaking.
+    assert.equal(context.includes('62000'), false);
+    assert.equal(context.includes('54000'), false);
+    assert.equal(context.includes('8000'), false);
+  });
+
+  test('the query never asks Mongo for the salary sub-document at all', async () => {
+    const PayslipModel = makeModel([]);
+
+    await withPayslips([], { PayslipModel });
+
+    const selects = PayslipModel.calls
+      .filter((call) => call.name === 'select')
+      .map((call) => String(call.args[0]));
+
+    assert.ok(selects.length > 0, 'the payslip query must call .select()');
+
+    selects.forEach((selection) => {
+      assert.equal(selection.includes('salary'), false);
+    });
+
+    // And what it DOES ask for is month and status — enough to say which
+    // payslips exist, and nothing more.
+    assert.equal(
+      selects.some(
+        (selection) =>
+          selection.includes('month') && selection.includes('status'),
+      ),
+      true,
+    );
+  });
+
+  test('a stated "none generated yet" is an answer, not missing information', async () => {
+    const { context } = await withPayslips([]);
+
+    // Rule 8: a stated negative IS the answer. `(payslips unavailable)` is
+    // reserved for a READ THAT FAILED, and using it here would tell the
+    // employee the system broke when in fact nothing has been generated.
+    assert.equal(context.includes('none generated for you yet'), true);
+    assert.equal(context.includes('(payslips unavailable)'), false);
+  });
+
+  test('a broken payslip read is reported as unavailable, not as "none"', async () => {
+    const { context } = await withPayslips(null, {
+      PayslipModel: brokenModel(),
+    });
+
+    assert.equal(context.includes('(payslips unavailable)'), true);
+  });
+
+  test('a PAN smuggled into a month label is masked by the final redaction pass', async () => {
+    const { context } = await withPayslips([
+      {
+        month: '2026-01',
+        status: 'RELEASED',
+        snapshot: {
+          payroll: {
+            month: '2026-01',
+            monthLabel: 'January 2026 (PAN ABCDE1234F on file)',
+          },
+        },
+      },
+    ]);
+
+    // Field selection cannot help here: the label is a stored string the
+    // renderer echoes verbatim, so only redactPII stands between it and the
+    // vendor. This is the same law the announcement test above pins.
+    assert.equal(context.includes('ABCDE1234F'), false);
+    assert.equal(context.includes(PII_PLACEHOLDERS.PAN), true);
+  });
+
+  test('an expense amount DOES render — the money rule is deliberate, not blanket', async () => {
+    // The contrast test. If someone ever "fixes" the payslip leak by hiding
+    // every number, expenses must still work, and this is what catches it.
+    const { context } = await run({
+      ConfigModel: tenantConfigModel({
+        allowedCategories: [...ALL, 'expenses'],
+      }),
+      ExpenseModel: makeModel([
+        {
+          _id: '00000000000000000000e1',
+          amount: 4500,
+          status: 'APPROVED',
+          createdAt: new Date('2026-01-10T00:00:00.000Z'),
+        },
+      ]),
+    });
+
+    assert.equal(context.includes('4500'), true);
   });
 });

@@ -33,6 +33,10 @@ export const sendChatMessage = createAsyncThunk(
       // arrived some other way can never reach the server. The server
       // normalizes a third time; three cheap checks is the right price
       // for a field that must never be able to fail a question.
+      // 36.6 — the service now also returns followUpQuestions and
+      // deepLinks. Both are derived from things the server already knows
+      // (the model's own reply, and the categories the retriever filled),
+      // so nothing new is asked of the client and nothing is persisted.
       return await askHRAssistant({
         messages,
         categories,
@@ -71,6 +75,15 @@ const initialState = {
   // Defaulting to English here rather than reading a stored value means a
   // fresh tab always starts from the same honest place.
   language: 'en',
+
+  // 36.6 — the suggestion chips and the navigation chips for the LAST
+  // answer only. Older answers keep theirs in the message objects
+  // themselves (see the fulfilled case), so scrolling back does not lose
+  // them.
+  followUpQuestions: [],
+
+  // Navigation only. The assistant never performs an action.
+  deepLinks: [],
 };
 
 const aiChatSlice = createSlice({
@@ -80,7 +93,13 @@ const aiChatSlice = createSlice({
 
   reducers: {
     messageAdded: (state, action) => {
-      state.messages.push(action.payload);
+      // 36.6 — the timestamp is stamped HERE, in the reducer, and not by
+      // the caller. One place means every message gets one, including any
+      // future dispatch site, and the transcript export can rely on it.
+      state.messages.push({
+        at: Date.now(),
+        ...action.payload,
+      });
 
       // A new turn clears the previous error, but NOT the usage/categories:
       // those describe the last ANSWER, which is still the one on screen.
@@ -94,6 +113,12 @@ const aiChatSlice = createSlice({
       state.messages = [];
       state.error = '';
       state.errorCode = '';
+
+      // 36.6 — the chips describe the last answer, and there is no last
+      // answer any more. Leaving them would offer a navigation chip to a
+      // screen the cleared conversation had nothing to do with.
+      state.followUpQuestions = [];
+      state.deepLinks = [];
     },
 
     languageSet: (state, action) => {
@@ -119,14 +144,31 @@ const aiChatSlice = createSlice({
       .addCase(sendChatMessage.fulfilled, (state, action) => {
         state.sending = false;
 
+        // 36.6 — the chips are stored ON the message as well as at the top
+        // level. Scrolling back to an earlier answer must not lose its
+        // suggestions, and the top-level copy exists so the newest answer
+        // does not have to be found by id.
+        const followUps = Array.isArray(action.payload?.followUpQuestions)
+          ? action.payload.followUpQuestions
+          : [];
+
+        const links = Array.isArray(action.payload?.deepLinks)
+          ? action.payload.deepLinks
+          : [];
+
         state.messages.push({
           id: `assistant-${Date.now()}`,
           role: 'assistant',
           content: action.payload?.reply || '',
+          at: Date.now(),
+          followUpQuestions: followUps,
+          deepLinks: links,
         });
 
         state.categoriesUsed = action.payload?.categoriesUsed || [];
         state.usage = action.payload?.usage ?? null;
+        state.followUpQuestions = followUps;
+        state.deepLinks = links;
       })
 
       .addCase(sendChatMessage.rejected, (state, action) => {

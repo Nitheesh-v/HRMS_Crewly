@@ -104,6 +104,176 @@ export const recordUsage = async ({
  *
  * Throws AIError.unavailable() when the read fails — fail closed, never open.
  */
+/**
+ * Phase 36.6 — the admin usage breakdown.
+ *
+ * WHAT THIS IS FOR. A company admin needs to answer "where did this
+ * month's AI budget go?" before it is gone, not after. Two questions,
+ * two aggregations:
+ *
+ *   1. byFeature — which surface spent the tokens
+ *   2. topUsers   — which five people spent the most
+ *
+ * THE PRIVACY LINE, DRAWN DELIBERATELY.
+ *
+ * `topUsers` returns a name, a designation and a TOKEN COUNT. It returns
+ * no prompt, no reply, no category list and no timestamp per user. A
+ * company admin can already see every employee's name and designation on
+ * the employee screen, so this exposes nothing new about WHO — only
+ * how many tokens they spent, which is the number the quota is made of.
+ *
+ * It is strictly scoped to `companyId` (server-derived, never supplied by
+ * the client) and the route is behind SETTINGS_MANAGE. There is no
+ * cross-tenant read here: the $match is the only thing that decides whose
+ * rows come back.
+ *
+ * WHY THIS IS NOT `getMonthUsage`. That function answers "may this
+ * request proceed?" and is on the hot path, so it fails CLOSED. This one
+ * answers "show me a dashboard" and is not on any hot path, so it fails
+ * SAFE — an empty dashboard is a degraded page, not a refused AI call.
+ * Mixing the two failure modes into one function would make both wrong.
+ *
+ * @param {object}   options
+ * @param {string}   options.companyId
+ * @param {Date}     [options.now]
+ * @param {object}   [options.UsageModel]
+ * @param {number}   [options.topUserLimit]
+ */
+export const getUsageBreakdown = async ({
+  companyId,
+  now = new Date(),
+  UsageModel = AIUsageLog,
+  topUserLimit = 5,
+} = {}) => {
+  const window = monthWindow(now);
+
+  const empty = {
+    byFeature: [],
+    byStatus: {},
+    topUsers: [],
+    totalTokens: 0,
+    calls: 0,
+    windowStart: window.start,
+    windowEnd: window.end,
+  };
+
+  try {
+    const match = {
+      companyId,
+      createdAt: { $gte: window.start, $lt: window.end },
+    };
+
+    const [featureRows, statusRows, userRows] = await Promise.all([
+      UsageModel.aggregate([
+        { $match: match },
+        {
+          $group: {
+            _id: '$feature',
+            totalTokens: { $sum: '$totalTokens' },
+            calls: { $sum: 1 },
+          },
+        },
+        { $sort: { totalTokens: -1 } },
+      ]),
+
+      UsageModel.aggregate([
+        { $match: match },
+        {
+          $group: {
+            _id: '$status',
+            totalTokens: { $sum: '$totalTokens' },
+            calls: { $sum: 1 },
+          },
+        },
+      ]),
+
+      // The join is READ-ONLY and narrow: two scalar fields off User, and
+      // only for the top N. `preserveNullAndEmptyArrays` matters — a
+      // deleted user must not silently drop a real token spend off the
+      // dashboard, so the row survives with an empty name.
+      UsageModel.aggregate([
+        { $match: match },
+        {
+          $group: {
+            _id: '$userId',
+            totalTokens: { $sum: '$totalTokens' },
+            calls: { $sum: 1 },
+          },
+        },
+        { $sort: { totalTokens: -1 } },
+        { $limit: Math.max(1, Math.trunc(topUserLimit)) },
+        {
+          $lookup: {
+            from: 'users',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'person',
+          },
+        },
+        { $unwind: { path: '$person', preserveNullAndEmptyArrays: true } },
+        {
+          $project: {
+            totalTokens: 1,
+            calls: 1,
+            name: { $ifNull: ['$person.name', ''] },
+            designation: { $ifNull: ['$person.designation', ''] },
+          },
+        },
+      ]),
+    ]);
+
+    let totalTokens = 0;
+
+    let calls = 0;
+
+    const byStatus = {};
+
+    (statusRows || []).forEach((row) => {
+      const tokens = toSafeCount(row?.totalTokens);
+
+      const count = toSafeCount(row?.calls);
+
+      totalTokens += tokens;
+
+      calls += count;
+
+      byStatus[String(row?._id || 'UNKNOWN')] = {
+        totalTokens: tokens,
+        calls: count,
+      };
+    });
+
+    return {
+      byFeature: (featureRows || []).map((row) => ({
+        feature: String(row?._id || 'UNKNOWN'),
+        totalTokens: toSafeCount(row?.totalTokens),
+        calls: toSafeCount(row?.calls),
+      })),
+
+      byStatus,
+
+      topUsers: (userRows || []).map((row) => ({
+        userId: String(row?._id || ''),
+        name: String(row?.name || ''),
+        designation: String(row?.designation || ''),
+        totalTokens: toSafeCount(row?.totalTokens),
+        calls: toSafeCount(row?.calls),
+      })),
+
+      totalTokens,
+      calls,
+      windowStart: window.start,
+      windowEnd: window.end,
+    };
+  } catch (error) {
+    logger.warn('ai.usage.breakdown_failed', {
+      errorCode: String(error?.code || error?.name || 'error'),
+    });
+
+    return empty;
+  }
+};
+
 export const checkQuota = async ({
   companyId,
   limitTokens,

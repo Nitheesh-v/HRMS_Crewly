@@ -235,6 +235,97 @@ export const AI_LANGUAGE_TO_BCP47 = Object.freeze({
 export const normalizeLanguage = (value) =>
   AI_SUPPORTED_LANGUAGES.includes(value) ? value : AI_DEFAULT_LANGUAGE;
 
+// ── Phase 36.6 — NAVIGATIONAL DEEP LINKS ───────────────────────────────────────────
+//
+// The assistant NEVER performs an action. It can only point at a screen.
+// That is the whole law, and it is why this map is hardcoded here rather
+// than taken from the model: a model-chosen path is a model-chosen
+// action, and no model output is ever allowed to move this product.
+//
+// Keyed by the CATEGORY the retriever actually filled, which is
+// server-derived truth. A link is offered only when the answer really did
+// come from that category, so a chip is never decoration.
+//
+// EVERY PATH IS VERIFIED AGAINST Frontend/src/routes/AppRoutes.jsx. A
+// dead link in an HR assistant is worse than no link, and a test pins
+// each one.
+//
+// NOTE on 'attendance': the build prompt named /app/attendance/my-attendance.
+// That route DOES NOT EXIST. The real one is /app/attendance. Shipping the
+// prompt's path would have produced a chip that 404s.
+export const AI_DEEP_LINKS = Object.freeze({
+  leaves: Object.freeze({
+    label: 'Apply Leave / View Ledger',
+    path: '/app/leaves',
+  }),
+  payslips: Object.freeze({
+    label: 'View Full Payslips',
+    path: '/app/payroll/my-payslips',
+  }),
+  attendance: Object.freeze({
+    label: 'View Attendance Records',
+    path: '/app/attendance',
+  }),
+  policies: Object.freeze({
+    label: 'View Company Documents',
+    path: '/app/documents',
+  }),
+});
+
+/**
+ * The order a category's link is offered in.
+ *
+// Deterministic, so two turns that used the same categories produce the
+// same chips in the same order. A model-influenced order would make the UI
+// feel random for no benefit.
+//
+// Only four categories get a link. The rest (profile, expenses, tasks,
+// projects, documents, leave-requests, attendance-month, capabilities)
+// either have no single obvious destination or are read-only summaries
+// where a link would be noise.
+ */
+export const AI_DEEP_LINK_ORDER = Object.freeze([
+  'leaves',
+  'attendance',
+  'payslips',
+  'policies',
+]);
+
+/**
+ * The follow-up question cap.
+ *
+// Three is the point at which a suggestion stops being a suggestion and
+// becomes a second question the person has to read past.
+ */
+export const AI_FOLLOW_UP_MAX = 3;
+
+/**
+ * The deterministic fallback suggestions, keyed by category.
+ *
+// WHY A FALLBACK EXISTS AT ALL. The model is instructed to end answers with
+// follow-up questions, but it does not always comply, and a feature that is
+// usually invisible is a feature nobody uses.
+//
+// WHY IT IS NOT FABRICATED. Every string below is a STATIC question whose
+// answer the retriever can actually assemble — the same rule
+// chatPrompts.js enforces for the quick-prompt pills. Rule 4 (never invent)
+// and rule 14's hard limit still win: nothing here is derived from the
+// employee's data, and nothing here estimates or names a person.
+//
+// These are offered ONLY when the model supplied nothing, and never mixed
+// with model output, so the two can never disagree on screen.
+ */
+export const AI_FOLLOW_UP_FALLBACKS = Object.freeze({
+  leaves: Object.freeze(['How do I apply for leave?']),
+  attendance: Object.freeze(['What are my shift timings?']),
+  payslips: Object.freeze(['Which months do I have payslips for?']),
+  policies: Object.freeze(['What are the upcoming holidays?']),
+  expenses: Object.freeze(['What are my pending expense claims?']),
+  tasks: Object.freeze(['What tasks are assigned to me?']),
+  documents: Object.freeze(['Which documents do I have on file?']),
+  'leave-requests': Object.freeze(['What is my leave request history?']),
+});
+
 // Phase 36.3 — the chatbot gets its own 32.4 tier. A separate store keeps the
 // budgets independent: exhausting the raw /chat allowance must not lock a
 // person out of the employee assistant, and vice versa.
