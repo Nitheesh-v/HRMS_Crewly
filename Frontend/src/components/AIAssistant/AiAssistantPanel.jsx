@@ -191,7 +191,7 @@ const WELCOME = {
   id: 'welcome',
   role: 'assistant',
   content:
-    'Hi, I am your Crewly HR assistant. I can answer questions about your own leave balance and history, attendance, shift timings, holidays, profile, tasks, projects, expenses, payslips and documents. I can also tell you how to apply for leave, punch in, or claim an expense. Ask me anything below.',
+    'Hi, I am your Crewly HR assistant. Ask me about your own leave, attendance, shifts, holidays, payslips, tasks or documents. I answer only from records you can already see, and I can never approve, apply or change anything.',
 };
 
 /**
@@ -753,12 +753,24 @@ const AiAssistantPanel = ({ onClose }) => {
         >
           {offeredLanguages.map((entry) => (
             <option key={entry.value} value={entry.value}>
-              {entry.label} — {entry.native}
+              {/*
+                36.7-fix — DO NOT PRINT "ENGLISH — ENGLISH".
+
+                The option text is `label — native`, and for English and
+                Tanglish those two are the same string. The result was a
+                selector whose default option read "English — English", which
+                looks like a rendering bug to everyone who sees it.
+
+                The native script is shown only when it actually differs.
+              */}
+              {entry.label === entry.native
+                ? entry.label
+                : `${entry.label} — ${entry.native}`}
             </option>
           ))}
         </select>
 
-        <span className="shrink-0 text-[10px] text-crewly-dim">
+        <span className="max-w-[42%] shrink-0 truncate text-[10px] text-crewly-dim">
           {getChatLanguage(language, allowedLanguages).hint}
         </span>
       </div>
@@ -845,49 +857,42 @@ const AiAssistantPanel = ({ onClose }) => {
 
         {sending && <ChatTypingBubble />}
 
-        <div ref={endRef} />
-      </div>
-
-      <div className="space-y-3 border-t border-crewly-border px-3 py-3 sm:px-4">
         {/*
-         * 36.6 — THE EMPTY STATE.
-         *
-         * Replaces the flat row of pills 36.3 shipped. Same prompts, but
-         * grouped by what a new employee came for, and with the four badges
-         * that say what the assistant actually is.
-         *
-         * It still steps aside the moment the conversation starts — an
-         * introduction that never leaves is a permanent toolbar.
-         */}
+          36.6 / 36.7-fix — THE ONBOARDING BLOCK.
+
+          MOVED. It used to live in the footer, between the message list and
+          the input, which did two bad things:
+
+            1. IT DUPLICATED THE GREETING. The welcome bubble already says
+               hello, and then a card below it said "Welcome to CREWLY HR
+               Assistant" and repeated most of the same sentence.
+
+            2. IT PUSHED THE INPUT DOWN. A 600px panel spent its whole height
+               on an introduction, with the box you actually type into at the
+               very bottom edge and a blank conversation above it.
+
+          Now the badges and the example chips sit directly under the welcome
+          bubble, inside the conversation, and the input is pinned to the
+          bottom with nothing between them. It still steps aside the moment
+          the conversation starts — an introduction that never leaves is a
+          permanent toolbar.
+        */}
         {messages.length === 0 && (
-          <div className="space-y-3">
-            <div className="rounded-xl border border-crewly-border bg-crewly-card p-3">
-              <h3 className="text-[13px] font-bold text-crewly-text">
-                Welcome to CREWLY HR Assistant
-              </h3>
-
-              <p className="mt-1 text-[11px] leading-relaxed text-crewly-dim">
-                Ask about your own leave, attendance, shifts, holidays, payslip
-                status, tasks, projects, expenses and documents. Answers come
-                only from records you are already allowed to see, and the
-                assistant can never approve, apply or change anything.
-              </p>
-
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {ONBOARDING_BADGES.map((badge) => (
-                  <span
-                    key={badge.label}
-                    className="flex items-center gap-1 rounded-full border border-crewly-green/30 bg-crewly-green/10 px-2 py-0.5 text-[10px] font-semibold text-crewly-green"
-                  >
-                    <badge.icon
-                      className="h-3 w-3 shrink-0"
-                      aria-hidden="true"
-                      strokeWidth={2}
-                    />
-                    {badge.label}
-                  </span>
-                ))}
-              </div>
+          <div className="space-y-2.5">
+            <div className="flex flex-wrap gap-1.5">
+              {ONBOARDING_BADGES.map((badge) => (
+                <span
+                  key={badge.label}
+                  className="flex items-center gap-1 rounded-full border border-crewly-green/30 bg-crewly-green/10 px-2 py-0.5 text-[10px] font-semibold text-crewly-green"
+                >
+                  <badge.icon
+                    className="h-3 w-3 shrink-0"
+                    aria-hidden="true"
+                    strokeWidth={2}
+                  />
+                  {badge.label}
+                </span>
+              ))}
             </div>
 
             {ONBOARDING_SECTIONS.map((group) => (
@@ -914,6 +919,10 @@ const AiAssistantPanel = ({ onClose }) => {
           </div>
         )}
 
+        <div ref={endRef} />
+      </div>
+
+      <div className="border-t border-crewly-border px-3 py-3 sm:px-4">
         <ChatInputBar
           onSend={send}
           sending={sending}

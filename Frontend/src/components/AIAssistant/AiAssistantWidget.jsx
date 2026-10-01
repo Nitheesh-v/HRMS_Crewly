@@ -61,24 +61,37 @@ const AiAssistantWidget = () => {
         </button>
       )}
 
+      {/*
+        36.7-fix — THE PANEL IS NOT MODAL, AND THAT IS THE WHOLE POINT.
+
+        It used to be `fixed inset-0` with a full-screen `bg-black/50`
+        backdrop behind it, which dimmed and blocked the entire page. Opening
+        the assistant to ask about a leave balance meant losing sight of the
+        leave page you were reading — the exact thing you opened it for. An
+        admin who opened it from AI Settings lost the settings.
+
+        So the panel now sits in the corner where the button was, sized to the
+        viewport, and the page behind it stays live and clickable. Closing is
+        the X in the header or the Escape key.
+
+        Clicking the page does NOT close it. A panel that vanishes the moment
+        you click your own work is a panel you stop trusting — you would have
+        to reopen it after every glance at what is behind it.
+
+        No `aria-modal`, because it is not one. There was never a focus trap,
+        so the old markup claimed a modality it did not enforce.
+
+        Sized with `calc(100vh-8rem)` so the top edge clears the viewport on a
+        short screen, and `max-h` so it does not become a full-height column on
+        a tall one. Both forms are already used elsewhere in this codebase.
+      */}
       {open && (
         <div
           role="dialog"
-          aria-modal="true"
           aria-label="HR Assistant"
-          className="fixed inset-0 z-50 flex items-end justify-end p-3 sm:p-5"
+          className="fixed bottom-5 right-5 z-50 flex h-[calc(100vh-8rem)] max-h-[600px] w-[420px] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-xl border border-crewly-border bg-crewly-bg shadow-2xl"
         >
-          {/* Dismiss on backdrop click, but NOT on a click inside the panel. */}
-          <button
-            type="button"
-            aria-label="Close the HR assistant"
-            onClick={close}
-            className="absolute inset-0 cursor-default bg-black/50"
-          />
-
-          <div className="relative flex h-[85vh] max-h-[620px] w-full max-w-[420px] flex-col overflow-hidden rounded-xl border border-crewly-border bg-crewly-bg shadow-2xl">
-            <AiAssistantPanel onClose={close} />
-          </div>
+          <AiAssistantPanel onClose={close} />
         </div>
       )}
     </>

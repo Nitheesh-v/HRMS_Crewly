@@ -19,6 +19,22 @@ const WIDGET = 'src/components/AIAssistant/AiAssistantWidget.jsx';
 const PANEL = 'src/components/AIAssistant/AiAssistantPanel.jsx';
 const BUBBLE = 'src/components/AIAssistant/ChatMessageBubble.jsx';
 
+/*
+ * THE SOURCE, WITH COMMENTS STRIPPED.
+ *
+ * A ban on a token will otherwise match the comment that explains the ban.
+ * That is not hypothetical: the "not modal" tests below failed on their first
+ * run because the widget's own header comment says it used to be
+ * `fixed inset-0` with a `bg-black/50` backdrop. The pin was right and the
+ * comment was in the way.
+ *
+ * Same helper aiSettings.test.js and aiVoice.test.js use, for the same reason.
+ */
+const code = (rel) =>
+  read(rel)
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+
 describe('Phase 36.3 — the assistant is a widget', () => {
   test('the widget file exists and exports a component', () => {
     const source = read(WIDGET);
@@ -181,5 +197,144 @@ describe('Phase 36.4 — the answer can be copied', () => {
     const source = read(BUBBLE);
 
     assert.equal(source.includes('} catch {'), true);
+  });
+});
+
+// ── THE PANEL IS NOT MODAL ──────────────────────────────────────────────────
+//
+// The assistant used to open as `fixed inset-0` with a full-screen
+// `bg-black/50` backdrop, which dimmed and blocked the entire page. Opening
+// the assistant to ask about a leave balance meant losing sight of the leave
+// page you were reading — the exact thing you opened it for.
+//
+// It now sits in the corner where the button was, sized to the viewport, and
+// the page behind it stays live and clickable.
+
+describe('Phase 36.7 — the assistant does not take over the page', () => {
+  // code(), NOT read(): these are BANS, and a ban matches the comment that
+  // explains it. The widget's header comment says it used to be
+  // `fixed inset-0` with a `bg-black/50` backdrop, which is exactly what is
+  // being asserted absent.
+  const source = () => code(WIDGET);
+
+  test('the panel is not marked modal, because it is not one', () => {
+    // `aria-modal` was a claim the markup did not back up: there was never a
+    // focus trap, so a screen-reader user was told the rest of the page was
+    // inert while it was not.
+    assert.equal(source().includes('aria-modal'), false);
+  });
+
+  test('there is no full-screen backdrop dimming the page', () => {
+    const widget = source();
+
+    // No inset-0 container and no dimming layer behind the panel.
+    assert.equal(widget.includes('inset-0'), false);
+    assert.equal(widget.includes('bg-black'), false);
+  });
+
+  test('the panel is sized to the viewport rather than to the screen', () => {
+    // `calc(100vh-8rem)` keeps the top edge clear on a short screen and
+    // `max-h` stops it becoming a full-height column on a tall one. The old
+    // `h-[85vh]` inside an inset-0 flex box only worked because the box, not
+    // the panel, was doing the positioning.
+    const widget = source();
+
+    assert.equal(widget.includes('h-[calc(100vh-8rem)]'), true);
+    assert.equal(widget.includes('max-h-[600px]'), true);
+    assert.equal(widget.includes('max-w-[calc(100vw-2.5rem)]'), true);
+  });
+
+  test('Escape still closes it, which is the keyboard way out', () => {
+    // Non-modal does not mean un-dismissable. The handler is attached only
+    // while the panel is open, so it can never swallow an Escape meant for
+    // something else on the page.
+    const widget = source();
+
+    assert.equal(widget.includes("event.key === 'Escape'"), true);
+    assert.equal(widget.includes('if (!open) return undefined;'), true);
+  });
+
+  test('clicking the page does NOT close the panel', () => {
+    // A panel that vanishes the moment you click your own work is a panel you
+    // stop trusting. The close affordances are the X and Escape, and nothing
+    // else — pinned here so nobody re-adds a backdrop "for convenience".
+    const widget = source();
+
+    assert.equal(/onClick=\{close\}/.test(widget), false);
+  });
+});
+
+// ── ONE GREETING, NOT TWO ───────────────────────────────────────────────────
+//
+// The empty state used to exist twice: the welcome bubble in the conversation
+// and a "Welcome to CREWLY HR Assistant" card in the footer. The card repeated
+// most of the bubble's sentence, and between them they pushed the input to the
+// very bottom edge of a 600px panel with a blank conversation above it.
+
+describe('Phase 36.7 — the empty state is one surface, not two', () => {
+  const source = () => read(PANEL);
+
+  test('there is no second welcome card in the footer', () => {
+    const panel = source();
+
+    assert.equal(panel.includes('Welcome to CREWLY HR Assistant'), false);
+    assert.equal(panel.includes('Ask about your own leave, attendance'), false);
+  });
+
+  test('the badges and example chips live in the conversation area', () => {
+    // Under the welcome bubble, inside the scroll container, so they read as
+    // part of the conversation rather than as a toolbar above the input.
+    const panel = source();
+
+    const scrollArea = panel.slice(
+      panel.indexOf('overflow-y-auto'),
+      panel.indexOf('<ChatInputBar'),
+    );
+
+    assert.equal(scrollArea.includes('ONBOARDING_BADGES'), true);
+    assert.equal(scrollArea.includes('ONBOARDING_SECTIONS'), true);
+  });
+
+  test('the input sits directly under the conversation', () => {
+    // The footer holds the input and nothing else, so what you type is
+    // adjacent to what was just said.
+    const panel = source();
+
+    const footer = panel.slice(panel.indexOf('<ChatInputBar'));
+
+    assert.equal(footer.includes('ONBOARDING'), false);
+    assert.equal(footer.includes('ONBOARDING_BADGES'), false);
+  });
+
+  test('the welcome bubble is still the greeting', () => {
+    // The bubble stays, so the `'welcome'` id that gates copy and auto-speak
+    // keeps meaning something.
+    const panel = source();
+
+    assert.equal(panel.includes("id: 'welcome'"), true);
+  });
+});
+
+// ── THE LANGUAGE SELECTOR NO LONGER SAYS "ENGLISH — ENGLISH" ────────────────
+
+describe('Phase 36.7 — the language option text is not printed twice', () => {
+  const source = () => read(PANEL);
+
+  test('the native script is shown only when it differs from the label', () => {
+    // English and Tanglish have label === native, so the old
+    // `{entry.label} — {entry.native}` rendered "English — English" as the
+    // default option. It looked like a rendering bug to everyone who saw it.
+    const panel = source();
+
+    assert.equal(panel.includes('{entry.label} — {entry.native}'), false);
+    assert.equal(panel.includes('entry.label === entry.native'), true);
+  });
+
+  test('a language whose script differs still shows both', () => {
+    // Tamil must still read "Tamil — தமிழ்": the script is the whole point of
+    // showing it.
+    const panel = source();
+
+    assert.equal(panel.includes('`${entry.label} — ${entry.native}`'), true);
   });
 });

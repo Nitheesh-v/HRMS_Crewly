@@ -695,3 +695,27 @@ Runbooks for each are in [PHASE_36_RUNBOOKS.md](PHASE_36_RUNBOOKS.md).
   REASON.** A test asserted the page mentions the "kill switch"; that phrase
   exists only in prose, and the comment-stripping helper had already removed
   it. Pin the control (`checked={draft.enabled}`), not the vocabulary.
+
+- **🔴 THE ASSISTANT PANEL IS NOT MODAL, AND 36.3 GOT THAT WRONG.** It opened
+  as `fixed inset-0` with a full-screen `bg-black/50` backdrop, which dimmed
+  and blocked the whole page. Opening the assistant to ask about a leave
+  balance meant losing sight of the leave page you were reading — the exact
+  thing you opened it for — and opening it from AI Settings lost the settings.
+  The panel now sits in the corner where the button was, sized with
+  `calc(100vh-8rem)` and `max-h`, and the page behind it stays live and
+  clickable. Closing is the X or Escape; clicking the page does NOT close it,
+  because a panel that vanishes when you click your own work is a panel you
+  stop trusting. `aria-modal` was removed too — there was never a focus trap,
+  so the old markup claimed a modality it did not enforce.
+- **🔴 A BAN ON A TOKEN MATCHES THE COMMENT THAT EXPLAINS THE BAN.** Hit again,
+  immediately, and it is worth writing down twice: the new "the panel is not
+  modal" tests asserted the widget contains no `inset-0` and no `bg-black`,
+  and both failed — on the widget's own header comment saying it used to be
+  `fixed inset-0` with a `bg-black/50` backdrop. `aiChatWidget.test.js` had no
+  comment-stripping helper, which is why it had never hit this before. It has
+  one now, and every ban in it goes through it.
+- **🔴 A TAILWIND ARBITRARY VALUE IS NOT MISSING JUST BECAUSE YOUR GREP SAYS
+  SO.** `max-w-[calc(100vw-2.5rem)]` looked absent from the built CSS until
+  the search accounted for Tailwind's output normalisation
+  (`calc(100vw - 2.5rem)`, and `.` escaped as `\.` in the selector). Confirm
+  against the escaped selector, not the class name you typed.
