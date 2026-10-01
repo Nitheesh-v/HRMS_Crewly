@@ -759,3 +759,61 @@ describe('Phase 36.7 — the save fix the owner asked for', () => {
     assert.equal(source.includes('role="alert"'), true);
   });
 });
+
+// ── THE UNSAVABLE STATE, REMOVED AT THE SOURCE ──────────────────────────────
+//
+// The 36.7 follow-up made the context categories editable. It also left a
+// warning on the page telling an admin that switching every category off was
+// "ALLOWED" — which it is not. Both `updateConfigValidator` and the model's
+// path validator refuse an empty `allowedCategories`, so an admin who followed
+// that copy unticked thirteen boxes, clicked Save, and got nothing.
+//
+// That is the same shape of bug as the "Clear all" button, and it is fixed the
+// same way: the page no longer offers the state at all. The last category left
+// is locked, and the guard inside `save` is the backstop behind it.
+
+describe('Phase 36.7 — the page never offers a state the server refuses', () => {
+  const page = () => code('src/pages/settings/AiSettingsPage.jsx');
+
+  test('the last remaining category is LOCKED, not merely warned about', () => {
+    // Locking is the fix. A warning is not: it still lets the admin build a
+    // payload that comes back a 400 and then reports nothing where they are
+    // standing.
+    const source = page();
+
+    assert.equal(source.includes('locked={lastOne}'), true);
+    assert.equal(source.includes("note={lastOne ? 'Keep at least one' : ''}"), true);
+  });
+
+  test('toggleCategory refuses to remove the last category in the reducer too', () => {
+    // The UI lock is the fix; this is the backstop. A stale render, a keyboard
+    // shortcut or a future refactor must not be able to build the state either.
+    const source = page();
+
+    assert.equal(source.includes('current.allowedCategories.length === 1'), true);
+    assert.equal(source.includes('return current;'), true);
+  });
+
+  test('no copy on the page claims an empty category list is savable', () => {
+    // The removed warning said switching everything off was "ALLOWED" and
+    // described what the assistant would do. It was false, and it was the
+    // instruction that led an admin into a refused save.
+    const source = read('src/pages/settings/AiSettingsPage.jsx');
+
+    assert.equal(source.includes('Switching everything off'), false);
+    assert.equal(source.includes('With every category off'), false);
+  });
+
+  test('the honest alternative — the kill switch — is still on the page', () => {
+    // Removing the trap is only half of it. The admin who wants "no HR data"
+    // needs somewhere to go, and that is the enable switch in the first
+    // section, which the server accepts.
+    const source = page();
+
+    assert.equal(source.includes('Assistant enabled'), true);
+    assert.equal(source.includes('checked={draft.enabled}'), true);
+
+    // And it is a real dirty field, so toggling it is a save the server takes.
+    assert.equal(source.includes("'the assistant switch'"), true);
+  });
+});

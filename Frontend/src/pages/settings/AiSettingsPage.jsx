@@ -378,12 +378,34 @@ const AiSettingsPage = () => {
   const toggleCategory = useCallback((code) => {
     setSaved('');
 
-    setDraft((current) => ({
-      ...current,
-      allowedCategories: current.allowedCategories.includes(code)
-        ? current.allowedCategories.filter((entry) => entry !== code)
-        : [...current.allowedCategories, code],
-    }));
+    setDraft((current) => {
+      /*
+       * THE PLATFORM REQUIRES AT LEAST ONE CATEGORY.
+       *
+       * `updateConfigValidator` and the model's path validator both refuse
+       * an empty `allowedCategories`, so a payload with none is a 400. The
+       * checkbox for the last remaining category is therefore locked in the
+       * UI, and this is the backstop behind it: a stale render, a keyboard
+       * shortcut or a future refactor must not be able to build a state the
+       * server will not accept.
+       *
+       * The old "Clear all" button did exactly that, and it is why the owner
+       * reported that Save did nothing.
+       */
+      if (
+        current.allowedCategories.includes(code) &&
+        current.allowedCategories.length === 1
+      ) {
+        return current;
+      }
+
+      return {
+        ...current,
+        allowedCategories: current.allowedCategories.includes(code)
+          ? current.allowedCategories.filter((entry) => entry !== code)
+          : [...current.allowedCategories, code],
+      };
+    });
   }, []);
 
   /** Add every language on the platform that is not enabled yet. */
@@ -413,11 +435,10 @@ const AiSettingsPage = () => {
       return;
     }
 
-    // The same shape of guard for the categories, and it is here because it
-    // was missing. The platform requires at least one context category, so a
-    // payload with none comes back a 400 whose message used to render at the
-    // TOP of the page — off-screen for anyone who had scrolled into the
-    // language list, which is everyone using this page.
+    // The same shape of guard for the categories. The UI now locks the last
+    // remaining checkbox so this state cannot be reached by clicking, which
+    // makes this the backstop rather than the fix: a stale render or a future
+    // refactor must still not be able to send a payload the server refuses.
     if (draft.allowedCategories.length === 0) {
       setError(
         'At least one context category must stay enabled. Switch the assistant off instead if you want it to read no HR records.',
@@ -773,41 +794,48 @@ const AiSettingsPage = () => {
           </p>
         ) : (
           <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-            {categoryCodes.map((code) => (
-              <CheckRow
-                key={code}
-                name={code}
-                title={categoryLabel(code)}
-                subtitle={code}
-                hint={categoryHint(code)}
-                checked={draft.allowedCategories.includes(code)}
-                onToggle={toggleCategory}
-              />
-            ))}
+            {categoryCodes.map((code) => {
+              /*
+               * The last category left cannot be switched off, because the
+               * server requires at least one. Locking it in the UI means the
+               * page can never build a payload that comes back a 400 — the
+               * same reason the old "Clear all" button was removed rather
+               * than left in place with only a guard behind it.
+               */
+              const lastOne =
+                draft.allowedCategories.length === 1 &&
+                draft.allowedCategories.includes(code);
+
+              return (
+                <CheckRow
+                  key={code}
+                  name={code}
+                  title={categoryLabel(code)}
+                  subtitle={code}
+                  hint={categoryHint(code)}
+                  checked={draft.allowedCategories.includes(code)}
+                  locked={lastOne}
+                  note={lastOne ? 'Keep at least one' : ''}
+                  onToggle={toggleCategory}
+                />
+              );
+            })}
           </ul>
         )}
 
         {/*
-          The one honest warning this section needs. Switching everything off
-          is ALLOWED — it is a legitimate posture for a company that does not
-          want the assistant reading HR records at all — but it is not a
-          silent no-op, so the page says what it will mean.
-        */}
-        {config && draft.allowedCategories.length === 0 && (
-          <p className="mt-3 flex items-start gap-1.5 text-[10px] leading-relaxed text-crewly-dim">
-            <AlertTriangle
-              className="mt-0.5 h-3 w-3 shrink-0"
-              aria-hidden="true"
-              strokeWidth={1.9}
-            />
+          WHY THERE IS NO "SWITCH EVERYTHING OFF" CONTROL.
 
-            <span>
-              With every category off, the assistant has no HR record to read
-              and will say so. It will still answer general questions about
-              what it can do, and it will point people to the right screen.
-            </span>
-          </p>
-        )}
+          The platform requires at least one context category: the model's
+          path validator and updateConfigValidator both refuse an empty list.
+          A company that wants the assistant reading no HR records has the
+          kill switch in the first section — one honest switch rather than
+          thirteen boxes that end in a save the server refuses.
+
+          So the last category is locked above and the page never offers a
+          state it cannot save. The guard inside `save` stays as the backstop,
+          but nothing in this UI can reach it any more.
+        */}
       </section>
 
       {/*
