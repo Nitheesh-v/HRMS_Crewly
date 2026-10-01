@@ -189,6 +189,18 @@ export const getConfig = asyncHandler(async (req, res) => {
         // truth, and a new language appears in the UI the moment it is
         // added to aiConfig.js.
         languageCatalogue: AI_LANGUAGE_CATALOGUE,
+
+        // 36.7 — the platform's context-category codes, for the same reason.
+        //
+        // The admin page needs the FULL set to offer the categories that are
+        // switched off. Sending only the tenant's enabled list would make
+        // the section a display of what is on with no way to turn anything
+        // else on, which is exactly the read-only dead end it replaced.
+        //
+        // These are codes, not descriptions. The page owns the human labels,
+        // and it keeps them next to what the retriever actually puts in the
+        // context so the two cannot drift.
+        categoryCatalogue: AI_CONTEXT_CATEGORIES,
         currentMonthUsage: {
           totalTokens: usage.totalTokens,
           calls: usage.calls,

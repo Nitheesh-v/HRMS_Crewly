@@ -189,6 +189,53 @@ Saves only the keys that actually changed, then **re-reads** rather than
 trusting the local draft — the server is the authority on what was stored, and
 a second admin may have changed something between load and save.
 
+### The sticky save bar
+
+The owner's own screenshot showed the page scrolled into the language list
+with **no save button anywhere on screen**. Both buttons lived in the page
+header, which scrolls away, and the Reply languages card alone is seven rows
+tall.
+
+**Why the bar is at the bottom and not the top.** The app shell already has a
+`sticky top-0 z-30` header. A second top bar would have to be offset past a
+height that changes between breakpoints, and would slide underneath the shell
+whenever the guess was wrong. A bottom bar has no such conflict: it floats
+clear of the shell, and it is where a person's eyes already are after they
+have just ticked a box.
+
+The bar renders only while something is unsaved, and shows the count of
+unsaved **fields** rather than of ticks — "3 unsaved changes" for three
+languages plus the kill switch would read as a bug to anyone counting the
+boxes they touched.
+
+`beforeunload` covers refresh, tab close and typing a new URL. It does **not**
+cover clicking a sidebar link: React Router's `useBlocker` would, but it only
+functions with a data router (`createBrowserRouter` + `RouterProvider`) and
+this app uses `<BrowserRouter>`, where the hook silently does nothing.
+Converting the whole app's router to unblock one settings page is not a trade
+worth making, so the limit is stated in the source rather than papered over.
+
+### Context categories are editable
+
+They were displayed as read-only pills, which on a page called "Settings"
+reads as a broken control rather than one that was never wired. Two things
+were missing: `updateAiConfig` never sent `allowedCategories` at all, and the
+page never received the platform's full set of codes so it could offer the
+ones switched off. Both are fixed.
+
+Every category carries a one-line description of what the retriever actually
+puts in the context, and **each description is pinned to the code that has to
+keep it** — `payslips` promises "month and status only" and a test asserts
+`renderPayslips` still emits exactly `- <label>: <status>`; `documents`
+promises "never the files themselves" and a test asserts the query still
+selects only `name category createdAt`. An admin deciding what the assistant
+may read should not have to take this page's word for it.
+
+There is **no locked category** here, unlike English. Switching everything off
+is a legitimate posture for a company that does not want the assistant reading
+HR records at all, and the page says plainly what that will mean rather than
+refusing it.
+
 ### The assistant selector
 
 Reads the tenant's list. `chatLanguagesFor(allowedCodes)` filters the
@@ -252,6 +299,14 @@ Then in the browser, **signed in as a `COMPANY_ADMIN`**:
 3. **Hard-reload** the page (`Ctrl+Shift+R`). Kannada is still ticked — it was
    stored, not just held in the form.
 4. Untick Tamil. Save. Hard-reload. Tamil is gone.
+4b. **Scroll down into the language list.** A green bar is pinned to the
+    bottom of the window reading "1 unsaved change (the reply languages)",
+    with **Discard** and **Save changes** on it. That bar is the fix for the
+    save button being unreachable — confirm it stays put as you scroll.
+4c. Tick a language and then press `F5`. The browser asks whether you want to
+    leave. Choose Stay, and the tick is still there.
+4d. In **Context categories**, untick one and save. Hard-reload and confirm it
+    stayed off. These are editable now; they used to be display-only.
 5. Try to untick English. **You cannot** — the checkbox is disabled and
    labelled "Always on".
 6. Open the assistant widget. The language dropdown lists **exactly** the
@@ -280,8 +335,8 @@ Sign out and back in as a `COMPANY_ADMIN` of a **different** company:
 ## 10. Gates
 
 ```
-Backend   npm run test:all   3062 tests / 131 files / 0 fail   (was 3024 / 160 suites)
-Frontend  npm test            153 tests /  26 suites / 0 fail   (was  111 /  19)
+Backend   npm run test:all   3062 tests / 131 files / 0 fail
+Frontend  npm test            165 tests /  27 suites / 0 fail   (was  153 /  26)
 Frontend  npm run build       clean
 Frontend  npm run lint        128 problems (baseline held)
 ```
@@ -293,7 +348,7 @@ New and changed suites:
 | `aiTenantLanguages.test.js` | 35 | **new** — catalogue, defaults, tenant resolution, validators, source pins |
 | `aiTenantConfig.test.js` | 49 | was 46 — the `languages` field, enum, and the English rule |
 | `chatLanguages.test.js` | 21 | was 10 — the platform list, `chatLanguagesFor`, the import-based drift guard |
-| `aiSettings.test.js` | 29 | **new** — slice behaviour, selector pins, page pins, route guard, service surface |
+| `aiSettings.test.js` | 41 | **new** — slice behaviour, selector pins, page pins, route guard, service surface, the sticky save bar, editable categories |
 | `aiVoice.test.js` | 22 | was 20 — three 36.5 pins updated for the tenant list |
 
 ---
@@ -305,10 +360,13 @@ New and changed suites:
   alternative was free text, which produces selectors that lie.
 * **No per-user language.** The list is per tenant. A person who wants
   Kannada at a company that disabled it has to ask their admin.
-* **The settings page shows categories but does not edit them.** Editing is
-  one field away in `updateAiConfig` and was left out of scope; the page
-  renders what the tenant has rather than pretending to a control it does not
-  wire.
+* **Sidebar navigation is not guarded.** `beforeunload` covers refresh, tab
+  close and typing a URL. Clicking a sidebar link with unsaved work is not
+  blocked, because `useBlocker` needs a data router and this app uses
+  `<BrowserRouter>`. Stated in the source rather than hidden.
+* **The monthly token ceiling is not editable here.** The field travels in the
+  config read and `updateAiConfig` will send it, but the page has no input for
+  it yet — one more control than the owner asked for, so it was left out.
 * **`Frontend` lint stays at 128.** The new page carries one
   `set-state-in-effect`, suppressed at file level exactly as 8 other pages in
   this repo suppress the same unavoidable fetch-on-mount rule.

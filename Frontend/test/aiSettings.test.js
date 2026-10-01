@@ -268,9 +268,10 @@ describe('Phase 36.7 — the AI Settings page', () => {
     // No text field anywhere near the language list.
     assert.equal(source.includes('type="text"'), false);
 
-    // The language toggle is a checkbox over a known record, not a typed
-    // value.
-    assert.equal(source.includes('onToggle(entry.code)'), true);
+    // The toggle is a checkbox over a KNOWN record. `name={entry.code}`
+    // passes the catalogue's own code, never anything typed.
+    assert.equal(source.includes('name={entry.code}'), true);
+    assert.equal(source.includes('onToggle={toggleLanguage}'), true);
   });
 
   test('English cannot be switched off', () => {
@@ -304,6 +305,81 @@ describe('Phase 36.7 — the AI Settings page', () => {
     assert.equal(source.includes('const updates = {};'), true);
     assert.equal(source.includes('updates.languages = draft.languages;'), true);
     assert.equal(source.includes('await read();'), true);
+  });
+
+  test('the save payload is keyed to the field that changed, not to "dirty"', () => {
+    // THE 36.7 BUG THIS PINS. The line used to be
+    // `if (dirty) updates.languages = draft.languages`, which fired whenever
+    // ANYTHING was dirty — so toggling the kill switch re-sent the whole
+    // language list as well. Harmless in effect, but it meant the payload
+    // did not describe the edit.
+    const source = page();
+
+    assert.equal(source.includes('if (dirty) updates.languages'), false);
+
+    // And the categories are actually sent. They never were, which is why
+    // the section below was read-only — the plumbing was missing.
+    assert.equal(
+      source.includes('updates.allowedCategories = draft.allowedCategories;'),
+      true,
+    );
+    assert.equal(source.includes('dirtyFields.includes('), true);
+  });
+
+  test('the context categories are EDITABLE, not displayed as pills', () => {
+    // The reported defect. The section rendered the tenant's categories as
+    // read-only pills, which on a page called "Settings" reads as a broken
+    // control rather than one that was never wired.
+    const source = page();
+
+    assert.equal(source.includes('toggleCategory'), true);
+    assert.equal(source.includes('onToggle={toggleCategory}'), true);
+    assert.equal(source.includes('categoryCodes.map('), true);
+
+    // And the labels come from a table, not from the raw codes. A settings
+    // page that shows `attendance-month` to an admin is a page only a
+    // developer can use.
+    assert.equal(source.includes('CATEGORY_LABELS'), true);
+    assert.equal(source.includes('categoryLabel(code)'), true);
+  });
+
+  test('every category description is checkable against the retriever', () => {
+    /*
+     * The claims this page makes are load-bearing.
+     *
+     * An admin decides what the assistant may read based on the one-line
+     * description under each checkbox. If the page says "month and status
+     * only" and the retriever starts emitting figures, the admin has been
+     * lied to about the single thing they were deciding. So each promise is
+     * pinned to the code that has to keep it.
+     */
+    const retriever = code('../Backend/src/services/ai/hrContextRetriever.js');
+
+    // "Month and status only — never a salary figure".
+    assert.equal(
+      retriever.includes('lines.push(`- ${label}: ${status}`)'),
+      true,
+      'renderPayslips no longer emits month+status only',
+    );
+
+    // "Their own document titles — never the files themselves".
+    //
+    // Pinned to the SELECT, not to the absence of the word `fileUrl`: the
+    // retriever mentions fileUrl in a comment explaining that it is never
+    // selected, and a ban on the token would fail on that comment while the
+    // query was still correct.
+    assert.equal(
+      retriever.includes(".select('name category createdAt')"),
+      true,
+      'the documents query selects more than name, category and createdAt',
+    );
+
+    // And the payslip query is narrowed so snapshot.salary.* is never read.
+    assert.equal(
+      retriever.includes('snapshot.payroll.month'),
+      true,
+      'the payslip query no longer narrows to month+status fields',
+    );
   });
 
   test('it re-reads after saving rather than trusting the draft', () => {
@@ -451,5 +527,124 @@ describe('Phase 36.7 — the platform catalogue is a real superset', () => {
       assert.ok(entry.native, `${code} has no native name`);
       assert.match(entry.bcp47, /^[a-z]{2}-[A-Z]{2}$/, `${code} bcp47`);
     }
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════════
+// THE SAVE PROBLEM
+//
+// The owner's screenshot showed the AI Settings page scrolled into the
+// language list with NO save button anywhere on screen. Both buttons lived in
+// the page header, which scrolls away, and the language card alone is seven
+// rows tall.
+//
+// These tests pin the fix, because the failure is invisible in a code review
+// that only looks at the render tree: the buttons are all still there, they
+// are just somewhere the person cannot reach.
+// ═════════════════════════════════════════════════════════════════════════════════════════
+describe('Phase 36.7 — the save action stays reachable', () => {
+  const page = () => code('src/pages/settings/AiSettingsPage.jsx');
+
+  const service = () => code('src/services/aiService.js');
+
+  test('a save control is STICKY, not only in the page header', () => {
+    const source = page();
+
+    assert.equal(source.includes('sticky bottom-4'), true);
+
+    // It must be a bar that renders its own Save button. A sticky container
+    // holding only a label would be a status light, not a fix.
+    assert.equal(source.includes('Save changes'), true);
+  });
+
+  test('the sticky bar only appears when there is something to save', () => {
+    // A permanent bar is furniture. One that appears when there is work to
+    // keep is a signal, and it does not sit over the settings the rest of the
+    // time.
+    const source = page();
+
+    assert.equal(source.includes('{dirty && ('), true);
+  });
+
+  test('the sticky bar shows HOW MANY things are unsaved', () => {
+    // Without a count the admin ticks four boxes, scrolls up, and has to
+    // remember whether the bar was there before they started.
+    const source = page();
+
+    assert.equal(source.includes('dirtyCount'), true);
+    assert.equal(source.includes('unsaved'), true);
+    assert.equal(source.includes('dirtyFields'), true);
+  });
+
+  test('the sticky bar offers Discard as well as Save', () => {
+    // "Discard" is the honest label for reloading the saved state. Calling it
+    // "Cancel" would imply the edit is still pending somewhere.
+    const source = page();
+
+    assert.equal(source.includes('Discard'), true);
+    assert.equal(source.includes('onClick={load}'), true);
+  });
+
+  test('the bar is at the BOTTOM, which is why it does not fight the shell', () => {
+    // The app shell has `sticky top-0 z-30`. A second top bar would have to
+    // be offset past a height that changes per breakpoint, and would slide
+    // underneath the shell whenever the guess was wrong.
+    const source = page();
+
+    assert.equal(source.includes('sticky bottom-4 z-20'), true);
+    assert.equal(source.includes('sticky top-0'), false);
+  });
+
+  test('unsaved work is guarded on refresh and tab close', () => {
+    // The three ways a person actually loses work: refresh, close the tab,
+    // type a new URL. All three are browser events, so the native handler is
+    // the whole answer and needs no package.
+    const source = page();
+
+    assert.equal(source.includes("addEventListener('beforeunload', warn)"), true);
+    assert.equal(source.includes("removeEventListener('beforeunload', warn)"), true);
+    assert.equal(source.includes('event.returnValue'), true);
+
+    // And it is registered ONLY while dirty. A permanent handler prompts on
+    // every navigation, including after a successful save.
+    assert.equal(source.includes('if (!dirty) return undefined;'), true);
+  });
+
+  test('the guard uses the browser event, not the hook that would not work', () => {
+    // React Router's useBlocker WOULD cover sidebar navigation, but it only
+    // functions with a data router (createBrowserRouter + RouterProvider) and
+    // this app uses <BrowserRouter>, where it silently does nothing. So the
+    // page uses the native event and does not pretend otherwise.
+    //
+    // Pinned against the CODE rather than the comment, because this helper
+    // strips comments — a pin on prose that has been stripped away is not a
+    // pin at all.
+    const source = page();
+
+    assert.equal(source.includes("addEventListener('beforeunload', warn)"), true);
+
+    // And the hook is genuinely NOT imported, which is what proves the
+    // decision was made rather than forgotten.
+    assert.equal(source.includes('useBlocker'), false);
+    assert.equal(/from 'react-router-dom'/.test(source), false);
+  });
+
+  test('the service sends the categories the admin ticked', () => {
+    const source = service();
+
+    assert.equal(source.includes('payload.allowedCategories = updates.allowedCategories'), true);
+  });
+
+  test('the backend offers the platform category codes to the page', () => {
+    // Without the FULL set the section could only display what is already
+    // on, which is the read-only dead end this replaced.
+    const controller = code('../Backend/src/controllers/aiController.js');
+
+    assert.equal(controller.includes('categoryCatalogue: AI_CONTEXT_CATEGORIES'), true);
+
+    const backend = code('../Backend/src/services/ai/aiConfig.js');
+
+    assert.equal(backend.includes("'attendance-month'"), true);
+    assert.equal(backend.includes("'org-aggregates'"), true);
   });
 });

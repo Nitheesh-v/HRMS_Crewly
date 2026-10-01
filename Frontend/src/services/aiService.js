@@ -314,6 +314,12 @@ export const getAiConfig = async () => {
               bcp47: String(entry.bcp47 || 'en-IN'),
             }))
         : [],
+      // The platform's own category codes, so the settings page can offer
+      // the ones this tenant has switched off. Without it the section could
+      // only show what is already on.
+      categoryCatalogue: Array.isArray(payload?.categoryCatalogue)
+        ? payload.categoryCatalogue.filter((code) => typeof code === 'string')
+        : [],
       updatedBy: config.updatedBy ? String(config.updatedBy) : null,
       updatedAt: config.updatedAt ? String(config.updatedAt) : null,
       usage: {

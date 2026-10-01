@@ -620,6 +620,32 @@ the read failed, whereas `none` means the answer genuinely is nothing.
   holding the OTHER file's contents in `r`. It aborted, which is the correct
   outcome, but only because the anchor genuinely was not in `s`.
 
+- **A sticky bar at the TOP of a page fights the app shell.** The shell is
+  `sticky top-0 z-30`, so a second top bar has to be offset past a height that
+  changes per breakpoint and slides underneath the shell whenever the guess is
+  wrong. Put the save bar at the BOTTOM (`sticky bottom-4 z-20`) and the
+  conflict disappears entirely.
+- **`useBlocker` only works with a data router.** With `<BrowserRouter>` it
+  silently does nothing, so a settings page that "guards navigation" guards
+  nothing. Use `beforeunload` and state the in-app limitation in the source.
+- **A test cannot pin a comment.** `code()` strips comments, so a pin on prose
+  that lives in a comment is not a pin at all. Pin the CODE that implements
+  the decision — for the router limit, assert the handler exists and that
+  `useBlocker` is genuinely not imported.
+- **A backslash before a backtick survives a Python heredoc.** `` \` `` is an
+  unrecognised escape, so Python keeps both characters and a JS pin written
+  that way never matches. Use `'\n'.join(...)` or a plain string.
+- **Pinning the absence of a token catches the comment about it.**
+  `fileUrl` appears once in `hrContextRetriever.js` — in a comment saying it
+  is never selected. Pin the `.select(...)` call instead.
+- **Renaming a state variable is not the same as adding one.** A patch that
+  replaced `const [catalogue, setCatalogue]` with `const [categoryCodes,
+  setCategoryCodes]` left three uses of `catalogue` dangling. `no-undef` caught
+  it; a `node --check` on a `.jsx` file would not have.
+- **`if (dirty)` is not `if (this field changed)`.** One save payload keyed its
+  language write to the page-wide dirty flag, so toggling the kill switch
+  re-sent the whole language list. Key every write to its own comparison.
+
 ---
 
 ## 6. Reading a vendor failure
