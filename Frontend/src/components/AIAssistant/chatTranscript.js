@@ -1,5 +1,5 @@
-// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
-// PHASE 36.6 \u2014 CHAT TRANSCRIPT EXPORT (data only, no JSX)
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE 36.6 — CHAT TRANSCRIPT EXPORT (data only, no JSX)
 //
 // The formatting lives here so a test can assert it without a browser, and so
 // the browser-only half (the Blob and the download) is one small function at
@@ -14,7 +14,7 @@
 //   and no storage key. `buildTranscript` is a pure string function and
 //   `downloadTranscript` touches the browser only.
 //
-// PRIVACY \u2014 WHY THIS IS ALLOWED AT ALL.
+// PRIVACY — WHY THIS IS ALLOWED AT ALL.
 //
 //   The transcript contains the employee's OWN questions and the assistant's
 //   OWN answers about their own records. Nobody else's data is in it: the
@@ -23,7 +23,7 @@
 //   The file is written to the machine the person is already sitting at, by a
 //   click they made, and it is never sent anywhere by this code. The one thing
 //   worth saying out loud is that the FILE now exists outside the browser, so
-//   it is the employee's to protect \u2014 the same as any payslip PDF they have
+//   it is the employee's to protect — the same as any payslip PDF they have
 //   already downloaded.
 //
 // WHY THE TIMESTAMP IS ON THE MESSAGE.
@@ -33,7 +33,7 @@
 //   which would be a lie about when the question was actually asked. The
 //   reducer is the single place a message is created, so one change covers
 //   every dispatch site.
-// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+// ═══════════════════════════════════════════════════════════════════════════════════════════
 
 /** Who said it, in the words the transcript uses. */
 const SPEAKER = Object.freeze({

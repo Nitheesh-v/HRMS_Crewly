@@ -648,3 +648,114 @@ describe('Phase 36.7 — the save action stays reachable', () => {
     assert.equal(backend.includes("'org-aggregates'"), true);
   });
 });
+
+// ── THE SAVE FIX ────────────────────────────────────────────────────────────
+//
+// The owner ran this page on localhost and reported "save not working", with a
+// screenshot. Three separate things were wrong, and all three were mine:
+//
+//   1. THE FLOATING AI WIDGET COVERED THE SAVE BUTTON. The widget is
+//      `fixed bottom-5 right-5 z-40`, 56px across. The sticky bar was z-20 —
+//      BELOW it — so a click on Save opened the assistant instead.
+//   2. THE PAGE OFFERED A STATE THE SERVER REFUSES. "Clear all" built
+//      `allowedCategories: []`, which updateConfigValidator rejects with
+//      "allowedCategories must be a non-empty array".
+//   3. A FAILED SAVE SAID NOTHING WHERE THE BUTTON IS. The error banner sits
+//      at the top of a long page; anyone scrolled into the language list —
+//      which is everyone using this page — could not see it.
+//
+// Each of the three is pinned below, against the CODE, so a regression in any
+// one of them fails here rather than in front of the owner again.
+
+describe('Phase 36.7 — the save fix the owner asked for', () => {
+  const page = () => code('src/pages/settings/AiSettingsPage.jsx');
+
+  const widget = () => code('src/components/AIAssistant/AiAssistantWidget.jsx');
+
+  test('the sticky bar steps AROUND the floating widget instead of under it', () => {
+    // The widget is mounted by the app shell, so it is on every screen and it
+    // is not this page's to hide or out-rank. The bar reserves room for it.
+    const source = page();
+
+    assert.equal(source.includes('sticky bottom-4 z-20 mt-4 pr-[76px]'), true);
+  });
+
+  test('the reserved space is the widget, measured', () => {
+    // 76px is not a magic number: a 56px button (h-14 w-14) plus the 20px
+    // offset from `bottom-5 right-5`. If the widget is ever resized this test
+    // is the reminder that the bar has to move with it.
+    const source = widget();
+
+    assert.equal(source.includes('fixed bottom-5 right-5 z-40'), true);
+    assert.equal(source.includes('h-14 w-14'), true);
+  });
+
+  test('the bar stays BELOW the widget on purpose', () => {
+    // Raising the bar above z-40 would bury a global affordance that is
+    // supposed to be reachable from every screen in the product. Stepping
+    // around it is the only fix that does not cost something else.
+    const source = page();
+
+    assert.equal(/sticky bottom-4[^"]*z-(40|50)/.test(source), false);
+    assert.equal(source.includes('sticky bottom-4 z-20 mt-4 pr-[76px]'), true);
+  });
+
+  test('there is NO control that empties the context categories', () => {
+    // The old "Clear all" produced `allowedCategories: []`, which the server
+    // refuses. A button whose result can never be saved is worse than no
+    // button: it looks like the feature and then does nothing.
+    //
+    // Pinned through code(), which strips comments, so the explanation of why
+    // the button is gone does not satisfy this assertion.
+    const source = page();
+
+    assert.equal(source.includes('Clear all'), false);
+
+    // The precise shape of the old control: a setDraft updater that empties
+    // the list. An empty DEFAULT is fine — the draft starts empty and is
+    // overwritten by the server's config on load. An empty RESULT of a click
+    // is what the server refuses, so that is the shape being banned.
+    assert.equal(source.includes('...current, allowedCategories: []'), false);
+  });
+
+  test('a save with zero categories is stopped in the page, before any request', () => {
+    // The server still refuses it — that is the real rule. This guard exists
+    // so the admin is told in words they can act on, at the bottom of the
+    // page where they are standing, instead of a 400 they never see.
+    const source = page();
+
+    assert.equal(source.includes('draft.allowedCategories.length === 0'), true);
+    assert.equal(
+      source.includes('At least one context category must stay enabled.'),
+      true,
+    );
+
+    // And it names the honest alternative, which already exists on the page.
+    assert.equal(source.includes('Switch the assistant off instead'), true);
+  });
+
+  test('a failed save reports itself INSIDE the sticky bar', () => {
+    // The outcome has to appear where the action is. A banner at the top of a
+    // long page is invisible to the person who just clicked Save at the
+    // bottom, and a silent failure reads as a dead button.
+    const source = page();
+
+    const bar = source.indexOf('pr-[76px]');
+    const alert = source.indexOf('role="alert"');
+
+    assert.notEqual(bar, -1);
+    assert.notEqual(alert, -1);
+
+    // The alert is INSIDE the bar, not merely somewhere later in the file.
+    assert.equal(alert > bar, true);
+  });
+
+  test('the page-level banner is kept as well, not replaced', () => {
+    // Defence in depth: the in-bar message is for someone already scrolled
+    // down, the page-level one is for someone who has not moved yet.
+    const source = page();
+
+    assert.equal(source.includes('Something went wrong'), true);
+    assert.equal(source.includes('role="alert"'), true);
+  });
+});

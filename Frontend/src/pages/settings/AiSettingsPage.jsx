@@ -413,6 +413,19 @@ const AiSettingsPage = () => {
       return;
     }
 
+    // The same shape of guard for the categories, and it is here because it
+    // was missing. The platform requires at least one context category, so a
+    // payload with none comes back a 400 whose message used to render at the
+    // TOP of the page — off-screen for anyone who had scrolled into the
+    // language list, which is everyone using this page.
+    if (draft.allowedCategories.length === 0) {
+      setError(
+        'At least one context category must stay enabled. Switch the assistant off instead if you want it to read no HR records.',
+      );
+
+      return;
+    }
+
     setSaving(true);
 
     setError('');
@@ -737,18 +750,18 @@ const AiSettingsPage = () => {
             Enable all
           </button>
 
-          <button
-            type="button"
-            onClick={() =>
-              setDraft((current) => ({ ...current, allowedCategories: [] }))
-            }
-            disabled={loading}
-            className="flex items-center gap-1 rounded-lg border border-crewly-border px-2.5 py-1 text-[11px] font-semibold text-crewly-dim transition hover:text-crewly-text disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <X className="h-3 w-3" aria-hidden="true" strokeWidth={2} />
-            Clear all
-          </button>
+          {/*
+            NO "CLEAR ALL" BUTTON, AND THAT IS THE FIX.
+            The one that used to be here produced `allowedCategories: []`,
+            which the backend refuses with "allowedCategories must be a
+            non-empty array". So it built a state that could not be saved,
+            and the person who clicked it then found that Save did nothing.
 
+            A tenant that wants the assistant reading no HR data has the
+            kill switch two sections down, which is the honest control for
+            that. Requiring at least one category is a deliberate platform
+            rule from 36.2 and this page does not offer a way around it.
+          */}
           <span className="ml-auto shrink-0 rounded-full bg-crewly-border/60 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-crewly-dim">
             {draft.allowedCategories.length} enabled
           </span>
@@ -818,50 +831,102 @@ const AiSettingsPage = () => {
         a signal.
       */}
       {dirty && (
-        <div className="sticky bottom-4 z-20 mt-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-crewly-green/40 bg-crewly-card/95 px-3 py-2.5 shadow-lg backdrop-blur">
-            <p className="flex min-w-0 items-center gap-2 text-[11px] text-crewly-dim">
-              <AlertTriangle
-                className="h-3.5 w-3.5 shrink-0 text-crewly-green"
-                aria-hidden="true"
-                strokeWidth={1.9}
-              />
+        /*
+          THREE THINGS THIS BAR GETS RIGHT, ALL OF THEM LEARNED THE HARD WAY.
 
-              <span className="min-w-0">
-                <span className="font-semibold text-crewly-text">
-                  {dirtyCount} unsaved {dirtyCount === 1 ? 'change' : 'changes'}
-                </span>
+          1. `pr-[76px]` — THE FLOATING AI WIDGET. It is
+             `fixed bottom-5 right-5 z-40` and 56px across, so it occupies the
+             rightmost 76px of the viewport bottom. This bar is z-20, which
+             puts it UNDERNEATH. Without the padding, the Save button sits
+             directly under the widget and a click on it opens the assistant
+             instead of saving. That is exactly what the owner reported:
+             "save not working", with the widget visibly overlapping the
+             button in their screenshot.
 
-                {dirtySummary && (
-                  <span className="ml-1">({dirtySummary})</span>
-                )}
-              </span>
-            </p>
+             The widget is a global affordance mounted in the app shell, so
+             it is not this page's to hide or out-rank. The bar steps around
+             it instead.
 
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={load}
-                disabled={loading}
-                className="rounded-lg border border-crewly-border px-2.5 py-1 text-[11px] font-semibold text-crewly-dim transition hover:text-crewly-text disabled:cursor-not-allowed disabled:opacity-50"
+          2. THE ERROR RENDERS HERE, NOT ONLY AT THE TOP. The page-level
+             banner is at the top of a long page. Anyone who has scrolled
+             into the language list — which is everyone using this page —
+             cannot see it. A failed save that reports nothing where the
+             button is reads as a button that does nothing.
+
+          3. `z-20`, deliberately below the widget's z-40. Raising the bar
+             above it would bury a control that is supposed to be reachable
+             from every screen in the product.
+        */
+        <div className="sticky bottom-4 z-20 mt-4 pr-[76px]">
+          <div className="overflow-hidden rounded-xl border border-crewly-green/40 bg-crewly-card/95 shadow-lg backdrop-blur">
+            {error && (
+              <p
+                role="alert"
+                className="flex items-start gap-1.5 border-b border-crewly-red/30 bg-crewly-red/10 px-3 py-2 text-[11px] leading-relaxed text-crewly-red"
               >
-                Discard
-              </button>
-
-              <button
-                type="button"
-                onClick={save}
-                disabled={saving || loading}
-                className="flex items-center gap-1.5 rounded-lg bg-crewly-green px-3 py-1.5 text-[12px] font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Save
-                  className="h-3.5 w-3.5"
+                <AlertTriangle
+                  className="mt-0.5 h-3 w-3 shrink-0"
                   aria-hidden="true"
                   strokeWidth={1.9}
                 />
 
-                {saving ? 'Saving...' : 'Save changes'}
-              </button>
+                <span className="min-w-0 flex-1">{error}</span>
+
+                <button
+                  type="button"
+                  onClick={() => setError('')}
+                  className="shrink-0 rounded p-0.5 transition hover:bg-crewly-red/20"
+                  aria-label="Dismiss"
+                >
+                  <X className="h-3 w-3" aria-hidden="true" strokeWidth={1.9} />
+                </button>
+              </p>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5">
+              <p className="flex min-w-0 items-center gap-2 text-[11px] text-crewly-dim">
+                <AlertTriangle
+                  className="h-3.5 w-3.5 shrink-0 text-crewly-green"
+                  aria-hidden="true"
+                  strokeWidth={1.9}
+                />
+
+                <span className="min-w-0">
+                  <span className="font-semibold text-crewly-text">
+                    {dirtyCount} unsaved {dirtyCount === 1 ? 'change' : 'changes'}
+                  </span>
+
+                  {dirtySummary && (
+                    <span className="ml-1">({dirtySummary})</span>
+                  )}
+                </span>
+              </p>
+
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={load}
+                  disabled={loading}
+                  className="rounded-lg border border-crewly-border px-2.5 py-1 text-[11px] font-semibold text-crewly-dim transition hover:text-crewly-text disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Discard
+                </button>
+
+                <button
+                  type="button"
+                  onClick={save}
+                  disabled={saving || loading}
+                  className="flex items-center gap-1.5 rounded-lg bg-crewly-green px-3 py-1.5 text-[12px] font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Save
+                    className="h-3.5 w-3.5"
+                    aria-hidden="true"
+                    strokeWidth={1.9}
+                  />
+
+                  {saving ? 'Saving...' : 'Save changes'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

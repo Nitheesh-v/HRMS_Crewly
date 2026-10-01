@@ -1,5 +1,5 @@
-// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
-// PHASE 36.5 \u2014 VOICE WIRING (source pins, deliberately not behavioural)
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE 36.5 — VOICE WIRING (source pins, deliberately not behavioural)
 //
 // READ THIS BEFORE TRUSTING THESE GREEN TICKS.
 //
@@ -10,13 +10,13 @@
 //
 // So this file pins the WIRING instead: that the modules exist, that they
 // import the right icons, that the privacy rules are present in the source,
-// and that the two behaviours the owner cares about most \u2014 `sentViaVoice` and
-// the one-shot auto-speak latch \u2014 are actually coded and not merely intended.
+// and that the two behaviours the owner cares about most — `sentViaVoice` and
+// the one-shot auto-speak latch — are actually coded and not merely intended.
 //
 // That is the honest limit of what can be automated. The owner still has to
 // press the microphone in Chrome and listen to the reply, which is exactly
 // what the honest-flags section of the phase doc says.
-// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+// ═══════════════════════════════════════════════════════════════════════════
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -35,7 +35,7 @@ const code = (rel) =>
     .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 describe('Phase 36.5 voice wiring', () => {
-  // \u2500\u2500 the two browser-facing modules exist \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // ── the two browser-facing modules exist ─────────────────────────
   test('useSpeechRecognition.js exists and exports the hook', () => {
     const source = read('hooks/useSpeechRecognition.js');
 
@@ -57,7 +57,7 @@ describe('Phase 36.5 voice wiring', () => {
     }
   });
 
-  // \u2500\u2500 ZERO new packages \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // ── ZERO new packages ──────────────────────────────────────
   test('no speech package was added to package.json', () => {
     // The hard rule: browser-native only. Whisper, Google, Azure,
     // ElevenLabs and every react-speech-* wrapper are out of scope.
@@ -137,7 +137,7 @@ describe('Phase 36.5 voice wiring', () => {
     }
   });
 
-  // \u2500\u2500 the mic button \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // ── the mic button ────────────────────────────────────────────────
   test('the input bar renders the mic only when the browser supports it', () => {
     const source = code('components/AIAssistant/ChatInputBar.jsx');
 
@@ -166,7 +166,7 @@ describe('Phase 36.5 voice wiring', () => {
     assert.equal(source.includes('voice?.interim'), true);
   });
 
-  // \u2500\u2500 the speaker button \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // ── the speaker button ───────────────────────────────────────────
   test('the bubble renders the speaker only on assistant replies', () => {
     const source = code('components/AIAssistant/ChatMessageBubble.jsx');
 
@@ -185,7 +185,7 @@ describe('Phase 36.5 voice wiring', () => {
     assert.equal(source.includes("'Stop reading'"), true);
   });
 
-  // \u2500\u2500 the language selector \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // ── the language selector ──────────────────────────────────────────
   test('the panel renders a selector over the TENANT language list', () => {
     // 36.7 — the selector no longer maps a hardcoded list. It maps the
     // tenant's own, derived from the codes GET /ai/languages returned, so an
@@ -223,7 +223,7 @@ describe('Phase 36.5 voice wiring', () => {
     assert.equal(source.includes('sessionStorage'), false);
   });
 
-  // \u2500\u2500 the sentViaVoice / auto-speak contract \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // ── the sentViaVoice / auto-speak contract ───────────────────────
   test('the panel sets the auto-speak latch only for a spoken question', () => {
     const source = code('components/AIAssistant/AiAssistantPanel.jsx');
 
@@ -269,7 +269,7 @@ describe('Phase 36.5 voice wiring', () => {
     );
   });
 
-  // \u2500\u2500 the Redux slice \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // ── the Redux slice ─────────────────────────────────────────────────────
   test('the slice holds the language and exposes a setter', () => {
     const source = code('redux/slices/aiChatSlice.js');
 
@@ -308,7 +308,7 @@ describe('Phase 36.5 voice wiring', () => {
     assert.equal(source.includes('sessionStorage'), false);
   });
 
-  // \u2500\u2500 the wire \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // ── the wire ───────────────────────────────────────────────────────────────────
   test('the client omits the language when it is English', () => {
     const source = code('services/aiService.js');
 

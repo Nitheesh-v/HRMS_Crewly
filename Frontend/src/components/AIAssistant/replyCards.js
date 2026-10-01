@@ -1,5 +1,5 @@
-// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
-// PHASE 36.6 \u2014 STRUCTURED ANSWER CARDS (data only, no JSX)
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE 36.6 — STRUCTURED ANSWER CARDS (data only, no JSX)
 //
 // Plain Node can import this file, which is why the parser lives here and not
 // inside ChatMessageBubble.jsx: a parser that only runs in a browser is a
@@ -14,10 +14,10 @@
 // worse off than with the plain text we shipped in 36.3. So the parse is
 // deliberately conservative:
 //
-//   \u00b7 only a RUN of two or more consecutive bullet lines is considered;
-//   \u00b7 EVERY line in that run must match `- Label: value`;
-//   \u00b7 if any line does not, the whole run stays plain text;
-//   \u00b7 label and value are rendered VERBATIM \u2014 nothing is reworded,
+//   · only a RUN of two or more consecutive bullet lines is considered;
+//   · EVERY line in that run must match `- Label: value`;
+//   · if any line does not, the whole run stays plain text;
+//   · label and value are rendered VERBATIM — nothing is reworded,
 //     reformatted, rounded or reordered.
 //
 // The result is that a misparse degrades to exactly what 36.3 shipped, never
@@ -26,12 +26,12 @@
 // NOTE ON THE 36.3 NEGATIVES. A line like `- none assigned to you` has no
 // colon, so it never matches and never becomes a card. That is correct: a
 // stated negative is an ANSWER (prompt rule 8) and must stay readable prose.
-// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+// ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * A bullet line carrying exactly one label and one value.
  *
- * Tolerant of the markdown a model reaches for on its own \u2014 bold, backticks
+ * Tolerant of the markdown a model reaches for on its own — bold, backticks
  * and a trailing full stop are all stripped from the LABEL only, never from
  * the value, because the value is the answer.
  *
