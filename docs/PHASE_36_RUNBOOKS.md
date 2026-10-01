@@ -365,6 +365,90 @@ an account-security question, not an AI one — hand it to whoever owns accounts
 
 ---
 
+## Incident 7 — A Language Is Missing From The Assistant Dropdown
+
+**Phase 36.7.** The one new failure mode this unit adds. It is almost never a
+bug.
+
+### DETECT
+
+An employee says the assistant's language dropdown does not offer the language
+they want, or an admin says a language they enabled is not appearing.
+
+### IMPACT
+
+**Cosmetic and total.** The person gets answers in one of the languages that
+IS offered. Nothing is unreadable, nothing is unauthorized, and no data is at
+risk. A language decides how an answer is phrased, never what a caller may
+read.
+
+### DO
+
+**1. Confirm the tenant's list, not the platform's.**
+
+The platform catalogue is 14 languages. The tenant offers whatever its admin
+enabled, defaulting to five. A language being absent is the normal case for a
+tenant that never enabled it — there is nothing to fix.
+
+Ask the `COMPANY_ADMIN` to open `/app/settings/ai-settings` and read the
+"enabled" counter on the Reply languages card.
+
+**2. If the admin enabled it and it still does not appear:**
+
+Have them hard-reload (`Ctrl+Shift+R`). The widget loads the tenant's list
+once, when it first mounts, and a tab opened before the save still holds the
+old list.
+
+**3. If it appears in the admin's list but not in the employee's dropdown:**
+
+The employee's tab is stale, as above. Nothing else can cause this: the
+selector reads the same tenant-scoped value the admin page saves, and there is
+no per-user or per-role language list.
+
+**4. If the admin CANNOT enable it** — the checkbox is missing entirely —
+the language is not on the platform catalogue. That is a code change and a
+redeploy, by design. Free-text language entry was refused because a typo would
+become a language the model cannot actually produce.
+
+**5. If saving answers 400:**
+
+Read the message. `languages must always include English` means the list lost
+English, which the model refuses to persist. `languages may only contain: ...`
+means a code that is not on the catalogue reached the payload.
+
+### DO NOT
+
+* **Do not add the language to the platform catalogue to unblock one
+  tenant.** It is a shared, curated list; a language added for one company is
+  offered to all of them.
+* **Do not let an admin switch English off** to make room for something else.
+  English is the one language the prompt needs no rule for and the platform's
+  fallback for a preference-less request. The model refuses to persist such a
+  list, so attempting it produces a 400 and nothing else.
+* **Do not treat a missing language as a permissions problem.** The language
+  list is not scoped by role. `GET /ai/languages` deliberately has no RBAC so
+  that every employee's selector can render.
+* **Do not clear Redis to fix this.** The tenant config cache holds the same
+  list the widget reads, and a stale entry expires on its own.
+
+### VERIFY
+
+Ask the employee to hard-reload and open the widget. The dropdown lists
+exactly the languages the admin enabled, in catalogue order, with English
+first. Pick one, ask a question, and confirm the reply is in that language's
+script.
+
+### ESCALATE
+
+Only if the admin's saved list and the employee's dropdown disagree after a
+hard-reload. That would mean the tenant list is being read from the wrong
+company, which is a multi-tenancy defect and the most serious thing this
+feature could do wrong. Capture the `companyId` from the admin's session, the
+codes the admin sees, and the codes the employee sees, and treat it as a
+security incident, not a UI bug.
+
+---
+
 ## Appendix — the codes an on-call engineer will actually see
 
 | Code | Status | What it means | Runbook |

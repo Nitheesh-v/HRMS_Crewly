@@ -26,6 +26,7 @@ Seven units, in dependency order:
 | **36.4** | Nine more own-record context categories, a static capability catalogue, role-aware aggregate counts, prompt rules 10-14, retry/copy UX |
 | **36.5** | Voice (browser-native `SpeechRecognition` / `speechSynthesis`) and five reply languages. No new package. |
 | **36.6** | Progressive reveal, follow-up chips, deep-link navigation chips, structured answer cards, named payslip fields, onboarding empty state, transcript export, typing-stops-speech, admin usage dashboard. No new package. |
+| **36.7** | Admin-configurable reply languages. A 14-language platform catalogue, `AITenantConfig.languages`, a new AI Settings page, and a tenant-aware validator. No new package. |
 
 **It is strictly the HR Chatbot Suite.** Not recruitment AI, not payroll
 pipeline AI, not analytics AI. Those need their own phase numbers and their own
@@ -463,7 +464,7 @@ the read failed, whereas `none` means the answer genuinely is nothing.
    `.select()` is still narrowed so `snapshot.salary.*` is never read from
    Mongo.
 7. **`Total Deductions` is NOT a salary label in the redactor.** That is the
-   decisive reason the prompt's payslip format was refused " + D + " that one
+   decisive reason the prompt's payslip format was refused — that one
    figure would have survived into the vendor payload.
 8. **No SSE.** The reveal is client-side. An SSE path would have to reopen
    `aiProvider.js`'s guard ladder, which 68 tests pin.
@@ -489,7 +490,7 @@ the read failed, whereas `none` means the answer genuinely is nothing.
 
 - **A source pin can match the module's own doc comment.** Three of them did.
   " + `"Nothing is written to localStorage"` + " is a sentence about NOT using
-  the thing the pin bans. **Strip comments before grepping** " + D + " `aiChatUx.test.js`
+  the thing the pin bans. **Strip comments before grepping** — `aiChatUx.test.js`
   has a `readCode()` helper for exactly this, and `aiVoice.test.js` already had
   one.
 - **A pin on the whole file is not a pin on the request.** The 36.5
@@ -521,8 +522,103 @@ the read failed, whereas `none` means the answer genuinely is nothing.
   class containing U+FE0F is a combining character and
   `no-misleading-character-class` rejects it.
 - **`npm run test:<one-suite>` prints a describe-level failure that a
-  `# tests`/`# pass` grep will hide.** Always read `# fail` too. " + D + " this is how
+  `# tests`/`# pass` grep will hide.** Always read `# fail` too. — this is how
   a broken `aiTenantConfig` suite looked green for one whole turn.
+
+---
+
+## 5e. The 36.7 laws, in one place
+
+1. **The catalogue is the ceiling, the tenant list is the offer.**
+   `AI_LANGUAGE_CATALOGUE` is 14 codes; `AI_TENANT_LANGUAGE_DEFAULT` is the
+   36.5 five. The model's ENUM is the catalogue and its DEFAULT is the five
+   — that is what makes an admin able to add a language at all.
+   `AI_SUPPORTED_LANGUAGES` is an ALIAS of the default set, kept so 36.5
+   imports still resolve. It is NOT the catalogue.
+2. **No free-text language entry.** Ever. The owner decided this. A typo
+   would become a language the model cannot produce and the admin would
+   believe they had added it.
+3. **English is mandatory per tenant**, enforced at the MODEL
+   (`AITenantConfig`'s path validator), in the validator chain, AND in the
+   settings page. Three layers because the model is the one that cannot be
+   bypassed. English is the one language the prompt needs no rule for and the
+   platform fallback for a preference-less request.
+4. **A language is PRESENTATION.** It changes how an answer is phrased and in
+   which script. It never changes what a caller may read — the server scopes
+   that from `req.companyId` and `req.user._id` before this value is looked
+   at. Language is not an identity field and `noIdentityOverride` still
+   refuses it from a body.
+5. **The validator checks the platform enum FIRST, the tenant list SECOND.**
+   `isIn(AI_LANGUAGE_CODES).bail().custom(tenant list)`. Two different
+   problems need two different messages: a typo is a typo, a disabled
+   language says it is not enabled for your company.
+6. **`getTenantLanguages` fails CLOSED to the default set and never throws.**
+   A language list is cosmetic; refusing the whole assistant because a config
+   read timed out is the wrong trade.
+7. **`GET /ai/languages` has NO RBAC** — any authenticated user. The widget
+   is open to every employee and its selector must list what the admin
+   enabled. It returns presentation preferences only: no quota, no enabled
+   flag, no usage. Reading the QUOTA still needs `SETTINGS_MANAGE`.
+8. **Rule 16 is the language rule and it is CONDITIONAL** — omitted
+   entirely for English, so an English turn stays byte-identical to a 36.3
+   turn. Follow-up stays rule 15 and unconditional.
+9. **The frontend keeps a copy of the catalogue, and a test imports the
+   backend module and compares FIELD BY FIELD.** Codes, labels, native names,
+   hints and BCP-47 tags. Never scrape the backend file as text.
+10. **`chatLanguagesFor` keeps only codes that are actually on the
+    platform.** Filtering by type is not filtering: an empty string is a
+    string, and a list of `['']` reads as "one language enabled".
+11. **Catalogue order, not arrival order.** `chatLanguagesFor` preserves the
+    catalogue's sequence so the selector does not reshuffle between reloads
+    because Mongo returned the array differently.
+
+---
+
+## 5f. Pitfalls paid for during 36.7
+
+- **A source pin that greps raw source matches the file's own
+  documentation.** `aiSettings.test.js`'s first version asserted the panel
+  contains no `localStorage` and FAILED — the panel's header comment
+  explains at length that the language is deliberately NOT stored there. The
+  pin was right and the test was wrong. Every code pin now goes through a
+  comment-stripping helper, the same one `aiVoice.test.js` has used since
+  36.5.
+- **A validator chain can THROW instead of calling `next(error)`.**
+  `validate` throws an `ApiError` once `validationResult` has anything in it.
+  A promise wrapper that only watches `next` never sees the refusal, and
+  every assertion about a 400 silently passes for the wrong reason.
+- **A fake model must expose the method the code actually calls.**
+  `loadFromMongo` uses `findOneAndUpdate` (upsert + `setDefaultsOnInsert`),
+  NOT `findOne`. A `findOne`-only fake returns null, the caller falls back to
+  the default set, and the test looks like a product bug.
+- **A source pin sliced to "the next export" can be EMPTY.**
+  `chatbotValidator` is the LAST export in `aiValidator.js`;
+  `updateConfigValidator` comes BEFORE it. Slicing to that name produced an
+  empty string and the pin passed for the wrong reason.
+- **`await import()` inside a `describe` callback is illegal.** Hoist every
+  import to the top of the file. Hit again in 36.7.
+- **A hand-copied Unicode string WILL be wrong.** The Telugu native name
+  arrived as `ଲ` (Odia LA) instead of `ల` (Telugu LA) — visually
+  near identical, wrong script, and only a field-by-field comparison against
+  the backend caught it. Regenerate the frontend copy from the backend module.
+- **A `builder` chain terminated by `;` cannot be extended.** Appending
+  `.addCase(...)` after the semicolon is a `SyntaxError` at the leading dot.
+- **`toSnapshot` and `UPDATABLE_FIELDS` must BOTH be updated** or the field
+  silently does nothing: one drops it on read, the other answers
+  `Unsupported AI config field(s)` on write.
+- **`AI_DEFAULT_LANGUAGE` must be imported into the validator** before it is
+  used in a `custom()`. Node reports it as
+  `AI_DEFAULT_LANGUAGE is not defined` from inside the chain, which reads
+  like a product bug and is not.
+- **The frontend's circular import is real and order-dependent.**
+  `aiChatSlice -> aiService -> api -> store -> aiChatSlice`. Import the STORE
+  first in any test that touches the slice, or you get
+  `Cannot access 'aiChatReducer' before initialization`. `aiChatStore.test.js`
+  has the same ordering for the same reason.
+- **A patch script that asserts against the wrong variable writes nothing
+  and reports success.** One 36.7 script checked `assert ANCHOR in s` while
+  holding the OTHER file's contents in `r`. It aborted, which is the correct
+  outcome, but only because the anchor genuinely was not in `s`.
 
 ---
 

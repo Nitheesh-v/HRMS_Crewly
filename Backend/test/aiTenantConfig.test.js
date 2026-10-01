@@ -36,6 +36,10 @@ const {
   AI_TENANT_CONFIG_CACHE,
   AI_DEFAULT_MONTHLY_QUOTA_TOKENS,
   AI_CONTEXT_CATEGORIES,
+
+  // 36.7 — the platform language catalogue and the default tenant set.
+  AI_LANGUAGE_CODES,
+  AI_TENANT_LANGUAGE_DEFAULT,
 } = await import('../src/services/ai/aiConfig.js');
 
 const {
@@ -201,11 +205,63 @@ describe('AITenantConfig model (Phase 36 §5)', () => {
         'companyId',
         'createdAt',
         'enabled',
+
+        // 36.7 — the reply languages this tenant offers.
+        'languages',
         'monthlyQuotaTokens',
         'updatedAt',
         'updatedBy',
       ],
     );
+  });
+
+  test('the language enum is the platform catalogue, not the default set', () => {
+    // The distinction that makes the whole feature work. The ENUM is what an
+    // admin may enable; the DEFAULT is what an unconfigured tenant gets. If
+    // the enum were the default set, an admin could never add a language.
+    const options = AITenantConfig.schema.path('languages').options;
+
+    assert.deepEqual(
+      [...options.enum].sort(),
+      [...AI_LANGUAGE_CODES].sort(),
+    );
+
+    // And the default is the 36.5 five, unchanged, so an unconfigured tenant
+    // behaves exactly as it did before 36.7.
+    assert.deepEqual(
+      [...options.default],
+      [...AI_TENANT_LANGUAGE_DEFAULT],
+    );
+
+    // The catalogue is strictly larger than the default, otherwise there is
+    // nothing for an admin to add.
+    assert.ok(AI_LANGUAGE_CODES.length > AI_TENANT_LANGUAGE_DEFAULT.length);
+  });
+
+  test('an empty language list is refused at the schema level', () => {
+    // A tenant offering no language would render a selector with nothing in
+    // it, and the silent fallback would answer in a language nobody picked.
+    const validator = AITenantConfig.schema
+      .path('languages')
+      .validators.find((entry) => typeof entry.validator === 'function');
+
+    assert.equal(validator.validator([]), false);
+    assert.equal(validator.validator(['en']), true);
+    assert.equal(validator.validator(['en', 'ta']), true);
+  });
+
+  test('English is mandatory — a tenant cannot switch off the base case', () => {
+    // English is the one language the system prompt needs no rule for, and
+    // the platform's fallback when a caller sends nothing. A tenant without
+    // it would have a selector promising languages the prompt cannot produce
+    // for a default request. Enforced at the model so no code path can
+    // persist it, not only in the UI.
+    const validator = AITenantConfig.schema
+      .path('languages')
+      .validators.find((entry) => typeof entry.validator === 'function');
+
+    assert.equal(validator.validator(['ta', 'hi']), false);
+    assert.equal(validator.validator(['ta', 'en']), true);
   });
 
   test('the enum is closed to the HR context categories and nothing else', () => {

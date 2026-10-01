@@ -34,14 +34,15 @@
 
 import {
   AI_CHATBOT_HISTORY_LIMIT,
-  AI_DEFAULT_LANGUAGE,
   AI_DEEP_LINKS,
   AI_DEEP_LINK_ORDER,
   AI_FEATURE_CHATBOT,
   AI_FOLLOW_UP_FALLBACKS,
   AI_FOLLOW_UP_MAX,
-  AI_LANGUAGE_LABELS,
-  normalizeLanguage,
+
+  // 36.7 — the tenant's own language list drives the prompt rule.
+  AI_TENANT_LANGUAGE_DEFAULT,
+  languageRuleLabel,
 } from './aiConfig.js';
 
 import { redactPII } from './piiRedactor.js';
@@ -324,6 +325,12 @@ export const askHRAssistant = async ({
   messages,
   categories,
   language,
+
+  // 36.7 — the reply languages this tenant offers. Supplied by the
+  // controller from the tenant config; defaults to the platform set so a
+  // direct caller (a test, a future internal caller) behaves like an
+  // unconfigured tenant.
+  languages,
   deps = {},
 } = {}) => {
   const {
@@ -365,8 +372,14 @@ export const askHRAssistant = async ({
 
   // STEP 3 — the server-owned system prompt.
   //
-  // The language is resolved HERE, once, and normalized silently: an
-  // unknown or missing value becomes English rather than an error. The
+  // 36.7 — the language is resolved against the TENANT'S OWN LIST, not a
+  // global one. `languages` arrives from the controller, which read it off
+  // the tenant config. That is what makes an admin-added language actually
+  // reach the prompt: the selector offers it, the validator accepts it, and
+  // the rule here names it.
+  //
+  // Resolved HERE, once, and normalized silently: an unknown or missing
+  // value becomes the tenant's FIRST language rather than an error. The
   // validator already refuses an unsupported language with a 400, so this
   // is the defence in depth for a direct caller, and failing a question
   // over a cosmetic preference would be the wrong trade.
@@ -374,13 +387,12 @@ export const askHRAssistant = async ({
   // This is a PREFERENCE and nothing more. It changes how the answer is
   // phrased, never what the caller is allowed to read — the context was
   // already scoped in STEP 2 and is not touched here.
-  const resolvedLanguage = normalizeLanguage(language);
+  const allowed = Array.isArray(languages) && languages.length > 0
+    ? languages
+    : AI_TENANT_LANGUAGE_DEFAULT;
 
   // English needs no instruction at all, hence the empty label.
-  const languageLabel =
-    resolvedLanguage === AI_DEFAULT_LANGUAGE
-      ? ''
-      : AI_LANGUAGE_LABELS[resolvedLanguage];
+  const languageLabel = languageRuleLabel(language, allowed);
 
   const systemPrompt = buildSystemPrompt(context, languageLabel);
 

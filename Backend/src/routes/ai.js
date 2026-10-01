@@ -46,6 +46,16 @@ router.route('/chat').post(aiChatValidator, aiController.chat);
 // charged exactly once.
 router.route('/chatbot').post(chatbotValidator, aiController.askChatbot);
 
+// 36.7 — the reply languages this tenant offers, for the assistant widget's
+// selector.
+//
+// NO RBAC, deliberately. The widget is open to every employee and its
+// selector must list what the admin enabled, so an employee has to be able
+// to ask. Nothing here is sensitive: it is a list of presentation
+// preferences, with no quota, no enabled flag and no usage. Reading a
+// tenant's QUOTA still needs SETTINGS_MANAGE, and that route is unchanged.
+router.route('/languages').get(aiController.getChatLanguages);
+
 router
   .route('/config')
   .get(requirePermission('SETTINGS_MANAGE'), aiController.getConfig)

@@ -15,7 +15,10 @@
 
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 
-import { askHRAssistant } from '../../services/aiService.js';
+import {
+  askHRAssistant,
+  getChatLanguages,
+} from '../../services/aiService.js';
 
 import { normalizeChatLanguage } from '../../components/AIAssistant/chatLanguages.js';
 
@@ -27,7 +30,10 @@ import { normalizeChatLanguage } from '../../components/AIAssistant/chatLanguage
 export const sendChatMessage = createAsyncThunk(
   'aiChat/send',
 
-  async ({ messages, categories, language }, { rejectWithValue }) => {
+  async (
+    { messages, categories, language },
+    { getState, rejectWithValue },
+  ) => {
     try {
       // Normalized here as well as in the selector, so a value that
       // arrived some other way can never reach the server. The server
@@ -37,10 +43,15 @@ export const sendChatMessage = createAsyncThunk(
       // deepLinks. Both are derived from things the server already knows
       // (the model's own reply, and the categories the retriever filled),
       // so nothing new is asked of the client and nothing is persisted.
+      // 36.7 — normalized against the tenant's own list, read from the
+      // store. Without this, a language the admin has since switched off
+      // would still be sent and come back a 400 the person cannot explain.
+      const { allowedLanguages = [] } = getState().aiChat || {};
+
       return await askHRAssistant({
         messages,
         categories,
-        language: normalizeChatLanguage(language),
+        language: normalizeChatLanguage(language, allowedLanguages),
       });
     } catch (error) {
       // The code is what lets the page say "wait a moment" (RATE_LIMITED,
@@ -49,6 +60,38 @@ export const sendChatMessage = createAsyncThunk(
         message: error?.message || 'The assistant could not answer.',
         code: error?.code || '',
         status: error?.status ?? null,
+      });
+    }
+  },
+);
+
+/**
+ * 36.7 — load the reply languages THIS tenant offers.
+ *
+ * Called once when the assistant first mounts. It deliberately swallows a
+ * failure: the widget still has to open, and the honest fallback is the
+ * default five, which is what an unconfigured tenant gets. A person seeing
+ * five languages instead of ten is a much smaller problem than a widget
+ * that will not open because a config read timed out.
+ *
+ * The catalogue is dropped on the floor here on purpose. It is only needed
+ * to render the selector, and the selector gets its labels from
+ * chatLanguages.js — the frontend's own copy, pinned to the backend's by a
+ * test. Keeping one source for the records avoids two lists that can
+ * disagree about a native name.
+ */
+export const loadChatLanguages = createAsyncThunk(
+  'aiChat/loadLanguages',
+
+  async (_arg, { rejectWithValue }) => {
+    try {
+      const { languages } = await getChatLanguages();
+
+      return Array.isArray(languages) ? languages : [];
+    } catch (error) {
+      return rejectWithValue({
+        message: error?.message || 'Could not load the language list.',
+        code: error?.code || '',
       });
     }
   },
@@ -75,6 +118,16 @@ const initialState = {
   // Defaulting to English here rather than reading a stored value means a
   // fresh tab always starts from the same honest place.
   language: 'en',
+
+  // 36.7 — the codes this tenant's admin enabled, from GET /ai/languages.
+  //
+  // Empty until the first successful load, which is exactly the same as
+  // "unconfigured": chatLanguagesFor([]) returns the default five, so the
+  // first paint is correct rather than blank.
+  //
+  // Not in localStorage. It is tenant state that belongs to the server, and
+  // a stale copy would offer a language the admin has since switched off.
+  allowedLanguages: [],
 
   // 36.6 — the suggestion chips and the navigation chips for the LAST
   // answer only. Older answers keep theirs in the message objects
@@ -122,14 +175,25 @@ const aiChatSlice = createSlice({
     },
 
     languageSet: (state, action) => {
-      // Normalized in the reducer, not just the caller, so the state can
-      // never hold a value the selector would not offer. A bad payload
-      // falls back to English instead of poisoning the next request.
+      // 36.7 — normalized against THIS TENANT'S list, not the platform's.
+      //
+      // That distinction is the whole feature. A code that exists on the
+      // platform but was never enabled for this company must fall back to
+      // English here, because the validator will refuse it server-side and
+      // the selector would otherwise be promising a language nobody can
+      // actually get.
+      //
+      // Normalizing in the reducer rather than the caller means no dispatch
+      // site can put an unoffered language into the state, however the
+      // payload arrived.
       //
       // Clearing the messages would be wrong: the transcript already on
       // screen was answered in the previous language and is still true.
       // The new language applies to the NEXT answer.
-      state.language = normalizeChatLanguage(action.payload);
+      state.language = normalizeChatLanguage(
+        action.payload,
+        state.allowedLanguages,
+      );
     },
   },
 
@@ -178,6 +242,25 @@ const aiChatSlice = createSlice({
         // never mistake an error message for the assistant's answer.
         state.error = action.payload?.message || 'The assistant could not answer.';
         state.errorCode = action.payload?.code || '';
+      })
+
+      .addCase(loadChatLanguages.fulfilled, (state, action) => {
+        // Kept as an array of codes even when empty: an empty list and a
+        // never-loaded list are the same thing here, and both mean "offer
+        // the default five".
+        state.allowedLanguages = action.payload || [];
+      })
+
+      .addCase(loadChatLanguages.rejected, () => {
+        // Deliberately leaves allowedLanguages as it was. A failed read
+        // must not WIDEN the list to the platform catalogue, and it must not
+        // clear a list that already loaded — either would offer a language
+        // the server is not currently serving.
+        //
+        // It also does not set `state.error`. This is a background load for
+        // a cosmetic preference; showing an error banner over the whole
+        // widget because the language list was slow would be the wrong
+        // trade, and the widget still works.
       });
   },
 });

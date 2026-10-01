@@ -19,6 +19,7 @@ import {
   AI_CHATBOT_RATE_LIMIT,
   AI_CONTEXT_CATEGORIES,
   AI_FEATURE_HR_CHAT,
+  AI_LANGUAGE_CATALOGUE,
   AI_PREVIEW_RATE_LIMIT,
 } from '../services/ai/aiConfig.js';
 
@@ -33,6 +34,7 @@ import {
 
 import {
   getTenantConfig,
+  getTenantLanguages,
   updateTenantConfig,
 } from '../services/ai/aiTenantConfigService.js';
 
@@ -108,6 +110,52 @@ export const chat = asyncHandler(async (req, res) => {
   }
 });
 
+// GET /api/ai/languages — the reply languages THIS tenant offers.
+//
+// WHY A SEPARATE ENDPOINT FROM /config.
+//   The assistant widget is open to every employee, and its selector has to
+//   list exactly the languages the admin enabled. /config answers that too,
+//   but it is behind SETTINGS_MANAGE and carries the quota — an employee has
+//   no business reading either. So the list gets its own route behind
+//   authentication alone.
+//
+// WHAT IT DOES NOT RETURN. No quota, no enabled flag, no categories, no
+// usage. A language is a PRESENTATION preference: knowing which ones are on
+// offer tells a caller nothing about what they may read.
+export const getChatLanguages = asyncHandler(async (req, res) => {
+  try {
+    // DB Logic - DB logics
+    // The tenant's enabled codes. Fails CLOSED to the platform default set
+    // rather than to an error, so an unreadable config costs a tenant the
+    // extra languages for one request and nothing more.
+    const languages = await getTenantLanguages(req.companyId);
+
+    // The catalogue travels with the codes so the client never keeps a second
+    // copy. A new language added to aiConfig.js appears in the selector the
+    // moment the page reloads — there is no frontend edit to forget.
+    const catalogue = AI_LANGUAGE_CATALOGUE.filter((entry) =>
+      languages.includes(entry.code),
+    );
+
+    // Data to frontend - response to frontend
+    return res.status(200).json({
+      statusCode: 200,
+      success: true,
+      data: {
+        languages,
+        catalogue,
+      },
+      message: 'Chat languages loaded',
+    });
+  } catch (error) {
+    if (error instanceof AIError) {
+      return sendAIError(res, error);
+    }
+
+    throw error;
+  }
+});
+
 // GET /api/ai/config — this tenant's AI configuration and its month-to-date
 // spend. Behind SETTINGS_MANAGE: an ordinary employee has no business reading
 // the tenant's quota.
@@ -128,9 +176,19 @@ export const getConfig = asyncHandler(async (req, res) => {
           enabled: config.enabled,
           monthlyQuotaTokens: config.monthlyQuotaTokens,
           allowedCategories: config.allowedCategories,
+
+          // 36.7 — the languages this tenant offers. The admin page renders
+          // checkboxes from the platform catalogue and ticks these.
+          languages: config.languages,
           updatedBy: config.updatedBy,
           updatedAt: config.updatedAt,
         },
+
+        // The platform catalogue travels with the config so the admin page
+        // does not have to hardcode a second copy of it. One source of
+        // truth, and a new language appears in the UI the moment it is
+        // added to aiConfig.js.
+        languageCatalogue: AI_LANGUAGE_CATALOGUE,
         currentMonthUsage: {
           totalTokens: usage.totalTokens,
           calls: usage.calls,
@@ -154,7 +212,12 @@ export const getConfig = asyncHandler(async (req, res) => {
 export const updateConfig = asyncHandler(async (req, res) => {
   try {
     // Data from frontend - requests from frontend
-    const { enabled, monthlyQuotaTokens, allowedCategories } = req.body;
+    const {
+      enabled,
+      monthlyQuotaTokens,
+      allowedCategories,
+      languages,
+    } = req.body;
 
     const updates = {};
 
@@ -166,6 +229,14 @@ export const updateConfig = asyncHandler(async (req, res) => {
 
     if (allowedCategories !== undefined) {
       updates.allowedCategories = allowedCategories;
+    }
+
+    // 36.7 — the language list. The MODEL refuses an empty list and a
+    // list without English, so the "you must keep English" rule is
+    // enforced in one place rather than repeated in the UI, where it could
+    // be bypassed.
+    if (languages !== undefined) {
+      updates.languages = languages;
     }
 
     // DB Logic - DB logics
@@ -288,10 +359,21 @@ export const askChatbot = asyncHandler(async (req, res) => {
     const { messages, categories, language } = req.body;
 
     // DB Logic - DB logics
+    //
+    // 36.7 — the reply languages THIS tenant offers. Read here rather than
+    // inside the service so the service stays a pure function of its
+    // arguments and a test can pass any list it likes. The read is cached
+    // per tenant, so this is not a second database round trip per turn.
+    //
+    // It fails closed to the platform default set, so an unreadable config
+    // degrades to "the five 36.5 languages" rather than to an error.
+    const languages = await getTenantLanguages(req.companyId);
+
     const response = await askHRAssistant({
       messages,
       categories,
       language,
+      languages,
 
       // Tenant authority and caller identity are SERVER-DERIVED. The validator
       // refuses any client-supplied identity outright.

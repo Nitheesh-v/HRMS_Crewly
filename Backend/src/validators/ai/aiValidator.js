@@ -17,12 +17,15 @@ import ApiError from '../../utils/ApiError.js';
 import {
   AI_CHATBOT_CLIENT_ROLES,
   AI_CONTEXT_CATEGORIES,
+  AI_DEFAULT_LANGUAGE,
+  AI_LANGUAGE_CODES,
   AI_MESSAGE_MAX_CHARS,
   AI_MESSAGE_MAX_COUNT,
   AI_MESSAGE_ROLES,
   AI_MONTHLY_QUOTA_CEILING,
-  AI_SUPPORTED_LANGUAGES,
 } from '../../services/ai/aiConfig.js';
+
+import { getTenantLanguages } from '../../services/ai/aiTenantConfigService.js';
 
 const validate = (req, _res, next) => {
   const errors = validationResult(req);
@@ -154,17 +157,70 @@ const categoriesBody = body('allowedCategories')
     return true;
   });
 
-// A payload with none of the three fields is a no-op dressed as a change.
+// 36.7 — the reply-language list an admin saves.
+//
+// Three checks, in this order, because each one produces a message an
+// admin can act on:
+//
+//   1. non-empty array of strings;
+//   2. every entry is a PLATFORM CATALOGUE code — a typo is a client bug
+//      and says so plainly, rather than being reported as a save failure;
+//   3. English is present.
+//
+// Rule 3 is the interesting one. English is the one language the system
+// prompt needs no rule for and the platform's fallback when a caller sends
+// nothing. A tenant that switched it off would have a selector promising
+// languages the prompt cannot produce for a default request — the quiet
+// lie this codebase refuses. Enforced here AND at the model, so no path
+// can persist it.
+const languagesBody = body('languages')
+  .optional()
+  .isArray({ min: 1 })
+  .withMessage('languages must be a non-empty array')
+  .custom((value) => {
+    const list = value || [];
+
+    if (list.some((entry) => typeof entry !== 'string')) {
+      throw new Error('languages must be an array of strings.');
+    }
+
+    const unknown = list.filter(
+      (entry) => !AI_LANGUAGE_CODES.includes(entry),
+    );
+
+    if (unknown.length > 0) {
+      throw new Error(
+        `languages may only contain: ${AI_LANGUAGE_CODES.join(', ')}.`,
+      );
+    }
+
+    if (new Set(list).size !== list.length) {
+      throw new Error('languages must not contain duplicates.');
+    }
+
+    if (!list.includes(AI_DEFAULT_LANGUAGE)) {
+      throw new Error(
+        'languages must always include English — it is the default reply language.',
+      );
+    }
+
+    return true;
+  });
+
+// A payload with none of the fields is a no-op dressed as a change.
 const atLeastOneField = body().custom((_value, { req }) => {
   const payload = req.body || {};
 
-  const supplied = ['enabled', 'monthlyQuotaTokens', 'allowedCategories'].filter(
-    (field) => Object.prototype.hasOwnProperty.call(payload, field),
-  );
+  const supplied = [
+    'enabled',
+    'monthlyQuotaTokens',
+    'allowedCategories',
+    'languages',
+  ].filter((field) => Object.prototype.hasOwnProperty.call(payload, field));
 
   if (supplied.length === 0) {
     throw new Error(
-      'Supply at least one of: enabled, monthlyQuotaTokens, allowedCategories.',
+      'Supply at least one of: enabled, monthlyQuotaTokens, allowedCategories, languages.',
     );
   }
 
@@ -176,6 +232,9 @@ export const updateConfigValidator = [
   enabledBody,
   quotaBody,
   categoriesBody,
+
+  // 36.7 — the reply-language list.
+  languagesBody,
   atLeastOneField,
   validate,
 ];
@@ -291,12 +350,44 @@ export const chatbotValidator = [
   // nothing about what the caller may read.
   // `{ nullable: true }` because a JSON null is how a client says "no
   // preference", and refusing it would fail a question over cosmetics.
+  //
+  // 36.7 — THE CHECK IS AGAINST THE TENANT'S OWN LIST.
+  //
+  // It used to be `isIn(AI_SUPPORTED_LANGUAGES)`, which was the platform
+  // DEFAULT SET. That made an admin-added language unreachable: the
+  // selector would offer Kannada, the employee would pick it, and the
+  // request would come back 400 — the exact quiet lie the 36.5 comment
+  // above was written to prevent.
+  //
+  // So the chain is now an ASYNC custom that reads the tenant's effective
+  // list. `req.companyId` is already server-derived by the time this runs
+  // (protect -> tenantContext precede the validator), so the check is
+  // scoped to the caller's own tenant and cannot be aimed at another.
+  //
+  // The first check is still the PLATFORM enum, because a value that is
+  // not even a known language is a client bug and should say so plainly
+  // rather than be described as "not enabled for your company".
   body('language')
     .optional({ nullable: true })
-    .isIn([...AI_SUPPORTED_LANGUAGES])
+    .isIn([...AI_LANGUAGE_CODES])
     .withMessage(
-      `language must be one of: ${AI_SUPPORTED_LANGUAGES.join(', ')}.`,
-    ),
+      `language must be one of: ${AI_LANGUAGE_CODES.join(', ')}.`,
+    )
+    .bail()
+    .custom(async (value, { req }) => {
+      // null means "no preference" and was already accepted above.
+      if (value === null || value === undefined) return true;
+
+      const allowed = await getTenantLanguages(req.companyId);
+
+      if (!allowed.includes(value)) {
+        throw new Error(
+          `language '${value}' is not enabled for your company. Ask your administrator to add it in AI Settings.`,
+        );
+      }
+
+      return true;
+    }),
 
   validate,
 ];

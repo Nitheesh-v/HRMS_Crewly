@@ -217,4 +217,164 @@ export const getAiUsage = async () => {
   }
 };
 
-export default { askHRAssistant, getAiUsage };
+/**
+ * 36.7 — the reply languages THIS tenant offers.
+ *
+ * WHY IT IS A SEPARATE CALL. The assistant widget is open to every employee
+ * and its selector must list exactly the languages the admin enabled, so an
+ * employee has to be able to ask. /ai/config answers that too, but it is
+ * behind SETTINGS_MANAGE and carries the quota — an employee has no business
+ * reading either. So the list gets its own route behind authentication alone.
+ *
+ * WHAT COMES BACK: the tenant's enabled codes, plus the matching catalogue
+ * records so the client never keeps a second copy of the native names and
+ * BCP-47 tags. No quota, no enabled flag, no categories, no usage — a
+ * language is a presentation preference and knowing which are on offer tells
+ * a caller nothing about what they may read.
+ *
+ * NO PARAMETERS. The company comes from the caller's own token; a
+ * client-supplied companyId would be a multi-tenancy hole and is refused.
+ *
+ * @returns {Promise<{languages: string[], catalogue: Array<{code: string,
+ *   label: string, native: string, hint: string, bcp47: string}>}>}
+ */
+export const getChatLanguages = async () => {
+  try {
+    const payload = bare(await api.get('/ai/languages'));
+
+    const languages = Array.isArray(payload?.languages)
+      ? payload.languages.filter((code) => typeof code === 'string')
+      : [];
+
+    // The catalogue is filtered by the server to the tenant's codes already.
+    // It is re-normalized here because a record with an empty code would
+    // render as an <option> with nothing in it, and a missing bcp47 would
+    // make the browser silently ignore the speech request.
+    const catalogue = Array.isArray(payload?.catalogue)
+      ? payload.catalogue
+          .filter(
+            (entry) => entry && typeof entry.code === 'string' && entry.code,
+          )
+          .map((entry) => ({
+            code: entry.code,
+            label: String(entry.label || entry.code),
+            native: String(entry.native || entry.label || entry.code),
+            hint: String(entry.hint || ''),
+            bcp47: String(entry.bcp47 || 'en-IN'),
+          }))
+      : [];
+
+    return { languages, catalogue };
+  } catch (error) {
+    throw normalizeError(error);
+  }
+};
+
+/**
+ * 36.7 — the admin AI configuration.
+ *
+ * Behind SETTINGS_MANAGE server-side. This client cannot and does not try to
+ * enforce that; a caller without the permission gets a 403 they must render.
+ *
+ * @returns {Promise<{enabled: boolean, monthlyQuotaTokens: number|null,
+ *   allowedCategories: string[], languages: string[], languageCatalogue:
+ *   Array<{code: string, label: string, native: string, hint: string,
+ *   bcp47: string}>, updatedBy: string|null, updatedAt: string|null,
+ *   usage: object}>}
+ */
+export const getAiConfig = async () => {
+  try {
+    const payload = bare(await api.get('/ai/config'));
+
+    const config = payload?.config || {};
+
+    const usage = payload?.currentMonthUsage || {};
+
+    return {
+      enabled: config.enabled !== false,
+      monthlyQuotaTokens:
+        config.monthlyQuotaTokens === null ||
+        config.monthlyQuotaTokens === undefined
+          ? null
+          : Number(config.monthlyQuotaTokens) || 0,
+      allowedCategories: Array.isArray(config.allowedCategories)
+        ? config.allowedCategories.filter((entry) => typeof entry === 'string')
+        : [],
+      languages: Array.isArray(config.languages)
+        ? config.languages.filter((entry) => typeof entry === 'string')
+        : [],
+      languageCatalogue: Array.isArray(payload?.languageCatalogue)
+        ? payload.languageCatalogue
+            .filter((entry) => entry && typeof entry.code === 'string')
+            .map((entry) => ({
+              code: entry.code,
+              label: String(entry.label || entry.code),
+              native: String(entry.native || entry.label || entry.code),
+              hint: String(entry.hint || ''),
+              bcp47: String(entry.bcp47 || 'en-IN'),
+            }))
+        : [],
+      updatedBy: config.updatedBy ? String(config.updatedBy) : null,
+      updatedAt: config.updatedAt ? String(config.updatedAt) : null,
+      usage: {
+        totalTokens: Number(usage.totalTokens) || 0,
+        calls: Number(usage.calls) || 0,
+        windowStart: typeof usage.windowStart === 'string' ? usage.windowStart : '',
+        windowEnd: typeof usage.windowEnd === 'string' ? usage.windowEnd : '',
+        byStatus:
+          typeof usage.byStatus === 'object' && usage.byStatus !== null
+            ? usage.byStatus
+            : {},
+      },
+    };
+  } catch (error) {
+    throw normalizeError(error);
+  }
+};
+
+/**
+ * 36.7 — save the tenant's AI configuration.
+ *
+ * Only the supplied keys are sent. A key that is absent is left alone on the
+ * server, which is what lets the settings page save one field without
+ * silently overwriting the others from a stale render.
+ *
+ * @param {{enabled?: boolean, monthlyQuotaTokens?: number|null,
+ *          allowedCategories?: string[], languages?: string[]}} updates
+ */
+export const updateAiConfig = async (updates = {}) => {
+  try {
+    const payload = {};
+
+    if (updates.enabled !== undefined) payload.enabled = updates.enabled;
+
+    if (updates.monthlyQuotaTokens !== undefined) {
+      payload.monthlyQuotaTokens = updates.monthlyQuotaTokens;
+    }
+
+    if (updates.allowedCategories !== undefined) {
+      payload.allowedCategories = updates.allowedCategories;
+    }
+
+    // 36.7 — the language list. The MODEL refuses an empty list and a list
+    // without English, so that rule is enforced in one place rather than
+    // repeated in the UI where it could be bypassed.
+    if (updates.languages !== undefined) {
+      payload.languages = updates.languages;
+    }
+
+    const response = bare(await api.put('/ai/config', payload));
+
+    return response?.config || null;
+  } catch (error) {
+    throw normalizeError(error);
+  }
+};
+
+export default {
+  askHRAssistant,
+  getAiUsage,
+  getChatLanguages,
+  getAiConfig,
+  updateAiConfig,
+};

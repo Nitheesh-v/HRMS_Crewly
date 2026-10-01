@@ -43,6 +43,7 @@ const SecurityDashboardPage = lazy(() => import("../pages/security/SecurityDashb
 const AuditLogsPage = lazy(() => import("../pages/security/AuditLogsPage.jsx"));
 const SecuritySettingsPage = lazy(() => import("../pages/security/SecuritySettingsPage.jsx"));
 const AiUsagePage = lazy(() => import("../pages/settings/AiUsagePage.jsx")); // 36.6 — admin AI usage dashboard
+const AiSettingsPage = lazy(() => import("../pages/settings/AiSettingsPage.jsx")); // 36.7 — admin AI settings + language manager
 
 const DashboardPage = lazy(() => import("../pages/dashboard/DashboardPage.jsx"));
 const ChatPage = lazy(() => import("../pages/chat/ChatPage.jsx")); // Phase 33.8 — Chat Hub
@@ -408,6 +409,29 @@ const AppRoutes = () => (
         element={
           <RequireRole roles={COMPANY_ADMIN}>
             <AiUsagePage />
+          </RequireRole>
+        }
+      />
+
+      {/* 36.7 — admin AI settings, and the language manager that is the
+          reason this page exists.
+
+          Same guard as ai-usage: COMPANY_ADMIN only. The route is what keeps
+          an ordinary employee away from the tenant's kill switch and quota,
+          and the server independently refuses a caller without
+          SETTINGS_MANAGE, so this is defence in depth rather than the only
+          check.
+
+          NOTE ON WHAT THIS DOES NOT GUARD. An EMPLOYEE reading which
+          languages are on offer is not a secret — that is GET /ai/languages,
+          which needs authentication alone, because the assistant's own
+          selector has to work for everyone. The route guard is about the
+          settings, not the list. */}
+      <Route
+        path="settings/ai-settings"
+        element={
+          <RequireRole roles={COMPANY_ADMIN}>
+            <AiSettingsPage />
           </RequireRole>
         }
       />

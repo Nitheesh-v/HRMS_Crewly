@@ -186,12 +186,29 @@ describe('Phase 36.5 voice wiring', () => {
   });
 
   // \u2500\u2500 the language selector \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-  test('the panel renders a selector over the closed language list', () => {
+  test('the panel renders a selector over the TENANT language list', () => {
+    // 36.7 — the selector no longer maps a hardcoded list. It maps the
+    // tenant's own, derived from the codes GET /ai/languages returned, so an
+    // admin who enables Kannada in AI Settings makes it appear here.
     const source = code('components/AIAssistant/AiAssistantPanel.jsx');
 
-    assert.equal(source.includes('CHAT_LANGUAGES.map'), true);
+    assert.equal(source.includes('chatLanguagesFor(allowedLanguages)'), true);
+    assert.equal(source.includes('offeredLanguages.map'), true);
     assert.equal(source.includes('languageSet(event.target.value)'), true);
     assert.equal(source.includes('Languages'), true, 'no Languages icon');
+
+    // And it does NOT map the platform list directly. Mapping the catalogue
+    // would offer every language the platform knows, including ones this
+    // tenant's admin switched off — a selector the server answers with a 400.
+    assert.equal(source.includes('PLATFORM_CHAT_LANGUAGES.map'), false);
+    assert.equal(source.includes('CHAT_LANGUAGES.map'), false);
+  });
+
+  test('the panel asks the server which languages the tenant offers', () => {
+    const source = code('components/AIAssistant/AiAssistantPanel.jsx');
+
+    assert.equal(source.includes('loadChatLanguages()'), true);
+    assert.equal(source.includes('allowedLanguages'), true);
   });
 
   test('the panel reads the language from Redux, never from localStorage', () => {
@@ -239,7 +256,17 @@ describe('Phase 36.5 voice wiring', () => {
 
     // And the SAME tag is used for synthesis, so a Tamil reply is read with a
     // Tamil voice rather than an English one reading Tamil text.
-    assert.equal(source.includes('lang: chatLanguageBcp47(language)'), true);
+    //
+    // 36.7 — both call sites now pass the tenant's list as well. Without it
+    // a language the admin has since switched off would still be asked for by
+    // tag, and the browser would silently fall back to its own default voice.
+    const bcp47 = source.match(/chatLanguageBcp47\(language[^)]*\)/g) || [];
+
+    assert.equal(bcp47.length, 2, 'expected the speak and recognise call sites');
+    assert.equal(
+      bcp47.every((call) => call.includes('allowedLanguages')),
+      true,
+    );
   });
 
   // \u2500\u2500 the Redux slice \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -248,7 +275,30 @@ describe('Phase 36.5 voice wiring', () => {
 
     assert.equal(source.includes("language: 'en'"), true);
     assert.equal(source.includes('languageSet:'), true);
-    assert.equal(source.includes('normalizeChatLanguage(action.payload)'), true);
+
+    // 36.7 — normalized against the TENANT'S list, not the platform's. A
+    // code that exists on the platform but was never enabled for this company
+    // must fall back here, because the validator refuses it server-side and
+    // the selector would otherwise be promising a language nobody can get.
+    assert.equal(
+      source.includes(
+        'normalizeChatLanguage(\n        action.payload,\n        state.allowedLanguages,\n      )',
+      ),
+      true,
+    );
+
+    // And the send path reads the same list out of the store, so a language
+    // switched off in another tab cannot reach the server.
+    assert.equal(source.includes('getState().aiChat'), true);
+    assert.equal(source.includes('normalizeChatLanguage(language, allowedLanguages)'), true);
+  });
+
+  test('the slice loads the tenant languages and holds them', () => {
+    const source = code('redux/slices/aiChatSlice.js');
+
+    assert.equal(source.includes('loadChatLanguages'), true);
+    assert.equal(source.includes('allowedLanguages: []'), true);
+    assert.equal(source.includes('getChatLanguages'), true);
   });
 
   test('the slice never persists the language', () => {

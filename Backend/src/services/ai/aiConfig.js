@@ -154,7 +154,7 @@ export const AI_CHATBOT_HISTORY_LIMIT = 6;
 // instruct the model to ignore the HR context.
 export const AI_CHATBOT_CLIENT_ROLES = Object.freeze(['user', 'assistant']);
 
-// ── Phase 36.5 — SUPPORTED REPLY LANGUAGES ────────────────────────────────
+// ── Phase 36.5 / 36.7 — SUPPORTED REPLY LANGUAGES ─────────────────────────
 //
 // The assistant answers in the language the caller picked. This is a
 // PRESENTATION preference and nothing else: it is never authorization, it
@@ -163,10 +163,219 @@ export const AI_CHATBOT_CLIENT_ROLES = Object.freeze(['user', 'assistant']);
 // ask for a language the prompt has no instruction for, and the model would
 // fall back to English anyway while the UI claimed otherwise.
 //
-// Why these five and not more: they are the languages this product's
-// workforce actually asks in. Adding one is a one-line change here plus a
-// label, and the validator reads the same list.
-export const AI_SUPPORTED_LANGUAGES = Object.freeze([
+// 36.7 — THE LIST IS NOW THE PLATFORM CATALOGUE, AND A TENANT PICKS FROM IT.
+//
+// 36.5 hardcoded five languages in two places (this file and the frontend's
+// chatLanguages.js) and an admin could not add one without a code change and
+// a redeploy. The owner asked for the opposite: an admin adds a language and
+// it opens up.
+//
+// So there are now THREE things, and they are not the same thing:
+//
+//   AI_LANGUAGE_CATALOGUE      every language the PLATFORM knows how to ask
+//                              for. It carries the label the prompt is given,
+//                              the native name the UI shows, the script hint,
+//                              and the BCP-47 tag for the browser speech
+//                              APIs. This is the menu an admin picks from.
+//
+//   AI_TENANT_LANGUAGE_DEFAULT what a tenant gets when nobody has configured
+//                              anything. It is the 36.5 set, unchanged, so an
+//                              unconfigured tenant behaves exactly as before.
+//
+//   a tenant's own `languages` the subset this company offers, stored on
+//                              AITenantConfig and edited by a COMPANY_ADMIN.
+//
+// The catalogue is deliberately INDIAN plus English. This is an Indian HR
+// product and the workforce asks in these. Adding an entry is a one-line
+// change here plus a label, and everything else follows: the labels, the
+// BCP-47 map, the validator's enum and the frontend catalogue are all
+// DERIVED from this list, so a new language cannot be added to one half and
+// forgotten in the other.
+
+/**
+ * The platform language catalogue.
+ *
+ * Each entry carries everything the product needs to offer the language
+ * honestly:
+ *
+ *   code    the value sent on the wire and stored on the tenant config
+ *   label   the ENGLISH name, used in the admin UI
+ *   native  the name in the language itself, what a person scans for
+ *   hint    the script note, so nobody picks Tamil expecting Roman letters
+ *   bcp47   the browser speech tag (the backend never uses it)
+ *   rule    the label injected into the system prompt
+ *
+ * `rule` is separate from `label` because the two jobs are different: the
+ * prompt needs to name the SCRIPT unambiguously ("Tamil (தமிழ் script)"),
+ * while a dropdown wants the short name. Conflating them is what made 36.5's
+ * label read oddly in the admin UI.
+ *
+ * Non-ASCII strings are stored as unicode escapes so this file stays pure
+ * ASCII on disk while rendering correctly in the prompt and the UI.
+ */
+export const AI_LANGUAGE_CATALOGUE = Object.freeze([
+  Object.freeze({
+    code: 'en',
+    label: 'English',
+    native: 'English',
+    hint: 'Default',
+    bcp47: 'en-IN',
+    rule: 'English',
+  }),
+
+  // Tamil (தமிழ் script)
+  Object.freeze({
+    code: 'ta',
+    label: 'Tamil',
+    native: '\u0ba4\u0bae\u0bbf\u0bb4\u0bcd',
+    hint: 'Tamil script',
+    bcp47: 'ta-IN',
+    rule: 'Tamil (\u0ba4\u0bae\u0bbf\u0bb4\u0bcd script)',
+  }),
+
+  // Tanglish is a real choice and not a joke: it is Tamil written in Latin
+  // letters, mixed casually with English, which is how a large part of this
+  // workforce actually types. Telling the model to match it is what makes the
+  // answer feel like it came from someone who works here.
+  //
+  // Its BCP-47 tag is `en-IN` ON PURPOSE: Tanglish is written in Latin
+  // letters, so asking a recogniser for Tamil script would mis-hear it.
+  Object.freeze({
+    code: 'tanglish',
+    label: 'Tanglish',
+    native: 'Tanglish',
+    hint: 'Tamil in English letters',
+    bcp47: 'en-IN',
+    rule: 'Tanglish (Tamil written in English/Roman letters, casual mix)',
+  }),
+
+  // Hindi (हिंदी script or Hinglish as natural)
+  Object.freeze({
+    code: 'hi',
+    label: 'Hindi',
+    native: '\u0939\u093f\u0902\u0926\u0940',
+    hint: 'Hindi or Hinglish',
+    bcp47: 'hi-IN',
+    rule: 'Hindi (\u0939\u093f\u0902\u0926\u0940 script or Hinglish as natural)',
+  }),
+
+  // Telugu (తెలుగు script)
+  Object.freeze({
+    code: 'te',
+    label: 'Telugu',
+    native: '\u0c24\u0c46\u0c32\u0c41\u0c17\u0c41',
+    hint: 'Telugu script',
+    bcp47: 'te-IN',
+    rule: 'Telugu (\u0c24\u0c46\u0c32\u0c41\u0c17\u0c41 script)',
+  }),
+
+  // Kannada (ಕನ್ನಡ script)
+  Object.freeze({
+    code: 'kn',
+    label: 'Kannada',
+    native: '\u0c95\u0ca8\u0ccd\u0ca8\u0ca1',
+    hint: 'Kannada script',
+    bcp47: 'kn-IN',
+    rule: 'Kannada (\u0c95\u0ca8\u0ccd\u0ca8\u0ca1 script)',
+  }),
+
+  // Malayalam (മലയാളം script)
+  Object.freeze({
+    code: 'ml',
+    label: 'Malayalam',
+    native: '\u0d2e\u0d32\u0d2f\u0d3e\u0d33\u0d02',
+    hint: 'Malayalam script',
+    bcp47: 'ml-IN',
+    rule: 'Malayalam (\u0d2e\u0d32\u0d2f\u0d3e\u0d33\u0d02 script)',
+  }),
+
+  // Marathi (मराठी script)
+  Object.freeze({
+    code: 'mr',
+    label: 'Marathi',
+    native: '\u092e\u0930\u093e\u0920\u0940',
+    hint: 'Marathi script',
+    bcp47: 'mr-IN',
+    rule: 'Marathi (\u092e\u0930\u093e\u0920\u0940 script)',
+  }),
+
+  // Gujarati (ગુજરાતી script)
+  Object.freeze({
+    code: 'gu',
+    label: 'Gujarati',
+    native: '\u0a97\u0ac1\u0a9c\u0ab0\u0abe\u0aa4\u0ac0',
+    hint: 'Gujarati script',
+    bcp47: 'gu-IN',
+    rule: 'Gujarati (\u0a97\u0ac1\u0a9c\u0ab0\u0abe\u0aa4\u0ac0 script)',
+  }),
+
+  // Punjabi (ਪੰਜਾਬੀ script)
+  Object.freeze({
+    code: 'pa',
+    label: 'Punjabi',
+    native: '\u0a2a\u0a70\u0a1c\u0a3e\u0a2c\u0a40',
+    hint: 'Punjabi script (Gurmukhi)',
+    bcp47: 'pa-IN',
+    rule: 'Punjabi (\u0a2a\u0a70\u0a1c\u0a3e\u0a2c\u0a40 script)',
+  }),
+
+  // Bengali (বাংলা script)
+  Object.freeze({
+    code: 'bn',
+    label: 'Bengali',
+    native: '\u09ac\u09be\u0982\u09b2\u09be',
+    hint: 'Bengali script',
+    bcp47: 'bn-IN',
+    rule: 'Bengali (\u09ac\u09be\u0982\u09b2\u09be script)',
+  }),
+
+  // Odia (ଓଡ଼ିଆ script)
+  Object.freeze({
+    code: 'or',
+    label: 'Odia',
+    native: '\u0b13\u0b21\u0b3c\u0b3f\u0b06',
+    hint: 'Odia script',
+    bcp47: 'or-IN',
+    rule: 'Odia (\u0b13\u0b21\u0b3c\u0b3f\u0b06 script)',
+  }),
+
+  // Assamese (অসমীয়া script)
+  Object.freeze({
+    code: 'as',
+    label: 'Assamese',
+    native: '\u0985\u09b8\u09ae\u09c0\u09af\u09bc\u09be',
+    hint: 'Assamese script',
+    bcp47: 'as-IN',
+    rule: 'Assamese (\u0985\u09b8\u09ae\u09c0\u09af\u09bc\u09be script)',
+  }),
+
+  // Urdu (اردو script)
+  Object.freeze({
+    code: 'ur',
+    label: 'Urdu',
+    native: '\u0627\u0631\u062f\u0648',
+    hint: 'Urdu script',
+    bcp47: 'ur-IN',
+    rule: 'Urdu (\u0627\u0631\u062f\u0648 script)',
+  }),
+]);
+
+/** Every catalogue code, for enums and iteration. */
+export const AI_LANGUAGE_CODES = Object.freeze(
+  AI_LANGUAGE_CATALOGUE.map((entry) => entry.code),
+);
+
+/** The base case. English is the default and needs no extra instruction. */
+export const AI_DEFAULT_LANGUAGE = 'en';
+
+/**
+ * What a tenant gets when nobody has configured anything.
+ *
+ * This is the 36.5 set, UNCHANGED, and it is the reason this whole change is
+ * safe: an unconfigured tenant behaves byte-for-byte as it did before. Only
+ * an admin who deliberately adds a language ever sees a different list.
+ */
+export const AI_TENANT_LANGUAGE_DEFAULT = Object.freeze([
   'en',
   'ta',
   'tanglish',
@@ -174,66 +383,82 @@ export const AI_SUPPORTED_LANGUAGES = Object.freeze([
   'te',
 ]);
 
-/** The base case. English is the default and needs no extra instruction. */
-export const AI_DEFAULT_LANGUAGE = 'en';
+/**
+ * The 36.5 name, kept as an alias so nothing that imported it breaks.
+ *
+ * It is the DEFAULT TENANT SET, not the platform catalogue. The two are
+ * different and the distinction matters: the validator checks a tenant's
+ * effective list, and that list starts here.
+ */
+export const AI_SUPPORTED_LANGUAGES = AI_TENANT_LANGUAGE_DEFAULT;
 
 /**
  * The label injected into the system prompt for each language.
  *
-// The wording is deliberately specific about SCRIPT, because "reply in
-// Tamil" is ambiguous to a model that can produce either Tamil script or a
-// Roman transliteration, and the employee asked in one of them. Naming the
-// script removes the guess.
-//
-// `tanglish` is a real choice and not a joke: it is Tamil written in Latin
-// letters, mixed casually with English, which is how a large part of this
-// workforce actually types. Telling the model to match it is what makes the
-// answer feel like it came from someone who works here.
-//
-// Non-ASCII labels are stored as unicode escapes so this file stays pure
-// ASCII on disk while rendering correctly in the prompt.
+ * DERIVED from the catalogue, so a language cannot exist without a prompt
+ * rule. 36.5 hand-wrote this map and the catalogue in the same file, which
+ * is exactly how the two drift apart.
  */
-export const AI_LANGUAGE_LABELS = Object.freeze({
-  en: 'English',
-  // Tamil (தமிழ் script)
-  ta: 'Tamil (\u0ba4\u0bae\u0bbf\u0bb4\u0bcd script)',
-  // Tanglish (Tamil written in English/Roman letters, casual mix)
-  tanglish: 'Tanglish (Tamil written in English/Roman letters, casual mix)',
-  // Hindi (हिंदी script or Hinglish as natural)
-  hi: 'Hindi (\u0939\u093f\u0902\u0926\u0940 script or Hinglish as natural)',
-  // Telugu (తెలుగు script)
-  te: 'Telugu (\u0c24\u0c46\u0c32\u0c41\u0c17\u0c41 script)',
-});
+export const AI_LANGUAGE_LABELS = Object.freeze(
+  AI_LANGUAGE_CATALOGUE.reduce((accumulator, entry) => {
+    accumulator[entry.code] = entry.rule;
+
+    return accumulator;
+  }, {}),
+);
 
 /**
  * BCP-47 tags for the BROWSER speech APIs (Phase 36.5).
  *
-// The backend never uses these — the AI model is multilingual on its own.
-// They exist so the Web Speech API is asked for the right locale, and they
-// live here so the frontend and the backend agree on one list.
-//
-// `tanglish` maps to `en-IN` on purpose: Tanglish is written in Latin
-// letters, so asking a recogniser for Tamil script would mis-hear it.
+ * The backend never uses these — the AI model is multilingual on its own.
+ * They exist so the Web Speech API is asked for the right locale, and they
+ * live here so the frontend and the backend agree on one list.
  */
-export const AI_LANGUAGE_TO_BCP47 = Object.freeze({
-  en: 'en-IN',
-  ta: 'ta-IN',
-  tanglish: 'en-IN',
-  hi: 'hi-IN',
-  te: 'te-IN',
-});
+export const AI_LANGUAGE_TO_BCP47 = Object.freeze(
+  AI_LANGUAGE_CATALOGUE.reduce((accumulator, entry) => {
+    accumulator[entry.code] = entry.bcp47;
+
+    return accumulator;
+  }, {}),
+);
+
+/** The full catalogue record, or null when the code is not on the platform. */
+export const getLanguageRecord = (code) =>
+  AI_LANGUAGE_CATALOGUE.find((entry) => entry.code === code) || null;
 
 /**
- * Resolve a caller-supplied language to one the prompt knows about.
+ * Resolve a caller-supplied language against a tenant's effective list.
  *
-// An unknown, missing or non-string value falls back to English SILENTLY.
-// The validator already refuses an unsupported language with a 400, so this
-// branch is the defence in depth for a caller that reaches the service
-// directly (a test, a future internal caller) — and refusing there would
-// turn a cosmetic preference into a failed question.
+// An unknown, missing or non-string value falls back to the FIRST entry of
+// `allowed` SILENTLY. The validator already refuses an unsupported language
+// with a 400, so this branch is the defence in depth for a caller that
+// reaches the service directly (a test, a future internal caller) — and
+// refusing there would turn a cosmetic preference into a failed question.
+//
+// `allowed` defaults to the platform DEFAULT SET, which is what a tenant
+// with no config row has. A configured tenant passes its own list, so the
+// fallback is always a language that tenant actually offers.
  */
-export const normalizeLanguage = (value) =>
-  AI_SUPPORTED_LANGUAGES.includes(value) ? value : AI_DEFAULT_LANGUAGE;
+export const normalizeLanguage = (value, allowed = AI_TENANT_LANGUAGE_DEFAULT) => {
+  const list = Array.isArray(allowed) ? allowed : AI_TENANT_LANGUAGE_DEFAULT;
+
+  return list.includes(value) ? value : list[0];
+};
+
+/**
+ * The prompt rule label for a language, or '' when it needs none.
+ *
+ * English is the base case and carries NO rule at all, so an English turn is
+ * byte-identical to a 36.3 turn. That is pinned by test and must not change.
+ */
+export const languageRuleLabel = (code, allowed = AI_TENANT_LANGUAGE_DEFAULT) => {
+  const resolved = normalizeLanguage(code, allowed);
+
+  return resolved === AI_DEFAULT_LANGUAGE
+    ? ''
+    : AI_LANGUAGE_LABELS[resolved] || '';
+};
+
 
 // ── Phase 36.6 — NAVIGATIONAL DEEP LINKS ───────────────────────────────────────────
 //

@@ -46,6 +46,9 @@ their own laws.
 | **36.2** | HR Context Retriever & Tenant AI Config — `AITenantConfig`, tenant service + cache, the read-only redacted context retriever, config & preview endpoints | **CLOSED** (see [PHASE_36_2](PHASE_36_2_HR_CONTEXT_RETRIEVER.md)) |
 | **36.3** | HR Chatbot UI & Conversational API — one employee-facing turn per request: `POST /api/ai/chatbot`, `hrChatbotService`, the `/app/ai-assistant` page and sidebar entry. **No RAG, no embeddings, no vector store** — the retriever from 36.2 is the retrieval. | **CLOSED** (see [PHASE_36_3](PHASE_36_3_HR_CHATBOT_UI.md)) |
 | **36.4** | Advanced HR Assistant — nine new own-record context categories, a static capability catalogue, role-aware aggregate counts, stricter prompt rules, retry/copy UX | **CLOSED** (see [PHASE_36_4](PHASE_36_4_ADVANCED_HR_ASSISTANT.md)) |
+| **36.5** | Voice Assistant & Multilingual Support — browser-native `SpeechRecognition` / `speechSynthesis`, five reply languages, no new package | **CLOSED** (see [PHASE_36_5](PHASE_36_5_VOICE_MULTILINGUAL.md)) |
+| **36.6** | Advanced Chatbot Intelligence & UX Pack — progressive reveal, follow-up chips, deep-link navigation chips, structured answer cards, named payslip fields, onboarding empty state, transcript export, admin usage dashboard | **CLOSED** (see [PHASE_36_6](PHASE_36_6_ADVANCED_CHATBOT_UX.md)) |
+| **36.7** | Admin-configurable Reply Languages — a 14-language platform catalogue, `AITenantConfig.languages`, a new AI Settings page, and a tenant-aware validator. No new package. | **CLOSED** (see [PHASE_36_7](PHASE_36_7_ADMIN_LANGUAGES.md)) |
 
 Later candidates, **not scheduled**: chat-hub AI (summarise/translate/smart
 replies inside Phase 33 conversations), document Q&A beyond policy, admin
@@ -442,4 +445,53 @@ Frontend  npm run build       clean
 Frontend  npm run lint        128 problems (was 127 — one more
                               set-state-in-effect, a rule that already
                               fires 66 times across the codebase)
+```
+
+---
+
+## Phase 36.7 — admin-configurable reply languages
+
+The follow-up the owner asked for after 36.6: *"make the language as option if
+admin adds that any language then the language would open"*, and *"make good ui
+and ux"*. Full record, including the localhost acceptance steps:
+[PHASE_36_7_ADMIN_LANGUAGES.md](PHASE_36_7_ADMIN_LANGUAGES.md).
+
+36.5 hardcoded five languages in two places and an admin could not add one
+without a code change. 36.7 makes the list a **tenant setting**.
+
+| # | Deliverable | Shipped as |
+| --- | --- | --- |
+| 1 | Platform catalogue | `AI_LANGUAGE_CATALOGUE` — 14 frozen records |
+| 2 | Tenant language list | `AITenantConfig.languages` + `getTenantLanguages` |
+| 3 | Tenant-aware validation | `isIn(catalogue).bail().custom(tenant list)` |
+| 4 | Employee language read | `GET /ai/languages` — authenticated, no RBAC |
+| 5 | AI Settings page | `/app/settings/ai-settings`, `COMPANY_ADMIN` |
+| 6 | Tenant selector | `chatLanguagesFor(allowedCodes)` in the widget |
+| 7 | Drift guard | A test imports the backend catalogue and compares field by field |
+
+**The decision the owner made.** Platform catalogue only — **no free-text
+language entry**. A free-text field would let a typo become a language the
+model cannot actually produce, and the admin would believe they had added it.
+The catalogue carries the 36.5 five plus nine more well-known Indian
+languages, each with its correct native name and BCP-47 tag.
+
+**The decision I made, and why it is not negotiable.** English is mandatory in
+a tenant's list, enforced at the **model** and not only in the UI. It is the
+one language the prompt needs no rule for and the platform's fallback when a
+request carries no preference. A tenant without it would have a selector
+promising languages the prompt cannot produce for a default request.
+
+**The bug this unit actually fixed.** 36.5's validator was
+`isIn(AI_SUPPORTED_LANGUAGES)`. With a tenant list in play, an admin-added
+language was **unreachable**: the selector offered it and the request came
+back 400. The chain now checks the platform enum first (so a typo is a typo)
+and the tenant list second (so a disabled language says so).
+
+**Numbers after 36.7:**
+
+```
+Backend   npm run test:all   3062 tests / 131 files / 0 fail
+Frontend  npm test            153 tests /  26 suites / 0 fail
+Frontend  npm run build       clean
+Frontend  npm run lint        128 problems (baseline held)
 ```

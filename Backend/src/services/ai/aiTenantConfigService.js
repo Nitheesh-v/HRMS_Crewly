@@ -36,6 +36,9 @@ import logger from '../../config/logger.js';
 import {
   AI_TENANT_CONFIG_CACHE,
   getAIConfig,
+
+  // 36.7 — the default reply-language set, for the fail-closed fallback.
+  AI_TENANT_LANGUAGE_DEFAULT,
 } from './aiConfig.js';
 
 import { AIError, AI_ERROR_CODES } from './aiErrors.js';
@@ -63,6 +66,9 @@ const UPDATABLE_FIELDS = Object.freeze([
   'enabled',
   'monthlyQuotaTokens',
   'allowedCategories',
+
+  // 36.7 — the reply-language list an admin saves.
+  'languages',
 ]);
 
 const cacheKeyFor = (companyId) =>
@@ -96,6 +102,20 @@ const toSnapshot = (doc) => {
     allowedCategories: Array.isArray(doc.allowedCategories)
       ? [...doc.allowedCategories]
       : [],
+
+    // 36.7 — the reply languages this tenant offers.
+    //
+    // Copied, not referenced, exactly like allowedCategories above: a frozen
+    // snapshot that aliases the live mongoose array would let a caller mutate
+    // the document by accident.
+    //
+    // An empty or missing array becomes the DEFAULT SET rather than []. A row
+    // written before 36.7 has no `languages` key at all, and handing a caller
+    // an empty list would offer a selector with nothing in it.
+    languages:
+      Array.isArray(doc.languages) && doc.languages.length > 0
+        ? [...doc.languages]
+        : [...AI_TENANT_LANGUAGE_DEFAULT],
     updatedBy: doc.updatedBy ? String(doc.updatedBy) : null,
     createdAt: doc.createdAt ? new Date(doc.createdAt).toISOString() : null,
     updatedAt: doc.updatedAt ? new Date(doc.updatedAt).toISOString() : null,
@@ -185,6 +205,47 @@ export const getTenantConfig = async (companyId, deps = {}) => {
     if (error instanceof AIError) throw error;
 
     throw wrapFailure('get', error);
+  }
+};
+
+/**
+ * 36.7 — the reply languages this tenant actually offers.
+ *
+ * Returns the EFFECTIVE list: the tenant's own `languages` when a config row
+ * exists, and the platform DEFAULT SET when it does not. Callers get a list
+ * they can validate against and normalise into, and they never have to know
+ * whether this tenant has been configured.
+ *
+ * WHY THIS EXISTS RATHER THAN READING config.languages DIRECTLY.
+ * A tenant with no row must still get the five 36.5 languages, and a caller
+ * that forgot the fallback would offer an empty selector. One function means
+ * the fallback is written once.
+ *
+ * FAILS CLOSED to the default set rather than throwing. A config read failure
+ * must not turn "which languages can I pick" into a 500 — the worst case is
+ * that a tenant temporarily sees the default five instead of its own list,
+ * which is strictly better than an assistant nobody can open. The KILL SWITCH
+ * still fails closed inside getTenantConfig; this is a presentation list, not
+ * an authority.
+ *
+ * @param {string} companyId   SERVER-DERIVED tenant authority
+ * @param {object} [deps]      { Model, io } — DI seam for hermetic tests
+ * @returns {Promise<string[]>}
+ */
+export const getTenantLanguages = async (companyId, deps = {}) => {
+  try {
+    const config = await getTenantConfig(companyId, deps);
+
+    const list = config?.languages;
+
+    // An empty or missing array is impossible by schema validation, but a
+    // stale cached row from before 36.7 could carry one. Falling back beats
+    // offering a selector with nothing in it.
+    if (Array.isArray(list) && list.length > 0) return list;
+
+    return [...AI_TENANT_LANGUAGE_DEFAULT];
+  } catch {
+    return [...AI_TENANT_LANGUAGE_DEFAULT];
   }
 };
 

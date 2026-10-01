@@ -82,6 +82,7 @@ import {
 } from 'lucide-react';
 
 import { useDispatch, useSelector } from 'react-redux';
+import { loadChatLanguages } from '../../redux/slices/aiChatSlice.js';
 
 import {
   conversationCleared,
@@ -95,8 +96,8 @@ import ChatMessageBubble, { ChatTypingBubble } from './ChatMessageBubble.jsx';
 import { MAX_MESSAGES } from './chatLimits.js';
 
 import {
-  CHAT_LANGUAGES,
   chatLanguageBcp47,
+  chatLanguagesFor,
   getChatLanguage,
 } from './chatLanguages.js';
 
@@ -232,6 +233,11 @@ const AiAssistantPanel = ({ onClose }) => {
        categoriesUsed = [],
     usage = null,
     language = 'en',
+
+    // 36.7 — the codes this tenant's admin enabled. Empty until the first
+    // successful load, which chatLanguagesFor treats as "unconfigured" and
+    // answers with the default five, so the first paint is correct.
+    allowedLanguages = [],
   } = useSelector((state) => state.aiChat) ?? {};
 
   const [draft, setDraft] = useState('');
@@ -242,6 +248,30 @@ const AiAssistantPanel = ({ onClose }) => {
   // generated id is used rather than a literal so two panels can never
   // collide, even though only one is ever mounted.
   const languageId = useId();
+
+  /*
+   * 36.7 — THE LIST THE SELECTOR ACTUALLY OFFERS.
+   *
+   * Derived from the tenant's own codes, not from the platform catalogue.
+   * An admin who enables Kannada in AI Settings makes it appear here for
+   * every employee of that company, and nobody else's.
+   *
+   * Recomputed on every render from the Redux value rather than stored
+   * locally, so an admin's change in another tab lands on the next load
+   * without the panel knowing anything about the settings page.
+   */
+  const offeredLanguages = chatLanguagesFor(allowedLanguages);
+
+  /*
+   * 36.7 — load the tenant's languages once, when the panel first mounts.
+   *
+   * A failed load is swallowed by the thunk and leaves the default five in
+   * place, so a slow config read costs a tenant the extra languages for one
+   * visit and never a widget that will not open.
+   */
+  useEffect(() => {
+    dispatch(loadChatLanguages());
+  }, [dispatch]);
 
   /*
    * 36.5 — THE SPEECH STATE, ALL OF IT LOCAL AND TRANSIENT.
@@ -320,7 +350,7 @@ const AiAssistantPanel = ({ onClose }) => {
       await whenVoicesReady();
 
       speak(text, {
-        lang: chatLanguageBcp47(language),
+        lang: chatLanguageBcp47(language, allowedLanguages),
 
         // The marker is set by the speech module's own start hook, not by
         // this function, so the "which bubble is being read" state is owned
@@ -336,7 +366,12 @@ const AiAssistantPanel = ({ onClose }) => {
         },
       });
     },
-    [canSpeak, language],
+
+    // 36.7 — allowedLanguages is read inside this callback to pick the
+    // BCP-47 tag, so it belongs in the deps. It is a stable array reference
+    // from Redux and only changes when the tenant's list is reloaded, so
+    // including it does not re-create the callback on every render.
+    [canSpeak, language, allowedLanguages],
   );
 
   /** Click the speaker: start reading, or stop if this bubble already is. */
@@ -453,7 +488,7 @@ const AiAssistantPanel = ({ onClose }) => {
    * stays open long after the person finished talking.
    */
   const voice = useSpeechRecognition({
-    lang: chatLanguageBcp47(language),
+    lang: chatLanguageBcp47(language, allowedLanguages),
     continuous: false,
     interimResults: true,
     onFinal: (text) => {
@@ -716,7 +751,7 @@ const AiAssistantPanel = ({ onClose }) => {
           onChange={(event) => dispatch(languageSet(event.target.value))}
           className="min-w-0 flex-1 rounded border border-crewly-border bg-crewly-card px-2 py-1 text-[11px] font-semibold text-crewly-text outline-none transition focus:border-crewly-green"
         >
-          {CHAT_LANGUAGES.map((entry) => (
+          {offeredLanguages.map((entry) => (
             <option key={entry.value} value={entry.value}>
               {entry.label} — {entry.native}
             </option>
@@ -724,7 +759,7 @@ const AiAssistantPanel = ({ onClose }) => {
         </select>
 
         <span className="shrink-0 text-[10px] text-crewly-dim">
-          {getChatLanguage(language).hint}
+          {getChatLanguage(language, allowedLanguages).hint}
         </span>
       </div>
 
