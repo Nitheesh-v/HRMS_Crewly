@@ -662,3 +662,36 @@ latencyMs }` — metadata only. The browser always shows one generic 503.
 | `vendor` | dead model string, or payload too large |
 
 Runbooks for each are in [PHASE_36_RUNBOOKS.md](PHASE_36_RUNBOOKS.md).
+
+- **🔴 A `loading` FLAG THAT STARTS `true` AND IS NEVER CLEARED KILLS THE
+  PAGE WHILE IT LOOKS PERFECTLY HEALTHY.** This is the one that reached the
+  owner. `AiSettingsPage` opened with `useState(true)` for `loading`, had a
+  `load()` wrapper that cleared it, and a mount effect that called `read()`
+  instead. `read()` never touches the flag. Result: the config loaded, the
+  checkboxes worked, the dirty bar counted correctly — and
+  `disabled={saving || loading}` on Save was true forever. The owner's words
+  were "save button click panna mudila, disabled la iruku".
+
+  The lesson is not "remember to clear the flag". It is that **a page whose
+  controls are all gated on one boolean fails as a whole, and no test that
+  only checks what is RENDERED will see it.** The fix is pinned by asserting
+  the mount effect calls the wrapper that clears the flag, and by counting
+  the `disabled={... loading}` gates so the blast radius is on record.
+
+  Two earlier attempts at the same fix were both wrong for instructive
+  reasons: the original author avoided a synchronous setState in the effect
+  by calling `read()` (a real concern, defeated by the fact that
+  `setLoading(true)` on an already-true flag is a React no-op), and a first
+  pin banned the token `allowedCategories: []` — which is a legitimate empty
+  `useState` default — instead of the updater shape that actually caused it.
+- **🔴 UI COPY THAT DESCRIBES A STATE THE SERVER REFUSES IS A TRAP, NOT A
+  WARNING.** The category section told admins that switching every category
+  off was "ALLOWED — a legitimate posture". Both `updateConfigValidator` and
+  the model's path validator refuse an empty `allowedCategories`. An admin
+  who followed that copy unticked thirteen boxes and found Save did nothing.
+  Removed the copy and LOCKED the last remaining category instead, so the
+  unsavable state is unreachable rather than merely explained.
+- **🔴 A PIN ON A PHRASE THAT ONLY LIVES IN A COMMENT PASSES FOR THE WRONG
+  REASON.** A test asserted the page mentions the "kill switch"; that phrase
+  exists only in prose, and the comment-stripping helper had already removed
+  it. Pin the control (`checked={draft.enabled}`), not the vocabulary.

@@ -817,3 +817,71 @@ describe('Phase 36.7 — the page never offers a state the server refuses', () =
     assert.equal(source.includes("'the assistant switch'"), true);
   });
 });
+
+// ── THE BUG THAT MADE SAVE IMPOSSIBLE ───────────────────────────────────────
+//
+// The owner's exact words: "save button click panna mudila, disabled la iruku"
+// — the Save button is disabled and cannot be clicked.
+//
+// They were right, and the cause is one line. `loading` starts as `true`.
+// `read()` never touches it; only `load()` clears it. The mount effect called
+// `read()`, so the flag stayed true forever — and every control on the page is
+// gated on it:
+//
+//   Save changes    disabled={saving || loading}
+//   Discard         disabled={loading}
+//   Enable all      disabled={loading}
+//
+// The page rendered perfectly. The config loaded, the checkboxes worked, the
+// dirty bar counted correctly. Every button was dead. A page that looks alive
+// with nothing clickable is the worst failure mode there is, and it is
+// invisible to any test that only checks what is rendered.
+
+describe('Phase 36.7 — the mount effect clears the loading flag', () => {
+  const page = () => code('src/pages/settings/AiSettingsPage.jsx');
+
+  test('the mount effect goes through load(), not read()', () => {
+    // THE regression. `loading` starts true and only `load()` clears it, so an
+    // effect that calls `read()` leaves every button on the page disabled.
+    const source = page();
+
+    assert.equal(/useEffect\(\(\) => \{\s*load\(\);/.test(source), true);
+    assert.equal(/useEffect\(\(\) => \{\s*read\(\);/.test(source), false);
+  });
+
+  test('load() is the wrapper that actually clears the flag', () => {
+    // Pinning the contract rather than the call site: whatever the effect
+    // ends up calling has to be something that resets `loading`.
+    const source = page();
+
+    assert.equal(source.includes('setLoading(true)'), true);
+    assert.equal(source.includes('setLoading(false)'), true);
+  });
+
+  test('read() does not silently swallow the flag either', () => {
+    // `read()` is also called from `save()`, after the PUT. If it started
+    // owning `loading` again the two would fight over the same flag, so the
+    // split is pinned: read fetches, load gates.
+    const source = page();
+
+    const readBody = source.slice(
+      source.indexOf('const read = useCallback'),
+      source.indexOf('const load = useCallback'),
+    );
+
+    assert.equal(readBody.includes('setLoading'), false);
+  });
+
+  test('every button on the page is gated on the flag, so it must clear', () => {
+    // This is why the one-line bug was fatal rather than cosmetic: the count
+    // of gates is the blast radius.
+    const source = page();
+
+    const gates = source.match(/disabled=\{[^}]*loading[^}]*\}/g) || [];
+
+    assert.ok(
+      gates.length >= 4,
+      `expected the page to gate several controls on loading, found ${gates.length}`,
+    );
+  });
+});

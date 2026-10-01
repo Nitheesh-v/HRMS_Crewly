@@ -233,10 +233,9 @@ const AiSettingsPage = () => {
   /**
    * Read the tenant's configuration.
    *
-   * No synchronous setState: every write happens after an `await`, which is
-   * what the react-hooks/set-state-in-effect rule is about and is also just
-   * correct — this effect runs on mount, and setting state before the request
-   * would render a spinner the browser never paints.
+   * Note what this does NOT do: it does not manage `loading`. `load()` owns
+   * that flag, and the mount effect goes through `load()` so the flag is
+   * cleared. Splitting it this way is deliberate — see the effect below.
    */
   const read = useCallback(async () => {
     try {
@@ -281,9 +280,29 @@ const AiSettingsPage = () => {
     setLoading(false);
   }, [read]);
 
+  /*
+   * THE MOUNT EFFECT MUST CALL `load()`, NOT `read()`.
+   *
+   * `loading` starts as `true`, and `read()` never touches it — only `load()`
+   * clears it. Calling `read()` here therefore left the flag stuck at true
+   * forever, and every control on this page is gated on it:
+   *
+   *   Save changes    disabled={saving || loading}     ← dead
+   *   Discard         disabled={loading}               ← dead
+   *   Enable all      disabled={loading}               ← dead
+   *
+   * The page rendered perfectly, the config loaded, the checkboxes worked —
+   * and nothing could be saved. That is what the owner reported: "save button
+   * click panna mudila, disabled la iruku". A page that looks alive with every
+   * button dead is the worst possible failure mode, and it is one line.
+   *
+   * The earlier version called `read()` deliberately, to avoid a synchronous
+   * setState inside the effect. `load()`'s `setLoading(true)` is not one:
+   * `loading` is already true, so React bails out and nothing re-renders.
+   */
   useEffect(() => {
-    read();
-  }, [read]);
+    load();
+  }, [load]);
 
   /**
    * Has anything changed since the last save?
