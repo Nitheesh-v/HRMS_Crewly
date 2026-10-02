@@ -25,6 +25,7 @@ import { io } from 'socket.io-client';
 
 import api from '../api.js';
 import store from '../../redux/store.js';
+import { resolveSocketUrl } from './socketUrl.js';
 import {
   realtimeStatusSet,
   messageCreated,
@@ -121,14 +122,26 @@ export const connectChatSocket = async () => {
     return null;
   }
 
-  socket = io({
+  // 36.8 — the socket follows the API, not the page. With no URL the client
+  // connects to `window.location.origin`, which is right for the Vite proxy
+  // and wrong the moment the SPA is served from a different host than the
+  // API: the handshake is refused and chat silently becomes read-only. See
+  // ./socketUrl.js for why the origin is derived from VITE_API_URL instead
+  // of being configured a second time.
+  const socketUrl = resolveSocketUrl();
+
+  const socketOptions = {
     path: '/socket.io',
     auth: { token: ticket },
     withCredentials: true,
     reconnectionAttempts: 6,
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,
-  });
+  };
+
+  // An explicit URL is passed as the first argument; omitting it keeps the
+  // same-origin behaviour the Vite proxy already serves in development.
+  socket = socketUrl ? io(socketUrl, socketOptions) : io(socketOptions);
 
   // At most one ticket re-mint per connection cycle: a refused handshake
   // must never become an unbounded ticket-minting loop.

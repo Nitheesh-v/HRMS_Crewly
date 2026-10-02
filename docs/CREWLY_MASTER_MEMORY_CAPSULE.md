@@ -421,6 +421,7 @@ AI, not analytics AI.
 | — non-modal | panel stopped dimming the whole page; duplicate welcome removed | `95bbe65` |
 | — **sidebar entry** | the HR Assistant is reachable from the sidebar again (reverses 36.3b) | `d280cb4` |
 | — **admin AI sidebar** | AI Settings + AI Usage are reachable from the sidebar | `08d0b73` |
+| — **socket follows the API** | the chat socket stops connecting to the page origin, so realtime works when the SPA and API are different hosts | `—` (36.8, this unit) |
 
 Reference docs: `docs/PHASE_36_1_FOUNDATION.md` …
 `docs/PHASE_36_7_ADMIN_LANGUAGES.md`, hub `docs/PHASE_36_HR_CHATBOT.md`,
@@ -668,6 +669,65 @@ change a rule, change the pin in the same commit.
 collapsed) and **not** under "Me" — they configure the tenant's assistant for
 everyone, they are not a personal preference.
 
+### 5.9 The 36.8 laws (the socket follows the API, not the page)
+
+1. **A socket with no URL connects to `window.location.origin`.** That is not
+   a default to be tolerated — it is straight out of `engine.io-client`'s
+   `url()`: `if (null == uri) uri = loc.protocol + "//" + loc.host;`. Behind
+   the Vite proxy it is correct. Behind a static host it is a silent bug.
+2. **The socket URL is DERIVED from `VITE_API_URL`'s ORIGIN, never configured
+   twice.** One variable, two transports, no drift. A second variable is a
+   second thing to forget, and forgetting it reproduces the bug exactly.
+3. **An ORIGIN, not the API URL.** `VITE_API_URL` carries `/api` because it is
+   the axios baseURL; the socket lives at `/socket.io` on the host root.
+   Passing the whole URL requests `/api/socket.io`, which 404s and reads like
+   a server fault.
+4. **A relative `VITE_API_URL` (`/api`, the dev default) yields `''`.** There
+   is no host in it, and inventing one connects to nothing. The caller then
+   omits the URL argument and keeps same-origin behaviour.
+5. **The parse is guarded AND wrapped.** `^https?://` is checked before
+   `new URL()`, and the `new URL()` is inside `try/catch`. A module that
+   throws at import time takes the chat page down instead of degrading.
+6. **`VITE_SOCKET_URL` is the explicit override**, passed through verbatim —
+   socket.io resolves both absolute and page-relative values. Empty (an unset
+   `.env` var) falls through to the derived origin.
+7. **The resolver is PURE** — `resolveSocketUrl(source = import.meta.env)`,
+   the same shape as the backend's `getRedisConfig(source)` and
+   `validateProductionConfig(source)`, so it is testable with no DOM.
+8. **The client hard-codes no host.** A literal host works on one deploy and
+   nowhere else, and it is the bug wearing a different hat. Pinned by test.
+9. **`AI_ENABLED=false` is a 503, not a 404.** The AI routes are always
+   mounted; the kill switch is `aiProvider`'s Guard 1, which throws
+   `AIError.unavailable()`. A chatbot that "does not work" on a deploy is
+   almost always `AI_ENABLED` not `true`, or a missing `AI_API_KEY` — and in
+   production a missing key with `AI_ENABLED=true` **exits the process at
+   boot** via `validateAIConfig`.
+
+### 5.10 Deploying to Render (API + worker) and Vercel (SPA)
+
+**Ready and test-pinned:** `Frontend/vercel.json` SPA rewrite · `api.js`
+`baseURL = import.meta.env.VITE_API_URL || '/api'` · `npm start` and
+`npm run worker` deterministic non-watch commands · `CLIENT_URL` is
+**comma-separated** so the Vercel origin is allowlistable · cross-site cookies
+already emit `SameSite=None; Secure` in production (`tokenService.js:104-106`)
+· the backend serves **no** static assets, so the split is architecturally
+correct.
+
+**Required on Render (both the `web` and the `worker` service):**
+`NODE_ENV=production` (this is what switches the cookie flags on),
+`MONGO_URI`, `JWT_SECRET` (32+ chars), `FIELD_ENCRYPTION_KEY`,
+`CLIENT_URL=https://<app>.vercel.app`, `REDIS_ENABLED=true`, `REDIS_URL`,
+`AI_ENABLED=true` + `AI_API_KEY`, SMTP, Cloudinary, Razorpay, and
+`TRUST_PROXY_MODE` (Phase 32.3 — wrong value breaks rate limiting and IP
+logging behind Render's proxy). Verify with `npm run config:check
+--production`, which names keys and never values.
+
+**Required on Vercel:** `VITE_API_URL=https://<api>.onrender.com/api` and
+`VITE_MAX_RESUME_SIZE_MB=5`. `VITE_SOCKET_URL` is left empty — it is derived.
+
+**The BullMQ worker MUST run as its own service.** One service means email,
+resume parsing, ATS, BGV and every scheduled job silently never drain.
+
 ---
 
 ## 6. QUICK REFERENCE — EXACT VALUES
@@ -743,17 +803,22 @@ answer *"why did it refuse?"* — `(x unavailable)` means the read failed,
 
 ---
 
-## 7. CURRENT STATE (verified at `08d0b73`)
+## 7. CURRENT STATE
 
 **Branch:** `arena/01a0e7a0-hrms-crewly`
-**Remote tip:** `08d0b73985acfeb370a67765ac82d6d0f57554fb`
+**`main` is at `bc91bb6` and is 22 commits behind** — it has Phases 1–35 but
+**none of Phase 36**. Deploying `main` ships an app with no AI assistant at
+all. The branch is the only place the AI suite exists.
+
+**Remote tip:** `08d0b73985acfeb370a67765ac82d6d0f57554fb` (+ 36.8 uncommitted
+at the time of writing)
 
 **All four gates, all green:**
 
 ```
 Backend   npm run test:all   → 3062 tests / 167 suites / 0 fail
-Frontend  npm test           →  211 tests /  37 suites / 0 fail
-Frontend  npm run build      → clean (Vite v8.1.5, 1.09 s)
+Frontend  npm test           →  228 tests /  40 suites / 0 fail
+Frontend  npm run build      → clean (Vite v8.1.5, 1.67 s)
 Frontend  npm run lint       → 128 problems (baseline held)
 ```
 
@@ -764,7 +829,7 @@ Frontend  npm run lint       → 128 problems (baseline held)
 **Frontend test files:** `chatLanguages` 21, `aiSettings` 60, `aiVoice` 22,
 `aiChatPills`, `aiChatStore`, `aiChatWidget` (41, has the `code()`
 comment-stripping helper and a `SIDEBAR` constant), `replyCards` 15,
-`chatTranscript` 14, `aiChatUx` 21.
+`chatTranscript` 14, `aiChatUx` 21, **`chatSocketUrl` 17** (new in 36.8).
 Runner: `node --import ./test/loaders/register.mjs --test test/*.test.js`.
 `read()` reads raw, `code()` strips `/* */` then `//`; both rooted at
 `Frontend/`.
@@ -777,6 +842,15 @@ Runner: `node --import ./test/loaders/register.mjs --test test/*.test.js`.
    removed route was NOT restored.
 2. **AI Settings + AI Usage in the sidebar** (`08d0b73`) — both reachable
    without typing the URL, in a new top-level PRIMARY group `ai-admin`.
+3. **The chat socket follows the API** (36.8) — the deploy blocker behind
+   "everything works except chat". Needs `VITE_API_URL` set on the static
+   host; nothing else to configure.
+4. **The master memory capsule** (`adb6ba7`) — one consolidated handoff doc.
+
+**Deploy status (owner-reported):** the app is already deployed and working
+**except chat and the chatbot**. Chat was the socket-origin bug, now fixed.
+The chatbot is env, not code: set `AI_ENABLED=true` and `AI_API_KEY` on the
+API service — see §5.10 for the full variable list.
 
 **Owner's next actions (PowerShell):**
 
@@ -839,6 +913,32 @@ authoritative for intent.
   "ALLOWED"; both `updateConfigValidator` and the model refuse an empty
   `allowedCategories`. **Fixed by removing the state (last checkbox locked),
   not by guarding.**
+- **🔴 A SOCKET WITH NO URL CONNECTS TO THE PAGE, NOT THE API.** `io()` called
+  with no URL makes socket.io-client use `window.location.origin` — it says so
+  in `engine.io-client`'s `url()`. Correct behind the Vite proxy, silently
+  broken the moment the SPA and the API are different hosts: every handshake
+  is refused, the banner says "realtime unavailable", chat degrades to
+  read-only REST, and the rest of the app looks perfectly healthy. It reads
+  like a Redis problem and it is a URL problem. The fix derives the socket
+  origin from `VITE_API_URL` so one variable configures both transports.
+- **🔴 A SECOND CONFIGURATION VARIABLE IS A SECOND THING TO FORGET.** The
+  obvious fix for the above is `VITE_SOCKET_URL`, and an owner who sets
+  `VITE_API_URL` and not `VITE_SOCKET_URL` reproduces the bug exactly. Derive
+  what you can; make the override the exception, not the rule.
+- **🔴 AN API BASE URL IS NOT A SOCKET URL.** `VITE_API_URL` carries `/api`
+  because it is the axios baseURL. Handing it to the socket requests
+  `/api/socket.io`, which 404s — and a 404 on a handshake reads like a server
+  fault, not like a misconfigured client.
+- **🔴 `AI_ENABLED=false` IS A GENERIC 503, NOT A 404.** The AI routes are
+  always mounted; the kill switch lives in `aiProvider`'s Guard 1. So "the
+  chatbot does not work" on a deploy means the env, not the routing — check
+  `AI_ENABLED` and `AI_API_KEY` first. And in production a missing key with
+  `AI_ENABLED=true` **exits the process at boot** (`validateAIConfig`), which
+  takes the whole API down and looks like a crash rather than a config error.
+- **🔴 A MODULE THAT THROWS AT IMPORT TIME TAKES THE PAGE DOWN.**
+  `new URL('/api')` throws, so the origin derivation must guard on `^https?://`
+  before parsing and wrap the parse anyway. Degrading to `''` is free;
+  throwing is not.
 - **🔴 THE OWNER'S EXACT WORDING IS THE DIAGNOSTIC.** "save not working"
   twice did not localise the bug; "disabled la iruku" did. When a report is
   vague, ask for the precise symptom before guessing.
