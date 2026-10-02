@@ -359,3 +359,75 @@ describe('36.6 — the usage dashboard', () => {
     assert.equal(block.includes('$unwind'), true);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 36.6 — the usage page clears its loading flag
+//
+// The SAME defect the 36.7 capsule records for AiSettingsPage: `loading`
+// starts as true, only `load()` clears it, and the mount effect called
+// `readUsage()` instead. The fix and its pin were both scoped to the settings
+// page, so it survived here untouched.
+//
+// It is worse on this page than it was on that one. On AiSettingsPage the
+// damage was "you cannot save". Here the read can also FAIL, and the only
+// recovery control on the page — Refresh — is itself gated on the stuck flag,
+// so a transient network error left the dashboard wedged behind an error
+// banner with a dead Retry button and no way out but a full reload.
+//
+// Every read below goes through readCode(): the fix carries a long comment
+// that names both `readUsage()` and the stuck flag, and a raw substring
+// search would match the explanation instead of the code.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('36.6 — the usage page clears its loading flag', () => {
+  const page = () => readCode('src/pages/settings/AiUsagePage.jsx');
+
+  test('the mount effect goes through load(), not readUsage()', () => {
+    const source = page();
+
+    assert.equal(/useEffect\(\(\) => \{\s*load\(\);/.test(source), true);
+    assert.equal(/useEffect\(\(\) => \{\s*readUsage\(\);/.test(source), false);
+  });
+
+  test('load() is the wrapper that actually clears the flag', () => {
+    // Pinning the contract rather than the call site: whatever the effect
+    // ends up calling has to be something that resets `loading`.
+    const source = page();
+
+    assert.equal(source.includes('setLoading(true)'), true);
+    assert.equal(source.includes('setLoading(false)'), true);
+  });
+
+  test('readUsage() does not own the flag either', () => {
+    // The split is pinned so the two never fight over one boolean:
+    // readUsage fetches, load gates.
+    const source = page();
+
+    const body = source.slice(
+      source.indexOf('const readUsage = useCallback'),
+      source.indexOf('const load = useCallback'),
+    );
+
+    assert.equal(body.includes('setLoading'), false);
+  });
+
+  test('the blast radius of a stuck flag is on record', () => {
+    // Every control gated on `loading`. One boolean, and when it sticks the
+    // whole page dies while still rendering. The count is the point: a new
+    // gate here is a new thing that breaks together.
+    const source = page();
+
+    const gates = source.match(/disabled=\{[^}]*\bloading\b[^}]*\}/g) || [];
+
+    assert.equal(gates.length, 1, `expected 1 loading gate, found ${gates.length}`);
+    assert.equal(gates[0], 'disabled={loading}');
+  });
+
+  test('Refresh is the recovery path and load() is wired to it', () => {
+    // A failed read must leave a way back. The button is useless if the flag
+    // it is gated on never clears.
+    const source = page();
+
+    assert.equal(source.includes('onClick={load}'), true);
+    assert.equal(/disabled=\{loading\}[\s\S]{0,400}Refresh/.test(source), true);
+  });
+});

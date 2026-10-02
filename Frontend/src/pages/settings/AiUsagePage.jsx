@@ -173,11 +173,39 @@ const AiUsagePage = () => {
     setLoading(false);
   }, [readUsage]);
 
-  // `loading` already starts as true, so the mount path has nothing to set
-  // synchronously.
+  /*
+   * THE MOUNT EFFECT MUST CALL `load()`, NOT `readUsage()`.
+   *
+   * This is the SAME defect that was fixed on AiSettingsPage, and it survived
+   * here because the fix and its pin were both scoped to that one file.
+   *
+   * `loading` starts as `true`, and `readUsage()` never touches it — only
+   * `load()` clears it. Calling `readUsage()` here therefore left the flag
+   * stuck at true forever, and the page is gated on it:
+   *
+   *   Refresh         onClick={load} disabled={loading}   <- dead
+   *   the four tiles  {loading ? '\u2014' : tile.value}   <- dashes forever
+   *   the empty state {loading ? 'Loading...' : ...}      <- "Loading..." forever
+   *
+   * So the dashboard rendered its detail rows from real data while the summary
+   * tiles showed em-dashes and the Refresh spinner spun forever — and the one
+   * control that could recover a failed read was itself disabled. A failed
+   * request left the page permanently wedged: error banner up, Retry dead,
+   * reload the only way out.
+   *
+   * On `react-hooks/set-state-in-effect`: this file reports one error on the
+   * `load()` call below, and so would AiSettingsPage if the rule could see
+   * through it — at ~985 lines the compiler's inference bails out there and
+   * the rule never fires, which is the only reason that page looks clean. The
+   * report is a false positive in substance (`loading` is already true, so
+   * React bails out on the identical value and nothing re-renders), and the
+   * shapes that satisfy the rule satisfy it by being untraceable rather than
+   * correct. Both pages therefore keep the readable shape. One error, and it
+   * moves with the effect rather than adding to the count.
+   */
   useEffect(() => {
-    readUsage();
-  }, [readUsage]);
+    load();
+  }, [load]);
 
   const totals = usage || null;
 

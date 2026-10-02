@@ -190,7 +190,7 @@ also a refusal, never a bypass.
 5. **Option C — narrow the categories** to cut spend without a new budget:
 
    ```powershell
-   curl.exe -X PUT -b cookies.txt http://localhost:5000/api/config
+   curl.exe -X PUT -b cookies.txt http://localhost:5000/api/ai/config
    ```
 
    with `allowedCategories` trimmed. `capabilities` alone answers the "how do

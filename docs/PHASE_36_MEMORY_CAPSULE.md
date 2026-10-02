@@ -385,21 +385,30 @@ hook instead of the caller.
 
 ```powershell
 cd Backend
-npm run test:ai-foundation      # 36.1
-npm run test:ai-tenant-config   # 36.2 config
-npm run test:ai-context         # 36.2 retriever
-npm run test:ai-chatbot         # 36.3 service + 36.5 language (58 tests)
-npm run test:ai-own-records     # 36.4 own-record categories
-node --test test/phase36Closeout.test.js   # the 14 guarantees + 36.5 validator (49 tests)
+npm run test:ai-foundation      # 36.1                              (68 tests)
+npm run test:ai-tenant-config   # 36.2 config                       (49 tests)
+npm run test:ai-context         # 36.2 retriever                    (54 tests)
+npm run test:ai-chatbot         # 36.3 service + 36.5 language      (75 tests)
+npm run test:ai-own-records     # 36.4 own-record categories        (39 tests)
+npm run test:ai-languages       # 36.7 tenant language catalogue    (35 tests)
+npm run test:phase36-closeout   # the 14 guarantees + 36.5          (49 tests)
 npm run test:all                # the whole platform
 ```
 
+`npm run test:phase36-closeout` is the script name; calling
+`node --test test/phase36Closeout.test.js` directly does the same thing.
+
 ```powershell
 cd Frontend
-npm test          # widget, pills, store, retry, copy, languages, voice wiring (61 tests)
+npm test          # widget, pills, store, retry, copy, languages, voice wiring (233 tests)
 npm run build
-npx eslint src    # 127 problems at baseline — anything above that is yours
+npx eslint src    # 128 problems at the 36.7 baseline — anything above that is yours
 ```
+
+> **The 128 is app-wide, not AI-owned.** Of those, exactly one is in an AI
+> file: `AiUsagePage.jsx`, on the mount effect. It moves with the effect and
+> does not change the count — see §5f. Do not "fix" the number by deleting a
+> real problem elsewhere; count the AI-owned ones and keep that at one.
 
 ### Seeing exactly what the assistant sees
 
@@ -645,6 +654,79 @@ the read failed, whereas `none` means the answer genuinely is nothing.
 - **`if (dirty)` is not `if (this field changed)`.** One save payload keyed its
   language write to the page-wide dirty flag, so toggling the kill switch
   re-sent the whole language list. Key every write to its own comparison.
+
+---
+
+## 5g. Pitfalls paid for while auditing 36.7 against the code
+
+These are not new features. They are what a fresh read of the shipped code
+found, and they are recorded because every one of them is a class of mistake
+that will be made again.
+
+- **🔴 A FIX SCOPED TO ONE FILE LEAVES THE SAME BUG IN ITS TWIN.**
+  `AiSettingsPage` and `AiUsagePage` are the same page twice: `loading` starts
+  `true`, only `load()` clears it, and the mount effect called the reader
+  instead of the wrapper. The 36.7 fix corrected the settings page and pinned
+  it — and the pin was written against
+  `code('src/pages/settings/AiSettingsPage.jsx')`, one file, by name. The
+  usage page kept `useEffect(() => { readUsage(); }, [readUsage])` untouched,
+  with no test reading it.
+
+  It was worse there than it had been on the settings page. On the settings
+  page the damage was "you cannot save". On the usage page the read can also
+  **fail** — and the only recovery control on the page, Refresh, is itself
+  gated on the stuck flag (Refresh's `disabled` reads `loading`). So one
+  transient network
+  error left the dashboard permanently wedged: error banner up, Retry dead,
+  full page reload the only way out. Verified by rendering the real component
+  under jsdom with a stubbed adapter: on both the success and the failure path
+  the Refresh button was still `disabled` after the read settled.
+
+  **When two files share a shape, pin the shape against both of them.** A
+  regression pin that names one file is a pin on that file, not on the bug.
+
+- **A LINT-CLEAN FILE MAY BE ONE THE COMPILER GAVE UP ON.** `AiSettingsPage`
+  reports zero `react-hooks/set-state-in-effect` errors on the *exact* code
+  that `AiUsagePage` is flagged for. It is not cleaner — at 985 lines the
+  compiler's inference bails out and the rule never fires. Proven by lifting
+  the pattern into a 20-line scratch file: it errors immediately.
+
+  Two consequences. First, the app-wide lint count is not measuring what it
+  looks like it is measuring, and a "baseline" built on it is soft. Second,
+  the pattern now ships in both pages deliberately, because the alternatives
+  that satisfy the rule (an async IIFE wrapper) only satisfy it by being hard
+  to trace, not by being correct. `load()`'s leading `setLoading(true)` is a
+  genuine no-op — `loading` is already `true`, so React bails out on the
+  identical value — which is why the rule's complaint is a false positive here
+  and why the honest fix is the readable one.
+
+- **A SOURCE PIN THAT NAMES BOTH SYMBOLS MATCHES ITS OWN COMMENT.** The fix
+  carries a long comment explaining the bug, and that comment necessarily
+  names `readUsage()`, `load()` and the stuck flag. Every pin for it goes
+  through the comment-stripping `readCode()` helper. This is §5d's lesson a
+  fourth time, and it will be a fifth.
+
+- **A DOCUMENTED COMMAND THAT WAS NEVER RUN WILL BE WRONG.** The runbooks'
+  Incident 3, Option C told the on-call engineer to
+  `PUT http://localhost:5000/api/config`. The route is `/api/ai/config`. That
+  is the command you copy at 2 a.m. during a live quota incident. Corrected.
+  A runbook step that has not been executed is a rumour.
+
+- **WRITING JSX INTO A DOC TRIPS THE DOC'S OWN TEMPLATE PIN.** Row 14 of the
+  close-out suite fails any Phase 36 markdown that contains a brace-wrapped
+  bare word, because that is what an unfilled template token looks like.
+  Describing that gate by quoting the JSX therefore broke the capsule
+  the moment it was written — on prose, in a section about how pins catch
+  prose. Write around the braces ("Refresh's `disabled` reads `loading`").
+  The rule is correct and worth keeping; it just means docs about JSX cannot
+  quote JSX.
+
+- **A CAPSULE'S OWN NUMBERS ROT FASTER THAN ITS LAWS.** The verification block
+  said 58 chatbot tests, 61 frontend tests, 127 lint problems. The code said
+  75, 233 and 128, and the 36.7 language suite (35 tests) was never listed at
+  all. The laws in §2 were all still true and all still pinned; the counts
+  were eighteen months of drift old. Recounted and corrected. **Never state a
+  test count in a doc you are not generating.**
 
 ---
 
