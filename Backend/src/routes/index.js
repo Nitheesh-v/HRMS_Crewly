@@ -48,6 +48,7 @@ import superAdminRoutes from "./platform/superAdminRoutes.js";
 import rolePermissionRoutes from "./rolePermissionRoutes.js";
 import auditRoutes from "./auditRoutes.js";
 import securityRoutes from "./securityRoutes.js";
+import presenceRoutes from "./presence.js";
 import publicCareerRoutes from "./recruitment/publicCareerRoutes.js";
 import publicCandidateOfferRoutes from "./recruitment/publicCandidateOfferRoutes.js";
 import publicBgvConsentRoutes from "./bgv/publicBgvConsentRoutes.js";
@@ -174,6 +175,8 @@ router.use("/subscription", subscriptionRoutes);
 router.use("/audit", auditRoutes);
 
 router.use("/security", securityRoutes);
+
+router.use("/presence", presenceRoutes);
 
 router.use("/profile", profileRoutes);
 

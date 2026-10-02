@@ -8,6 +8,7 @@ import SubscriptionStatusBanner from "../components/SubscriptionStatusBanner.jsx
 import { Power, Menu, X } from "lucide-react";
 import SidebarNav from "./SidebarNav.jsx";
 import AiAssistantWidget from "../components/AIAssistant/AiAssistantWidget.jsx";
+import { PresenceMenu } from "../components/presence/index.js";
 import { useEffect, useState } from "react";
 import { useDispatch } from "react-redux";
 import { startRealtimeSession, stopRealtimeSession } from "../services/realtime/realtimeClient.js";
@@ -561,6 +562,7 @@ const AppLayout = () => {
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-3 lg:gap-4">
+            <PresenceMenu />
             <NotificationBell />
             <button
               onClick={handleLogout}

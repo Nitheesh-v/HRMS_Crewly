@@ -3,6 +3,7 @@ import authReducer from "../redux/slices/AuthSlices.js"
 import permissionReducer from './slices/PermissionSlices.js';
 import chatReducer from './slices/chatSlice.js';
 import aiChatReducer from './slices/aiChatSlice.js';
+import presenceReducer from './slices/presenceSlice.js';
 
 
 // Central Redux store — every module (employees, attendance...)
@@ -13,6 +14,7 @@ const store = configureStore({
     permissions: permissionReducer,
     chat: chatReducer, // Phase 33.8 — Chat Hub
     aiChat: aiChatReducer, // Phase 36.3 — AI Assistant (session only)
+    presence: presenceReducer, // Phase 37.1 — Presence foundation (self-service)
     // employees: employeesReducer,   // Phase 3
     // attendance: attendanceReducer, // Phase 4
   },
