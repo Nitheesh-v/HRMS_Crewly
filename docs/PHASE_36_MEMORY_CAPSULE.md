@@ -736,3 +736,22 @@ Runbooks for each are in [PHASE_36_RUNBOOKS.md](PHASE_36_RUNBOOKS.md).
   (`const renderItem`) instead. The same class of bug as slicing to "the next
   export" and getting an empty string: both fail for a reason that has nothing
   to do with the assertion.
+
+- **🔴 A ROUTE THAT NOBODY CAN REACH IS NOT A FEATURE.**
+  `/app/settings/ai-settings` and `/app/settings/ai-usage` shipped in 36.6 and
+  36.7 with a `RequireRole(COMPANY_ADMIN)` guard, a server-side
+  `SETTINGS_MANAGE` check, a page, tests — and no sidebar entry. The only way
+  in was typing the URL. The owner found this by asking for "ai settings" by
+  name. Both are now in a top-level, PRIMARY sidebar group (`ai-admin`), not
+  folded into "Administration", which lives behind "More" and is collapsed by
+  default — that is how a page stays invisible. And not under "Me": they
+  configure the tenant's assistant for everyone, they are not a personal
+  preference.
+- **🔴 A BAN ON A GROUP ID IS A BAN ON A NAME, NOT ON A THING.** The 36.3b
+  test that proved the assistant's page entry was gone also banned the bare
+  string `"ai"`, because that was the removed group's id. It broke the moment
+  the admin AI pages needed a sidebar group, since `"ai"` is the honest id for
+  one. Tightened to ban the ROUTE (`/app/ai-assistant`) instead — a group id
+  proves nothing, because the page could return under any id at all. The new
+  group is `ai-admin` anyway, so the history stays readable, but the pin no
+  longer depends on that courtesy.

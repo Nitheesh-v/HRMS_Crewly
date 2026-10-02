@@ -45,10 +45,12 @@ import {
   QrCode,
   ReceiptText,
   ScrollText,
+  Activity,
   Search,
   Settings,
   ShieldCheck,
   Shuffle,
+  SlidersHorizontal,
   Sparkles,
   Target,
   Timer,
@@ -122,6 +124,10 @@ const NAV_ICON_BY_PATH = {
   "/app/profile": UserCircle,
   "/app/notifications": Bell,
   "/app/notification-settings": BellRing,
+
+  // Phase 36.6 / 36.7 — the admin AI pages.
+  "/app/settings/ai-settings": SlidersHorizontal,
+  "/app/settings/ai-usage": Activity,
   "/app/security/sessions": LockKeyhole,
   "/app/security": ShieldCheck,
   "/app/audit-logs": ScrollText,
@@ -208,6 +214,33 @@ const NAV_GROUPS = [
     label: "Insights",
     icon: BarChart3,
     paths: ["/app/analytics", "/app/reports"],
+  },
+
+  /*
+   * Phase 36.6 / 36.7 — the admin AI pages.
+   *
+   * TOP-LEVEL and PRIMARY, deliberately. These two pages existed as routes
+   * and as nothing else: a COMPANY_ADMIN could only reach them by typing the
+   * URL. The owner asked for them by name.
+   *
+   * They are not folded into "Administration", which lives behind "More" and
+   * is collapsed by default — that is how a page stays invisible. And they are
+   * not under "Me": they configure the tenant's assistant for everyone, they
+   * are not a personal preference.
+   *
+   * The id is `ai-admin`, not `ai`, because `ai` was the id of the 36.3b
+   * group that was REMOVED along with the assistant's page. Reusing it would
+   * make the two indistinguishable to anyone reading the history, and would
+   * quietly satisfy a test whose whole job is to prove the old one is gone.
+   *
+   * The group only renders for a role whose menu actually contains these
+   * paths, so a MANAGER or an EMPLOYEE never sees an empty "AI" heading.
+   */
+  {
+    id: "ai-admin",
+    label: "AI",
+    icon: Sparkles,
+    paths: ["/app/settings/ai-settings", "/app/settings/ai-usage"],
   },
 
   {

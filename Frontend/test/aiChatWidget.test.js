@@ -71,7 +71,22 @@ describe('Phase 36.3 — the assistant is a widget', () => {
     const sidebar = read('src/layout/SidebarNav.jsx');
 
     assert.equal(sidebar.includes('ai-assistant'), false, 'the nav path must be removed');
-    assert.equal(sidebar.includes('"ai"'), false, 'the nav group must be removed');
+
+    /*
+     * THE PATH IS THE CONTRACT, NOT THE GROUP ID.
+     *
+     * This assertion used to ban the bare string `"ai"` as well, on the
+     * grounds that it was the removed group's id. It was over-broad and it
+     * broke the moment a legitimate new group wanted that name: the admin AI
+     * pages (36.6/36.7) needed a sidebar group and `"ai"` is the honest id
+     * for one. The new group is `ai-admin` instead, but the pin is tightened
+     * here so the next one does not have to contort itself.
+     *
+     * What actually has to stay gone is the ROUTE — /app/ai-assistant — and
+     * that is asserted above and in AppRoutes below. A group id proves
+     * nothing: the page could return under any id at all.
+     */
+    assert.equal(sidebar.includes('/app/ai-assistant'), false);
 
     const layout = read('src/layout/AppLayout.jsx');
 
@@ -455,5 +470,86 @@ describe('Phase 36.7 — the widget reads the shared open state', () => {
 
     assert.equal(widget.includes('fixed bottom-5 right-5 z-40'), true);
     assert.equal(widget.includes('Open the HR assistant'), true);
+  });
+});
+
+// ── THE ADMIN AI PAGES ARE REACHABLE ────────────────────────────────────────
+//
+// /app/settings/ai-settings and /app/settings/ai-usage existed as routes and
+// as nothing else. Both are behind RequireRole(COMPANY_ADMIN), and the server
+// independently refuses a caller without SETTINGS_MANAGE — but none of that
+// helps an admin who cannot find the page. They could only reach them by
+// typing the URL, and the owner asked for them by name.
+
+describe('Phase 36.6/36.7 — the admin AI pages are in the sidebar', () => {
+  const source = () => code(SIDEBAR);
+
+  const layout = () => read('src/layout/AppLayout.jsx');
+
+  test('there is an AI group carrying both admin pages', () => {
+    const sidebar = source();
+
+    assert.equal(sidebar.includes('id: "ai-admin"'), true);
+    assert.equal(sidebar.includes('"/app/settings/ai-settings"'), true);
+    assert.equal(sidebar.includes('"/app/settings/ai-usage"'), true);
+  });
+
+  test('the group is PRIMARY, not behind "More"', () => {
+    // "Administration" lives under More and is collapsed by default, which is
+    // how a page stays invisible. These are not going there.
+    const sidebar = source();
+
+    const group = sidebar.slice(
+      sidebar.indexOf('id: "ai-admin"'),
+      sidebar.indexOf('id: "me"'),
+    );
+
+    assert.equal(group.includes('more: true'), false);
+    assert.equal(group.includes('label: "AI"'), true);
+  });
+
+  test('both pages are in the COMPANY_ADMIN menu', () => {
+    const source = layout();
+
+    const adminBlock = source.slice(
+      source.indexOf('[ROLES.COMPANY_ADMIN]'),
+      source.indexOf('[ROLES.HR_MANAGER]'),
+    );
+
+    assert.equal(adminBlock.includes('"/app/settings/ai-settings"'), true);
+    assert.equal(adminBlock.includes('"/app/settings/ai-usage"'), true);
+  });
+
+  test('no other role gets them', () => {
+    // These configure the tenant's kill switch and token budget. An HR_MANAGER
+    // manages people; they do not get the tenant's AI settings, and the route
+    // guard refuses them anyway.
+    const source = layout();
+
+    const everyoneElse = source.slice(source.indexOf('[ROLES.HR_MANAGER]'));
+
+    assert.equal(everyoneElse.includes('ai-settings'), false);
+    assert.equal(everyoneElse.includes('ai-usage'), false);
+  });
+
+  test('both pages have an icon, so they never fall back to the "soon" sparkle', () => {
+    // getNavIcon falls back to a decorative Sparkles for anything unmapped,
+    // which reads as "not real yet". These are real.
+    const sidebar = source();
+
+    const icons = sidebar.slice(
+      sidebar.indexOf('const NAV_ICON_BY_PATH'),
+      sidebar.indexOf('/*'),
+    );
+
+    assert.equal(icons.includes('"/app/settings/ai-settings": SlidersHorizontal'), true);
+    assert.equal(icons.includes('"/app/settings/ai-usage": Activity'), true);
+  });
+
+  test('the removed 36.3b page route stays removed', () => {
+    // The owner had it removed and that decision stands. The sidebar entry
+    // added here opens the PANEL; it is not a page.
+    assert.equal(code(SIDEBAR).includes('ai-assistant'), false);
+    assert.equal(read('src/routes/AppRoutes.jsx').includes('ai-assistant'), false);
   });
 });

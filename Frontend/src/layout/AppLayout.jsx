@@ -55,6 +55,21 @@ const NAV_BY_ROLE = {
     },
     { to: "/app/governance", label: "Audit & Roles" },
     { to: "/app/roles-permissions", label: "Roles & Permissions" },
+
+    // Phase 36.6 / 36.7 — the two admin AI pages.
+    //
+    // They existed as routes and as nothing else: a COMPANY_ADMIN could only
+    // reach them by typing the URL, which is not a way to run a product. The
+    // owner asked for them by name ("ai settings"), so they are now in the
+    // sidebar under a top-level AI group.
+    //
+    // COMPANY_ADMIN ONLY, matching the RequireRole guard on both routes and
+    // the SETTINGS_MANAGE check the server does independently. HR_MANAGER and
+    // below deliberately do not get these — they manage people, not the
+    // tenant's kill switch and token budget.
+    { to: "/app/settings/ai-settings", label: "AI Settings" },
+    { to: "/app/settings/ai-usage", label: "AI Usage" },
+
     { to: "/app/profile", label: "My Profile" },
     { to: "/app/notifications", label: "Notifications" },
     { to: "/app/notification-settings", label: "Notify Settings" },
