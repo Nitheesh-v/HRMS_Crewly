@@ -15,13 +15,16 @@
 import asyncHandler from '../utils/asyncHandler.js';
 import ApiResponse from '../utils/ApiResponse.js';
 import { sendPresenceError, PresenceError } from '../services/presence/presenceErrors.js';
-import presenceServiceFactory from '../services/presence/presenceService.js';
+import { presenceService } from '../services/presence/presenceService.js';
+import { presenceTeamService } from '../services/presence/presenceTeamService.js';
 import {
-  getPresenceTenantConfigOrThrow,
   updatePresenceTenantConfig,
 } from '../services/presence/presenceTenantConfigService.js';
+import User from '../models/User.js';
+import UserPresence from '../models/UserPresence.js';
 
-const service = presenceServiceFactory();
+const service = presenceService();
+const teamService = presenceTeamService({ UserModel: User, UserPresenceModel: UserPresence });
 
 // Helper that wraps a PresenceError throw into the project's response
 // shape. Other errors fall through the shared error handler.
@@ -48,6 +51,45 @@ export const getMe = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, {
     message: 'Presence resolved',
     data: snapshot,
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────
+//  PHASE 37.3 — TEAM AVAILABILITY (read-only)
+//
+//  Frontend is gated by RequireRole roles={SENIORS}. The backend does
+//  NOT re-implement role gating; it reuses the existing scope helper
+//  (utils/scope.js) so an EMPLOYEE who somehow reaches this handler
+//  will see only themselves, and the response shape is identical to
+//  MANAGER/TEAM_LEAD — no side-channel by user class.
+//
+//  This handler is THIN: it parses the validated query (the validator
+//  guarantees shape) and delegates everything else to the service.
+// ────────────────────────────────────────────────────────────────────
+export const getTeamAvailability = asyncHandler(async (req, res) => {
+  // Data from frontend — already validated.
+  const { search, presence, workLocation, page, limit } = req.query || {};
+
+  // DB Logic - read via the team service.
+  const payload = await runWithPresenceError(
+    () =>
+      teamService.getTeamAvailability({
+        companyId: req.companyId,
+        actor: req.user,
+        search,
+        presence,
+        workLocation,
+        page: page ? Number(page) : undefined,
+        limit: limit ? Number(limit) : undefined,
+      }),
+    req,
+    res,
+  );
+
+  // Data to frontend - response.
+  return ApiResponse.success(res, {
+    message: 'Team availability resolved',
+    data: payload,
   });
 });
 

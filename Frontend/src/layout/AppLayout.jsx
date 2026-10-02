@@ -449,8 +449,16 @@ const AppLayout = () => {
     ? [{ to: '/app/attendance/overtime', label: 'Overtime & Comp-Off' }]
     : [];
 
+  // Phase 37.3 — team availability lives in the same teamMenu surface
+  //   as "Who's Working". Same permission gate (ATTENDANCE_READ);
+  //   same scope semantics; the backend reuses utils/scope.js so a
+  //   user without ATTENDANCE_READ who somehow reaches this still sees
+  //   the empty population of [self].
   const teamMenu = hasAnyPermission(['ATTENDANCE_READ'])
-    ? [{ to: '/app/attendance/team', label: "Who's Working" }]
+    ? [
+        { to: '/app/attendance/team', label: "Who's Working" },
+        { to: '/app/team/availability', label: 'Team Availability' },
+      ]
     : [];
 
   const timesheetMenu = hasAnyPermission(['ATTENDANCE_READ_SELF', 'ATTENDANCE_READ'])

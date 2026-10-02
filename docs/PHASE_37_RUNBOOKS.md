@@ -197,3 +197,98 @@ cd ../Backend
 npm run test:presence
 node --test test/phase36Closeout.test.js
 ```
+
+# Phase 37.3 — Team Availability runbook
+
+## Symptoms that point here
+
+- "I see myself but not my teammates."
+- "WFH count is zero but I know three people are at home."
+- "Team availability returns 500 on bad filter."
+- "Fetching /presence/team hangs forever."
+
+## 1. "I see myself but not my teammates"
+
+Cause: the caller's role did not produce a populated scope.
+
+Check:
+
+```bash
+# As the caller's auth context, what does scope return?
+node --eval '
+import("./src/utils/scope.js").then(async (m) => {
+  const req = { companyId: "<co>", user: { _id: "<uid>", role: "<role>", department: "<dept>" } };
+  const ids = await m.getScopedUserIds(req);
+  console.log("scope:", ids);
+});
+'
+```
+
+Expected:
+
+| Role         | Scope result                                       |
+| ------------ | -------------------------------------------------- |
+| EMPLOYEE     | `[<self>]`                                        |
+| TEAM_LEAD   | `[<self>, ...<direct reports>]`                |
+| MANAGER    | dept members + self                             |
+| HR / ADMIN | `null` (unrestricted)                          |
+
+If the result is `[<self>]` and the caller is not EMPLOYEE, the role on
+`req.user.role` is wrong. Fix upstream; do NOT relax
+`getScopedUserIds`.
+
+## 2. "WFH count is zero but I know three people are at home"
+
+Cause: the tenant's `allowedWorkLocations` does not include `wfh`.
+
+Check:
+
+```bash
+# As the caller's company
+curl http://localhost:5000/api/presence/config
+```
+
+If `allowedWorkLocations` is `["office"]` then WFH rows that exist in
+`UserPresence` are stripped by the resolver (37.1 §32 — the policy
+allowlist is the final say). Re-add `wfh` to the allowlist if the
+tenant policy says WFH is supported.
+
+## 3. "Team availability returns 500 on bad filter"
+
+Cause: the filter param is not in the allowlist and the controller path
+is throwing a `PresenceError` whose `code` is leaking.
+
+Run the unit tests:
+
+```bash
+node --test test/presenceTeamService.test.js
+```
+
+If the unknown-filter assertion fails, the service's
+`PRESENCE_TEAM_ALLOWED_FILTERS` allowlist or the validator's allowlist was
+mutated. Revert; both must match.
+
+## 4. "Fetching /presence/team hangs forever"
+
+Cause: an N+1 query was reintroduced. The pipeline MUST be one batched
+`UserPresence.find({ companyId, userId: { $in: ids } })`.
+
+Check:
+
+```bash
+grep -c "UserPresenceModel.find" Backend/src/services/presence/presenceTeamService.js
+# Expected: 1
+```
+
+If > 1, someone added a second find. Revert.
+
+## 5. Acceptance checklist
+
+- [ ] `node --test test/presenceFoundation.test.js test/presenceTeamService.test.js` is green (105/105).
+- [ ] `Frontend` `node --test test/teamAvailability.test.js` is green (24/24).
+- [ ] `GET /api/presence/team?presence=offline` returns 400 (unknown filter).
+- [ ] `GET /api/presence/team?companyId=co-other` returns 400 (identity override).
+- [ ] EMPLOYEE auth → only self in `items`.
+- [ ] MANAGER auth → only department members in `items`.
+- [ ] No item contains `password` / `phone` / `email` / `salary` / `Aadhaar` / `PAN`.
+- [ ] No `getUser` presence stored anywhere — team view is read-only.

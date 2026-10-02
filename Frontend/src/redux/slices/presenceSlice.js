@@ -27,7 +27,34 @@ import {
   setMyStatus,
   setMyStatusMessage,
   setMyWorkLocation,
+  getTeamAvailability,
 } from '../../services/presenceService.js';
+
+// INITIAL empty team state. Mirrors EMPTY_PRESENCE semantics — a missing
+// key reads as "no team data loaded yet", never as "everyone is hidden".
+export const EMPTY_TEAM_AVAILABILITY = Object.freeze({
+  items: [],
+  summary: {
+    total: 0,
+    byPresence: { available: 0, busy: 0, dnd: 0, unknown: 0 },
+    byWorkLocation: { office: 0, wfh: 0, remote: 0 },
+  },
+  meta: {
+    page: 1,
+    pageSize: 25,
+    pages: 1,
+    totalPages: 1,
+    totalItems: 0,
+    total: 0,
+    limit: 25,
+  },
+  config: {
+    enabled: true,
+    statusMessagesEnabled: true,
+    workLocationEnabled: true,
+    employeePresenceVisible: true,
+  },
+});
 
 export const loadMyPresence = createAsyncThunk(
   'presence/loadMyPresence',
@@ -89,11 +116,37 @@ export const updateMyWorkLocation = createAsyncThunk(
   },
 );
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  PHASE 37.3 — TEAM AVAILABILITY (read-only thunk)
+//
+//  Identity-free payload. The query params are FILTER chips (search /
+//  presence / workLocation / page / limit). The backend's
+//  noQueryIdentityOverride validator rejects any attempt to pass
+//  companyId/userId/employeeId; we never send them.
+// ═══════════════════════════════════════════════════════════════════════════
+export const fetchTeamAvailability = createAsyncThunk(
+  'presence/fetchTeamAvailability',
+  async (params = {}, { rejectWithValue }) => {
+    try {
+      const result = await getTeamAvailability(params);
+      return result && result.data ? result.data : EMPTY_TEAM_AVAILABILITY;
+    } catch (err) {
+      return rejectWithValue({
+        code: err.presenceCode || 'PRESENCE_TEAM_LOAD_FAILED',
+        message: err.message || 'Could not load team availability.',
+      });
+    }
+  },
+);
+
 const initialState = {
   current: EMPTY_PRESENCE,
   loading: 'idle', // 'idle' | 'pending' | 'fulfilled' | 'rejected'
   saving: 'idle',
   error: null,
+  team: EMPTY_TEAM_AVAILABILITY,
+  teamLoading: 'idle',
+  teamError: null,
 };
 
 const presenceSlice = createSlice({
@@ -167,6 +220,26 @@ const presenceSlice = createSlice({
         state.error = action.payload || {
           code: 'PRESENCE_UPDATE_FAILED',
           message: 'Could not update work location.',
+        };
+      })
+      // 37.3 — team availability
+      .addCase(fetchTeamAvailability.pending, (state) => {
+        state.teamLoading = 'pending';
+        state.teamError = null;
+      })
+      .addCase(fetchTeamAvailability.fulfilled, (state, action) => {
+        state.teamLoading = 'fulfilled';
+        state.team = action.payload || EMPTY_TEAM_AVAILABILITY;
+        state.teamError = null;
+      })
+      .addCase(fetchTeamAvailability.rejected, (state, action) => {
+        state.teamLoading = 'rejected';
+        // Preserve the last good team snapshot. A failed refresh does
+        // NOT wipe the table — the UI shows a toast and re-enables
+        // the controls.
+        state.teamError = action.payload || {
+          code: 'PRESENCE_TEAM_LOAD_FAILED',
+          message: 'Could not load team availability.',
         };
       });
   },

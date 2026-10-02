@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════
-//  PHASE 37.1 — PRESENCE HTTP ROUTES
+//  PHASE 37.1 + 37.3 — PRESENCE HTTP ROUTES
 //
 //  Mirrors the shape Phase 36 AI uses (routes/ai.js):
 //    router.use(protect, tenantContext)              — auth then tenant
@@ -7,6 +7,7 @@
 //    router.route('/me/status').put(...)             — self mutation
 //    router.route('/me/status-message').put(...)     — self mutation
 //    router.route('/me/work-location').put(...)      — self mutation
+//    router.route('/team').get(...)                  — 37.3 team read
 //    router.route('/config').get(...).put(...)       — admin (SETTINGS_MANAGE)
 //
 //  Why a dedicated middleware order and no global prefix here:
@@ -19,6 +20,13 @@
 //    repo and inventing one would mean a registry change plus a
 //    SYSTEM_PERMISSION_VERSION bump plus a migration. So 37.1 reuses
 //    SETTINGS_MANAGE, exactly as the 36.2 RBAC note records.
+//
+//  37.3 — TEAM AVAILABILITY
+//    /team does NOT add a permission gate. Visibility is enforced by
+//    the scope helper (utils/scope.js). The frontend will gate the
+//    page by RequireRole roles={SENIORS}; the backend returns the
+//     correct scoped subset for any authenticated user (including
+//     EMPLOYEE → [self]), so a direct curl cannot escalate.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { Router } from 'express';
@@ -33,6 +41,7 @@ import {
   presenceStatusValidator,
   presenceWorkLocationValidator,
 } from '../validators/presence/presenceValidator.js';
+import { teamAvailabilityValidator } from '../validators/presence/teamAvailabilityValidator.js';
 
 import * as presenceController from '../controllers/presenceController.js';
 
@@ -56,6 +65,11 @@ router
 router
   .route('/me/work-location')
   .put(presenceWorkLocationValidator, presenceController.putWorkLocation);
+
+// Phase 37.3 — read-only team availability.
+// Validator refuses identity-override fields (§42) and unknown
+// filter values. Visibility is enforced by the service via scope.js.
+router.route('/team').get(teamAvailabilityValidator, presenceController.getTeamAvailability);
 
 // Tenant admin endpoints. SETTINGS_MANAGE is the existing admin permission
 // (see the 36.2 RBAC note in routes/ai.js).

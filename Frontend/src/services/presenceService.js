@@ -99,3 +99,21 @@ export const updateTenantConfig = (patch) =>
 // redux/slices/presenceConstants.js to break the slice <-> service
 // circular import (Phase 36 capsule §4.9).
 export { EMPTY_PRESENCE } from '../redux/slices/presenceConstants.js';
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PHASE 37.3 — TEAM AVAILABILITY (read-only)
+//
+//  Identity is the auth handshake. The query string ONLY carries the
+//  filter chips; nothing else. The backend validator refuses
+//  ?companyId / ?userId / ?employeeId and unknown filter tokens.
+// ═══════════════════════════════════════════════════════════════════════════
+export const getTeamAvailability = (params = {}) => {
+  const search = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === '') continue;
+    search.set(k, String(v));
+  }
+  const qs = search.toString();
+  const url = qs ? `${PREFIX}/team?${qs}` : `${PREFIX}/team`;
+  return unwrap(api.get(url));
+};

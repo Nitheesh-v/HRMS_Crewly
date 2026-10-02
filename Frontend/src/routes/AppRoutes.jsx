@@ -58,6 +58,9 @@ const AttendanceWorkModePage = lazy(() => import("../pages/attendance/Attendance
 const AttendanceRegularizationPage = lazy(() => import("../pages/attendance/AttendanceRegularizationPage.jsx"));
 const AttendanceOvertimePage = lazy(() => import("../pages/attendance/AttendanceOvertimePage.jsx"));
 const AttendanceTeamPage = lazy(() => import("../pages/attendance/AttendanceTeamPage.jsx"));
+// Phase 37.3 — Team availability (read-only). Lazy-loaded like every
+// other page in this file; nothing about presence forces eager code.
+const TeamAvailabilityPage = lazy(() => import("../pages/team/TeamAvailabilityPage.jsx"));
 const AttendanceTimesheetPage = lazy(() => import("../pages/attendance/AttendanceTimesheetPage.jsx"));
 const AttendanceTeamTimesheetsPage = lazy(() => import("../pages/attendance/AttendanceTeamTimesheetsPage.jsx"));
 const AttendanceOperationsPage = lazy(() => import("../pages/attendance/AttendanceOperationsPage.jsx"));
@@ -475,6 +478,20 @@ const AppRoutes = () => (
         element={
           <RequireRole roles={SENIORS}>
             <AttendanceTeamPage />
+          </RequireRole>
+        }
+      />
+
+      {/* Phase 37.3 — Team availability (read-only). Same SENIORS
+          audience as the attendance team board; the backend reuses
+          utils/scope.js so visibility follows the existing employee
+          scope rule, and the page never exposes anything the backend
+          didn't authorize. */}
+      <Route
+        path="team/availability"
+        element={
+          <RequireRole roles={SENIORS}>
+            <TeamAvailabilityPage />
           </RequireRole>
         }
       />
