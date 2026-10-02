@@ -702,6 +702,24 @@ everyone, they are not a personal preference.
    almost always `AI_ENABLED` not `true`, or a missing `AI_API_KEY` — and in
    production a missing key with `AI_ENABLED=true` **exits the process at
    boot** via `validateAIConfig`.
+10. **A SAME-ORIGIN SOCKET HIDES EVERY CORS FAULT.** `withCredentials: true`
+    on the client against a server whose Engine.IO `cors` is
+    `credentials: false` makes the browser demand
+    `Access-Control-Allow-Credentials: true`, the server refuse it, and every
+    cross-origin polling response is dropped. Behind the Vite proxy the
+    socket is same-origin, so it is never CORS-checked and the mismatch
+    cannot surface. It appears the instant the SPA and the API are on
+    different hosts — as a wall of `CORS error` on
+    `/socket.io/?EIO=4&transport=polling` while every REST call beside it
+    returns 200. **The handshake authenticates from `auth.token` (a
+    60-second ticket), never from a cookie — 33.1's locked decision — so the
+    client must send `withCredentials: false`.**
+11. **The socket's allowlist and the REST CORS allowlist are the SAME
+    `CLIENT_URL`.** Comma-separated, trailing slash stripped, in both places.
+    So a REST call that succeeds proves the socket origin gate will admit the
+    same origin — and a `CORS error` on `/socket.io` is never an origin
+    problem once REST works. Pinned by
+    `chatSocketFoundation.test.js` so the diagnosis is one lookup.
 
 ### 5.10 Deploying to Render (API + worker) and Vercel (SPA)
 
@@ -816,20 +834,21 @@ at the time of writing)
 **All four gates, all green:**
 
 ```
-Backend   npm run test:all   → 3062 tests / 167 suites / 0 fail
-Frontend  npm test           →  228 tests /  40 suites / 0 fail
-Frontend  npm run build      → clean (Vite v8.1.5, 1.67 s)
+Backend   npm run test:all   → 3064 tests / 167 suites / 0 fail
+Frontend  npm test           →  232 tests /  41 suites / 0 fail
+Frontend  npm run build      → clean (Vite v8.1.5, 1.27 s)
 Frontend  npm run lint       → 128 problems (baseline held)
 ```
 
 **Backend test counts:** `aiProviderFoundation` 68, `hrContextRetriever` 54,
 `hrChatbotService` 75, `hrChatbotOwnRecords` 39, `aiTenantConfig` 49,
-`aiTenantLanguages` 35, `phase36Closeout` 49 (`RULE_COUNT=15`).
+`aiTenantLanguages` 35, `phase36Closeout` 49 (`RULE_COUNT=15`),
+`chatSocketFoundation` 90.
 
 **Frontend test files:** `chatLanguages` 21, `aiSettings` 60, `aiVoice` 22,
 `aiChatPills`, `aiChatStore`, `aiChatWidget` (41, has the `code()`
 comment-stripping helper and a `SIDEBAR` constant), `replyCards` 15,
-`chatTranscript` 14, `aiChatUx` 21, **`chatSocketUrl` 17** (new in 36.8).
+`chatTranscript` 14, `aiChatUx` 21, **`chatSocketUrl` 21** (new in 36.8/36.9).
 Runner: `node --import ./test/loaders/register.mjs --test test/*.test.js`.
 `read()` reads raw, `code()` strips `/* */` then `//`; both rooted at
 `Frontend/`.
@@ -845,7 +864,11 @@ Runner: `node --import ./test/loaders/register.mjs --test test/*.test.js`.
 3. **The chat socket follows the API** (36.8) — the deploy blocker behind
    "everything works except chat". Needs `VITE_API_URL` set on the static
    host; nothing else to configure.
-4. **The master memory capsule** (`adb6ba7`) — one consolidated handoff doc.
+4. **The socket sends no cookies** (36.9) — the second half of the same
+   blocker. `withCredentials: true` against a `credentials: false` server
+   dropped every cross-origin polling response. Same-origin localhost hid
+   it completely.
+5. **The master memory capsule** (`adb6ba7`) — one consolidated handoff doc.
 
 **Deploy status (owner-reported):** the app is already deployed and working
 **except chat and the chatbot**. Chat was the socket-origin bug, now fixed.
@@ -921,8 +944,23 @@ authoritative for intent.
   read-only REST, and the rest of the app looks perfectly healthy. It reads
   like a Redis problem and it is a URL problem. The fix derives the socket
   origin from `VITE_API_URL` so one variable configures both transports.
+- **🔴 SAME-ORIGIN HIDES EVERY CORS FAULT, AND THAT IS WHY IT SHIPS.** The
+  second deploy blocker was a `withCredentials: true` on the socket client
+  against a server whose Engine.IO `cors` is `credentials: false`. The
+  browser then REQUIRES `Access-Control-Allow-Credentials: true`, the server
+  deliberately refuses it (the handshake uses a ticket in the auth payload,
+  never a cookie), and every cross-origin polling response is dropped.
+  Behind the Vite proxy the socket is same-origin and is never CORS-checked,
+  so the mismatch cannot surface at all — not in a test, not in a build, not
+  in localhost. It appears only in the deployed split, as a wall of
+  `CORS error` beside `200` REST calls. **A localhost-green transport is not
+  a deployed-green transport.**
+- **🔴 A `CORS error` BESIDE `200` REST CALLS IS NOT AN ORIGIN PROBLEM.** The
+  socket's allowlist and the REST CORS allowlist are the same `CLIENT_URL`.
+  If REST succeeds, the origin is allowlisted and the socket gate will admit
+  it. So look at the credentials flag and the URL, not the allowlist.
 - **🔴 A SECOND CONFIGURATION VARIABLE IS A SECOND THING TO FORGET.** The
-  obvious fix for the above is `VITE_SOCKET_URL`, and an owner who sets
+  obvious fix for the socket URL is `VITE_SOCKET_URL`, and an owner who sets
   `VITE_API_URL` and not `VITE_SOCKET_URL` reproduces the bug exactly. Derive
   what you can; make the override the exception, not the rule.
 - **🔴 AN API BASE URL IS NOT A SOCKET URL.** `VITE_API_URL` carries `/api`

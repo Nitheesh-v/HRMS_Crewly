@@ -876,6 +876,55 @@ describe('33.1 socket server options — security posture (e, f)', () => {
     assert.ok(Array.isArray(options.cors.origin));
   });
 
+  test('36.9 — the socket allowlist is the SAME CLIENT_URL the REST CORS uses', () => {
+    // THE cross-stack invariant, pinned because it is what makes a split
+    // deploy work at all. app.js builds its CORS allowlist from CLIENT_URL
+    // (comma-separated, trailing slash stripped); the socket builds its own
+    // from the same variable with the same normalisation. So an operator who
+    // allowlists their deployed SPA origin once has configured BOTH
+    // transports, and a REST call that succeeds proves the socket origin
+    // gate will admit the same origin.
+    //
+    // The failure this prevents: reading "CORS error on /socket.io" as a
+    // socket bug when the origin simply is not allowlisted. Pinning that the
+    // two lists are the same source makes the diagnosis one lookup, not an
+    // archaeology exercise.
+    const deployed = {
+      NODE_ENV: 'production',
+      CLIENT_URL: 'https://hrms-crewly-mu.vercel.app,https://admin.vercel.app',
+    };
+
+    assert.deepEqual(chatAllowedOrigins(deployed), [
+      'https://hrms-crewly-mu.vercel.app',
+      'https://admin.vercel.app',
+    ]);
+    assert.equal(
+      isChatOriginAllowed('https://hrms-crewly-mu.vercel.app', deployed),
+      true,
+    );
+    // A trailing slash must not defeat the comparison — Vercel and Render
+    // both hand back origins without one, but a hand-edited variable may not.
+    assert.equal(
+      isChatOriginAllowed('https://hrms-crewly-mu.vercel.app/', deployed),
+      true,
+    );
+  });
+
+  test('36.9 — credentials stay OFF, so the client must not send them', () => {
+    // The other half of the invariant, and the reason the browser was
+    // throwing CORS errors on every polling request. A request sent with
+    // withCredentials makes the browser REQUIRE
+    // Access-Control-Allow-Credentials: true. This option deliberately
+    // refuses it (the socket authenticates from a ticket in the auth
+    // payload, never from a cookie — 33.1's locked decision), so a client
+    // that sends credentials gets every cross-origin response dropped.
+    //
+    // Same-origin (the Vite proxy) hides this completely, which is why it
+    // only ever appeared in a deployed environment.
+    assert.equal(options.cors.credentials, false);
+    assert.equal(options.cookie, false);
+  });
+
   test('the bundled browser client is not served and EIO3 is refused', () => {
     assert.equal(options.serveClient, false);
     assert.equal(options.allowEIO3, false);

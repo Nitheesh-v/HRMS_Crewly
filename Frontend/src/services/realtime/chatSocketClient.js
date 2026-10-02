@@ -133,7 +133,33 @@ export const connectChatSocket = async () => {
   const socketOptions = {
     path: '/socket.io',
     auth: { token: ticket },
-    withCredentials: true,
+
+    // 36.9 — NO COOKIES ON THE SOCKET, AND THAT IS NOT ONLY THE 33.1 LAW,
+    // IT IS THE CORS CONTRACT TOO.
+    //
+    // The handshake authenticates from `auth.token` (a 60-second chat
+    // ticket minted over authenticated REST). It never reads a cookie —
+    // socketAuth.js says so in its header, and the 33.1 "no cookies on
+    // sockets" decision is a locked one. So this flag was not merely
+    // unnecessary, it was the bug: the server's Engine.IO `cors` option is
+    // `credentials: false` (pinned by chatSocketFoundation.test.js), and a
+    // request sent with `withCredentials: true` makes the browser DEMAND
+    // `Access-Control-Allow-Credentials: true`. A server that refuses to
+    // send it means the browser drops every cross-origin polling response.
+    //
+    // Why this was invisible on localhost: behind the Vite proxy the socket
+    // is SAME-ORIGIN, and same-origin requests are never CORS-checked, so a
+    // credentials mismatch cannot surface. Deploy the SPA and the API on
+    // different hosts and it is the first thing that breaks — a wall of
+    // "CORS error" on /socket.io/?EIO=4&transport=polling while every REST
+    // call beside it returns 200.
+    //
+    // False matches every other non-cookie service in this repo
+    // (offerService, preOnboardingService, the public portals). The ticket
+    // fetch that precedes this still uses the cookie session, because THAT
+    // call is an ordinary authenticated REST request.
+    withCredentials: false,
+
     reconnectionAttempts: 6,
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,

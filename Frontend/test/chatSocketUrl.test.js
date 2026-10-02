@@ -170,6 +170,33 @@ describe('Phase 36.8 — the client is wired to the resolver', () => {
   });
 });
 
+describe('Phase 36.9 — the socket sends no cookies, so CORS can pass', () => {
+  test('the client sets withCredentials to false', () => {
+    // The server's Engine.IO cors is `credentials: false` and that is a
+    // pinned security posture. A client that sends credentials anyway makes
+    // the browser demand Access-Control-Allow-Credentials, the server
+    // refuses it, and every cross-origin polling response is dropped.
+    assert.match(code(CLIENT), /withCredentials:\s*false/);
+  });
+
+  test('the client never sends credentials on the socket', () => {
+    assert.equal(code(CLIENT).includes('withCredentials: true'), false);
+  });
+
+  test('the socket still authenticates from the ticket, not a cookie', () => {
+    // The 33.1 locked decision, re-pinned here because the fix above must
+    // not be "fixed" again by turning cookies back on.
+    assert.match(code(CLIENT), /auth:\s*\{\s*token:\s*ticket\s*\}/);
+  });
+
+  test('the ticket itself is still fetched over the cookie session', () => {
+    // The REST call that mints the ticket DOES need the cookie. Pinning it
+    // stops someone removing withCredentials from api.js as well.
+    const api = code('src/services/api.js');
+    assert.match(api, /withCredentials:\s*true/);
+  });
+});
+
 describe('Phase 36.8 — the deployment surface is documented', () => {
   test('VITE_SOCKET_URL is named in the frontend .env.example', () => {
     const example = read('.env.example');
