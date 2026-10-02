@@ -6,9 +6,12 @@ import assert from 'node:assert/strict';
 
 import store from '../src/redux/store.js';
 import aiChatReducer, {
+  closeAssistantPanel,
   conversationCleared,
   messageAdded,
+  openAssistantPanel,
   sendChatMessage,
+  toggleAssistantPanel,
 } from '../src/redux/slices/aiChatSlice.js';
 
 describe('Phase 36.3 store wiring', () => {
@@ -129,5 +132,81 @@ describe('Phase 36.3 store wiring', () => {
 
     assert.equal(typeof slice.default, 'function');
     assert.ok(store.getState().aiChat);
+  });
+});
+
+// ── THE PANEL'S OPEN STATE IS SHARED ────────────────────────────────────────
+//
+// The owner asked for a sidebar entry for the assistant. The panel's open
+// state was `useState` inside AiAssistantWidget, which made that impossible:
+// a state that lives inside one of two affordances cannot be reached by the
+// other. It now lives here, so the floating button, the sidebar entry and the
+// panel's own close control all act on the same flag.
+
+describe('Phase 36.7 — the assistant panel open state is shared', () => {
+  test('the flag starts CLOSED', () => {
+    // A panel that reopens itself is a panel people learn to ignore. Closed on
+    // a fresh store, every time.
+    const state = aiChatReducer(undefined, { type: '@@INIT' });
+
+    assert.equal(state.panelOpen, false);
+  });
+
+  test('openAssistantPanel and closeAssistantPanel are opposites', () => {
+    let state = aiChatReducer(undefined, { type: '@@INIT' });
+
+    state = aiChatReducer(state, openAssistantPanel());
+    assert.equal(state.panelOpen, true);
+
+    state = aiChatReducer(state, closeAssistantPanel());
+    assert.equal(state.panelOpen, false);
+  });
+
+  test('toggleAssistantPanel flips, and opening twice is idempotent', () => {
+    let state = aiChatReducer(undefined, { type: '@@INIT' });
+
+    state = aiChatReducer(state, toggleAssistantPanel());
+    assert.equal(state.panelOpen, true);
+
+    state = aiChatReducer(state, toggleAssistantPanel());
+    assert.equal(state.panelOpen, false);
+
+    // Opening an already-open panel must NOT clear the conversation: opening
+    // the panel is not the same action as starting a new one.
+    const withMessages = aiChatReducer(
+      aiChatReducer(undefined, { type: '@@INIT' }),
+      messageAdded({ id: 'u1', role: 'user', content: 'my leave balance' }),
+    );
+
+    const next = aiChatReducer(withMessages, openAssistantPanel());
+
+    assert.equal(next.panelOpen, true);
+    assert.equal(next.messages.length, 1);
+  });
+
+  test('clearing the conversation does not close the panel', () => {
+    // Two separate actions. "Clear" empties the transcript; it does not dismiss
+    // the window the person is still looking at.
+    let state = aiChatReducer(undefined, { type: '@@INIT' });
+
+    state = aiChatReducer(state, openAssistantPanel());
+    state = aiChatReducer(state, conversationCleared());
+
+    assert.equal(state.panelOpen, true);
+  });
+
+  test('the flag is reachable through the REAL store, not just the reducer', () => {
+    // Pinned because the 36.3 regression was exactly this: a slice that worked
+    // in isolation and was never registered.
+    assert.ok(store.getState().aiChat);
+
+    const before = store.getState().aiChat.panelOpen;
+
+    store.dispatch(openAssistantPanel());
+    assert.equal(store.getState().aiChat.panelOpen, true);
+    assert.notEqual(before, store.getState().aiChat.panelOpen);
+
+    store.dispatch(closeAssistantPanel());
+    assert.equal(store.getState().aiChat.panelOpen, false);
   });
 });

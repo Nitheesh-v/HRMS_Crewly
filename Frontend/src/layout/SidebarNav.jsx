@@ -1,10 +1,12 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useMemo, useState, useRef } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { useDispatch } from "react-redux";
 import {
   BarChart3,
   Bell,
   BellRing,
+  Bot,
   Building2,
   CalendarClock,
   PlayCircle,
@@ -55,6 +57,8 @@ import {
   Wallet,
   X,
 } from "lucide-react";
+
+import { openAssistantPanel } from "../redux/slices/aiChatSlice.js";
 
 // ── icons (moved out of AppLayout) ────────────────────────────────────────
 
@@ -285,6 +289,7 @@ const headerClass = (active) =>
 const Sidebar = ({ menu = [], mobile = false, onClose }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
 
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem("crewly.sidebar.collapsed") === "true",
@@ -341,6 +346,62 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
 
   const handleNav = () => {
     if (mobile && onClose) onClose();
+  };
+
+  /*
+   * 36.7-fix — THE ASSISTANT ENTRY.
+   *
+   * A BUTTON, not a NavLink: it opens the panel rather than navigating to a
+   * page. 36.3 shipped the assistant as its own route, the owner asked for the
+   * floating widget instead, and that route was removed. This is the way back
+   * in from the sidebar without restoring a page nobody wanted.
+   *
+   * TOP-LEVEL, and deliberately not inside any group — not under "Me", not
+   * under "Work". An assistant you consult from any screen does not belong to
+   * one of them, and burying it inside a collapsed group is how a feature
+   * becomes undiscoverable.
+   *
+   * It sits OUTSIDE the <nav>, so the page search never hides it and it never
+   * scrolls out of reach.
+   *
+   * `handleNav()` runs first so the mobile drawer closes before the panel
+   * opens — otherwise the panel would appear underneath it.
+   */
+  const renderAssistant = (collapsed = false) => {
+    if (collapsed) {
+      return (
+        <button
+          key="assistant"
+          type="button"
+          title="HR Assistant"
+          onClick={() => {
+            handleNav();
+            dispatch(openAssistantPanel());
+          }}
+          className="flex h-10 w-full items-center justify-center rounded-lg text-crewly-dim transition hover:bg-crewly-bg hover:text-crewly-text"
+        >
+          <Bot aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={1.8} />
+        </button>
+      );
+    }
+
+    return (
+      <button
+        key="assistant"
+        type="button"
+        onClick={() => {
+          handleNav();
+          dispatch(openAssistantPanel());
+        }}
+        className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-crewly-dim transition hover:bg-crewly-bg hover:text-crewly-text"
+      >
+        <Bot aria-hidden="true" className="h-[17px] w-[17px] shrink-0" strokeWidth={1.8} />
+        <span className="min-w-0 flex-1 truncate text-left">HR Assistant</span>
+        <span className="shrink-0 rounded-full border border-crewly-green/30 bg-crewly-green/10 px-1.5 py-0.5 text-[10px] font-semibold text-crewly-green">
+          AI
+        </span>
+      </button>
+    );
   };
 
   const renderItem = (item) => {
@@ -478,6 +539,10 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
             className="input w-full py-2 pl-9 pr-3 text-[13px]"
           />
         </div>
+
+        {/* The assistant entry, above the nav and outside it, so a page search
+            never hides it and it never scrolls out of reach. */}
+        <div className="mt-2">{renderAssistant()}</div>
 
         <nav className="mt-3 flex-1 space-y-1 overflow-y-auto pr-0.5 -mr-1">
           {searching ? (
@@ -619,6 +684,11 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
           />
         </div>
       )}
+
+      {/* Top-level, outside the nav, and present in the collapsed rail too —
+          an assistant that disappears when the sidebar narrows is not an
+          assistant you can rely on. */}
+      <div className="mt-2">{renderAssistant(collapsed)}</div>
 
       <nav className="mt-3 flex-1 space-y-1 overflow-y-auto pr-0.5">
         {collapsed ? (

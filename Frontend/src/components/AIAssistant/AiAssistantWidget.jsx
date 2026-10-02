@@ -18,16 +18,40 @@
 // conversation, and closing the panel does not clear it.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect } from 'react';
+
+import { useDispatch, useSelector } from 'react-redux';
 
 import { Bot } from 'lucide-react';
 
 import AiAssistantPanel from './AiAssistantPanel.jsx';
 
-const AiAssistantWidget = () => {
-  const [open, setOpen] = useState(false);
+import {
+  closeAssistantPanel,
+  openAssistantPanel,
+} from '../../redux/slices/aiChatSlice.js';
 
-  const close = useCallback(() => setOpen(false), []);
+const AiAssistantWidget = () => {
+  const dispatch = useDispatch();
+
+  /*
+   * 36.7-fix — THE OPEN STATE IS SHARED, NOT LOCAL.
+   *
+   * It used to be `useState` inside this component, which meant the sidebar
+   * had no way to open the panel: the floating button was the only way in.
+   * The owner asked for a sidebar entry, and a state that lives inside one of
+   * two affordances cannot be reached by the other.
+   *
+   * It now lives in the aiChat slice, so the floating button, the sidebar
+   * entry and the panel's own close control all act on the same flag. The
+   * panel also survives a route change now, which is what a non-modal side
+   * panel should do.
+   */
+  const open = useSelector((state) => state.aiChat?.panelOpen === true);
+
+  const close = useCallback(() => {
+    dispatch(closeAssistantPanel());
+  }, [dispatch]);
 
   // Escape closes, which is the one keyboard affordance a modal owes. The
   // listener is only attached while the panel is open, so it can never swallow
@@ -52,7 +76,7 @@ const AiAssistantWidget = () => {
       {!open && (
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={() => dispatch(openAssistantPanel())}
           title="HR Assistant"
           aria-label="Open the HR assistant"
           className="fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-crewly-green text-crewly-bg shadow-lg shadow-black/30 transition hover:opacity-90 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-crewly-green/60"

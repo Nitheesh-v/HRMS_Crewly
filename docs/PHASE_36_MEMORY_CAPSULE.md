@@ -719,3 +719,20 @@ Runbooks for each are in [PHASE_36_RUNBOOKS.md](PHASE_36_RUNBOOKS.md).
   the search accounted for Tailwind's output normalisation
   (`calc(100vw - 2.5rem)`, and `.` escaped as `\.` in the selector). Confirm
   against the escaped selector, not the class name you typed.
+
+- **🔴 A STATE THAT LIVES INSIDE ONE OF TWO AFFORDANCES CANNOT BE REACHED BY
+  THE OTHER.** The owner asked for a sidebar entry for the assistant, and it
+  could not be built: the panel's `open` flag was `useState` inside
+  `AiAssistantWidget`, so nothing outside that component could set it. The
+  floating button worked and the sidebar had no way in. Lifting the flag into
+  the aiChat slice (`panelOpen` + open/close/toggle) made both affordances act
+  on the same state, and the panel now survives a route change, which is what a
+  non-modal side panel should do. When two controls do one thing, the state
+  belongs above both of them.
+- **🔴 A SLICE TO "THE END OF THE FILE" SWEEPS UP EVERYTHING BELOW IT.** A pin
+  that sliced the sidebar from `const renderAssistant` to the end asserted no
+  `NavLink` appears in the assistant entry, and failed — because every nav link
+  in the file lives below that point. Bound the slice to the next function
+  (`const renderItem`) instead. The same class of bug as slicing to "the next
+  export" and getting an empty string: both fail for a reason that has nothing
+  to do with the assertion.

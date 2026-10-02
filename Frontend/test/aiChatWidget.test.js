@@ -18,6 +18,7 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
 const WIDGET = 'src/components/AIAssistant/AiAssistantWidget.jsx';
 const PANEL = 'src/components/AIAssistant/AiAssistantPanel.jsx';
 const BUBBLE = 'src/components/AIAssistant/ChatMessageBubble.jsx';
+const SIDEBAR = 'src/layout/SidebarNav.jsx';
 
 /*
  * THE SOURCE, WITH COMMENTS STRIPPED.
@@ -336,5 +337,123 @@ describe('Phase 36.7 — the language option text is not printed twice', () => {
     const panel = source();
 
     assert.equal(panel.includes('`${entry.label} — ${entry.native}`'), true);
+  });
+});
+
+// ── THE ASSISTANT IS REACHABLE FROM THE SIDEBAR ─────────────────────────────
+//
+// 36.3 shipped it as its own route. The owner asked for the floating widget
+// instead, and the route, the nav group and the icon were removed. Now they
+// have asked for a sidebar entry back — so the entry returns, but the PAGE
+// does not: this is a button that opens the panel, not a NavLink to a route.
+
+describe('Phase 36.7 — the assistant has a sidebar entry', () => {
+  const source = () => code(SIDEBAR);
+
+  test('the sidebar renders an assistant entry', () => {
+    const sidebar = source();
+
+    assert.equal(sidebar.includes('renderAssistant'), true);
+    assert.equal(sidebar.includes('HR Assistant'), true);
+    assert.equal(sidebar.includes('dispatch(openAssistantPanel())'), true);
+  });
+
+  test('it is a BUTTON, not a link — the page stays removed', () => {
+    // 36.3b removed the route on the owner's instruction and it stays removed.
+    // This opens the panel; it does not navigate to /app/ai-assistant.
+    const sidebar = source();
+
+    // Bounded to the function itself. Slicing to the end of the file instead
+    // would sweep up every NavLink in the sidebar below it and fail for the
+    // wrong reason.
+    const entry = sidebar.slice(
+      sidebar.indexOf('const renderAssistant'),
+      sidebar.indexOf('const renderItem'),
+    );
+
+    assert.equal(entry.includes('NavLink'), false);
+    assert.equal(sidebar.includes('/app/ai-assistant'), false);
+  });
+
+  test('it is TOP-LEVEL, not nested inside any group', () => {
+    // An assistant you consult from any screen does not belong under "Me" or
+    // under "Work", and burying it inside a collapsed group is how a feature
+    // becomes undiscoverable.
+    const sidebar = source();
+
+    const groups = sidebar.slice(
+      sidebar.indexOf('const NAV_GROUPS'),
+      sidebar.indexOf('const PRIMARY_GROUPS'),
+    );
+
+    assert.equal(groups.includes('assistant'), false);
+    assert.equal(groups.includes('HR Assistant'), false);
+  });
+
+  test('it sits OUTSIDE the <nav>, so search cannot hide it', () => {
+    // The page search filters the nav. An entry that lives inside it would
+    // vanish the moment someone typed a query, and would scroll out of reach
+    // on a long list.
+    const sidebar = source();
+
+    const call = sidebar.indexOf('{renderAssistant(');
+    const nav = sidebar.indexOf('<nav');
+
+    assert.notEqual(call, -1);
+    assert.notEqual(nav, -1);
+    assert.equal(call < nav, true);
+  });
+
+  test('it is rendered in the collapsed rail too', () => {
+    // A sidebar that narrows to icons must not lose the assistant, or it is
+    // only reachable on a wide screen.
+    const sidebar = source();
+
+    assert.equal(sidebar.includes('{renderAssistant(collapsed)}'), true);
+    assert.equal(sidebar.includes('renderAssistant(true)'), false);
+  });
+
+  test('the mobile drawer closes before the panel opens', () => {
+    // Otherwise the panel would appear underneath the drawer on a phone.
+    const sidebar = source();
+
+    const entry = sidebar.slice(
+      sidebar.indexOf('onClick={() => {'),
+      sidebar.indexOf('dispatch(openAssistantPanel())'),
+    );
+
+    assert.equal(entry.includes('handleNav();'), true);
+  });
+});
+
+// ── THE WIDGET NO LONGER OWNS THE STATE ─────────────────────────────────────
+
+describe('Phase 36.7 — the widget reads the shared open state', () => {
+  const source = () => code(WIDGET);
+
+  test('the open state comes from Redux, not from local useState', () => {
+    // This is the whole reason the sidebar entry could not exist before: the
+    // flag lived inside the widget, so nothing outside it could set it.
+    const widget = source();
+
+    assert.equal(widget.includes('useSelector'), true);
+    assert.equal(widget.includes('state.aiChat?.panelOpen === true'), true);
+    assert.equal(widget.includes('useState'), false);
+  });
+
+  test('both the floating button and the close control dispatch actions', () => {
+    const widget = source();
+
+    assert.equal(widget.includes('dispatch(openAssistantPanel())'), true);
+    assert.equal(widget.includes('dispatch(closeAssistantPanel())'), true);
+  });
+
+  test('the floating button is still there, and is not the only way in', () => {
+    // The sidebar entry is an ADDITION. The corner button stays, because it is
+    // the affordance that works on every screen without hunting for a menu.
+    const widget = source();
+
+    assert.equal(widget.includes('fixed bottom-5 right-5 z-40'), true);
+    assert.equal(widget.includes('Open the HR assistant'), true);
   });
 });

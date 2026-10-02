@@ -129,6 +129,18 @@ const initialState = {
   // a stale copy would offer a language the admin has since switched off.
   allowedLanguages: [],
 
+  // 36.7-fix — whether the assistant panel is open.
+  //
+  // LIFTED OUT OF THE WIDGET'S LOCAL useState so the SIDEBAR can open it too.
+  // The floating button and the sidebar entry are two affordances for one
+  // panel, and they cannot share a state that lives inside one of them.
+  //
+  // Redux rather than a module-level variable for the same reason as
+  // everything else here: it is session state, it is inspectable, and it
+  // resets with the store. NOT in localStorage — a panel that reopens itself
+  // on every page load is a panel people learn to ignore.
+  panelOpen: false,
+
   // 36.6 — the suggestion chips and the navigation chips for the LAST
   // answer only. Older answers keep theirs in the message objects
   // themselves (see the fulfilled case), so scrolling back does not lose
@@ -194,6 +206,20 @@ const aiChatSlice = createSlice({
         action.payload,
         state.allowedLanguages,
       );
+    },
+
+    openAssistantPanel: (state) => {
+      // Idempotent, and deliberately not clearing the conversation: opening
+      // the panel is not the same action as starting a new one.
+      state.panelOpen = true;
+    },
+
+    closeAssistantPanel: (state) => {
+      state.panelOpen = false;
+    },
+
+    toggleAssistantPanel: (state) => {
+      state.panelOpen = !state.panelOpen;
     },
   },
 
@@ -266,9 +292,12 @@ const aiChatSlice = createSlice({
 });
 
 export const {
+  closeAssistantPanel,
   conversationCleared,
   languageSet,
   messageAdded,
+  openAssistantPanel,
+  toggleAssistantPanel,
 } = aiChatSlice.actions;
 
 export default aiChatSlice.reducer;
