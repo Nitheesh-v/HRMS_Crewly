@@ -17,9 +17,29 @@ import {
   Users,
   XCircle,
 } from "lucide-react";
+import { useDispatch, useSelector } from "react-redux";
 import { dashboardService } from "../../services/selfService";
 import useAuth from "../../hooks/useAuth";
 import { notify } from '../../utils/notify.js';
+import PresenceIndicator from "../../components/presence/PresenceIndicator.jsx";
+import { fetchTeamAvailability } from "../../redux/slices/presenceSlice.js";
+
+// 37.4 — work-location chip for the dashboard My Team tile.
+// Reads the presence slice's `team.items` (loaded by the team page)
+// and falls back to "—" when no row is present for the member.
+// The chip is intentionally small — green/amber/sky for the three
+// allowed values, gray for unknown. Phase 37.1's resolver sends
+// workLocation through, so the slice already has it.
+const WORK_LOCATION_STYLE = {
+  office: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600',
+  wfh: 'border-amber-500/30 bg-amber-500/10 text-amber-600',
+  remote: 'border-sky-500/30 bg-sky-500/10 text-sky-600',
+};
+const WORK_LOCATION_LABEL = {
+  office: 'Office',
+  wfh: 'WFH',
+  remote: 'Remote',
+};
 
 const SENIORS = ["COMPANY_ADMIN", "HR_MANAGER", "MANAGER", "TEAM_LEAD"];
 
@@ -104,6 +124,21 @@ const DashboardPage = () => {
   const { user } = useAuth();
   const isSenior = SENIORS.includes(user?.role);
 
+  // 37.4 — pull the team presence rows out of redux so the My Team
+  // tile can show a green/red dot + work-location chip per row,
+  // without making a second API call (the slice maintains this from
+  // the team page; the dashboard's own manager-overview call still
+  // owns attendance). 37.1's `unknown` sentinel stays as a gray dot
+  // so a missing row is rendered as "not marked" — not silently
+  // bumped to available.
+  const dispatch = useDispatch();
+  const presenceTeamItems = useSelector(
+    (state) => state.presence?.team?.items || [],
+  );
+  const presenceById = new Map(
+    presenceTeamItems.map((p) => [String(p.id), p]),
+  );
+
   const [data, setData] = useState(null);
   const [team, setTeam] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -127,6 +162,23 @@ const DashboardPage = () => {
   useEffect(() => {
     load();
   }, [load]);
+
+  // 37.4 — load the team presence rows so the My Team tile can show
+  // a presence dot + work-location chip per row. The slice maintains
+  // this in state.presence.team; the team page does the same. This
+  // is a separate, small request (paginated, pageSize=50) and does
+  // NOT block the manager-overview render. Errors are silent — the
+  // tile falls back to the "not marked" badge if the team fetch
+  // fails, which preserves the existing 34.x behaviour.
+  useEffect(() => {
+    if (!isSenior) return;
+    dispatch(
+      fetchTeamAvailability({ page: 1, pageSize: 50, scope: 'company' }),
+    ).catch(() => {
+      // Intentionally silent. The team tile already renders the
+      // attendance "not marked" badge; presence is additive.
+    });
+  }, [dispatch, isSenior, team?.memberCount]);
 
   if (loading && !data)
     return <p className="text-crewly-dim">Loading your dashboard…</p>;
@@ -253,40 +305,73 @@ const DashboardPage = () => {
           </div>
 
           <div className="grid gap-2 md:grid-cols-2">
-            {team.members.slice(0, 8).map((m) => (
-              <div
-                key={m._id}
-                className="flex items-center gap-3 rounded-lg bg-crewly-bg px-3 py-2"
-              >
-                {m.avatarUrl ? (
-                  <img
-                    src={m.avatarUrl}
-                    alt=""
-                    className="h-8 w-8 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-crewly-green/15 text-xs font-bold text-crewly-green">
-                    {m.name?.[0]?.toUpperCase()}
+            {team.members.slice(0, 8).map((m) => {
+              // 37.4 — overlay presence on top of the existing
+              // attendance badge. The manager-overview's `team.members`
+              // carries attendance, NOT presence; we look up presence
+              // from the presence slice's team cache by user id. A
+              // missing row is rendered with a gray "—" chip, which is
+              // visually distinct from the existing red/green
+              // attendance badges so the operator can tell the two
+              // signals apart.
+              const presenceRow = presenceById.get(String(m._id));
+              const presenceValue = presenceRow?.presence || 'unknown';
+              const workLocation = presenceRow?.workLocation || null;
+              return (
+                <div
+                  key={m._id}
+                  className="flex items-center gap-3 rounded-lg bg-crewly-bg px-3 py-2"
+                >
+                  {m.avatarUrl ? (
+                    <img
+                      src={m.avatarUrl}
+                      alt=""
+                      className="h-8 w-8 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-crewly-green/15 text-xs font-bold text-crewly-green">
+                      {m.name?.[0]?.toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{m.name}</p>
+                    <p className="truncate text-[11px] text-crewly-dim">
+                      {m.role?.replace("_", " ")}
+                      {m.department ? ` · ${m.department}` : ""}
+                    </p>
                   </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{m.name}</p>
-                  <p className="truncate text-[11px] text-crewly-dim">
-                    {m.role?.replace("_", " ")}
-                    {m.department ? ` · ${m.department}` : ""}
-                  </p>
+                  {/* 37.4 — presence + work-location chips. The dot is
+                      the 37.2 visual dictionary; the work-location
+                      chip is the same green/amber/sky used on the
+                      team page so the two screens agree. */}
+                  <PresenceIndicator
+                    presence={presenceValue}
+                    size="xs"
+                    showLabel={false}
+                    className="shrink-0"
+                  />
+                  {workLocation ? (
+                    <span
+                      className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${
+                        WORK_LOCATION_STYLE[workLocation] ||
+                        'border-slate-500/30 bg-slate-500/10 text-slate-500'
+                      }`}
+                    >
+                      {WORK_LOCATION_LABEL[workLocation] || workLocation}
+                    </span>
+                  ) : null}
+                  {m.today ? (
+                    <span className={`badge ${TODAY_STYLE[m.today] || ""}`}>
+                      {m.today.replace("_", " ")}
+                    </span>
+                  ) : (
+                    <span className="badge bg-gray-500/15 text-gray-500">
+                      not marked
+                    </span>
+                  )}
                 </div>
-                {m.today ? (
-                  <span className={`badge ${TODAY_STYLE[m.today] || ""}`}>
-                    {m.today.replace("_", " ")}
-                  </span>
-                ) : (
-                  <span className="badge bg-gray-500/15 text-gray-500">
-                    not marked
-                  </span>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
           {team.members.length > 8 && (
             <p className="mt-2 text-center text-xs text-crewly-dim">

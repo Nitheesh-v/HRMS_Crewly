@@ -230,7 +230,7 @@ export default function PresenceMenu() {
             : 'border-crewly-border bg-crewly-bg text-crewly-text hover:border-crewly-green/60')
         }
       >
-        <PresenceIndicator presence={presence?.presence} size="xs" />
+        <PresenceIndicator presence={presence?.presence} size="xs" showLabel={false} />
         <span className="hidden sm:inline">
           {presence?.presence && presence.presence !== 'unknown'
             ? presenceLabel(presence.presence)
