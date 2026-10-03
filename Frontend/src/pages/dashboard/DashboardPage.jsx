@@ -170,6 +170,11 @@ const DashboardPage = () => {
   // NOT block the manager-overview render. Errors are silent — the
   // tile falls back to the "not marked" badge if the team fetch
   // fails, which preserves the existing 34.x behaviour.
+  //
+  // Run once on mount. Empty deps so a parent re-render or a
+  // team-data change does NOT re-fire this. The slice keeps the
+  // data fresh via the realtime runtime; a manual refresh comes
+  // from navigating away and back.
   useEffect(() => {
     if (!isSenior) return;
     dispatch(
@@ -178,7 +183,8 @@ const DashboardPage = () => {
       // Intentionally silent. The team tile already renders the
       // attendance "not marked" badge; presence is additive.
     });
-  }, [dispatch, isSenior, team?.memberCount]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatch, isSenior]);
 
   if (loading && !data)
     return <p className="text-crewly-dim">Loading your dashboard…</p>;

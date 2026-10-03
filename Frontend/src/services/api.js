@@ -112,6 +112,14 @@ const normalizeError = (error) => {
   return normalized;
 };
 
+// Cooldown: a slow backend can deliver 401s faster than the
+// refresh-and-retry path completes. Without this, several
+// in-flight requests each fire `window.location.assign` and
+// the page hot-reloads in a tight loop. 5s is short enough
+// that a real sign-out still completes, long enough that a
+// slow backend doesn't trap the user on /login.
+let lastAuthRedirectAt = 0;
+
 const clearAuthentication = (redirectPath = '') => {
   store.dispatch(logoutAction());
 
@@ -123,6 +131,9 @@ const clearAuthentication = (redirectPath = '') => {
     redirectPath &&
     window.location.pathname !== redirectPath
   ) {
+    const now = Date.now();
+    if (now - lastAuthRedirectAt < 5000) return;
+    lastAuthRedirectAt = now;
     window.location.assign(redirectPath);
   }
 };
