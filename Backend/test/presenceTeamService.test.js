@@ -63,7 +63,11 @@ class FakeUserModel {
 
 class FakeUserPresenceModel {
   constructor(rows) {
-    this.rows = rows;
+    // Deep-clone the rows so per-test mutations (and the production
+    // service's reads) never leak back into the module-level PRESENCE
+    // array. Without this, one test's behaviour overwrites the rows
+    // every other test sees.
+    this.rows = rows.map((r) => ({ ...r }));
     this.lastQuery = null;
   }
   find(filter) {
@@ -727,7 +731,10 @@ test('presenceTeamService — items: role field is the canonical user role', asy
 test('presenceTeamService — presence rows that have companyId mismatch are excluded by default', async () => {
   const UserModel = new FakeUserModel(USERS);
   const UserPresenceModel = {
-    rows: PRESENCE,
+    // Deep-clone so the test's local push doesn't leak into the
+    // module-level PRESENCE constant (and break later tests that
+    // expect only the 4 baseline rows).
+    rows: PRESENCE.map((r) => ({ ...r })),
     lastQuery: null,
     find(filter) {
       this.lastQuery = filter;
@@ -816,4 +823,47 @@ test('presenceTeamService — config slice exposes the four employee-safe flags'
   assert.ok('statusMessagesEnabled' in out.config);
   assert.ok('workLocationEnabled' in out.config);
   assert.ok('employeePresenceVisible' in out.config);
+});
+
+// ──────────────────────────────────────────────────────────────────────
+//  USER REPORT: "employee sets office + available, admin search returns
+//  nothing". The team service MUST surface the row when a COMPANY_ADMIN
+//  searches by (case-insensitive, partial) employee name. These three
+//  tests pin the exact path that was reported as broken in production.
+// ──────────────────────────────────────────────────────────────────────
+test('presenceTeamService — admin search by name finds the employee (user-report pin)', async () => {
+  const { service } = await build();
+  const out = await service.getTeamAvailability({
+    companyId,
+    actor: { _id: 'u-admin', role: 'COMPANY_ADMIN' },
+    search: 'bob',
+  });
+  const bob = out.items.find((i) => i.id === 'u-bob');
+  assert.ok(bob, 'Bob must appear in the team list for an admin search');
+  assert.equal(bob.presence, 'busy');
+  assert.equal(bob.workLocation, 'wfh');
+});
+
+test('presenceTeamService — admin search is case-insensitive on name (user-report pin)', async () => {
+  const { service } = await build();
+  for (const q of ['BOB', 'Bob', ' bob ', 'oB']) {
+    const out = await service.getTeamAvailability({
+      companyId,
+      actor: { _id: 'u-admin', role: 'COMPANY_ADMIN' },
+      search: q,
+    });
+    const hit = out.items.find((i) => i.id === 'u-bob');
+    assert.ok(hit, `search "${q}" must return Bob`);
+  }
+});
+
+test('presenceTeamService — admin search with full name returns the right row (user-report pin)', async () => {
+  const { service } = await build();
+  const out = await service.getTeamAvailability({
+    companyId,
+    actor: { _id: 'u-admin', role: 'COMPANY_ADMIN' },
+    search: 'Bob Eng',
+  });
+  const hit = out.items.find((i) => i.id === 'u-bob');
+  assert.ok(hit, 'typing the full name must still return Bob');
 });

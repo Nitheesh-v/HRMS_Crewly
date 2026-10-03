@@ -330,6 +330,33 @@ export const presenceTeamService = (deps = {}) => {
     );
 
     if (users.length === 0) {
+      // 37.4 DIAGNOSTIC — when a search returns 0 rows, log the
+      // names of ACTIVE users in the company so a confused admin
+      // can see in the server log whether the issue is the search
+      // term, the companyId, or a missing/inactive employee. The
+      // first 5 names are enough to spot a casing / whitespace
+      // mismatch without flooding the log.
+      if (searchFilter) {
+        try {
+          const sample = await UserModel.find({ companyId, status: 'ACTIVE' })
+            .select('name employeeCode')
+            .sort({ name: 1 })
+            .limit(5)
+            .lean();
+          console.warn(
+            '[presence/team] search returned 0',
+            JSON.stringify({
+              companyId: String(companyId),
+              searchValue: typeof search === 'string' ? search : null,
+              searchEscaped: searchFilter?.$or?.[0]?.name?.$regex || null,
+              sampleNames: sample.map((u) => u.name),
+              sampleCodes: sample.map((u) => u.employeeCode),
+            }),
+          );
+        } catch {
+          /* diagnostic only — must never break the response */
+        }
+      }
       return {
         items: [],
         summary: computeSummary([]),
