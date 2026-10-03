@@ -85,6 +85,15 @@ export const presenceService = (deps = {}) => {
     deps.tenantConfigReader ||
     ((args) => getPresenceTenantConfigOrThrow(args));
 
+  // 37.4 — the live store is OPTIONAL. A service that does not pass
+  // one falls back to the 37.1 behaviour (live === null => 'unknown'
+  // when no manual is set, livePresenceAvailable = false). When the
+  // store is provided, getMyPresence injects the snapshot into the
+  // resolver. The store is NEVER required to be present at the call
+  // site — a unit test that fakes only the model and the config
+  // reader does not have to fake the live store.
+  const liveStore = deps.liveStore || null;
+
   // Reads the resolved presence for the caller. Always returns a frozen
   // snapshot from the resolver — never a half-built object.
   const getMyPresence = async ({ companyId, userId }) => {
@@ -96,7 +105,13 @@ export const presenceService = (deps = {}) => {
       return resolvePresence({ durable: null, config, now: new Date() });
     }
     const durable = await readUserPresence({ companyId, userId, UserPresenceModel });
-    return resolvePresence({ durable, config, now: new Date() });
+    // 37.4 — read the live snapshot. NEVER throws. A failure or a
+    // missing key both produce live === null, which the resolver
+    // treats as 'unknown' (37.1 behaviour).
+    const live = liveStore
+      ? await liveStore.readLive({ companyId, userId })
+      : null;
+    return resolvePresence({ durable, config, now: new Date(), live });
   };
 
   // Set / clear manual status. The tenant kill switch is enforced here.

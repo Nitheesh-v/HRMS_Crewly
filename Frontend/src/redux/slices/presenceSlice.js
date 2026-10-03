@@ -147,6 +147,9 @@ const initialState = {
   team: EMPTY_TEAM_AVAILABILITY,
   teamLoading: 'idle',
   teamError: null,
+  // 37.4 — last debounced team-refetch bump from the realtime
+  // runtime. TeamAvailabilityPage watches this and re-fetches.
+  teamBumpedAt: null,
 };
 
 const presenceSlice = createSlice({
@@ -155,6 +158,47 @@ const presenceSlice = createSlice({
   reducers: {
     clearError(state) {
       state.error = null;
+    },
+    // ─────────────────────────────────────────────────────────────────
+    //  PHASE 37.4 — REALTIME TICKS
+    //
+    //  `presenceTicked` is the per-self reducer invoked by the
+    //  presenceRuntime's `presence:changed` listener when the
+    //  envelope is the signed-in user's own row. The reducer is a
+    //  no-op if the value is unchanged (idempotent), so a noisy
+    //  feed cannot cause a re-render storm.
+    //
+    //  The envelope carries: {schemaVersion, companyId, userId,
+    //  presence, presenceSource, occurredAt, source}. We update
+    //  `current` only — no other state changes.
+    // ─────────────────────────────────────────────────────────────────
+    presenceTicked(state, action) {
+      const env = action.payload;
+      if (!env || env.schemaVersion !== 1) return;
+      const next = env.presence;
+      // Idempotent: same value → no work.
+      if (state.current && state.current.presence === next) return;
+      state.current = {
+        ...(state.current || EMPTY_PRESENCE),
+        presence: next,
+        presenceSource: env.presenceSource || 'none',
+        // `lastLiveAt` is the user-facing last-seen signal that
+        // 37.1's display components already read. The envelope's
+        // `occurredAt` is the authoritative server timestamp.
+        lastLiveAt: env.occurredAt || state.current?.lastLiveAt || null,
+        // Keep the reducer pure: the resolver's source is informational.
+        lastLiveSource: env.source || 'resolver',
+      };
+    },
+    // ─────────────────────────────────────────────────────────────────
+    //  `presenceInvalidateTeam` — the runtime triggers a debounced
+    //  re-dispatch of `fetchTeamAvailability` on same-company
+    //  envelopes. The reducer bumps a counter so any team-page
+    //  subscriber (memo, useEffect) can react. The thunk itself is
+    //  fired from the runtime (which has the store reference).
+    // ─────────────────────────────────────────────────────────────────
+    presenceInvalidateTeam(state) {
+      state.teamBumpedAt = new Date().toISOString();
     },
   },
   extraReducers: (builder) => {
@@ -245,5 +289,5 @@ const presenceSlice = createSlice({
   },
 });
 
-export const { clearError } = presenceSlice.actions;
+export const { clearError, presenceTicked, presenceInvalidateTeam } = presenceSlice.actions;
 export default presenceSlice.reducer;

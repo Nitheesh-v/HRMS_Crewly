@@ -53,17 +53,36 @@ const isExpired = (expiry, now) => {
 };
 
 /**
- * Resolve effective presence from one user's durable prefs and the tenant
- * config.
+ * Resolve effective presence from one user's durable prefs, the tenant
+ * config, and the (optional) ephemeral live snapshot.
+ *
+ * PRECEDENCE (37.4 — top wins)
+ *   1. Manual DND / Busy / Available  (durable, not expired)
+ *   2. Connected + recent activity    -> 'available'  (liveSource = 'automatic')
+ *   3. Connected + recent inactivity  -> 'away'       (liveSource = 'automatic')
+ *   4. Connected + no recent signal   -> 'available'  (recent connect counts)
+ *   5. No connection                  -> 'offline'    (liveSource = 'automatic')
+ *   6. Infrastructure uncertain (live === null) -> 'unknown' (liveSource = 'none')
  *
  * @param {Object} args
  * @param {Object} args.durable — the UserPresence document (or in-memory
  *                                object with the same shape, possibly null)
  * @param {Object} args.config  — frozen tenant-config snapshot
  * @param {Date}   [args.now]   — testable clock
+ * @param {Object|null} [args.live] — Phase 37.4 ephemeral snapshot:
+ *                                    {connected, connectionCount,
+ *                                     lastHeartbeatAt, lastActivityAt}.
+ *                                    When `null` the resolver behaves
+ *                                    exactly like 37.1 (presence is
+ *                                    `unknown` if no manual status is
+ *                                    set; livePresenceAvailable = false).
+ *                                    When a snapshot is provided, the
+ *                                    resolver applies the precedence
+ *                                    above and sets
+ *                                    livePresenceAvailable = true.
  * @returns {Object} the frozen normalised presence snapshot
  */
-export const resolvePresence = ({ durable, config, now } = {}) => {
+export const resolvePresence = ({ durable, config, now, live = null } = {}) => {
   const nowDate = now instanceof Date ? now : new Date();
   const cfg = config || {};
   const d = durable || {};
@@ -96,21 +115,39 @@ export const resolvePresence = ({ durable, config, now } = {}) => {
     return d.workLocation;
   })();
 
-  // The effective manual value (the precedence layer below 37.6 / 37.4).
+  // The effective manual value (the precedence layer above 37.4 automatic).
   const effectiveManual = manualStatusActive ? manualStatus : null;
 
   let presence;
   let presenceSource;
+  let livePresenceAvailable;
 
   if (effectiveManual) {
+    // Manual ALWAYS wins. Even if the live signal says the user is
+    // online, the user explicitly said "Busy until 3 PM" — surface that.
     presence = effectiveManual;
     presenceSource = 'manual';
-  } else {
-    // 37.1 has no live presence. Phase 37 §20: do NOT lie that the
-    // employee is Offline just because we can't see them. Unknown is the
-    // honest answer; the UI surfaces "Presence unavailable" instead.
+    // 37.4 honesty: live IS available (we read Redis), but the manual
+    // value is the displayed answer. The widget shows the manual value
+    // and a small "online" dot in the chrome (see 37.2 widget).
+    livePresenceAvailable = live !== null && live !== undefined;
+  } else if (live === null || live === undefined) {
+    // 37.1 behaviour preserved: no live source at all (Redis down, or
+    // 37.1 call sites that never wired live). Phase 37 §20: do NOT lie
+    // that the employee is Offline just because we can't see them.
     presence = 'unknown';
     presenceSource = 'none';
+    livePresenceAvailable = false;
+  } else {
+    // Live present, no manual. Run the 37.4 precedence:
+    //   connected + recent activity  -> available
+    //   connected + recent inactivity past awayAfterMinutes -> away
+    //   connected + heartbeat older than offlineAfterMinutes -> offline
+    //   no connection (count == 0) -> offline
+    const derived = deriveAutomaticPresence({ live, config: cfg, now: nowDate });
+    presence = derived;
+    presenceSource = 'automatic';
+    livePresenceAvailable = true;
   }
 
   // Employee-safe config slice — the four flags the self-UI needs.
@@ -138,11 +175,55 @@ export const resolvePresence = ({ durable, config, now } = {}) => {
     workLocationEnabled: configSlice.workLocationEnabled,
     allowedWorkLocations: configSlice.allowedWorkLocations,
     wfhMode: configSlice.wfhMode,
-    // 37.1 has no live presence. The UI MUST render this honestly. Do not
-    // add "Offline" here — Phase 37 §20 / §6.
-    livePresenceAvailable: false,
+    // 37.1: false. 37.4: true when the live source was readable.
+    livePresenceAvailable,
     config: configSlice,
   });
 };
 
-export const __test__ = { isExpired, toIsoOrNull };
+/**
+ * 37.4 — derive the AUTOMATIC presence value from one live snapshot +
+ * tenant config + clock. Pure, no I/O. Kept in this file so the
+ * precedence lives next to the resolver output it produces.
+ */
+const deriveAutomaticPresence = ({ live, config, now }) => {
+  const connected = Boolean(live?.connected) || Number(live?.connectionCount || 0) > 0;
+
+  if (!connected) {
+    return 'offline';
+  }
+
+  const awayAfterMinutes = Number.isInteger(config?.awayAfterMinutes)
+    ? config.awayAfterMinutes
+    : 5;
+  const offlineAfterMinutes = Number.isInteger(config?.offlineAfterMinutes)
+    ? config.offlineAfterMinutes
+    : 15;
+
+  const lastHb = live?.lastHeartbeatAt ? new Date(live.lastHeartbeatAt) : null;
+  const lastAct = live?.lastActivityAt ? new Date(live.lastActivityAt) : null;
+
+  // 1) Heartbeat older than offline threshold OR no heartbeat at all
+  //    but never connected => Offline.
+  if (lastHb && !Number.isNaN(lastHb.getTime())) {
+    const ageMs = now.getTime() - lastHb.getTime();
+    if (ageMs > offlineAfterMinutes * 60_000) {
+      return 'offline';
+    }
+  }
+
+  // 2) Activity freshness drives Available / Away.
+  if (lastAct && !Number.isNaN(lastAct.getTime())) {
+    const ageMs = now.getTime() - lastAct.getTime();
+    if (ageMs <= awayAfterMinutes * 60_000) {
+      return 'available';
+    }
+    return 'away';
+  }
+
+  // 3) No activity recorded yet but the connection is fresh
+  //    (heartbeat exists, was within offline window) => Available.
+  return 'available';
+};
+
+export const __test__ = { isExpired, toIsoOrNull, deriveAutomaticPresence };

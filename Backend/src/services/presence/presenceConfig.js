@@ -127,3 +127,112 @@ export const isWorkLocation = (value) =>
 
 export const isWfhMode = (value) =>
   typeof value === 'string' && WFH_MODES.includes(value);
+
+// ───────────────────────────────────────────────────────────────────────
+// PHASE 37.4 — REALTIME PRESENCE (live precedence + ephemeral liveness)
+//
+// WHAT THIS UNIT OWNS
+//   · the 4 LIVE presence values (available / away / offline / unknown)
+//   · the precedence ranking (lower wins; manual DND/Busy/Available
+//     outrank everything automatic; offline outranks unknown)
+//   · the heartbeat / activity TTL bounds (the SADD/SREM mechanics
+//     sit in presenceLiveStore; the constants live here so the
+//     service, the bus and the tests share one source of truth)
+//   · the Socket.IO namespace path and the strict envelope size cap
+//   · the activity throttle window (frontend uses this)
+//
+// WHAT THIS UNIT DELIBERATELY DOES NOT OWN
+//   · No activity timeline (mouse / focus / keystroke history). The
+//     activity signal is "recent interaction occurred" only.
+//   · No PII. No name, email, status-message text, leave reason, etc.
+// ───────────────────────────────────────────────────────────────────────
+
+// The 4 LIVE values the resolver may emit. These NEVER include
+// 'dnd' or 'busy' — those are durable-only, decided by the user.
+export const PRESENCE_LIVE_STATES = Object.freeze([
+  'available',
+  'away',
+  'offline',
+  'unknown',
+]);
+
+// Precedence ranking (lower wins; the resolver iterates a user's effective
+// state in this order and returns the first non-null value).
+//
+// 0  manual DND          (durable; outranks everything else)
+// 1  manual Busy         (durable; outranks automatic + offline)
+// 2  manual Available    (durable; the user explicitly said "Available")
+// 3  automatic available (live + recent activity)
+// 4  automatic away      (live + recent inactivity past awayAfterMinutes)
+// 5  confirmed offline   (no live, no recent activity)
+// 6  unknown             (infrastructure cannot determine)
+export const PRESENCE_LIVE_PRECEDENCE = Object.freeze({
+  'dnd': 0,
+  'busy': 1,
+  'available': 2, // manual or automatic — resolver decides which input
+  'away': 4,
+  'offline': 5,
+  'unknown': 6,
+});
+
+// Whether a presence value is a LIVE value the resolver may derive.
+export const isLivePresence = (value) =>
+  typeof value === 'string' && PRESENCE_LIVE_STATES.includes(value);
+
+// Heartbeat TTL bounds (seconds). The store applies MAX as a hard cap
+// so a misconfigured tenant cannot keep an "online" badge for a year.
+export const PRESENCE_HEARTBEAT_TTL_SECONDS_MIN = 30;
+export const PRESENCE_HEARTBEAT_TTL_SECONDS_MAX = 300;
+export const PRESENCE_HEARTBEAT_TTL_SECONDS_DEFAULT = 60;
+
+// Default grace window the live key is kept alive after the LAST
+// connection in the connection set is removed. Allows a reconnect
+// that lands on a different instance to read "still alive" without
+// a brief "offline" flicker. Mirrors the 37.1 default
+// `offlineAfterMinutes` ceiling.
+export const PRESENCE_GRACE_TTL_SECONDS_DEFAULT = 30;
+
+// Browser activity throttle. The runtime debounces pointerdown /
+// keydown / touchstart into one `presence:activity` socket emit
+// at most every PRESENCE_ACTIVITY_THROTTLE_MS.
+export const PRESENCE_ACTIVITY_THROTTLE_MS_DEFAULT = 5_000;
+
+// Strict env-namespaced Socket.IO namespace path. The chat socket
+// lives at /socket.io (the default); the presence socket rides the
+// SAME http server with a NAMESpaced path. CORS / origin rules
+// (chat socketConfig) apply identically.
+export const PRESENCE_SOCKET_NAMESPACE = '/presence';
+
+// Strict envelope size cap. The publish seam enforces this and
+// rejects any envelope that exceeds it. The shape itself is tiny
+// (schemaVersion + companyId + userId + presence + presenceSource
+// + occurredAt + source) so 512 bytes is plenty of headroom.
+export const PRESENCE_MAX_LIVE_ENVELOPE_BYTES = 512;
+
+// Strict env parser. The exact string "true" enables; everything
+// else (including unset) is disabled. Matches the 32.11/33.1 law.
+export const parsePresenceSocketEnabled = (source = process.env) =>
+  String(source?.PRESENCE_SOCKET_ENABLED || '').trim().toLowerCase() === 'true';
+
+// Clamp helper used by both the service (read config) and the
+// store (apply TTL). Pure: never throws.
+export const clampHeartbeatTtlSeconds = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return PRESENCE_HEARTBEAT_TTL_SECONDS_DEFAULT;
+  return Math.min(
+    PRESENCE_HEARTBEAT_TTL_SECONDS_MAX,
+    Math.max(PRESENCE_HEARTBEAT_TTL_SECONDS_MIN, Math.trunc(n)),
+  );
+};
+
+export const clampGraceTtlSeconds = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return PRESENCE_GRACE_TTL_SECONDS_DEFAULT;
+  return Math.max(1, Math.min(600, Math.trunc(n)));
+};
+
+export const clampActivityThrottleMs = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return PRESENCE_ACTIVITY_THROTTLE_MS_DEFAULT;
+  return Math.max(500, Math.min(60_000, Math.trunc(n)));
+};

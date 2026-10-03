@@ -142,6 +142,17 @@ const TeamAvailabilityPage = () => {
     dispatch(fetchTeamAvailability(debouncedFilters));
   }, [dispatch, debouncedFilters]);
 
+  // 37.4 — the realtime runtime bumps `teamBumpedAt` on every
+  // same-company `presence:changed` envelope (debounced 1s). The
+  // team page re-fetches on the bump, preserving the current
+  // filter chip set. The bump is null on first render, then
+  // monotonically non-null.
+  const teamBumpedAt = useSelector((s) => s.presence?.teamBumpedAt || null);
+  useEffect(() => {
+    if (!teamBumpedAt) return;
+    dispatch(fetchTeamAvailability(debouncedFilters));
+  }, [dispatch, teamBumpedAt, debouncedFilters]);
+
   const onSearchChange = (e) => {
     setSearch(String(e.target.value || '').slice(0, MAX_SEARCH_LEN));
     setPage(1);

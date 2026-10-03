@@ -84,16 +84,18 @@ const DTO_PROJECTION = Object.freeze([
   'status',
 ]);
 
-// Apply the Phase 37.1 resolver to one User + (optionally) its UserPresence
-// row. The resolver is pure: it never throws. Returns the normalised
-// effective presence snapshot for that one user.
-const resolveOne = (user, presenceDoc, config) => {
+// Apply the Phase 37.1 + 37.4 resolver to one User + its UserPresence
+// row + (optionally) its ephemeral live snapshot. The resolver is
+// pure: it never throws. Returns the normalised effective presence
+// snapshot for that one user.
+const resolveOne = (user, presenceDoc, config, liveSnapshot) => {
   const { presence, presenceSource, manualStatus, manualStatusExpiresAt,
     statusMessage, statusMessageExpiresAt, workLocation,
     workLocationExpiresAt, livePresenceAvailable } = resolvePresence({
     durable: presenceDoc,
     config,
     now: new Date(),
+    live: liveSnapshot || null,
   });
 
   return {
@@ -203,6 +205,11 @@ export const presenceTeamService = (deps = {}) => {
   // tenant-aware chip (37.3 §32 left a hook for it).
   const tenantConfigReader =
     deps.tenantConfigReader || getPresenceTenantConfigOrThrow;
+  // 37.4 — optional live store. When injected, the team page picks up
+  // each user's effective live presence (Available / Away / Offline /
+  // Unknown). When absent, every row reads as 'unknown' (the 37.1
+  // behaviour) — preserving all 37.3 hermetic tests untouched.
+  const liveStore = deps.liveStore || null;
 
   const getTeamAvailability = async ({
     companyId,
@@ -358,10 +365,26 @@ export const presenceTeamService = (deps = {}) => {
     const presenceMap = new Map();
     for (const row of presenceRows) presenceMap.set(String(row.userId), row);
 
-    // 3) Resolve every row through the 37.1 resolver. This is the SINGLE
-    //    precedence authority (37.1 §16). We do NOT introduce a parallel
-    //    team-specific precedence (§8 / §22).
-    const resolved = users.map((u) => resolveOne(u, presenceMap.get(String(u._id)), config));
+    // 37.4 — ONE batched live-snapshot read for every authorised user.
+    // The store handles the absence case by mapping missing users to
+    // null (the resolver then returns 'unknown' if no manual status
+    // is set). The store NEVER throws on a Redis failure — it returns
+    // an empty Map and the team page keeps working.
+    const liveMap = liveStore
+      ? await liveStore.readLiveMany({ companyId, userIds })
+      : new Map();
+
+    // 3) Resolve every row through the 37.1 + 37.4 resolver. This is
+    //    the SINGLE precedence authority (37.1 §16 + 37.4 §15). We do
+    //    NOT introduce a parallel team-specific precedence (§8 / §22).
+    const resolved = users.map((u) =>
+      resolveOne(
+        u,
+        presenceMap.get(String(u._id)),
+        config,
+        liveMap.get(String(u._id)) || null,
+      ),
+    );
 
     // 4) Apply presence + workLocation filters in memory. Filter
     //    happens AFTER scope + search so summary counts always

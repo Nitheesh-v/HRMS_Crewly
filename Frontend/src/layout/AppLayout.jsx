@@ -12,6 +12,7 @@ import { PresenceMenu } from "../components/presence/index.js";
 import { useEffect, useState } from "react";
 import { useDispatch } from "react-redux";
 import { startRealtimeSession, stopRealtimeSession } from "../services/realtime/realtimeClient.js";
+import { startPresenceRuntime, stopPresenceRuntime } from "../services/realtime/presenceRuntime.js";
 import { fetchMyPermissions } from "../redux/slices/PermissionSlices.js";
 
 
@@ -222,7 +223,15 @@ const AppLayout = () => {
   useEffect(() => {
     if (userId) {
       dispatch(fetchMyPermissions());
+      // 37.4 — open the presence realtime runtime for this user.
+      // Idempotent. Closes on logout (the `secureLogout` path
+      // unmounts this layout, so React's cleanup drives stop()).
+      startPresenceRuntime();
+      return () => {
+        stopPresenceRuntime();
+      };
     }
+    return undefined;
   }, [dispatch, userId]);
 
   const handleLogout = async () => {

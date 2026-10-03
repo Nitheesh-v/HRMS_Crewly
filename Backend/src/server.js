@@ -42,6 +42,9 @@ import {
   getChatSocketServer,
 } from './socket/initSocketServer.js';
 import {
+  getPresenceSocketServer,
+} from './socket/presenceSocket.js';
+import {
   startProcessDiagnostics,
   stopProcessDiagnostics,
   getInstanceId,
@@ -114,6 +117,14 @@ const startServer = async () => {
     // Redis is disabled/unreachable — the HTTP API is never affected.
     await getChatSocketServer().attach(server);
 
+    // Phase 37.4 — presence Socket.IO namespace. Mounts on the SAME
+    // http server, opens a separate Redis adapter channel for the
+    // 'presence:adapter' key, and refuses every connection as
+    // FEATURE_UNAVAILABLE when PRESENCE_SOCKET_ENABLED is unset or
+    // Redis is unreachable. The HTTP /api/presence/* endpoints keep
+    // working.
+    await getPresenceSocketServer().attach(server);
+
     server.listen(
       env.PORT,
       () => {
@@ -169,6 +180,7 @@ const startServer = async () => {
           stopProcessDiagnostics();
           return getChatSocketServer().stop();
         })
+        .then(() => getPresenceSocketServer().stop())
         .then(() => getRealtimeGateway().stop())
         .catch(() => {})
         .finally(() => shutdown(signal));
