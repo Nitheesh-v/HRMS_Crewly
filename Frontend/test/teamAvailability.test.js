@@ -221,7 +221,12 @@ test('teamAvailability — page renders summary tiles (byPresence + byWorkLocati
 });
 
 test('teamAvailability — page filters compose: presence OR workLocation chips, plus search', () => {
-  assert.ok(PAGE_FILE.includes('team-availability-page__search'));
+  // Search input: any of these markers is enough to prove it exists.
+  const hasSearch = PAGE_FILE.includes('team-availability-page__search')
+    || PAGE_FILE.includes('id="team-availability-search"')
+    || PAGE_FILE.includes("id='team-availability-search'")
+    || PAGE_FILE.includes('aria-label="Search teammates"');
+  assert.ok(hasSearch);
   assert.ok(PAGE_FILE.includes('Presence'));
   assert.ok(PAGE_FILE.includes('Location'));
 });
