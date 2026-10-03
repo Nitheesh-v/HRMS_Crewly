@@ -60,8 +60,15 @@ export const loadMyPresence = createAsyncThunk(
   'presence/loadMyPresence',
   async (_, { rejectWithValue }) => {
     try {
+      // The api.js response interceptor ALREADY unwraps `body.data`,
+      // so `result` IS the snapshot. The previous version re-checked
+      // `result.data`, which was always undefined after the unwrap,
+      // and returned EMPTY_PRESENCE on every load — the slice never
+      // saw the saved status and the topbar badge always read
+      // "unknown". That is the user-reported "where do I see the
+      // saved data" symptom. Return `result` directly.
       const result = await getMyPresence();
-      return result && result.data ? result.data : EMPTY_PRESENCE;
+      return result || EMPTY_PRESENCE;
     } catch (err) {
       return rejectWithValue({
         code: err.presenceCode || 'PRESENCE_LOAD_FAILED',
@@ -75,8 +82,11 @@ export const updateMyStatus = createAsyncThunk(
   'presence/updateMyStatus',
   async ({ status, expiresAt } = {}, { rejectWithValue }) => {
     try {
+      // Same as loadMyPresence: the interceptor unwraps `data`, so
+      // `result` IS the new snapshot. Returning `result.data` was
+      // always undefined, so the slice never updated after a save.
       const result = await setMyStatus({ status, expiresAt });
-      return result && result.data ? result.data : null;
+      return result || null;
     } catch (err) {
       return rejectWithValue({
         code: err.presenceCode || 'PRESENCE_UPDATE_FAILED',
@@ -91,7 +101,7 @@ export const updateMyStatusMessage = createAsyncThunk(
   async ({ message, expiresAt } = {}, { rejectWithValue }) => {
     try {
       const result = await setMyStatusMessage({ message, expiresAt });
-      return result && result.data ? result.data : null;
+      return result || null;
     } catch (err) {
       return rejectWithValue({
         code: err.presenceCode || 'PRESENCE_UPDATE_FAILED',
@@ -106,7 +116,7 @@ export const updateMyWorkLocation = createAsyncThunk(
   async ({ location, expiresAt } = {}, { rejectWithValue }) => {
     try {
       const result = await setMyWorkLocation({ location, expiresAt });
-      return result && result.data ? result.data : null;
+      return result || null;
     } catch (err) {
       return rejectWithValue({
         code: err.presenceCode || 'PRESENCE_UPDATE_FAILED',
@@ -128,8 +138,12 @@ export const fetchTeamAvailability = createAsyncThunk(
   'presence/fetchTeamAvailability',
   async (params = {}, { rejectWithValue }) => {
     try {
+      // The team response is paginated (items + summary + meta + config).
+      // The api.js interceptor returns the full body when `meta` is
+      // present (it preserves pagination shape). So `result` IS the
+      // team payload; re-checking `result.data` was always undefined.
       const result = await getTeamAvailability(params);
-      return result && result.data ? result.data : EMPTY_TEAM_AVAILABILITY;
+      return result || EMPTY_TEAM_AVAILABILITY;
     } catch (err) {
       return rejectWithValue({
         code: err.presenceCode || 'PRESENCE_TEAM_LOAD_FAILED',

@@ -223,10 +223,19 @@ export default function PresenceMenu() {
             ? `Set presence. Current: ${presenceLabel(presence.presence)}`
             : 'Set presence'
         }
-        className="inline-flex h-9 items-center gap-2 rounded-lg border border-crewly-border bg-crewly-bg px-2.5 text-xs font-medium text-crewly-text transition hover:border-crewly-green/60"
+        className={
+          'inline-flex h-9 items-center gap-2 rounded-lg border px-2.5 text-xs font-medium transition ' +
+          (presence?.presence && presence.presence !== 'unknown'
+            ? 'border-crewly-green/40 bg-crewly-green/10 text-crewly-text hover:border-crewly-green/60'
+            : 'border-crewly-border bg-crewly-bg text-crewly-text hover:border-crewly-green/60')
+        }
       >
         <PresenceIndicator presence={presence?.presence} size="xs" />
-        <span className="hidden sm:inline">Set presence</span>
+        <span className="hidden sm:inline">
+          {presence?.presence && presence.presence !== 'unknown'
+            ? presenceLabel(presence.presence)
+            : 'Set presence'}
+        </span>
         <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
       </button>
 
