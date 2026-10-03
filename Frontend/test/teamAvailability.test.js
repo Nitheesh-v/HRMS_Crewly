@@ -239,31 +239,31 @@ test('teamAvailability — search input has maxLength + bounded trim to MAX_SEAR
 test('teamAvailability — page never exposes password/email/phone/salary/Aadhaar/PAN/UAN/deductions', () => {
   // Strip line comments + block comments so the assertion is not
   // poisoned by the page's own negative documentation ("never exposes
-  // password / email / ...") that lives in a comment. Also strip JSX
-  // HTML attribute names (colSpan, rowSpan) which incidentally contain
-  // substrings like "pan" without being PII.
+  // password / email / ...") that lives in a comment.
+  //
+  // The role names COMPANY_ADMIN and HR_MANAGER also contain the
+  // substring "PAN" / "MANAGER", so we assert PII presence using
+  // word-boundary regex, not substring includes.
   const stripped = PAGE_FILE
     .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '')
-    .replace(/\s+(colSpan|rowSpan|tabIndex|htmlFor|className|id|key|src|alt|placeholder|aria-label|aria-pressed|aria-hidden|type|role|to|label|value|onClick|onChange|disabled)\b/g, ' ')
-    .replace(/\b(colSpan|rowSpan|tabIndex|htmlFor|className|aria-label|aria-hidden)\b/g, ' ');
+    .replace(/^\s*\/\/.*$/gm, '');
 
-  const forbidden = [
-    'password',
-    'salary',
-    'Aadhaar',
-    'AADHAAR',
-    'PAN',
-    'UAN',
-    'bankAccount',
-    'deductions',
-    '@',
+  const wordChecks = [
+    /\bpassword\b/i,
+    /\bsalary\b/i,
+    /\bAadhaar\b/,
+    /\bAADHAAR\b/,
+    /\bPAN\b/,
+    /\bUAN\b/,
+    /\bbankAccount\b/,
+    /\bdeductions\b/,
+    /@/,
   ];
-  for (const f of forbidden) {
+  for (const re of wordChecks) {
     assert.equal(
-      stripped.includes(f),
+      re.test(stripped),
       false,
-      `page must not mention ${f}`,
+      `page must not contain token matching ${re}`,
     );
   }
 });

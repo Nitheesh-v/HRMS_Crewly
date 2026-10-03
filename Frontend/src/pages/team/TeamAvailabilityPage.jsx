@@ -113,6 +113,16 @@ const TeamAvailabilityPage = () => {
   };
   const teamLoading = useSelector((s) => s.presence && s.presence.teamLoading);
   const teamError = useSelector((s) => s.presence && s.presence.teamError);
+  const actorRole = useSelector(
+    (s) =>
+      s &&
+      s.auth &&
+      (s.auth.user?.role ||
+        s.auth.role ||
+        s.auth.currentUser?.role),
+  );
+  const actorIsAdmin =
+    actorRole === 'COMPANY_ADMIN' || actorRole === 'HR_MANAGER';
 
   const debouncedFilters = useMemo(
     () => ({
@@ -260,7 +270,7 @@ const TeamAvailabilityPage = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-8">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-4">
         <SummaryTile
           icon={Users}
           label="Total"
@@ -341,11 +351,51 @@ const TeamAvailabilityPage = () => {
                 <tr>
                   <td
                     colSpan="6"
-                    className="px-4 py-10 text-center text-sm text-crewly-dim sm:px-6"
+                    className="px-4 py-12 text-center sm:px-6"
                   >
-                    {teamLoading === 'pending'
-                      ? 'Loading teammates…'
-                      : 'No teammates match these filters.'}
+                    {teamLoading === 'pending' ? (
+                      <div className="flex flex-col items-center gap-2 text-sm text-crewly-dim">
+                        <span
+                          aria-hidden="true"
+                          className="inline-block h-2 w-2 animate-pulse rounded-full bg-crewly-orange"
+                        />
+                        Loading teammates…
+                      </div>
+                    ) : summary.total === 0 ? (
+                      <div className="space-y-2 text-sm">
+                        <p className="font-medium text-crewly-text">
+                          No teammates in your scope yet.
+                        </p>
+                        <p className="text-crewly-dim">
+                          {actorIsAdmin
+                            ? 'Once teammates register in your company, they will appear here. Invite them from the People page.'
+                            : 'Once you join a department, your colleagues will appear here.'}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 text-sm">
+                        <p className="font-medium text-crewly-text">
+                          No teammates match these filters.
+                        </p>
+                        <p className="text-crewly-dim">
+                          {summary.total} teammate
+                          {summary.total === 1 ? ' is' : 's are'} in your scope — try a different
+                          search or clear the filter chips above.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSearch('');
+                            setPresenceFilter('');
+                            setWorkLocationFilter('');
+                            setPage(1);
+                          }}
+                          className="btn-ghost mt-1 px-3 py-1.5 text-xs"
+                        >
+                          Clear filters
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ) : (
