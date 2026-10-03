@@ -119,12 +119,31 @@ const services = () => {
 
 export const getMe = asyncHandler(async (req, res) => {
   const { service: s } = services();
+  // 37.4 — diagnostic: a slow read is part of the user's 25s toast.
+  const slowThresholdMs = 500;
+  const t0 = process.hrtime.bigint();
+  const slowTimer = setTimeout(() => {
+    const elapsed = Number(process.hrtime.bigint() - t0) / 1e6;
+    console.warn(
+      '[presence/getMe] STILL RUNNING after',
+      Math.round(elapsed),
+      'ms — userId:',
+      String(req.user?._id || '?'),
+    );
+  }, slowThresholdMs);
+
   // DB Logic - resolve via service
   const snapshot = await runWithPresenceError(
     () => s.getMyPresence({ companyId: req.companyId, userId: req.user._id }),
     req,
     res,
   );
+
+  clearTimeout(slowTimer);
+  const t1 = Number(process.hrtime.bigint() - t0) / 1e6;
+  if (t1 > slowThresholdMs) {
+    console.warn('[presence/getMe] service.getMyPresence took', Math.round(t1), 'ms');
+  }
 
   // Data to frontend - response
   return ApiResponse.success(res, {
@@ -178,6 +197,23 @@ export const putStatus = asyncHandler(async (req, res) => {
   const { status, expiresAt } = req.body || {};
   const { service: s } = services();
 
+  // 37.4 — diagnostic: a slow save is the user's 25s timeout. We
+  // time only requests that take longer than the 500ms mark so a
+  // healthy backend stays quiet. The output is grep-friendly.
+  const slowThresholdMs = 500;
+  const t0 = process.hrtime.bigint();
+  const slowTimer = setTimeout(() => {
+    const elapsed = Number(process.hrtime.bigint() - t0) / 1e6;
+    console.warn(
+      '[presence/putStatus] STILL RUNNING after',
+      Math.round(elapsed),
+      'ms — userId:',
+      String(req.user?._id || '?'),
+      'companyId:',
+      String(req.companyId || '?'),
+    );
+  }, slowThresholdMs);
+
   // DB Logic - service
   const snapshot = await runWithPresenceError(
     () =>
@@ -191,12 +227,31 @@ export const putStatus = asyncHandler(async (req, res) => {
     res,
   );
 
+  clearTimeout(slowTimer);
+  const t1 = Number(process.hrtime.bigint() - t0) / 1e6;
+  if (t1 > slowThresholdMs) {
+    console.warn(
+      '[presence/putStatus] service.setMyStatus took',
+      Math.round(t1),
+      'ms',
+    );
+  }
+
   // 37.4 — best-effort cross-instance invalidation.
+  const tPub0 = process.hrtime.bigint();
   await safePublishIfChanged({
     companyId: req.companyId,
     userId: req.user._id,
     after: snapshot,
   });
+  const tPub1 = Number(process.hrtime.bigint() - tPub0) / 1e6;
+  if (tPub1 > 500) {
+    console.warn(
+      '[presence/putStatus] safePublishIfChanged took',
+      Math.round(tPub1),
+      'ms',
+    );
+  }
 
   // Data to frontend
   return ApiResponse.success(res, {
