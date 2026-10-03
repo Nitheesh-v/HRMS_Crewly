@@ -309,4 +309,26 @@ test('teamAvailability — sidebar item lives in the same teamMenu group as "Who
 
 test('teamAvailability — page renders empty table copy when no items', () => {
   assert.ok(PAGE_FILE.includes('No teammates match these filters.'));
+  // 37.4 — admins see a People page link + Refresh button so the
+  // "no teammates in your scope yet" branch is actionable, not a dead end.
+  assert.ok(
+    PAGE_FILE.includes('Open People page'),
+    'empty state must offer an "Open People page" CTA for admins',
+  );
+  assert.ok(
+    /to=["']\/app\/users["']/.test(PAGE_FILE),
+    'admin CTA must link to /app/users',
+  );
+  assert.ok(
+    PAGE_FILE.includes('Refresh'),
+    'empty state must offer a manual Refresh button',
+  );
+  // 37.4 — non-admins (MANAGER / TEAM_LEAD) should NOT see the admin-only
+  // "Open People page" CTA, but they should still see the Refresh button.
+  assert.ok(
+    /actorIsAdmin\s*\?\s*[\s\S]+?Open People page[\s\S]+?:\s*null/.test(
+      PAGE_FILE,
+    ),
+    'People-page CTA must be guarded by actorIsAdmin',
+  );
 });

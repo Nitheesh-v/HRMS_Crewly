@@ -245,6 +245,19 @@ export const presenceTeamService = (deps = {}) => {
     if (Array.isArray(scopeIds) && scopeIds.length > 0) {
       baseFilter._id = { $in: scopeIds };
     } else if (Array.isArray(scopeIds)) {
+      // 37.4 DIAGNOSTIC — log so a confused admin in production can
+      // see in the server log whether the scope came back empty
+      // (legitimately zero discoverable teammates) vs the page is
+      // misreading the response. Removed in 37.5 if no longer needed.
+      console.warn(
+        '[presence/team] scope-ids empty',
+        JSON.stringify({
+          companyId: String(companyId),
+          actorRole: actor.role,
+          actorId: String(actor._id),
+        }),
+      );
+
       // The scope authority returned an explicit empty array — this means
       // the caller has no discoverable coworkers (e.g. EMPLOYEE with
       // themselves; or a manager whose department is empty). Empty
@@ -282,6 +295,32 @@ export const presenceTeamService = (deps = {}) => {
       .populate('department', 'name')
       .sort({ name: 1, _id: 1 })
       .lean();
+
+    // 37.4 DIAGNOSTIC — log the result so a confused admin can verify
+    // in the server log whether the query returned 0 users because
+    // (a) the company has 0 ACTIVE users, or (b) the company filter
+    // did not match (e.g. ObjectId vs string). Removed in 37.5 if
+    // no longer needed.
+    console.warn(
+      '[presence/team] user-query result',
+      JSON.stringify({
+        companyId: String(companyId),
+        actorRole: actor.role,
+        actorId: String(actor._id),
+        searchApplied: Boolean(searchFilter),
+        searchValue: typeof search === 'string' ? search : null,
+        presenceFilter: presence || null,
+        workLocationFilter: workLocation || null,
+        baseFilter: {
+          companyId: String(companyId),
+          status: 'ACTIVE',
+          scopeApplied: Array.isArray(scopeIds)
+            ? (scopeIds.length === 0 ? 'EMPTY' : 'IN')
+            : 'NONE',
+        },
+        userCount: users.length,
+      }),
+    );
 
     if (users.length === 0) {
       return {

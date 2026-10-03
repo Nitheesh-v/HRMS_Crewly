@@ -23,12 +23,15 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { Link } from 'react-router-dom';
 import {
   Briefcase,
   Building2,
   Coffee,
   MapPin,
+  RefreshCw,
   Search as SearchIcon,
+  UserPlus,
   Users,
 } from 'lucide-react';
 
@@ -362,15 +365,48 @@ const TeamAvailabilityPage = () => {
                         Loading teammates…
                       </div>
                     ) : summary.total === 0 ? (
-                      <div className="space-y-2 text-sm">
+                      <div className="space-y-3 text-sm">
                         <p className="font-medium text-crewly-text">
                           No teammates in your scope yet.
                         </p>
                         <p className="text-crewly-dim">
                           {actorIsAdmin
-                            ? 'Once teammates register in your company, they will appear here. Invite them from the People page.'
-                            : 'Once you join a department, your colleagues will appear here.'}
+                            ? 'When teammates join your company and are marked ACTIVE, they will appear here. You can invite them from the People page.'
+                            : 'When you join a department, your colleagues will appear here.'}
                         </p>
+                        <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                          {actorIsAdmin ? (
+                            <Link
+                              to="/app/users"
+                              className="btn-ghost px-3 py-1.5 text-xs"
+                            >
+                              <UserPlus
+                                aria-hidden="true"
+                                className="h-3.5 w-3.5"
+                                strokeWidth={2}
+                              />
+                              Open People page
+                            </Link>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSearch('');
+                              setPresenceFilter('');
+                              setWorkLocationFilter('');
+                              setPage(1);
+                              dispatch(fetchTeamAvailability({ limit: DEFAULT_LIMIT, page: 1 }));
+                            }}
+                            className="btn-ghost px-3 py-1.5 text-xs"
+                          >
+                            <RefreshCw
+                              aria-hidden="true"
+                              className="h-3.5 w-3.5"
+                              strokeWidth={2}
+                            />
+                            Refresh
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <div className="space-y-2 text-sm">
