@@ -18,17 +18,28 @@ export default function NotificationBell() {
   const boxRef = useRef(null);
   const navigate = useNavigate();
 
-  // poll unread count every 30s
+  // poll unread count every 60s. A previous in-flight request is
+  // skipped (not stacked) so a slow backend can't pile up a queue
+  // of pending XHRs — the previous-tick pattern (5/30s) keeps
+  // the bell informative without amplifying backend slowness
+  // into a request storm. The 30s version stacked up if the
+  // previous tick was still in flight.
   useEffect(() => {
     let alive = true;
+    let inFlight = false;
     const tick = async () => {
+      if (inFlight) return;
+      inFlight = true;
       try {
         const res = await systemService.unreadCount();
         if (alive) setCount(res?.count ?? 0);
       } catch { /* keep old count */ }
+      finally {
+        inFlight = false;
+      }
     };
     tick();
-    const t = setInterval(tick, 30000);
+    const t = setInterval(tick, 60000);
     return () => { alive = false; clearInterval(t); };
   }, []);
 
