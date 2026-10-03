@@ -878,8 +878,16 @@ test('time: cross-midnight sessions stay on the clock-in day', async () => {
   await assert.rejects(() => punch(ctx, 'CLOCK_IN'), /open session from 2026-09-12/);
 
   const out = await punch(ctx, 'CLOCK_OUT');
-  assert.equal(out.snapshot.liveState, 'COMPLETED');
-  assert.equal(out.snapshot.spanMinutes, 120);
+  // 31.16 — closing a non-today session re-resolves the snapshot to
+  // today (NOT_IN), not to the just-closed date. Verify the close
+  // actually happened via the control row.
+  assert.equal(out.snapshot.liveState, 'NOT_IN');
+  assert.equal(out.snapshot.date, '2026-09-13');
+  assert.equal(out.snapshot.isToday, true);
+  assert.deepEqual(out.snapshot.allowedActions, ['CLOCK_IN']);
+  const closed = ctx.AttendanceModel.rows[0];
+  assert.ok(closed.punchOut, 'close must have written punchOut');
+  assert.equal(closed.liveState, 'COMPLETED');
   assert.equal(ctx.AttendanceModel.rows.length, 1);
 });
 
@@ -905,7 +913,14 @@ test('time: explicit date targets only real open sessions', async () => {
 
   ctx.setNow('2026-09-13T01:00:00+05:30');
   const out = await punch(ctx, 'CLOCK_OUT', { date: '2026-09-12' });
-  assert.equal(out.snapshot.liveState, 'COMPLETED');
+  // 31.16 — explicit-date close re-resolves the snapshot to today.
+  // The close itself is verified by the control row.
+  assert.equal(out.snapshot.liveState, 'NOT_IN');
+  assert.equal(out.snapshot.date, '2026-09-13');
+  assert.equal(out.snapshot.isToday, true);
+  const closed = ctx.AttendanceModel.rows[0];
+  assert.ok(closed.punchOut, 'close must have written punchOut');
+  assert.equal(closed.liveState, 'COMPLETED');
 
   await assert.rejects(() => punch(ctx, 'CLOCK_OUT', { date: '2026-09-10' }), /No attendance session/);
   await assert.rejects(() => punch(ctx, 'CLOCK_OUT', { date: '2099-01-01' }), /future date/);
@@ -1015,11 +1030,52 @@ test('service: legacy-interleaved double-open sessions stay resolvable', async (
 
   ctx.setNow('2026-09-12T10:00:00+05:30');
   const closed = await punch(ctx, 'CLOCK_OUT', { date: '2026-09-11' });
-  assert.equal(closed.snapshot.liveState, 'COMPLETED');
-  assert.equal(closed.snapshot.date, '2026-09-11');
+  // 31.16 — closing a non-today session must re-resolve the live snapshot
+  // to the user's CURRENT interactive day (2026-09-12), not leave the UI
+  // stuck on the just-closed date. The today session is still open, so
+  // the snapshot lands on WORKING + otherOpenSession=null.
+  assert.equal(closed.snapshot.liveState, 'WORKING');
+  assert.equal(closed.snapshot.date, '2026-09-12');
+  assert.equal(closed.snapshot.isToday, true);
+  assert.equal(closed.snapshot.otherOpenSession, null);
 
   const after = await getLiveAttendance({ companyId: COMPANY_A, userId: USER_A, deps: ctx.deps });
   assert.equal(after.otherOpenSession, null);
+});
+
+test('service: closing the ONLY open session (no today session) lands on today NOT_IN', async () => {
+  // 31.16 — the exact scenario the user hit: a forgotten legacy
+  // session is the user's only open doc, today has no session.
+  // After CLOCK_OUT the snapshot must re-resolve to today (NOT_IN)
+  // so the user can immediately Clock In for the current day.
+  const ctx = makeCtx();
+  await ctx.AttendanceModel.create({
+    companyId: COMPANY_A,
+    user: USER_A,
+    date: '2026-08-13',
+    punchIn: new Date('2026-08-13T09:00:00+05:30'),
+    status: 'PRESENT',
+    eventSeq: 0,
+  });
+
+  // Pretend "now" is 2026-10-03, well past the legacy date.
+  ctx.setNow('2026-10-03T10:20:00+05:30');
+
+  const before = await getLiveAttendance({ companyId: COMPANY_A, userId: USER_A, deps: ctx.deps });
+  assert.equal(before.liveState, 'WORKING');
+  assert.equal(before.date, '2026-08-13');
+  assert.equal(before.isToday, false);
+
+  const out = await punch(ctx, 'CLOCK_OUT');
+  // The close committed (the doc now has punchOut), but the snapshot
+  // returned to the UI must be for TODAY with NOT_IN, otherwise the
+  // "Showing your open session from 2026-08-13" banner stays stuck
+  // and the user has no actionable buttons.
+  assert.equal(out.snapshot.liveState, 'NOT_IN');
+  assert.equal(out.snapshot.date, '2026-10-03');
+  assert.equal(out.snapshot.isToday, true);
+  assert.deepEqual(out.snapshot.allowedActions, ['CLOCK_IN']);
+  assert.equal(out.snapshot.otherOpenSession, null);
 });
 
 test('merge: fresh duplicate CLOCK_IN replays instead of a phantom 409', async () => {
