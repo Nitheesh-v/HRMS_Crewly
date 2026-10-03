@@ -30,7 +30,6 @@ import {
 } from '../services/presence/presenceTenantConfigService.js';
 import {
   getPresenceLiveStore,
-  presenceLiveStoreForConnection,
 } from '../services/presence/presenceLiveStoreRegistry.js';
 import {
   publishPresenceChanged,
