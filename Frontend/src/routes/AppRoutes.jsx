@@ -62,6 +62,7 @@ const AttendanceTeamPage = lazy(() => import("../pages/attendance/AttendanceTeam
 // other page in this file; nothing about presence forces eager code.
 const TeamAvailabilityPage = lazy(() => import("../pages/team/TeamAvailabilityPage.jsx"));
 const WorkLocationReviewPage = lazy(() => import("../pages/presence/WorkLocationReviewPage.jsx"));
+const PresenceSettingsPage = lazy(() => import("../pages/settings/presence/PresenceSettingsPage.jsx"));
 const AttendanceTimesheetPage = lazy(() => import("../pages/attendance/AttendanceTimesheetPage.jsx"));
 const AttendanceTeamTimesheetsPage = lazy(() => import("../pages/attendance/AttendanceTeamTimesheetsPage.jsx"));
 const AttendanceOperationsPage = lazy(() => import("../pages/attendance/AttendanceOperationsPage.jsx"));
@@ -436,6 +437,20 @@ const AppRoutes = () => (
         element={
           <RequireRole roles={COMPANY_ADMIN}>
             <AiSettingsPage />
+          </RequireRole>
+        }
+      />
+
+      {/* Phase 37.7 — tenant presence / work-location configuration.
+          The backend re-uses the SETTINGS_MANAGE permission; the
+          route is gated to COMPANY_ADMIN to mirror the AI settings
+          UX. The API will 403 for any other role even if they
+          type the URL. */}
+      <Route
+        path="settings/presence"
+        element={
+          <RequireRole roles={COMPANY_ADMIN}>
+            <PresenceSettingsPage />
           </RequireRole>
         }
       />

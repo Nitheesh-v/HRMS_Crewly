@@ -78,6 +78,13 @@ const NAV_BY_ROLE = {
     { to: "/app/settings/ai-settings", label: "AI Settings" },
     { to: "/app/settings/ai-usage", label: "AI Usage" },
 
+    // Phase 37.7 — the tenant presence / work-location admin page.
+    // COMPANY_ADMIN ONLY, matching the RequireRole guard on the route
+    // and the SETTINGS_MANAGE check the server does independently.
+    // The label intentionally mirrors the company-setting area, not
+    // "Me" — this is tenant policy, not personal preference.
+    { to: "/app/settings/presence", label: "Presence Settings" },
+
     { to: "/app/profile", label: "My Profile" },
     { to: "/app/notifications", label: "Notifications" },
     { to: "/app/notification-settings", label: "Notify Settings" },

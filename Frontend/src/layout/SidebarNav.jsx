@@ -128,6 +128,8 @@ const NAV_ICON_BY_PATH = {
   // Phase 36.6 / 36.7 — the admin AI pages.
   "/app/settings/ai-settings": SlidersHorizontal,
   "/app/settings/ai-usage": Activity,
+  // Phase 37.7 — tenant presence / work-location admin.
+  "/app/settings/presence": SlidersHorizontal,
   "/app/security/sessions": LockKeyhole,
   "/app/security": ShieldCheck,
   "/app/audit-logs": ScrollText,
@@ -263,7 +265,7 @@ const NAV_GROUPS = [
     id: "admin",
     label: "Administration",
     icon: ShieldCheck,
-    paths: ["/app/company", "/app/governance", "/app/roles-permissions", "/app/support", "/app/exit"],
+    paths: ["/app/company", "/app/governance", "/app/roles-permissions", "/app/support", "/app/exit", "/app/settings/presence"],
     prefixes: ["/app/security", "/app/audit-logs"],
     more: true,
   },

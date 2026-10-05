@@ -28,6 +28,8 @@ import {
   setMyStatusMessage,
   setMyWorkLocation,
   getTeamAvailability,
+  getTenantConfig,
+  updateTenantConfig,
 } from '../../services/presenceService.js';
 import workLocationRequestService from '../../services/presence/workLocationRequestService.js';
 
@@ -178,6 +180,20 @@ const initialState = {
     error: null,
     lastDecidedId: null,
   },
+  // Phase 37.7 — Tenant admin config sub-state. The admin page reads
+  // / writes this; the rest of the app reads `state.presence.config.data`
+  // to learn whether presence / work-location / status messages are
+  // enabled.
+  //
+  // `dirty` is NOT stored here — per-field dirty lives in the page
+  // component (Phase 36 paid for the page-wide dirty bug; we use a
+  // per-key diff in the page and only send changed keys).
+  config: {
+    data: null,
+    loading: 'idle', // 'idle' | 'pending' | 'fulfilled' | 'rejected'
+    saving: 'idle', // 'idle' | 'pending' | 'fulfilled' | 'rejected'
+    error: null,
+  },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -262,6 +278,62 @@ export const decideWorkLocationRequest = createAsyncThunk(
       throw new Error(`Unknown action: ${action}`);
     } catch (err) {
       return rejectWithValue(rejectWlrWith(err));
+    }
+  },
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PHASE 37.7 — TENANT ADMIN CONFIG THUNKS
+//
+//  The admin page reads the snapshot, lets the operator edit a draft,
+//  and on save sends ONLY the keys whose draft differs from the
+//  snapshot. The slice is therefore thin: it does load + save.
+//
+//  WHY A SEPARATE SUB-STATE INSTEAD OF RE-USING `current`
+//    `current` is the user's OWN presence snapshot (presence / status
+//    message / work location / live source). The admin config is
+//    TENANT-level policy. Conflating them would let a non-admin
+//    page accidentally see the company policy field, and would make
+//    the audit log noisy.
+//
+//  WHY NO `dirty` FLAG IN THE SLICE
+//    Per-field dirty lives in the page component (Phase 36 paid for
+//    the page-wide dirty bug — see docs/PHASE_36.md §4.4 and the
+//    PresenceSettingsPage implementation in 37.7). A slice-level
+//    `dirty` boolean is a footgun: it would re-fire on every render
+//    where a per-field draft happens to differ.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const rejectConfigWith = (err) => ({
+  code: err.presenceCode || 'PRESENCE_CONFIG_FAILED',
+  message: err.message || 'Presence config request failed',
+});
+
+export const loadPresenceConfig = createAsyncThunk(
+  'presence/loadConfig',
+  async (_, { rejectWithValue }) => {
+    try {
+      const result = await getTenantConfig();
+      return result || null;
+    } catch (err) {
+      return rejectWithValue(rejectConfigWith(err));
+    }
+  },
+);
+
+export const savePresenceConfig = createAsyncThunk(
+  'presence/saveConfig',
+  async (patch = {}, { rejectWithValue }) => {
+    try {
+      // The page constructs the patch — it MUST be a plain object with
+      // ONLY whitelisted keys. The service is a thin pass-through; the
+      // backend's `PRESENCE_UPDATABLE_FIELDS` whitelist is the authority.
+      // We do NOT add a defensive strip here because stripping silently
+      // would mask a frontend bug that ships `companyId` / `userId`.
+      const result = await updateTenantConfig(patch);
+      return result || null;
+    } catch (err) {
+      return rejectWithValue(rejectConfigWith(err));
     }
   },
 );
@@ -496,6 +568,48 @@ const presenceSlice = createSlice({
         state.workLocationRequests.error = action.payload || {
           code: 'WORK_LOCATION_REQUEST_DECIDE_FAILED',
           message: 'Could not decide WFH request',
+        };
+      })
+      // ── Phase 37.7 — tenant config thunks ──
+      .addCase(loadPresenceConfig.pending, (state) => {
+        state.config.loading = 'pending';
+        state.config.error = null;
+      })
+      .addCase(loadPresenceConfig.fulfilled, (state, action) => {
+        state.config.loading = 'fulfilled';
+        state.config.data = action.payload || null;
+        state.config.error = null;
+      })
+      .addCase(loadPresenceConfig.rejected, (state, action) => {
+        state.config.loading = 'rejected';
+        // A failed load is NOT a silent default. The page must show
+        // an error and stay on a "couldn't load" state, NOT a
+        // permissive defaults view.
+        state.config.data = null;
+        state.config.error = action.payload || {
+          code: 'PRESENCE_CONFIG_LOAD_FAILED',
+          message: 'Could not load presence configuration.',
+        };
+      })
+      .addCase(savePresenceConfig.pending, (state) => {
+        state.config.saving = 'pending';
+        state.config.error = null;
+      })
+      .addCase(savePresenceConfig.fulfilled, (state, action) => {
+        state.config.saving = 'fulfilled';
+        // The backend returns the canonicalized snapshot; replace
+        // whatever the page had locally. The page will then re-derive
+        // the dirty map from this fresh snapshot.
+        if (action.payload) state.config.data = action.payload;
+        state.config.error = null;
+      })
+      .addCase(savePresenceConfig.rejected, (state, action) => {
+        state.config.saving = 'rejected';
+        // Preserve the last good snapshot — failed save does not wipe
+        // the form. The page reads `config.error` to show the message.
+        state.config.error = action.payload || {
+          code: 'PRESENCE_CONFIG_SAVE_FAILED',
+          message: 'Could not save presence configuration.',
         };
       });
   },
