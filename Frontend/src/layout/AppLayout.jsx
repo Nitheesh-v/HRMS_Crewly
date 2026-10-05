@@ -12,7 +12,13 @@ import { PresenceMenu } from "../components/presence/index.js";
 import { useEffect, useState } from "react";
 import { useDispatch } from "react-redux";
 import { startRealtimeSession, stopRealtimeSession } from "../services/realtime/realtimeClient.js";
-import { startPresenceRuntime, stopPresenceRuntime } from "../services/realtime/presenceRuntime.js";
+// presence runtime is intentionally NOT started on auth (37.4). The
+// topbar presence menu reads via REST, the dashboard tile reads via
+// REST, and the team page reads via REST. The realtime socket is
+// only needed for cross-instance fan-out, which is opt-in via
+// PRESENCE_SOCKET_ENABLED=true on the backend. Starting the runtime
+// on every page load was opening a socket per page and competing
+// with the user-facing HTTP requests on slow connections.
 import { fetchMyPermissions } from "../redux/slices/PermissionSlices.js";
 
 
@@ -223,13 +229,6 @@ const AppLayout = () => {
   useEffect(() => {
     if (userId) {
       dispatch(fetchMyPermissions());
-      // 37.4 — open the presence realtime runtime for this user.
-      // Idempotent. Closes on logout (the `secureLogout` path
-      // unmounts this layout, so React's cleanup drives stop()).
-      startPresenceRuntime();
-      return () => {
-        stopPresenceRuntime();
-      };
     }
     return undefined;
   }, [dispatch, userId]);

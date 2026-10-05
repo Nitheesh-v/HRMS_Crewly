@@ -148,13 +148,19 @@ test('frontend 37.4: presenceSlice exports the 37.4 actions', async () => {
   assert.match(sliceSrc, /presenceInvalidateTeam\s*\(\s*state\s*\)/);
 });
 
-test('frontend 37.4: AppLayout wires startPresenceRuntime/stopPresenceRuntime', () => {
+test('frontend 37.4: AppLayout does NOT auto-start the presence runtime', () => {
+  // The runtime is intentionally NOT started on auth (37.4.x). On
+  // a slow Mongo the per-page socket connect competes with the
+  // user-facing HTTP requests. The topbar presence menu reads via
+  // REST, the dashboard tile reads via REST, the team page reads
+  // via REST. The realtime socket is opt-in via the backend env
+  // flag PRESENCE_SOCKET_ENABLED=true and is not the user-facing
+  // path. This test pins that AppLayout no longer auto-starts
+  // the runtime — if a future change re-adds the auto-start,
+  // this assertion fires.
   const src = read('src/layout/AppLayout.jsx');
-  assert.match(src, /startPresenceRuntime/);
-  assert.match(src, /stopPresenceRuntime/);
-  // The runtime is started on auth (userId present) and stopped on
-  // unmount. Both are inside the userId useEffect.
-  assert.match(src, /userId/);
+  assert.doesNotMatch(src, /startPresenceRuntime\s*\(\s*\)/);
+  assert.doesNotMatch(src, /stopPresenceRuntime\s*\(\s*\)/);
 });
 
 test('frontend 37.4: presenceChannel.js does NOT import the redux store directly', () => {

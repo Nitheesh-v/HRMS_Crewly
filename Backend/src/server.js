@@ -117,13 +117,21 @@ const startServer = async () => {
     // Redis is disabled/unreachable — the HTTP API is never affected.
     await getChatSocketServer().attach(server);
 
-    // Phase 37.4 — presence Socket.IO namespace. Mounts on the SAME
-    // http server, opens a separate Redis adapter channel for the
-    // 'presence:adapter' key, and refuses every connection as
-    // FEATURE_UNAVAILABLE when PRESENCE_SOCKET_ENABLED is unset or
-    // Redis is unreachable. The HTTP /api/presence/* endpoints keep
-    // working.
-    await getPresenceSocketServer().attach(server);
+    // Phase 37.4 — presence Socket.IO namespace. SKIPPED by
+    // default. The HTTP /api/presence/* REST endpoints are what
+    // every UI surface (topbar, dashboard, team page) reads — they
+    // are wired and tested independently of this socket. The
+    // socket is for cross-instance realtime fan-out, opt-in via
+    // PRESENCE_SOCKET_ENABLED=true. When the user's environment
+    // has a slow Mongo, opening the socket's dedicated pub/sub
+    // Redis clients at startup was visibly slowing the HTTP
+    // request path on this user's machine; making the attach
+    // explicit keeps that opt-in deliberate. To re-enable: set
+    // PRESENCE_SOCKET_ENABLED=true AND REDIS_ENABLED=true AND
+    // REDIS_URL set; uncomment the line below.
+    // await getPresenceSocketServer().attach(server);
+
+    server.listen(
 
     server.listen(
       env.PORT,
@@ -180,7 +188,6 @@ const startServer = async () => {
           stopProcessDiagnostics();
           return getChatSocketServer().stop();
         })
-        .then(() => getPresenceSocketServer().stop())
         .then(() => getRealtimeGateway().stop())
         .catch(() => {})
         .finally(() => shutdown(signal));
