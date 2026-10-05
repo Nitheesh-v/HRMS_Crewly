@@ -49,6 +49,7 @@ import rolePermissionRoutes from "./rolePermissionRoutes.js";
 import auditRoutes from "./auditRoutes.js";
 import securityRoutes from "./securityRoutes.js";
 import presenceRoutes from "./presence.js";
+import workLocationRequestRoutes from "./presence/workLocationRequestRoutes.js";
 import publicCareerRoutes from "./recruitment/publicCareerRoutes.js";
 import publicCandidateOfferRoutes from "./recruitment/publicCandidateOfferRoutes.js";
 import publicBgvConsentRoutes from "./bgv/publicBgvConsentRoutes.js";
@@ -177,6 +178,10 @@ router.use("/audit", auditRoutes);
 router.use("/security", securityRoutes);
 
 router.use("/presence", presenceRoutes);
+router.use(
+  "/presence/work-location-requests",
+  workLocationRequestRoutes,
+);
 
 router.use("/profile", profileRoutes);
 

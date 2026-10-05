@@ -30,6 +30,7 @@ import PresenceIndicator from './PresenceIndicator.jsx';
 import StatusExpirySelector from './StatusExpirySelector.jsx';
 import StatusMessageEditor from './StatusMessageEditor.jsx';
 import WorkLocationSelector, { WORK_LOCATION_LABELS } from './WorkLocationSelector.jsx';
+import WorkLocationRequestDialog from './WorkLocationRequestDialog.jsx';
 import {
   isSelectablePresence,
   presenceLabel,
@@ -41,6 +42,7 @@ import {
   updateMyStatus,
   updateMyStatusMessage,
   updateMyWorkLocation,
+  fetchMyWorkLocationRequests,
 } from '../../redux/slices/presenceSlice.js';
 import notify from '../../utils/notify.js';
 
@@ -55,8 +57,12 @@ export default function PresenceMenu() {
   const { current: presence, loading, saving, error } = useSelector(
     (state) => state.presence,
   );
+  const wlr = useSelector(
+    (state) => state.presence?.workLocationRequests || {},
+  );
 
   const [open, setOpen] = useState(false);
+  const [wlrDialogOpen, setWlrDialogOpen] = useState(false);
   const [draftStatus, setDraftStatus] = useState(null);
   const [draftExpiry, setDraftExpiry] = useState(undefined);
   const [draftMessage, setDraftMessage] = useState('');
@@ -73,6 +79,14 @@ export default function PresenceMenu() {
       dispatch(loadMyPresence());
     }
   }, [dispatch, loading]);
+
+  // Phase 37.5 — load the user's WFH requests when the menu is open
+  // so the "Request WFH" CTA can show the right copy (e.g. "pending").
+  useEffect(() => {
+    if (open && wlr.loading === 'idle') {
+      dispatch(fetchMyWorkLocationRequests());
+    }
+  }, [open, dispatch, wlr.loading]);
 
   // The popover reads the server snapshot as its default. The draft state
   // is the user's IN-PROGRESS edits only; the rendered controls read the
@@ -391,11 +405,27 @@ export default function PresenceMenu() {
                 workLocationEnabled={presence?.workLocationEnabled !== false}
                 wfhMode={presence?.wfhMode || 'self_declare'}
                 disabled={isSaving}
+                onRequestWfh={() => setWlrDialogOpen(true)}
+                pendingWfhRequest={
+                  Array.isArray(wlr.myRequests)
+                    ? wlr.myRequests.find((r) => r.status === 'pending')
+                    : null
+                }
               />
             </section>
           </div>
         </div>
       ) : null}
+
+      {/* Phase 37.5 — WFH request dialog. */}
+      <WorkLocationRequestDialog
+        open={wlrDialogOpen}
+        onClose={() => {
+          setWlrDialogOpen(false);
+          // Refresh the list so the CTA copy reflects the new status.
+          dispatch(fetchMyWorkLocationRequests());
+        }}
+      />
     </div>
   );
 }

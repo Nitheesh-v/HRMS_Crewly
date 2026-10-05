@@ -42,6 +42,13 @@ export const PRESENCE_SOCKET_INBOUND_EVENTS = Object.freeze([
 // renaming search lands on this file.
 export const PRESENCE_GATEWAY_EVENT_TYPE = 'presence:changed';
 
+// Phase 37.5 — invalidation envelope. A SEPARATE event type with a
+// dedicated, fixed-shape payload (no presence value carried — the
+// client refetches the snapshot). The frontend presenceChannel
+// listener refetches `state.presence` and (when appropriate) the
+// team list. No PII in this envelope.
+export const PRESENCE_INVALIDATED_EVENT_TYPE = 'presence:invalidated';
+
 // Schema version. Increment on a backward-incompatible envelope change
 // (e.g. a new key consumers must understand). Consumers MUST ignore
 // frames with a schemaVersion they do not recognise.
@@ -60,6 +67,15 @@ export const PRESENCE_ENVELOPE_KEYS = Object.freeze([
   'source',
 ]);
 
+// Phase 37.5 — invalidation envelope keys. Smaller, dedicated set.
+export const PRESENCE_INVALIDATED_KEYS = Object.freeze([
+  'schemaVersion',
+  'companyId',
+  'userId',
+  'occurredAt',
+  'source',
+]);
+
 // The ONLY sources that may appear in a bus envelope. Anything else
 // is a coding error (asserted at build time).
 const VALID_SOURCES = Object.freeze([
@@ -70,6 +86,11 @@ const VALID_SOURCES = Object.freeze([
                     //   but the bus still accepts the value for test seams.
   'resolver',       // the resolver noticed a transition outside the socket path
                     //   (e.g. manual DND lifted via REST; the team page refetches)
+  // Phase 37.5 — work-location request decisions. The bus envelope
+  // for these is the `presence:invalidated` event (smaller shape);
+  // the source is informational.
+  'approve',        // a work-location request was approved
+  'cancel',         // an approved work-location request was cancelled
 ]);
 
 const isIsoString = (value) =>
@@ -196,6 +217,100 @@ export const parsePresenceChangedEnvelope = (raw) => {
     userId: parsed.userId,
     presence: parsed.presence,
     presenceSource,
+    occurredAt: parsed.occurredAt,
+    source: parsed.source,
+  });
+};
+
+/**
+ * Phase 37.5 — build one `presence:invalidated` envelope. The same
+ * shape contract as `buildPresenceChangedEnvelope`, but with a
+ * dedicated, smaller field set. Throws a RangeError if a disallowed
+ * key is present OR if the produced envelope exceeds the strict size
+ * cap. Pure: never reads the network, never imports a transport.
+ */
+export const buildPresenceInvalidatedEnvelope = (input = {}) => {
+  if (!input || typeof input !== 'object') {
+    throw new TypeError('invalidation envelope input must be an object');
+  }
+
+  const allowed = {
+    schemaVersion: Number.isInteger(input.schemaVersion)
+      ? input.schemaVersion
+      : PRESENCE_ENVELOPE_SCHEMA_VERSION,
+    companyId: String(input.companyId || ''),
+    userId: String(input.userId || ''),
+    occurredAt: String(input.occurredAt || ''),
+    source: String(input.source || 'resolver'),
+  };
+
+  for (const key of Object.keys(allowed)) {
+    if (!PRESENCE_INVALIDATED_KEYS.includes(key)) {
+      throw new RangeError(`invalidation envelope forbids key "${key}"`);
+    }
+  }
+
+  if (!allowed.companyId || !allowed.userId) {
+    throw new RangeError(
+      'invalidation envelope requires server-derived companyId and userId',
+    );
+  }
+  if (!isIsoString(allowed.occurredAt)) {
+    throw new RangeError('invalidation envelope requires an ISO-8601 occurredAt');
+  }
+  if (!VALID_SOURCES.includes(allowed.source)) {
+    throw new RangeError(
+      `invalidation envelope source must be one of: ${VALID_SOURCES.join(', ')}`,
+    );
+  }
+
+  const envelope = Object.freeze({
+    schemaVersion: allowed.schemaVersion,
+    companyId: allowed.companyId,
+    userId: allowed.userId,
+    occurredAt: allowed.occurredAt,
+    source: allowed.source,
+  });
+
+  const serialized = JSON.stringify(envelope);
+  if (serialized.length > PRESENCE_MAX_LIVE_ENVELOPE_BYTES) {
+    throw new RangeError(
+      `invalidation envelope exceeds ${PRESENCE_MAX_LIVE_ENVELOPE_BYTES} bytes (got ${serialized.length})`,
+    );
+  }
+
+  return { envelope, serialized };
+};
+
+/**
+ * Phase 37.5 — parse a raw JSON string into a validated invalidation
+ * envelope. Returns null on any structural problem (forward-safe).
+ */
+export const parsePresenceInvalidatedEnvelope = (raw) => {
+  if (typeof raw !== 'string' || raw.length === 0) return null;
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object') return null;
+  if (parsed.schemaVersion !== PRESENCE_ENVELOPE_SCHEMA_VERSION) return null;
+
+  if (typeof parsed.companyId !== 'string' || !parsed.companyId) return null;
+  if (typeof parsed.userId !== 'string' || !parsed.userId) return null;
+  if (typeof parsed.occurredAt !== 'string' || !isIsoString(parsed.occurredAt)) {
+    return null;
+  }
+  if (typeof parsed.source !== 'string' || !VALID_SOURCES.includes(parsed.source)) {
+    return null;
+  }
+
+  return Object.freeze({
+    schemaVersion: parsed.schemaVersion,
+    companyId: parsed.companyId,
+    userId: parsed.userId,
     occurredAt: parsed.occurredAt,
     source: parsed.source,
   });

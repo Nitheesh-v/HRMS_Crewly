@@ -29,6 +29,7 @@ import {
   setMyWorkLocation,
   getTeamAvailability,
 } from '../../services/presenceService.js';
+import workLocationRequestService from '../../services/presence/workLocationRequestService.js';
 
 // INITIAL empty team state. Mirrors EMPTY_PRESENCE semantics — a missing
 // key reads as "no team data loaded yet", never as "everyone is hidden".
@@ -164,7 +165,106 @@ const initialState = {
   // 37.4 — last debounced team-refetch bump from the realtime
   // runtime. TeamAvailabilityPage watches this and re-fetches.
   teamBumpedAt: null,
+  // 37.5 — Work-location request sub-state. Lives inside the
+  // existing presence slice (no new top-level redux key).
+  workLocationRequests: {
+    myRequests: [],
+    reviewQueue: [],
+    byId: {},
+    submitting: 'idle',
+    decisionPending: 'idle',
+    loading: 'idle',
+    loadingQueue: 'idle',
+    error: null,
+    lastDecidedId: null,
+  },
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PHASE 37.5 — WORK-LOCATION REQUEST THUNKS
+//
+//  Wired into the existing presence slice so no new top-level
+//  redux key is added. Sub-state lives at
+//  `state.presence.workLocationRequests`.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const rejectWlrWith = (err) => ({
+  code: err.presenceCode || 'WORK_LOCATION_REQUEST_FAILED',
+  message: err.message || 'WFH request failed',
+});
+
+export const submitWorkLocationRequest = createAsyncThunk(
+  'presence/submitWorkLocationRequest',
+  async (payload = {}, { rejectWithValue }) => {
+    try {
+      const result = await workLocationRequestService.submit(payload);
+      return result?.data ?? result ?? null;
+    } catch (err) {
+      return rejectWithValue(rejectWlrWith(err));
+    }
+  },
+);
+
+export const fetchMyWorkLocationRequests = createAsyncThunk(
+  'presence/fetchMyWorkLocationRequests',
+  async (_arg, { rejectWithValue }) => {
+    try {
+      const result = await workLocationRequestService.mine();
+      return result?.data ?? result ?? { requests: [] };
+    } catch (err) {
+      return rejectWithValue(rejectWlrWith(err));
+    }
+  },
+);
+
+export const cancelMyWorkLocationRequest = createAsyncThunk(
+  'presence/cancelMyWorkLocationRequest',
+  async (requestId, { rejectWithValue }) => {
+    try {
+      const result = await workLocationRequestService.cancel(requestId);
+      return result?.data ?? result ?? null;
+    } catch (err) {
+      return rejectWithValue(rejectWlrWith(err));
+    }
+  },
+);
+
+export const fetchWorkLocationReviewQueue = createAsyncThunk(
+  'presence/fetchWorkLocationReviewQueue',
+  async (_arg, { rejectWithValue }) => {
+    try {
+      const result = await workLocationRequestService.pending();
+      return result?.data?.requests ?? result?.requests ?? [];
+    } catch (err) {
+      return rejectWithValue(rejectWlrWith(err));
+    }
+  },
+);
+
+export const decideWorkLocationRequest = createAsyncThunk(
+  'presence/decideWorkLocationRequest',
+  async ({ requestId, action, decisionNote } = {}, { rejectWithValue }) => {
+    try {
+      if (action === 'approve') {
+        const result = await workLocationRequestService.approve(
+          requestId,
+          decisionNote,
+        );
+        return result?.data ?? result ?? null;
+      }
+      if (action === 'reject') {
+        const result = await workLocationRequestService.reject(
+          requestId,
+          decisionNote,
+        );
+        return result?.data ?? result ?? null;
+      }
+      throw new Error(`Unknown action: ${action}`);
+    } catch (err) {
+      return rejectWithValue(rejectWlrWith(err));
+    }
+  },
+);
 
 const presenceSlice = createSlice({
   name: 'presence',
@@ -213,6 +313,14 @@ const presenceSlice = createSlice({
     // ─────────────────────────────────────────────────────────────────
     presenceInvalidateTeam(state) {
       state.teamBumpedAt = new Date().toISOString();
+    },
+    // Phase 37.5 — when a presence:invalidated envelope arrives
+    // for the signed-in user, drop the cached work-location
+    // request rows so the next list fetch re-reads from the
+    // server. The server is authoritative.
+    presenceWlrInvalidateForUser(state) {
+      state.workLocationRequests.myRequests = [];
+      state.workLocationRequests.byId = {};
     },
   },
   extraReducers: (builder) => {
@@ -299,9 +407,99 @@ const presenceSlice = createSlice({
           code: 'PRESENCE_TEAM_LOAD_FAILED',
           message: 'Could not load team availability.',
         };
+      })
+      // ── Phase 37.5 — work-location request extra reducers ──
+      .addCase(submitWorkLocationRequest.pending, (state) => {
+        state.workLocationRequests.submitting = 'pending';
+        state.workLocationRequests.error = null;
+      })
+      .addCase(submitWorkLocationRequest.fulfilled, (state, action) => {
+        state.workLocationRequests.submitting = 'fulfilled';
+        const row = action.payload;
+        if (row && row.id) {
+          state.workLocationRequests.byId[row.id] = row;
+          state.workLocationRequests.myRequests = [
+            row,
+            ...state.workLocationRequests.myRequests.filter(
+              (r) => r.id !== row.id,
+            ),
+          ];
+        }
+      })
+      .addCase(submitWorkLocationRequest.rejected, (state, action) => {
+        state.workLocationRequests.submitting = 'rejected';
+        state.workLocationRequests.error = action.payload || {
+          code: 'WORK_LOCATION_REQUEST_FAILED',
+          message: 'Could not submit WFH request',
+        };
+      })
+      .addCase(fetchMyWorkLocationRequests.pending, (state) => {
+        state.workLocationRequests.loading = 'pending';
+        state.workLocationRequests.error = null;
+      })
+      .addCase(fetchMyWorkLocationRequests.fulfilled, (state, action) => {
+        state.workLocationRequests.loading = 'fulfilled';
+        const list = action.payload?.requests || [];
+        state.workLocationRequests.myRequests = list;
+        state.workLocationRequests.byId = Object.fromEntries(
+          list.map((r) => [r.id, r]),
+        );
+      })
+      .addCase(fetchMyWorkLocationRequests.rejected, (state, action) => {
+        state.workLocationRequests.loading = 'rejected';
+        state.workLocationRequests.error = action.payload || {
+          code: 'WORK_LOCATION_REQUEST_LOAD_FAILED',
+          message: 'Could not load WFH requests',
+        };
+      })
+      .addCase(cancelMyWorkLocationRequest.fulfilled, (state, action) => {
+        const row = action.payload;
+        if (row && row.id) {
+          state.workLocationRequests.byId[row.id] = row;
+          state.workLocationRequests.myRequests = state.workLocationRequests.myRequests.map(
+            (r) => (r.id === row.id ? row : r),
+          );
+        }
+      })
+      .addCase(fetchWorkLocationReviewQueue.pending, (state) => {
+        state.workLocationRequests.loadingQueue = 'pending';
+        state.workLocationRequests.error = null;
+      })
+      .addCase(fetchWorkLocationReviewQueue.fulfilled, (state, action) => {
+        state.workLocationRequests.loadingQueue = 'fulfilled';
+        state.workLocationRequests.reviewQueue = action.payload || [];
+      })
+      .addCase(fetchWorkLocationReviewQueue.rejected, (state, action) => {
+        state.workLocationRequests.loadingQueue = 'rejected';
+        state.workLocationRequests.error = action.payload || {
+          code: 'WORK_LOCATION_REVIEW_LOAD_FAILED',
+          message: 'Could not load review queue',
+        };
+      })
+      .addCase(decideWorkLocationRequest.pending, (state) => {
+        state.workLocationRequests.decisionPending = 'pending';
+        state.workLocationRequests.error = null;
+      })
+      .addCase(decideWorkLocationRequest.fulfilled, (state, action) => {
+        state.workLocationRequests.decisionPending = 'fulfilled';
+        const row = action.payload;
+        if (row && row.id) {
+          state.workLocationRequests.byId[row.id] = row;
+          state.workLocationRequests.lastDecidedId = row.id;
+          state.workLocationRequests.reviewQueue = state.workLocationRequests.reviewQueue.filter(
+            (r) => r.id !== row.id,
+          );
+        }
+      })
+      .addCase(decideWorkLocationRequest.rejected, (state, action) => {
+        state.workLocationRequests.decisionPending = 'rejected';
+        state.workLocationRequests.error = action.payload || {
+          code: 'WORK_LOCATION_REQUEST_DECIDE_FAILED',
+          message: 'Could not decide WFH request',
+        };
       });
   },
 });
 
-export const { clearError, presenceTicked, presenceInvalidateTeam } = presenceSlice.actions;
+export const { clearError, presenceTicked, presenceInvalidateTeam, presenceWlrInvalidateForUser } = presenceSlice.actions;
 export default presenceSlice.reducer;

@@ -39,6 +39,8 @@ import { getRealtimeGateway } from '../../infrastructure/realtime/realtimeGatewa
 import {
   buildPresenceChangedEnvelope,
   PRESENCE_GATEWAY_EVENT_TYPE,
+  PRESENCE_INVALIDATED_EVENT_TYPE,
+  buildPresenceInvalidatedEnvelope,
 } from './presenceEvents.js';
 
 // Test seam: hermetic tests swap the gateway without touching the
@@ -147,5 +149,78 @@ export const presenceBusAvailable = () => {
     return Boolean(resolveGateway().isStarted());
   } catch {
     return false;
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PHASE 37.5 — INVALIDATION ENVELOPE
+//
+//  When a work-location request is APPROVED or an APPROVED request is
+//  CANCELLED, the resolver on a connected viewer's machine should
+//  re-read the row so the team page reflects the change without a full
+//  page refresh. The invalidation envelope carries the minimum needed
+//  for the frontend to act: companyId, userId, and occurredAt. The
+//  payload NEVER contains the decision note, the reviewer's name, the
+//  requester's email, or any other PII (spec §30).
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Publish a `presence:invalidated` envelope. Best-effort. Never throws.
+ * @param {Object} input
+ * @param {string} input.companyId
+ * @param {string} input.userId
+ * @param {string} [input.source]  — 'approve' | 'cancel' | 'resolver'
+ */
+export const publishPresenceInvalidated = async (input = {}) => {
+  const occurredAt =
+    typeof input.occurredAt === 'string' && input.occurredAt
+      ? input.occurredAt
+      : new Date().toISOString();
+
+  let built;
+  try {
+    built = buildPresenceInvalidatedEnvelope({
+      companyId: input.companyId,
+      userId: input.userId,
+      source: input.source || 'resolver',
+      occurredAt,
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      delivered: 'none',
+      error: err?.message || 'invalidation envelope build failed',
+    };
+  }
+
+  let gateway;
+  try {
+    gateway = resolveGateway();
+  } catch (err) {
+    return { ok: false, delivered: 'none', error: 'gateway not initialised' };
+  }
+
+  if (!gateway.isStarted()) {
+    return { ok: false, delivered: 'none', error: 'gateway disabled' };
+  }
+
+  try {
+    const result = await gateway.publish({
+      type: PRESENCE_INVALIDATED_EVENT_TYPE,
+      companyId: built.envelope.companyId,
+      userId: built.envelope.userId,
+      payload: {
+        schemaVersion: built.envelope.schemaVersion,
+        occurredAt: built.envelope.occurredAt,
+        source: built.envelope.source,
+      },
+    });
+    return { ok: true, delivered: result?.delivered || 'unknown', error: null };
+  } catch (err) {
+    return {
+      ok: false,
+      delivered: 'none',
+      error: err?.message || 'invalidation publish failed',
+    };
   }
 };

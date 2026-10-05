@@ -61,6 +61,7 @@ const AttendanceTeamPage = lazy(() => import("../pages/attendance/AttendanceTeam
 // Phase 37.3 — Team availability (read-only). Lazy-loaded like every
 // other page in this file; nothing about presence forces eager code.
 const TeamAvailabilityPage = lazy(() => import("../pages/team/TeamAvailabilityPage.jsx"));
+const WorkLocationReviewPage = lazy(() => import("../pages/presence/WorkLocationReviewPage.jsx"));
 const AttendanceTimesheetPage = lazy(() => import("../pages/attendance/AttendanceTimesheetPage.jsx"));
 const AttendanceTeamTimesheetsPage = lazy(() => import("../pages/attendance/AttendanceTeamTimesheetsPage.jsx"));
 const AttendanceOperationsPage = lazy(() => import("../pages/attendance/AttendanceOperationsPage.jsx"));
@@ -492,6 +493,19 @@ const AppRoutes = () => (
         element={
           <RequireRole roles={SENIORS}>
             <TeamAvailabilityPage />
+          </RequireRole>
+        }
+      />
+
+      {/* Phase 37.5 — WFH request review queue. HR / admin / manager
+          (anyone with PRESENCE_WORK_MODE_REVIEW) may visit. The
+          backend reuses the same scope helper as 31.4 work-mode
+          (utils/orgHelpers.js). */}
+      <Route
+        path="presence/work-location-requests/review"
+        element={
+          <RequireRole roles={HR}>
+            <WorkLocationReviewPage />
           </RequireRole>
         }
       />

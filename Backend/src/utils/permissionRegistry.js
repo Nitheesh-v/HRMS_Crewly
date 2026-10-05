@@ -141,6 +141,14 @@ export const DEFAULT_PERMISSIONS = [
   // requesting must never imply reviewing.
   ...actions("ATTENDANCE_WORK_MODE", ["REQUEST", "REVIEW"]),
 
+  // Phase 37.5 — Presence work-location requests. REQUEST is self-
+  // service for employees under approval_required; REVIEW gates
+  // the reviewer queue. Split by design so requesting never
+  // implies reviewing. The presence variant is intentionally
+  // distinct from the attendance one — a company can enable
+  // presence approvals without enabling attendance work-mode.
+  ...actions("PRESENCE_WORK_MODE", ["REQUEST", "REVIEW"]),
+
   // Phase 31.5 — Attendance regularization. REQUEST is self-service
   // (own requests only, org scope enforced at the service layer);
   // REVIEW gates the exception-center queue. Split by design:
@@ -453,6 +461,10 @@ const SELF_SERVICE_PERMISSIONS = [
   // themselves; reviewing stays a separately-granted power.
   "ATTENDANCE_WORK_MODE_REQUEST",
 
+  // Phase 37.5 — every employee may request presence work-location
+  // approval for themselves; reviewing stays separately granted.
+  "PRESENCE_WORK_MODE_REQUEST",
+
   // Phase 31.5 — every employee may request corrections /
   // explanations for their own attendance days.
   "ATTENDANCE_REGULARIZATION_REQUEST",
@@ -542,6 +554,10 @@ export const DEFAULT_ROLE_MATRIX = {
 
     // Phase 31.4 — HR reviews work-mode requests company-wide.
     "ATTENDANCE_WORK_MODE_REVIEW",
+
+    // Phase 37.5 — HR reviews presence work-location requests
+    // company-wide.
+    "PRESENCE_WORK_MODE_REVIEW",
 
     // Phase 31.5 — HR reviews regularizations company-wide.
     "ATTENDANCE_REGULARIZATION_REVIEW",
@@ -654,6 +670,9 @@ export const DEFAULT_ROLE_MATRIX = {
     // Phase 31.4 — review work-mode requests within the org subtree
     // (scope enforced at the service layer, never by role name).
     "ATTENDANCE_WORK_MODE_REVIEW",
+    // Phase 37.5 — review presence work-location requests within
+    // the org subtree (scope enforced at the service layer).
+    "PRESENCE_WORK_MODE_REVIEW",
     // Phase 31.5 — review regularizations within the org subtree.
     "ATTENDANCE_REGULARIZATION_REVIEW",
     // Phase 31.8 — review overtime / comp-off within the org
