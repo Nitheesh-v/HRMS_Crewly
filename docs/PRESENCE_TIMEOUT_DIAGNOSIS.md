@@ -1,122 +1,119 @@
-# Diagnose the 25s timeout on the presence save endpoint
+# Diagnose the 25s timeout — global slowness on every request
 
-If the user is seeing `timeout of 25000ms exceeded` when they click
-"Save status" in the topbar, the backend `/api/presence/me/status` is
-taking longer than 25s. The frontend axios default is 25s.
+If the user is seeing `timeout of 25000ms exceeded` on multiple
+endpoints (not just the presence save), the backend is slow
+systemically, not on a single query. The frontend axios default
+is 25s — every request that takes longer than that gets a toast.
 
-## Most likely causes (in order)
+The backend ALREADY has the right hooks for this; nothing has to
+be coded.
 
-1. **Mongo is on a remote host with high latency** — every save is 4
-   round-trips (config read, upsert, config read, findOne). On a 200ms
-   ping, that's ~800ms. On a 1s+ ping, that's 4s+. 25s is more than
-   that, but the per-op timeout might add up.
-2. **Missing Mongo index** — the unique compound index on
-   `{ companyId, userId }` is defined in the model, but if Mongo
-   didn't apply it (e.g. older collection), each save is a full
-   collection scan.
-3. **A stuck Mongo connection** — restart Mongo.
-4. **The 37.4 realtime bus is hanging** — the controller publishes
-   after the save; if Redis is unreachable, the publish could block.
+## A. The slow-request logger (built-in, ships in every release)
 
-## Quick diagnosis — run these in the backend dir
+`Backend/src/infrastructure/observability/httpObservability.js`
+logs `http.request.slow` for any request whose total time exceeds
+`OBSERVABILITY_SLOW_REQUEST_MS`. The default is 1500ms; set it
+to 500ms in your `.env` to make it aggressive:
 
-```bash
-# 1. Confirm Mongo is reachable
-node -e "
-  const m = require('mongoose');
-  m.connect(process.env.MONGO_URI).then(async () => {
-    const t = Date.now();
-    await m.connection.db.admin().ping();
-    console.log('ping took', Date.now() - t, 'ms');
-    process.exit(0);
-  });
-"
-# Expected: <50ms on a healthy Mongo.
-
-# 2. Confirm the compound index exists on userpresences
-node -e "
-  const m = require('mongoose');
-  m.connect(process.env.MONGO_URI).then(async () => {
-    const idx = await m.connection.collection('userpresences').indexes();
-    console.log(JSON.stringify(idx, null, 2));
-    process.exit(0);
-  });
-"
-# Expected: a compound index { companyId: 1, userId: 1 } with unique:true.
-
-# 3. Time a single findOne on userpresences
-node -e "
-  const m = require('mongoose');
-  m.connect(process.env.MONGO_URI).then(async () => {
-    const t = Date.now();
-    const doc = await m.connection.collection('userpresences')
-      .findOne({ companyId: 'PASTE_COMPANY_OBJECTID', userId: 'PASTE_USER_OBJECTID' });
-    console.log('query took', Date.now() - t, 'ms; found:', !!doc);
-    process.exit(0);
-  });
-"
-# Expected: <20ms with the index; >500ms means Mongo is doing a full scan.
-
-# 4. Time a single findOneAndUpdate on presencetenantconfigs
-node -e "
-  const m = require('mongoose');
-  m.connect(process.env.MONGO_URI).then(async () => {
-    const t = Date.now();
-    const doc = await m.connection.collection('presencetenantconfigs')
-      .findOneAndUpdate(
-        { companyId: 'PASTE_COMPANY_OBJECTID' },
-        { \$setOnInsert: { companyId: 'PASTE_COMPANY_OBJECTID' } },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-      );
-    console.log('query took', Date.now() - t, 'ms');
-    process.exit(0);
-  });
-"
-# Expected: <20ms with the index; >500ms means the index is missing.
+```
+OBSERVABILITY_SLOW_REQUEST_MS=500
 ```
 
-## If the queries are slow — add the index manually
+Then restart the backend. Every request over 500ms leaves a line
+like:
 
-```js
-// In a one-off script (run ONCE, not in the app code):
-db.userpresences.createIndex(
-  { companyId: 1, userId: 1 },
-  { unique: true, name: 'company_user_unique' }
-);
-db.presencetenantconfigs.createIndex(
-  { companyId: 1 },
-  { unique: true, name: 'company_unique' }
-);
+```
+[warn] http.request.slow { method: "GET", route: "/api/presence/me",
+                              status: 200, durationMs: 8234,
+                              bytes: 412, userId: "…", companyId: "…" }
 ```
 
-## If Mongo is fine but the API still times out
+The `route` + `durationMs` pair is enough to know which endpoint
+is the bottleneck. The first one to look at is the one closest
+to 25s.
 
-The 37.4 realtime publish is the next suspect. Temporarily disable it
-by setting `REALTIME_ENABLED=false` in your backend `.env` and retry
-the save. If the save is fast, the publish is the culprit — check
-Redis is up and `REDIS_URL` is correct.
+## B. The per-request perf log (PERF_TIMING=true)
 
-## The endpoint pipeline
+```
+PERF_TIMING=true
+```
 
-`PUT /api/presence/me/status` runs in this order:
+The middleware at `Backend/src/middlewares/perfTiming.js` mounts
+a Mongoose query-counter and logs one line per request:
 
-1. `protect` (JWT verify, no I/O) — <5ms
-2. `tenantContext` (extract companyId, no I/O) — <1ms
-3. `presenceStatusValidator` (body shape, no I/O) — <1ms
-4. `presenceController.putStatus`:
-   - `service.setMyStatus`:
-     - `tenantConfigReader` (1 Mongo read) — should be <20ms
-     - `upsertUserPresence` (1 Mongo write) — should be <20ms
-     - `getMyPresence`:
-       - `tenantConfigReader` (1 Mongo read) — <20ms
-       - `readUserPresence` (1 Mongo read) — <20ms
-       - `liveStore.readLive` (1 Redis read) — <5ms
-   - `safePublishIfChanged` (1 Redis publish) — <5ms
-5. Response — <1ms
+```
+[Perf] GET /api/users -> 200 totalMs=8432 mongoQueries=5
+      marks={"auth":12,"tenant":40,"rbac":120}
+      collections=users.find=2,companies.find=1,subscriptions.find=1
+```
 
-Total expected: <100ms. Anything >1s is wrong; 25s is very wrong.
+The `marks` dict is CUMULATIVE milliseconds — the cost of a phase
+is its mark minus the previous one. The `collections` list tells
+you exactly which Mongo collection+method pair dominated.
+Together they answer "which middleware ate the time AND which
+collection is slow".
 
-## How to share findings
+## C. The presence + system per-controller diagnostics (37.4)
 
-Run the four commands above, paste the output. I can pinpoint the
-slow step from the timings.
+The presence controller and the system controller have per-call
+timing that logs `STILL RUNNING after 500ms` and a final elapsed
+ms, gated to a 500ms threshold. Look for lines like:
+
+```
+[presence/putStatus] STILL RUNNING after 500ms — userId: …
+[presence/putStatus] service.setMyStatus took 12345 ms
+[system/unreadCount]  Notification.countDocuments took 1234 ms
+```
+
+These are always on (no env var). They catch the per-controller
+slowness for the paths they cover.
+
+## How to start
+
+1. Stop the backend.
+2. Add to your backend `.env`:
+   ```
+   PERF_TIMING=true
+   OBSERVABILITY_SLOW_REQUEST_MS=500
+   ```
+3. Start the backend.
+4. Open the user page (the screenshot showed `/app/users` with
+   the Add User modal). Open the bell. Save a status. Click
+   around. Each request leaves a log line.
+5. Paste the slowest line here. I can pinpoint the exact step
+   from the route, duration, and the `collections` / `marks`
+   dict.
+
+## What to look for in the log
+
+- If `marks.tenant` is large: the `tenantContext` middleware
+  (Company + Subscription populate) is the bottleneck. Check the
+  Company + Subscription collections for missing indexes.
+- If `marks.auth` is large: the auth middleware's `User.findById`
+  + `SecuritySession.findOne` is the bottleneck. Check the User
+  + SecuritySession collections.
+- If `marks.rbac` is large: a permission check is querying a
+  slow collection. Look at the `collections` list.
+- If `collections` shows one collection dominating: that's the
+  specific query. Add an index or rewrite the query.
+
+## Most likely causes for systemic 25s timeouts
+
+1. **Mongo connection pool exhausted** — too many concurrent
+   requests waiting for a free connection. The pool default is
+   100; check the Atlas dashboard.
+2. **Mongo host high latency** — a remote Atlas cluster with
+   200ms+ pings turns 5 round-trips into 1s+. The perf log
+   shows it as `companies.find=1,subscriptions.find=1,...` each
+   taking 200-300ms.
+3. **A slow populate** — the `tenantContext` middleware does
+   `populate('subscription')` on every request. If the
+   Subscription collection is huge, this is slow. Cache it.
+4. **A missing index** — the perf log shows the same collection
+   hit many times. Add the index.
+
+## Once you've got the log
+
+Paste 5-10 of the slowest lines here. From the `route` +
+`durationMs` + `collections` I'll tell you exactly which Mongo
+collection is the bottleneck and which index to add.
