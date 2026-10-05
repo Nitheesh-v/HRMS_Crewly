@@ -41,9 +41,11 @@ import {
 import {
   getChatSocketServer,
 } from './socket/initSocketServer.js';
-import {
-  getPresenceSocketServer,
-} from './socket/presenceSocket.js';
+// Phase 37.4 — presence Socket.IO factory is intentionally NOT
+// imported on the hot path. The socket is opt-in via
+// PRESENCE_SOCKET_ENABLED=true on the backend (commented-out
+// attach() call in startServer). The HTTP /api/presence/* REST
+// endpoints are the user-facing path; they don't need this socket.
 import {
   startProcessDiagnostics,
   stopProcessDiagnostics,
@@ -130,8 +132,6 @@ const startServer = async () => {
     // PRESENCE_SOCKET_ENABLED=true AND REDIS_ENABLED=true AND
     // REDIS_URL set; uncomment the line below.
     // await getPresenceSocketServer().attach(server);
-
-    server.listen(
 
     server.listen(
       env.PORT,
