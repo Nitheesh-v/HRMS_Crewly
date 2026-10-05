@@ -278,6 +278,21 @@ export default function PresenceMenu() {
           </div>
 
           <div className="space-y-3 px-3 py-3">
+            {/* PHASE 37.6 — On Leave banner (read-only, server-derived). */}
+            {presence?.presence === 'on_leave' ? (
+              <div
+                role="status"
+                data-testid="on-leave-banner"
+                className="rounded-md border border-violet-500/40 bg-violet-500/10 px-2.5 py-2 text-xs text-violet-200"
+              >
+                <span className="font-medium">On Leave</span>
+                <span className="ml-1.5 text-violet-300/80">
+                  You are on approved leave. Presence and work-location
+                  controls are temporarily disabled.
+                </span>
+              </div>
+            ) : null}
+
             {/* STATUS */}
             <section aria-labelledby="presence-status-heading">
               <h3

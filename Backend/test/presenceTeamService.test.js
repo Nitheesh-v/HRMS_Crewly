@@ -216,7 +216,7 @@ test('presenceTeamService — items only contain allowlisted user keys', async (
     companyId,
     actor: { _id: 'u-self', role: 'MANAGER', department: 'd-eng' },
   });
-  const allowedKeys = ['id', 'name', 'employeeCode', 'designation', 'avatarUrl', 'department', 'role', 'status', 'presence', 'workLocation', 'statusMessage', 'employeePresenceVisible', 'presenceSource', 'manualStatus', 'manualStatusExpiresAt', 'statusMessageExpiresAt', 'workLocationExpiresAt', 'livePresenceAvailable'];
+  const allowedKeys = ['id', 'name', 'employeeCode', 'designation', 'avatarUrl', 'department', 'role', 'status', 'presence', 'workLocation', 'statusMessage', 'employeePresenceVisible', 'presenceSource', 'manualStatus', 'manualStatusExpiresAt', 'statusMessageExpiresAt', 'workLocationExpiresAt', 'livePresenceAvailable', 'onLeave', 'outsideWorkingHours', 'workingHoursSource', 'workingHoursPhase', 'workingHoursIsWorkingDay'];
   for (const item of out.items) {
     for (const key of Object.keys(item)) {
       assert.ok(allowedKeys.includes(key), `unexpected key ${key} in item`);

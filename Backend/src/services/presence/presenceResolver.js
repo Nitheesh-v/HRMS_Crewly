@@ -80,12 +80,43 @@ const isExpired = (expiry, now) => {
  *                                    resolver applies the precedence
  *                                    above and sets
  *                                    livePresenceAvailable = true.
+ * @param {Object|null} [args.hrContext] — Phase 37.6 read-only HR
+ *                                    context. Shape:
+ *                                      {
+ *                                        onLeave: true | false | null,
+ *                                        outsideWorkingHours: true | false | null,
+ *                                        workingHoursSource: string|null,
+ *                                        workingHoursPhase: 'IN_WINDOW' | 'UPCOMING' | 'ENDED' | null,
+ *                                        workingHoursIsWorkingDay: boolean|null,
+ *                                        leaveReadFailed?: boolean,
+ *                                        scheduleReadFailed?: boolean,
+ *                                      }
+ *                                    `null` is treated as "HR context
+ *                                    unavailable" — the resolver
+ *                                    behaves exactly like 37.4.
+ *                                    `onLeave: true` is the
+ *                                    HIGHEST precedence layer (above
+ *                                    manual, above live).
  * @returns {Object} the frozen normalised presence snapshot
  */
-export const resolvePresence = ({ durable, config, now, live = null } = {}) => {
+export const resolvePresence = ({
+  durable,
+  config,
+  now,
+  live = null,
+  hrContext = null,
+} = {}) => {
   const nowDate = now instanceof Date ? now : new Date();
   const cfg = config || {};
   const d = durable || {};
+
+  // 37.6 — read the HR context. Default to a fully-unknown object so
+  // existing call sites that do not pass one keep behaving exactly
+  // like 37.4.
+  const hr = hrContext || {};
+  const onLeave = hr.onLeave === true;
+  const leaveReadFailed = hr.leaveReadFailed === true;
+  const scheduleReadFailed = hr.scheduleReadFailed === true;
 
   const manualStatus = PRESENCE_MANUAL_VALUES.includes(d.manualStatus)
     ? d.manualStatus
@@ -122,7 +153,17 @@ export const resolvePresence = ({ durable, config, now, live = null } = {}) => {
   let presenceSource;
   let livePresenceAvailable;
 
-  if (effectiveManual) {
+  if (onLeave) {
+    // 37.6 — APPROVED ACTIVE leave is the highest-precedence
+    // presentation layer (spec §8, §20). Even a manual DND set
+    // before the leave started does not override the workforce
+    // fact that the employee is on approved leave today.
+    // `livePresenceAvailable` is still carried so the chrome dot
+    // can hint at technical liveness separately (37.4 honesty).
+    presence = 'on_leave';
+    presenceSource = 'leave';
+    livePresenceAvailable = live !== null && live !== undefined;
+  } else if (effectiveManual) {
     // Manual ALWAYS wins. Even if the live signal says the user is
     // online, the user explicitly said "Busy until 3 PM" — surface that.
     presence = effectiveManual;
@@ -162,6 +203,15 @@ export const resolvePresence = ({ durable, config, now, live = null } = {}) => {
       : [],
   });
 
+  // 37.6 — Outside Working Hours is an additional flag. It rides
+  // alongside presence and NEVER replaces it (spec §13). A `null`
+  // value here means the schedule read failed and the value is
+  // genuinely unknown — distinct from `false` ("within shift,
+  // definitely") and `true` ("outside, definitely").
+  let outsideWorkingHours = null;
+  if (hr.outsideWorkingHours === true) outsideWorkingHours = true;
+  else if (hr.outsideWorkingHours === false) outsideWorkingHours = false;
+
   return Object.freeze({
     presence,
     presenceSource,
@@ -178,6 +228,24 @@ export const resolvePresence = ({ durable, config, now, live = null } = {}) => {
     // 37.1: false. 37.4: true when the live source was readable.
     livePresenceAvailable,
     config: configSlice,
+    // 37.6 — the two new authoritative facts. `onLeave` is
+    // `null` when the read failed; the frontend treats `null`
+    // as "not currently reportable" and renders neither pill.
+    onLeave: onLeave ? true : leaveReadFailed ? null : false,
+    outsideWorkingHours,
+    // Optional context — only carries the source / phase when the
+    // read succeeded. Never carries employee name, salary, leave
+    // type, or any other PII.
+    workingHoursSource:
+      hr.workingHoursSource != null ? String(hr.workingHoursSource) : null,
+    workingHoursPhase:
+      hr.workingHoursPhase != null ? String(hr.workingHoursPhase) : null,
+    workingHoursIsWorkingDay:
+      hr.workingHoursIsWorkingDay === true
+        ? true
+        : hr.workingHoursIsWorkingDay === false
+        ? false
+        : null,
   });
 };
 

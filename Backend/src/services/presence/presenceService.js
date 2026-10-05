@@ -33,6 +33,10 @@ import {
 } from './presenceConfig.js';
 import { getPresenceTenantConfigOrThrow } from './presenceTenantConfigService.js';
 import { resolvePresence } from './presenceResolver.js';
+import {
+  findActiveApprovedLeave,
+  resolveWorkingHoursContext,
+} from './presenceHrContext.js';
 
 const trimMessage = (value) =>
   typeof value === 'string' ? value.trim() : '';
@@ -94,6 +98,110 @@ export const presenceService = (deps = {}) => {
   // reader does not have to fake the live store.
   const liveStore = deps.liveStore || null;
 
+  // 37.6 — read-only HR context readers. Both default to the real
+  // attendanceScheduleService-backed implementations. The Leave
+  // reader takes an injectable LeaveModel; the working-hours
+  // resolver takes an injectable scheduleResolver. A test seam
+  // can replace either without touching the other.
+  const leaveReader = deps.leaveReader || findActiveApprovedLeave;
+  const workingHoursReader = deps.workingHoursReader || resolveWorkingHoursContext;
+  const UserModel = deps.UserModel || null; // for working-hours resolution
+  const LeaveModel = deps.LeaveModel || null;
+
+  // Helper — produce a frozen, nullish `hrContext` for the resolver.
+  const emptyHr = () => ({
+    onLeave: null,
+    outsideWorkingHours: null,
+    workingHoursSource: null,
+    workingHoursPhase: null,
+    workingHoursIsWorkingDay: null,
+    leaveReadFailed: false,
+    scheduleReadFailed: false,
+  });
+
+  // Company-calendar day key, mirrored from 31.x so 37.6 talks the
+  // same language as Leave.startDate / Leave.endDate (YYYY-MM-DD
+  // string). Falls back to UTC slice if Intl is unavailable.
+  const dayKeyInZone = (at, timezone) => {
+    try {
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone || 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(at instanceof Date ? at : new Date(at));
+    } catch {
+      return new Date(at).toISOString().slice(0, 10);
+    }
+  };
+
+  // Read the HR context for one user. Best-effort: every failure is
+  // reflected as `null` (or `null` per field) — the resolver treats
+  // `null` as "unavailable" and renders nothing. A failed read
+  // MUST NOT be conflated with a successful read returning zero
+  // (spec §53, §54).
+  const readHrContext = async ({ companyId, userId, durable }) => {
+    const out = emptyHr();
+    const tz = (durable && durable.timezone) || 'Asia/Kolkata';
+    const todayKey = dayKeyInZone(new Date(), tz);
+
+    // 1) Leave.
+    try {
+      const row = await leaveReader({
+        companyId,
+        userId,
+        todayKey,
+        LeaveModel,
+      });
+      if (row) {
+        out.onLeave = true;
+      } else {
+        out.onLeave = false;
+      }
+    } catch {
+      out.onLeave = null;
+      out.leaveReadFailed = true;
+    }
+
+    // 2) Working hours. Requires a User document for the resolver.
+    if (!UserModel) {
+      // No User injected — we cannot resolve the schedule. Mark as
+      // unavailable so the team service (which does inject a User
+      // model via the live store) can fill it in.
+      out.outsideWorkingHours = null;
+      out.scheduleReadFailed = true;
+    } else {
+      try {
+        const person = await UserModel.findById(userId).lean();
+        if (!person) {
+          out.outsideWorkingHours = null;
+          out.scheduleReadFailed = true;
+        } else {
+          const ctx = await workingHoursReader({
+            companyId,
+            user: person,
+            attendanceDate: todayKey,
+            timezone: tz,
+          });
+          if (ctx) {
+            out.outsideWorkingHours = ctx.outsideWorkingHours === true;
+            out.workingHoursSource = ctx.source || null;
+            out.workingHoursPhase = ctx.phase || null;
+            out.workingHoursIsWorkingDay =
+              ctx.isWorkingDay === true ? true : ctx.isWorkingDay === false ? false : null;
+          } else {
+            out.outsideWorkingHours = null;
+            out.scheduleReadFailed = true;
+          }
+        }
+      } catch {
+        out.outsideWorkingHours = null;
+        out.scheduleReadFailed = true;
+      }
+    }
+    return out;
+  };
+
   // Reads the resolved presence for the caller. Always returns a frozen
   // snapshot from the resolver — never a half-built object.
   const getMyPresence = async ({ companyId, userId }) => {
@@ -111,7 +219,16 @@ export const presenceService = (deps = {}) => {
     const live = liveStore
       ? await liveStore.readLive({ companyId, userId })
       : null;
-    return resolvePresence({ durable, config, now: new Date(), live });
+    // 37.6 — read the read-only HR context (leave + working hours).
+    // Best-effort: a failure sets the corresponding field to null.
+    const hrContext = await readHrContext({ companyId, userId, durable });
+    return resolvePresence({
+      durable,
+      config,
+      now: new Date(),
+      live,
+      hrContext,
+    });
   };
 
   // Set / clear manual status. The tenant kill switch is enforced here.

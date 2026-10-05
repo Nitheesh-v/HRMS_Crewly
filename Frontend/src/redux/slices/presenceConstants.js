@@ -16,6 +16,14 @@ export const EMPTY_PRESENCE = Object.freeze({
   allowedWorkLocations: ['office', 'wfh', 'remote'],
   wfhMode: 'self_declare',
   livePresenceAvailable: false,
+  // Phase 37.6 — the two new authoritative facts. `null` is
+  // "HR read failed / unavailable" — distinct from `false`
+  // ("definitely not on leave" / "definitely within shift").
+  onLeave: null,
+  outsideWorkingHours: null,
+  workingHoursSource: null,
+  workingHoursPhase: null,
+  workingHoursIsWorkingDay: null,
   config: {
     enabled: true,
     statusMessagesEnabled: true,

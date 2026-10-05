@@ -27,6 +27,7 @@ import { Link } from 'react-router-dom';
 import {
   Briefcase,
   Building2,
+  Clock,
   Coffee,
   MapPin,
   RefreshCw,
@@ -38,7 +39,7 @@ import {
 import PresenceIndicator from '../../components/presence/PresenceIndicator.jsx';
 import { fetchTeamAvailability } from '../../redux/slices/presenceSlice.js';
 
-const PRESENCE_FILTER_VALUES = ['available', 'busy', 'dnd', 'unknown'];
+const PRESENCE_FILTER_VALUES = ['available', 'busy', 'dnd', 'unknown', 'on_leave', 'outside_working_hours'];
 const LOCATION_FILTER_VALUES = ['office', 'wfh', 'remote'];
 const MAX_SEARCH_LEN = 60;
 const DEFAULT_LIMIT = 25;
@@ -48,6 +49,17 @@ const PRESENCE_CHIP_TONE = {
   busy: 'bg-crewly-orange/15 text-crewly-orange border-crewly-orange/40',
   dnd: 'bg-crewly-red/15 text-crewly-red border-crewly-red/40',
   unknown: 'bg-white/10 text-crewly-dim border-crewly-border',
+  on_leave: 'bg-violet-500/15 text-violet-300 border-violet-500/40',
+  outside_working_hours: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/40',
+};
+
+const PRESENCE_CHIP_LABEL = {
+  available: 'Available',
+  busy: 'Busy',
+  dnd: 'Do Not Disturb',
+  unknown: 'Unknown',
+  on_leave: 'On Leave',
+  outside_working_hours: 'Outside Working Hours',
 };
 
 const LOCATION_CHIP_TONE = {
@@ -109,7 +121,8 @@ const TeamAvailabilityPage = () => {
     items: [],
     summary: {
       total: 0,
-      byPresence: { available: 0, busy: 0, dnd: 0, unknown: 0 },
+      byPresence: { available: 0, busy: 0, dnd: 0, unknown: 0, on_leave: 0 },
+      byOutsideWorkingHours: { inside: 0, outside: 0, unknown: 0 },
       byWorkLocation: { office: 0, wfh: 0, remote: 0 },
     },
     meta: { page: 1, totalPages: 1, totalItems: 0 },
@@ -255,7 +268,7 @@ const TeamAvailabilityPage = () => {
             {PRESENCE_FILTER_VALUES.map((value) => (
               <FilterChip
                 key={value}
-                label={value}
+                label={PRESENCE_CHIP_LABEL[value] || value}
                 active={presenceFilter === value}
                 tone={PRESENCE_CHIP_TONE[value]}
                 onClick={() => togglePresence(value)}
@@ -314,6 +327,18 @@ const TeamAvailabilityPage = () => {
           label="Unknown"
           value={byPresence.unknown || 0}
           tone="bg-white/10 text-crewly-dim"
+        />
+        <SummaryTile
+          icon={Briefcase}
+          label="On Leave"
+          value={byPresence.on_leave || 0}
+          tone="bg-violet-500/10 text-violet-300"
+        />
+        <SummaryTile
+          icon={Clock}
+          label="Outside Working Hours"
+          value={(summary.byOutsideWorkingHours || {}).outside || 0}
+          tone="bg-indigo-500/10 text-indigo-300"
         />
         <SummaryTile
           icon={Building2}
@@ -497,7 +522,11 @@ const TeamAvailabilityPage = () => {
                       />
                     </td>
                     <td className="px-4 py-3">
-                      {item.workLocation ? (
+                      {item.presence === 'on_leave' ? (
+                        <span className="badge border bg-violet-500/10 text-violet-300 border-violet-500/40">
+                          On Leave
+                        </span>
+                      ) : item.workLocation ? (
                         <span
                           className={
                             'badge border ' +

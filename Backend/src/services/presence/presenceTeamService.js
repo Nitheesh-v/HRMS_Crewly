@@ -35,6 +35,10 @@ import * as ScopeNS from '../../utils/scope.js';
 import { resolvePresence } from './presenceResolver.js';
 import { isWorkLocation } from './presenceConfig.js';
 import { getPresenceTenantConfigOrThrow } from './presenceTenantConfigService.js';
+import {
+  findActiveApprovedLeaveMany,
+  resolveWorkingHoursContext,
+} from './presenceHrContext.js';
 
 const getScopedUserIds = ScopeNS.getScopedUserIds;
 
@@ -43,6 +47,8 @@ const PRESENCE_TEAM_ALLOWED_FILTERS = Object.freeze([
   'busy',
   'dnd',
   'unknown',
+  'on_leave',
+  'outside_working_hours',
   'office',
   'wfh',
   'remote',
@@ -88,14 +94,28 @@ const DTO_PROJECTION = Object.freeze([
 // row + (optionally) its ephemeral live snapshot. The resolver is
 // pure: it never throws. Returns the normalised effective presence
 // snapshot for that one user.
-const resolveOne = (user, presenceDoc, config, liveSnapshot) => {
-  const { presence, presenceSource, manualStatus, manualStatusExpiresAt,
-    statusMessage, statusMessageExpiresAt, workLocation,
-    workLocationExpiresAt, livePresenceAvailable } = resolvePresence({
+const resolveOne = (user, presenceDoc, config, liveSnapshot, hrContext) => {
+  const {
+    presence,
+    presenceSource,
+    manualStatus,
+    manualStatusExpiresAt,
+    statusMessage,
+    statusMessageExpiresAt,
+    workLocation,
+    workLocationExpiresAt,
+    livePresenceAvailable,
+    onLeave,
+    outsideWorkingHours,
+    workingHoursSource,
+    workingHoursPhase,
+    workingHoursIsWorkingDay,
+  } = resolvePresence({
     durable: presenceDoc,
     config,
     now: new Date(),
     live: liveSnapshot || null,
+    hrContext: hrContext || null,
   });
 
   return {
@@ -126,6 +146,13 @@ const resolveOne = (user, presenceDoc, config, liveSnapshot) => {
       ? workLocationExpiresAt
       : null,
     livePresenceAvailable,
+    // 37.6 — the two new authoritative facts. `null` means
+    // "unavailable" and is never collapsed to `false`.
+    onLeave,
+    outsideWorkingHours,
+    workingHoursSource,
+    workingHoursPhase,
+    workingHoursIsWorkingDay,
   };
 };
 
@@ -137,11 +164,17 @@ const computeSummary = (rows) => {
       busy: 0,
       dnd: 0,
       unknown: 0,
+      on_leave: 0,
     },
     byWorkLocation: {
       office: 0,
       wfh: 0,
       remote: 0,
+    },
+    byOutsideWorkingHours: {
+      inside: 0,
+      outside: 0,
+      unknown: 0,
     },
   };
   for (const r of rows) {
@@ -152,6 +185,10 @@ const computeSummary = (rows) => {
     if (r.workLocation === 'office') summary.byWorkLocation.office += 1;
     else if (r.workLocation === 'wfh') summary.byWorkLocation.wfh += 1;
     else if (r.workLocation === 'remote') summary.byWorkLocation.remote += 1;
+    if (r.presence === 'on_leave') summary.byPresence.on_leave += 1;
+    if (r.outsideWorkingHours === true) summary.byOutsideWorkingHours.outside += 1;
+    else if (r.outsideWorkingHours === false) summary.byOutsideWorkingHours.inside += 1;
+    else summary.byOutsideWorkingHours.unknown += 1;
   }
   return summary;
 };
@@ -170,6 +207,12 @@ const matchesPresenceFilter = (row, filter) => {
     // is unavailable. This matches the 37.1 resolver's "manual wins"
     // precedence (capsule §2.8 + 37.1 §16).
     return row.presence === 'unknown';
+  }
+  if (filter === 'on_leave') {
+    return row.presence === 'on_leave';
+  }
+  if (filter === 'outside_working_hours') {
+    return row.outsideWorkingHours === true;
   }
   return row.presence === filter;
 };
@@ -210,6 +253,41 @@ export const presenceTeamService = (deps = {}) => {
   // Unknown). When absent, every row reads as 'unknown' (the 37.1
   // behaviour) — preserving all 37.3 hermetic tests untouched.
   const liveStore = deps.liveStore || null;
+
+  // 37.6 — read-only HR readers. Default to the real implementations
+  // from presenceHrContext. Tests may inject batch leave readers or
+  // a working-hours resolver.
+  const leaveReaderMany =
+    deps.leaveReaderMany ||
+    findActiveApprovedLeaveMany;
+  const workingHoursReader = deps.workingHoursReader || resolveWorkingHoursContext;
+  const LeaveModel = deps.LeaveModel || null;
+  // 37.6 — cache of working-hours contexts resolved within this
+  // single request so repeat lookups (per employee) do NOT cost
+  // a query each. The hermetic suite asserts the query count is
+  // bounded as employees grow.
+  const whCache = new Map();
+  const readWh = async ({ companyId, user, attendanceDate, timezone }) => {
+    const k = `${String(companyId)}|${String(user._id || user)}|${attendanceDate}`;
+    if (whCache.has(k)) return whCache.get(k);
+    const v = await workingHoursReader({ companyId, user, attendanceDate, timezone });
+    whCache.set(k, v);
+    return v;
+  };
+  // Company-calendar day key. Mirrors 31.x's dayKeyInZone so the
+  // 37.6 batched Leave query uses the same YYYY-MM-DD comparison.
+  const dayKeyInZone = (at, timezone) => {
+    try {
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone || 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(at instanceof Date ? at : new Date(at));
+    } catch {
+      return new Date(at).toISOString().slice(0, 10);
+    }
+  };
 
   const getTeamAvailability = async ({
     companyId,
@@ -404,13 +482,69 @@ export const presenceTeamService = (deps = {}) => {
     // 3) Resolve every row through the 37.1 + 37.4 resolver. This is
     //    the SINGLE precedence authority (37.1 §16 + 37.4 §15). We do
     //    NOT introduce a parallel team-specific precedence (§8 / §22).
-    const resolved = users.map((u) =>
-      resolveOne(
-        u,
-        presenceMap.get(String(u._id)),
-        config,
-        liveMap.get(String(u._id)) || null,
-      ),
+    // 37.6 — ONE batched Leave read for every authorised user. The
+    // query projects ONLY the minimum fields the 37.6 resolver
+    // needs; reason / approver / approverNote / type are NEVER
+    // returned (spec §10 / §37).
+    const tenantTimezone = config?.timezone || 'Asia/Kolkata';
+    const todayKey = dayKeyInZone(new Date(), tenantTimezone);
+    let leaveMap = new Map();
+    let leaveReadFailed = false;
+    try {
+      leaveMap = await leaveReaderMany({
+        companyId,
+        userIds,
+        todayKey,
+        LeaveModel,
+      });
+    } catch {
+      leaveReadFailed = true;
+      leaveMap = new Map();
+    }
+
+    // 3) Resolve every row through the 37.1 + 37.4 + 37.6 resolver.
+    //    This is the SINGLE precedence authority. We do NOT
+    //    introduce a parallel team-specific precedence. The 37.6
+    //    HR context is composed once per user from the batched
+    //    maps above.
+    const resolved = await Promise.all(
+      users.map(async (u) => {
+        const userId = String(u._id);
+        const onLeaveRow = leaveMap.get(userId);
+        const onLeave = onLeaveRow != null;
+        // Working hours — per-user, but cached in-process so a
+        // repeat lookup in the same request is O(1). The cache
+        // lives only for the duration of `getTeamAvailability`.
+        const wh = await readWh({
+          companyId,
+          user: u,
+          attendanceDate: todayKey,
+          timezone: tenantTimezone,
+        });
+        const hrContext = {
+          onLeave: leaveReadFailed ? null : onLeave,
+          outsideWorkingHours: wh ? wh.outsideWorkingHours === true : null,
+          workingHoursSource: wh ? wh.source || null : null,
+          workingHoursPhase: wh ? wh.phase || null : null,
+          workingHoursIsWorkingDay:
+            wh == null
+              ? null
+              : wh.isWorkingDay === true
+              ? true
+              : wh.isWorkingDay === false
+              ? false
+              : null,
+          leaveReadFailed,
+          scheduleReadFailed: wh == null,
+        };
+        return resolveOne(
+          u,
+          presenceMap.get(userId),
+          config,
+          liveMap.get(userId) || null,
+          hrContext,
+        );
+      }),
     );
 
     // 4) Apply presence + workLocation filters in memory. Filter

@@ -424,6 +424,8 @@ describe('presence resolver', () => {
       'livePresenceAvailable',
       'manualStatus',
       'manualStatusExpiresAt',
+      'onLeave',
+      'outsideWorkingHours',
       'presence',
       'presenceSource',
       'statusMessage',
@@ -433,6 +435,9 @@ describe('presence resolver', () => {
       'workLocation',
       'workLocationEnabled',
       'workLocationExpiresAt',
+      'workingHoursIsWorkingDay',
+      'workingHoursPhase',
+      'workingHoursSource',
     ]);
   });
 });

@@ -106,7 +106,21 @@ export { EMPTY_PRESENCE } from '../redux/slices/presenceConstants.js';
 //  Identity is the auth handshake. The query string ONLY carries the
 //  filter chips; nothing else. The backend validator refuses
 //  ?companyId / ?userId / ?employeeId and unknown filter tokens.
+//
+//  PHASE 37.6 — Accepts on_leave and outside_working_hours presence
+//  filters; the backend validator must whitelist them too.
 // ═══════════════════════════════════════════════════════════════════════════
+
+export const TEAM_PRESENCE_FILTERS = [
+  'available',
+  'busy',
+  'dnd',
+  'unknown',
+  'on_leave',
+  'outside_working_hours',
+];
+
+export const TEAM_LOCATION_FILTERS = ['office', 'wfh', 'remote'];
 export const getTeamAvailability = (params = {}) => {
   const search = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
