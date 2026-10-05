@@ -321,17 +321,42 @@ export const putWorkLocation = asyncHandler(async (req, res) => {
 
 export const getConfig = asyncHandler(async (req, res) => {
   // DB Logic - read tenant config
-  const config = await runWithPresenceError(
-    () => getPresenceTenantConfigOrThrow({ companyId: req.companyId }),
-    req,
-    res,
-  );
+  // Phase 37.7 — defence in depth. runWithPresenceError catches
+  // PresenceError; the global handler would otherwise render
+  // "Internal server error" for any non-ApiError throw. We belt-
+  // and-braces this with an explicit try/catch so the spec's
+  // fail-closed contract (a refused read is a 503 with a
+  // presence code) is honoured even if a future change drops a
+  // non-PresenceError through.
+  try {
+    const config = await getPresenceTenantConfigOrThrow({
+      companyId: req.companyId,
+    });
 
-  // Data to frontend
-  return ApiResponse.success(res, {
-    message: 'Presence tenant config',
-    data: config,
-  });
+    // Data to frontend
+    return ApiResponse.success(res, {
+      message: 'Presence tenant config',
+      data: config,
+    });
+  } catch (err) {
+    if (err instanceof PresenceError) {
+      return sendPresenceError(res, err);
+    }
+    // Anything else: log server-side, render a structured 503 to
+    // the admin. The page already shows an error state with a
+    // Retry button — the spec is satisfied as long as we never
+    // return a 500.
+    // eslint-disable-next-line no-console
+    console.error(
+      '[presence] getConfig unexpected throw:',
+      err && err.message ? err.message : err,
+    );
+    return res.status(503).json({
+      success: false,
+      code: 'PRESENCE_TENANT_CONFIG_READ_FAILED',
+      message: 'Presence configuration could not be read.',
+    });
+  }
 });
 
 export const putConfig = asyncHandler(async (req, res) => {
