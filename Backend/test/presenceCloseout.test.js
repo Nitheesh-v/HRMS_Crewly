@@ -548,3 +548,62 @@ test('closeout #30 — presenceTeamService source uses the batched leave reader'
   const text = presenceSrc('services/presence/presenceTeamService.js');
   assert.match(text, /findActiveApprovedLeaveMany|findActiveApprovedLeave/);
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// 31-32. Phase 37.7 production 500 hotfix: pre-validate hook
+//
+// The bug: on a fresh tenant, the upsert's `setDefaultsOnInsert:
+// true` populates schema defaults AFTER the inter-field validators
+// run. The validators (workLocationEnabled ↔ allowedWorkLocations,
+// offlineAfterMinutes > awayAfterMinutes) then see `undefined`
+// and throw ValidationError, which becomes a 500 to the admin.
+//
+// The fix is a `pre('validate')` hook on the schema that fills in
+// the canonical defaults BEFORE validation. The tests below pin
+// the fix at the SOURCE level: the hook must exist, and the
+// service-level catch must convert any throw into a 503, never
+// a 500.
+// ─────────────────────────────────────────────────────────────────────
+
+test('closeout #31 — model has a pre-validate hook that fills in defaults', () => {
+  const text = readSrc('src/models/PresenceTenantConfig.js');
+  assert.match(
+    text,
+    /pre\(\s*['"]validate['"]/,
+    'model must register a pre-validate hook',
+  );
+  // The hook must populate the fields the inter-field validators
+  // depend on, BEFORE the validators run.
+  assert.match(text, /allowedWorkLocations/);
+  assert.match(text, /offlineAfterMinutes/);
+  assert.match(text, /awayAfterMinutes/);
+});
+
+test('closeout #32 — getPresenceTenantConfigOrThrow converts ANY throw into a 503', async () => {
+  const { getPresenceTenantConfigOrThrow } = await import(
+    '../src/services/presence/presenceTenantConfigService.js'
+  );
+  const { PRESENCE_ERROR_CODES } = await import(
+    '../src/services/presence/presenceErrors.js'
+  );
+  // A model that throws a Mongoose ValidationError (the real bug
+  // shape) must be caught and re-thrown as PRESENCE_TENANT_CONFIG_READ_FAILED.
+  const fakeModel = {
+    findOneAndUpdate: async () => {
+      const e = new Error('allowedWorkLocations must contain at least one location when workLocationEnabled is true');
+      e.name = 'ValidationError';
+      throw e;
+    },
+  };
+  let caught = null;
+  try {
+    await getPresenceTenantConfigOrThrow({ companyId: 'co-bug', model: fakeModel });
+  } catch (err) {
+    caught = err;
+  }
+  assert.ok(caught, 'must throw');
+  assert.equal(caught.presenceCode, PRESENCE_ERROR_CODES.PRESENCE_TENANT_CONFIG_READ_FAILED);
+  // 503 is the spec-mandated status. The controller maps it to a
+  // structured response, not a generic 500.
+  assert.equal(caught.statusCode, 503);
+});

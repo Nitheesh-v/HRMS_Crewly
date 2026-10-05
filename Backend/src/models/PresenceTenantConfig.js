@@ -158,6 +158,49 @@ presenceTenantConfigSchema.path('offlineAfterMinutes').validate(
   'offlineAfterMinutes must be greater than awayAfterMinutes',
 );
 
+// Phase 37.7 — pre-validate hook that fills in the canonical
+// defaults BEFORE the inter-field validators run. Mongoose's
+// `setDefaultsOnInsert: true` on `findOneAndUpdate` only applies
+// schema defaults AFTER the validation phase, which means
+// `validateWorkLocationEnabled` and
+// `validateOfflineGreaterThanAway` see `undefined` on a fresh
+// insert and throw ValidationError. The fix is to apply the
+// defaults in a `pre('validate')` hook so every validator sees
+// a complete doc. The hook is a no-op when every field is
+// already set (the common read-and-update path).
+presenceTenantConfigSchema.pre('validate', function preValidateDefaults(next) {
+  try {
+    if (this.enabled === undefined) this.enabled = PRESENCE_TENANT_DEFAULTS.enabled;
+    if (this.employeePresenceVisible === undefined) {
+      this.employeePresenceVisible = PRESENCE_TENANT_DEFAULTS.employeePresenceVisible;
+    }
+    if (this.statusMessagesEnabled === undefined) {
+      this.statusMessagesEnabled = PRESENCE_TENANT_DEFAULTS.statusMessagesEnabled;
+    }
+    if (this.workLocationEnabled === undefined) {
+      this.workLocationEnabled = PRESENCE_TENANT_DEFAULTS.workLocationEnabled;
+    }
+    if (typeof this.wfhMode !== 'string' || this.wfhMode === '') {
+      this.wfhMode = PRESENCE_TENANT_DEFAULTS.wfhMode;
+    }
+    if (!Number.isFinite(this.awayAfterMinutes)) {
+      this.awayAfterMinutes = PRESENCE_TENANT_DEFAULTS.awayAfterMinutes;
+    }
+    if (!Number.isFinite(this.offlineAfterMinutes)) {
+      this.offlineAfterMinutes = PRESENCE_TENANT_DEFAULTS.offlineAfterMinutes;
+    }
+    if (this.lastSeenVisible === undefined) {
+      this.lastSeenVisible = PRESENCE_TENANT_DEFAULTS.lastSeenVisible;
+    }
+    if (!Array.isArray(this.allowedWorkLocations)) {
+      this.allowedWorkLocations = [...PRESENCE_TENANT_DEFAULTS.allowedWorkLocations];
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
 const PresenceTenantConfig = mongoose.model(
   'PresenceTenantConfig',
   presenceTenantConfigSchema,

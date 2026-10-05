@@ -204,6 +204,13 @@ export const readPresenceTenantConfig = async ({ companyId, model }) => {
  * Read or refuse. A read that throws becomes PRESENCE_TENANT_CONFIG_READ_FAILED
  * (503). This is the seam the presence service / resolver / controller
  * use — they MUST call this, never readPresenceTenantConfig directly.
+ *
+ * Phase 37.7 — the catch is intentionally broad. Mongoose's
+ * findOneAndUpdate can throw ValidationError, CastError, or a
+ * MongoServerError on a stale doc. The spec says fail-closed (§11):
+ * a refused read is a 503, never a 500, never a permissive default.
+ * The caller distinguishes "fail" by receiving a PresenceError with
+ * code PRESENCE_TENANT_CONFIG_READ_FAILED.
  */
 export const getPresenceTenantConfigOrThrow = async ({ companyId, model }) => {
   try {
@@ -216,6 +223,13 @@ export const getPresenceTenantConfigOrThrow = async ({ companyId, model }) => {
     }
     return snapshot;
   } catch (err) {
+    // Log the original error server-side (so an operator can
+    // diagnose) but never bubble up. The spec-mandated response is
+    // a deterministic refusal.
+    if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') {
+      // eslint-disable-next-line no-console
+      console.error('[presence] tenant config read failed:', err && err.message ? err.message : err);
+    }
     throw PresenceError.unavailable(
       PRESENCE_ERROR_CODES.PRESENCE_TENANT_CONFIG_READ_FAILED,
       'Presence configuration could not be read.',
