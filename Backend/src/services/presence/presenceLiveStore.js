@@ -14,15 +14,16 @@
 //    the set) starts the grace window.
 //
 //  GRACE WINDOW
-//    A user closing their final tab does NOT immediately read as
-//    "offline" — the live key TTL is set to `graceTtlSeconds` so a
-//    reconnect landing on a different instance still sees the user as
-//    recently alive. After the grace window the next read returns
-//    null (the key is gone) and the resolver returns `offline`.
+//    A final-tab disconnect writes an explicit zero-connection snapshot
+//    and keeps it through `graceTtlSeconds`, so REST refetches and other
+//    instances resolve the same confirmed Offline result. After expiry,
+//    a successful missing-key read also resolves Offline; Redis errors
+//    remain Unknown.
 //
 //  FAILURE SEMANTICS (Phase 37.4 §22)
 //    · Redis down -> the store returns null, never throws. The
-//      resolver treats null as 'unknown'. The HRMS keeps running.
+//      resolver treats null as 'unknown'. A successful read of a
+//      missing key returns a zero-connection snapshot ('offline').
 //    · The store NEVER falls back to in-process memory as authoritative
 //      distributed presence (a load-balanced system cannot pretend
 //      one process is global truth).
@@ -36,8 +37,9 @@
 //  ANTI-SURVEILLANCE LAW (re-asserted)
 //    The store writes ONLY:
 //      · connectionCount  (integer)
+//      · connectedAt      (ISO session anchor)
 //      · lastHeartbeatAt  (ISO)
-//      · lastActivityAt   (ISO)
+//      · lastActivityAt   (ISO, only for server-stamped user interactions)
 //    It does NOT write mouse coords, key codes, focused element ids,
 //    or any PII.
 //
@@ -48,10 +50,9 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import {
-  buildLiveSnapshot,
   parseLiveSnapshot,
-  stringifyLiveSnapshot,
   PRESENCE_LIVE_SNAPSHOT_KEYS,
+  NO_CONNECTION_LIVE_SNAPSHOT,
 } from './presenceLive.js';
 import {
   clampGraceTtlSeconds,
@@ -83,9 +84,7 @@ import {
  * @param {Object}   [deps.logger]           — pino-shaped logger
  * @param {Function} [deps.keyBuilder]       — injection seam for tests
  * @param {Function} [deps.connSetKeyBuilder]
- * @param {Function} [deps.stringify]        — pure; defaults to stringifyLiveSnapshot
  * @param {Function} [deps.parse]            — pure; defaults to parseLiveSnapshot
- * @param {Function} [deps.build]            — pure; defaults to buildLiveSnapshot
  */
 export const createPresenceLiveStore = (deps = {}) => {
   if (!deps.redis) {
@@ -103,9 +102,7 @@ export const createPresenceLiveStore = (deps = {}) => {
   const logger = deps.logger || { info() {}, warn() {}, error() {} };
   const keyBuilder = deps.keyBuilder || presenceLiveKey;
   const connSetKeyBuilder = deps.connSetKeyBuilder || presenceConnectionSetKey;
-  const stringify = deps.stringify || stringifyLiveSnapshot;
   const parse = deps.parse || parseLiveSnapshot;
-  const build = deps.build || buildLiveSnapshot;
 
   // Bounded try/catch wrapper for any single Redis op. Returns the
   // fallback value (null) on error so the caller treats it as
@@ -127,7 +124,8 @@ export const createPresenceLiveStore = (deps = {}) => {
    * One user connects (or reconnects). The store:
    *   1. SADD <connSet> <connectionId>
    *   2. SCARD <connSet>
-   *   3. HSET <live> connectionCount=<n> connected=true lastHeartbeatAt=now lastActivityAt=now
+   *   3. HSET <live> connectionCount=<n> connected=true connectedAt=<first connect>
+   *      lastHeartbeatAt=now; preserve lastActivityAt (connect is not activity)
    *   4. EXPIRE <live> <heartbeatTtl>
    *   5. EXPIRE <connSet> <heartbeatTtl>
    *
@@ -146,15 +144,22 @@ export const createPresenceLiveStore = (deps = {}) => {
       // total. We want the total.
       await redis.sadd(connK, String(connectionId));
       const count = await redis.scard(connK);
+      const priorConnectedAt = await redis.hget(liveK, 'connectedAt');
+      const connectedAt =
+        typeof priorConnectedAt === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(priorConnectedAt)
+          ? priorConnectedAt
+          : at;
       const ttl = heartbeatTtlSeconds;
-      // Pipeline HSET + EXPIRE on the live key.
+      // Pipeline HSET + EXPIRE on the live key. Connecting establishes
+      // an idle baseline but is not user activity, so lastActivityAt is
+      // deliberately left untouched (or absent until real interaction).
       await redis
         .multi()
         .hset(liveK, {
           connectionCount: String(count),
           connected: 'true',
+          connectedAt,
           lastHeartbeatAt: at,
-          lastActivityAt: at,
         })
         .expire(liveK, ttl)
         .expire(connK, ttl)
@@ -164,11 +169,11 @@ export const createPresenceLiveStore = (deps = {}) => {
   };
 
   /**
-   * Heartbeat refresh. Bumps lastHeartbeatAt and re-extends the TTLs.
-   * Does NOT change connectionCount. The bus does NOT publish on a
-   * heartbeat (no meaningful state change).
+   * Heartbeat refresh. Bumps lastHeartbeatAt, repairs the current
+   * connection-set membership, and re-extends the TTLs. It never changes
+   * lastActivityAt. The bus does NOT publish on a heartbeat.
    */
-  const refreshHeartbeat = async ({ companyId, userId }) => {
+  const refreshHeartbeat = async ({ companyId, userId, connectionId }) => {
     if (!companyId || !userId) {
       throw new Error('refreshHeartbeat requires companyId, userId');
     }
@@ -177,14 +182,21 @@ export const createPresenceLiveStore = (deps = {}) => {
     const at = now().toISOString();
 
     return safeCall(async () => {
-      // Only refresh if the user actually has live state (the connection
-      // set is the source of truth for "online"). If the user is not
-      // connected at all, this is a no-op.
+      // Re-register the authenticated socket id before refreshing. This
+      // repairs ephemeral keys after a Redis TTL expiry while the Socket.IO
+      // connection itself is still alive; heartbeat never changes activity.
+      if (connectionId) await redis.sadd(connK, String(connectionId));
       const exists = await redis.exists(connK);
       if (!exists) return null;
+      const count = await redis.scard(connK);
+      if (count <= 0) return null;
       await redis
         .multi()
-        .hset(liveK, { lastHeartbeatAt: at })
+        .hset(liveK, {
+          connectionCount: String(count),
+          connected: 'true',
+          lastHeartbeatAt: at,
+        })
         .expire(liveK, heartbeatTtlSeconds)
         .expire(connK, heartbeatTtlSeconds)
         .exec();
@@ -193,25 +205,31 @@ export const createPresenceLiveStore = (deps = {}) => {
   };
 
   /**
-   * Activity bump. Only updates lastActivityAt; the resolver decides
-   * if the new freshness implies a meaningful transition (away ->
-   * available). The store has no opinion on the precedence — it
-   * stores facts, the resolver interprets them.
+   * Activity bump. Updates lastActivityAt (plus the existing connection
+   * count/TTL bookkeeping); it never changes lastHeartbeatAt. The resolver
+   * decides whether the new freshness implies a meaningful transition.
    */
-  const recordActivity = async ({ companyId, userId, at } = {}) => {
+  const recordActivity = async ({ companyId, userId, connectionId } = {}) => {
     if (!companyId || !userId) {
       throw new Error('recordActivity requires companyId, userId');
     }
     const liveK = keyBuilder(companyId, userId, prefix);
     const connK = connSetKeyBuilder(userId, prefix);
-    const ts = (at instanceof Date ? at : new Date(at || now())).toISOString();
+    const ts = now().toISOString();
 
     return safeCall(async () => {
+      if (connectionId) await redis.sadd(connK, String(connectionId));
       const exists = await redis.exists(connK);
       if (!exists) return null;
+      const count = await redis.scard(connK);
+      if (count <= 0) return null;
       await redis
         .multi()
-        .hset(liveK, { lastActivityAt: ts })
+        .hset(liveK, {
+          connectionCount: String(count),
+          connected: 'true',
+          lastActivityAt: ts,
+        })
         .expire(liveK, heartbeatTtlSeconds)
         .expire(connK, heartbeatTtlSeconds)
         .exec();
@@ -221,10 +239,10 @@ export const createPresenceLiveStore = (deps = {}) => {
 
   /**
    * One connection closes. SREM <connectionId>. If the set becomes
-   * empty, the live key is kept for `graceTtlSeconds` so a fast
-   * reconnect doesn't flicker through Offline. If a second tab was
-   * open, the set is still non-empty and the live key continues
-   * with its heartbeat TTL.
+   * empty, the live key is kept for `graceTtlSeconds` as an explicit
+   * zero-connection (Offline) snapshot, so refetches agree during a
+   * fast reconnect. If a second tab was open, the set remains non-empty
+   * and the live key continues with its heartbeat TTL.
    */
   const markDisconnected = async ({ companyId, userId, connectionId }) => {
     if (!companyId || !userId || !connectionId) {
@@ -238,10 +256,9 @@ export const createPresenceLiveStore = (deps = {}) => {
       const count = await redis.scard(connK);
       const at = now().toISOString();
       if (count === 0) {
-        // Last tab closed. Keep the live key for the grace window
-        // and mark connected=false so a quick reconnect on any
-        // instance can detect "recently online" without seeing
-        // "offline" momentarily.
+        // Last tab closed. Keep an explicit zero-connection snapshot
+        // through the grace window so REST/refetch callers all resolve
+        // the same confirmed Offline value during a quick reconnect.
         await redis
           .multi()
           .hset(liveK, { connectionCount: '0', connected: 'false', lastHeartbeatAt: at })
@@ -262,9 +279,10 @@ export const createPresenceLiveStore = (deps = {}) => {
   };
 
   /**
-   * Read one user's live snapshot. Returns null if the key is absent
-   * OR if Redis is down (the resolver treats null as 'unknown' — the
-   * honest Phase 37 §20 answer).
+   * Read one user's live snapshot. A successful Redis read of a
+   * missing key returns a zero-connection snapshot (Offline). Redis
+   * command failure returns null (Unknown), preserving the distinction
+   * required by Phase 37 §20.
    */
   const readLive = async ({ companyId, userId }) => {
     if (!companyId || !userId) return null;
@@ -274,8 +292,9 @@ export const createPresenceLiveStore = (deps = {}) => {
 
   /**
    * Batched read of many users' live snapshots for the team view.
-   * ONE Redis round-trip per channel (hashes are pipelined). Returns
-   * a Map<userId, snapshot|null>. Missing users map to null.
+   * ONE Redis round-trip per channel (hashes are pipelined). A missing
+   * key maps to the Offline snapshot; command failures map to null so
+   * the resolver can report Unknown instead of inventing Offline.
    */
   const readLiveMany = async ({ companyId, userIds } = {}) => {
     if (!companyId || !Array.isArray(userIds) || userIds.length === 0) {
@@ -289,8 +308,12 @@ export const createPresenceLiveStore = (deps = {}) => {
       const map = new Map();
       results.forEach(([err, value], idx) => {
         const userId = userIds[idx];
-        if (err || !value || Object.keys(value).length === 0) {
+        if (err) {
           map.set(String(userId), null);
+          return;
+        }
+        if (!value || Object.keys(value).length === 0) {
+          map.set(String(userId), NO_CONNECTION_LIVE_SNAPSHOT);
           return;
         }
         map.set(String(userId), parse(JSON.stringify(value)));
@@ -304,7 +327,7 @@ export const createPresenceLiveStore = (deps = {}) => {
    */
   const readRaw = async (liveK) => {
     const raw = await redis.hgetall(liveK);
-    if (!raw || Object.keys(raw).length === 0) return null;
+    if (!raw || Object.keys(raw).length === 0) return NO_CONNECTION_LIVE_SNAPSHOT;
     return parse(JSON.stringify(raw));
   };
 

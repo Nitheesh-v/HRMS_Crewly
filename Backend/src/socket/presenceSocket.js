@@ -2,18 +2,12 @@
 //  PHASE 37.4 — PRESENCE SOCKET SERVER (Socket.IO namespace, foundation)
 //
 //  WHAT THIS IS
-//    A Socket.IO namespace ('/presence') attached to the SAME http
-//    server chat uses. JWT-or-ticket authenticated, fanned out across
-//    API replicas by the SAME @socket.io/redis-adapter chat already
-//    uses (we instantiate a second adapter for the presence channel;
-//    the underlying Redis URL is the same, the connections are
-//    dedicated and isolated per the 21-law).
-//
-//  WHAT THIS IS NOT
-//    No presence product surface in this file: no events, no room
-//    joins, no models. The handlers file owns the events. A connected
-//    socket in 37.4 has access to the three events listed in
-//    presenceSocketHandlers.js.
+//    An authenticated Socket.IO namespace ('/presence') attached to
+//    the existing HTTP server. When chat already owns a Socket.IO
+//    Server, this namespace shares that engine and installs its own
+//    Redis adapter; otherwise presence owns the Engine.IO server.
+//    Product events use authenticated, server-derived user rooms; the
+//    namespace does not broadcast colleague presence tenant-wide.
 //
 //  ROOM LAW (re-asserted)
 //    Clients NEVER send a 'join' event. The server joins the socket
@@ -27,21 +21,21 @@
 //  ATTACH-ORDER LAW
 //    The same attach-order law as chat (33.1) applies. This factory's
 //    `attach(httpServer)` MUST run before `server.listen()` so
-//    Engine.IO's ws transport comes up correctly. server.js handles
-//    this by calling `getPresenceSocketServer().attach(server)`
-//    before listen().
+//    Engine.IO's ws transport comes up correctly. server.js invokes
+//    the attach only when PRESENCE_SOCKET_ENABLED=true.
 //
 //  SHUTDOWN LAW
-//    Same as chat: stop() disconnects sockets and closes the engine
-//    + adapter clients, and NEVER calls io.close() (which would
-//    close the shared http server and kill in-flight requests).
+//    stop() disconnects only the presence namespace and its adapter.
+//    If chat owns the shared Engine.IO server, presence MUST NOT close
+//    it; if presence owns it, closing the engine does not close HTTP.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { Server } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { createClient } from 'redis';
 import logger from '../config/logger.js';
-import { getRedisConfig } from '../config/redis.js';
+import { getQueuePrefix } from '../config/queueConfig.js';
+import { getRedisConfig, getRedisClient } from '../config/redis.js';
 import {
   PRESENCE_CONNECT_TIMEOUT_MS,
   PRESENCE_FEATURE_UNAVAILABLE,
@@ -60,11 +54,15 @@ import {
   verifyChatSocketToken,
 } from './socketAuth.js';
 import { registerPresenceSocketHandlers } from './presenceSocketHandlers.js';
+import { presenceCompanyRoom, presenceUserRoom } from '../utils/presenceKeys.js';
 import { setPresenceLiveStore } from '../services/presence/presenceLiveStoreRegistry.js';
 import {
   createPresenceLiveStore,
 } from '../services/presence/presenceLiveStore.js';
-import { getRedisClient } from '../config/redis.js';
+import {
+  bindPresenceSocketNamespace,
+  unbindPresenceSocketNamespace,
+} from '../services/presence/presenceSocketPublisher.js';
 
 /**
  * Build the Socket.IO options for the presence namespace. The same
@@ -90,7 +88,8 @@ export const buildPresenceSocketOptions = ({
   allowEIO3: false,
   transports: ['websocket', 'polling'],
   cors: {
-    origin: isPresenceOriginAllowed.bind(null, undefined, source),
+    origin: (origin, callback) =>
+      callback(null, isPresenceOriginAllowed(origin, source)),
     credentials: false,
     methods: ['GET', 'POST'],
   },
@@ -125,6 +124,21 @@ const withTimeout = (promise, ms, label) =>
       timer.unref();
     }),
   ]);
+
+const closeRedisClient = async (client) => {
+  if (!client) return;
+  try {
+    await client.quit();
+    return;
+  } catch {
+    /* not connected / already closing — force it */
+  }
+  try {
+    await client.destroy();
+  } catch {
+    /* already closed */
+  }
+};
 
 /**
  * Create and connect the presence Redis adapter. Dedicated pub +
@@ -189,34 +203,18 @@ const createPresenceRedisAdapter = async ({
     log.error(
       `[PresenceSocket] adapter unavailable: ${err?.code || 'error'} — refusing presence socket connections.`,
     );
-    try {
-      await pubClient?.quit();
-    } catch {
-      /* not connected */
-    }
-    try {
-      await subClient?.quit();
-    } catch {
-      /* not connected */
-    }
+    await closeRedisClient(pubClient);
+    await closeRedisClient(subClient);
     return { ok: false, reason: 'REDIS_ERROR' };
   }
-  const key = presenceAdapterKey();
+  const key = presenceAdapterKey(getQueuePrefix(source));
   return {
     ok: true,
     key,
     adapter: createAdapter(pubClient, subClient, { key }),
     close: async () => {
-      try {
-        await pubClient.quit();
-      } catch {
-        /* not connected */
-      }
-      try {
-        await subClient.quit();
-      } catch {
-        /* not connected */
-      }
+      await closeRedisClient(pubClient);
+      await closeRedisClient(subClient);
     },
   };
 };
@@ -231,13 +229,18 @@ export const createPresenceSocketServer = ({
   verify = verifyChatSocketToken,
   registerHandlers = registerPresenceSocketHandlers,
   createAdapterClients = createPresenceRedisAdapter,
+  createServer = (httpServer, options) => new Server(httpServer, options),
+  getRedisClientFn = getRedisClient,
   log = logger,
 } = {}) => {
   let io = null;
+  let ownsIo = false;
   let namespace = null;
   let closeAdapter = null;
   let adapterAttached = false;
+  let adapterKey = null;
   let store = null;
+  let attachResult = null;
 
   const counters = {
     connections_accepted: 0,
@@ -256,11 +259,94 @@ export const createPresenceSocketServer = ({
     }
   };
 
+  const wireNamespace = (httpServer, sharedIo) => {
+    if (namespace) return;
+
+    if (sharedIo) {
+      // Chat already owns the Engine.IO path. Attaching a second
+      // Socket.IO Server here would register two engines at /socket.io.
+      io = sharedIo;
+      ownsIo = false;
+    } else {
+      io = createServer(
+        httpServer,
+        buildPresenceSocketOptions({ source, onRefusal: noteRefusal }),
+      );
+      ownsIo = true;
+
+      // Presence-only deployments still create Socket.IO's default `/`
+      // namespace. Keep it closed: only the authenticated /presence
+      // namespace is part of this feature.
+      io.use?.((_socket, next) => {
+        const error = new Error(PRESENCE_UNAUTHORIZED.message);
+        error.data = { ...PRESENCE_UNAUTHORIZED };
+        next(error);
+      });
+    }
+
+    namespace = io.of(PRESENCE_NAMESPACE);
+
+    // Keep one middleware installed even when Redis is unavailable. The
+    // availability gate is dynamic, so a later attach retry can recover
+    // without adding duplicate middleware or connection handlers.
+    namespace.use(
+      createChatHandshakeAuth({
+        availability: {
+          refusal: () =>
+            adapterAttached && store ? null : PRESENCE_FEATURE_UNAVAILABLE,
+        },
+        verify,
+        unauthorized: PRESENCE_UNAUTHORIZED,
+        onRefusal: noteRefusal,
+      }),
+    );
+
+    namespace.on('connection', (socket) => {
+      counters.connections_accepted += 1;
+      const companyId = String(socket.data?.companyId || '');
+      const userId = String(socket.data?.userId || '');
+
+      // Server-derived room joins. The client never sends a join event.
+      if (companyId) socket.join(presenceCompanyRoom(companyId));
+      if (userId) socket.join(presenceUserRoom(userId));
+
+      log.info(
+        `[PresenceSocket] connection ${socket.id} (company=${companyId} user=${userId})`,
+      );
+
+      try {
+        registerHandlers({
+          io: namespace,
+          socket,
+          store,
+          counters,
+          log,
+        });
+      } catch (err) {
+        log.error(
+          `[PresenceSocket] handler registration failed: ${err?.code || err?.name || 'error'}`,
+        );
+      }
+
+      socket.on('disconnect', () => {
+        counters.disconnects += 1;
+      });
+      socket.on('error', () => {
+        /* a faulty frame must not take the process down */
+      });
+    });
+  };
+
+  const clearLiveStore = () => {
+    store = null;
+    setPresenceLiveStore(null);
+  };
+
   return {
     /**
-     * Attaches the presence namespace to the existing http server.
-     * Must run before server.listen() (attach-order law, chat 33.1).
-     * Never throws: every failure mode degrades to FEATURE_UNAVAILABLE.
+     * Attaches the presence namespace before server.listen(). Every
+     * optional-infrastructure failure degrades to FEATURE_UNAVAILABLE;
+     * it never takes down the HTTP API.
      */
     attach: async (httpServer, { sharedIo = null, sharedRedis = null } = {}) => {
       if (!enabled) {
@@ -273,127 +359,128 @@ export const createPresenceSocketServer = ({
         log.error('[PresenceSocket] no http server supplied — presence realtime is FEATURE_UNAVAILABLE.');
         return { started: false, reason: PRESENCE_FEATURE_UNAVAILABLE.code };
       }
+      if (adapterAttached && store && attachResult) return attachResult;
 
-      // Redis-backed ephemeral liveness store. The shared general
-      // client (config/redis.js#getRedisClient) is the right source —
-      // it follows the 28.1 enabled/disabled/down state. If the
-      // shared client is null (Redis disabled), the store still
-      // instantiates but every read returns null (the resolver
-      // returns 'unknown', the HRMS keeps running).
-      const redis = sharedRedis || getRedisClient();
-      store = createPresenceLiveStore({
-        redis,
-        prefix: 'crewly:development',
-      });
-      setPresenceLiveStore(store);
-
-      // Build (or accept) the Socket.IO instance. Reusing the chat
-      // io keeps a single port; building our own is for tests that
-      // need a fresh server.
-      io = sharedIo || new Server(httpServer, buildPresenceSocketOptions({ source, onRefusal: noteRefusal }));
-      namespace = io.of(PRESENCE_NAMESPACE);
-
-      // 37.4 — presence adapter. If Redis is unavailable, refuse
-      // every connection as FEATURE_UNAVAILABLE (mirrors chat 33.1).
-      const adapterResult = await createAdapterClients({ source, log });
-      if (!adapterResult.ok) {
+      clearLiveStore();
+      try {
+        wireNamespace(httpServer, sharedIo);
+      } catch (err) {
         log.error(
-          '[PresenceSocket] redis unavailable — every presence socket connection is refused as FEATURE_UNAVAILABLE. HTTP API unaffected.',
+          `[PresenceSocket] namespace setup failed: ${err?.code || err?.name || 'error'}`,
         );
         return { started: false, reason: PRESENCE_FEATURE_UNAVAILABLE.code };
       }
+
+      const redis = sharedRedis || getRedisClientFn();
+      if (!redis) {
+        log.warn(
+          '[PresenceSocket] shared Redis client unavailable — presence sockets are refused; HTTP API remains available.',
+        );
+        return { started: false, reason: PRESENCE_FEATURE_UNAVAILABLE.code };
+      }
+
+      let adapterResult;
       try {
-        namespace.adapter(adapterResult.adapter);
+        adapterResult = await createAdapterClients({ source, log });
       } catch (err) {
         log.error(
-          `[PresenceSocket] adapter could not be attached: ${err?.code || 'error'}`,
+          `[PresenceSocket] adapter startup failed: ${err?.code || err?.name || 'error'}`,
+        );
+        return { started: false, reason: PRESENCE_FEATURE_UNAVAILABLE.code };
+      }
+      if (!adapterResult?.ok) {
+        log.error(
+          '[PresenceSocket] redis adapter unavailable — every presence socket connection is refused as FEATURE_UNAVAILABLE. HTTP API unaffected.',
+        );
+        return { started: false, reason: PRESENCE_FEATURE_UNAVAILABLE.code };
+      }
+
+      let nextStore;
+      try {
+        nextStore = createPresenceLiveStore({
+          redis,
+          prefix: getQueuePrefix(source),
+        });
+      } catch (err) {
+        log.error(
+          `[PresenceSocket] live store unavailable: ${err?.code || err?.name || 'error'}`,
         );
         try {
           await adapterResult.close?.();
         } catch {
-          /* already closed */
+          /* adapter clients are best-effort */
         }
         return { started: false, reason: PRESENCE_FEATURE_UNAVAILABLE.code };
       }
-      closeAdapter = adapterResult.close;
-      adapterAttached = true;
 
-      // Handshake auth: reuse chat's handshake middleware verbatim.
-      // The 33.1 contract re-runs `protect`'s gates (Mongo User +
-      // SecuritySession + Company status). Presence rides the SAME
-      // ticket / JWT path — no parallel auth surface.
-      namespace.use(
-        createChatHandshakeAuth({
-          availability: { refusal: () => null }, // never FEATURE_UNAVAILABLE here
-          verify,
-          unauthorized: PRESENCE_UNAUTHORIZED,
-          onRefusal: noteRefusal,
-        }),
-      );
-
-      namespace.on('connection', (socket) => {
-        counters.connections_accepted += 1;
-        const companyId = String(socket.data?.companyId || '');
-        const userId = String(socket.data?.userId || '');
-
-        // Server-derived room join. The client never sends a join
-        // event. (presenceKeys.js)
-        if (companyId) socket.join(`presence:company:${companyId}`);
-        if (userId) socket.join(`presence:user:${userId}`);
-
-        log.info(
-          `[PresenceSocket] connection ${socket.id} (company=${companyId} user=${userId})`,
-        );
-
-        try {
-          registerHandlers({
-            io: namespace,
-            socket,
-            store,
-            counters,
-            log,
-          });
-        } catch (err) {
-          log.error(
-            `[PresenceSocket] handler registration failed: ${err?.code || 'error'}`,
-          );
+      try {
+        // Namespace.adapter is an adapter INSTANCE (unlike Server.adapter,
+        // which is a setter for all namespaces). Install the dedicated
+        // presence adapter on this namespace only so the shared chat
+        // namespace keeps its own adapter and Redis channel key.
+        const namespaceAdapter = adapterResult.adapter(namespace);
+        if (!namespaceAdapter || typeof namespaceAdapter.close !== 'function') {
+          throw new Error('PRESENCE_ADAPTER_INVALID');
         }
+        namespace.adapter = namespaceAdapter;
+      } catch (err) {
+        log.error(
+          `[PresenceSocket] adapter could not be attached: ${err?.code || err?.name || 'error'}`,
+        );
+        try {
+          await adapterResult.close?.();
+        } catch {
+          /* adapter clients are best-effort */
+        }
+        return { started: false, reason: PRESENCE_FEATURE_UNAVAILABLE.code };
+      }
 
-        socket.on('disconnect', () => {
-          counters.disconnects += 1;
-        });
-        socket.on('error', () => {
-          /* a faulty frame must not take the process down */
-        });
-      });
-
-      log.info(
-        `[PresenceSocket] namespace ready (path=${PRESENCE_SOCKET_PATH}, ns=${PRESENCE_NAMESPACE}, adapterKey=${adapterResult.key}).`,
-      );
-      return {
+      store = nextStore;
+      setPresenceLiveStore(store);
+      closeAdapter = adapterResult.close || null;
+      adapterKey = adapterResult.key || presenceAdapterKey(getQueuePrefix(source));
+      adapterAttached = true;
+      attachResult = {
         started: true,
         path: PRESENCE_SOCKET_PATH,
         namespace: PRESENCE_NAMESPACE,
-        adapterKey: adapterResult.key,
+        adapterKey,
       };
+      bindPresenceSocketNamespace(namespace);
+
+      log.info(
+        `[PresenceSocket] namespace ready (path=${PRESENCE_SOCKET_PATH}, ns=${PRESENCE_NAMESPACE}, adapterKey=${adapterKey}).`,
+      );
+      return attachResult;
     },
 
     stop: async () => {
-      if (namespace) {
+      const namespaceToStop = namespace;
+
+      if (namespaceToStop) {
         try {
-          namespace.disconnectSockets?.(true);
+          await namespaceToStop.disconnectSockets?.(true);
         } catch {
           /* already gone */
         }
+        try {
+          await namespaceToStop.adapter?.close?.();
+        } catch {
+          /* adapter cleanup is best-effort */
+        }
+        unbindPresenceSocketNamespace(namespaceToStop);
       }
-      if (io) {
+
+      // A shared Engine.IO server belongs to chat. Presence only closes
+      // the engine it created itself, never the shared HTTP/socket server.
+      if (io && ownsIo) {
         try {
           io.engine?.close();
         } catch {
           /* already gone */
         }
-        io = null;
       }
+
       if (closeAdapter) {
         const closer = closeAdapter;
         closeAdapter = null;
@@ -403,11 +490,14 @@ export const createPresenceSocketServer = ({
           /* already closed */
         }
       }
+
       adapterAttached = false;
-      if (store) {
-        setPresenceLiveStore(null);
-        store = null;
-      }
+      adapterKey = null;
+      attachResult = null;
+      clearLiveStore();
+      namespace = null;
+      io = null;
+      ownsIo = false;
       return { stopped: true };
     },
 
@@ -418,6 +508,7 @@ export const createPresenceSocketServer = ({
     }),
 
     getIo: () => namespace,
+    getUnderlyingIo: () => io,
   };
 };
 

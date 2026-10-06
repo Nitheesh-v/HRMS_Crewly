@@ -2,9 +2,9 @@
 //  PHASE 37.4 — PRESENCE SOCKET CONFIGURATION
 //
 //  Mirrors socketConfig.js (33.1) for the presence namespace. The
-//  presence socket rides the SAME http server as chat, with a separate
-//  namespace path ('/presence') so the same Socket.IO instance handles
-//  both surfaces without opening a second port.
+//  namespace shares chat's Socket.IO Engine.IO server when chat has
+//  attached one; presence can also own the Engine.IO server when chat
+//  is disabled. The HTTP path remains code-owned (/socket.io).
 //
 //  LAW (re-asserted): the enablement flag is the only env var; every
 //  safety bound is code-owned.
@@ -23,9 +23,9 @@ export const PRESENCE_SOCKET_PATH = '/socket.io';
 
 export const PRESENCE_NAMESPACE = '/presence';
 
-// Hard cap on ONE inbound socket frame. Presence events are tiny
-// ({at: ISO} for activity, nothing for heartbeat) — 4 KB is 25x the
-// product cap and 250x smaller than the Engine.IO default of 1 MB.
+// Hard cap on ONE inbound socket frame when presence owns Engine.IO.
+// Presence events are tiny (empty activity/heartbeat/tick frames), so
+// 4 KB is far above product needs and 250x smaller than Engine.IO's default.
 export const PRESENCE_MAX_HTTP_BUFFER_BYTES = 4 * 1024;
 
 // Handshake must finish (Mongo reads + ticket validation) inside this

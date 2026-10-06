@@ -1,103 +1,19 @@
 // ═══════════════════════════════════════════════════════════════════════════
-//  PHASE 37.4 — PRESENCE RUNTIME TESTS (hermetic, no real sockets)
+//  PRESENCE RUNTIME TESTS
 //
-//  Covers §41 frontend tests (17 total, this file is part 1 of 2 —
-//  the source-pin file is presenceSourcePins.test.js).
-//
-//  Strategy: stub the socket module and the redux store; drive
-//  start/stop/tick and assert dispatcher calls + idempotency.
+//  Covers runtime lifecycle safety, reducer validation, and the own-user
+//  invalidation dispatches without a live Redis or Socket.IO server.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-// ────────────────────────────────────────────────────────────────────────
-//  Module-level stubs: capture what the runtime calls.
-// ────────────────────────────────────────────────────────────────────────
-const stub = {
-  startCalls: 0,
-  stopCalls: 0,
-  ticketCalls: 0,
-  visibilityStarted: 0,
-  visibilityStopped: 0,
-  fakeSocket: null,
-  listener: null,
-  tickerIntervalMs: null,
-};
-
-globalThis.__TEST_ENV__ = {
-  VITE_API_URL: '',
-  MODE: 'test',
-  DEV: false,
-  PROD: false,
-};
-
-const apiStub = {
-  post: async (path) => {
-    stub.ticketCalls += 1;
-    return { ticket: 'TEST_TICKET' };
-  },
-};
-globalThis.__STUB_API__ = apiStub;
-
-// We import the runtime first, then the channel. The channel module
-// reads `globalThis.__STUB_API__` indirectly through a tiny shim
-// injected below. To keep the test hermetic, we rewire the api
-// import via a test helper.
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
-
-const here = path.dirname(fileURLToPath(import.meta.url));
-
-// Inject a minimal api shim into the channel. The channel imports
-// `../api.js`; we monkey-patch by intercepting the module resolution
-// path through a wrapper. The simplest approach: replace the
-// imported `api` reference inside the channel via the same shim
-// the store test uses.
-//
-// We DO NOT alter the channel's api import here; instead, we
-// provide a pre-call hook: the runtime reads `__STUB_API__` from
-// globalThis if api is null. This is a deliberate, tiny test seam.
-// The channel looks for `globalThis.__STUB_PRESENCE_API__` first.
-
-// To avoid editing the production channel for a test seam, the
-// runtime uses a `__presenceApiForTests` shim set via a local
-// dynamic import. We re-export the channel through a thin test
-// adapter.
-
-const channelMod = await import(
-  '../src/services/realtime/presenceChannel.js'
-);
 const runtimeMod = await import(
   '../src/services/realtime/presenceRuntime.js'
 );
-
 const { __resetPresenceRuntimeForTests } = runtimeMod;
 
-// ────────────────────────────────────────────────────────────────────────
-//  FAKE SOCKET
-//
-//  We replace the real socket.io-client binding by hooking
-//  globalThis.io (the channel module imports `io` from
-//  socket.io-client). Node's ESM imports are read-only, so we
-//  install the fake via a test-only hook in the channel.
-// ────────────────────────────────────────────────────────────────────────
-
-// Install a fake `io` factory the channel can use. The channel
-// reads `import { io } from 'socket.io-client'`. We cannot replace
-// that import — so the runtime's `startPresenceChannel` call
-// returns the channel's own socket. We assert behavior by
-// dispatching into the store directly.
-
-// In a hermetic Node test, the real socket.io-client will fail to
-// resolve (no DOM, no net). To keep the runtime self-contained, we
-// inject a fake socket via a channel test seam.
-
-// The test treats the channel as a black box: it returns null
-// when no real socket can be created, and the runtime must
-// gracefully handle that (no throw, no infinite loop).
-
-// Reset all module state before each test.
+// Reset all module state before each lifecycle test.
 test('presence runtime: startPresenceRuntime is a no-op when the channel is unavailable', async () => {
   __resetPresenceRuntimeForTests();
   // Force a refusal: no api ticket reachable in this Node env.
@@ -241,4 +157,64 @@ test('presenceInvalidateTeam reducer: each dispatch produces a new timestamp', a
   await new Promise((r) => setTimeout(r, 2));
   const b = presenceSlice.default(a, presenceInvalidateTeam());
   assert.notEqual(a.teamBumpedAt, b.teamBumpedAt);
+});
+
+test('presence:invalidated refetches the signed-in user work-location requests', async () => {
+  __resetPresenceRuntimeForTests();
+  const storeMod = await import('../src/redux/store.js');
+  const presenceSlice = await import('../src/redux/slices/presenceSlice.js');
+  const requestServiceMod = await import(
+    '../src/services/presence/workLocationRequestService.js'
+  );
+  const store = storeMod.default;
+  const originalGetState = store.getState;
+  const originalDispatch = store.dispatch;
+  const originalMine = requestServiceMod.default.mine;
+  const dispatched = [];
+  let mineCalls = 0;
+  let requestFetchPromise;
+
+  store.getState = () => ({
+    auth: { user: { _id: 'u1', companyId: 'c1' } },
+  });
+  requestServiceMod.default.mine = async () => {
+    mineCalls += 1;
+    return { requests: [] };
+  };
+  store.dispatch = (action) => {
+    dispatched.push(action);
+    if (typeof action === 'function') {
+      const thunkDispatches = dispatched.filter((item) => typeof item === 'function').length;
+      // Execute the work-location fetch thunk, but keep the separate
+      // presence snapshot load from making a network request in this test.
+      if (thunkDispatches === 1) {
+        requestFetchPromise = originalDispatch(action);
+        return requestFetchPromise;
+      }
+      return Promise.resolve();
+    }
+    return originalDispatch(action);
+  };
+
+  try {
+    runtimeMod.__onPresenceInvalidatedForTests({
+      schemaVersion: 1,
+      companyId: 'c1',
+      userId: 'u1',
+      occurredAt: '2026-10-03T10:00:00.000Z',
+      source: 'approve',
+    });
+    await requestFetchPromise;
+
+    assert.equal(dispatched.length, 3);
+    assert.equal(dispatched[0].type, presenceSlice.presenceWlrInvalidateForUser().type);
+    assert.equal(typeof dispatched[1], 'function', 'fetchMyWorkLocationRequests thunk is dispatched');
+    assert.equal(typeof dispatched[2], 'function', 'authoritative self-presence reload is dispatched');
+    assert.equal(mineCalls, 1, 'request cache is refreshed from the service');
+  } finally {
+    runtimeMod.stopPresenceRuntime();
+    store.getState = originalGetState;
+    store.dispatch = originalDispatch;
+    requestServiceMod.default.mine = originalMine;
+  }
 });

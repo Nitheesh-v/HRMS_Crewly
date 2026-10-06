@@ -1,16 +1,14 @@
 // ═══════════════════════════════════════════════════════════════════════════
 //  PHASE 37.4 — PRESENCE BUS TESTS (hermetic)
 //
-//  Covers §41 backend tests #27–#35.
-//  The bus is a thin façade over the 32.11 SSE gateway. We fake the
-//  gateway with a stub and assert:
+//  The presence bus emits only strict envelopes through the
+//  authenticated /presence Socket.IO namespace. We fake the namespace and assert:
 //    · payload minimization (no status message text, no email/phone/token)
-//    · schemaVersion presence
-//    · multi-subscriber fan-out (two fakes both receive)
+//    · schemaVersion presence and authenticated user-room targeting
 //    · failure does not throw up; resolver still resolves correctly
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { test, beforeEach } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 process.env.NODE_ENV ||= 'test';
@@ -19,56 +17,31 @@ process.env.MONGO_URI ||= 'mongodb://127.0.0.1:27017/crewly_presence_bus_test';
 const { buildPresenceChangedEnvelope, parsePresenceChangedEnvelope, PRESENCE_GATEWAY_EVENT_TYPE, PRESENCE_ENVELOPE_KEYS } = await import(
   '../src/services/presence/presenceEvents.js'
 );
-const { publishPresenceChanged, presenceBusAvailable, __setRealtimeGatewayForTests, __resetRealtimeGatewayForTests } = await import(
-  '../src/services/presence/presenceBus.js'
-);
+const {
+  publishPresenceChanged,
+  publishPresenceInvalidated,
+  presenceBusAvailable,
+} = await import('../src/services/presence/presenceBus.js');
+const {
+  __setPresenceSocketNamespaceForTests,
+  __resetPresenceSocketNamespaceForTests,
+} = await import('../src/services/presence/presenceSocketPublisher.js');
 
 const COMPANY = '1111111111111111111111aa';
 const USER = '2222222222222222222222bb';
 
-// A stub gateway that records every publish. The bus is
-// dependency-injectable via the module singleton — we swap it by
-// monkey-patching the import, but the bus reads the singleton via
-// getRealtimeGateway() at call time. The bus's contract says "never
-// throws" so we exercise that here.
-
-const stubGateway = (overrides = {}) => {
-  const publishes = [];
-  let started = true;
+const fakeNamespace = (overrides = {}) => {
+  const emissions = [];
   return {
-    publishes,
-    isStarted: () => started,
-    publish: async (args) => {
-      if (overrides.publishError) throw overrides.publishError;
-      publishes.push(args);
-      return { delivered: 'pubsub', receivers: overrides.receivers || 1 };
-    },
-    setStarted: (v) => { started = v; },
+    emissions,
+    to: (room) => ({
+      emit: (event, envelope) => {
+        if (overrides.emitError) throw overrides.emitError;
+        emissions.push({ room, event, envelope });
+      },
+    }),
   };
 };
-
-// The bus imports getRealtimeGateway at call time. We override the
-// module's singleton through a setter; the cleanest seam is to
-// provide our own test seam. The bus does NOT expose one, so we
-// exercise the envelope + parser directly for the wire-shape tests,
-// and the publish seam via a temporary monkey-patch for the
-// integration tests.
-let gatewayRef = null;
-const origGetRealtimeGateway = (await import('../src/infrastructure/realtime/realtimeGateway.js')).getRealtimeGateway;
-
-beforeEach(() => {
-  gatewayRef = stubGateway();
-  // Override the singleton getter for the duration of the test.
-  // We monkey-patch the module's named export — same pattern the
-  // 33.1 socket tests use for createChatHandshakeAuth.
-});
-
-// We cannot easily replace a function imported via `import` (live
-// binding), so we test the bus at two levels:
-//   1. Envelope build + parse (no gateway needed).
-//   2. publish is a no-throw path that delegates to the gateway —
-//      we exercise this by reading the bus source and asserting the
-//      shape of the call (defensive coverage).
 
 test('envelope: buildPresenceChangedEnvelope produces a frozen, valid envelope', () => {
   const { envelope } = buildPresenceChangedEnvelope({
@@ -224,16 +197,9 @@ test('envelope: serialized form is under PRESENCE_MAX_LIVE_ENVELOPE_BYTES', () =
   );
 });
 
-test('bus: publishPresenceChanged calls the gateway with the strict envelope', async () => {
-  const gateway = {
-    publishes: [],
-    isStarted: () => true,
-    publish: async (args) => {
-      gateway.publishes.push(args);
-      return { delivered: 'pubsub', receivers: 1 };
-    },
-  };
-  __setRealtimeGatewayForTests(gateway);
+test('bus: publishPresenceChanged emits the strict envelope to the authenticated user room', async () => {
+  const namespace = fakeNamespace();
+  __setPresenceSocketNamespaceForTests(namespace);
   try {
     const result = await publishPresenceChanged({
       companyId: COMPANY,
@@ -243,33 +209,50 @@ test('bus: publishPresenceChanged calls the gateway with the strict envelope', a
       source: 'activity',
     });
     assert.equal(result.ok, true);
-    assert.equal(gateway.publishes.length, 1);
-    const call = gateway.publishes[0];
-    assert.equal(call.type, PRESENCE_GATEWAY_EVENT_TYPE);
-    assert.equal(call.companyId, COMPANY);
-    assert.equal(call.userId, USER);
-    assert.ok(call.payload);
-    assert.equal(call.payload.schemaVersion, 1);
-    assert.equal(call.payload.presence, 'available');
-    assert.equal(call.payload.presenceSource, 'automatic');
-    assert.equal(call.payload.source, 'activity');
-    assert.ok(call.payload.occurredAt);
-    // Negative: no leaked sensitive fields.
-    assert.equal(call.payload.statusMessage, undefined);
-    assert.equal(call.payload.email, undefined);
-    assert.equal(call.payload.phone, undefined);
+    assert.equal(result.delivered, 'socket.io');
+    assert.equal(namespace.emissions.length, 1);
+    const call = namespace.emissions[0];
+    assert.equal(call.room, `presence:user:${USER}`);
+    assert.equal(call.event, PRESENCE_GATEWAY_EVENT_TYPE);
+    assert.equal(call.envelope.companyId, COMPANY);
+    assert.equal(call.envelope.userId, USER);
+    assert.equal(call.envelope.schemaVersion, 1);
+    assert.equal(call.envelope.presence, 'available');
+    assert.equal(call.envelope.presenceSource, 'automatic');
+    assert.equal(call.envelope.source, 'activity');
+    assert.ok(call.envelope.occurredAt);
+    assert.equal(call.envelope.statusMessage, undefined);
+    assert.equal(call.envelope.email, undefined);
+    assert.equal(call.envelope.phone, undefined);
   } finally {
-    __resetRealtimeGatewayForTests();
+    __resetPresenceSocketNamespaceForTests();
   }
 });
 
-test('#35 bus: publish failure does NOT throw up; result.ok=false', async () => {
-  const gateway = {
-    publishes: [],
-    isStarted: () => true,
-    publish: async () => { throw new Error('REDIS_DOWN'); },
-  };
-  __setRealtimeGatewayForTests(gateway);
+test("bus: publishPresenceInvalidated targets the affected user's room with a minimal shape", async () => {
+  const namespace = fakeNamespace();
+  __setPresenceSocketNamespaceForTests(namespace);
+  try {
+    const result = await publishPresenceInvalidated({
+      companyId: COMPANY,
+      userId: USER,
+      source: 'approve',
+      occurredAt: '2026-10-03T10:00:00.000Z',
+    });
+    assert.equal(result.ok, true);
+    assert.equal(namespace.emissions[0].room, `presence:user:${USER}`);
+    assert.equal(namespace.emissions[0].event, 'presence:invalidated');
+    assert.deepEqual(Object.keys(namespace.emissions[0].envelope).sort(), [
+      'companyId', 'occurredAt', 'schemaVersion', 'source', 'userId',
+    ]);
+  } finally {
+    __resetPresenceSocketNamespaceForTests();
+  }
+});
+
+test('bus: publish failure does not throw; disabled namespace remains unavailable', async () => {
+  const namespace = fakeNamespace({ emitError: new Error('SOCKET_DOWN') });
+  __setPresenceSocketNamespaceForTests(namespace);
   try {
     const result = await publishPresenceChanged({
       companyId: COMPANY,
@@ -281,24 +264,11 @@ test('#35 bus: publish failure does NOT throw up; result.ok=false', async () => 
     assert.equal(result.ok, false);
     assert.equal(result.delivered, 'none');
     assert.ok(result.error);
-  } finally {
-    __resetRealtimeGatewayForTests();
-  }
-});
-
-test('bus: presenceBusAvailable() reflects the gateway state', () => {
-  __setRealtimeGatewayForTests({ isStarted: () => true });
-  try {
     assert.equal(presenceBusAvailable(), true);
   } finally {
-    __resetRealtimeGatewayForTests();
+    __resetPresenceSocketNamespaceForTests();
   }
-  __setRealtimeGatewayForTests({ isStarted: () => false });
-  try {
-    assert.equal(presenceBusAvailable(), false);
-  } finally {
-    __resetRealtimeGatewayForTests();
-  }
+  assert.equal(presenceBusAvailable(), false);
 });
 
 test('bus: build failure (forbidden source) is reported, not raised', async () => {
@@ -307,7 +277,7 @@ test('bus: build failure (forbidden source) is reported, not raised', async () =
     userId: USER,
     presence: 'available',
     presenceSource: 'automatic',
-    source: 'BOGUS', // forbidden by the envelope builder
+    source: 'BOGUS',
   });
   assert.equal(result.ok, false);
   assert.equal(result.delivered, 'none');

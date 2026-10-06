@@ -9,10 +9,11 @@
 //
 //  ANTI-SURVEILLANCE LAW (re-asserted)
 //    The snapshot may carry ONLY:
-//      - connectionCount (a positive integer)
+//      - connectionCount (a non-negative integer)
 //      - connected (boolean)
-//      - lastHeartbeatAt (ISO string; the gateway's `now`)
-//      - lastActivityAt (ISO string; the browser's `at`)
+//      - connectedAt (ISO string; when this live session began)
+//      - lastHeartbeatAt (ISO string; the server's `now`)
+//      - lastActivityAt (ISO string; a server-stamped user interaction)
 //    It MUST NOT carry:
 //      - mouse / touch coordinates
 //      - keystrokes
@@ -38,6 +39,7 @@ import {
 export const PRESENCE_LIVE_SNAPSHOT_KEYS = Object.freeze([
   'connected',
   'connectionCount',
+  'connectedAt',
   'lastHeartbeatAt',
   'lastActivityAt',
 ]);
@@ -50,13 +52,18 @@ const ISO_RE = /^\d{4}-\d{2}-\d{2}T/;
  * @param {Object} input
  * @param {boolean} [input.connected=false]
  * @param {number}  [input.connectionCount=0]
+ * @param {string}  [input.connectedAt=null]      ISO connection-session anchor
  * @param {string}  [input.lastHeartbeatAt=null]  ISO
- * @param {string}  [input.lastActivityAt=null]   ISO
+ * @param {string}  [input.lastActivityAt=null]   ISO, server-stamped interaction
  */
 export const buildLiveSnapshot = (input = {}) => {
   const snapshot = {
     connected: input.connected === true,
     connectionCount: Math.max(0, Math.trunc(Number(input.connectionCount || 0))),
+    connectedAt:
+      typeof input.connectedAt === 'string' && ISO_RE.test(input.connectedAt)
+        ? input.connectedAt
+        : null,
     lastHeartbeatAt:
       typeof input.lastHeartbeatAt === 'string' && ISO_RE.test(input.lastHeartbeatAt)
         ? input.lastHeartbeatAt
@@ -76,6 +83,17 @@ export const buildLiveSnapshot = (input = {}) => {
 
   return Object.freeze(snapshot);
 };
+
+// A successful Redis read of an absent key means there is no live socket
+// session; it is not an infrastructure failure. Keep that distinct from
+// `null`, which the store reserves for an unavailable/corrupt live read.
+export const NO_CONNECTION_LIVE_SNAPSHOT = buildLiveSnapshot({
+  connected: false,
+  connectionCount: 0,
+  connectedAt: null,
+  lastHeartbeatAt: null,
+  lastActivityAt: null,
+});
 
 /**
  * Parse a Redis string into a normalized snapshot. Returns null on
@@ -104,6 +122,10 @@ export const parseLiveSnapshot = (raw) => {
   return buildLiveSnapshot({
     connected,
     connectionCount,
+    connectedAt:
+      typeof parsed.connectedAt === 'string' && ISO_RE.test(parsed.connectedAt)
+        ? parsed.connectedAt
+        : null,
     lastHeartbeatAt:
       typeof parsed.lastHeartbeatAt === 'string' && ISO_RE.test(parsed.lastHeartbeatAt)
         ? parsed.lastHeartbeatAt
@@ -126,6 +148,7 @@ export const stringifyLiveSnapshot = (snapshot) => {
     return JSON.stringify({
       connected: snapshot.connected === true,
       connectionCount: Math.max(0, Math.trunc(Number(snapshot.connectionCount || 0))),
+      connectedAt: snapshot.connectedAt || null,
       lastHeartbeatAt: snapshot.lastHeartbeatAt || null,
       lastActivityAt: snapshot.lastActivityAt || null,
     });
@@ -141,8 +164,12 @@ export const stringifyLiveSnapshot = (snapshot) => {
  */
 export const isWithinAwayThreshold = (snapshot, now, awayAfterMinutes) => {
   if (!snapshot) return false;
-  if (!snapshot.lastActivityAt) return false; // never recorded => not "recent"
-  const last = new Date(snapshot.lastActivityAt);
+  // A real interaction is the authoritative signal. Before the first
+  // interaction in a session, connectedAt supplies a one-time idle anchor;
+  // heartbeats never move either timestamp.
+  const lastSignalAt = snapshot.lastActivityAt || snapshot.connectedAt;
+  if (!lastSignalAt) return false;
+  const last = new Date(lastSignalAt);
   if (Number.isNaN(last.getTime())) return false;
   const ms = now.getTime() - last.getTime();
   if (ms < 0) return true; // clock skew tolerance
@@ -170,11 +197,11 @@ export const isBeyondOfflineThreshold = (snapshot, now, offlineAfterMinutes) => 
  * Pure: derive an effective live presence from one snapshot + tenant
  * config + clock. Returns one of PRESENCE_LIVE_STATES.
  *
- *   connected + recent activity               -> 'available'
- *   connected + activity older than away      -> 'away'
- *   connected + heartbeat older than offline  -> 'offline'
- *   connected + no activity ever              -> 'available' (recent connect)
- *   not connected                             -> 'offline'
+ *   connected + recent activity                -> 'available'
+ *   connected + activity older than away       -> 'away'
+ *   connected + heartbeat older than offline   -> 'offline'
+ *   connected + no activity yet                -> use connectedAt as a one-time idle anchor
+ *   not connected                              -> 'offline'
  *   live === null (infrastructure unavailable) -> 'unknown'
  */
 export const deriveLivePresence = ({ snapshot, config, now } = {}) => {

@@ -12,7 +12,7 @@
 //    · Not a NATS client. No NATS in the browser. (Phase 36.5.)
 //    · Not a Redis client. No Redis in the browser.
 //    · Not a presence *value* source. The value is read over REST;
-//      this channel only carries `presence:changed` events.
+//      this channel carries `presence:changed` / `presence:invalidated` events.
 //
 //  LIFECYCLE
 //    One controlled lifecycle: start once on auth, stop on logout.
@@ -70,10 +70,12 @@ export const startPresenceChannel = async () => {
       return null; // refused: runtime shows 'unavailable'
     }
 
-    const url = resolveSocketUrl();
+    const baseUrl = resolveSocketUrl().replace(/\/+$/, '');
+    const namespaceUrl = /\/presence$/i.test(baseUrl)
+      ? baseUrl
+      : `${baseUrl}/presence`;
     const opts = {
       path: '/socket.io',
-      namespace: '/presence',
       auth: { token: ticket },
       withCredentials: true,
       reconnectionAttempts: 6,
@@ -81,7 +83,33 @@ export const startPresenceChannel = async () => {
       reconnectionDelayMax: 5000,
     };
 
-    socket = url ? io(url, opts) : io(opts);
+    socket = io(namespaceUrl, opts);
+    let reminted = false;
+    const channelSocket = socket;
+    channelSocket.on('connect', () => {
+      reminted = false;
+    });
+    channelSocket.on('connect_error', async (error) => {
+      const code = String(error?.data?.code || error?.message || '');
+      if (code.includes('FEATURE_UNAVAILABLE')) {
+        channelSocket.close();
+        return;
+      }
+      if (!code.includes('UNAUTHORIZED')) return;
+      if (!reminted) {
+        reminted = true;
+        const fresh = await fetchPresenceTicket();
+        if (fresh && socket === channelSocket) {
+          channelSocket.auth = { token: fresh };
+          // A namespace middleware rejection does not always trigger the
+          // manager's automatic retry. Explicitly retry once with the new
+          // short-lived ticket; `reminted` bounds this recovery path.
+          channelSocket.connect();
+          return;
+        }
+      }
+      channelSocket.close();
+    });
     connecting = null;
     return socket;
   })();
@@ -115,12 +143,12 @@ export const getPresenceSocket = () => socket;
 export const isPresenceChannelConnected = () => Boolean(socket?.connected);
 
 // ────────────────────────────────────────────────────────────────────────
-//  TICKER — fire activity signals while a tab is visible.
+//  TICKER — heartbeat + read-only status ticks; activity uses interaction listeners.
 //
-//  Phase 37.4 §16 + 37.7 §C.3 — "Activity signal: the client MAY send
-//  `presence:activity {at: <ISO>}` while the tab is visible. The
-//  server throttles (≤1 / 30s). The browser never sends the activity
-//  value itself — the resolver decides."
+//  Activity is emitted only from real, visible user signals
+//  (pointerdown / keydown / focus). The frame is empty; the server stamps
+//  lastActivityAt so a client cannot backdate or future-date activity.
+//  Heartbeats and resolver ticks never update the activity timestamp.
 //
 //  Phase 37.7 — the visibility tick also emits `presence:tick` (read-
 //  only re-evaluation request) so the resolver re-runs on its own
@@ -131,9 +159,8 @@ export const isPresenceChannelConnected = () => Boolean(socket?.connected);
 //
 //  Phase 37.7 — user-driven activity signals (`pointerdown`,
 //  `keydown`, `focus`) emit `presence:activity` throttled to 1 / 5s
-//  so a frantic typist does not flood the bus. The browser never sends
-//  keys, text, mouse coords, or focused element ids — only the
-//  timestamp.
+//  so a frantic typist does not flood the socket. The browser never sends
+//  keys, text, mouse coords, focused element ids, or a client timestamp.
 // ────────────────────────────────────────────────────────────────────────
 const VISIBILITY_HEARTBEAT_MS = 30_000;
 const ACTIVITY_THROTTLE_MS = 5_000;
@@ -155,7 +182,7 @@ const sendActivity = () => {
   const s = socket;
   if (!s?.connected) return;
   try {
-    s.emit('presence:activity', { at: new Date().toISOString() });
+    s.emit('presence:activity', {});
   } catch {
     /* never throws up */
   }
@@ -187,11 +214,10 @@ const maybeEmitActivity = () => {
 
 const onVisibilityChange = () => {
   if (typeof document === 'undefined') return;
-  if (document.visibilityState === 'visible') {
-    // Re-tab returns — fire one activity so the resolver flips
-    // away→available promptly. Then the ticker takes over.
-    maybeEmitActivity();
-  }
+  // Visibility is not activity. Refresh transport liveness and ask the
+  // resolver to re-evaluate, but never change lastActivityAt here.
+  sendHeartbeat();
+  sendTick();
 };
 
 const onUserSignal = () => {
@@ -228,24 +254,17 @@ export const startVisibilityTicker = () => {
   sendHeartbeat();
   sendTick();
   visibilityTicker = setInterval(() => {
-    if (document.visibilityState === 'visible') {
-      sendHeartbeat();
-      // Phase 37.7 — emit the read-only tick alongside the heartbeat
-      // so the resolver re-runs on a 30s cadence without requiring
-      // the user to interact again. Activity piggy-backs on the same
-      // tick if the user happened to be active since the last tick,
-      // but the activity is also driven by real user signals.
-      sendTick();
-      sendActivity();
-    }
+    // Keep connection liveness and Away/Offline re-evaluation independent
+    // of visibility. Background browser timers may be throttled, so the
+    // store has a bounded TTL cushion. Crucially, this never sends activity.
+    sendHeartbeat();
+    sendTick();
   }, VISIBILITY_HEARTBEAT_MS);
   if (typeof document.addEventListener === 'function') {
     document.addEventListener('visibilitychange', onVisibilityChange);
   }
-  // Phase 37.7 §C.2 — also listen for real user signals (pointerdown,
-  // keydown, focus). The presence:activity the server receives is
-  // what sets lastActivityAt. Without these, an active user with a
-  // focused tab would still show stale activity after 30s.
+  // Real user signals (pointerdown, keydown, focus) are the ONLY
+  // activity source. Heartbeat/tick callbacks above never emit activity.
   attachActivityListeners();
 };
 

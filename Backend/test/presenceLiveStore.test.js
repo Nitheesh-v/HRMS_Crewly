@@ -3,8 +3,8 @@
 //
 //  Covers §41 backend tests #6–#19, #22.
 //  All Redis interactions are exercised against an in-memory fake that
-//  exposes the ioredis-shaped surface the store uses (hset, hgetall,
-//  multi/exec, exists, sadd, srem, scard, expire, del, pipeline).
+//  exposes the ioredis-shaped surface the store uses (hset, hget,
+//  hgetall, multi/exec, exists, sadd, srem, scard, expire, del, pipeline).
 //  No real network. No live Redis. No Mongo. No NATS.
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -69,6 +69,10 @@ const createMemoryRedis = () => {
       }
       hashStore.set(key, merged);
       return 'OK';
+    },
+    hget: async (key, field) => {
+      ensureLive(key);
+      return hashStore.get(key)?.[field] ?? null;
     },
     hgetall: async (key) => {
       ensureLive(key);
@@ -192,12 +196,13 @@ test('pure: parseLiveSnapshot returns null on malformed', () => {
   assert.equal(empty.connected, false);
 });
 
-test('pure: stringifyLiveSnapshot is a tight JSON with the four keys only', () => {
+test('pure: stringifyLiveSnapshot is a tight JSON with the five allowed keys only', () => {
   const s = buildLiveSnapshot({ connected: true, connectionCount: 1 });
   const raw = stringifyLiveSnapshot(s);
   const parsed = JSON.parse(raw);
   assert.deepEqual(Object.keys(parsed).sort(), [
     'connected',
+    'connectedAt',
     'connectionCount',
     'lastActivityAt',
     'lastHeartbeatAt',
@@ -330,15 +335,34 @@ const newStore = ({ redis, now = () => new Date('2026-10-03T10:00:00.000Z') } = 
     logger: { info() {}, warn() {}, error() {} },
   });
 
-test('#6 connection creates/refreshes ephemeral state', async () => {
+test('#6 connection creates a liveness anchor without impersonating user activity', async () => {
   const redis = createMemoryRedis();
   const store = newStore({ redis });
   const snap = await store.markConnected({ companyId: COMPANY, userId: USER_A, connectionId: 'sock-1' });
   assert.ok(snap, 'markConnected must return a snapshot');
   assert.equal(snap.connectionCount, 1);
   assert.equal(snap.connected, true);
+  assert.equal(snap.connectedAt, '2026-10-03T10:00:00.000Z');
   assert.ok(snap.lastHeartbeatAt);
-  assert.ok(snap.lastActivityAt);
+  assert.equal(snap.lastActivityAt, null, 'connect is not a user interaction');
+});
+
+test('additional tabs do not reset the idle-session anchor', async () => {
+  const redis = createMemoryRedis();
+  const first = newStore({ redis });
+  await first.markConnected({ companyId: COMPANY, userId: USER_A, connectionId: 'sock-1' });
+  const second = newStore({
+    redis,
+    now: () => new Date('2026-10-03T10:02:00.000Z'),
+  });
+  const snap = await second.markConnected({
+    companyId: COMPANY,
+    userId: USER_A,
+    connectionId: 'sock-2',
+  });
+  assert.equal(snap.connectionCount, 2);
+  assert.equal(snap.connectedAt, '2026-10-03T10:00:00.000Z');
+  assert.equal(snap.lastActivityAt, null);
 });
 
 test('#7 heartbeat refreshes correct scoped state', async () => {
@@ -351,6 +375,55 @@ test('#7 heartbeat refreshes correct scoped state', async () => {
   assert.ok(snap, 'heartbeat returns snapshot for live user');
   assert.equal(snap.connectionCount, 1, 'heartbeat does not change count');
   assert.equal(snap.lastHeartbeatAt, '2026-10-03T10:00:10.000Z');
+  assert.equal(snap.connectedAt, '2026-10-03T10:00:00.000Z', 'heartbeat does not reset the session idle anchor');
+  assert.equal(snap.lastActivityAt, null, 'heartbeat never creates or changes activity time');
+});
+
+test('heartbeat repair cannot reset the idle anchor when the live hash is lost', async () => {
+  const redis = createMemoryRedis();
+  const first = newStore({ redis });
+  await first.markConnected({ companyId: COMPANY, userId: USER_A, connectionId: 'sock-1' });
+  await redis.del(presenceLiveKey(COMPANY, USER_A, 'crewly:development'));
+
+  const heartbeat = newStore({
+    redis,
+    now: () => new Date('2026-10-03T10:10:00.000Z'),
+  });
+  const repaired = await heartbeat.refreshHeartbeat({
+    companyId: COMPANY,
+    userId: USER_A,
+    connectionId: 'sock-1',
+  });
+  assert.equal(repaired.connectedAt, null, 'a heartbeat is not a new idle-session anchor');
+  assert.equal(repaired.lastActivityAt, null);
+  assert.equal(
+    deriveLivePresence({
+      snapshot: repaired,
+      config: { awayAfterMinutes: 5, offlineAfterMinutes: 15 },
+      now: new Date('2026-10-03T10:10:00.000Z'),
+    }),
+    'away',
+    'repair must not make an idle user Available again',
+  );
+});
+
+test('activity only updates lastActivityAt; it does not impersonate a heartbeat', async () => {
+  const redis = createMemoryRedis();
+  const store = newStore({ redis });
+  await store.markConnected({ companyId: COMPANY, userId: USER_A, connectionId: 'sock-1' });
+  const activityStore = newStore({
+    redis,
+    now: () => new Date('2026-10-03T10:00:15.000Z'),
+  });
+  const snap = await activityStore.recordActivity({
+    companyId: COMPANY,
+    userId: USER_A,
+    connectionId: 'sock-1',
+    at: new Date('2999-01-01T00:00:00.000Z'), // ignored: the store owns its clock
+  });
+  assert.equal(snap.lastActivityAt, '2026-10-03T10:00:15.000Z');
+  assert.equal(snap.lastHeartbeatAt, '2026-10-03T10:00:00.000Z');
+  assert.equal(snap.connectedAt, '2026-10-03T10:00:00.000Z');
 });
 
 test('#8 keys are tenant scoped — one user cannot touch another', async () => {
@@ -508,7 +581,7 @@ test('#17 closing one of two tabs does NOT produce Offline', async () => {
   assert.equal(snap.connected, true, 'still live');
 });
 
-test('#18 final qualifying disconnect can eventually produce Offline (count=0, grace window)', async () => {
+test('#18 final qualifying disconnect records confirmed Offline during the grace window', async () => {
   const redis = createMemoryRedis();
   const store = newStore({ redis });
   await store.markConnected({ companyId: COMPANY, userId: USER_A, connectionId: 'sock-1' });
@@ -543,12 +616,18 @@ test('#19 reconnect correctly restores live state', async () => {
   assert.equal(t1.connected, true);
 });
 
-test('#22 batched read returns a Map<userId, snapshot|null>', async () => {
+test('#22 batched read returns Offline for a successful missing key', async () => {
   const redis = createMemoryRedis();
   const store = newStore({ redis });
   await store.markConnected({ companyId: COMPANY, userId: USER_A, connectionId: 'sock-1' });
-  // USER_B is not connected.
+  // USER_B has no live key; Redis is healthy, so this is confirmed Offline.
   const map = await store.readLiveMany({ companyId: COMPANY, userIds: [USER_A, USER_B] });
   assert.equal(map.get(USER_A)?.connectionCount, 1);
-  assert.equal(map.get(USER_B), null);
+  assert.deepEqual(map.get(USER_B), {
+    connected: false,
+    connectionCount: 0,
+    connectedAt: null,
+    lastHeartbeatAt: null,
+    lastActivityAt: null,
+  });
 });

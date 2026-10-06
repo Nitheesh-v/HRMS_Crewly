@@ -183,32 +183,56 @@ test('frontend 37.4: presenceChannel.js does NOT import the redux store directly
   assert.equal(/redux\/store/i.test(src), false);
 });
 
-test('frontend 37.7: presenceChannel.js emits presence:tick (read-only re-eval) and presence:activity (throttled)', () => {
-  // Phase 37.7 — Away transitions happen on a 30s server cadence
-  // because the resolver re-runs on presence:tick. Real activity
-  // signals (pointerdown / keydown / focus) emit presence:activity
-  // throttled to 1/5s. Both events carry nothing else in the payload.
+test('frontend 37.7: presenceChannel joins /presence and wires read-only ticker separately from activity', () => {
   const src = read('src/services/realtime/presenceChannel.js');
+  assert.match(src, /namespaceUrl/);
+  assert.match(src, /io\(namespaceUrl, opts\)/);
   assert.match(src, /presence:tick/);
   assert.match(src, /ACTIVITY_THROTTLE_MS/);
-  // The user-signal listeners are pointerdown / keydown / focus. NOT
-  // mousemove (a violation of the anti-surveillance law — Phase 37 §9).
   assert.match(src, /pointerdown/);
   assert.match(src, /keydown/);
   assert.match(src, /['"]focus['"]/);
   assert.equal(/mousemove/.test(src), false);
+
+  const tickerStart = src.indexOf('visibilityTicker = setInterval');
+  const tickerEnd = src.indexOf('}, VISIBILITY_HEARTBEAT_MS)', tickerStart);
+  assert.ok(tickerStart >= 0 && tickerEnd > tickerStart, 'periodic ticker block exists');
+  const ticker = src.slice(tickerStart, tickerEnd);
+  assert.match(ticker, /sendHeartbeat\(\)/);
+  assert.match(ticker, /sendTick\(\)/);
+  assert.equal(/sendActivity\(\)/.test(ticker), false, 'heartbeat/tick must never become activity');
+
+  const visibilityStart = src.indexOf('const onVisibilityChange');
+  const visibilityEnd = src.indexOf('const onUserSignal', visibilityStart);
+  const visibilityHandler = src.slice(visibilityStart, visibilityEnd);
+  assert.equal(/maybeEmitActivity|sendActivity/.test(visibilityHandler), false);
+  assert.match(src.slice(src.indexOf('const onUserSignal'), src.indexOf('const attachActivityListeners')), /maybeEmitActivity\(\)/);
 });
 
-test('frontend 37.4: presenceChannel.js send functions do not include any client-claimed presence value', () => {
-  // The browser may only signal liveness / activity. The resolver
-  // decides the value. The activity frame carries `at` (ISO) and
-  // nothing else; the heartbeat frame is empty.
+test('frontend 37.4: activity payload is empty and the server owns the activity timestamp', () => {
   const src = read('src/services/realtime/presenceChannel.js');
-  // No `presence:` emit with a value field.
+  assert.match(src, /s\.emit\('presence:activity', \{\}\)/);
+  assert.equal(/presence:activity', \{\s*at\s*:/.test(src), false);
+  assert.equal(/new Date\(\)\.toISOString\(\)/.test(src), false);
   assert.equal(/emit\(\s*['"]presence:[a-z]+['"]\s*,\s*\{[^}]*presence\s*:/i.test(src), false);
-  // The activity frame is the ONLY event with a payload.
-  assert.match(src, /presence:activity/);
-  assert.match(src, /presence:heartbeat/);
+});
+
+test('frontend presence runtime listens for status changes and invalidations', () => {
+  const src = read('src/services/realtime/presenceRuntime.js');
+  assert.match(src, /sock\.on\('presence:changed'/);
+  assert.match(src, /sock\.on\('presence:invalidated'/);
+  assert.match(src, /loadMyPresence\(\)/);
+  assert.match(src, /presenceInvalidateTeam\(\)/);
+  assert.match(src, /presenceWlrInvalidateForUser\(\)/);
+  assert.match(src, /fetchMyWorkLocationRequests\(\)/);
+});
+
+test('team availability performs a visible, bounded fallback refetch for missed disconnect events', () => {
+  const src = read('src/pages/team/TeamAvailabilityPage.jsx');
+  assert.match(src, /TEAM_PRESENCE_REFRESH_MS\s*=\s*60_?000/);
+  assert.match(src, /document\.visibilityState === 'hidden'/);
+  assert.match(src, /pollInFlight\.current/);
+  assert.match(src, /fetchTeamAvailability\(debouncedFilters\)/);
 });
 
 test('frontend 37.4: presenceRuntime debounces team refetches (1s window)', () => {

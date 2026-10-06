@@ -60,7 +60,7 @@ const isExpired = (expiry, now) => {
  *   1. Manual DND / Busy / Available  (durable, not expired)
  *   2. Connected + recent activity    -> 'available'  (liveSource = 'automatic')
  *   3. Connected + recent inactivity  -> 'away'       (liveSource = 'automatic')
- *   4. Connected + no recent signal   -> 'available'  (recent connect counts)
+ *   4. Connected + no interaction yet -> use connectedAt as a one-time idle anchor
  *   5. No connection                  -> 'offline'    (liveSource = 'automatic')
  *   6. Infrastructure uncertain (live === null) -> 'unknown' (liveSource = 'none')
  *
@@ -71,7 +71,8 @@ const isExpired = (expiry, now) => {
  * @param {Date}   [args.now]   — testable clock
  * @param {Object|null} [args.live] — Phase 37.4 ephemeral snapshot:
  *                                    {connected, connectionCount,
- *                                     lastHeartbeatAt, lastActivityAt}.
+ *                                     connectedAt, lastHeartbeatAt,
+ *                                     lastActivityAt}.
  *                                    When `null` the resolver behaves
  *                                    exactly like 37.1 (presence is
  *                                    `unknown` if no manual status is
@@ -269,7 +270,11 @@ const deriveAutomaticPresence = ({ live, config, now }) => {
     : 15;
 
   const lastHb = live?.lastHeartbeatAt ? new Date(live.lastHeartbeatAt) : null;
-  const lastAct = live?.lastActivityAt ? new Date(live.lastActivityAt) : null;
+  // `lastActivityAt` is advanced only by server-stamped user interactions.
+  // `connectedAt` is an immutable idle baseline until that first interaction;
+  // transport heartbeats never extend Available status.
+  const lastActivitySignal = live?.lastActivityAt || live?.connectedAt;
+  const lastAct = lastActivitySignal ? new Date(lastActivitySignal) : null;
 
   // 1) Heartbeat older than offline threshold OR no heartbeat at all
   //    but never connected => Offline.
@@ -289,9 +294,10 @@ const deriveAutomaticPresence = ({ live, config, now }) => {
     return 'away';
   }
 
-  // 3) No activity recorded yet but the connection is fresh
-  //    (heartbeat exists, was within offline window) => Available.
-  return 'available';
+  // 3) No valid interaction/connection anchor means freshness cannot be
+  //    established. Keep a live-but-idle user Away rather than allowing
+  //    periodic heartbeats to manufacture Available status.
+  return 'away';
 };
 
 export const __test__ = { isExpired, toIsoOrNull, deriveAutomaticPresence };

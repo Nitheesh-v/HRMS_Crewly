@@ -8,12 +8,13 @@
 //
 //  TWO CHANNELS
 //    1. CLIENT → SERVER (presence Socket.IO namespace):
-//         presence:heartbeat  — no payload; the server stamps `now`.
-//         presence:activity   — {at: ISO}; the server stamps it on Redis.
+//         presence:heartbeat  — no payload; transport liveness only.
+//         presence:activity   — empty payload; server stamps genuine interaction.
+//         presence:tick       — no payload; read-only resolver re-evaluation.
 //         presence:disconnect — server-internal (NOT a client event).
-//    2. SERVER → CLIENT (bus envelope, via realtimeGateway):
-//         type: 'presence:changed'
-//         payload: buildPresenceChangedEnvelope(...)
+//    2. SERVER → CLIENT (authenticated /presence Socket.IO namespace):
+//         'presence:changed' with buildPresenceChangedEnvelope(...)
+//         'presence:invalidated' with buildPresenceInvalidatedEnvelope(...)
 //
 //  THE BUS ENVELOPE
 //    Schema-versioned. The only allowed keys are PRESENCE_ENVELOPE_KEYS;
@@ -49,10 +50,10 @@ export const PRESENCE_SOCKET_INBOUND_EVENTS = Object.freeze([
 export const PRESENCE_GATEWAY_EVENT_TYPE = 'presence:changed';
 
 // Phase 37.5 — invalidation envelope. A SEPARATE event type with a
-// dedicated, fixed-shape payload (no presence value carried — the
-// client refetches the snapshot). The frontend presenceChannel
-// listener refetches `state.presence` and (when appropriate) the
-// team list. No PII in this envelope.
+// dedicated, fixed-shape payload (no presence value carried). The
+// affected user's runtime refetches its request and presence state;
+// authorized team rows converge through the page's batched REST refresh.
+// No PII in this envelope.
 export const PRESENCE_INVALIDATED_EVENT_TYPE = 'presence:invalidated';
 
 // Schema version. Increment on a backward-incompatible envelope change

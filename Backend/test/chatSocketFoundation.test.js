@@ -559,6 +559,28 @@ describe('33.1 handshake middleware', () => {
     });
   });
 
+  test('a null availability refusal allows token verification to proceed', async () => {
+    const socket = fakeSocket('ticket-or-jwt');
+    let verifiedToken = null;
+    let nextError = 'not-called';
+
+    await createChatHandshakeAuth({
+      availability: { refusal: () => null },
+      verify: async (token) => {
+        verifiedToken = token;
+        return { ok: true, userId: USER_A1, companyId: COMPANY_A, sessionId: SESSION_ID };
+      },
+      unauthorized: CHAT_UNAUTHORIZED,
+    })(socket, (error) => {
+      nextError = error;
+    });
+
+    assert.equal(verifiedToken, 'ticket-or-jwt');
+    assert.equal(nextError, undefined);
+    assert.equal(socket.data.userId, USER_A1);
+    assert.equal(socket.data.companyId, COMPANY_A);
+  });
+
   test('a client-supplied companyId in the auth payload is never read', async () => {
     const socket = {
       handshake: { auth: { token: 'a.b.c', companyId: COMPANY_B, userId: 'deadbeef' } },
@@ -1314,6 +1336,21 @@ describe('33.1 server wiring (source pins)', () => {
     assert.ok(!serverSource.includes('app.listen('), 'app.listen must be replaced');
   });
 
+  test('optional presence namespace attaches before listen and drains before its shared chat engine', () => {
+    assert.match(serverSource, /parsePresenceSocketEnabled\(\)/);
+    assert.match(serverSource, /presenceSocketServer\.attach\(server/);
+
+    const presenceAttachAt = serverSource.indexOf('presenceSocketServer.attach(server');
+    const listenAt = serverSource.indexOf('server.listen(');
+    assert.ok(presenceAttachAt > 0 && presenceAttachAt < listenAt);
+
+    const presenceStopAt = serverSource.indexOf('presenceSocketServer?.stop()');
+    const chatStopAt = serverSource.indexOf('getChatSocketServer().stop()');
+    const shutdownAt = serverSource.indexOf('.finally(() => shutdown(signal))');
+    assert.ok(presenceStopAt > 0 && presenceStopAt < chatStopAt);
+    assert.ok(chatStopAt < shutdownAt, 'owned HTTP shutdown follows both socket drains');
+  });
+
   test('the chat socket is drained on the same SIGTERM/SIGINT path as 32.11', () => {
     const drainAt = serverSource.indexOf('shutdownWithRealtime');
 
@@ -1524,7 +1561,7 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
     );
   });
 
-  test('the socket folder holds the foundation + the 33.5 chat modules', () => {
+  test('the socket folder holds the chat foundation/modules and isolated presence namespace', () => {
     const files = fs
       .readdirSync(path.join(here, '..', 'src', 'socket'))
       .filter((name) => name.endsWith('.js'))
@@ -1534,6 +1571,9 @@ describe('33.1/33.2 boundary — models exist, no chat product surface does', ()
       'chatSocketHandlers.js',
       'chatSocketValidators.js',
       'initSocketServer.js',
+      'presenceSocket.js',
+      'presenceSocketConfig.js',
+      'presenceSocketHandlers.js',
       // 33.8-fix: REST→socket list-change nudge seam (data-less event).
       'realtimeNudge.js',
       'socketAuth.js',

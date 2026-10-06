@@ -80,30 +80,35 @@ const runWithPresenceError = async (handler, req, res) => {
 };
 
 // 37.4 — publish a best-effort `presence:changed` envelope. NEVER
-// throws. The presence:changed envelope is published only when the
-// returned snapshot's `presence` differs from the most-recent value
-// the controller has seen. We compare to a tiny in-process cache
-// (last-seen per user); the cache is process-local and is best-
-// effort — if a different instance observed the previous value, the
-// other instance publishes, and the envelope is the authoritative
-// signal. The local cache exists only to suppress the
-// "manual changed but live state happens to match" duplicate.
+// throws. Compare the returned snapshot's effective value and source
+// against the last successfully published pair; a manual/Leave source
+// change matters even when the visible value is unchanged. The cache is
+// process-local and best-effort, so the REST response remains authoritative.
 const lastSeenPresence = new Map();
-const safePublishIfChanged = async ({ companyId, userId, before, after }) => {
+const safePublishIfChanged = async ({ companyId, userId, after }) => {
   if (!companyId || !userId) return;
-  if (!after || typeof after !== 'object') return;
-  const newPresence = after.presence;
+  if (!after || typeof after !== 'object' || !after.presence) return;
+  const next = {
+    presence: after.presence,
+    presenceSource: after.presenceSource || 'none',
+  };
   const key = `${String(companyId)}:${String(userId)}`;
-  if (lastSeenPresence.get(key) === newPresence) return;
-  lastSeenPresence.set(key, newPresence);
+  const previous = lastSeenPresence.get(key);
+  if (
+    previous?.presence === next.presence &&
+    previous?.presenceSource === next.presenceSource
+  ) return;
+
   try {
-    await publishPresenceChanged({
+    const result = await publishPresenceChanged({
       companyId: String(companyId),
       userId: String(userId),
-      presence: newPresence,
-      presenceSource: after.presenceSource || 'manual',
+      ...next,
       source: 'resolver',
     });
+    // Keep failed or unavailable delivery retryable, and treat a change
+    // from automatic to manual with the same visible value as a transition.
+    if (result?.ok) lastSeenPresence.set(key, next);
   } catch {
     /* publish NEVER throws up — the bus is best-effort */
   }

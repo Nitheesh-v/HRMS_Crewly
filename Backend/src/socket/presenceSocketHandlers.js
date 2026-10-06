@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════
-//  PHASE 37.4 — PRESENCE SOCKET HANDLERS (3 events, all idempotent)
+//  PHASE 37.4 — PRESENCE SOCKET HANDLERS (activity, heartbeat, tick, disconnect)
 //
 //  WHAT THIS MODULE IS
 //    Per-connection handlers for the three presence events the
@@ -10,7 +10,7 @@
 //
 // EVENTS
 //    presence:heartbeat   — { } (no payload; the server stamps `now`)
-//    presence:activity    — { at: ISO } (throttled; the server stamps Redis)
+//    presence:activity    — {} (real interaction signal; the server stamps Redis)
 //    presence:tick        — { } (Phase 37.7 §C.3 — read-only re-eval request.
 //                              No payload. Does NOT update lastActivityAt.
 //                              Re-resolves with the existing live snapshot
@@ -22,60 +22,62 @@
 //
 //  WHAT THE SERVER DOES WITH EACH
 //    On connect: store.markConnected, then resolve + publish a
-//      presence:changed envelope ONLY if the user's effective
-//      presence moved into a non-`unknown` value (first connect for
-//      a previously-unknown user).
+//      presence:changed envelope only when the effective value or
+//      source differs from the last successfully published snapshot.
 //    On heartbeat: store.refreshHeartbeat. NO publish (a heartbeat
 //      is not a meaningful state change — §9, §16).
 //    On activity: store.recordActivity + (if effective presence
 //      changed) publish a presence:changed envelope with source='activity'.
-//    On disconnect: store.markDisconnected. NO publish here. The
-//      grace window keeps the key alive for the reconnect window;
-//      when the TTL expires the next read returns null and the
-//      resolver returns 'offline'. The bus publish happens at the
-//      next resolver transition (or via the resolver noticing the
-//      absence on the next /me read).
+//    On disconnect: store.markDisconnected. Only the last tab (count=0)
+//      re-resolves through the shared service and publishes the effective
+//      status (Offline unless manual/Leave precedence wins).
 //
 //  ANTI-BANS (re-asserted)
 //    · No attendance, no leave, no payroll, no AI side effects.
 //    · No Mongo writes (heartbeat history is FORBIDDEN by Phase 37 §19).
-//    · No NATS (the bus is the 32.11 SSE gateway re-pointed at
-//      presence:changed envelopes).
+//    · No NATS or infrastructure-SSE product events; the presence bus
+//      emits only fixed-shape envelopes on the authenticated namespace.
 //    · No KEYS / SCAN / FLUSH* from the store (pinned by tests).
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { presenceCompanyRoom, presenceUserRoom } from '../utils/presenceKeys.js';
 import {
   PRESENCE_SOCKET_INBOUND_EVENTS,
   PRESENCE_GATEWAY_EVENT_TYPE,
-  buildPresenceChangedEnvelope,
-  parsePresenceChangedEnvelope,
+  PRESENCE_INVALIDATED_EVENT_TYPE,
 } from '../services/presence/presenceEvents.js';
-import { resolvePresence } from '../services/presence/presenceResolver.js';
-import { getPresenceTenantConfigOrThrow } from '../services/presence/presenceTenantConfigService.js';
+import { presenceService } from '../services/presence/presenceService.js';
 import { publishPresenceChanged, presenceBusAvailable } from '../services/presence/presenceBus.js';
-import { getScopedUserIds } from '../utils/scope.js';
 
-const ISO_RE = /^\d{4}-\d{2}-\d{2}T/;
-
-const safeActivityAt = (raw) => {
-  if (typeof raw !== 'string' || !ISO_RE.test(raw)) return null;
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) return null;
-  return d;
-};
-
-// A tiny per-socket "lastEffectivePresence" memo. Used to suppress a
-// redundant publish on connect when the user's previous state is
-// already the one we'd publish. The local memo is best-effort; the
-// authoritative signal is the bus envelope.
+// Process-local transition memo. The Redis live snapshot + the shared REST
+// presence service remain authoritative; this only suppresses duplicate
+// socket envelopes for unchanged effective values.
 const lastPublishedBySocket = new Map();
 
 /**
+ * Resolve through the same service used by GET /presence/me. That service
+ * loads durable manual preferences, the live Redis snapshot, and the
+ * read-only approved-Leave context before calling the single resolver.
+ * The old socket-only `{ durable: null, hrContext: null }` path could
+ * incorrectly replace Busy / On Leave with an automatic value.
+ */
+export const resolveEffectivePresence = async ({
+  companyId,
+  userId,
+  store,
+  serviceFactory = presenceService,
+} = {}) => {
+  try {
+    const service = serviceFactory({ liveStore: store || null });
+    return await service.getMyPresence({ companyId, userId });
+  } catch {
+    return { presence: 'unknown', presenceSource: 'none' };
+  }
+};
+
+/**
  * Resolve the user's effective presence and publish a presence:changed
- * envelope ONLY when the presence value differs from the memo.
- * Pure side effects: a single (best-effort) publish + a memo write.
- * NEVER throws.
+ * envelope when the value or authoritative source differs from the memo.
+ * Only a successful best-effort publish advances the memo. NEVER throws.
  */
 const publishIfChanged = async ({
   companyId,
@@ -88,54 +90,28 @@ const publishIfChanged = async ({
   if (!companyId || !userId) return;
   if (!presence) return;
   const key = `${String(companyId)}:${String(userId)}`;
+  const resolvedSource = presenceSource || 'none';
   const previous = memo?.get(key);
-  if (previous === presence) return;
-  memo?.set(key, presence);
-  if (!presenceBusAvailable()) return;
+  if (
+    (previous?.presence === presence && previous?.presenceSource === resolvedSource) ||
+    !presenceBusAvailable()
+  ) return;
   try {
-    await publishPresenceChanged({
+    const result = await publishPresenceChanged({
       companyId: String(companyId),
       userId: String(userId),
       presence,
-      presenceSource: presenceSource || 'none',
+      presenceSource: resolvedSource,
       source,
     });
+    // Keep the memo retryable when the namespace was removed or the
+    // envelope could not be delivered. Track source as well as value so
+    // automatic Available -> manually selected Available is observable.
+    if (result?.ok) {
+      memo?.set(key, { presence, presenceSource: resolvedSource });
+    }
   } catch {
     /* publish NEVER throws up */
-  }
-};
-
-/**
- * Resolve the user end-to-end (durable + live) so we know what the
- * effective presence is on connect. This is the ONE place outside
- * the controller where the live store is consulted on a synchronous
- * "what's this user's effective presence" question.
- *
- * NEVER throws. On any failure returns 'unknown'.
- */
-const resolveEffectivePresence = async ({
-  companyId,
-  userId,
-  store,
-}) => {
-  try {
-    const config = await getPresenceTenantConfigOrThrow({ companyId });
-    const live = store
-      ? await store.readLive({ companyId, userId })
-      : null;
-    // We do NOT fetch the durable row here — the controller already
-    // owns that read. The connect-time publish is best-effort and
-    // the team page refetches via HTTP. We use the resolver directly
-    // to determine if the user is at least not-unknown now.
-    const resolved = resolvePresence({
-      durable: null,
-      config,
-      now: new Date(),
-      live,
-    });
-    return resolved;
-  } catch {
-    return { presence: 'unknown', presenceSource: 'none' };
   }
 };
 
@@ -155,6 +131,7 @@ export const registerPresenceSocketHandlers = ({
   store,
   counters = {},
   log = console,
+  resolveEffective = resolveEffectivePresence,
 } = {}) => {
   const companyId = String(socket.data?.companyId || '');
   const userId = String(socket.data?.userId || '');
@@ -181,7 +158,7 @@ export const registerPresenceSocketHandlers = ({
       connectionId,
     });
     if (!snap) return; // store down — degraded mode, no publish
-    const resolved = await resolveEffectivePresence({ companyId, userId, store });
+    const resolved = await resolveEffective({ companyId, userId, store });
     await publishIfChanged({
       companyId,
       userId,
@@ -192,11 +169,11 @@ export const registerPresenceSocketHandlers = ({
     });
   })();
 
-  // ── presence:heartbeat (no payload) ────────────────────────────────
+  // ── presence:heartbeat (no payload; transport liveness only) ─────────
   socket.on('presence:heartbeat', async () => {
     if (typeof store?.refreshHeartbeat !== 'function') return;
     try {
-      await store.refreshHeartbeat({ companyId, userId });
+      await store.refreshHeartbeat({ companyId, userId, connectionId });
     } catch {
       /* store never throws; the safeCall wrapper catches — defensive */
     }
@@ -205,15 +182,13 @@ export const registerPresenceSocketHandlers = ({
     // assertion, not a transition.
   });
 
-  // ── presence:activity ({at: ISO}) ─────────────────────────────────
-  socket.on('presence:activity', async (raw) => {
+  // ── presence:activity (user interaction; server-stamped) ────────────
+  socket.on('presence:activity', async () => {
     if (typeof store?.recordActivity !== 'function') return;
-    const at = safeActivityAt(raw?.at);
-    if (!at) return; // malformed payload — ignore silently
     try {
-      const snap = await store.recordActivity({ companyId, userId, at });
+      const snap = await store.recordActivity({ companyId, userId, connectionId });
       if (!snap) return;
-      const resolved = await resolveEffectivePresence({ companyId, userId, store });
+      const resolved = await resolveEffective({ companyId, userId, store });
       // The activity event may flip away -> available. The memo
       // suppresses no-op transitions.
       await publishIfChanged({
@@ -241,7 +216,7 @@ export const registerPresenceSocketHandlers = ({
   // user to interact again or another user to hit the team page.
   socket.on('presence:tick', async () => {
     try {
-      const resolved = await resolveEffectivePresence({ companyId, userId, store });
+      const resolved = await resolveEffective({ companyId, userId, store });
       await publishIfChanged({
         companyId,
         userId,
@@ -258,17 +233,31 @@ export const registerPresenceSocketHandlers = ({
   // ── disconnect ─────────────────────────────────────────────────────
   socket.on('disconnect', async () => {
     if (typeof store?.markDisconnected !== 'function') return;
+    let snapshot = null;
     try {
-      await store.markDisconnected({ companyId, userId, connectionId });
+      snapshot = await store.markDisconnected({ companyId, userId, connectionId });
     } catch {
-      /* defensive */
+      return; // Redis failure is Unknown, never a fabricated Offline.
     }
-    // No publish on disconnect. The grace window keeps the key
-    // alive; when the TTL expires the next reader resolves 'offline'
-    // and the next /me request publishes the transition (or, if
-    // the bus is enabled, the resolver's change-detector publishes
-    // it). Doing a publish on every disconnect would publish on
-    // every tab close even when the user is still on another tab.
+
+    // A closing tab must not mark the user Offline while another tab is
+    // connected. The final disconnect is authoritative and is published
+    // immediately; Redis retains the zero-connection snapshot briefly so
+    // REST refetches see the same effective value.
+    if (!snapshot || Number(snapshot.connectionCount) !== 0) return;
+    try {
+      const resolved = await resolveEffective({ companyId, userId, store });
+      await publishIfChanged({
+        companyId,
+        userId,
+        presence: resolved.presence,
+        presenceSource: resolved.presenceSource,
+        source: 'disconnect',
+        memo,
+      });
+    } catch {
+      /* resolver / publisher failures never escape a disconnect */
+    }
   });
 
   return {
@@ -281,7 +270,10 @@ export const registerPresenceSocketHandlers = ({
 
 // Public seam: the test/inspection hook.
 export const PRESENCE_SOCKET_INBOUND = PRESENCE_SOCKET_INBOUND_EVENTS;
-export const PRESENCE_SOCKET_OUTBOUND = Object.freeze([PRESENCE_GATEWAY_EVENT_TYPE]);
+export const PRESENCE_SOCKET_OUTBOUND = Object.freeze([
+  PRESENCE_GATEWAY_EVENT_TYPE,
+  PRESENCE_INVALIDATED_EVENT_TYPE,
+]);
 
 // Test-only: clear the memo between hermetic unit tests.
 export const _resetPresenceMemoForTests = () => {

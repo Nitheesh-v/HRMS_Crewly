@@ -71,6 +71,32 @@ test('#21 inactivity past awayAfterMinutes -> away (automatic)', () => {
   assert.equal(r.presenceSource, 'automatic');
 });
 
+test('fresh heartbeats do not keep an untouched connection Available past the idle threshold', () => {
+  const live = buildLiveSnapshot({
+    connected: true,
+    connectionCount: 1,
+    connectedAt: '2026-10-03T09:50:00.000Z',
+    lastHeartbeatAt: NOW.toISOString(), // heartbeat remains fresh
+    lastActivityAt: null,
+  });
+  const r = resolvePresence({
+    durable: null,
+    config: configBase,
+    now: NOW,
+    live,
+  });
+  assert.equal(r.presence, 'away');
+
+  const interacted = buildLiveSnapshot({
+    ...live,
+    lastActivityAt: '2026-10-03T09:59:00.000Z',
+  });
+  assert.equal(
+    resolvePresence({ durable: null, config: configBase, now: NOW, live: interacted }).presence,
+    'available',
+  );
+});
+
 test('#22 new activity after away -> available (automatic)', () => {
   const recent = buildLiveSnapshot({
     connected: true,

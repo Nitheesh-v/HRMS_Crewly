@@ -27,8 +27,9 @@
 //    precedence.
 //
 //  UNKNOWN ≠ OFFLINE (§20)
-//    The resolver returns `presence: 'unknown'` when there is no live
-//    signal and no manual status. The team view surfaces that honestly.
+//    The resolver returns `presence: 'unknown'` when the live store is
+//    unavailable (or not configured) and no manual status overrides it.
+//    A successful Redis read of a missing key is confirmed Offline.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import * as ScopeNS from '../../utils/scope.js';
@@ -471,10 +472,10 @@ export const presenceTeamService = (deps = {}) => {
     for (const row of presenceRows) presenceMap.set(String(row.userId), row);
 
     // 37.4 — ONE batched live-snapshot read for every authorised user.
-    // The store handles the absence case by mapping missing users to
-    // null (the resolver then returns 'unknown' if no manual status
-    // is set). The store NEVER throws on a Redis failure — it returns
-    // an empty Map and the team page keeps working.
+    // A healthy Redis read maps a missing live key to a disconnected
+    // snapshot (Offline); an actual Redis failure maps to null (Unknown).
+    // The store NEVER throws — a batch failure returns an empty Map and
+    // the team page keeps working.
     const liveMap = liveStore
       ? await liveStore.readLiveMany({ companyId, userIds })
       : new Map();

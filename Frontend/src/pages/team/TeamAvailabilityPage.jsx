@@ -21,7 +21,7 @@
 //    - Never modifies own presence outside the menu view.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 import {
@@ -43,6 +43,7 @@ const PRESENCE_FILTER_VALUES = ['available', 'busy', 'dnd', 'unknown', 'on_leave
 const LOCATION_FILTER_VALUES = ['office', 'wfh', 'remote'];
 const MAX_SEARCH_LEN = 60;
 const DEFAULT_LIMIT = 25;
+const TEAM_PRESENCE_REFRESH_MS = 60_000;
 
 const PRESENCE_CHIP_TONE = {
   available: 'bg-crewly-green/15 text-crewly-green border-crewly-green/40',
@@ -116,6 +117,7 @@ const TeamAvailabilityPage = () => {
   const [presenceFilter, setPresenceFilter] = useState('');
   const [workLocationFilter, setWorkLocationFilter] = useState('');
   const [page, setPage] = useState(1);
+  const pollInFlight = useRef(false);
 
   const team = useSelector((s) => s.presence && s.presence.team) || {
     items: [],
@@ -153,6 +155,22 @@ const TeamAvailabilityPage = () => {
 
   useEffect(() => {
     dispatch(fetchTeamAvailability(debouncedFilters));
+  }, [dispatch, debouncedFilters]);
+
+  // Realtime self-events are a fast path, not durable team state. Recheck
+  // this visible page every minute so authorized colleague rows converge
+  // to the REST resolver after disconnects or missed events. This is one
+  // page-scoped batched read, not a per-employee server poll.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      if (pollInFlight.current) return;
+      pollInFlight.current = true;
+      Promise.resolve(dispatch(fetchTeamAvailability(debouncedFilters))).finally(() => {
+        pollInFlight.current = false;
+      });
+    }, TEAM_PRESENCE_REFRESH_MS);
+    return () => clearInterval(timer);
   }, [dispatch, debouncedFilters]);
 
   // 37.4 — the realtime runtime bumps `teamBumpedAt` on every

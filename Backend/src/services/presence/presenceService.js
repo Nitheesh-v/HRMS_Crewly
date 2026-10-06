@@ -213,9 +213,9 @@ export const presenceService = (deps = {}) => {
       return resolvePresence({ durable: null, config, now: new Date() });
     }
     const durable = await readUserPresence({ companyId, userId, UserPresenceModel });
-    // 37.4 — read the live snapshot. NEVER throws. A failure or a
-    // missing key both produce live === null, which the resolver
-    // treats as 'unknown' (37.1 behaviour).
+    // 37.4 — read the live snapshot. NEVER throws. A successful read
+    // of a missing key is a confirmed zero-connection snapshot (Offline);
+    // only a Redis failure produces live === null (Unknown).
     const live = liveStore
       ? await liveStore.readLive({ companyId, userId })
       : null;

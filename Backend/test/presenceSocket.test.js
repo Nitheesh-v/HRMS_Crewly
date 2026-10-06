@@ -21,7 +21,7 @@ process.env.MONGO_URI ||= 'mongodb://127.0.0.1:27017/crewly_presence_socket_test
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-const { createPresenceSocketServer } = await import(
+const { createPresenceSocketServer, buildPresenceSocketOptions } = await import(
   '../src/socket/presenceSocket.js'
 );
 const {
@@ -48,24 +48,22 @@ const baseLog = () => ({
 
 const baseHandlerReg = () => ({ onUnbind: () => {} });
 
-// A fake Socket.IO instance that records namespace.adapter() calls.
+// A fake Socket.IO instance that mirrors Socket.IO's API: a Namespace
+// owns an adapter instance, while Server.adapter() is the setter API.
 const fakeIo = () => {
-  const calls = { adapter: [], engineClose: 0 };
+  const calls = { adapter: [], engineClose: 0, namespaceMiddleware: [], namespaceEvents: [], rootMiddleware: [] };
   const fakeNamespace = {
-    use: () => {},
-    on: () => {},
-    adapter: (...args) => {
-      calls.adapter.push(args);
-    },
+    use: (middleware) => calls.namespaceMiddleware.push(middleware),
+    on: (event, handler) => calls.namespaceEvents.push({ event, handler }),
+    adapter: { close: async () => {} },
     disconnectSockets: () => 0,
   };
   const fakeServer = {
     of: () => fakeNamespace,
+    use: (middleware) => calls.rootMiddleware.push(middleware),
     engine: { close: () => { calls.engineClose += 1; } },
   };
-  // We DO NOT pass httpServer to new Server(); we set io directly
-  // via the sharedIo param. The factory is supposed to do that.
-  return { server: fakeServer, calls };
+  return { server: fakeServer, calls, namespace: fakeNamespace };
 };
 
 const { createServer } = await import('node:http');
@@ -92,7 +90,7 @@ test('socket: factory refuses to start when PRESENCE_SOCKET_ENABLED!=true', asyn
     source: { ...process.env, PRESENCE_SOCKET_ENABLED: 'false' },
     verify: () => ({ ok: true, userId: 'u1', companyId: 'c1', sessionId: 's1' }),
     registerHandlers: baseHandlerReg(),
-    createAdapterClients: async () => ({ ok: true, key: 'k', adapter: () => {}, close: async () => {} }),
+    createAdapterClients: async () => ({ ok: true, key: 'k', adapter: () => ({ close: async () => {} }), close: async () => {} }),
     log: baseLog(),
   });
   const result = await server.attach(fakeHttp(), { sharedRedis: fakeRedis() });
@@ -101,6 +99,7 @@ test('socket: factory refuses to start when PRESENCE_SOCKET_ENABLED!=true', asyn
 });
 
 test('#36 socket: factory refuses as FEATURE_UNAVAILABLE when Redis adapter is down', async () => {
+  const io = fakeIo();
   const server = createPresenceSocketServer({
     enabled: true,
     source: { ...process.env, PRESENCE_SOCKET_ENABLED: 'true' },
@@ -109,9 +108,74 @@ test('#36 socket: factory refuses as FEATURE_UNAVAILABLE when Redis adapter is d
     createAdapterClients: async () => ({ ok: false, reason: 'REDIS_DOWN' }),
     log: baseLog(),
   });
-  const result = await server.attach(fakeHttp(), { sharedRedis: fakeRedis() });
+  const result = await server.attach(fakeHttp(), {
+    sharedIo: io.server,
+    sharedRedis: fakeRedis(),
+  });
   assert.equal(result.started, false);
   assert.equal(result.reason, 'FEATURE_UNAVAILABLE');
+  assert.equal(io.calls.namespaceMiddleware.length, 1);
+  const refusal = await new Promise((resolve) => {
+    io.calls.namespaceMiddleware[0]({}, (error) => resolve(error));
+  });
+  assert.equal(refusal?.data?.code, 'FEATURE_UNAVAILABLE');
+  await server.stop();
+  assert.equal(io.calls.engineClose, 0, 'presence stop must not close chat shared Engine.IO');
+});
+
+test('socket: a dedicated adapter-construction failure fails closed without affecting shared chat IO', async () => {
+  const io = fakeIo();
+  let closeCount = 0;
+  const server = createPresenceSocketServer({
+    enabled: true,
+    source: { ...process.env, PRESENCE_SOCKET_ENABLED: 'true' },
+    createAdapterClients: async () => ({
+      ok: true,
+      key: 'k',
+      adapter: () => { throw new Error('ADAPTER_INIT_FAILED'); },
+      close: async () => { closeCount += 1; },
+    }),
+    log: baseLog(),
+  });
+  const result = await server.attach(fakeHttp(), {
+    sharedIo: io.server,
+    sharedRedis: fakeRedis(),
+  });
+  assert.equal(result.started, false);
+  assert.equal(result.reason, 'FEATURE_UNAVAILABLE');
+  assert.equal(closeCount, 1, 'failed adapter clients are cleaned up');
+  const refusal = await new Promise((resolve) => {
+    io.calls.namespaceMiddleware[0]({}, (error) => resolve(error));
+  });
+  assert.equal(refusal?.data?.code, 'FEATURE_UNAVAILABLE');
+  await server.stop();
+  assert.equal(io.calls.engineClose, 0, 'presence must not close shared chat IO');
+});
+
+test('socket: missing shared Redis degrades to FEATURE_UNAVAILABLE without throwing', async () => {
+  const io = fakeIo();
+  let adapterCalls = 0;
+  const server = createPresenceSocketServer({
+    enabled: true,
+    source: { ...process.env, PRESENCE_SOCKET_ENABLED: 'true' },
+    createServer: () => io.server,
+    getRedisClientFn: () => null,
+    createAdapterClients: async () => {
+      adapterCalls += 1;
+      return { ok: true, key: 'k', adapter: () => ({ close: async () => {} }), close: async () => {} };
+    },
+    log: baseLog(),
+  });
+  const result = await server.attach(fakeHttp());
+  assert.equal(result.started, false);
+  assert.equal(result.reason, 'FEATURE_UNAVAILABLE');
+  assert.equal(adapterCalls, 0);
+  const refusal = await new Promise((resolve) => {
+    io.calls.namespaceMiddleware[0]({}, (error) => resolve(error));
+  });
+  assert.equal(refusal?.data?.code, 'FEATURE_UNAVAILABLE');
+  await server.stop();
+  assert.equal(io.calls.engineClose, 1, 'presence closes only its owned Engine.IO server');
 });
 
 test('#37 socket: factory accepts and wires the adapter when Redis is up', async () => {
@@ -127,7 +191,11 @@ test('#37 socket: factory accepts and wires the adapter when Redis is up', async
       return {
         ok: true,
         key: 'crewly:development:presence:adapter',
-        adapter: () => ({ /* socket.io adapter */ }),
+        adapter: (namespace) => {
+          const instance = { namespace, close: async () => {} };
+          io.calls.adapter.push(instance);
+          return instance;
+        },
         close: async () => { closeCount += 1; },
       };
     },
@@ -138,9 +206,42 @@ test('#37 socket: factory accepts and wires the adapter when Redis is up', async
   assert.equal(result.namespace, PRESENCE_NAMESPACE);
   assert.equal(result.path, PRESENCE_SOCKET_PATH);
   assert.equal(io.calls.adapter.length, 1);
+  assert.equal(io.calls.adapter[0].namespace, io.namespace);
+  assert.equal(io.namespace.adapter, io.calls.adapter[0]);
   // Adapter was closed during stop()
   await server.stop();
   assert.equal(closeCount >= 2, true);
+});
+
+test('socket: presence owns Engine.IO when chat has not created a shared Socket.IO server', async () => {
+  const io = fakeIo();
+  const server = createPresenceSocketServer({
+    enabled: true,
+    source: { ...process.env, PRESENCE_SOCKET_ENABLED: 'true' },
+    createServer: (_httpServer, options) => {
+      assert.equal(options.path, PRESENCE_SOCKET_PATH);
+      return io.server;
+    },
+    getRedisClientFn: () => fakeRedis(),
+    createAdapterClients: async () => ({
+      ok: true,
+      key: 'presence-only-key',
+      adapter: (namespace) => {
+        const instance = { namespace, close: async () => {} };
+        io.calls.adapter.push(instance);
+        return instance;
+      },
+      close: async () => {},
+    }),
+    log: baseLog(),
+  });
+
+  const result = await server.attach(fakeHttp());
+  assert.equal(result.started, true);
+  assert.equal(io.calls.rootMiddleware.length, 1, 'the unused root namespace is closed');
+  assert.equal(io.namespace.adapter, io.calls.adapter[0]);
+  await server.stop();
+  assert.equal(io.calls.engineClose, 1, 'presence closes only its owned Engine.IO server');
 });
 
 test('socket: stop() is safe to call even when nothing was attached', async () => {
@@ -187,6 +288,24 @@ test('origin gate: dev preview origin (e2b.app) is allowed in dev', () => {
     true,
   );
   assert.equal(isPresenceOriginAllowed('https://example.com', source), false);
+});
+
+test('socket options: CORS origin callback enforces the presence allowlist', async () => {
+  const source = {
+    ...process.env,
+    NODE_ENV: 'production',
+    CLIENT_URL: 'https://app.crewly.io',
+    CHAT_ALLOW_LOCALHOST_ORIGINS: 'false',
+  };
+  const options = buildPresenceSocketOptions({ source });
+  const checkOrigin = (origin) => new Promise((resolve, reject) => {
+    options.cors.origin(origin, (error, allowed) => {
+      if (error) return reject(error);
+      resolve(allowed);
+    });
+  });
+  assert.equal(await checkOrigin('https://app.crewly.io'), true);
+  assert.equal(await checkOrigin('https://evil.example'), false);
 });
 
 test('config: presenceAdapterKey() env-namespaces the adapter channel', () => {
@@ -278,7 +397,7 @@ test('socket: factory never throws when attach() is called twice', async () => {
     createAdapterClients: async () => ({
       ok: true,
       key: 'k',
-      adapter: () => ({}),
+      adapter: () => ({ close: async () => {} }),
       close: async () => {},
     }),
     log: baseLog(),
@@ -319,6 +438,19 @@ test('#43 socket: presence:tick handler is read-only — no recordActivity / no 
   assert.match(block, /publishIfChanged/);
   // And it must use source: 'tick' so consumers can trace.
   assert.match(block, /['"]tick['"]/);
+});
+
+test('server: presence socket is opt-in, shares chat IO, attaches before listen, and drains first', () => {
+  const src = fs.readFileSync(path.join(here, '..', 'src', 'server.js'), 'utf8');
+  assert.match(src, /parsePresenceSocketEnabled\(\)/);
+  assert.match(src, /getPresenceSocketServer/);
+  assert.match(src, /sharedIo:\s*getChatSocketServer\(\)\.getIo\(\)/);
+  const presenceAttach = src.indexOf('presenceSocketServer.attach(server');
+  const listen = src.indexOf('server.listen(');
+  assert.ok(presenceAttach >= 0 && presenceAttach < listen, 'presence attaches before listen');
+  const presenceStop = src.indexOf('presenceSocketServer?.stop()');
+  const chatStop = src.indexOf('getChatSocketServer().stop()');
+  assert.ok(presenceStop >= 0 && presenceStop < chatStop, 'presence namespace drains before shared chat IO');
 });
 
 test('#44 socket: PRESENCE_SOCKET_INBOUND_EVENTS includes presence:tick', async () => {

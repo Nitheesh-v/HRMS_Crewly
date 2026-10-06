@@ -183,24 +183,21 @@ export const isLivePresence = (value) =>
 // so a misconfigured tenant cannot keep an "online" badge for a year.
 export const PRESENCE_HEARTBEAT_TTL_SECONDS_MIN = 30;
 export const PRESENCE_HEARTBEAT_TTL_SECONDS_MAX = 300;
-export const PRESENCE_HEARTBEAT_TTL_SECONDS_DEFAULT = 60;
+export const PRESENCE_HEARTBEAT_TTL_SECONDS_DEFAULT = 120;
 
-// Default grace window the live key is kept alive after the LAST
-// connection in the connection set is removed. Allows a reconnect
-// that lands on a different instance to read "still alive" without
-// a brief "offline" flicker. Mirrors the 37.1 default
-// `offlineAfterMinutes` ceiling.
+// Grace window for retaining the explicit zero-connection snapshot
+// after the final socket closes. REST refetches resolve Offline during
+// this window; the successful missing-key case resolves Offline too.
 export const PRESENCE_GRACE_TTL_SECONDS_DEFAULT = 30;
 
-// Browser activity throttle. The runtime debounces pointerdown /
-// keydown / touchstart into one `presence:activity` socket emit
-// at most every PRESENCE_ACTIVITY_THROTTLE_MS.
+// Browser activity throttle. The runtime debounces visible pointer,
+// keyboard, and focus signals into one empty `presence:activity` socket
+// emit at most every PRESENCE_ACTIVITY_THROTTLE_MS.
 export const PRESENCE_ACTIVITY_THROTTLE_MS_DEFAULT = 5_000;
 
-// Strict env-namespaced Socket.IO namespace path. The chat socket
-// lives at /socket.io (the default); the presence socket rides the
-// SAME http server with a NAMESpaced path. CORS / origin rules
-// (chat socketConfig) apply identically.
+// Strict Socket.IO namespace path. The Engine.IO path remains
+// `/socket.io`; `/presence` is the authenticated namespace and can
+// share chat's Socket.IO server or own the engine when chat is disabled.
 export const PRESENCE_SOCKET_NAMESPACE = '/presence';
 
 // Strict envelope size cap. The publish seam enforces this and

@@ -5,17 +5,15 @@
 //    · AppLayout wires start()/stop() to the auth state.
 //    · The runtime owns:
 //        — the /presence channel (presenceChannel.js)
-//        — a `presence:changed` listener that dispatches into redux
-//        — the visibility ticker (one heartbeat / 30s + activity on
-//          tab return)
+//        — listeners for `presence:changed` and `presence:invalidated`
+//        — the visibility ticker (heartbeat + read-only tick / 30s;
+//          activity only on actual user interaction)
 //        — a 1s-debounced team refetch on same-company envelopes
 //
 //  LIFECYCLE
 //    start() is called once on auth (presence of `user.id`). It:
 //      1. opens the /presence channel
-//      2. registers ONE `presence:changed` listener (the dispatch is
-//         idempotent — `presenceTicked` is a no-op if the value is
-//         unchanged)
+//      2. registers typed change/invalidation listeners
 //      3. starts the visibility ticker
 //      4. records the per-tab epoch (StrictMode-safe)
 //
@@ -38,8 +36,11 @@ import {
   isPresenceChannelConnected,
 } from './presenceChannel.js';
 import {
+  loadMyPresence,
+  fetchMyWorkLocationRequests,
   presenceTicked,
   presenceInvalidateTeam,
+  presenceWlrInvalidateForUser,
 } from '../../redux/slices/presenceSlice.js';
 
 // ────────────────────────────────────────────────────────────────────────
@@ -53,6 +54,7 @@ import {
 let epoch = 0;
 let started = false;
 let listener = null;
+let invalidationListener = null;
 
 const TEAM_REFETCH_DEBOUNCE_MS = 1_000;
 let teamRefetchTimer = null;
@@ -61,37 +63,52 @@ const refetchTeamDebounced = () => {
   if (teamRefetchTimer) clearTimeout(teamRefetchTimer);
   teamRefetchTimer = setTimeout(() => {
     teamRefetchTimer = null;
-    // 37.3 — the team page already polls / reads on mount; a redux
-    // nudge re-runs the existing `fetchTeamAvailability` thunk
-    // (which honours the current filters and pagination).
+    // The team page watches this bump and re-runs the existing
+    // `fetchTeamAvailability` thunk, preserving its filters and page.
     store.dispatch(presenceInvalidateTeam());
   }, TEAM_REFETCH_DEBOUNCE_MS);
 };
 
 const onPresenceChanged = (envelope) => {
-  // envelope is the strict 37.4 shape (see presenceEvents.js):
-  //   { schemaVersion, companyId, userId, presence, presenceSource,
-  //     occurredAt, source }
-  if (!envelope || typeof envelope !== 'object') return;
-  if (envelope.schemaVersion !== 1) return; // forward-safe drop
+  // Strict server-built shape: schemaVersion, companyId, userId,
+  // presence, presenceSource, occurredAt, source.
+  if (!envelope || typeof envelope !== 'object' || envelope.schemaVersion !== 1) return;
   const me = store.getState().auth?.user;
   if (!me) return;
 
-  // Per-user self-update path. The redux `presenceTicked` reducer is
-  // a no-op if the value is unchanged; same here, no per-frame work.
   const myId = String(me._id || me.id || '');
+  const myCompany = String(me.companyId || me.company?._id || '');
+  const sameCompany = myCompany && String(envelope.companyId) === myCompany;
+
   if (myId && String(envelope.userId) === myId) {
+    // Fast status update, then reload the authoritative self snapshot so
+    // manualStatus / Leave flags cannot go stale across tabs.
     store.dispatch(presenceTicked(envelope));
-    return;
+    store.dispatch(loadMyPresence());
   }
 
-  // Team-page path. A same-company envelope triggers a debounced
-  // refetch; the existing fetchTeamAvailability thunk is the
-  // single source of truth for the team table.
+  // Includes our own row: the team table is REST-backed and must refetch
+  // after an Offline, manual-status, Leave, or activity transition.
+  if (sameCompany) refetchTeamDebounced();
+};
+
+const onPresenceInvalidated = (envelope) => {
+  // Smaller 37.5 envelope: { schemaVersion, companyId, userId,
+  // occurredAt, source }. It carries no changed HR data; refetch it.
+  if (!envelope || typeof envelope !== 'object' || envelope.schemaVersion !== 1) return;
+  const me = store.getState().auth?.user;
+  if (!me) return;
+
+  const myId = String(me._id || me.id || '');
   const myCompany = String(me.companyId || me.company?._id || '');
-  if (myCompany && String(envelope.companyId) === myCompany) {
-    refetchTeamDebounced();
+  if (!myCompany || String(envelope.companyId) !== myCompany) return;
+
+  if (myId && String(envelope.userId) === myId) {
+    store.dispatch(presenceWlrInvalidateForUser());
+    store.dispatch(fetchMyWorkLocationRequests());
+    store.dispatch(loadMyPresence());
   }
+  refetchTeamDebounced();
 };
 
 /**
@@ -117,7 +134,9 @@ export const startPresenceRuntime = async () => {
   }
 
   listener = (envelope) => onPresenceChanged(envelope);
+  invalidationListener = (envelope) => onPresenceInvalidated(envelope);
   sock.on('presence:changed', listener);
+  sock.on('presence:invalidated', invalidationListener);
   startVisibilityTicker();
   return true;
 };
@@ -138,17 +157,23 @@ export const stopPresenceRuntime = () => {
   // through the helper also clears its listeners.
   stopPresenceChannel();
   listener = null;
+  invalidationListener = null;
   return sock;
 };
 
 export const isPresenceRuntimeActive = () =>
   started && isPresenceChannelConnected();
 
+// Narrow seam for the invalidation regression test. Production callers
+// subscribe through the single runtime-owned socket listener above.
+export const __onPresenceInvalidatedForTests = onPresenceInvalidated;
+
 // Test seam: reset module state between tests.
 export const __resetPresenceRuntimeForTests = () => {
   epoch = 0;
   started = false;
   listener = null;
+  invalidationListener = null;
   if (teamRefetchTimer) {
     clearTimeout(teamRefetchTimer);
     teamRefetchTimer = null;
