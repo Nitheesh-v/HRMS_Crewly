@@ -31,11 +31,17 @@
 import { PRESENCE_MAX_LIVE_ENVELOPE_BYTES } from './presenceConfig.js';
 
 // Inbound events from the client. The server never trusts a client
-// to choose a presence value; 'presence:heartbeat' and 'presence:activity'
-// carry NO presence value — the server derives it.
+// to choose a presence value; 'presence:heartbeat', 'presence:activity',
+// and 'presence:tick' carry NO presence value — the server derives it.
+//   presence:tick  — read-only re-evaluation request (Phase 37.7 §C.3).
+//                    The client asks the server to re-resolve now using
+//                    the existing lastActivityAt. Does NOT update the
+//                    activity timestamp. Does NOT publish unless the
+//                    resolver returns a new value (memo-suppressed).
 export const PRESENCE_SOCKET_INBOUND_EVENTS = Object.freeze([
   'presence:heartbeat',
   'presence:activity',
+  'presence:tick',
 ]);
 
 // Outbound event type on the bus. The full wire name lives here so a
@@ -84,6 +90,10 @@ const VALID_SOURCES = Object.freeze([
   'activity',       // recent activity arrived; the user may have flipped away -> available
   'heartbeat',      // heartbeat alone never publishes (a guard at the handler),
                     //   but the bus still accepts the value for test seams.
+  'tick',           // Phase 37.7 — client asked the server to re-resolve now
+                    //   (visibility ticker). The resolver may flip away ->
+                    //   available (if recent activity) or away -> offline
+                    //   (if past threshold) without a new activity signal.
   'resolver',       // the resolver noticed a transition outside the socket path
                     //   (e.g. manual DND lifted via REST; the team page refetches)
   // Phase 37.5 — work-location request decisions. The bus envelope

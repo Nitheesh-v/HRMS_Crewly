@@ -8,9 +8,17 @@
 //    Payloads are untrusted; the server never reads a companyId /
 //    userId from the client.
 //
-//  EVENTS
+// EVENTS
 //    presence:heartbeat   — { } (no payload; the server stamps `now`)
 //    presence:activity    — { at: ISO } (throttled; the server stamps Redis)
+//    presence:tick        — { } (Phase 37.7 §C.3 — read-only re-eval request.
+//                              No payload. Does NOT update lastActivityAt.
+//                              Re-resolves with the existing live snapshot
+//                              and publishes IF the value differs from the
+//                              memo. Use this on the 30s visibility ticker
+//                              so the resolver actually re-runs after the
+//                              threshold expires, without requiring the user
+//                              to interact again.)
 //
 //  WHAT THE SERVER DOES WITH EACH
 //    On connect: store.markConnected, then resolve + publish a
@@ -218,6 +226,32 @@ export const registerPresenceSocketHandlers = ({
       });
     } catch {
       /* store never throws; defensive */
+    }
+  });
+
+  // ── presence:tick (read-only re-eval, no payload) ────────────────
+  // Phase 37.7 §C.3 — the visibility ticker asks the server to
+  // re-resolve now using the EXISTING live snapshot. We do NOT call
+  // recordActivity or refreshHeartbeat. We do NOT take a new
+  // lastActivityAt. We DO call resolveEffectivePresence and publish
+  // ONLY if the memo'd value differs (memo-suppressed no-op).
+  //
+  // This is the only way the resolver's `now - lastActivityAt >
+  // awayAfterMinutes` branch actually fires without requiring the
+  // user to interact again or another user to hit the team page.
+  socket.on('presence:tick', async () => {
+    try {
+      const resolved = await resolveEffectivePresence({ companyId, userId, store });
+      await publishIfChanged({
+        companyId,
+        userId,
+        presence: resolved.presence,
+        presenceSource: resolved.presenceSource,
+        source: 'tick',
+        memo,
+      });
+    } catch {
+      /* store / resolver never throws; defensive */
     }
   });
 

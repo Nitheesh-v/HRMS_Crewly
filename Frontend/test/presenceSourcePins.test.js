@@ -148,19 +148,30 @@ test('frontend 37.4: presenceSlice exports the 37.4 actions', async () => {
   assert.match(sliceSrc, /presenceInvalidateTeam\s*\(\s*state\s*\)/);
 });
 
-test('frontend 37.4: AppLayout does NOT auto-start the presence runtime', () => {
-  // The runtime is intentionally NOT started on auth (37.4.x). On
-  // a slow Mongo the per-page socket connect competes with the
-  // user-facing HTTP requests. The topbar presence menu reads via
-  // REST, the dashboard tile reads via REST, the team page reads
-  // via REST. The realtime socket is opt-in via the backend env
-  // flag PRESENCE_SOCKET_ENABLED=true and is not the user-facing
-  // path. This test pins that AppLayout no longer auto-starts
-  // the runtime — if a future change re-adds the auto-start,
-  // this assertion fires.
+test('frontend 37.7: AppLayout auto-starts the presence runtime on auth (gated on tenant enabled)', () => {
+  // Phase 37.7 — automatic presence correction. The runtime MUST
+  // start on auth so that the visibility ticker fires heartbeats
+  // and activity, the live store stays warm, and Away transitions
+  // actually happen. The start is gated on tenant config
+  // `enabled: true` so a tenant with presence disabled opens no
+  // socket. Stop happens on logout / userId change. This test
+  // pins that the wiring exists; if a future refactor removes it,
+  // automatic presence silently breaks again.
   const src = read('src/layout/AppLayout.jsx');
-  assert.doesNotMatch(src, /startPresenceRuntime\s*\(\s*\)/);
-  assert.doesNotMatch(src, /stopPresenceRuntime\s*\(\s*\)/);
+  assert.match(src, /startPresenceRuntime/);
+  assert.match(src, /stopPresenceRuntime/);
+  assert.match(src, /loadPresenceConfig/);
+});
+
+test('frontend 37.7: AppLayout does NOT auto-start the runtime when the tenant config is disabled', () => {
+  // Defence in depth — even if a future refactor calls
+  // startPresenceRuntime unconditionally, this test pins that
+  // the gating logic (config.enabled === true) is present in
+  // AppLayout.jsx. If the gating is removed, this assertion fires.
+  const src = read('src/layout/AppLayout.jsx');
+  // The gate must read `enabled` from the loaded config and
+  // short-circuit before opening a socket.
+  assert.match(src, /cfg\?\.enabled|config\?\.enabled|\.enabled\s*[!=]===\s*false/i);
 });
 
 test('frontend 37.4: presenceChannel.js does NOT import the redux store directly', () => {
@@ -170,6 +181,22 @@ test('frontend 37.4: presenceChannel.js does NOT import the redux store directly
   // the redux wiring.
   const src = read('src/services/realtime/presenceChannel.js');
   assert.equal(/redux\/store/i.test(src), false);
+});
+
+test('frontend 37.7: presenceChannel.js emits presence:tick (read-only re-eval) and presence:activity (throttled)', () => {
+  // Phase 37.7 — Away transitions happen on a 30s server cadence
+  // because the resolver re-runs on presence:tick. Real activity
+  // signals (pointerdown / keydown / focus) emit presence:activity
+  // throttled to 1/5s. Both events carry nothing else in the payload.
+  const src = read('src/services/realtime/presenceChannel.js');
+  assert.match(src, /presence:tick/);
+  assert.match(src, /ACTIVITY_THROTTLE_MS/);
+  // The user-signal listeners are pointerdown / keydown / focus. NOT
+  // mousemove (a violation of the anti-surveillance law — Phase 37 §9).
+  assert.match(src, /pointerdown/);
+  assert.match(src, /keydown/);
+  assert.match(src, /['"]focus['"]/);
+  assert.equal(/mousemove/.test(src), false);
 });
 
 test('frontend 37.4: presenceChannel.js send functions do not include any client-claimed presence value', () => {

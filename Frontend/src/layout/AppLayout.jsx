@@ -11,15 +11,20 @@ import AiAssistantWidget from "../components/AIAssistant/AiAssistantWidget.jsx";
 import { PresenceMenu } from "../components/presence/index.js";
 import { useEffect, useState } from "react";
 import { useDispatch } from "react-redux";
+import store from "../redux/store.js";
 import { startRealtimeSession, stopRealtimeSession } from "../services/realtime/realtimeClient.js";
-// presence runtime is intentionally NOT started on auth (37.4). The
-// topbar presence menu reads via REST, the dashboard tile reads via
-// REST, and the team page reads via REST. The realtime socket is
-// only needed for cross-instance fan-out, which is opt-in via
-// PRESENCE_SOCKET_ENABLED=true on the backend. Starting the runtime
-// on every page load was opening a socket per page and competing
-// with the user-facing HTTP requests on slow connections.
+// Phase 37.7 — start the presence runtime on auth. The runtime owns
+// the single /presence socket, the visibility ticker, and the
+// presence:changed listener. It is idempotent (epoch-guarded) so
+// React StrictMode's double-invoke is safe. The runtime STARTS only
+// when the user's tenant config has `enabled: true` — if the tenant
+// has presence disabled, no socket is opened and no heartbeat fires.
 import { fetchMyPermissions } from "../redux/slices/PermissionSlices.js";
+import {
+  startPresenceRuntime,
+  stopPresenceRuntime,
+} from "../services/realtime/presenceRuntime.js";
+import { loadPresenceConfig } from "../redux/slices/presenceSlice.js";
 
 
 
@@ -238,6 +243,44 @@ const AppLayout = () => {
       dispatch(fetchMyPermissions());
     }
     return undefined;
+  }, [dispatch, userId]);
+
+  // Phase 37.7 — start the presence runtime on auth (gated on
+  // tenant config `enabled`). One socket, one ticker, one listener.
+  // Idempotent across StrictMode + login-as-different-user.
+  useEffect(() => {
+    let cancelled = false;
+
+    const startIfEnabled = async () => {
+      try {
+        // First, ensure the tenant config is loaded into redux.
+        await dispatch(loadPresenceConfig()).unwrap().catch(() => null);
+        if (cancelled) return;
+        const cfg = store.getState().presence?.config?.data || null;
+        const enabled = cfg?.enabled !== false; // default true if missing
+        if (!enabled) {
+          // Tenant has presence disabled. No socket. The REST reads
+          // on the menu / tile / team page continue to work.
+          return;
+        }
+        await startPresenceRuntime();
+      } catch {
+        /* runtime start never throws up */
+      }
+    };
+
+    if (userId) startIfEnabled();
+
+    return () => {
+      cancelled = true;
+      // Always stop on unmount / userId change so we don't leak the
+      // socket across login-as-different-user.
+      try {
+        stopPresenceRuntime();
+      } catch {
+        /* never throws */
+      }
+    };
   }, [dispatch, userId]);
 
   const handleLogout = async () => {

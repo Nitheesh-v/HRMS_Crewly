@@ -190,13 +190,19 @@ describe('Phase 37.2 — presence widget source pins', () => {
     if (fs.existsSync(pagesDir)) {
       for (const entry of fs.readdirSync(pagesDir)) {
         const lc = entry.toLowerCase();
-        // 37.2 ships no presence-* page. The settings directory is the
-        // AI admin pages (Phase 36.6/36.7) — out of scope here.
+        // 37.2 ships no presence-* page in the TEAM directory.
+        // 37.3+ added the presence pages; the settings directory is
+        // the AI admin pages (Phase 36.6/36.7) — out of scope here.
+        // The presence pages themselves are Phase 37 territory, not
+        // team-availability territory. We keep this pin narrow to
+        // the team directory.
         if (entry === 'settings') continue;
+        if (entry === 'presence') continue; // 37.3+
+        if (entry === 'team') continue; // team availability is 37.3
         assert.equal(
           lc.includes('presence'),
           false,
-          `${entry} must not exist (37.2 ships no presence-* page)`,
+          `${entry} must not exist (37.2 ships no presence-* page outside presence/ and team/)`,
         );
       }
     }

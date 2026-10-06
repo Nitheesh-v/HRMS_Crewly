@@ -290,3 +290,50 @@ test('socket: factory never throws when attach() is called twice', async () => {
   assert.equal(r2.started, true);
   await server.stop();
 });
+
+// Phase 37.7 — presence:tick handler (read-only re-eval). The
+// handler re-resolves using the EXISTING live snapshot and publishes
+// ONLY if the memo'd value differs. It does NOT call recordActivity
+// or refreshHeartbeat (the user did not signal new activity; they
+// just asked the server to re-run the resolver).
+test('#43 socket: presence:tick handler is read-only — no recordActivity / no refreshHeartbeat', () => {
+  const src = fs.readFileSync(
+    path.join(here, '..', 'src', 'socket', 'presenceSocketHandlers.js'),
+    'utf8',
+  );
+  // The tick block must exist.
+  assert.match(src, /presence:tick/);
+  // The tick block must NOT call recordActivity or refreshHeartbeat.
+  // Find the tick block by slicing between presence:tick and the
+  // next `socket.on(` (or end-of-handlers) and assert that it has no
+  // store-mutating calls.
+  const tickMatch = src.match(/socket\.on\(\s*['"]presence:tick['"][\s\S]*?(?=socket\.on\(\s*['"]disconnect)/);
+  assert.ok(tickMatch, 'presence:tick handler block is present');
+  const block = tickMatch[0];
+  assert.equal(
+    /recordActivity|refreshHeartbeat/.test(block),
+    false,
+    'presence:tick must NOT mutate the live store (read-only re-eval).',
+  );
+  // The tick block must publish — that is the whole point.
+  assert.match(block, /publishIfChanged/);
+  // And it must use source: 'tick' so consumers can trace.
+  assert.match(block, /['"]tick['"]/);
+});
+
+test('#44 socket: PRESENCE_SOCKET_INBOUND_EVENTS includes presence:tick', async () => {
+  const { PRESENCE_SOCKET_INBOUND_EVENTS } = await import(
+    '../src/services/presence/presenceEvents.js'
+  );
+  assert.ok(
+    PRESENCE_SOCKET_INBOUND_EVENTS.includes('presence:tick'),
+    'PRESENCE_SOCKET_INBOUND_EVENTS must include presence:tick (Phase 37.7 §C.3).',
+  );
+  // Also pinned in the handler — the handler registry must accept
+  // the event so a stray emit is silently dropped, not undefined.
+  const handlersSrc = fs.readFileSync(
+    path.join(here, '..', 'src', 'socket', 'presenceSocketHandlers.js'),
+    'utf8',
+  );
+  assert.match(handlersSrc, /socket\.on\(\s*['"]presence:tick['"]/);
+});
