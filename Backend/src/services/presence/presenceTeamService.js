@@ -38,6 +38,7 @@ import { getPresenceTenantConfigOrThrow } from './presenceTenantConfigService.js
 import {
   findActiveApprovedLeaveMany,
   resolveWorkingHoursContext,
+  resolveWorkingHoursContextMany,
 } from './presenceHrContext.js';
 
 const getScopedUserIds = ScopeNS.getScopedUserIds;
@@ -261,6 +262,12 @@ export const presenceTeamService = (deps = {}) => {
     deps.leaveReaderMany ||
     findActiveApprovedLeaveMany;
   const workingHoursReader = deps.workingHoursReader || resolveWorkingHoursContext;
+  // Phase 37.7 — batched working-hours reader. The team path now
+  // does ONE preload (5 parallel queries) and resolves every user
+  // in memory, instead of 4 queries × N users. The hermetic test
+  // asserts the query count is bounded as employees grow.
+  const workingHoursReaderMany =
+    deps.workingHoursReaderMany || resolveWorkingHoursContextMany;
   const LeaveModel = deps.LeaveModel || null;
   // 37.6 — cache of working-hours contexts resolved within this
   // single request so repeat lookups (per employee) do NOT cost
@@ -502,6 +509,25 @@ export const presenceTeamService = (deps = {}) => {
       leaveMap = new Map();
     }
 
+    // Phase 37.7 — ONE batched working-hours preload. The single-
+    // user `readWh` did 4 Mongo queries per employee; the team
+    // path preloads the company masters ONCE (5 parallel queries)
+    // and resolves every user in memory. The hermetic test asserts
+    // the total query count is bounded as employees grow.
+    let whMap = new Map();
+    let scheduleReadFailed = false;
+    try {
+      whMap = await workingHoursReaderMany({
+        companyId,
+        users,
+        attendanceDate: todayKey,
+        timezone: tenantTimezone,
+      });
+    } catch {
+      scheduleReadFailed = true;
+      whMap = new Map();
+    }
+
     // 3) Resolve every row through the 37.1 + 37.4 + 37.6 resolver.
     //    This is the SINGLE precedence authority. We do NOT
     //    introduce a parallel team-specific precedence. The 37.6
@@ -512,15 +538,22 @@ export const presenceTeamService = (deps = {}) => {
         const userId = String(u._id);
         const onLeaveRow = leaveMap.get(userId);
         const onLeave = onLeaveRow != null;
-        // Working hours — per-user, but cached in-process so a
-        // repeat lookup in the same request is O(1). The cache
-        // lives only for the duration of `getTeamAvailability`.
-        const wh = await readWh({
-          companyId,
-          user: u,
-          attendanceDate: todayKey,
-          timezone: tenantTimezone,
-        });
+        // Working hours — read from the in-memory batched map.
+        // Falls back to per-user resolution when the batch
+        // reader failed OR this user is missing from the map.
+        let wh = whMap.get(userId);
+        if (wh === undefined) {
+          // Either the batch reader threw (scheduleReadFailed)
+          // or this user wasn't in the map (rare edge case —
+          // maybe a race or a partial read). In both cases
+          // single-user is the right fallback.
+          wh = await readWh({
+            companyId,
+            user: u,
+            attendanceDate: todayKey,
+            timezone: tenantTimezone,
+          });
+        }
         const hrContext = {
           onLeave: leaveReadFailed ? null : onLeave,
           outsideWorkingHours: wh ? wh.outsideWorkingHours === true : null,

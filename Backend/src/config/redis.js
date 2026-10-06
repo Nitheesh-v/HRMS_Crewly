@@ -108,6 +108,23 @@ export const getRedisConfig = (source = process.env) => ({
 //
 // 28.2 creates DEDICATED connections per purpose from REDIS_URL via
 // this factory — never shares this module's general client socket.
+//
+// RECONNECT LAW (Phase 37.7 — Redis client leak fix)
+//   The default ioredis retryStrategy is UNBOUNDED — every reconnect
+//   attempt that "succeeds" (TLS handshake + AUTH) but then fails to
+//   read RESP because Redis returned `max number of clients reached`
+//   leaves the previous socket in a half-closed state and opens a
+//   brand new one. After a few minutes, a local dev Redis hits
+//   `maxclients` and every subsequent reconnect is rejected. The
+//   server then loops, logging [Realtime] publisher/subscriber redis
+//   error every 5s. Fix: cap the retryStrategy at MAX_RECONNECT_ATTEMPTS
+//   (default 8). When the cap is hit, retryStrategy returns null
+//   which ioredis interprets as "stop, don't reconnect" — the
+//   process-singleton 'error' listener then runs close() and
+//   the gateway stops publishing. The HRMS keeps working (the
+//   team page reads REST + null live data → 'unknown').
+const MAX_RECONNECT_ATTEMPTS = 8;
+
 export const createRedisOptions = (purpose = 'general', source = process.env) => {
   const forBullMQ = purpose === 'bullmq-producer' || purpose === 'bullmq-worker';
 
@@ -122,12 +139,23 @@ export const createRedisOptions = (purpose = 'general', source = process.env) =>
   if (!forBullMQ) {
     // Fail fast instead of silently queueing commands while down.
     options.enableOfflineQueue = false;
-    options.retryStrategy = (times) =>
-      Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * RECONNECT_FACTOR ** times);
+    options.retryStrategy = (times) => {
+      // ioredis calls retryStrategy on EVERY attempt. After
+      // MAX_RECONNECT_ATTEMPTS consecutive failures, return null
+      // to stop reconnecting — the caller's 'error' handler will
+      // close the client cleanly. (Without the cap, ioredis would
+      // keep trying forever and a stuck Redis would accumulate
+      // half-closed sockets in the local dev box.)
+      if (times > MAX_RECONNECT_ATTEMPTS) return null;
+      return Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * RECONNECT_FACTOR ** times);
+    };
   }
 
   return options;
 };
+
+// Test seam — the hermetic suite asserts the cap is honored.
+export const __test__ = { MAX_RECONNECT_ATTEMPTS };
 
 // --- Safe error classification (secret-free) ----------------------
 

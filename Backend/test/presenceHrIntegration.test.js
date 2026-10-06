@@ -788,3 +788,76 @@ test('#53 read-only — no AI / no services/ai imports', () => {
       `forbidden AI vendor in ${f}`);
   }
 });
+
+// Phase 37.7 — batched working-hours reader. Verifies:
+//  1. `resolveWorkingHoursContextMany` exports a function.
+//  2. It preloads masters ONCE and resolves every user in memory.
+//  3. It returns a Map keyed by userId whose values are frozen
+//     summaries (or null for unresolved users).
+//  4. The single-user `resolveWorkingHoursContext` is still exported
+//     so the self-service path keeps working.
+test('Phase 37.7: resolveWorkingHoursContextMany is exported and batched', async () => {
+  const hrModule = await import(
+    '../src/services/presence/presenceHrContext.js'
+  );
+  assert.equal(typeof hrModule.resolveWorkingHoursContextMany, 'function');
+  assert.equal(typeof hrModule.resolveWorkingHoursContext, 'function');
+  // Empty input → empty output, no I/O.
+  const empty = await hrModule.resolveWorkingHoursContextMany({
+    companyId: 'co1',
+    users: [],
+    attendanceDate: '2026-10-06',
+  });
+  assert.ok(empty instanceof Map);
+  assert.equal(empty.size, 0);
+  // Missing companyId → empty output, no I/O.
+  const noCompany = await hrModule.resolveWorkingHoursContextMany({
+    companyId: null,
+    users: [{ _id: 'u1' }],
+    attendanceDate: '2026-10-06',
+  });
+  assert.equal(noCompany.size, 0);
+  // Missing date → empty output.
+  const noDate = await hrModule.resolveWorkingHoursContextMany({
+    companyId: 'co1',
+    users: [{ _id: 'u1' }],
+    attendanceDate: null,
+  });
+  assert.equal(noDate.size, 0);
+});
+
+test('Phase 37.7: resolveWorkingHoursContextMany uses injectable scheduleService (no I/O)', async () => {
+  // Inject a fake scheduleService that records how many times
+  // preloadScheduleMasters is called. The hermetic test asserts
+  // it is called exactly ONCE regardless of N users.
+  const { resolveWorkingHoursContextMany } = await import(
+    '../src/services/presence/presenceHrContext.js'
+  );
+  let preloadCalls = 0;
+  const fakeService = {
+    preloadScheduleMasters: async () => {
+      preloadCalls += 1;
+      return { assignments: [], shifts: [], schedules: [], holidays: [], fromDate: '2026-10-06', toDate: '2026-10-06' };
+    },
+    resolveEmployeeScheduleFromMasters: () => ({ status: 'UNRESOLVED', attendanceDate: '2026-10-06' }),
+    summarizeSchedule: () => null,
+  };
+  const result = await resolveWorkingHoursContextMany({
+    companyId: 'co1',
+    users: [
+      { _id: 'u1' },
+      { _id: 'u2' },
+      { _id: 'u3' },
+      { _id: 'u4' },
+      { _id: 'u5' },
+    ],
+    attendanceDate: '2026-10-06',
+    timezone: 'Asia/Kolkata',
+    scheduleService: fakeService,
+  });
+  assert.equal(preloadCalls, 1, 'preloadScheduleMasters is called exactly ONCE for N=5 users');
+  assert.ok(result instanceof Map);
+  // Every user in the map (the fake returns null for unresolved
+  // but still sets the key — verified by the implementation).
+  assert.equal(result.size, 5);
+});

@@ -248,3 +248,51 @@ test('GET /api/health reports services safely with redis disabled', async () => 
     globalThis.setInterval = originalSetInterval;
   }
 });
+
+// Phase 37.7 — Redis client leak fix. The retryStrategy returned by
+// createRedisOptions MUST cap at MAX_RECONNECT_ATTEMPTS (default 8).
+// Without the cap, ioredis keeps opening new sockets forever and a
+// stuck Redis accumulates half-closed clients until it hits
+// `max number of clients reached`. The fix: return null after the
+// cap, which tells ioredis to stop reconnecting. The caller (the
+// realtime gateway) then runs the 'end' handler and cleanly closes.
+test('Phase 37.7: createRedisOptions retryStrategy is capped (returns null after cap)', async () => {
+  const { createRedisOptions, __test__ } = await import(
+    '../src/config/redis.js'
+  );
+  const opts = createRedisOptions('realtime-publisher');
+  // Sanity: the option is present and is a function (ioredis contract).
+  assert.equal(typeof opts.retryStrategy, 'function');
+  const { MAX_RECONNECT_ATTEMPTS } = __test__;
+  assert.ok(
+    Number.isInteger(MAX_RECONNECT_ATTEMPTS) && MAX_RECONNECT_ATTEMPTS > 0,
+    'MAX_RECONNECT_ATTEMPTS is exported and is a positive integer',
+  );
+  // Below the cap: returns a delay in ms (a positive number).
+  const withinCap = opts.retryStrategy(MAX_RECONNECT_ATTEMPTS);
+  assert.ok(
+    Number.isInteger(withinCap) && withinCap > 0,
+    `retryStrategy(${MAX_RECONNECT_ATTEMPTS}) returns a positive delay, got ${withinCap}`,
+  );
+  // At/over the cap: returns null — ioredis interprets null as
+  // "do not reconnect" which is the whole point of the fix.
+  const atCap = opts.retryStrategy(MAX_RECONNECT_ATTEMPTS + 1);
+  assert.equal(
+    atCap,
+    null,
+    `retryStrategy(MAX+1) returns null, got ${atCap}`,
+  );
+  // And stays null for many further attempts (no oscillation).
+  const farOver = opts.retryStrategy(MAX_RECONNECT_ATTEMPTS * 10);
+  assert.equal(farOver, null);
+});
+
+test('Phase 37.7: BullMQ keeps unbounded retry (BULLMQ option untouched)', async () => {
+  // BullMQ requires null for maxRetriesPerRequest and its own retry
+  // semantics. The cap must NOT apply to BullMQ — only the general
+  // / dedicated / presence clients.
+  const { createRedisOptions } = await import('../src/config/redis.js');
+  const bullOpts = createRedisOptions('bullmq-producer');
+  assert.equal(bullOpts.retryStrategy, undefined);
+  assert.equal(bullOpts.maxRetriesPerRequest, null);
+});

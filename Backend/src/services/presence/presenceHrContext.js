@@ -112,7 +112,117 @@ export const findActiveApprovedLeaveMany = async ({
   return out;
 };
 
-// ── working hours reader ─────────────────────────────────
+// ── working hours reader (batched) ────────────────────────
+
+/**
+ * Phase 37.7 — batched variant for the team endpoint.
+ *
+ * The single-user `resolveWorkingHoursContext` calls
+ * `attendanceScheduleService#resolveEmployeeSchedule` once per
+ * user, which fires 4 Mongo queries (workschedules, holidays,
+ * shiftassignments, shifts). With 30 employees in a team that's
+ * 120 queries per page load — a 1s+ response time. The team
+ * path already has 5 bounded masters (assignments, shifts,
+ * schedules, normalHolidays, recurringHolidays) preloaded by
+ * `attendanceScheduleService#preloadScheduleMasters`; the per-
+ * user resolution over those masters is O(1) per user.
+ *
+ * This helper does the preload ONCE, then resolves every user
+ * in memory with the exact same precedence as
+ * `resolveEmployeeSchedule` (employee assignment → department
+ * assignment → shift-doc fallback → work-schedule chain).
+ * The resulting 5 queries + N in-memory resolutions is
+ * dramatically cheaper than 4 × N.
+ *
+ * @param {Object} args
+ * @param {string} args.companyId
+ * @param {Array<Object>} args.users     — the authorised team list
+ * @param {string} args.attendanceDate  — YYYY-MM-DD in tenant TZ
+ * @param {string} [args.timezone]
+ * @param {Object} [args.scheduleService] — injectable
+ * @returns {Promise<Map<string, Object|null>>}  userId -> whSummary
+ */
+export const resolveWorkingHoursContextMany = async ({
+  companyId,
+  users = [],
+  attendanceDate,
+  timezone = 'Asia/Kolkata',
+  scheduleService = null,
+} = {}) => {
+  const out = new Map();
+  if (!companyId || !Array.isArray(users) || users.length === 0) return out;
+  if (!attendanceDate) return out;
+  // Lazy import — keeps the single-user path on its existing
+  // dependency surface and avoids a circular import.
+  const svc = scheduleService ||
+    (await import('../attendance/attendanceScheduleService.js'));
+  // Preload masters once (5 parallel queries, bounded). This is
+  // the ONLY I/O. After this point everything is in-memory.
+  let masters;
+  try {
+    masters = await svc.preloadScheduleMasters({
+      companyId,
+      fromDate: attendanceDate,
+      toDate: attendanceDate,
+    });
+  } catch {
+    // Failure here means the schedule read is unavailable —
+    // return an empty map so the team page returns null wh
+    // for every user (which the resolver maps to
+    // scheduleReadFailed: true and outsideWorkingHours: null).
+    return out;
+  }
+  const scheduleRules = svc.summarizeSchedule
+    ? svc
+    : await import('../attendance/attendanceScheduleRules.js');
+  for (const user of users) {
+    const uid = String(user._id || user);
+    let ctx = null;
+    try {
+      ctx = svc.resolveEmployeeScheduleFromMasters({
+        masters,
+        user,
+        attendanceDate,
+        timezone,
+      });
+    } catch {
+      ctx = null;
+    }
+    if (!ctx || ctx.status !== 'RESOLVED') {
+      out.set(uid, null);
+      continue;
+    }
+    const summary = scheduleRules.summarizeSchedule
+      ? scheduleRules.summarizeSchedule(ctx, { now: new Date() })
+      : svc.summarizeSchedule
+      ? svc.summarizeSchedule(ctx, { now: new Date() })
+      : null;
+    if (!summary) {
+      out.set(uid, null);
+      continue;
+    }
+    const outside =
+      summary.phase === 'UPCOMING' ||
+      summary.phase === 'ENDED' ||
+      summary.isWorkingDay === false;
+    out.set(
+      uid,
+      Object.freeze({
+        phase: summary.phase,
+        isWorkingDay: summary.isWorkingDay === true,
+        dayType: summary.dayType || null,
+        source: ctx.source || null,
+        crossesMidnight: ctx.crossesMidnight === true,
+        startTime: ctx.startTime || null,
+        endTime: ctx.endTime || null,
+        attendanceDate: ctx.attendanceDate || attendanceDate,
+        timezone: ctx.timezone || timezone,
+        outsideWorkingHours: outside,
+      }),
+    );
+  }
+  return out;
+};
 
 /**
  * Resolve the working-hours context for one user on a given date.

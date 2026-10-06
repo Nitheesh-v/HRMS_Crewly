@@ -46,7 +46,15 @@ export const resolveRealtimeRedisUrl = (source = process.env) => {
 // Dedicated §21 connections previously carried NO 'error' handler —
 // every retry attempt printed an "Unhandled error event" stack. Log ONE
 // warning per outage spell; the next successful connect resets it.
-const attachDedicatedRedisLogging = (connection, label, log) => {
+//
+// Phase 37.7 — Redis client leak fix. When createRedisOptions'
+// retryStrategy returns null (after MAX_RECONNECT_ATTEMPTS), ioredis
+// fires an 'end' event with no further reconnect. Without this
+// listener, the dedicated client would just sit there in a "wait"
+// state, leaking the socket. We call .disconnect() to release the
+// file descriptor, and the gateway's onExhausted callback flips the
+// gateway to "down" — every subsequent publish() becomes a no-op.
+const attachDedicatedRedisLogging = (connection, label, log, onExhausted) => {
   if (typeof connection?.on !== 'function') return; // injected test stubs
 
   let down = false;
@@ -61,6 +69,24 @@ const attachDedicatedRedisLogging = (connection, label, log) => {
 
   connection.on('connect', () => {
     down = false;
+  });
+
+  // ioredis fires 'end' when retryStrategy returns null OR when
+  // .disconnect()/.quit() is called. We can tell them apart: a
+  // natural end comes with no prior close. The cleanest check is
+  // the status — ioredis sets status='end' for both cases but the
+  // graceful end is after status='close'. We just always run
+  // onExhausted once per connection — the gateway is idempotent on
+  // that callback (sets a flag, no second call).
+  connection.on('end', () => {
+    try {
+      if (typeof connection.disconnect === 'function') {
+        connection.disconnect(false);
+      }
+    } catch {
+      /* already closed */
+    }
+    onExhausted?.();
   });
 };
 
@@ -139,6 +165,20 @@ export const createRealtimeGateway = ({
   } = {}) => {
   let started = false;
   let heartbeatTimer = null;
+  // Phase 37.7 — when the dedicated Redis client gives up (its
+  // retryStrategy returned null), we set this to true. publish()
+  // then short-circuits the pub/sub attempt instead of failing
+  // every 5s. The gateway is still running for local delivery
+  // (intra-process), which is what `deliverLocal` already does.
+  let redisExhausted = false;
+  const noteRedisExhausted = (label) => {
+    if (redisExhausted) return;
+    redisExhausted = true;
+    log.warn(
+      `[Realtime] ${label} gave up after MAX_RECONNECT_ATTEMPTS — ` +
+        'gateway degraded to local-only delivery. Restart the server to retry.',
+    );
+  };
 
   // Phase 32.12 — aggregate counters (bounded cardinality; see §40).
   const metrics = createMetricsRegistry();
@@ -204,8 +244,8 @@ export const createRealtimeGateway = ({
         publisher = realPublisher;
         subscriber = realSubscriber;
 
-        attachDedicatedRedisLogging(realPublisher, 'publisher', log);
-        attachDedicatedRedisLogging(realSubscriber, 'subscriber', log);
+        attachDedicatedRedisLogging(realPublisher, 'publisher', log, () => noteRedisExhausted('publisher'));
+        attachDedicatedRedisLogging(realSubscriber, 'subscriber', log, () => noteRedisExhausted('subscriber'));
 
         subscriber.on('message', onPubSubMessage);
 
@@ -336,7 +376,10 @@ export const createRealtimeGateway = ({
       const envelope = buildRealtimeEnvelope({ type, companyId, userId, payload });
       const raw = JSON.stringify(envelope);
 
-      if (publisher) {
+      // Phase 37.7 — if the dedicated client has exhausted its
+      // reconnect attempts, don't even try — every call would fail
+      // and the work-around loop logs. Degrade to local-only.
+      if (publisher && !redisExhausted) {
         try {
           const receivers = await publisher.publish(channel, raw);
           if (receivers > 0) {

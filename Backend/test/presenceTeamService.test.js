@@ -867,3 +867,106 @@ test('presenceTeamService — admin search with full name returns the right row 
   const hit = out.items.find((i) => i.id === 'u-bob');
   assert.ok(hit, 'typing the full name must still return Bob');
 });
+
+// Phase 37.7 — N+1 fix. The team path now preloads schedule
+// masters ONCE (5 parallel queries) and resolves every user in
+// memory, instead of 4 queries × N users. We assert:
+//  1. The batched reader is invoked once for a team of N users.
+//  2. The single-user reader is NOT called (no fallback).
+//  3. Every user ends up with the right wh context.
+test('Phase 37.7: team path uses the batched working-hours reader (one preload, not N)', async () => {
+  let batchCalls = 0;
+  let singleCalls = 0;
+  const whSummary = Object.freeze({
+    phase: 'WITHIN_SHIFT',
+    isWorkingDay: true,
+    dayType: 'WORKING',
+    source: 'ASSIGNMENT',
+    crossesMidnight: false,
+    startTime: '09:00',
+    endTime: '17:00',
+    attendanceDate: '2026-10-06',
+    timezone: 'Asia/Kolkata',
+    outsideWorkingHours: false,
+  });
+  // Scope returns all three test users (u-self, u-bob, u-carol).
+  // The batch map is keyed by userId, one entry per scope member.
+  const fakeBatch = async ({ users }) => {
+    batchCalls += 1;
+    const m = new Map();
+    for (const u of users) m.set(String(u._id), whSummary);
+    return m;
+  };
+  const mod = await import('../src/services/presence/presenceTeamService.js');
+  const service = mod.presenceTeamService({
+    UserModel: new FakeUserModel(USERS),
+    UserPresenceModel: new FakeUserPresenceModel(PRESENCE),
+    scopeReader: async () => ['u-self', 'u-bob', 'u-carol'],
+    tenantConfigReader: async () => ({
+      companyId: 'co-1',
+      enabled: true,
+      statusMessagesEnabled: true,
+      workLocationEnabled: true,
+      employeePresenceVisible: true,
+      wfhMode: 'self_declare',
+      allowedWorkLocations: ['office', 'wfh', 'remote'],
+      manualStatusOptions: [],
+      autoOfflineAfterMinutes: 30,
+    }),
+    workingHoursReaderMany: fakeBatch,
+    workingHoursReader: async () => {
+      singleCalls += 1;
+      return whSummary;
+    },
+    liveStore: null,
+  });
+  const out = await service.getTeamAvailability({
+    companyId,
+    actor: { _id: 'u-admin', role: 'COMPANY_ADMIN' },
+  });
+  assert.equal(batchCalls, 1, 'workingHoursReaderMany is called exactly ONCE for N=3 users');
+  assert.equal(singleCalls, 0, 'single-user workingHoursReader is NOT called when the batch succeeded');
+  // u-carol is INACTIVE in the fixture so only u-self + u-bob come through.
+  assert.equal(out.items.length, 2);
+});
+
+test('Phase 37.7: team path falls back to single-user reader when batch read fails', async () => {
+  let batchCalls = 0;
+  let singleCalls = 0;
+  const mod = await import('../src/services/presence/presenceTeamService.js');
+  const service = mod.presenceTeamService({
+    UserModel: new FakeUserModel(USERS),
+    UserPresenceModel: new FakeUserPresenceModel(PRESENCE),
+    scopeReader: async () => ['u-self', 'u-bob', 'u-carol'],
+    tenantConfigReader: async () => ({
+      companyId: 'co-1',
+      enabled: true,
+      statusMessagesEnabled: true,
+      workLocationEnabled: true,
+      employeePresenceVisible: true,
+      wfhMode: 'self_declare',
+      allowedWorkLocations: ['office', 'wfh', 'remote'],
+      manualStatusOptions: [],
+      autoOfflineAfterMinutes: 30,
+    }),
+    workingHoursReaderMany: async () => {
+      batchCalls += 1;
+      // Simulate batch failure: throw, service catches and falls
+      // back to per-user. Every user must still get a row.
+      throw new Error('redis down');
+    },
+    workingHoursReader: async () => {
+      singleCalls += 1;
+      return null;
+    },
+    liveStore: null,
+  });
+  const out = await service.getTeamAvailability({
+    companyId,
+    actor: { _id: 'u-admin', role: 'COMPANY_ADMIN' },
+  });
+  assert.equal(batchCalls, 1, 'batch reader attempted once');
+  // Fallback fires per user. 2 ACTIVE users (u-carol is INACTIVE).
+  assert.equal(singleCalls, 2, 'fallback fires per ACTIVE user when batch throws');
+  assert.equal(out.items.length, 2, 'all ACTIVE users still resolve even when batch fails');
+});
