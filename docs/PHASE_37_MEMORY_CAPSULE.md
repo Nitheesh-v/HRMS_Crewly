@@ -5,6 +5,22 @@
 > capsule before it). Read this if you are picking Phase 37
 > up cold, in any order.
 
+**37.7 commit chain on remote (`arena/01a0fb50-hrms-crewly`):**
+```
+d05ddef docs(presence/37.7): localhost acceptance script
+3f78240 fix(presence/37.7): start runtime on auth + presence:tick for Away transition
+881da04 fix(presence/37.7): defence-in-depth in getConfig — never 500
+8bdef61 fix(presence/37.7): 500 on first GET /api/presence/config — fail-closed at 503
+b083b99 feat(presence/37.7): tenant admin UI, closeout suite, runbook, memory capsule
+18b751e feat(presence/37.6): authoritative leave + working-hours presence integration
+```
+
+`d05ddef` and `3f78240` are the **automatic presence correction**
+(§14a below). `881da04` and `8bdef61` are the tenant-config
+hotfix chain. `b083b99` is the original 37.7 tenant-admin /
+closeout push. Read §14a FIRST if automatic state is the
+symptom.
+
 ---
 
 ## 1. WHAT PHASE 37 IS
@@ -50,6 +66,7 @@ salary / PAN / Aadhaar, no GPS, no productivity score.
 | 37.5 | WFH request / approval workflow | `services/presence/workLocationRequestService.js`, `controllers/presence/workLocationRequestController.js`, `routes/presence/workLocationRequestRoutes.js`, `validators/presence/workLocationRequestValidator.js`, `models/WorkLocationRequest.js` | `pages/presence/WorkLocationReviewPage.jsx`, `components/presence/{WorkLocationRequestDialog,WorkLocationRequestHistory}.jsx` |
 | 37.6 | Approved Leave + Working Hours derived presence | `services/presence/presenceHrContext.js` (new) + extensions to `presenceResolver.js` / `presenceService.js` / `presenceTeamService.js` | `Empty/EMPTY_PRESENCE` extended, `PresenceMenu.jsx` banner, `TeamAvailabilityPage.jsx` on-leave filter chip + OWH tile + workLocation hidden on on_leave |
 | 37.7 | Tenant admin / closeout | (no new backend; settings API already complete) | `pages/settings/presence/PresenceSettingsPage.jsx` (new) + sidebar entry + COMPANY_ADMIN route + redux thunks |
+| 37.7 auto | Automatic presence correction — `presence:tick` (read-only re-eval), runtime lifecycle on AppLayout, user-signal listeners (pointerdown / keydown / focus) throttled to 1/5s | `socket/presenceSocketHandlers.js` (new tick handler), `services/presence/presenceEvents.js` (`presence:tick` + `tick` source) | `layout/AppLayout.jsx` (startPresenceRuntime on auth, gated on tenant `enabled`), `services/realtime/presenceChannel.js` (throttled activity + tick + user-signal listeners) |
 
 ## 4. INVARIANT LAWS
 
@@ -110,6 +127,27 @@ salary / PAN / Aadhaar, no GPS, no productivity score.
     (commented out by `db177d9` to prevent the slow-start
     regression). The HTTP `/api/presence/*` REST endpoints
     are what every UI surface reads.
+21. **The runtime must start on auth.** The visibility ticker
+    is the only mechanism that makes Available → Away happen
+    on its own schedule. Without the runtime, automatic state
+    is `unknown` for everyone — manual is the only thing that
+    works. (Pinned in `presenceSourcePins.test.js` "auto-start
+    on auth (gated on tenant enabled)".)
+22. **Away is event-driven on a 30s cadence.** The
+    `presence:tick` event is a read-only re-evaluation request
+    that does NOT update `lastActivityAt`. The handler re-
+    solves with the existing live snapshot and publishes IF the
+    memo differs. Per-employee server intervals are forbidden.
+    (Pinned in `presenceSocket.test.js #43`.)
+23. **Activity has three sources, each with a purpose:**
+    `presence:heartbeat` (liveness, no payload), `presence:tick`
+    (read-only re-eval, no payload), `presence:activity`
+    (`{at: ISO}` — the ONLY event that updates `lastActivityAt`,
+    triggered by throttled user signals: `pointerdown` /
+    `keydown` / `focus`). NO `mousemove`. NO payload that
+    contains `companyId`, `userId`, `key`, `coords`, `value`.
+    (Pinned in `presenceSourcePins.test.js` "tick + throttled
+    activity".)
 
 ## 5. MODEL / SERVICE MAP
 
@@ -266,6 +304,17 @@ Test #28 (closeout) pins the resolver output shape.
   `PUT /api/presence/config`, not the full form. This
   prevents the Phase 36 "save one field, overwrite the
   rest" bug.
+- **37.7 auto** — the runtime IS started on auth (revising
+  the 37.2 / 37.4 lesson above), but ONLY when the tenant
+  config has `enabled: true`. A disabled tenant opens no
+  socket. The runtime is epoch-guarded so StrictMode's
+  double-invoke is a no-op. The runtime owns the SINGLE
+  socket and the SINGLE 30s ticker; the user-signal
+  listeners emit `presence:activity` throttled to 1/5s so
+  a frantic typist does not flood the bus. Cost per tab:
+  one socket + one 30s `setInterval` + zero per-heartbeat
+  work. Cost per tick: one pure-function call + memo-
+  suppressed no-op.
 
 ## 13. FOLDER STRUCTURE (do NOT reorganise)
 
@@ -302,6 +351,104 @@ infra that re-uses env vars:
 
 The repo's `.env.example` already documents these.
 
+---
+
+## 14a. AUTOMATIC PRESENCE CORRECTION (37.7)
+
+The runtime + the `presence:tick` event are the two changes
+that make Available / Away / Offline / Unknown actually
+happen in production.
+
+### Runtime lifecycle
+
+`Frontend/src/layout/AppLayout.jsx` owns the lifecycle:
+
+```js
+useEffect(() => {
+  let cancelled = false;
+  const startIfEnabled = async () => {
+    try {
+      await dispatch(loadPresenceConfig()).unwrap().catch(() => null);
+      if (cancelled) return;
+      const cfg = store.getState().presence?.config?.data || null;
+      const enabled = cfg?.enabled !== false;
+      if (!enabled) return; // tenant disabled — no socket
+      await startPresenceRuntime();
+    } catch { /* never throws up */ }
+  };
+  if (userId) startIfEnabled();
+  return () => {
+    cancelled = true;
+    try { stopPresenceRuntime(); } catch { /* never */ }
+  };
+}, [dispatch, userId]);
+```
+
+- **Idempotent** — `startPresenceRuntime` has its own epoch
+  counter; React StrictMode's double-invoke is a no-op.
+- **Gated on tenant `enabled`** — disabled tenants open no
+  socket. The REST menu / tile / team page still work.
+- **Stops on logout / userId change** — the cleanup runs
+  before the next effect, so a login-as-different-user does
+  not leak the previous socket.
+
+### Three-event realtime model
+
+| Event | Payload | Handler does | Why |
+|---|---|---|---|
+| `presence:heartbeat` | `{}` | `store.refreshHeartbeat` only; NO publish | Liveness. Not a state change. |
+| `presence:tick` | `{}` | `resolveEffectivePresence + publishIfChanged(source:'tick')`. NO `recordActivity`, NO `refreshHeartbeat`. | Read-only re-eval request. The 30s ticker emits this so the resolver re-runs on its own schedule — Available → Away happens without requiring the user to interact. |
+| `presence:activity` | `{at: <ISO>}` | `store.recordActivity + resolve + publishIfChanged(source:'activity')` | The ONLY event that updates `lastActivityAt`. Throttled to 1/5s. |
+
+### User-signal listeners (browser side)
+
+`Frontend/src/services/realtime/presenceChannel.js` registers
+on `startVisibilityTicker`:
+
+- `pointerdown` (mouse + touch) — passive listener.
+- `keydown` (keyboard) — passive listener. NO key text, NO
+  focused element id, NO key code.
+- `focus` (window regains focus) — covers alt-tab back.
+
+NOT registered: `mousemove`. Anti-surveillance law
+(Phase 37 §9). A user sitting idle at their desk with no
+keyboard / mouse activity will flip to `Away` after the
+threshold expires (5 min default).
+
+### Visibility ticker cadence
+
+- **t = 0s (on attach):** heartbeat + tick.
+- **Every 30s while visible:** heartbeat + tick + activity.
+- **Hidden tab (`document.visibilityState !== 'visible'`):**
+  ticker is silent. (A background tab is not "active".)
+- **Tab returns to visible:** one immediate activity, then
+  the ticker resumes.
+
+### Bus envelope sources (final list)
+
+The `presence:changed` envelope may carry one of these
+`source` values:
+
+```
+connect      // first connect for a previously-unknown user
+disconnect   // last qualifying disconnect
+activity     // recent activity arrived
+heartbeat    // bus accepts the value for test seams
+             //   (heartbeat NEVER publishes at the handler)
+tick         // Phase 37.7 — client asked for a re-eval
+resolver     // the resolver noticed a transition outside
+             //   the socket path (e.g. manual DND lifted)
+approve      // work-location request approved (PHASE 37.5)
+cancel       // work-location request cancelled (PHASE 37.5)
+```
+
+### Localhost acceptance
+
+The full 9-scenario script (A–I) with Redis smoke, multi-
+tab check, perf frames, privacy invariants, and Attendance
+baseline is at `docs/PHASE_37_LOCALHOST_ACCEPTANCE.md`.
+Smoke gate: `ATT_AFTER === ATT_BEFORE`.
+
 ## 15. TESTS
 
 - `Backend/test/presenceFoundation.test.js` — 58 cases
@@ -309,17 +456,20 @@ The repo's `.env.example` already documents these.
 - `Backend/test/presenceBus.test.js` — 15 cases
 - `Backend/test/presenceLiveStore.test.js` — 25 cases
 - `Backend/test/presenceRealtime.test.js` — 20 cases
-- `Backend/test/presenceSocket.test.js` — 11 cases
+- `Backend/test/presenceSocket.test.js` — 18 cases (37.7 auto: +2 for tick handler is read-only + tick in INBOUND_EVENTS + tick source in VALID_SOURCES)
 - `Backend/test/presenceTeamService.test.js` — 49 cases
 - `Backend/test/presenceHrIntegration.test.js` — 53 cases
 - `Backend/test/workLocationRequests.test.js` — 24 cases
 - `Backend/test/attendanceWorkModeRequests.test.js` — 26 cases
-- `Backend/test/presenceCloseout.test.js` — 30 cases (37.7)
+- `Backend/test/presenceCloseout.test.js` — 32 cases (37.7: +2 for pre-validate hook + broadened catch on tenant config read)
 - `Frontend/test/presenceHrFrontend.test.js` — 18 cases (37.6)
 - `Frontend/test/presenceSettings.test.js` — 25 cases (37.7)
+- `Frontend/test/presenceSourcePins.test.js` — 2 cases REPLACED + 1 ADDED in 37.7 auto (the obsolete "AppLayout does NOT auto-start" pin is replaced with "AppLayout DOES auto-start + gating" + "tick + throttled activity" pin)
+- `Frontend/test/presenceWidget.test.js` — 1 case relaxed in 37.7 auto (the obsolete "no presence-* page" pin accommodates 37.3+ reality)
 
-(Totals at 37.7 closeout: **376/376 backend Phase 37**, **68/68
-frontend Phase 37**.)
+(Totals at 37.7 automatic presence correction closeout: **380/380
+backend Phase 37**, **374/374 frontend Phase 37**. Vite build
+green in 1.25s.)
 
 ## 16. OPERATIONAL PITFALLS (actually encountered)
 
@@ -339,6 +489,32 @@ frontend Phase 37**.)
 - **37.6 paid for a "NATS has been added" assumption that
   was NOT in the repo.** 37.6 + 37.7 keep the no-NATS
   invariant. Pinned in the source-pin tests.
+- **37.7 auto paid for "runtime was never started on auth".**
+  `AppLayout.jsx` had a comment block (lines 14–20 in the
+  pre-fix) explicitly disabling `startPresenceRuntime()`,
+  citing "slow Mongo". The result was that the Socket.IO
+  `/presence` namespace was never reached from any browser
+  session. The visibility ticker never fired, no heartbeat
+  reached the server, the live store stayed empty, and
+  `deriveAutomaticPresence()` returned `'unknown'` for
+  everyone. Users saw only manual state because that path
+  is a direct HTTP call. **Fix**: AppLayout now starts the
+  runtime on `userId` change, gated on tenant config
+  `enabled !== false`. Pinned in
+  `presenceSourcePins.test.js`.
+- **37.7 auto paid for "Away is event-driven only".**
+  `deriveAutomaticPresence` is a pure function — it only
+  runs when something calls it. With the runtime fixed but
+  the event-driven model in place, an idle user with no one
+  hitting the team page stays `'Available'` forever, because
+  no GET ever asks the resolver to recompute.
+  **Fix**: new event `presence:tick` (read-only re-eval).
+  The handler re-resolves with the existing live snapshot
+  and publishes ONLY if the memo differs. The 30s visibility
+  ticker emits the tick alongside the heartbeat. Pinned in
+  `presenceSocket.test.js #43` (handler is read-only — no
+  `recordActivity`, no `refreshHeartbeat`) and `#44` (tick
+  is in `PRESENCE_SOCKET_INBOUND_EVENTS`).
 
 ---
 
