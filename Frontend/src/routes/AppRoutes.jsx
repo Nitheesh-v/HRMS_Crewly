@@ -512,6 +512,19 @@ const AppRoutes = () => (
         }
       />
 
+      {/* Phase 37.7 — Convenience alias /app/team → /app/team/availability.
+          Same role gate (SENIORS) so a non-senior hitting /app/team
+          still sees the role check. The redirect preserves the URL
+          in the address bar (Navigate replace). */}
+      <Route
+        path="team"
+        element={
+          <RequireRole roles={SENIORS}>
+            <Navigate to="team/availability" replace />
+          </RequireRole>
+        }
+      />
+
       {/* Phase 37.5 — WFH request review queue. HR / admin / manager
           (anyone with PRESENCE_WORK_MODE_REVIEW) may visit. The
           backend reuses the same scope helper as 31.4 work-mode
