@@ -26,6 +26,7 @@ import { sendPresenceError, PresenceError } from '../services/presence/presenceE
 import { presenceService } from '../services/presence/presenceService.js';
 import { presenceTeamService } from '../services/presence/presenceTeamService.js';
 import {
+  getPresenceTenantConfigOrThrow,
   updatePresenceTenantConfig,
 } from '../services/presence/presenceTenantConfigService.js';
 import {
