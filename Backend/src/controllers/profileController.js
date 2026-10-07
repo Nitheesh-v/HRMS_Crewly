@@ -17,8 +17,16 @@ const asyncHandler =
     ? asyncHandlerNS.default
     : asyncHandlerNS.asyncHandler;
 
-// ⚠️ Whitelist — role / salary / reportingTo can NEVER be self-edited
-const SELF_EDITABLE = ['phone', 'gender', 'dateOfBirth', 'address', 'emergencyContact', 'bankAccount', 'ifsc'];
+// ⚠️ Whitelist — role / salary / reportingTo can NEVER be self-edited.
+//
+// Phase 38 — `bankAccount` and `ifsc` were REMOVED from this list on purpose.
+// They are payroll-routing facts: an instant, unverified self-edit is how a
+// salary payment gets diverted to an attacker's account. They now go through
+// services/profile/profileChangeService.js (employee asks → HR/admin
+// approves → the value is applied). Employment fields (name, designation,
+// employeeCode, dateOfJoining) were never self-editable and are requestable
+// through the same workflow.
+const SELF_EDITABLE = ['phone', 'gender', 'dateOfBirth', 'address', 'emergencyContact'];
 
 // ── GET my profile ──────────────────────────────────────────────────────────
 const getMyProfile = asyncHandler(async (req, res) => {

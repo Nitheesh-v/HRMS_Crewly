@@ -212,7 +212,13 @@ export const _resetEnsurePermissionsForTests = () => {
 //             permissionVersion migration $addToSet-grants them once to the
 //             matrix-holding system roles. Chat reads stay membership-gated;
 //             no subscription feature is attached (unmapped = allowed).
-const SYSTEM_PERMISSION_VERSION = 37;
+//   37 → 38 : Phase 38 added PROFILE_CHANGE_REVIEW (resource PROFILE_CHANGE).
+//             COMPANY_ADMIN inherits it via the scope-ALL filter; HR_MANAGER
+//             is granted explicitly in DEFAULT_ROLE_MATRIX. The migration
+//             below $addToSet-grants it once to matrix-holding system roles,
+//             so an existing tenant's HR Manager can review immediately
+//             after deploy — no manual role edit.
+const SYSTEM_PERMISSION_VERSION = 38;
 
 // Exported for bootstrap verification/tests — the value itself is owned
 // by this module; bump it ONLY when the catalogue or default role

@@ -44,6 +44,10 @@ export const RESOURCES = [
   "SHIFT",
   "SUPPORT",
   "PROFILE",
+  // Phase 38 — reviewing employees' profile change requests. Deliberately a
+  // separate resource from PROFILE: holding "my profile is editable" must
+  // never imply "I may approve other people's profile edits".
+  "PROFILE_CHANGE",
   "RESIGNATION",
 
   // Phase 33.9 — chat moderation / group administration. Chat itself stays
@@ -387,6 +391,13 @@ export const DEFAULT_PERMISSIONS = [
 
   ...actions("PROFILE", ["READ", "UPDATE"], "SELF"),
 
+  // Phase 38 — Profile change requests. REVIEW gates the HR/admin queue that
+  // decides whether a proposed edit is applied to the employee record. There
+  // is no PROFILE_CHANGE_REQUEST permission on purpose: any employee who may
+  // update their own profile may ask (routes/profileChangeRoutes.js reuses
+  // PROFILE_UPDATE_SELF), while reviewing is granted separately.
+  ...actions("PROFILE_CHANGE", ["REVIEW"]),
+
   ...actions("RESIGNATION", ["CREATE"], "SELF"),
 
   ...actions("ASSET", ["READ", "CREATE", "UPDATE", "DELETE"]),
@@ -536,6 +547,12 @@ export const DEFAULT_ROLE_MATRIX = {
     "USER_READ",
     "USER_CREATE",
     "USER_UPDATE",
+
+    // Phase 38 — HR reviews employees' profile change requests (name,
+    // designation, employee code, date of joining, bank details) and the
+    // decision applies the value. Company Admin inherits it automatically:
+    // PROFILE_CHANGE_REVIEW is a scope-ALL entry in the catalogue.
+    "PROFILE_CHANGE_REVIEW",
 
     "DEPARTMENT_READ",
     "DEPARTMENT_CREATE",

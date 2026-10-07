@@ -122,6 +122,8 @@ const NAV_ICON_BY_PATH = {
   "/app/governance": ShieldCheck,
   "/app/roles-permissions": KeyRound,
   "/app/profile": UserCircle,
+  // Phase 38 — the reviewer queue for employee profile change requests.
+  "/app/profile/change-requests": ShieldCheck,
   "/app/notifications": Bell,
   "/app/notification-settings": BellRing,
 
@@ -176,6 +178,9 @@ const NAV_GROUPS = [
       "/app/performance",
       "/app/documents",
       "/app/assets",
+      // Phase 38 — reviewers approve profile edits from here; it belongs to
+      // the people surface, not to "Me" (the employee's own preference area).
+      "/app/profile/change-requests",
     ],
   },
 

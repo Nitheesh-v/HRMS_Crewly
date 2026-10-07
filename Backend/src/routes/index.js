@@ -39,6 +39,7 @@ import billingRoutes from "./platform/billingRoutes.js";
 import subscriptionRoutes from "./platform/subscriptionRoutes.js";
 import systemRoutes from "./systemRoutes.js";
 import profileRoutes from "./profileRoutes.js";
+import profileChangeRoutes from "./profileChangeRoutes.js";
 import selfServiceRoutes from "./selfServiceRoutes.js";
 import meetingRoutes from "./meetingRoutes.js";
 import notificationPrefRoutes from "./notificationPrefRoutes.js";
@@ -182,6 +183,10 @@ router.use(
   "/presence/work-location-requests",
   workLocationRequestRoutes,
 );
+
+// Phase 38 — profile change requests. Mounted BEFORE /profile so its
+// literal /change-requests paths always win the match.
+router.use("/profile/change-requests", profileChangeRoutes);
 
 router.use("/profile", profileRoutes);
 

@@ -534,6 +534,14 @@ const AppLayout = () => {
     ? [{ to: '/app/attendance/analytics', label: 'Attendance Analytics' }]
     : [];
 
+  // Phase 38 — the profile change request queue. Same idea as every other
+  // permission-driven menu here: the SERVER holds the real gate
+  // (requirePermission('PROFILE_CHANGE_REVIEW') + org scope); this only
+  // decides whether a person is given a door to knock on.
+  const profileChangeMenu = hasPermission('PROFILE_CHANGE_REVIEW')
+    ? [{ to: '/app/profile/change-requests', label: 'Profile Change Requests' }]
+    : [];
+
   const captureMenu = hasAnyPermission(['ATTENDANCE_CAPTURE_MANAGE'])
     ? [
         { to: '/app/attendance/kiosks', label: 'Kiosk Stations' },
@@ -554,6 +562,7 @@ const AppLayout = () => {
     ...operationsMenu,
     ...analyticsMenu,
     ...captureMenu,
+    ...profileChangeMenu,
     ...payrollMenu,
     ...recruitmentDashboardMenu,
     ...candidateMenu,

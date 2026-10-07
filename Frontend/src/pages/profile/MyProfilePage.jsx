@@ -1,18 +1,75 @@
 // ============================================================
 // MY PROFILE — self-service profile for EVERY role
-// Photo upload (Cloudinary), personal info, address, emergency
-// contact. Employment details are read-only (HR controls them).
+//
+// Phase 38 splits the page into TWO lanes, because the two kinds of
+// data have different risk:
+//
+//   · DIRECT  — phone, gender, birthday, address, emergency contact.
+//               Saved with PUT /profile/me; the page updates immediately.
+//   · REQUEST — full name, designation, employee code, date of joining,
+//               bank account, IFSC. The employee proposes a value and HR /
+//               Company Admin approves it (POST /profile/change-requests).
+//               Until then the OLD value stays on the profile — the screen
+//               shows the proposal as "pending", never as applied.
+//
+// Bank details moved out of the direct lane in this phase: an unverified
+// bank edit is how a salary gets paid into the wrong account.
 // ============================================================
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Briefcase, Camera, Home, Landmark, Loader2, Save, Siren, User, UserCircle } from 'lucide-react';
+import {
+  Briefcase, Camera, ClipboardList, Home, Landmark, Loader2, Lock, Save, Send, Siren, User, UserCircle, X,
+} from 'lucide-react';
 import profileService from '../../services/profileService';
+import Modal from '../../components/Modal.jsx';
 import { notify } from '../../utils/notify.js';
 
-// label + value read-only row
-const InfoRow = ({ label, value }) => (
+// ── The fields an employee may ask to change (UI copy only — the server
+//    validates the value AND the allowlist in services/profile/
+//    profileChangeRules.js; hiding a button proves nothing).
+const REQUESTABLE_FIELDS = [
+  { field: 'name', label: 'Full name', group: 'IDENTITY' },
+  { field: 'designation', label: 'Designation', group: 'EMPLOYMENT' },
+  { field: 'employeeCode', label: 'Employee code', group: 'EMPLOYMENT' },
+  { field: 'dateOfJoining', label: 'Date of joining', group: 'EMPLOYMENT', inputType: 'date' },
+  { field: 'bankAccount', label: 'Bank account number', group: 'PAYMENT' },
+  { field: 'ifsc', label: 'IFSC code', group: 'PAYMENT' },
+];
+
+const fieldMeta = (field) =>
+  REQUESTABLE_FIELDS.find((entry) => entry.field === field) || { field, label: field };
+
+const STATUS_STYLE = {
+  pending: 'bg-amber-400/15 text-amber-200',
+  approved: 'bg-crewly-green/15 text-crewly-green',
+  rejected: 'bg-crewly-red/15 text-crewly-red',
+  cancelled: 'bg-white/10 text-crewly-dim',
+};
+
+const dayValue = (value) => (value ? String(value).slice(0, 10) : '');
+
+const prettyDay = (value) => {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return parsed.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
+// label + value read-only row, with an optional "Request change" action
+const InfoRow = ({ label, value, onRequest, locked = false }) => (
   <div>
     <p className="text-[11px] uppercase tracking-wide text-crewly-dim">{label}</p>
-    <p className="mt-0.5 text-sm font-medium">{value || '—'}</p>
+    <div className="mt-0.5 flex items-center justify-between gap-2">
+      <p className="text-sm font-medium">{value || '—'}</p>
+      {onRequest && (
+        <button
+          type="button"
+          onClick={onRequest}
+          className="inline-flex items-center gap-1 rounded-md border border-crewly-border px-2 py-1 text-[11px] text-crewly-dim transition hover:text-crewly-text"
+        >
+          {locked ? <Lock className="h-3 w-3" /> : null}Request change
+        </button>
+      )}
+    </div>
   </div>
 );
 
@@ -22,11 +79,15 @@ const MyProfilePage = () => {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState('');
+  const [requests, setRequests] = useState([]);
+  const [requestDraft, setRequestDraft] = useState(null); // { field, label, value, reason, inputType }
+  const [sendingRequest, setSendingRequest] = useState(false);
+  const [cancellingId, setCancellingId] = useState('');
   const fileRef = useRef(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    /* 35.1 — nothing to report; failures are toasted by api.js */;
+    /* 35.1 — nothing to report; failures are toasted by api.js */
     try {
       const res = await profileService.getMe();
       setProfile(res?.data || res);
@@ -37,7 +98,18 @@ const MyProfilePage = () => {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  const loadRequests = useCallback(async () => {
+    try {
+      const res = await profileService.myChangeRequests();
+      setRequests(res?.requests || []);
+    } catch {
+      // A pending-request list is informational: a failure here must not
+      // break the profile screen (the page's own load already reported it).
+      setRequests([]);
+    }
+  }, []);
+
+  useEffect(() => { load(); loadRequests(); }, [load, loadRequests]);
 
   // dotted-path setter: setField('address.city', 'Chennai')
   const setField = (path, value) =>
@@ -57,8 +129,7 @@ const MyProfilePage = () => {
     if (!file) return;
     setPreview(URL.createObjectURL(file));
     setUploading(true);
-    /* 35.1 — nothing to report; failures are toasted by api.js */;
-    /* 35.1 — nothing to report; failures are toasted by api.js */;
+    /* 35.1 — nothing to report; failures are toasted by api.js */
     try {
       const res = await profileService.uploadAvatar(file);
       const url = res?.avatarUrl || res?.data?.avatarUrl;
@@ -74,7 +145,7 @@ const MyProfilePage = () => {
 
   const onRemovePhoto = async () => {
     setUploading(true);
-    /* 35.1 — nothing to report; failures are toasted by api.js */;
+    /* 35.1 — nothing to report; failures are toasted by api.js */
     try {
       await profileService.removeAvatar();
       setProfile((p) => ({ ...p, avatarUrl: '' }));
@@ -86,12 +157,13 @@ const MyProfilePage = () => {
     }
   };
 
-  // ── save editable sections ────────────────────────────────────────
+  // ── save the DIRECT lane ──────────────────────────────────────────
   const onSave = async () => {
     setSaving(true);
-    /* 35.1 — nothing to report; failures are toasted by api.js */;
-    /* 35.1 — nothing to report; failures are toasted by api.js */;
+    /* 35.1 — nothing to report; failures are toasted by api.js */
     try {
+      // Only the fields the employee owns. Bank / employment values are not
+      // in this payload at all — they travel through the approval workflow.
       const payload = {
         phone: profile.phone || '',
         gender: profile.gender || '',
@@ -109,6 +181,51 @@ const MyProfilePage = () => {
     }
   };
 
+  // ── the REQUEST lane ──────────────────────────────────────────────
+  const openRequest = (field) => {
+    const meta = fieldMeta(field);
+    setRequestDraft({
+      field,
+      label: meta.label,
+      inputType: meta.inputType || 'text',
+      value: meta.inputType === 'date' ? dayValue(profile[field]) : String(profile[field] || ''),
+      reason: '',
+    });
+  };
+
+  const submitRequest = async () => {
+    if (!requestDraft) return;
+    setSendingRequest(true);
+    /* 35.1 — nothing to report; failures are toasted by api.js */
+    try {
+      await profileService.submitChangeRequest({
+        changes: { [requestDraft.field]: requestDraft.value },
+        reason: requestDraft.reason || '',
+      });
+      notify.success('Request sent to HR for approval');
+      setRequestDraft(null);
+      loadRequests();
+    } catch (err) {
+      notify.error(err);
+    } finally {
+      setSendingRequest(false);
+    }
+  };
+
+  const cancelRequest = async (id) => {
+    setCancellingId(id);
+    /* 35.1 — nothing to report; failures are toasted by api.js */
+    try {
+      await profileService.cancelChangeRequest(id);
+      notify.success('Request cancelled');
+      loadRequests();
+    } catch (err) {
+      notify.error(err);
+    } finally {
+      setCancellingId('');
+    }
+  };
+
   if (loading && !profile) return <p className="text-crewly-dim">Loading profile…</p>;
   /*
    * 35.1 — a failed load already raised a toast; this line only keeps the
@@ -118,14 +235,16 @@ const MyProfilePage = () => {
 
   const dobValue = profile.dateOfBirth ? String(profile.dateOfBirth).slice(0, 10) : '';
   const photoSrc = preview || profile.avatarUrl;
+  const pendingFields = new Set(
+    requests.filter((row) => row.status === 'pending').flatMap((row) => row.changes.map((change) => change.field)),
+  );
 
   return (
     <div className="max-w-5xl">
       <h1 className="flex items-center gap-2 text-2xl font-bold"><UserCircle className="h-6 w-6 text-crewly-green" />My Profile</h1>
       <p className="mt-1 text-sm text-crewly-dim">
-        Your photo & personal details. Employment info is managed by HR (read-only here).
+        Your photo & personal details. Employment and payment details are approved by HR before they change.
       </p>
-
 
       <div className="mt-6 grid gap-5 lg:grid-cols-[320px_1fr]">
         {/* ══ LEFT — photo + identity ═══════════════════════════════ */}
@@ -240,35 +359,159 @@ const MyProfilePage = () => {
             </div>
           </section>
 
-                    {/* Bank (editable) */}
+          {/* Bank — approval lane (Phase 38) */}
           <section className="card">
-            <h3 className="mb-4 flex items-center gap-2 font-semibold"><Landmark className="h-4 w-4 text-crewly-dim" />Bank Details <span className="ml-1 text-xs font-normal text-crewly-green">editable</span> <span className="ml-1 text-xs font-normal text-crewly-dim">used for salary credit</span></h3>
+            <h3 className="mb-1 flex items-center gap-2 font-semibold">
+              <Landmark className="h-4 w-4 text-crewly-dim" />Bank Details
+              <span className="ml-1 inline-flex items-center gap-1 text-xs font-normal text-crewly-dim"><Lock className="h-3 w-3" />needs HR approval</span>
+            </h3>
+            <p className="mb-4 text-xs text-crewly-dim">
+              Salary is credited to this account, so a change is verified by HR before it is applied.
+            </p>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="label">Account Number</label>
-                <input className="input" value={profile.bankAccount || ''} onChange={(e) => setField('bankAccount', e.target.value)} placeholder="XXXX XXXX XXXX" />
-              </div>
-              <div>
-                <label className="label">IFSC Code</label>
-                <input className="input uppercase" value={profile.ifsc || ''} onChange={(e) => setField('ifsc', e.target.value.toUpperCase())} placeholder="HDFC0001234" />
-              </div>
+              <InfoRow
+                label="Account Number"
+                value={profile.bankAccount || ''}
+                onRequest={() => openRequest('bankAccount')}
+                locked
+              />
+              <InfoRow
+                label="IFSC Code"
+                value={profile.ifsc || ''}
+                onRequest={() => openRequest('ifsc')}
+                locked
+              />
             </div>
           </section>
 
-          {/* Employment (read-only) */}
+          {/* Employment (read-only, requestable) */}
           <section className="card">
             <h3 className="mb-4 flex items-center gap-2 font-semibold"><Briefcase className="h-4 w-4 text-crewly-dim" />Employment <span className="ml-1 text-xs font-normal text-crewly-dim">managed by HR</span></h3>
             <div className="grid gap-4 sm:grid-cols-3">
-              <InfoRow label="Employee Code" value={profile.employeeCode} />
+              <InfoRow label="Name" value={profile.name} onRequest={() => openRequest('name')} locked />
+              <InfoRow label="Employee Code" value={profile.employeeCode} onRequest={() => openRequest('employeeCode')} locked />
               <InfoRow label="Work Email" value={profile.email} />
               <InfoRow label="Department" value={profile.department?.name} />
-              <InfoRow label="Designation" value={profile.designation} />
-              <InfoRow label="Reports To" value={profile.reportingTo ? `${profile.reportingTo.name} (${profile.reportingTo.role?.replace('_', ' ')})` : ''} />
-              <InfoRow label="Joined" value={profile.dateOfJoining ? new Date(profile.dateOfJoining).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : ''} />
+              <InfoRow label="Designation" value={profile.designation} onRequest={() => openRequest('designation')} locked />
+              <InfoRow
+                label="Reports To"
+                value={profile.reportingTo ? `${profile.reportingTo.name} (${profile.reportingTo.role?.replace('_', ' ')})` : ''}
+              />
+              <InfoRow
+                label="Joined"
+                value={profile.dateOfJoining ? prettyDay(profile.dateOfJoining) : ''}
+                onRequest={() => openRequest('dateOfJoining')}
+                locked
+              />
             </div>
+          </section>
+
+          {/* My change requests (Phase 38) */}
+          <section className="card">
+            <h3 className="mb-4 flex items-center gap-2 font-semibold">
+              <ClipboardList className="h-4 w-4 text-crewly-dim" />My Change Requests
+              {requests.some((row) => row.status === 'pending') && (
+                <span className="badge bg-amber-400/15 text-amber-200">
+                  {requests.filter((row) => row.status === 'pending').length} pending
+                </span>
+              )}
+            </h3>
+
+            {requests.length === 0 ? (
+              <p className="text-sm text-crewly-dim">
+                Nothing requested. Use “Request change” next to a field HR manages.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {requests.map((row) => (
+                  <div key={row.id} className="rounded-lg border border-crewly-border/60 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className={`badge ${STATUS_STYLE[row.status] || STATUS_STYLE.cancelled}`}>{row.status}</span>
+                      <span className="text-[11px] text-crewly-dim">Requested {prettyDay(row.requestedAt)}</span>
+                    </div>
+                    <dl className="mt-2 space-y-1 text-sm">
+                      {row.changes.map((change) => (
+                        <div key={change.field} className="flex flex-wrap items-center gap-1.5">
+                          <dt className="text-crewly-dim">{change.label}:</dt>
+                          <dd className="line-through opacity-70">{change.from || '—'}</dd>
+                          <dd aria-hidden="true">→</dd>
+                          <dd className="font-medium">{change.to || '—'}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                    {row.decisionNote && (
+                      <p className="mt-2 text-xs text-crewly-dim">HR note: {row.decisionNote}</p>
+                    )}
+                    {row.canCancel && (
+                      <button
+                        type="button"
+                        onClick={() => cancelRequest(row.id)}
+                        disabled={cancellingId === row.id}
+                        className="mt-2 inline-flex items-center gap-1 rounded-md border border-crewly-red/40 px-3 py-1.5 text-xs text-crewly-red transition hover:bg-crewly-red/10 disabled:opacity-50"
+                      >
+                        <X className="h-3 w-3" />
+                        {cancellingId === row.id ? 'Cancelling…' : 'Cancel request'}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         </div>
       </div>
+
+      {/* ══ REQUEST MODAL ═════════════════════════════════════════ */}
+      {requestDraft && (
+        <Modal
+          title={`Request a change — ${requestDraft.label}`}
+          onClose={() => setRequestDraft(null)}
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-crewly-dim">
+              HR reviews this before it is applied. Your current value stays visible until then.
+            </p>
+
+            <div>
+              <label className="label">{requestDraft.label}</label>
+              <input
+                className="input"
+                type={requestDraft.inputType}
+                value={requestDraft.value}
+                onChange={(e) => setRequestDraft((draft) => ({ ...draft, value: e.target.value }))}
+              />
+            </div>
+
+            <div>
+              <label className="label">Why is it changing? (optional)</label>
+              <textarea
+                className="input"
+                rows={2}
+                maxLength={300}
+                value={requestDraft.reason}
+                onChange={(e) => setRequestDraft((draft) => ({ ...draft, reason: e.target.value }))}
+                placeholder="e.g. Salary account moved to another bank"
+              />
+            </div>
+
+            {pendingFields.has(requestDraft.field) && (
+              <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                You already have a pending request for this field. Cancel it first if you want to change the value.
+              </p>
+            )}
+
+            <button
+              type="button"
+              onClick={submitRequest}
+              disabled={sendingRequest || pendingFields.has(requestDraft.field)}
+              className="btn-primary inline-flex w-full items-center justify-center gap-2 px-5 py-2.5 text-sm"
+            >
+              {sendingRequest ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {sendingRequest ? 'Sending…' : 'Send for approval'}
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

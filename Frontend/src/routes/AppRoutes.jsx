@@ -144,6 +144,8 @@ const GovernancePage = lazy(() => import("../pages/governance/GovernancePage.jsx
 const RolesPermissionsPage = lazy(() => import("../pages/settings/RolesPermissionsPage.jsx"));
 
 const MyProfilePage = lazy(() => import("../pages/profile/MyProfilePage.jsx"));
+// Phase 38 — HR/admin reviewer queue for employee profile change requests.
+const ProfileChangeRequestsPage = lazy(() => import("../pages/profile/ProfileChangeRequestsPage.jsx"));
 const MyDocumentsPage = lazy(() => import("../pages/documents/MyDocumentsPage.jsx"));
 const EmployeeFilesPage = lazy(() => import("../pages/documents/EmployeeFilesPage.jsx"));
 
@@ -971,6 +973,19 @@ const AppRoutes = () => (
       <Route
         path="profile"
         element={<MyProfilePage />}
+      />
+
+      {/* Phase 38 — profile change request queue. The guard is the REVIEW
+          permission, not a role name: a company that grants it to a custom
+          role gets the page, and the server re-checks the org scope on
+          every request anyway. */}
+      <Route
+        path="profile/change-requests"
+        element={
+          <RequirePermission any={['PROFILE_CHANGE_REVIEW']}>
+            <ProfileChangeRequestsPage />
+          </RequirePermission>
+        }
       />
 
       <Route
