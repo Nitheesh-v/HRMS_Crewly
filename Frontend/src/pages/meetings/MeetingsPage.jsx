@@ -7,6 +7,7 @@ import {
 } from '../../services/meetingService.js';
 import { arr } from '../../services/workService.js';
 import { notify } from '../../utils/notify.js';
+import { parseMeetingLink } from '../../utils/meetingLink.js';
 
 const CREATE_ROLES = ['COMPANY_ADMIN', 'MANAGER', 'TEAM_LEAD'];
 const DAY_MS = 86400000;
@@ -57,11 +58,21 @@ const Chip = ({ m, onClick, dense }) => {
 
 const MeetingFormModal = ({ initial, me, role, onClose, onSaved }) => {
   const isEdit = Boolean(initial?._id);
+  const isSeries = Boolean(initial?.recurrence && initial.recurrence !== 'NONE');
   const [users, setUsers] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [form, setForm] = useState(() => {
-    const s = initial?.occStart || initial?.startAt || Date.now();
-    const e = initial?.occEnd || initial?.endAt || Date.now() + 3600000;
+    // A recurring meeting is stored ONCE: startAt/endAt are the SERIES anchor,
+    // while occStart/occEnd are only the occurrence that was clicked. Prefilling
+    // from the occurrence and saving rewrote the anchor to that date, so the
+    // whole series jumped and every earlier occurrence vanished from the
+    // calendar. Editing a series now edits the series.
+    const s = isSeries
+      ? (initial?.startAt || initial?.occStart || Date.now())
+      : (initial?.occStart || initial?.startAt || Date.now());
+    const e = isSeries
+      ? (initial?.endAt || initial?.occEnd || Date.now() + 3600000)
+      : (initial?.occEnd || initial?.endAt || Date.now() + 3600000);
     return {
       title: initial?.title || '',
       description: initial?.description || '',
@@ -80,6 +91,11 @@ const MeetingFormModal = ({ initial, me, role, onClose, onSaved }) => {
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
 
+  // The Join button can only ever open a real web address. `meet.google.com/x`
+  // becomes `https://meet.google.com/x`; anything that cannot be salvaged is
+  // reported here instead of being saved for every reader to trip over.
+  const linkState = parseMeetingLink(form.link);
+
   useEffect(() => {
     (async () => {
       try { setUsers(arr(await api.get('/users'))); } catch (e) { /* soft */ }
@@ -95,6 +111,7 @@ const MeetingFormModal = ({ initial, me, role, onClose, onSaved }) => {
   const submit = async () => {
     setErr('');
     if (!form.title.trim()) return setErr('Title is required');
+    if (linkState.error) return setErr(linkState.error);
     const startAt = new Date(`${form.date}T${form.start}:00`);
     const endAt = new Date(`${form.date}T${form.end}:00`);
     if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) return setErr('Pick date & times');
@@ -106,7 +123,7 @@ const MeetingFormModal = ({ initial, me, role, onClose, onSaved }) => {
       type: form.type,
       startAt: startAt.toISOString(),
       endAt: endAt.toISOString(),
-      link: form.link,
+      link: linkState.link,
       recurrence: form.recurrence,
       recurrenceEnd: form.recurrence !== 'NONE' && form.recurrenceEnd ? new Date(`${form.recurrenceEnd}T23:59:59`).toISOString() : null,
       reminderMinutes: Number(form.reminderMinutes) || 15,
@@ -147,7 +164,10 @@ const MeetingFormModal = ({ initial, me, role, onClose, onSaved }) => {
               <option value="PRIVATE">Private meeting</option>
               {role === 'COMPANY_ADMIN' && <option value="COMPANY">Company-wide</option>}
             </select>
-            <input className={inp} placeholder="Meeting link (Zoom/Meet…)" value={form.link} onChange={set('link')} />
+            <div>
+              <input className={inp} placeholder="Meeting link (Zoom/Meet…)" value={form.link} onChange={set('link')} />
+              {linkState.error && <p className="mt-1 text-xs text-amber-300">{linkState.error}</p>}
+            </div>
           </div>
 
           {form.type === 'DEPARTMENT' && role === 'COMPANY_ADMIN' && (
@@ -160,9 +180,15 @@ const MeetingFormModal = ({ initial, me, role, onClose, onSaved }) => {
             <p className="rounded-lg bg-green-500/10 px-3 py-1.5 text-xs text-green-300"><Users className="mr-1 inline h-3.5 w-3.5" />Your whole team is added automatically — just add any extras below.</p>
           )}
 
+          {isSeries && (
+            <p className="rounded-lg bg-indigo-500/10 px-3 py-1.5 text-xs text-indigo-300">
+              <Repeat className="mr-1 inline h-3.5 w-3.5" />This is a repeating meeting — these changes apply to the whole series.
+            </p>
+          )}
+
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <p className="mb-1 text-xs font-semibold text-slate-400">Date</p>
+              <p className="mb-1 text-xs font-semibold text-slate-400">{isSeries ? 'Series starts' : 'Date'}</p>
               <input type="date" className={inp} value={form.date} onChange={set('date')} />
             </div>
             <div>
@@ -246,6 +272,7 @@ export default function MeetingsPage() {
         const [from, to] = rangeFor(view, cursor);
         setMeetings(arr(await listMeetings({ from: from.toISOString(), to: to.toISOString() })));
       }
+      setMsg('');
     } catch (e) {
       setMsg('Could not load meetings');
     }
@@ -295,6 +322,7 @@ export default function MeetingsPage() {
   }, [cursor]);
 
   const selManageable = selected && (role === 'COMPANY_ADMIN' || String(selected.createdBy?._id || selected.createdBy) === me);
+  const joinLink = selected ? parseMeetingLink(selected.link) : { link: '', error: null };
 
   const headLabel = view === 'month'
     ? cursor.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
@@ -480,10 +508,15 @@ export default function MeetingsPage() {
               {selected.description && <p className="whitespace-pre-wrap text-slate-300">{selected.description}</p>}
               {selected.cancelReason && <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-300">Cancel reason: {selected.cancelReason}</p>}
 
-              {selected.link && (
-                <a href={selected.link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+              {selected.link && joinLink.link && (
+                <a href={joinLink.link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
                   <Link2 className="h-4 w-4" />Join Meeting
                 </a>
+              )}
+              {selected.link && !joinLink.link && (
+                <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                  {joinLink.error || 'This meeting link cannot be opened.'} The organizer can fix it with Edit.
+                </p>
               )}
 
               <div>

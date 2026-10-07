@@ -16,11 +16,12 @@ export const documentService = {
   remove: (id) => api.delete(`/documents/${id}`),
 };
 
-export const meetingService = {
-  my: () => api.get('/meetings/my'),
-  create: (payload) => api.post('/meetings', payload),
-  cancel: (id) => api.delete(`/meetings/${id}`),
-};
+// The old `meetingService` (my/create/cancel) was removed: nothing imported it,
+// `GET /meetings/my` has never existed on the meetings router, and its `cancel`
+// issued a DELETE — which deletes the meeting instead of cancelling it. The one
+// real meeting client is `services/meetingService.js` (same wrapper as PUT/PATCH,
+// plus the /:id/cancel route). Keeping a second, wrong copy here was a trap for
+// the next person who needed to edit a meeting.
 
 export const announcementService = {
   list: () => api.get('/announcements'),
