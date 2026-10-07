@@ -47,6 +47,13 @@ import {
 } from '../services/presence/presenceEvents.js';
 import { presenceService } from '../services/presence/presenceService.js';
 import { publishPresenceChanged, presenceBusAvailable } from '../services/presence/presenceBus.js';
+import { presenceUserRoom } from '../utils/presenceKeys.js';
+
+export const PRESENCE_INBOUND_MIN_INTERVAL_MS = Object.freeze({
+  heartbeat: 5_000,
+  activity: 5_000,
+  tick: 10_000,
+});
 
 // Process-local transition memo. The Redis live snapshot + the shared REST
 // presence service remain authoritative; this only suppresses duplicate
@@ -115,6 +122,18 @@ const publishIfChanged = async ({
   }
 };
 
+const createInboundGate = (minimumIntervalMs, nowMs) => {
+  let lastAcceptedAt = Number.NEGATIVE_INFINITY;
+  return () => {
+    const current = nowMs();
+    if (!Number.isFinite(current) || current - lastAcceptedAt < minimumIntervalMs) {
+      return false;
+    }
+    lastAcceptedAt = current;
+    return true;
+  };
+};
+
 /**
  * Public factory. Returns the per-connection handler set.
  *
@@ -122,6 +141,8 @@ const publishIfChanged = async ({
  * @param {Object} args.io       — the Socket.IO namespace
  * @param {Object} args.socket   — the connected socket
  * @param {Object} args.store    — the presence live store
+ * @param {Function} args.getConnectionIds — bounded authenticated adapter query; null on uncertainty
+ * @param {Function} args.nowMs  — injectable millisecond clock for inbound bounds
  * @param {Object} args.counters — diagnostic counters (optional)
  * @param {Object} args.log      — logger
  */
@@ -129,6 +150,8 @@ export const registerPresenceSocketHandlers = ({
   io,
   socket,
   store,
+  getConnectionIds = null,
+  nowMs = () => Date.now(),
   counters = {},
   log = console,
   resolveEffective = resolveEffectivePresence,
@@ -149,14 +172,34 @@ export const registerPresenceSocketHandlers = ({
 
   const connectionId = socket.id;
   const memo = lastPublishedBySocket;
+  const allowHeartbeat = createInboundGate(PRESENCE_INBOUND_MIN_INTERVAL_MS.heartbeat, nowMs);
+  const allowActivity = createInboundGate(PRESENCE_INBOUND_MIN_INTERVAL_MS.activity, nowMs);
+  const allowTick = createInboundGate(PRESENCE_INBOUND_MIN_INTERVAL_MS.tick, nowMs);
+
+  const verifiedConnectionIds = async () => {
+    if (typeof getConnectionIds !== 'function') return null;
+    try {
+      const ids = await getConnectionIds({ companyId, userId, connectionId });
+      if (!Array.isArray(ids)) return null;
+      return [...new Set(ids.map(String).filter(Boolean))];
+    } catch {
+      return null;
+    }
+  };
 
   // ── connect ────────────────────────────────────────────────────────
   (async () => {
-    const snap = await store?.markConnected({
-      companyId,
-      userId,
-      connectionId,
-    });
+    const activeIds = await verifiedConnectionIds();
+    const snap =
+      activeIds && typeof store?.reconcileConnections === 'function'
+        ? await store.reconcileConnections({
+            companyId,
+            userId,
+            connectionIds: activeIds,
+            connectionId,
+            isConnecting: true,
+          })
+        : await store?.markConnected({ companyId, userId, connectionId });
     if (!snap) return; // store down — degraded mode, no publish
     const resolved = await resolveEffective({ companyId, userId, store });
     await publishIfChanged({
@@ -171,6 +214,7 @@ export const registerPresenceSocketHandlers = ({
 
   // ── presence:heartbeat (no payload; transport liveness only) ─────────
   socket.on('presence:heartbeat', async () => {
+    if (!allowHeartbeat()) return;
     if (typeof store?.refreshHeartbeat !== 'function') return;
     try {
       await store.refreshHeartbeat({ companyId, userId, connectionId });
@@ -184,6 +228,7 @@ export const registerPresenceSocketHandlers = ({
 
   // ── presence:activity (user interaction; server-stamped) ────────────
   socket.on('presence:activity', async () => {
+    if (!allowActivity()) return;
     if (typeof store?.recordActivity !== 'function') return;
     try {
       const snap = await store.recordActivity({ companyId, userId, connectionId });
@@ -215,6 +260,7 @@ export const registerPresenceSocketHandlers = ({
   // awayAfterMinutes` branch actually fires without requiring the
   // user to interact again or another user to hit the team page.
   socket.on('presence:tick', async () => {
+    if (!allowTick()) return;
     try {
       const resolved = await resolveEffective({ companyId, userId, store });
       await publishIfChanged({
@@ -235,7 +281,17 @@ export const registerPresenceSocketHandlers = ({
     if (typeof store?.markDisconnected !== 'function') return;
     let snapshot = null;
     try {
-      snapshot = await store.markDisconnected({ companyId, userId, connectionId });
+      const activeIds = await verifiedConnectionIds();
+      snapshot =
+        activeIds && typeof store.reconcileConnections === 'function'
+          ? await store.reconcileConnections({
+              companyId,
+              userId,
+              connectionIds: activeIds,
+              connectionId,
+              isConnecting: false,
+            })
+          : await store.markDisconnected({ companyId, userId, connectionId });
     } catch {
       return; // Redis failure is Unknown, never a fabricated Offline.
     }

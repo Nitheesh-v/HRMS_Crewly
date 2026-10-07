@@ -4,7 +4,8 @@
 //  WHAT THIS MODULE OWNS
 //    The single writer of the live-presence Redis keys:
 //      crewly:<env>:presence:<companyId>:<userId>     (hash + TTL)
-//      crewly:<env>:presence:conn:<userId>            (set of socket ids)
+//      crewly:<env>:presence:conn:<companyId>:<userId> (set of socket ids)
+//      crewly:<env>:presence:expiry-index             (bounded sorted set)
 //
 //  MULTI-TAB CORRECTNESS
 //    markConnected / markDisconnected use SADD / SREM on the connection
@@ -63,20 +64,37 @@ import {
 import {
   presenceLiveKey,
   presenceConnectionSetKey,
+  presenceExpiryIndexKey,
+  presenceExpiryIndexMember,
+  parsePresenceExpiryIndexMember,
 } from '../../utils/presenceKeys.js';
+
+const EXPIRE_DUE_PRESENCE_LUA = `
+local score = redis.call('ZSCORE', KEYS[1], ARGV[1])
+if (not score) or tonumber(score) > tonumber(ARGV[2]) then
+  return 0
+end
+redis.call('ZREM', KEYS[1], ARGV[1])
+redis.call('DEL', KEYS[3])
+redis.call('HSET', KEYS[2],
+  'connectionCount', '0',
+  'connected', 'false',
+  'lastHeartbeatAt', ARGV[3])
+redis.call('EXPIRE', KEYS[2], tonumber(ARGV[4]))
+return 1
+`;
 
 /**
  * Build a presence live store. Every dependency is injectable so the
  * hermetic suite fakes Redis; production wires the real ioredis client.
  *
  * @param {Object} deps
- * @param {Object} deps.redis                — ioredis-shaped client (hset,
- *                                            hget, sadd, srem, scard,
- *                                            smembers, del, expire).
- *                                            The real `redis` from
- *                                            config/redis.js#getRedisClient
- *                                            satisfies this; the real
- *                                            `ioredis` also does.
+ * @param {Object} deps.redis                — ioredis-shaped client (hash,
+ *                                            set, sorted-set, multi/exec,
+ *                                            pipeline, and eval operations).
+ *                                            The shared API Redis client
+ *                                            satisfies this; no new client
+ *                                            or package is created here.
  * @param {string} [deps.prefix]             — env-namespace prefix
  * @param {number} [deps.heartbeatTtlSeconds]
  * @param {number} [deps.graceTtlSeconds]
@@ -102,6 +120,9 @@ export const createPresenceLiveStore = (deps = {}) => {
   const logger = deps.logger || { info() {}, warn() {}, error() {} };
   const keyBuilder = deps.keyBuilder || presenceLiveKey;
   const connSetKeyBuilder = deps.connSetKeyBuilder || presenceConnectionSetKey;
+  const expiryIndexKey = deps.expiryIndexKeyBuilder || presenceExpiryIndexKey(prefix);
+  const expiryMemberBuilder = deps.expiryMemberBuilder || presenceExpiryIndexMember;
+  const parseExpiryMember = deps.parseExpiryMember || parsePresenceExpiryIndexMember;
   const parse = deps.parse || parseLiveSnapshot;
 
   // Bounded try/catch wrapper for any single Redis op. Returns the
@@ -136,17 +157,22 @@ export const createPresenceLiveStore = (deps = {}) => {
       throw new Error('markConnected requires companyId, userId, connectionId');
     }
     const liveK = keyBuilder(companyId, userId, prefix);
-    const connK = connSetKeyBuilder(userId, prefix);
-    const at = now().toISOString();
+    const connK = connSetKeyBuilder(companyId, userId, prefix);
+    const atDate = now();
+    const at = atDate.toISOString();
+    const expiryMember = expiryMemberBuilder(companyId, userId);
 
     return safeCall(async () => {
       // SADD returns the number of NEW members; SCARD returns the
       // total. We want the total.
       await redis.sadd(connK, String(connectionId));
       const count = await redis.scard(connK);
+      const priorConnectionCount = Number(await redis.hget(liveK, 'connectionCount') || 0);
       const priorConnectedAt = await redis.hget(liveK, 'connectedAt');
       const connectedAt =
-        typeof priorConnectedAt === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(priorConnectedAt)
+        priorConnectionCount > 0 &&
+        typeof priorConnectedAt === 'string' &&
+        /^\d{4}-\d{2}-\d{2}T/.test(priorConnectedAt)
           ? priorConnectedAt
           : at;
       const ttl = heartbeatTtlSeconds;
@@ -163,6 +189,7 @@ export const createPresenceLiveStore = (deps = {}) => {
         })
         .expire(liveK, ttl)
         .expire(connK, ttl)
+        .zadd(expiryIndexKey, atDate.getTime() + ttl * 1000, expiryMember)
         .exec();
       return readRaw(liveK);
     }, null);
@@ -178,8 +205,10 @@ export const createPresenceLiveStore = (deps = {}) => {
       throw new Error('refreshHeartbeat requires companyId, userId');
     }
     const liveK = keyBuilder(companyId, userId, prefix);
-    const connK = connSetKeyBuilder(userId, prefix);
-    const at = now().toISOString();
+    const connK = connSetKeyBuilder(companyId, userId, prefix);
+    const atDate = now();
+    const at = atDate.toISOString();
+    const expiryMember = expiryMemberBuilder(companyId, userId);
 
     return safeCall(async () => {
       // Re-register the authenticated socket id before refreshing. This
@@ -195,10 +224,16 @@ export const createPresenceLiveStore = (deps = {}) => {
         .hset(liveK, {
           connectionCount: String(count),
           connected: 'true',
+          connectedAt,
           lastHeartbeatAt: at,
         })
         .expire(liveK, heartbeatTtlSeconds)
         .expire(connK, heartbeatTtlSeconds)
+        .zadd(
+          expiryIndexKey,
+          atDate.getTime() + heartbeatTtlSeconds * 1000,
+          expiryMember,
+        )
         .exec();
       return readRaw(liveK);
     }, null);
@@ -214,8 +249,10 @@ export const createPresenceLiveStore = (deps = {}) => {
       throw new Error('recordActivity requires companyId, userId');
     }
     const liveK = keyBuilder(companyId, userId, prefix);
-    const connK = connSetKeyBuilder(userId, prefix);
-    const ts = now().toISOString();
+    const connK = connSetKeyBuilder(companyId, userId, prefix);
+    const atDate = now();
+    const ts = atDate.toISOString();
+    const expiryMember = expiryMemberBuilder(companyId, userId);
 
     return safeCall(async () => {
       if (connectionId) await redis.sadd(connK, String(connectionId));
@@ -232,6 +269,11 @@ export const createPresenceLiveStore = (deps = {}) => {
         })
         .expire(liveK, heartbeatTtlSeconds)
         .expire(connK, heartbeatTtlSeconds)
+        .zadd(
+          expiryIndexKey,
+          atDate.getTime() + heartbeatTtlSeconds * 1000,
+          expiryMember,
+        )
         .exec();
       return readRaw(liveK);
     }, null);
@@ -249,12 +291,14 @@ export const createPresenceLiveStore = (deps = {}) => {
       throw new Error('markDisconnected requires companyId, userId, connectionId');
     }
     const liveK = keyBuilder(companyId, userId, prefix);
-    const connK = connSetKeyBuilder(userId, prefix);
+    const connK = connSetKeyBuilder(companyId, userId, prefix);
+    const expiryMember = expiryMemberBuilder(companyId, userId);
 
     return safeCall(async () => {
       await redis.srem(connK, String(connectionId));
       const count = await redis.scard(connK);
-      const at = now().toISOString();
+      const atDate = now();
+      const at = atDate.toISOString();
       if (count === 0) {
         // Last tab closed. Keep an explicit zero-connection snapshot
         // through the grace window so REST/refetch callers all resolve
@@ -264,6 +308,7 @@ export const createPresenceLiveStore = (deps = {}) => {
           .hset(liveK, { connectionCount: '0', connected: 'false', lastHeartbeatAt: at })
           .expire(liveK, graceTtlSeconds)
           .expire(connK, graceTtlSeconds)
+          .zrem(expiryIndexKey, expiryMember)
           .exec();
         return readRaw(liveK);
       }
@@ -273,9 +318,140 @@ export const createPresenceLiveStore = (deps = {}) => {
         .hset(liveK, { connectionCount: String(count), connected: 'true', lastHeartbeatAt: at })
         .expire(liveK, heartbeatTtlSeconds)
         .expire(connK, heartbeatTtlSeconds)
+        .zadd(
+          expiryIndexKey,
+          atDate.getTime() + heartbeatTtlSeconds * 1000,
+          expiryMember,
+        )
         .exec();
       return readRaw(liveK);
     }, null);
+  };
+
+  /**
+   * Replace membership from an authenticated, bounded Socket.IO
+   * fetchSockets result. This removes IDs left by a crashed backend while
+   * retaining multi-tab semantics. Callers must pass null (not an empty
+   * array) when remote membership could not be verified.
+   */
+  const reconcileConnections = async ({
+    companyId,
+    userId,
+    connectionIds,
+    connectionId,
+    isConnecting = false,
+  } = {}) => {
+    if (!companyId || !userId || !Array.isArray(connectionIds)) return null;
+    const liveK = keyBuilder(companyId, userId, prefix);
+    const connK = connSetKeyBuilder(companyId, userId, prefix);
+    const expiryMember = expiryMemberBuilder(companyId, userId);
+    const atDate = now();
+    const at = atDate.toISOString();
+
+    return safeCall(async () => {
+      const previousIds = new Set((await redis.smembers(connK)).map(String));
+      const activeIds = new Set(
+        connectionIds
+          .filter((id) => typeof id === 'string' && id.length > 0)
+          .map(String),
+      );
+      if (isConnecting && connectionId) activeIds.add(String(connectionId));
+      const ids = [...activeIds];
+      const priorConnectedAt = await redis.hget(liveK, 'connectedAt');
+      const hasExistingSession = ids.some(
+        (id) => id !== String(connectionId || '') && previousIds.has(id),
+      );
+      const connectedAt =
+        hasExistingSession &&
+        typeof priorConnectedAt === 'string' &&
+        /^\d{4}-\d{2}-\d{2}T/.test(priorConnectedAt)
+          ? priorConnectedAt
+          : at;
+      const multi = redis.multi().del(connK);
+      for (const id of ids) multi.sadd(connK, id);
+
+      if (ids.length === 0) {
+        await multi
+          .hset(liveK, {
+            connectionCount: '0',
+            connected: 'false',
+            lastHeartbeatAt: at,
+          })
+          .expire(liveK, graceTtlSeconds)
+          .zrem(expiryIndexKey, expiryMember)
+          .exec();
+      } else {
+        await multi
+          .hset(liveK, {
+            connectionCount: String(ids.length),
+            connected: 'true',
+            connectedAt,
+            lastHeartbeatAt: at,
+          })
+          .expire(liveK, heartbeatTtlSeconds)
+          .expire(connK, heartbeatTtlSeconds)
+          .zadd(
+            expiryIndexKey,
+            atDate.getTime() + heartbeatTtlSeconds * 1000,
+            expiryMember,
+          )
+          .exec();
+      }
+      return readRaw(liveK);
+    }, null);
+  };
+
+  /**
+   * Return a bounded set of due user identities from the shared sorted-set
+   * index. No scan is used; malformed members are ignored.
+   */
+  const listExpiredUsers = async ({ nowMs = now().getTime(), limit = 100 } = {}) => {
+    const boundedLimit = Math.min(250, Math.max(1, Math.trunc(Number(limit) || 100)));
+    return safeCall(async () => {
+      const members = await redis.zrangebyscore(
+        expiryIndexKey,
+        '-inf',
+        Number(nowMs),
+        'LIMIT',
+        0,
+        boundedLimit,
+      );
+      const dueMembers = Array.isArray(members) ? members : [];
+      const parsed = dueMembers.map(parseExpiryMember);
+      const malformed = dueMembers.filter((member, index) => !parsed[index]);
+      if (malformed.length > 0) {
+        await redis.zrem(expiryIndexKey, ...malformed);
+      }
+      return parsed.filter(Boolean);
+    }, []);
+  };
+
+  /**
+   * Atomically expire a user whose shared liveness deadline is still due.
+   * Multiple API instances may observe the same candidate; the Lua guard
+   * makes only one emit an expiry invalidation. A racing heartbeat updates
+   * the score before or after this script, never half-way through it.
+   */
+  const expireIfDue = async ({ companyId, userId, nowMs = now().getTime() } = {}) => {
+    if (!companyId || !userId || !Number.isFinite(Number(nowMs))) return false;
+    const liveK = keyBuilder(companyId, userId, prefix);
+    const connK = connSetKeyBuilder(companyId, userId, prefix);
+    const member = expiryMemberBuilder(companyId, userId);
+    const occurredAt = new Date(Number(nowMs)).toISOString();
+    return safeCall(async () => {
+      const result = await redis.eval(
+        EXPIRE_DUE_PRESENCE_LUA,
+        3,
+        expiryIndexKey,
+        liveK,
+        connK,
+        member,
+        Number(nowMs),
+        occurredAt,
+        graceTtlSeconds,
+      );
+      return Number(result) === 1;
+    }, false);
   };
 
   /**
@@ -346,6 +522,9 @@ export const createPresenceLiveStore = (deps = {}) => {
     refreshHeartbeat,
     recordActivity,
     markDisconnected,
+    reconcileConnections,
+    listExpiredUsers,
+    expireIfDue,
     readLive,
     readLiveMany,
     describe,

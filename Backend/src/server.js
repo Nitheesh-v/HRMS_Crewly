@@ -127,7 +127,11 @@ const startServer = async () => {
         const result = await presenceSocketServer.attach(server, {
           sharedIo: getChatSocketServer().getIo(),
         });
-        if (!result.started) {
+        if (result.pending) {
+          logger.warn(
+            `[PresenceSocket] namespace mounted with adapter pending (${result.reason || 'FEATURE_UNAVAILABLE'}); socket admission is closed until recovery, REST remains available.`,
+          );
+        } else if (!result.started) {
           logger.warn(
             `[PresenceSocket] not started (${result.reason || 'FEATURE_UNAVAILABLE'}); REST remains available.`,
           );

@@ -44,15 +44,16 @@ const { isPresenceOriginAllowed } = await import(
 //  ROOM LAW
 // ────────────────────────────────────────────────────────────────────────
 
-test('#43 boundary: server-controlled rooms — presenceKeys returns a company-scoped room name', () => {
+test('#43 boundary: outbound room is scoped to a server-derived company/user pair', () => {
   const companyId = 'cmp_1';
   const userId = 'usr_1';
-  const room = presenceCompanyRoom(companyId);
-  assert.equal(room, `presence:company:${companyId}`);
-  const userRoom = presenceUserRoom(userId);
-  assert.equal(userRoom, `presence:user:${userId}`);
-  // Namespace is the SAME for the whole cluster — server joins sockets.
+  assert.equal(presenceCompanyRoom(companyId), `presence:company:${companyId}`);
+  const userRoom = presenceUserRoom(companyId, userId);
+  assert.equal(userRoom, `presence:user:${companyId}:${userId}`);
+  // The namespace is cluster-wide; the authorized private room is not.
   assert.equal(presenceNamespace(), '/presence');
+  const socketSource = read('src/socket/presenceSocket.js');
+  assert.doesNotMatch(socketSource, /socket\.join\(presenceCompanyRoom/);
 });
 
 test('#44 boundary: source-pin — no client-claimed room join event in presenceSocketHandlers.js', () => {
@@ -167,17 +168,10 @@ test('boundary: source-pin — no FLUSH* / KEYS / SCAN in 37.4 store / socket co
 //  HIDDEN-EMPLOYEE DELIVERY (37.3 scope preserved)
 // ────────────────────────────────────────────────────────────────────────
 
-test('#47 boundary: hidden employee is not delivered — the parser drops a frame whose companyId does not match the listener', () => {
-  // Server delivers the bus envelope to `presence:company:<companyId>`.
-  // A viewer from companyId "B" cannot subscribe to that room. But
-  // even if a cross-tenant envelope were forwarded by mistake, the
-  // listener MUST drop frames whose companyId does not match the
-  // server-derived socket.data.companyId. The parser exposes the
-  // frame; the listener does the match. We assert the contract:
-  //   · The envelope is companyId-tagged.
-  //   · The listener is the ONE place that knows the tenant.
-  // We test the parser's strict shape and the key layout that
-  // ensures the listener can match.
+test('#47 boundary: hidden employee is not delivered — outbound rooms bind both tenant and user', () => {
+  // Product events target a private `presence:user:<companyId>:<userId>`
+  // room, never a company-wide room. The frontend also rejects mismatched
+  // companyId frames and authorized team rows converge through REST.
   const env = parsePresenceChangedEnvelope(
     JSON.stringify({
       schemaVersion: 1,
@@ -191,12 +185,10 @@ test('#47 boundary: hidden employee is not delivered — the parser drops a fram
   );
   assert.ok(env);
   assert.equal(env.companyId, 'A');
-  // The room name the listener subscribes to.
-  assert.equal(presenceCompanyRoom('A'), 'presence:company:A');
-  // Cross-tenant — different room, so a tenant-A listener never
-  // sees a tenant-B envelope because the publisher targets a
-  // different room name.
-  assert.notEqual(presenceCompanyRoom('A'), presenceCompanyRoom('B'));
+  assert.equal(presenceUserRoom('A', 'u1'), 'presence:user:A:u1');
+  assert.notEqual(presenceUserRoom('A', 'u1'), presenceUserRoom('B', 'u1'));
+  const publisherSource = read('src/services/presence/presenceSocketPublisher.js');
+  assert.match(publisherSource, /presenceUserRoom\(String\(companyId\), String\(envelope\.userId\)\)/);
 });
 
 test('boundary: PRESENCE_GATEWAY_EVENT_TYPE is the only outbound channel name', () => {

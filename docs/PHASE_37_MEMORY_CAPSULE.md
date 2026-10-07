@@ -5,6 +5,8 @@
 > capsule before it). Read this if you are picking Phase 37
 > up cold, in any order.
 
+> **Current-runtime addendum (Phase 37.8, 2026-10-07):** This capsule's numbered implementation notes and test totals are historical snapshots. The current opt-in `/presence` namespace uses the existing Socket.IO Redis adapter, a tenant/user-scoped room, and a shared bounded expiry index/observer. Adapter attachment is nonblocking and retryable; it is not commented out. Current details and PowerShell acceptance steps are in [`PHASE_37_4_DISTRIBUTED_REALTIME.md`](./PHASE_37_4_DISTRIBUTED_REALTIME.md) and [`PHASE_37_8_LOCALHOST_ACCEPTANCE.md`](./PHASE_37_8_LOCALHOST_ACCEPTANCE.md). No in-process-memory fallback is distributed presence truth.
+
 **37.7 commit chain on remote (`arena/01a0fb50-hrms-crewly`):**
 ```
 d05ddef docs(presence/37.7): localhost acceptance script
@@ -53,7 +55,7 @@ salary / PAN / Aadhaar, no GPS, no productivity score.
 - Not surveillance. There is no activity history, no mouse
   / keystroke / focus timeline, no screenshot, no GPS, no
   last-30-days view.
-- Not cross-instance realtime. See §6 below.
+- Cross-instance realtime is best-effort through the existing Socket.IO Redis adapter as of Phase 37.8; see §10 and the current runtime reconciliation doc. REST remains authoritative for missed events.
 
 ## 3. UNITS 37.1 — 37.7
 
@@ -119,14 +121,16 @@ salary / PAN / Aadhaar, no GPS, no productivity score.
 18. **No frontend Redis.** No `VITE_REDIS_URL`, no
     frontend Redis client.
 19. **No frontend NATS.** No `VITE_NATS_URL`, no NATS
-    client in the browser. The `presenceBus.js` is the
-    32.11 SSE gateway re-pointed at an in-process bus, not
-    NATS.
+    client in the browser. The current `presenceBus.js` is a
+    typed façade over the authenticated `/presence` Socket.IO
+    publisher; the existing Redis adapter provides cross-instance
+    fan-out. It is not the SSE gateway.
 20. **Presence should not materially slow unrelated Crewly
-    workflows.** The `presenceSocket.attach` is opt-in
-    (commented out by `db177d9` to prevent the slow-start
-    regression). The HTTP `/api/presence/*` REST endpoints
-    are what every UI surface reads.
+    workflows.** `PRESENCE_SOCKET_ENABLED` is opt-in (default
+    false). When enabled, namespace mounting is before `listen()`;
+    Redis adapter setup/retry runs in the background and socket
+    admission stays closed while unavailable. The HTTP
+    `/api/presence/*` REST endpoints remain authoritative.
 21. **The runtime must start on auth.** The visibility ticker
     is the only mechanism that makes Available → Away happen
     on its own schedule. Without the runtime, automatic state
@@ -262,17 +266,15 @@ asserts the absence of every forbidden word in that file.
 
 ## 10. REDIS / REALTIME BEHAVIOR
 
-- The live store uses Redis (when `REDIS_ENABLED=true`):
-  - `crewly:<env>:presence:conn:<companyId>:<userId>` — SADD/SREM/SISMEMBER
-  - `crewly:<env>:presence:live:<companyId>:<userId>` — hash with `lastHeartbeatAt`, `lastActivityAt`
-  - `crewly:<env>:presence:bus` — pub/sub channel for cross-instance fan-out
-- The Socket.IO namespace is `/presence`. CORS / origin rules
-  are the same as the chat socket.
-- The `attach(server)` line in `server.js` is **deliberately
-  commented out** by `db177d9` to prevent the slow-start
-  regression. The HTTP REST endpoints do not depend on it.
-- When `REDIS_ENABLED=false` or Redis is unreachable, the
-  resolver returns `Unknown`, not `Offline`.
+- The live store uses the shared Redis client (when `REDIS_ENABLED=true`):
+  - `<prefix>:presence:<companyId>:<userId>` — live hash + TTL
+  - `<prefix>:presence:conn:<companyId>:<userId>` — tenant-scoped socket-ID set
+  - `<prefix>:presence:expiry-index` — sorted due-user index for the bounded crash observer
+- The Socket.IO namespace is `/presence`; the existing `@socket.io/redis-adapter` uses a dedicated pub/sub pair per enabled API instance and a queue-prefix-scoped adapter key.
+- Outbound product events target `presence:user:<companyId>:<userId>` only. The local publisher delivers locally; adapter subscribers forward remote packets without republishing. Team visibility remains authorized REST + polling.
+- `server.js` calls `attach(server)` only when `PRESENCE_SOCKET_ENABLED=true`, before its single `listen()`. The namespace mount returns without awaiting Redis. Adapter retry uses capped backoff; failed readiness closes socket admission as `FEATURE_UNAVAILABLE` while HTTP remains available.
+- One process-level observer sweeps up to 100 expiry-index entries every 15 seconds. A guarded Lua operation atomically removes stale socket IDs, records zero connections, and emits a user-scoped invalidation best-effort. Redis TTL alone is not treated as an emitted event.
+- Redis command failure resolves to `Unknown`, not `Offline`; no process-local memory fallback is distributed truth. A healthy read of a missing/expired live key resolves Offline. REST/reconnect/team polling recover missed realtime events.
 
 ## 11. OFFLINE vs UNKNOWN
 
@@ -286,10 +288,11 @@ Test #28 (closeout) pins the resolver output shape.
 
 ## 12. PERFORMANCE LESSONS (actually incurred)
 
-- **`db177d9`** — the `presenceSocket.attach(server)` line
-  was the cause of the slow-start on the user's local dev
-  machine. Fix: keep the line commented out; require an
-  operator to opt in via `PRESENCE_SOCKET_ENABLED=true`.
+- **`db177d9` / Phase 37.8** — synchronous adapter setup in
+  `presenceSocket.attach(server)` caused the original slow-start.
+  The current fix keeps the feature opt-in (`PRESENCE_SOCKET_ENABLED`)
+  and mounts the namespace quickly; adapter connect/retry is background,
+  bounded, and fail-closed for sockets while HTTP remains available.
 - **`a72fee3`** — a duplicate `server.listen(` was left in
   place by an over-aggressive edit. Lesson: when an edit has
   BOTH a removal AND an insertion, the removal must be
@@ -484,8 +487,9 @@ green in 1.25s.)
   under BrowserRouter.** 37.7 uses `beforeunload` only.
   Pinned in test #20.
 - **37.4 paid for the slow-start on the user's machine.**
-  37.7 keeps the `attach` line commented out. Pinned in
-  Incident 2 of the runbook.
+  Phase 37.8 keeps attachment opt-in and moves adapter initialization
+  to bounded background retries; it is no longer commented out. Localhost
+  acceptance remains outstanding.
 - **37.6 paid for a "NATS has been added" assumption that
   was NOT in the repo.** 37.6 + 37.7 keep the no-NATS
   invariant. Pinned in the source-pin tests.

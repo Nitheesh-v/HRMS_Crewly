@@ -42,14 +42,41 @@ export const presenceLiveKey = (companyId, userId, prefix = safePrefix()) =>
   `${prefix}:presence:${String(companyId)}:${String(userId)}`;
 
 /**
- * The connection set for one user. Each value is a Socket.IO socket id.
- * Multi-tab correctness: a user is "online" as long as this set is
- * non-empty. PresenceLiveStore uses SADD / SREM on this key.
+ * The connection set for one tenant/user pair. Each value is a Socket.IO
+ * socket id. Scoping both dimensions prevents a shared principal from
+ * inheriting another tenant's live sockets.
  *
- *   crewly:<env>:presence:conn:<userId>
+ *   crewly:<env>:presence:conn:<companyId>:<userId>
  */
-export const presenceConnectionSetKey = (userId, prefix = safePrefix()) =>
-  `${prefix}:presence:conn:${String(userId)}`;
+export const presenceConnectionSetKey = (companyId, userId, prefix = safePrefix()) =>
+  `${prefix}:presence:conn:${String(companyId)}:${String(userId)}`;
+
+/**
+ * Bounded expiry index for currently/recently connected users. Members are
+ * JSON tuples of server-derived companyId/userId; a sorted-set range by due
+ * time lets the shared observer reconcile expiries without KEYS/SCAN.
+ */
+export const presenceExpiryIndexKey = (prefix = safePrefix()) =>
+  `${prefix}:presence:expiry-index`;
+
+export const presenceExpiryIndexMember = (companyId, userId) =>
+  JSON.stringify([String(companyId), String(userId)]);
+
+export const parsePresenceExpiryIndexMember = (member) => {
+  try {
+    const parsed = JSON.parse(String(member));
+    if (
+      Array.isArray(parsed) &&
+      parsed.length === 2 &&
+      parsed.every((part) => typeof part === 'string' && part.length > 0)
+    ) {
+      return { companyId: parsed[0], userId: parsed[1] };
+    }
+  } catch {
+    /* malformed members are ignored, never interpreted as keys */
+  }
+  return null;
+};
 
 /**
  * The Socket.IO room name for one company. Server-derived only; the
@@ -64,12 +91,14 @@ export const presenceCompanyRoom = (companyId) =>
   `presence:company:${String(companyId)}`;
 
 /**
- * The Socket.IO room name for one user. Server-derived only.
+ * The Socket.IO room name for one user in one tenant. Both identifiers
+ * are server-derived; scoping both prevents a reused principal from
+ * receiving another tenant's private presence invalidation.
  *
- *   presence:user:<userId>
+ *   presence:user:<companyId>:<userId>
  */
-export const presenceUserRoom = (userId) =>
-  `presence:user:${String(userId)}`;
+export const presenceUserRoom = (companyId, userId) =>
+  `presence:user:${String(companyId)}:${String(userId)}`;
 
 /**
  * The Socket.IO namespace path the presence socket mounts on. Mirrors

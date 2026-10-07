@@ -9,6 +9,7 @@ process.env.MONGO_URI ||= 'mongodb://127.0.0.1:27017/crewly_presence_socket_hand
 const {
   registerPresenceSocketHandlers,
   resolveEffectivePresence,
+  PRESENCE_INBOUND_MIN_INTERVAL_MS,
   _resetPresenceMemoForTests,
 } = await import('../src/socket/presenceSocketHandlers.js');
 const { presenceService } = await import('../src/services/presence/presenceService.js');
@@ -122,6 +123,91 @@ test('heartbeat does not write activity; tick re-evaluates without writing activ
   }
 });
 
+test('server inbound rates are bounded and only accepted activity updates the activity store', async () => {
+  const listeners = new Map();
+  const calls = [];
+  let currentMs = 1_000;
+  const socket = {
+    id: 'socket-rate',
+    data: { companyId: COMPANY, userId: USER },
+    on: (event, handler) => listeners.set(event, handler),
+  };
+  const store = {
+    markConnected: async () => null,
+    refreshHeartbeat: async () => { calls.push('heartbeat'); return connectedSnapshot; },
+    recordActivity: async () => { calls.push('activity'); return connectedSnapshot; },
+    markDisconnected: async () => ({ connected: false, connectionCount: 0 }),
+  };
+  registerPresenceSocketHandlers({
+    io: {},
+    socket,
+    store,
+    nowMs: () => currentMs,
+    resolveEffective: async () => ({ presence: 'available', presenceSource: 'automatic' }),
+  });
+  await Promise.resolve(); // allow the asynchronous connect baseline to settle
+
+  await listeners.get('presence:heartbeat')();
+  currentMs += PRESENCE_INBOUND_MIN_INTERVAL_MS.heartbeat - 1;
+  await listeners.get('presence:heartbeat')();
+  currentMs += 1;
+  await listeners.get('presence:heartbeat')();
+  assert.deepEqual(calls.filter((call) => call === 'heartbeat'), ['heartbeat', 'heartbeat']);
+
+  currentMs += 10_000;
+  await listeners.get('presence:activity')({ fake: true });
+  currentMs += PRESENCE_INBOUND_MIN_INTERVAL_MS.activity - 1;
+  await listeners.get('presence:activity')();
+  currentMs += 1;
+  await listeners.get('presence:activity')();
+  assert.deepEqual(calls.filter((call) => call === 'activity'), ['activity', 'activity']);
+
+  currentMs += 10_000;
+  await listeners.get('presence:tick')();
+  currentMs += PRESENCE_INBOUND_MIN_INTERVAL_MS.tick - 1;
+  await listeners.get('presence:tick')();
+  currentMs += 1;
+  await listeners.get('presence:tick')();
+  assert.equal(calls.filter((call) => call === 'heartbeat').length, 2);
+  assert.equal(calls.filter((call) => call === 'activity').length, 2);
+  assert.equal(PRESENCE_INBOUND_MIN_INTERVAL_MS.tick >= PRESENCE_INBOUND_MIN_INTERVAL_MS.activity, true);
+});
+
+test('adapter-backed connection reconciliation replaces local membership only from verified room IDs', async () => {
+  const listeners = new Map();
+  const calls = [];
+  const socket = {
+    id: 'socket-current',
+    data: { companyId: COMPANY, userId: USER },
+    on: (event, handler) => listeners.set(event, handler),
+  };
+  const store = {
+    reconcileConnections: async (args) => { calls.push(['reconcile', args]); return connectedSnapshot; },
+    markConnected: async (args) => { calls.push(['connect-fallback', args]); return connectedSnapshot; },
+    markDisconnected: async (args) => { calls.push(['disconnect-fallback', args]); return connectedSnapshot; },
+  };
+  let membership = ['socket-current', 'socket-other-tab'];
+  registerPresenceSocketHandlers({
+    io: {},
+    socket,
+    store,
+    getConnectionIds: async () => membership,
+    resolveEffective: async () => ({ presence: 'available', presenceSource: 'automatic' }),
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls[0][0], 'reconcile');
+  assert.equal(calls[0][1].companyId, COMPANY);
+  assert.equal(calls[0][1].userId, USER);
+  assert.equal(calls[0][1].isConnecting, true);
+  assert.deepEqual(calls[0][1].connectionIds, membership);
+
+  membership = ['socket-other-tab'];
+  await listeners.get('disconnect')();
+  assert.equal(calls[1][0], 'reconcile');
+  assert.equal(calls[1][1].isConnecting, false);
+  assert.equal(calls.some(([kind]) => kind.endsWith('fallback')), false);
+});
+
 test('activity is server-stamped; final disconnect publishes Offline, but another tab does not', async () => {
   _resetPresenceMemoForTests();
   const emissions = [];
@@ -185,7 +271,7 @@ test('activity is server-stamped; final disconnect publishes Offline, but anothe
     await listeners.get('disconnect')();
     assert.equal(emissions.length, 3);
     assert.equal(emissions[2].event, 'presence:changed');
-    assert.equal(emissions[2].room, `presence:user:${USER}`);
+    assert.equal(emissions[2].room, `presence:user:${COMPANY}:${USER}`);
     assert.equal(emissions[2].envelope.presence, 'offline');
     assert.equal(emissions[2].envelope.source, 'disconnect');
   } finally {

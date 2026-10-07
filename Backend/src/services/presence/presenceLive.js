@@ -164,14 +164,18 @@ export const stringifyLiveSnapshot = (snapshot) => {
  */
 export const isWithinAwayThreshold = (snapshot, now, awayAfterMinutes) => {
   if (!snapshot) return false;
-  // A real interaction is the authoritative signal. Before the first
-  // interaction in a session, connectedAt supplies a one-time idle anchor;
-  // heartbeats never move either timestamp.
-  const lastSignalAt = snapshot.lastActivityAt || snapshot.connectedAt;
-  if (!lastSignalAt) return false;
-  const last = new Date(lastSignalAt);
-  if (Number.isNaN(last.getTime())) return false;
-  const ms = now.getTime() - last.getTime();
+  // Activity is the interaction signal; connectedAt is a separate
+  // session-liveness anchor. On reconnect, connectedAt may be newer than
+  // the last interaction from a prior session, so use the newest valid
+  // anchor without writing a fake lastActivityAt. Heartbeats never move
+  // either timestamp.
+  const lastSignalMs = [snapshot.lastActivityAt, snapshot.connectedAt]
+    .filter((value) => typeof value === 'string' && ISO_RE.test(value))
+    .map((value) => new Date(value).getTime())
+    .filter(Number.isFinite)
+    .reduce((latest, value) => Math.max(latest, value), Number.NEGATIVE_INFINITY);
+  if (!Number.isFinite(lastSignalMs)) return false;
+  const ms = now.getTime() - lastSignalMs;
   if (ms < 0) return true; // clock skew tolerance
   return ms <= awayAfterMinutes * 60_000;
 };

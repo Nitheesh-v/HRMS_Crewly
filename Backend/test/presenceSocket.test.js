@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { EventEmitter } from 'node:events';
 
 // Set env BEFORE any module-level import of env.js happens.
 process.env.NODE_ENV ||= 'test';
@@ -21,9 +22,11 @@ process.env.MONGO_URI ||= 'mongodb://127.0.0.1:27017/crewly_presence_socket_test
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-const { createPresenceSocketServer, buildPresenceSocketOptions } = await import(
-  '../src/socket/presenceSocket.js'
-);
+const {
+  createPresenceSocketServer,
+  createPresenceRedisAdapter,
+  buildPresenceSocketOptions,
+} = await import('../src/socket/presenceSocket.js');
 const {
   isPresenceOriginAllowed,
   PRESENCE_NAMESPACE,
@@ -51,11 +54,11 @@ const baseHandlerReg = () => ({ onUnbind: () => {} });
 // A fake Socket.IO instance that mirrors Socket.IO's API: a Namespace
 // owns an adapter instance, while Server.adapter() is the setter API.
 const fakeIo = () => {
-  const calls = { adapter: [], engineClose: 0, namespaceMiddleware: [], namespaceEvents: [], rootMiddleware: [] };
+  const calls = { adapter: [], engineClose: 0, inheritedAdapterClose: 0, namespaceMiddleware: [], namespaceEvents: [], rootMiddleware: [] };
   const fakeNamespace = {
     use: (middleware) => calls.namespaceMiddleware.push(middleware),
     on: (event, handler) => calls.namespaceEvents.push({ event, handler }),
-    adapter: { close: async () => {} },
+    adapter: { close: async () => { calls.inheritedAdapterClose += 1; } },
     disconnectSockets: () => 0,
   };
   const fakeServer = {
@@ -76,13 +79,18 @@ const fakeHttp = () => {
 };
 
 const fakeRedis = () => ({
-  // Minimal surface needed by createPresenceLiveStore (we never
-  // actually call methods in these tests because the adapter
-  // is the only thing under test, and when the adapter fails
-  // the store is also instantiated but the test never invokes
-  // store methods).
+  // Minimal surface needed by createPresenceLiveStore. Store operations are
+  // not called by these lifecycle tests unless a handler is explicitly fired.
   __fake: true,
 });
+
+const waitFor = async (predicate, message = 'condition did not become true') => {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  assert.fail(message);
+};
 
 test('socket: factory refuses to start when PRESENCE_SOCKET_ENABLED!=true', async () => {
   const server = createPresenceSocketServer({
@@ -113,6 +121,7 @@ test('#36 socket: factory refuses as FEATURE_UNAVAILABLE when Redis adapter is d
     sharedRedis: fakeRedis(),
   });
   assert.equal(result.started, false);
+  assert.equal(result.pending, true);
   assert.equal(result.reason, 'FEATURE_UNAVAILABLE');
   assert.equal(io.calls.namespaceMiddleware.length, 1);
   const refusal = await new Promise((resolve) => {
@@ -142,7 +151,9 @@ test('socket: a dedicated adapter-construction failure fails closed without affe
     sharedRedis: fakeRedis(),
   });
   assert.equal(result.started, false);
+  assert.equal(result.pending, true);
   assert.equal(result.reason, 'FEATURE_UNAVAILABLE');
+  await waitFor(() => closeCount === 1, 'failed namespace adapter should be closed');
   assert.equal(closeCount, 1, 'failed adapter clients are cleaned up');
   const refusal = await new Promise((resolve) => {
     io.calls.namespaceMiddleware[0]({}, (error) => resolve(error));
@@ -168,6 +179,7 @@ test('socket: missing shared Redis degrades to FEATURE_UNAVAILABLE without throw
   });
   const result = await server.attach(fakeHttp());
   assert.equal(result.started, false);
+  assert.equal(result.pending, true);
   assert.equal(result.reason, 'FEATURE_UNAVAILABLE');
   assert.equal(adapterCalls, 0);
   const refusal = await new Promise((resolve) => {
@@ -176,6 +188,89 @@ test('socket: missing shared Redis degrades to FEATURE_UNAVAILABLE without throw
   assert.equal(refusal?.data?.code, 'FEATURE_UNAVAILABLE');
   await server.stop();
   assert.equal(io.calls.engineClose, 1, 'presence closes only its owned Engine.IO server');
+});
+
+test('socket: the existing Redis adapter creates one dedicated pub client plus one subscriber and reports recovery', async () => {
+  const clients = [];
+  let onUpCount = 0;
+  let onDownCount = 0;
+  class FakeNodeRedisClient extends EventEmitter {
+    constructor(role = 'pub') {
+      super();
+      this.role = role;
+      this.isReady = false;
+      this.connectCalls = 0;
+      this.duplicateCalls = 0;
+      this.closed = false;
+      this.patterns = new Map();
+      this.channels = new Map();
+      clients.push(this);
+    }
+    duplicate() {
+      this.duplicateCalls += 1;
+      return new FakeNodeRedisClient('sub');
+    }
+    async connect() {
+      this.connectCalls += 1;
+      this.isReady = true;
+      this.emit('ready');
+    }
+    pSubscribe(pattern, listener) { this.patterns.set(pattern, listener); }
+    subscribe(channels, listener) {
+      for (const channel of Array.isArray(channels) ? channels : [channels]) {
+        this.channels.set(channel, listener);
+      }
+    }
+    pUnsubscribe(pattern) { this.patterns.delete(pattern); }
+    unsubscribe(channels) {
+      for (const channel of Array.isArray(channels) ? channels : [channels]) {
+        this.channels.delete(channel);
+      }
+    }
+    async quit() { this.closed = true; this.isReady = false; }
+    async destroy() { this.closed = true; this.isReady = false; }
+  }
+
+  const result = await createPresenceRedisAdapter({
+    source: {
+      ...process.env,
+      REDIS_ENABLED: 'true',
+      REDIS_URL: 'redis://private.invalid',
+      BULLMQ_PREFIX: 'crewly:test',
+    },
+    log: baseLog(),
+    onUp: () => { onUpCount += 1; },
+    onDown: () => { onDownCount += 1; },
+    createClientFn: () => new FakeNodeRedisClient(),
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(clients.length, 2, 'exactly one pub/sub pair is created');
+  assert.equal(clients[0].duplicateCalls, 1, 'subscriber is a duplicate, not a third client');
+  assert.deepEqual(clients.map((client) => client.connectCalls), [1, 1]);
+  assert.equal(result.key, 'crewly:test:presence:adapter');
+  assert.equal(result.isReady(), true);
+  assert.equal(onUpCount, 1);
+
+  const namespace = {
+    name: '/presence',
+    sockets: new Map(),
+    server: { encoder: { encode: () => [] } },
+  };
+  const namespaceAdapter = result.adapter(namespace);
+  assert.equal(typeof namespaceAdapter.broadcast, 'function');
+  clients[0].isReady = false;
+  clients[0].emit('error', Object.assign(new Error('private'), { code: 'ECONNRESET' }));
+  assert.equal(result.isReady(), false);
+  assert.equal(onDownCount, 1);
+  clients[0].isReady = true;
+  clients[0].emit('ready');
+  assert.equal(result.isReady(), true);
+  assert.equal(onUpCount, 2);
+
+  namespaceAdapter.close();
+  await result.close();
+  assert.equal(clients.every((client) => client.closed), true);
 });
 
 test('#37 socket: factory accepts and wires the adapter when Redis is up', async () => {
@@ -201,16 +296,93 @@ test('#37 socket: factory accepts and wires the adapter when Redis is up', async
     },
     log: baseLog(),
   });
-  const result = await server.attach(fakeHttp(), { sharedIo: io.server, sharedRedis: fakeRedis() });
-  assert.equal(result.started, true);
-  assert.equal(result.namespace, PRESENCE_NAMESPACE);
-  assert.equal(result.path, PRESENCE_SOCKET_PATH);
+  const http = fakeHttp();
+  const result = await server.attach(http, { sharedIo: io.server, sharedRedis: fakeRedis() });
+  assert.equal(result.started, false, 'adapter setup must not block attach');
+  assert.equal(result.pending, true);
+  await waitFor(() => server.describeDiagnostics().attached, 'adapter should attach in background');
+  const diagnostics = server.describeDiagnostics();
+  assert.equal(diagnostics.adapterHealthy, true);
+  const ready = await server.attach(http, { sharedIo: io.server, sharedRedis: fakeRedis() });
+  assert.equal(ready.started, true);
+  assert.equal(ready.namespace, PRESENCE_NAMESPACE);
+  assert.equal(ready.path, PRESENCE_SOCKET_PATH);
   assert.equal(io.calls.adapter.length, 1);
+  assert.equal(server.getIo(), io.namespace);
+  assert.equal(server.describeDiagnostics().namespaceAttached, true);
+  assert.equal(PRESENCE_NAMESPACE, '/presence');
+  assert.equal(PRESENCE_SOCKET_PATH, '/socket.io');
   assert.equal(io.calls.adapter[0].namespace, io.namespace);
   assert.equal(io.namespace.adapter, io.calls.adapter[0]);
+  assert.equal(io.calls.inheritedAdapterClose, 1, 'the inherited chat adapter subscription is closed before replacement');
   // Adapter was closed during stop()
   await server.stop();
   assert.equal(closeCount >= 2, true);
+});
+
+test('socket: attach is nonblocking while Redis adapter setup is unresolved', async () => {
+  const io = fakeIo();
+  let resolveAdapter;
+  let adapterCalled = false;
+  const adapterPromise = new Promise((resolve) => { resolveAdapter = resolve; });
+  const server = createPresenceSocketServer({
+    enabled: true,
+    source: { ...process.env, PRESENCE_SOCKET_ENABLED: 'true' },
+    createAdapterClients: () => {
+      adapterCalled = true;
+      return adapterPromise;
+    },
+    log: baseLog(),
+  });
+
+  const result = await server.attach(fakeHttp(), { sharedIo: io.server, sharedRedis: fakeRedis() });
+  assert.equal(adapterCalled, true);
+  assert.equal(result.started, false);
+  assert.equal(result.pending, true);
+  assert.equal(io.calls.namespaceMiddleware.length, 1, 'the mount is installed once before listen');
+
+  resolveAdapter({
+    ok: true,
+    key: 'k',
+    adapter: () => ({ close: async () => {} }),
+    close: async () => {},
+  });
+  await waitFor(() => server.describeDiagnostics().attached, 'deferred adapter should attach');
+  await server.stop();
+});
+
+test('socket: adapter retry is bounded, recovers, and never duplicates namespace listeners', async () => {
+  const io = fakeIo();
+  let attempts = 0;
+  let adapterInstances = 0;
+  const server = createPresenceSocketServer({
+    enabled: true,
+    source: { ...process.env, PRESENCE_SOCKET_ENABLED: 'true' },
+    adapterRetryBaseMs: 1,
+    adapterRetryMaxMs: 2,
+    createAdapterClients: async () => {
+      attempts += 1;
+      if (attempts === 1) return { ok: false, reason: 'TRANSIENT' };
+      return {
+        ok: true,
+        key: 'k',
+        adapter: () => {
+          adapterInstances += 1;
+          return { close: async () => {} };
+        },
+        close: async () => {},
+      };
+    },
+    log: baseLog(),
+  });
+
+  await server.attach(fakeHttp(), { sharedIo: io.server, sharedRedis: fakeRedis() });
+  await waitFor(() => server.describeDiagnostics().attached, 'adapter retry should recover');
+  assert.equal(attempts, 2);
+  assert.equal(adapterInstances, 1);
+  assert.equal(io.calls.namespaceMiddleware.length, 1);
+  assert.equal(io.calls.namespaceEvents.filter(({ event }) => event === 'connection').length, 1);
+  await server.stop();
 });
 
 test('socket: presence owns Engine.IO when chat has not created a shared Socket.IO server', async () => {
@@ -237,7 +409,8 @@ test('socket: presence owns Engine.IO when chat has not created a shared Socket.
   });
 
   const result = await server.attach(fakeHttp());
-  assert.equal(result.started, true);
+  assert.equal(result.started, false, 'adapter setup runs outside the HTTP startup path');
+  await waitFor(() => server.describeDiagnostics().attached, 'presence-only adapter should attach');
   assert.equal(io.calls.rootMiddleware.length, 1, 'the unused root namespace is closed');
   assert.equal(io.namespace.adapter, io.calls.adapter[0]);
   await server.stop();
@@ -389,24 +562,31 @@ test('#42 socket: source-pin — handlers do NOT import the AI module', () => {
 
 test('socket: factory never throws when attach() is called twice', async () => {
   const io = fakeIo();
+  let adapterCreateCount = 0;
   const server = createPresenceSocketServer({
     enabled: true,
     source: { ...process.env, PRESENCE_SOCKET_ENABLED: 'true' },
     verify: () => ({ ok: true, userId: 'u1', companyId: 'c1', sessionId: 's1' }),
     registerHandlers: baseHandlerReg(),
-    createAdapterClients: async () => ({
-      ok: true,
-      key: 'k',
-      adapter: () => ({ close: async () => {} }),
-      close: async () => {},
-    }),
+    createAdapterClients: async () => {
+      adapterCreateCount += 1;
+      return {
+        ok: true,
+        key: 'k',
+        adapter: () => ({ close: async () => {} }),
+        close: async () => {},
+      };
+    },
     log: baseLog(),
   });
-  const r1 = await server.attach(fakeHttp(), { sharedIo: io.server, sharedRedis: fakeRedis() });
-  // Second attach — idempotent / safe.
-  const r2 = await server.attach(fakeHttp(), { sharedIo: io.server, sharedRedis: fakeRedis() });
-  assert.equal(r1.started, true);
+  const http = fakeHttp();
+  const r1 = await server.attach(http, { sharedIo: io.server, sharedRedis: fakeRedis() });
+  assert.equal(r1.started, false, 'first attach returns without awaiting Redis setup');
+  await waitFor(() => server.describeDiagnostics().attached, 'background attachment should finish');
+  // Repeated attach on the same server is idempotent and reuses one adapter.
+  const r2 = await server.attach(http, { sharedIo: io.server, sharedRedis: fakeRedis() });
   assert.equal(r2.started, true);
+  assert.equal(adapterCreateCount, 1, 'duplicate attach does not create another pub/sub pair');
   await server.stop();
 });
 

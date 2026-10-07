@@ -79,6 +79,7 @@ const onPresenceChanged = (envelope) => {
   const myId = String(me._id || me.id || '');
   const myCompany = String(me.companyId || me.company?._id || '');
   const sameCompany = myCompany && String(envelope.companyId) === myCompany;
+  if (!sameCompany) return;
 
   if (myId && String(envelope.userId) === myId) {
     // Fast status update, then reload the authoritative self snapshot so
@@ -166,6 +167,7 @@ export const isPresenceRuntimeActive = () =>
 
 // Narrow seam for the invalidation regression test. Production callers
 // subscribe through the single runtime-owned socket listener above.
+export const __onPresenceChangedForTests = onPresenceChanged;
 export const __onPresenceInvalidatedForTests = onPresenceInvalidated;
 
 // Test seam: reset module state between tests.

@@ -31,6 +31,7 @@ const {
 const {
   presenceLiveKey,
   presenceConnectionSetKey,
+  presenceExpiryIndexKey,
   presenceCompanyRoom,
   presenceUserRoom,
 } = await import('../src/utils/presenceKeys.js');
@@ -48,6 +49,7 @@ const createMemoryRedis = () => {
   const hashStore = new Map(); // key -> { field -> value }
   const setStore = new Map(); // key -> Set<value>
   const ttlStore = new Map(); // key -> seconds
+  const sortedSetStore = new Map(); // key -> Map<member, score>
   const live = new Set();
 
   const ensureLive = (key) => {
@@ -80,11 +82,11 @@ const createMemoryRedis = () => {
       if (!v) return {};
       return { ...v };
     },
-    sadd: async (key, member) => {
+    sadd: async (key, ...members) => {
       ensureLive(key);
       const s = setStore.get(key) || new Set();
       const before = s.size;
-      s.add(String(member));
+      for (const member of members) s.add(String(member));
       setStore.set(key, s);
       return s.size - before;
     },
@@ -114,17 +116,62 @@ const createMemoryRedis = () => {
       return 1;
     },
     del: async (key) => {
-      const had = hashStore.delete(key) || setStore.delete(key);
+      const hashHad = hashStore.delete(key);
+      const setHad = setStore.delete(key);
+      const sortedHad = sortedSetStore.delete(key);
       ttlStore.delete(key);
-      return had ? 1 : 0;
+      return hashHad || setHad || sortedHad ? 1 : 0;
+    },
+    zadd: async (key, score, member) => {
+      const members = sortedSetStore.get(key) || new Map();
+      const isNew = !members.has(String(member));
+      members.set(String(member), Number(score));
+      sortedSetStore.set(key, members);
+      return isNew ? 1 : 0;
+    },
+    zrem: async (key, ...requestedMembers) => {
+      const members = sortedSetStore.get(key) || new Map();
+      let removed = 0;
+      for (const member of requestedMembers) {
+        if (members.delete(String(member))) removed += 1;
+      }
+      return removed;
+    },
+    zrangebyscore: async (key, min, max, limitToken, offset, count) => {
+      const maxScore = Number(max);
+      const members = [...(sortedSetStore.get(key) || new Map()).entries()]
+        .filter(([, score]) => score <= maxScore)
+        .sort((a, b) => a[1] - b[1])
+        .slice(Number(offset) || 0, (Number(offset) || 0) + (Number(count) || 100));
+      return members.map(([member]) => member);
+    },
+    eval: async (_script, numberOfKeys, indexKey, liveKey, connKey, member, nowMs, occurredAt, graceTtl) => {
+      assert.equal(Number(numberOfKeys), 3);
+      const members = sortedSetStore.get(indexKey) || new Map();
+      const dueAt = members.get(String(member));
+      if (dueAt === undefined || dueAt > Number(nowMs)) return 0;
+      members.delete(String(member));
+      setStore.delete(connKey);
+      const current = hashStore.get(liveKey) || {};
+      hashStore.set(liveKey, {
+        ...current,
+        connectionCount: '0',
+        connected: 'false',
+        lastHeartbeatAt: String(occurredAt),
+      });
+      ttlStore.set(liveKey, Number(graceTtl));
+      return 1;
     },
     multi: () => {
       const ops = [];
       const chained = {
         hset(key, value) { ops.push(['hset', key, value]); return chained; },
         expire(key, s) { ops.push(['expire', key, s]); return chained; },
-        sadd(key, m) { ops.push(['sadd', key, m]); return chained; },
+        sadd(key, ...members) { ops.push(['sadd', key, ...members]); return chained; },
         srem(key, m) { ops.push(['srem', key, m]); return chained; },
+        del(key) { ops.push(['del', key]); return chained; },
+        zadd(key, score, member) { ops.push(['zadd', key, score, member]); return chained; },
+        zrem(key, member) { ops.push(['zrem', key, member]); return chained; },
         async exec() {
           for (const op of ops) {
             await fake[op[0]](...op.slice(1));
@@ -310,17 +357,21 @@ test('keys: presenceLiveKey is env-namespaced and tenant scoped', () => {
   );
 });
 
-test('keys: presenceConnectionSetKey is per-user, not per-company', () => {
+test('keys: connection membership is env-, tenant-, and user-scoped', () => {
   const expectedPrefix = 'crewly:test';
   assert.equal(
-    presenceConnectionSetKey(USER_A),
-    `${expectedPrefix}:presence:conn:${USER_A}`,
+    presenceConnectionSetKey(COMPANY, USER_A),
+    `${expectedPrefix}:presence:conn:${COMPANY}:${USER_A}`,
+  );
+  assert.notEqual(
+    presenceConnectionSetKey(COMPANY, USER_A),
+    presenceConnectionSetKey(COMPANY_OTHER, USER_A),
   );
 });
 
-test('keys: room names are NOT env-namespaced (logical channels)', () => {
+test('keys: room names are logical and private rooms include the tenant', () => {
   assert.equal(presenceCompanyRoom(COMPANY), `presence:company:${COMPANY}`);
-  assert.equal(presenceUserRoom(USER_A), `presence:user:${USER_A}`);
+  assert.equal(presenceUserRoom(COMPANY, USER_A), `presence:user:${COMPANY}:${USER_A}`);
 });
 
 // ── store behaviour ───────────────────────────────────────────────────────
@@ -614,6 +665,128 @@ test('#19 reconnect correctly restores live state', async () => {
   const t1 = await store.readLive({ companyId: COMPANY, userId: USER_A });
   assert.equal(t1.connectionCount, 1);
   assert.equal(t1.connected, true);
+});
+
+test('reconnecting after Away starts a fresh session without fabricating activity', async () => {
+  const redis = createMemoryRedis();
+  const config = { awayAfterMinutes: 5, offlineAfterMinutes: 15 };
+  const first = newStore({ redis, now: () => new Date('2026-10-03T10:00:00.000Z') });
+  const initial = await first.markConnected({
+    companyId: COMPANY,
+    userId: USER_A,
+    connectionId: 'sock-old',
+  });
+  assert.equal(
+    deriveLivePresence({ snapshot: initial, config, now: new Date('2026-10-03T10:00:00.000Z') }),
+    'available',
+    'a new connected session starts Available without writing activity',
+  );
+  await first.recordActivity({ companyId: COMPANY, userId: USER_A, connectionId: 'sock-old' });
+
+  const idleAt = new Date('2026-10-03T10:06:00.000Z');
+  const idleStore = newStore({ redis, now: () => idleAt });
+  const beforeDisconnect = await idleStore.readLive({ companyId: COMPANY, userId: USER_A });
+  assert.equal(deriveLivePresence({ snapshot: beforeDisconnect, config, now: idleAt }), 'away');
+  await idleStore.markDisconnected({ companyId: COMPANY, userId: USER_A, connectionId: 'sock-old' });
+
+  const reconnect = newStore({ redis, now: () => idleAt });
+  const reconnected = await reconnect.markConnected({
+    companyId: COMPANY,
+    userId: USER_A,
+    connectionId: 'sock-new',
+  });
+  assert.equal(reconnected.connectedAt, idleAt.toISOString(), 'new session gets a fresh liveness anchor');
+  assert.equal(reconnected.lastActivityAt, '2026-10-03T10:00:00.000Z', 'reconnect must not impersonate activity');
+  assert.equal(deriveLivePresence({ snapshot: reconnected, config, now: idleAt }), 'available');
+});
+
+test('distributed recovery replaces stale socket members from bounded room membership', async () => {
+  const redis = createMemoryRedis();
+  const initial = newStore({ redis });
+  await initial.markConnected({ companyId: COMPANY, userId: USER_A, connectionId: 'sock-stale' });
+  await initial.markConnected({ companyId: COMPANY, userId: USER_A, connectionId: 'sock-live' });
+
+  const reconciled = await initial.reconcileConnections({
+    companyId: COMPANY,
+    userId: USER_A,
+    connectionIds: ['sock-live'],
+    connectionId: 'sock-stale',
+    isConnecting: false,
+  });
+  assert.equal(reconciled.connectionCount, 1);
+  assert.equal(reconciled.connected, true);
+  assert.deepEqual(
+    await redis.smembers(presenceConnectionSetKey(COMPANY, USER_A, 'crewly:development')),
+    ['sock-live'],
+    'stale membership from a crashed backend is replaced without Redis cleanup',
+  );
+});
+
+test('shared expiry index reports bounded candidates and atomically emits one offline claim', async () => {
+  const redis = createMemoryRedis();
+  const nowMs = Date.parse('2026-10-03T10:00:00.000Z');
+  const store = newStore({ redis, now: () => new Date(nowMs) });
+  await store.markConnected({ companyId: COMPANY, userId: USER_A, connectionId: 'sock-crashed' });
+
+  assert.deepEqual(await store.listExpiredUsers({ nowMs: nowMs + 59_999, limit: 1 }), []);
+  assert.deepEqual(
+    await store.listExpiredUsers({ nowMs: nowMs + 60_000, limit: 1 }),
+    [{ companyId: COMPANY, userId: USER_A }],
+  );
+  assert.equal(await store.expireIfDue({ companyId: COMPANY, userId: USER_A, nowMs: nowMs + 59_999 }), false);
+  assert.equal(await store.expireIfDue({ companyId: COMPANY, userId: USER_A, nowMs: nowMs + 60_000 }), true);
+  assert.equal(
+    await store.expireIfDue({ companyId: COMPANY, userId: USER_A, nowMs: nowMs + 60_000 }),
+    false,
+    'duplicate observer on another API instance loses the atomic claim',
+  );
+  const snapshot = await store.readLive({ companyId: COMPANY, userId: USER_A });
+  assert.equal(snapshot.connectionCount, 0);
+  assert.equal(snapshot.connected, false);
+  assert.deepEqual(
+    await redis.smembers(presenceConnectionSetKey(COMPANY, USER_A, 'crewly:development')),
+    [],
+    'expiry also removes stale socket ids without manual Redis cleanup',
+  );
+});
+
+test('expiry observer removes malformed due index members so they cannot starve valid users', async () => {
+  const redis = createMemoryRedis();
+  const nowMs = Date.parse('2026-10-03T10:00:00.000Z');
+  const store = newStore({ redis, now: () => new Date(nowMs) });
+  const indexKey = presenceExpiryIndexKey('crewly:development');
+  await redis.zadd(indexKey, nowMs + 60_000, 'malformed-presence-expiry-member');
+  await store.markConnected({ companyId: COMPANY, userId: USER_A, connectionId: 'sock-expiry' });
+
+  assert.deepEqual(
+    await store.listExpiredUsers({ nowMs: nowMs + 60_000, limit: 1 }),
+    [],
+    'the malformed first result is ignored and removed',
+  );
+  assert.deepEqual(
+    await store.listExpiredUsers({ nowMs: nowMs + 60_000, limit: 1 }),
+    [{ companyId: COMPANY, userId: USER_A }],
+    'a subsequent bounded read can make progress to a valid candidate',
+  );
+});
+
+test('heartbeat moves the shared expiry deadline but never updates lastActivityAt', async () => {
+  const redis = createMemoryRedis();
+  const baseMs = Date.parse('2026-10-03T10:00:00.000Z');
+  const connected = newStore({ redis, now: () => new Date(baseMs) });
+  await connected.markConnected({ companyId: COMPANY, userId: USER_A, connectionId: 'sock-heartbeat' });
+  const heartbeat = newStore({ redis, now: () => new Date(baseMs + 30_000) });
+  const refreshed = await heartbeat.refreshHeartbeat({
+    companyId: COMPANY,
+    userId: USER_A,
+    connectionId: 'sock-heartbeat',
+  });
+  assert.equal(refreshed.lastActivityAt, null);
+  assert.deepEqual(await heartbeat.listExpiredUsers({ nowMs: baseMs + 60_000 }), []);
+  assert.deepEqual(
+    await heartbeat.listExpiredUsers({ nowMs: baseMs + 90_000 }),
+    [{ companyId: COMPANY, userId: USER_A }],
+  );
 });
 
 test('#22 batched read returns Offline for a successful missing key', async () => {

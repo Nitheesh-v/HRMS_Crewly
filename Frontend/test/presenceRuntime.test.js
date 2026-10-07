@@ -159,6 +159,45 @@ test('presenceInvalidateTeam reducer: each dispatch produces a new timestamp', a
   assert.notEqual(a.teamBumpedAt, b.teamBumpedAt);
 });
 
+test('presence:changed drops a cross-tenant frame before self or team dispatches', async () => {
+  __resetPresenceRuntimeForTests();
+  const storeMod = await import('../src/redux/store.js');
+  const store = storeMod.default;
+  const originalGetState = store.getState;
+  const originalDispatch = store.dispatch;
+  const dispatched = [];
+  store.getState = () => ({ auth: { user: { _id: 'u1', companyId: 'tenant-a' } } });
+  store.dispatch = (action) => { dispatched.push(action); return action; };
+
+  try {
+    runtimeMod.__onPresenceChangedForTests({
+      schemaVersion: 1,
+      companyId: 'tenant-b',
+      userId: 'u1',
+      presence: 'busy',
+      presenceSource: 'manual',
+      occurredAt: '2026-10-03T10:00:00.000Z',
+      source: 'resolver',
+    });
+    assert.deepEqual(dispatched, [], 'cross-tenant envelopes trigger no Redux work');
+
+    runtimeMod.__onPresenceChangedForTests({
+      schemaVersion: 1,
+      companyId: 'tenant-a',
+      userId: 'u1',
+      presence: 'busy',
+      presenceSource: 'manual',
+      occurredAt: '2026-10-03T10:00:01.000Z',
+      source: 'resolver',
+    });
+    assert.equal(dispatched.length, 2, 'same-tenant user status refetches the authority');
+  } finally {
+    __resetPresenceRuntimeForTests();
+    store.getState = originalGetState;
+    store.dispatch = originalDispatch;
+  }
+});
+
 test('presence:invalidated refetches the signed-in user work-location requests', async () => {
   __resetPresenceRuntimeForTests();
   const storeMod = await import('../src/redux/store.js');

@@ -295,11 +295,9 @@ If > 1, someone added a second find. Revert.
 
 ---
 
-# Phase 37.7 Closeout Runbook
+# Phase 37.7 Closeout Runbook (historical notes reconciled in 37.8)
 
-This runbook extends the 37.1–37.6 incidents with the closeout
-class and pins the **cross-instance realtime** status that the
-37.7 spec requires us to surface rather than hide.
+This section preserves the 37.7 incident scenarios. Attachment and distributed-runtime guidance are updated by the Phase 37.8 notes below and the PowerShell localhost guide. Do not use old line numbers or comment/uncomment instructions.
 
 ---
 
@@ -315,14 +313,9 @@ class and pins the **cross-instance realtime** status that the
   page is broken or if the load balancer is the cause.
 
 **DO**
-- Check `PRESENCE_SOCKET_ENABLED` in `.env`. If it is `true`, the
-  socket has been auto-attached to the HTTP server (`server.js:134`).
-  Comment that line back out OR set `PRESENCE_SOCKET_ENABLED=false`
-  and restart.
-- Check `REDIS_URL` and that the Redis instance is reachable. The
-  live store degrades to `unknown` if Redis is down.
-- Check `GET /api/presence/config` as a COMPANY_ADMIN — a
-  config-side `enabled=false` flips every UI to "presence is off".
+- Check the private local `PRESENCE_SOCKET_ENABLED` flag without printing secrets. It defaults false; when true, attachment is opt-in and nonblocking. Do not edit `server.js` to troubleshoot it.
+- Check Redis health through the existing safe health endpoint and check adapter readiness diagnostics. Do not display the `REDIS_URL` value.
+- Check `GET /api/presence/config` as a COMPANY_ADMIN — tenant config `enabled=false` means the feature is disabled, while Redis uncertainty means `Unknown`/degraded.
 
 **DO NOT**
 - Mark every employee as Offline just because the resolver could not
@@ -353,16 +346,10 @@ class and pins the **cross-instance realtime** status that the
 - The whole HRMS feels slow, not just the presence surface.
 
 **DO**
-- Check `server.js:134` — the `await getPresenceSocketServer().attach(server);`
-  line is **deliberately commented out** by 37.4 perf stop-gate. If
-  the line has been uncommented, comment it back out. The socket is
-  opt-in and the comment block explains why.
-- Check that the topbar `PresenceMenu` does not start a socket
-  lifecycle on mount (37.4 contract). The `presenceRuntime.js`
-  module has no callers in 37.4 by design.
-- Check the team page does not re-fetch on every heartbeat. The
-  page listens to `state.presence.teamBumpedAt`, which the runtime
-  bumps at most once per N seconds, not per socket message.
+- Confirm `server.js` keeps one `listen()` and calls the presence attachment only behind `PRESENCE_SOCKET_ENABLED=true`, before `listen()`.
+- Confirm the attach result is not awaiting adapter readiness; Redis adapter creation/retry is background and bounded. When unavailable, sockets remain refused as `FEATURE_UNAVAILABLE` and HTTP remains usable.
+- Check the team page's visible, one-minute page-scoped REST refresh and one-second event debounce; it must not refetch on each heartbeat or per employee.
+- Run the hermetic presence gate, then use `PHASE_37_8_LOCALHOST_ACCEPTANCE.md` for local latency and A–I verification.
 
 **DO NOT**
 - Increase server timeouts. The performance budget is fixed.
@@ -390,12 +377,8 @@ class and pins the **cross-instance realtime** status that the
   someone unnecessarily.
 
 **DO**
-- Check the live store: `redis-cli SCARD crewly:<env>:presence:conn:<companyId>:<userId>`.
-  If the count is 0, the user has no live connection (browser tab
-  closed, socket dropped, or an instance restart in flight).
-- Check the live key TTL: `redis-cli TTL crewly:<env>:presence:live:<companyId>:<userId>`.
-  If the TTL is below 30s, the heartbeat is being missed (network
-  jitter, NAT, or the user really is idle).
+- On a dedicated local Redis only, inspect the targeted connection set: `redis-cli SCARD <prefix>:presence:conn:<companyId>:<userId>`. If it is 0, no qualifying live socket is recorded; confirm with the authoritative REST response.
+- Inspect the targeted live key: `redis-cli TTL <prefix>:presence:<companyId>:<userId>`. Default heartbeat TTL is 120s (clamped 30–300s). Do not run `KEYS`, `SCAN`, `FLUSH*`, or manual cleanup. A missed event is recovered by REST/reconnect/team polling.
 
 **DO NOT**
 - Mark them as `available` manually. Presence is derived; the
@@ -645,45 +628,23 @@ class and pins the **cross-instance realtime** status that the
   (instance Y) does not pick up the change without a refresh.
 
 **IMPACT**
-- Cross-tab / cross-instance realtime is not guaranteed.
+- A missed private self-event may leave a browser stale until its next authoritative REST/reconnect/team refresh. Delivery is best-effort; it is not exactly-once and does not replace REST.
 
-**STATUS (37.7)**
+**STATUS (updated by 37.8)**
 
-The 37.4 socket `attach()` is **deliberately commented out** in
-`Backend/src/server.js` (`db177d9` perf stop-gate). The
-`presenceSocket` namespace IS wired; an operator can opt in
-via `PRESENCE_SOCKET_ENABLED=true`, `REDIS_ENABLED=true`, and
-`REDIS_URL` set. When opted in, the cross-instance fan-out
-relies on the existing `presenceBus.js` (the 32.11 SSE gateway
-re-pointed at the in-process bus, not a NATS client).
+`Backend/src/server.js` now calls `presenceSocket.attach()` before the single `listen()` only when `PRESENCE_SOCKET_ENABLED=true` (safe default remains false). Namespace mounting is idempotent and adapter initialization/retry runs in the background, so presence adapter outages do not add a blocking wait to unrelated HTTP startup. Failed adapter readiness refuses socket connections as `FEATURE_UNAVAILABLE`; HTTP remains available.
 
-**Until an operator opts in to the socket:**
-- The team page reads on demand. A tab that does not re-fetch
-  in the polling window will show stale data. There is NO
-  cross-instance realtime delivery.
-- This is a **known limitation**, not a bug. It is reported
-  here and in the memory capsule as a 37.8 candidate.
+The existing `@socket.io/redis-adapter` provides cross-instance fan-out over its dedicated Redis pub/sub pair. Product events go only to `presence:user:<companyId>:<userId>`. There is no company-wide socket broadcast and no SSE/NATS presence transport. Team rows continue to use authorized REST plus a bounded one-minute page refresh. A process-level expiry observer uses a bounded Redis sorted-set index and an atomic due claim to propagate stale-connection invalidations; Redis TTL alone is not treated as an emitted event.
+
+Hermetic adapter, tenant-boundary, retry, and expiry tests pass. Owner localhost acceptance is still pending; follow `docs/PHASE_37_8_LOCALHOST_ACCEPTANCE.md`.
 
 **DO**
-- If the operator needs cross-instance realtime, set the
-  three env vars and restart. Verify that the request path does
-  not become slow (Incident 2).
-- If the operator does not need it, the REST polling at the
-  team-page interval is sufficient and the slower path is
-  intentional.
+- Keep `PRESENCE_SOCKET_ENABLED` false unless the operator intends to enable presence realtime. When enabling it locally, use the PowerShell acceptance guide and verify the safe adapter-ready diagnostics.
+- If the adapter is unavailable, retain the REST UI and treat presence as Unknown when Redis truth cannot be read. After recovery, HTTP/reconnect/team refresh is the missed-event recovery path.
 
 **DO NOT**
-- Add NATS during a 37.7 incident. NATS would be a separate
-  architecture change.
-- Bypass the perf stop-gate to "fix" the inconsistency. The
-  stop-gate exists for a reason.
-
-**VERIFY**
-- With `PRESENCE_SOCKET_ENABLED=true`, two tabs across two
-  instances update within the heartbeat window. With the env
-  var unset, no socket connection is created.
+- Add NATS or a new package; the existing Socket.IO Redis adapter is the approved transport.
+- Run `FLUSHALL`, `FLUSHDB`, `KEYS`, `SCAN`, or manual presence-key cleanup to recover a socket.
 
 **ESCALATE**
-- Multi-instance realtime hardening belongs to
-  **Phase 37.8 — Multi-Instance Realtime Hardening**. Open a
-  P1 only if the operator cannot opt in.
+- If an enabled adapter never becomes ready after the capped background retries, or a same-tenant private event fails to converge after the REST fallback, collect the safe health/diagnostic status and the hermetic test result. Do not include Redis URLs, cookies, tokens, or employee identifiers in incident logs. Owner deployment acceptance remains pending.

@@ -102,6 +102,7 @@ const VALID_SOURCES = Object.freeze([
   // the source is informational.
   'approve',        // a work-location request was approved
   'cancel',         // an approved work-location request was cancelled
+  'lease_expiry',   // shared observer expired a stale connection lease; refetch REST authority
 ]);
 
 const isIsoString = (value) =>

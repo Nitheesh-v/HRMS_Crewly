@@ -212,7 +212,7 @@ test('bus: publishPresenceChanged emits the strict envelope to the authenticated
     assert.equal(result.delivered, 'socket.io');
     assert.equal(namespace.emissions.length, 1);
     const call = namespace.emissions[0];
-    assert.equal(call.room, `presence:user:${USER}`);
+    assert.equal(call.room, `presence:user:${COMPANY}:${USER}`);
     assert.equal(call.event, PRESENCE_GATEWAY_EVENT_TYPE);
     assert.equal(call.envelope.companyId, COMPANY);
     assert.equal(call.envelope.userId, USER);
@@ -240,7 +240,7 @@ test("bus: publishPresenceInvalidated targets the affected user's room with a mi
       occurredAt: '2026-10-03T10:00:00.000Z',
     });
     assert.equal(result.ok, true);
-    assert.equal(namespace.emissions[0].room, `presence:user:${USER}`);
+    assert.equal(namespace.emissions[0].room, `presence:user:${COMPANY}:${USER}`);
     assert.equal(namespace.emissions[0].event, 'presence:invalidated');
     assert.deepEqual(Object.keys(namespace.emissions[0].envelope).sort(), [
       'companyId', 'occurredAt', 'schemaVersion', 'source', 'userId',

@@ -11,12 +11,11 @@
 //
 //  ROOM LAW (re-asserted)
 //    Clients NEVER send a 'join' event. The server joins the socket
-//    to two rooms on connect, server-derived from `socket.data`:
-//      presence:company:<companyId>
-//      presence:user:<userId>
-//    Same convention as chat (chatKeys.js). A client can never
-//    subscribe to another tenant's company room — there is no event
-//    that would do so.
+//    only to a private server-derived tenant/user room:
+//      presence:user:<companyId>:<userId>
+//    Company-wide presence broadcasts are intentionally absent; the
+//    frontend's authorized batched REST path remains authoritative for
+//    visible team rows.
 //
 //  ATTACH-ORDER LAW
 //    The same attach-order law as chat (33.1) applies. This factory's
@@ -54,11 +53,12 @@ import {
   verifyChatSocketToken,
 } from './socketAuth.js';
 import { registerPresenceSocketHandlers } from './presenceSocketHandlers.js';
-import { presenceCompanyRoom, presenceUserRoom } from '../utils/presenceKeys.js';
+import { presenceUserRoom } from '../utils/presenceKeys.js';
 import { setPresenceLiveStore } from '../services/presence/presenceLiveStoreRegistry.js';
 import {
   createPresenceLiveStore,
 } from '../services/presence/presenceLiveStore.js';
+import { createPresenceExpiryObserver } from '../services/presence/presenceExpiryObserver.js';
 import {
   bindPresenceSocketNamespace,
   unbindPresenceSocketNamespace,
@@ -109,21 +109,49 @@ export const buildPresenceSocketOptions = ({
   perMessageDeflate: false,
 });
 
+export const PRESENCE_SOCKET_RECONCILE_TIMEOUT_MS = 1_500;
+export const PRESENCE_SOCKET_MAX_RECONCILED_CONNECTIONS = 64;
+export const PRESENCE_ADAPTER_SETUP_TIMEOUT_MS = 6_000;
+export const PRESENCE_ADAPTER_RETRY_BASE_MS = 1_000;
+export const PRESENCE_ADAPTER_RETRY_MAX_MS = 30_000;
+
 // Bounded capped reconnect for the adapter's dedicated connections.
 const adapterReconnect = (retries) =>
   Math.min(15_000, 1_000 * 2 ** retries);
 
 const withTimeout = (promise, ms, label) =>
-  Promise.race([
-    promise,
-    new Promise((_, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error(`${label} not ready within ${ms}ms`)),
-        ms,
-      );
-      timer.unref();
-    }),
-  ]);
+  new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${label} not ready within ${ms}ms`)),
+      ms,
+    );
+    timer.unref?.();
+    Promise.resolve(promise).then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+
+const closeRedisClient = async (client) => {
+  if (!client) return;
+  try {
+    await client.quit();
+    return;
+  } catch {
+    /* not connected / already closing — force it */
+  }
+  try {
+    await client.destroy();
+  } catch {
+    /* already closed */
+  }
+};
 
 const closeRedisClient = async (client) => {
   if (!client) return;
@@ -147,9 +175,12 @@ const closeRedisClient = async (client) => {
  * @returns {Promise<{ok:true, adapter:Function, key:string, close:Function}
  *                  | {ok:false, reason:string}>}
  */
-const createPresenceRedisAdapter = async ({
+export const createPresenceRedisAdapter = async ({
   source = process.env,
   log = logger,
+  onUp = () => {},
+  onDown = () => {},
+  createClientFn = createClient,
 } = {}) => {
   const config = getRedisConfig(source);
   if (!config.enabled) {
@@ -168,30 +199,63 @@ const createPresenceRedisAdapter = async ({
   };
   let pubClient;
   let subClient;
+  let pubReady = false;
+  let subReady = false;
   try {
-    pubClient = createClient(options);
+    pubClient = createClientFn(options);
     subClient =
       typeof pubClient?.duplicate === 'function'
         ? pubClient.duplicate()
-        : createClient(options);
+        : createClientFn(options);
 
     let pubDown = false;
     let subDown = false;
+    let lastReportedReady = null;
+    const reportReadiness = () => {
+      const ready = pubReady && subReady;
+      if (lastReportedReady === null && !ready) return;
+      if (lastReportedReady === ready) return;
+      lastReportedReady = ready;
+      if (ready) onUp();
+      else onDown();
+    };
     pubClient.on?.('error', () => {
-      if (pubDown) return;
+      pubReady = false;
+      if (!pubDown) log.warn('[PresenceSocket] adapter-pub redis error');
       pubDown = true;
-      log.warn('[PresenceSocket] adapter-pub redis error');
+      reportReadiness();
     });
     subClient.on?.('error', () => {
-      if (subDown) return;
+      subReady = false;
+      if (!subDown) log.warn('[PresenceSocket] adapter-sub redis error');
       subDown = true;
-      log.warn('[PresenceSocket] adapter-sub redis error');
+      reportReadiness();
     });
     pubClient.on?.('ready', () => {
       pubDown = false;
+      pubReady = true;
+      reportReadiness();
     });
     subClient.on?.('ready', () => {
       subDown = false;
+      subReady = true;
+      reportReadiness();
+    });
+    pubClient.on?.('reconnecting', () => {
+      pubReady = false;
+      reportReadiness();
+    });
+    subClient.on?.('reconnecting', () => {
+      subReady = false;
+      reportReadiness();
+    });
+    pubClient.on?.('end', () => {
+      pubReady = false;
+      reportReadiness();
+    });
+    subClient.on?.('end', () => {
+      subReady = false;
+      reportReadiness();
     });
 
     await withTimeout(
@@ -199,6 +263,9 @@ const createPresenceRedisAdapter = async ({
       5_000,
       'presence adapter clients',
     );
+    pubReady = true;
+    subReady = true;
+    reportReadiness();
   } catch (err) {
     log.error(
       `[PresenceSocket] adapter unavailable: ${err?.code || 'error'} — refusing presence socket connections.`,
@@ -212,6 +279,7 @@ const createPresenceRedisAdapter = async ({
     ok: true,
     key,
     adapter: createAdapter(pubClient, subClient, { key }),
+    isReady: () => Boolean(pubReady && subReady),
     close: async () => {
       await closeRedisClient(pubClient);
       await closeRedisClient(subClient);
@@ -231,6 +299,8 @@ export const createPresenceSocketServer = ({
   createAdapterClients = createPresenceRedisAdapter,
   createServer = (httpServer, options) => new Server(httpServer, options),
   getRedisClientFn = getRedisClient,
+  adapterRetryBaseMs = PRESENCE_ADAPTER_RETRY_BASE_MS,
+  adapterRetryMaxMs = PRESENCE_ADAPTER_RETRY_MAX_MS,
   log = logger,
 } = {}) => {
   let io = null;
@@ -238,9 +308,20 @@ export const createPresenceSocketServer = ({
   let namespace = null;
   let closeAdapter = null;
   let adapterAttached = false;
+  let adapterHealthy = false;
   let adapterKey = null;
   let store = null;
+  let expiryObserver = null;
   let attachResult = null;
+  let adapterAttemptPromise = null;
+  let retryTimer = null;
+  let retryCount = 0;
+  let lifecycleToken = 0;
+  let stopped = false;
+  let attachedHttpServer = null;
+  let attachedSharedIo = null;
+  let sharedRedisClient = null;
+  const wiredNamespaces = new WeakSet();
 
   const counters = {
     connections_accepted: 0,
@@ -256,6 +337,60 @@ export const createPresenceSocketServer = ({
       counters.connections_refused_origin += 1;
     } else {
       counters.connections_refused_auth += 1;
+    }
+  };
+
+  const setAdapterUnavailable = (token) => {
+    if (token !== lifecycleToken || stopped) return;
+    const wasHealthy = adapterHealthy;
+    adapterHealthy = false;
+    if (adapterAttached && wasHealthy) {
+      unbindPresenceSocketNamespace(namespace);
+      log.warn('[PresenceSocket] redis adapter unavailable; socket admission and fan-out are degraded.');
+    }
+  };
+
+  const setAdapterAvailable = (token) => {
+    if (token !== lifecycleToken || stopped) return;
+    const wasHealthy = adapterHealthy;
+    adapterHealthy = true;
+    if (adapterAttached && namespace) bindPresenceSocketNamespace(namespace);
+    if (adapterAttached && !wasHealthy) {
+      log.info('[PresenceSocket] redis adapter recovered; socket fan-out is ready.');
+    }
+  };
+
+  const fetchUserConnectionIds = async ({ companyId, userId } = {}) => {
+    if (
+      !companyId ||
+      !userId ||
+      !namespace ||
+      !adapterAttached ||
+      !adapterHealthy ||
+      typeof namespace.in !== 'function'
+    ) return null;
+    try {
+      const remoteSockets = await withTimeout(
+        namespace.in(presenceUserRoom(String(companyId), String(userId))).fetchSockets(),
+        PRESENCE_SOCKET_RECONCILE_TIMEOUT_MS,
+        'presence room reconciliation',
+      );
+      if (
+        !Array.isArray(remoteSockets) ||
+        remoteSockets.length > PRESENCE_SOCKET_MAX_RECONCILED_CONNECTIONS
+      ) return null;
+      return remoteSockets
+        .filter((remoteSocket) =>
+          String(remoteSocket?.data?.companyId || '') === String(companyId) &&
+          String(remoteSocket?.data?.userId || '') === String(userId),
+        )
+        .map((remoteSocket) => String(remoteSocket?.id || ''))
+        .filter(Boolean);
+    } catch {
+      // Membership uncertainty is not treated as Offline. The handler uses
+      // the bounded single-instance mutation path and the shared TTL observer
+      // remains the crash-recovery backstop.
+      return null;
     }
   };
 
@@ -285,6 +420,8 @@ export const createPresenceSocketServer = ({
     }
 
     namespace = io.of(PRESENCE_NAMESPACE);
+    if (wiredNamespaces.has(namespace)) return;
+    wiredNamespaces.add(namespace);
 
     // Keep one middleware installed even when Redis is unavailable. The
     // availability gate is dynamic, so a later attach retry can recover
@@ -293,7 +430,9 @@ export const createPresenceSocketServer = ({
       createChatHandshakeAuth({
         availability: {
           refusal: () =>
-            adapterAttached && store ? null : PRESENCE_FEATURE_UNAVAILABLE,
+            adapterAttached && adapterHealthy && store
+              ? null
+              : PRESENCE_FEATURE_UNAVAILABLE,
         },
         verify,
         unauthorized: PRESENCE_UNAUTHORIZED,
@@ -306,19 +445,18 @@ export const createPresenceSocketServer = ({
       const companyId = String(socket.data?.companyId || '');
       const userId = String(socket.data?.userId || '');
 
-      // Server-derived room joins. The client never sends a join event.
-      if (companyId) socket.join(presenceCompanyRoom(companyId));
-      if (userId) socket.join(presenceUserRoom(userId));
+      // The event room is private to the server-derived tenant/user pair.
+      // Team-wide/company-wide presence broadcasts are intentionally absent.
+      if (companyId && userId) socket.join(presenceUserRoom(companyId, userId));
 
-      log.info(
-        `[PresenceSocket] connection ${socket.id} (company=${companyId} user=${userId})`,
-      );
+      log.info('[PresenceSocket] authenticated connection accepted.');
 
       try {
         registerHandlers({
           io: namespace,
           socket,
           store,
+          getConnectionIds: fetchUserConnectionIds,
           counters,
           log,
         });
@@ -338,124 +476,229 @@ export const createPresenceSocketServer = ({
   };
 
   const clearLiveStore = () => {
+    expiryObserver?.stop?.();
+    expiryObserver = null;
     store = null;
     setPresenceLiveStore(null);
   };
 
+  const installLiveStore = (redis) => {
+    if (store || !redis) return store;
+    try {
+      store = createPresenceLiveStore({
+        redis,
+        prefix: getQueuePrefix(source),
+      });
+      setPresenceLiveStore(store);
+      startExpiryObserver();
+      return store;
+    } catch (error) {
+      log.error(
+        `[PresenceSocket] live store unavailable: ${error?.code || error?.name || 'error'}`,
+      );
+      return null;
+    }
+  };
+
+  const currentStatus = () => {
+    const ready = Boolean(adapterAttached && adapterHealthy && store);
+    return {
+      started: ready,
+      ready,
+      pending: !ready && !stopped,
+      ...(ready ? {} : { reason: PRESENCE_FEATURE_UNAVAILABLE.code }),
+      path: PRESENCE_SOCKET_PATH,
+      namespace: PRESENCE_NAMESPACE,
+      adapterKey: adapterKey || presenceAdapterKey(getQueuePrefix(source)),
+    };
+  };
+
+  const scheduleAdapterRetry = (token) => {
+    if (stopped || token !== lifecycleToken || retryTimer || adapterAttached) return;
+    const delayMs = Math.min(
+      adapterRetryMaxMs,
+      adapterRetryBaseMs * (2 ** Math.min(retryCount, 5)),
+    );
+    retryCount += 1;
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      void startAdapterAttach(token);
+    }, delayMs);
+    retryTimer.unref?.();
+  };
+
+  const startExpiryObserver = () => {
+    if (expiryObserver || !store) return;
+    expiryObserver = createPresenceExpiryObserver({ store, logger: log });
+    expiryObserver.start();
+  };
+
+  const startAdapterAttach = async (token) => {
+    if (stopped || token !== lifecycleToken || adapterAttached) return currentStatus();
+    if (adapterAttemptPromise) return adapterAttemptPromise;
+
+    const attempt = (async () => {
+      const redis = sharedRedisClient || getRedisClientFn();
+      if (!redis) {
+        setAdapterUnavailable(token);
+        log.warn('[PresenceSocket] shared Redis unavailable; realtime remains degraded while HTTP stays available.');
+        scheduleAdapterRetry(token);
+        return currentStatus();
+      }
+      const liveStore = installLiveStore(redis);
+      if (!liveStore) {
+        setAdapterUnavailable(token);
+        scheduleAdapterRetry(token);
+        return currentStatus();
+      }
+
+      let adapterResult;
+      try {
+        adapterResult = await withTimeout(
+          Promise.resolve().then(() =>
+            createAdapterClients({
+              source,
+              log,
+              onUp: () => setAdapterAvailable(token),
+              onDown: () => setAdapterUnavailable(token),
+            }),
+          ),
+          PRESENCE_ADAPTER_SETUP_TIMEOUT_MS,
+          'presence adapter setup',
+        );
+      } catch (error) {
+        if (token !== lifecycleToken || stopped) return currentStatus();
+        log.warn(
+          `[PresenceSocket] adapter startup deferred (${error?.code || error?.name || 'error'}); retry is bounded.`,
+        );
+        setAdapterUnavailable(token);
+        scheduleAdapterRetry(token);
+        return currentStatus();
+      }
+
+      if (token !== lifecycleToken || stopped) {
+        try { await adapterResult?.close?.(); } catch { /* stale attempt cleanup */ }
+        return currentStatus();
+      }
+      if (!adapterResult?.ok) {
+        setAdapterUnavailable(token);
+        scheduleAdapterRetry(token);
+        return currentStatus();
+      }
+
+      try {
+        // Namespace.adapter is an adapter INSTANCE, unlike Server.adapter(),
+        // and is installed only on /presence so chat keeps its own adapter.
+        const namespaceAdapter = adapterResult.adapter(namespace);
+        if (!namespaceAdapter || typeof namespaceAdapter.close !== 'function') {
+          throw new Error('PRESENCE_ADAPTER_INVALID');
+        }
+        // When chat owns the shared Server, Namespace construction creates
+        // an inherited chat-adapter instance before /presence is wired.
+        // Close that instance before replacement so it does not retain an
+        // extra Redis subscription or duplicate cross-node delivery.
+        const inheritedAdapter = namespace.adapter;
+        if (inheritedAdapter && inheritedAdapter !== namespaceAdapter) {
+          await inheritedAdapter.close?.();
+        }
+        namespace.adapter = namespaceAdapter;
+      } catch (error) {
+        log.warn(
+          `[PresenceSocket] adapter attachment deferred (${error?.code || error?.name || 'error'}).`,
+        );
+        try { await adapterResult.close?.(); } catch { /* cleanup */ }
+        setAdapterUnavailable(token);
+        scheduleAdapterRetry(token);
+        return currentStatus();
+      }
+
+      closeAdapter = adapterResult.close || null;
+      adapterKey = adapterResult.key || presenceAdapterKey(getQueuePrefix(source));
+      adapterAttached = true;
+      adapterHealthy =
+        typeof adapterResult.isReady === 'function'
+          ? Boolean(adapterResult.isReady())
+          : true;
+      retryCount = 0;
+      attachResult = currentStatus();
+      if (adapterHealthy) {
+        bindPresenceSocketNamespace(namespace);
+      } else {
+        unbindPresenceSocketNamespace(namespace);
+      }
+      startExpiryObserver();
+
+      log.info(
+        `[PresenceSocket] namespace adapter attached (path=${PRESENCE_SOCKET_PATH}, ns=${PRESENCE_NAMESPACE}, adapterKey=${adapterKey}, ready=${adapterHealthy}).`,
+      );
+      return attachResult;
+    })();
+
+    adapterAttemptPromise = attempt;
+    try {
+      return await attempt;
+    } finally {
+      if (adapterAttemptPromise === attempt) adapterAttemptPromise = null;
+    }
+  };
+
   return {
     /**
-     * Attaches the presence namespace before server.listen(). Every
-     * optional-infrastructure failure degrades to FEATURE_UNAVAILABLE;
-     * it never takes down the HTTP API.
+     * Mounts /presence synchronously before server.listen(), then starts
+     * Redis adapter setup in the background. Slow/unavailable optional Redis
+     * never blocks unrelated HRMS startup. Retries use bounded backoff.
      */
     attach: async (httpServer, { sharedIo = null, sharedRedis = null } = {}) => {
       if (!enabled) {
         log.info(
           '[PresenceSocket] disabled (PRESENCE_SOCKET_ENABLED!=true) — no presence socket connections will be accepted.',
         );
-        return { started: false, reason: 'DISABLED' };
+        return { started: false, pending: false, reason: 'DISABLED' };
       }
       if (!httpServer) {
         log.error('[PresenceSocket] no http server supplied — presence realtime is FEATURE_UNAVAILABLE.');
-        return { started: false, reason: PRESENCE_FEATURE_UNAVAILABLE.code };
+        return { started: false, pending: false, reason: PRESENCE_FEATURE_UNAVAILABLE.code };
+      }
+      if (namespace) {
+        if (attachedHttpServer !== httpServer || attachedSharedIo !== sharedIo) {
+          log.warn('[PresenceSocket] duplicate attach ignored; existing namespace owner is retained.');
+        }
+        return currentStatus();
       }
       if (adapterAttached && store && attachResult) return attachResult;
 
-      clearLiveStore();
+      stopped = false;
+      lifecycleToken += 1;
+      retryCount = 0;
+      attachedHttpServer = httpServer;
+      attachedSharedIo = sharedIo;
+      sharedRedisClient = sharedRedis || null;
       try {
         wireNamespace(httpServer, sharedIo);
-      } catch (err) {
+      } catch (error) {
         log.error(
-          `[PresenceSocket] namespace setup failed: ${err?.code || err?.name || 'error'}`,
+          `[PresenceSocket] namespace setup failed: ${error?.code || error?.name || 'error'}`,
         );
-        return { started: false, reason: PRESENCE_FEATURE_UNAVAILABLE.code };
+        return { started: false, pending: false, reason: PRESENCE_FEATURE_UNAVAILABLE.code };
       }
 
-      const redis = sharedRedis || getRedisClientFn();
-      if (!redis) {
-        log.warn(
-          '[PresenceSocket] shared Redis client unavailable — presence sockets are refused; HTTP API remains available.',
-        );
-        return { started: false, reason: PRESENCE_FEATURE_UNAVAILABLE.code };
-      }
-
-      let adapterResult;
-      try {
-        adapterResult = await createAdapterClients({ source, log });
-      } catch (err) {
-        log.error(
-          `[PresenceSocket] adapter startup failed: ${err?.code || err?.name || 'error'}`,
-        );
-        return { started: false, reason: PRESENCE_FEATURE_UNAVAILABLE.code };
-      }
-      if (!adapterResult?.ok) {
-        log.error(
-          '[PresenceSocket] redis adapter unavailable — every presence socket connection is refused as FEATURE_UNAVAILABLE. HTTP API unaffected.',
-        );
-        return { started: false, reason: PRESENCE_FEATURE_UNAVAILABLE.code };
-      }
-
-      let nextStore;
-      try {
-        nextStore = createPresenceLiveStore({
-          redis,
-          prefix: getQueuePrefix(source),
-        });
-      } catch (err) {
-        log.error(
-          `[PresenceSocket] live store unavailable: ${err?.code || err?.name || 'error'}`,
-        );
-        try {
-          await adapterResult.close?.();
-        } catch {
-          /* adapter clients are best-effort */
-        }
-        return { started: false, reason: PRESENCE_FEATURE_UNAVAILABLE.code };
-      }
-
-      try {
-        // Namespace.adapter is an adapter INSTANCE (unlike Server.adapter,
-        // which is a setter for all namespaces). Install the dedicated
-        // presence adapter on this namespace only so the shared chat
-        // namespace keeps its own adapter and Redis channel key.
-        const namespaceAdapter = adapterResult.adapter(namespace);
-        if (!namespaceAdapter || typeof namespaceAdapter.close !== 'function') {
-          throw new Error('PRESENCE_ADAPTER_INVALID');
-        }
-        namespace.adapter = namespaceAdapter;
-      } catch (err) {
-        log.error(
-          `[PresenceSocket] adapter could not be attached: ${err?.code || err?.name || 'error'}`,
-        );
-        try {
-          await adapterResult.close?.();
-        } catch {
-          /* adapter clients are best-effort */
-        }
-        return { started: false, reason: PRESENCE_FEATURE_UNAVAILABLE.code };
-      }
-
-      store = nextStore;
-      setPresenceLiveStore(store);
-      closeAdapter = adapterResult.close || null;
-      adapterKey = adapterResult.key || presenceAdapterKey(getQueuePrefix(source));
-      adapterAttached = true;
-      attachResult = {
-        started: true,
-        path: PRESENCE_SOCKET_PATH,
-        namespace: PRESENCE_NAMESPACE,
-        adapterKey,
-      };
-      bindPresenceSocketNamespace(namespace);
-
-      log.info(
-        `[PresenceSocket] namespace ready (path=${PRESENCE_SOCKET_PATH}, ns=${PRESENCE_NAMESPACE}, adapterKey=${adapterKey}).`,
-      );
-      return attachResult;
+      // Make Redis-backed HTTP reads available independently of the optional
+      // cross-instance socket adapter. Redis failures still resolve Unknown.
+      installLiveStore(sharedRedisClient || getRedisClientFn());
+      const token = lifecycleToken;
+      void startAdapterAttach(token);
+      return currentStatus();
     },
 
     stop: async () => {
+      stopped = true;
+      lifecycleToken += 1;
+      if (retryTimer) clearTimeout(retryTimer);
+      retryTimer = null;
+      adapterAttemptPromise = null;
       const namespaceToStop = namespace;
+      expiryObserver?.stop?.();
+      expiryObserver = null;
 
       if (namespaceToStop) {
         try {
@@ -492,18 +735,27 @@ export const createPresenceSocketServer = ({
       }
 
       adapterAttached = false;
+      adapterHealthy = false;
       adapterKey = null;
       attachResult = null;
       clearLiveStore();
       namespace = null;
       io = null;
       ownsIo = false;
+      attachedHttpServer = null;
+      attachedSharedIo = null;
+      sharedRedisClient = null;
+      retryCount = 0;
       return { stopped: true };
     },
 
     describeDiagnostics: () => ({
       enabled: Boolean(enabled),
+      namespaceAttached: Boolean(namespace),
       attached: adapterAttached,
+      adapterHealthy,
+      retryScheduled: Boolean(retryTimer),
+      expiryObserver: expiryObserver?.describeDiagnostics?.() || null,
       counters: { ...counters },
     }),
 

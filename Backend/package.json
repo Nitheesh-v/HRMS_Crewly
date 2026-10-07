@@ -127,8 +127,8 @@
     "test:ai-context": "node --test test/hrContextRetriever.test.js",
     "test:ai-chatbot": "node --test test/hrChatbotService.test.js",
     "test:ai-foundation": "node --test test/aiProviderFoundation.test.js",
-    "test:presence": "node --test test/presenceController.test.js test/presenceFoundation.test.js test/presenceRealtime.test.js test/presenceLiveStore.test.js test/presenceBus.test.js test/presenceSocket.test.js test/presenceSocketHandlers.test.js test/presenceBoundaries.test.js test/presenceTeamService.test.js",
-    "test:presence-realtime": "node --test test/presenceRealtime.test.js test/presenceLiveStore.test.js test/presenceBus.test.js test/presenceSocket.test.js test/presenceSocketHandlers.test.js test/presenceBoundaries.test.js",
+    "test:presence": "node --test test/presenceController.test.js test/presenceFoundation.test.js test/presenceRealtime.test.js test/presenceLiveStore.test.js test/presenceBus.test.js test/presenceSocket.test.js test/presenceSocketHandlers.test.js test/presenceBoundaries.test.js test/presenceTeamService.test.js test/presenceExpiryObserver.test.js test/presenceSocketRedisAdapter.test.js",
+    "test:presence-realtime": "node --test test/presenceRealtime.test.js test/presenceLiveStore.test.js test/presenceBus.test.js test/presenceSocket.test.js test/presenceSocketHandlers.test.js test/presenceBoundaries.test.js test/presenceExpiryObserver.test.js test/presenceSocketRedisAdapter.test.js",
     "test:ai-own-records": "node --test test/hrContextOwnRecords.test.js",
     "test:phase36-closeout": "node --test test/phase36Closeout.test.js"
   },

@@ -1,4 +1,6 @@
-# Phase 37 Automatic Presence Correction — Build Plan
+# Phase 37 Automatic Presence Correction — Historical Build Plan
+
+> Historical repository snapshot from before the 37.7 runtime wiring and Phase 37.8 distributed hardening. Its findings below describe that audit point, not current runtime state. Current reconnect/expiry/adapter/key behavior is documented in [`PHASE_37_4_DISTRIBUTED_REALTIME.md`](./PHASE_37_4_DISTRIBUTED_REALTIME.md); owner acceptance is pending in [`PHASE_37_8_LOCALHOST_ACCEPTANCE.md`](./PHASE_37_8_LOCALHOST_ACCEPTANCE.md).
 
 ## A. REPOSITORY FINDINGS — REPOSITORY EVIDENCE
 
@@ -76,16 +78,14 @@ real-time activity signal.
   validates `at`, calls `store.recordActivity`, then
   `resolveEffectivePresence` and `publishIfChanged`.
 
-### 9. Where current connection state is stored
-**Redis** (when enabled) or in-process memory (when not):
-- `crewly:<env>:presence:conn:<userId>` — SET of socket ids
-- `crewly:<env>:presence:live:<companyId>:<userId>` — HASH with
-  `connectionCount`, `lastHeartbeatAt`, `lastActivityAt` + TTL
-- `presenceLiveStore.js` defines `markConnected`,
-  `markDisconnected`, `refreshHeartbeat`, `recordActivity`, `readLive`.
+### 9. Where current connection state is stored (corrected by Phase 37.8)
+**Shared Redis only; there is no in-process-memory fallback as distributed truth.**
+- `<prefix>:presence:conn:<companyId>:<userId>` — tenant-scoped set of socket IDs
+- `<prefix>:presence:<companyId>:<userId>` — live hash with the fixed snapshot fields + TTL
+- `<prefix>:presence:expiry-index` — bounded sorted set used by the shared crash-expiry observer
+- `presenceLiveStore.js` also exposes bounded room-membership reconciliation and atomic due-expiry claims.
 
-When `redis` is null, the store methods are safeCall wrappers that
-return `null`. The resolver then returns `unknown` (NOT `offline`).
+When Redis is unavailable, store reads return `null` and the resolver returns `unknown` (NOT `offline`).
 
 ### 10. Whether Redis is actually involved
 **Yes at the code level, but the developer's local environment
@@ -108,9 +108,9 @@ Only the LAST qualifying disconnect (SREM empties the set) starts
 the grace window. This is the multi-tab law from §15.
 
 ### 12. Where `lastActivityAt` lives
-**Redis HASH** at `crewly:<env>:presence:live:<companyId>:<userId>`,
-field `lastActivityAt`. Updated by `store.recordActivity` on the
-activity socket event.
+**Redis HASH** at `<prefix>:presence:<companyId>:<userId>`,
+field `lastActivityAt`. Updated only by `store.recordActivity` on an
+accepted, server-stamped activity event. Heartbeat and tick do not update it.
 
 ### 13. How `awayAfterMinutes` is obtained
 **From tenant config.** `presenceResolver.js:264-266` reads

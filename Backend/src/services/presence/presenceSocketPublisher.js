@@ -47,7 +47,9 @@ export const emitPresenceSocketEvent = ({ event, companyId, envelope } = {}) => 
   }
 
   try {
-    namespace.to(presenceUserRoom(String(envelope.userId))).emit(event, envelope);
+    namespace
+      .to(presenceUserRoom(String(companyId), String(envelope.userId)))
+      .emit(event, envelope);
     return { ok: true, delivered: 'socket.io', error: null };
   } catch {
     return { ok: false, delivered: 'none', error: 'presence socket publish failed' };

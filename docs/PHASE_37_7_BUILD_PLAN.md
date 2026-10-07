@@ -1,6 +1,6 @@
 # Phase 37.7 — Tenant Administration, Operational Hardening & Closeout
 
-> Build plan. Repository truth. One source of truth for this unit.
+> Historical build-plan snapshot. The audit and A–E plan below describe the repository before Phase 37.8; they are not current runtime status. Phase 37.8 later mounted the opt-in namespace before `listen()`, made adapter initialization nonblocking/idempotent with bounded retries, and verified cross-instance Socket.IO Redis-adapter delivery. See [`PHASE_37_4_DISTRIBUTED_REALTIME.md`](./PHASE_37_4_DISTRIBUTED_REALTIME.md) and [`PHASE_37_8_LOCALHOST_ACCEPTANCE.md`](./PHASE_37_8_LOCALHOST_ACCEPTANCE.md).
 
 ## A. REPOSITORY FINDINGS
 
@@ -10,7 +10,7 @@
 | 37.1 Foundation | `services/presence/{presenceConfig,presenceErrors,presenceEvents,presenceLive,presenceLiveStore,presenceLiveStoreRegistry,presenceBus,presenceResolver,presenceService,presenceTenantConfigService}.js` + `models/{UserPresence,PresenceTenantConfig}.js` + `controllers/presenceController.js` + `routes/presence.js` + `validators/presence/{presenceValidator,teamAvailabilityValidator}.js` | `services/presenceService.js` + `redux/slices/{presenceSlice,presenceConstants}.js` | OK |
 | 37.2 Self UI | `controllers/presenceController.js` (status / status-message / work-location) | `components/presence/{PresenceIndicator,PresenceMenu,StatusExpirySelector,StatusMessageEditor,WorkLocationSelector,presenceVisual}.jsx` | OK wired in `AppLayout` |
 | 37.3 Team | `presenceTeamService.js` + `teamAvailabilityValidator.js` | `pages/team/TeamAvailabilityPage.jsx` | OK route `team/availability` SENIORS |
-| 37.4 Realtime | `socket/{presenceSocket,presenceSocketConfig,presenceSocketHandlers}.js` + `presenceBus.js` + `presenceLiveStore.js` + `presenceLiveStoreRegistry.js` | `services/realtime/{presenceChannel,presenceRuntime}.js` | WARN: socket `attach()` commented out by `db177d9` (perf stop-gate) |
+| 37.4 Realtime | `socket/{presenceSocket,presenceSocketConfig,presenceSocketHandlers}.js` + `presenceBus.js` + `presenceLiveStore.js` + `presenceLiveStoreRegistry.js` | `services/realtime/{presenceChannel,presenceRuntime}.js` | Historical at 37.7: attach was disabled by a prior stop-gate; superseded by the opt-in 37.8 lifecycle documented in `PHASE_37_4_DISTRIBUTED_REALTIME.md` |
 | 37.5 WFH | `services/presence/workLocationRequestService.js` + `controllers/presence/workLocationRequestController.js` + `routes/presence/workLocationRequestRoutes.js` + `validators/presence/workLocationRequestValidator.js` + `models/WorkLocationRequest.js` | `pages/presence/WorkLocationReviewPage.jsx` + `components/presence/{WorkLocationRequestDialog,WorkLocationRequestHistory}.jsx` | OK route `presence/work-location-requests/review` HR |
 | 37.6 Leave + OWH | `services/presence/presenceHrContext.js` (NEW) + extended `presenceResolver.js` + extended `presenceService.js` + extended `presenceTeamService.js` | `Empty/EMPTY_PRESENCE` extended + PresenceMenu banner + TeamAvailabilityPage filter chip + workLocation hidden on on_leave | OK |
 
@@ -20,7 +20,7 @@
 3. **`workLocationRequestRoutes` mounted under a path the parent router also claims**: confirmed safe via path-prefix matching.
 4. **`SETTINGS_MANAGE` permission is in the registry** (`utils/permissionRegistry.js:337`).
 5. **No NATS in code or deps** — `grep -rn "NATS\|nats" Backend/src` returns only comments. `package.json` has no `nats`/`nats.ws` dep.
-6. **Perf stop-gate intact** — `server.js` `await getPresenceSocketServer().attach(server);` is commented out. `server.listen(...)` appears once.
+6. **Historical stop-gate finding** — this 37.7 draft observed the attach call commented out. Phase 37.8 supersedes that runtime state: `server.js` now conditionally calls the attachment before the single `server.listen(...)`, with `PRESENCE_SOCKET_ENABLED=false` remaining the safe default.
 7. **Frontend presence reuses the existing `presenceService.js`** — no separate `presenceConfigService.js`. The admin page will need new exports there.
 
 ### A.3 Current settings backend surface
@@ -46,8 +46,8 @@
 
 The Phase 37.7 admin page will live at `/app/settings/presence` and live in `More → Administration` (the same group as `/app/company`, `/app/governance`, `/app/roles-permissions`).
 
-### A.7 Performance stop-gate
-Confirmed: `server.js` socket attach is commented out, single `server.listen`, no NATS, no Redis in frontend.
+### A.7 Performance stop-gate (historical 37.7 snapshot)
+At the time of the 37.7 audit, the socket attach was commented out. Phase 37.8 now mounts it only when enabled, returns from `attach()` without waiting for adapter connection, and preserves one HTTP `listen()`. No NATS or frontend Redis client was added.
 
 ## B. SECURITY / DATA BOUNDARIES
 
@@ -72,8 +72,9 @@ Confirmed: `server.js` socket attach is commented out, single `server.listen`, n
 ### B.5 Anti-surveillance closeout
 - No activity history collection.
 
-### B.6 NATS / cross-instance
-- 37.7 adds **no** NATS. Cross-instance realtime delivery is currently **NOT guaranteed** beyond the existing Socket.IO + Redis pub/sub. The `presenceSocket.attach()` line is commented out (`db177d9`), so realtime fan-out is effectively off until an operator explicitly opts in.
+### B.6 NATS / cross-instance (historical snapshot, superseded by 37.8)
+- 37.7 added **no** NATS. At the time this draft was written, cross-instance delivery had not been verified and the environment default was opt-in/off.
+- Current status: `server.js` calls `presenceSocket.attach()` only when `PRESENCE_SOCKET_ENABLED=true`, before `server.listen()`. The existing Socket.IO Redis adapter is now verified by the hermetic 37.8 suite for cross-instance delivery, local forwarding, tenant/user room isolation, and no echo. Adapter setup is nonblocking and retries in the background. See the current 37.4 runtime reconciliation doc; localhost owner acceptance remains pending.
 
 ## C. IMPLEMENTATION
 
