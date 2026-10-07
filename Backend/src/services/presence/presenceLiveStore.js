@@ -224,7 +224,6 @@ export const createPresenceLiveStore = (deps = {}) => {
         .hset(liveK, {
           connectionCount: String(count),
           connected: 'true',
-          connectedAt,
           lastHeartbeatAt: at,
         })
         .expire(liveK, heartbeatTtlSeconds)

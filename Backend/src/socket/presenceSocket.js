@@ -153,21 +153,6 @@ const closeRedisClient = async (client) => {
   }
 };
 
-const closeRedisClient = async (client) => {
-  if (!client) return;
-  try {
-    await client.quit();
-    return;
-  } catch {
-    /* not connected / already closing — force it */
-  }
-  try {
-    await client.destroy();
-  } catch {
-    /* already closed */
-  }
-};
-
 /**
  * Create and connect the presence Redis adapter. Dedicated pub +
  * sub clients (the 21-law); never shares the shared general client.
@@ -665,8 +650,6 @@ export const createPresenceSocketServer = ({
         }
         return currentStatus();
       }
-      if (adapterAttached && store && attachResult) return attachResult;
-
       stopped = false;
       lifecycleToken += 1;
       retryCount = 0;
