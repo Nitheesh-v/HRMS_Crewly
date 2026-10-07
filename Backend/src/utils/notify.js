@@ -4,6 +4,7 @@
 //   notifyUser(companyId, userId, payload)
 //   notifyRoles(companyId, [roles], payload)  → everyone w/ role
 // ─────────────────────────────────────────────────────────────
+import { isValidObjectId } from 'mongoose';
 import Notification from '../models/Notification.js';
 import User from '../models/User.js';
 import logger from '../config/logger.js';
@@ -22,7 +23,17 @@ export const notifyUser = async (companyId, user, { type = 'SYSTEM', title, mess
 // action that wanted to ring it.
 export const notifyUsers = async (companyId, userIds, { type = 'SYSTEM', title, message = '', link = '' }) => {
   try {
-    const recipients = [...new Set((userIds ?? []).map((value) => String(value ?? '')).filter(Boolean))];
+    // Phase 39 — a batch is all-or-nothing at the driver: ONE id that cannot be
+    // cast to an ObjectId makes insertMany throw, and the catch below then drops
+    // the whole batch (every recipient loses the notification). Ids are trimmed
+    // and validated here so a stray value loses only itself.
+    const recipients = [
+      ...new Set(
+        (userIds ?? [])
+          .map((value) => String(value?._id ?? value ?? '').trim())
+          .filter((value) => isValidObjectId(value)),
+      ),
+    ];
 
     if (recipients.length === 0) return 0;
 
