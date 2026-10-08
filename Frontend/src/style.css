@@ -452,3 +452,18 @@ aside .truncate {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* 11) Landing page (public home) — in-page navigation.
+   The header's nav links jump within the page. Smooth scrolling is a nicety,
+   so it is applied only to the html element that actually contains the landing
+   shell (`:has` — if a browser does not support it, anchors simply jump, which
+   is the pre-existing behaviour everywhere else in the app). Users who ask for
+   reduced motion keep the instant jump. */
+html:has(.landing-shell) {
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  html:has(.landing-shell) {
+    scroll-behavior: auto;
+  }
+}
