@@ -84,6 +84,9 @@ const PayrollPage = lazy(() => import("../pages/payroll/PayrollPage.jsx"));
 const PayrollSetupPage = lazy(() => import("../pages/payroll/PayrollSetupPage.jsx"));
 const SalaryComponentsPage = lazy(() => import("../pages/payroll/SalaryComponentsPage.jsx"));
 const SalaryStructuresPage = lazy(() => import("../pages/payroll/SalaryStructuresPage.jsx"));
+// Employee referrals — posted jobs, visible to every employee (no role gate;
+// the server scopes to the caller’s company).
+const ReferralsPage = lazy(() => import("../pages/referrals/ReferralsPage.jsx"));
 const EmployeePayrollPage = lazy(() => import("../pages/payroll/EmployeePayrollPage.jsx"));
 const MonthlyInputsPage = lazy(() => import("../pages/payroll/MonthlyInputsPage.jsx"));
 const RunPayrollPage = lazy(() => import("../pages/payroll/RunPayrollPage.jsx"));
@@ -735,6 +738,8 @@ const AppRoutes = () => (
       <Route path="payroll/analytics/salary-history/:employeeId" element={<SalaryHistoryPage />} />
       <Route path="payroll/analytics/register" element={<PayrollRegisterPage />} />
       <Route path="payroll/analytics/scheduled" element={<ScheduledReportsPage />} />
+      {/* Employee referrals — every authenticated employee of the tenant. */}
+      <Route path="referrals" element={<ReferralsPage />} />
       <Route path="payroll/employees" element={<EmployeePayrollPage />} />
       <Route path="payroll/employees/:employeeId" element={<EmployeePayrollDetailPage />} />
 

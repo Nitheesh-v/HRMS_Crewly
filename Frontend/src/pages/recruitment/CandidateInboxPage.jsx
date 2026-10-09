@@ -43,7 +43,7 @@ const dateLabel = (value) =>
     : 'Not available';
 
 const sourceLabel = (value) =>
-  value === 'CAREER_PAGE' ? 'Career page' : 'Internal';
+  value === 'CAREER_PAGE' ? 'Career page' : value === 'REFERRAL' ? 'Referral' : 'Internal';
 
 const BULK_ACTION_LABELS = {
   SHORTLIST: 'Shortlist',
@@ -292,6 +292,7 @@ const CandidateInboxPage = () => {
           <select className="input" name="source" value={draftFilters.source} onChange={updateFilter}>
             <option value="">All sources</option>
             <option value="CAREER_PAGE">Career page</option>
+            <option value="REFERRAL">Referral</option>
             <option value="INTERNAL">Internal</option>
           </select>
           <select className="input" name="stage" value={draftFilters.stage} onChange={updateFilter}>

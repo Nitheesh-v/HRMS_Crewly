@@ -38,7 +38,10 @@ const safePublicUrl = (value, { allowQuery = true } = {}) => {
   }
 };
 
-const publicVisibilityFilter = (companyId, now = new Date()) => ({
+// One truth for "this job is posted": the public career page AND the
+// employee-referral openings list both filter on this, so an opening becomes
+// visible to employees at the exact moment (and only while) it is public.
+export const publicVisibilityFilter = (companyId, now = new Date()) => ({
   companyId,
   status: 'OPEN',
   publicationStatus: 'PUBLISHED',

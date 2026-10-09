@@ -41,6 +41,7 @@ import systemRoutes from "./systemRoutes.js";
 import profileRoutes from "./profileRoutes.js";
 import profileChangeRoutes from "./profileChangeRoutes.js";
 import selfServiceRoutes from "./selfServiceRoutes.js";
+import referralRoutes from "./referralRoutes.js";
 import meetingRoutes from "./meetingRoutes.js";
 import notificationPrefRoutes from "./notificationPrefRoutes.js";
 import scheduleRoutes from "./scheduleRoutes.js";
@@ -202,7 +203,10 @@ router.use("/", systemRoutes);
 router.use("/realtime", realtimeRoutes);
 
 // Existing self-service routes are mounted at API root.
+// Employee referrals — posted jobs visible to every employee (tenant-gated,
+// no permission: see docs/EMPLOYEE_REFERRALS_PLAN.md §B).
 router.use("/", selfServiceRoutes);
+router.use("/referrals", referralRoutes);
 
 // Schedule routes already contain /holidays, /schedules and /shifts.
 router.use(scheduleRoutes);

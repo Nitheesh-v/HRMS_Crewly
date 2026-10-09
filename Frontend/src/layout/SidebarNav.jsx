@@ -53,6 +53,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Target,
+  UserPlus,
   Timer,
   UserCircle,
   Users,
@@ -113,6 +114,7 @@ const NAV_ICON_BY_PATH = {
   "/app/recruitment/candidates": Users,
   "/app/recruitment/interviews": CalendarClock,
   "/app/recruitment/my-interviews": CalendarClock,
+  "/app/referrals": UserPlus,
   "/app/recruitment/pre-onboarding": ClipboardList,
   "/app/support": LifeBuoy,
   "/app/exit": DoorOpen,
@@ -212,7 +214,8 @@ const NAV_GROUPS = [
     id: "work",
     label: "Work",
     icon: FolderOpen,
-    paths: ["/app/tasks", "/app/meetings", "/app/announcements"],
+    // Employee referrals live here too: they are work, not personal prefs.
+    paths: ["/app/tasks", "/app/meetings", "/app/announcements", "/app/referrals"],
     prefixes: ["/app/projects"],
   },
 
