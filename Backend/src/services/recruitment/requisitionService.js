@@ -223,7 +223,7 @@ const nextRequisitionNumber = async (companyId) => {
         $inc: { value: 1 },
         $setOnInsert: { companyId, key: 'JOB_REQUISITION' },
       },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     );
   } catch (error) {
     if (error.code !== 11000) throw error;
@@ -231,7 +231,7 @@ const nextRequisitionNumber = async (companyId) => {
     sequence = await TenantSequence.findOneAndUpdate(
       { companyId, key: 'JOB_REQUISITION' },
       { $inc: { value: 1 } },
-      { new: true }
+      { returnDocument: 'after' }
     );
   }
 
@@ -737,7 +737,7 @@ const reviewRequisition = async ({
       },
       $push: { history: historyEntry },
     },
-    { new: true, runValidators: true }
+    { returnDocument: 'after', runValidators: true }
   )
     .populate('department', 'name')
     .populate('requester', 'name role department')
@@ -941,7 +941,7 @@ export const createJobFromRequisition = async ({
         },
       },
     },
-    { new: true, runValidators: true }
+    { returnDocument: 'after', runValidators: true }
   );
 
   if (!linkedRequisition) {

@@ -195,7 +195,7 @@ export const readPresenceTenantConfig = async ({ companyId, model }) => {
   const doc = await M.findOneAndUpdate(
     { companyId },
     { $setOnInsert: { companyId } },
-    { upsert: true, new: true, setDefaultsOnInsert: true },
+    { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true },
   );
   return [toSnapshot(doc), true];
 };
@@ -279,7 +279,7 @@ export const updatePresenceTenantConfig = async ({
         $set,
         $setOnInsert: { companyId },
       },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true },
     );
   } catch (err) {
     // A model-level invariant (e.g. duplicate allowedWorkLocations, or

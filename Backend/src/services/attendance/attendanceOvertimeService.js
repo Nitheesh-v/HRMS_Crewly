@@ -677,7 +677,7 @@ export const cancelOvertimeRequest = async ({
   const updated = await RequestModel.findOneAndUpdate(
     { _id: row._id, companyId, status: OVERTIME_STATUS.PENDING },
     { $set: { status: OVERTIME_STATUS.CANCELLED, reviewedBy: actorId, reviewedAt: now || new Date() } },
-    { new: true },
+    { returnDocument: 'after' },
   ).lean();
   if (!updated) throw ApiError.conflict('This request is no longer pending');
   await audit({
@@ -842,7 +842,7 @@ export const approveOvertimeRequest = async ({
         reviewedAt: now || new Date(),
       },
     },
-    { new: true },
+    { returnDocument: 'after' },
   ).lean();
   // Lost a concurrent decision race: the row is decided, and the
   // winner's post-commit effects already ran exactly once.
@@ -929,7 +929,7 @@ export const rejectOvertimeRequest = async ({
         reviewedAt: now || new Date(),
       },
     },
-    { new: true },
+    { returnDocument: 'after' },
   ).lean();
   if (!updated) throw ApiError.conflict('This request was already decided by another reviewer');
   const ownerId = row.user?._id || row.user;

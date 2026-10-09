@@ -488,7 +488,7 @@ export const ensureDefaultBgvConfiguration = async ({ companyId, actorId }) => {
       },
       {
         upsert: true,
-        new: true,
+        returnDocument: 'after',
         setDefaultsOnInsert: true,
       }
     );

@@ -627,7 +627,7 @@ export const convertCandidateToEmployee = async ({
     },
     {
       upsert: true,
-      new: true,
+      returnDocument: 'after',
       setDefaultsOnInsert: true,
     }
   ).catch(async (error) => {

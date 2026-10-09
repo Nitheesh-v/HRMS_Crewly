@@ -9,7 +9,7 @@
 //  ORDER OF OPERATIONS (each step is the cheapest rejection first):
 //    1. membership + tenant + disabled check (findOne)            → refuse
 //    2. idempotency pre-check (find by clientMessageId)          → return existing
-//    3. atomic seq allocation ($inc lastMessageSeq, new:true)     → seq
+//    3. atomic seq allocation ($inc lastMessageSeq, returnDocument: 'after')     → seq
 //    4. ChatMessage.create (unique idempotency index guards race) → message
 //    5. on E11000: refetch the winner and return it, created:false
 //
@@ -198,7 +198,7 @@ const persistMessage = async ({
   }
 
   // Atomic seq allocation: bump the conversation counter and read the new
-  // value in one round-trip. `new: true` returns the post-increment document,
+  // value in one round-trip. `returnDocument: 'after'` returns the post-increment document,
   // so lastMessageSeq IS the seq for this message. The same update refreshes
   // the denormalized lastMessage* preview fields.
   const now = new Date();
@@ -213,7 +213,7 @@ const persistMessage = async ({
         lastMessageSenderUserId: senderUserId,
       },
     },
-    { new: true }
+    { returnDocument: 'after' }
   ).lean();
 
   if (!updated) return { ok: false, code: 'NOT_FOUND_OR_FORBIDDEN' };

@@ -47,7 +47,7 @@ export const updateDepartment = asyncHandler(async (req, res) => {
     // Data from frontend - requests from frontend
     { _id: req.params.id, companyId: req.companyId }, // tenant-scoped!
     { $set: { name: req.body.name, description: req.body.description, status: req.body.status } },
-    { new: true, runValidators: true }
+    { returnDocument: 'after', runValidators: true }
   );
   if (!department) throw ApiError.notFound('Department not found');
   // Data to frontend - response to frontend

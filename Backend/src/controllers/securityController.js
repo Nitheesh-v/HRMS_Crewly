@@ -429,7 +429,7 @@ export const updateSecuritySettings = asyncHandler(async (req, res) => {
 
     {
       upsert: true,
-      new: true,
+      returnDocument: 'after',
       runValidators: true,
       setDefaultsOnInsert: true,
     },

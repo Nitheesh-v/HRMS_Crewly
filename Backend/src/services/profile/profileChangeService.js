@@ -380,7 +380,7 @@ export const profileChangeService = (deps = {}) => {
           reviewedBy: reviewerId,
         },
       },
-      { new: true },
+      { returnDocument: 'after' },
     );
     if (!claimed) throw ApiError.conflict('Request is no longer pending');
 
@@ -540,7 +540,7 @@ export const profileChangeService = (deps = {}) => {
           cancelledBy: actorId,
         },
       },
-      { new: true },
+      { returnDocument: 'after' },
     );
     if (!cancelled) throw ApiError.conflict('Request is no longer cancellable');
 

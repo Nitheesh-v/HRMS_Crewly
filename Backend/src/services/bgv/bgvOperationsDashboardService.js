@@ -489,7 +489,7 @@ export const updateSlaPolicy = async ({ actorId, input = {}, requestContext = nu
             updatedAt: now,
           },
         },
-        { upsert: true, returnDocument: 'after', new: true }
+        { upsert: true, returnDocument: 'after' }
       ).lean()))();
   // Audit ONLY the configuration write (safe metadata — hour counts and
   // flags, never case data). Dashboard/queue/workload READS are internal

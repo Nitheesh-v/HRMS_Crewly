@@ -501,7 +501,7 @@ export const makeStatutoryService = ({
       const row = await StatutoryReportModel.findOneAndUpdate(
         { companyId, month: resolvedMonth, type },
         update,
-        { new: true, upsert: true, setDefaultsOnInsert: true },
+        { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true },
       );
 
       created.push({ type, status });
@@ -642,7 +642,7 @@ export const makeStatutoryService = ({
     const row = await StatutoryReportModel.findOneAndUpdate(
       { companyId, month: resolvedMonth, type: key },
       update,
-      { new: true },
+      { returnDocument: 'after' },
     );
 
     await writeAudit({
@@ -1324,7 +1324,7 @@ export const makeStatutoryService = ({
           note: String(note || '').slice(0, 300),
         },
       },
-      { new: true, upsert: true, setDefaultsOnInsert: true },
+      { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true },
     );
 
     await writeAudit({

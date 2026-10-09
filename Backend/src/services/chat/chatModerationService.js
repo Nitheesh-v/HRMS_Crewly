@@ -149,7 +149,7 @@ const setConversationLock = async ({
     enable
       ? { $set: { isDisabled: false, disabledAt: null, disabledByUserId: null } }
       : { $set: { isDisabled: true, disabledAt: new Date(), disabledByUserId: actorId } },
-    { new: true },
+    { returnDocument: 'after' },
   ).lean();
 
   await writeAudit({

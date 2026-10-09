@@ -564,7 +564,7 @@ export const rebuildDayProjection = async ({
     const patched = await AttendanceModel.findOneAndUpdate(
       { _id: control._id, companyId },
       { $set: { regularization: overlay, regularized: true } },
-      { new: true },
+      { returnDocument: 'after' },
     );
     return { control: patched, overlayOnly: true };
   }
@@ -710,7 +710,7 @@ export const rebuildDayProjection = async ({
     const patched = await AttendanceModel.findOneAndUpdate(
       { _id: control._id, companyId },
       { $set: patch },
-      { new: true },
+      { returnDocument: 'after' },
     );
     return { control: patched, overlayOnly: false };
   }
@@ -896,7 +896,7 @@ export const decideRegularization = async ({
         authorizationOverride,
       },
     },
-    { new: true },
+    { returnDocument: 'after' },
   );
   // Lost a decide race: refuse, never silently double-decide.
   if (!updated) throw ApiError.conflict('Request is no longer pending');
@@ -995,7 +995,7 @@ export const cancelRegularization = async ({
   const updated = await RequestModel.findOneAndUpdate(
     { _id: row._id, companyId, status: REQUEST_STATUS.PENDING },
     { $set: { status: REQUEST_STATUS.CANCELLED, cancelledBy: viewerId, cancelledAt } },
-    { new: true },
+    { returnDocument: 'after' },
   );
   if (!updated) throw ApiError.conflict('Request is no longer pending');
 

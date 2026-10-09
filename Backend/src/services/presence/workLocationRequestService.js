@@ -395,7 +395,7 @@ export const workLocationRequestService = (deps = {}) => {
           decisionNote: trimmedNote,
         },
       },
-      { new: true },
+      { returnDocument: 'after' },
     );
     if (!updated) {
       throw ApiError.conflict('Request is no longer pending');
@@ -492,7 +492,7 @@ export const workLocationRequestService = (deps = {}) => {
           cancelledBy: actorId,
         },
       },
-      { new: true },
+      { returnDocument: 'after' },
     );
     if (!updated) {
       throw ApiError.conflict('Request is no longer cancellable');

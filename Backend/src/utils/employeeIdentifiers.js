@@ -10,14 +10,14 @@ const nextSequence = async (companyId, key) => {
         $inc: { value: 1 },
         $setOnInsert: { companyId, key },
       },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     );
   } catch (error) {
     if (error.code !== 11000) throw error;
     sequence = await TenantSequence.findOneAndUpdate(
       { companyId, key },
       { $inc: { value: 1 } },
-      { new: true }
+      { returnDocument: 'after' }
     );
   }
   return sequence.value;

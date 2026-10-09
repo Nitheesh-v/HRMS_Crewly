@@ -480,7 +480,7 @@ const claimFinalization = async ({ companyId, target, actorId, full }) => {
         claimedAt: { $lt: new Date(full.now().getTime() - CLAIM_STALE_MS) },
       },
       { $set: { claimedAt: full.now(), claimedBy: actorId, updatedBy: actorId } },
-      { new: true },
+      { returnDocument: 'after' },
     ).lean();
     if (!resumed) {
       throw ApiError.conflict('Finalization is already in progress for this month. Retry shortly.');
@@ -507,7 +507,7 @@ const claimFinalization = async ({ companyId, target, actorId, full }) => {
         },
         $setOnInsert: { companyId, month: target, currentVersion: 0, versions: [] },
       },
-      { new: true, upsert: true },
+      { returnDocument: 'after', upsert: true },
     ).lean();
   } catch (error) {
     if (error?.code === 11000) {
@@ -633,7 +633,7 @@ export const finalizeMonth = async ({ companyId, actor, month, deps = {}, req = 
         },
       },
     },
-    { new: true },
+    { returnDocument: 'after' },
   ).lean();
   if (!completed) {
     throw ApiError.conflict('Finalization claim was lost. Retry finalize to resume.');
@@ -791,7 +791,7 @@ export const sendToPayroll = async ({ companyId, actor, month, deps = {}, req = 
         'versions.$[entry].sentBy': actorId,
       },
     },
-    { new: true, arrayFilters: [{ 'entry.version': version }] },
+    { returnDocument: 'after', arrayFilters: [{ 'entry.version': version }] },
   ).lean();
   if (!marked) {
     const fresh = await full.AttendancePeriodModel.findOne({ companyId, month: target }).lean();
@@ -864,7 +864,7 @@ export const reopenMonth = async ({ companyId, actor, month, reason = '', deps =
         'versions.$[entry].reopenReason': cleanReason,
       },
     },
-    { new: true, arrayFilters: [{ 'entry.version': period.currentVersion }] },
+    { returnDocument: 'after', arrayFilters: [{ 'entry.version': period.currentVersion }] },
   ).lean();
   if (!reopened) {
     throw ApiError.conflict('Reopen claim was lost. Reload and retry.');

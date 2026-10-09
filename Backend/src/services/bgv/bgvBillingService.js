@@ -136,7 +136,7 @@ const defaultLoadLatestToken = (orderId) =>
     .sort({ createdAt: -1 })
     .lean();
 const defaultUpdateOrder = (orderId, set) =>
-  BgvOrder.findOneAndUpdate({ _id: orderId }, { $set: set }, { new: true }).lean();
+  BgvOrder.findOneAndUpdate({ _id: orderId }, { $set: set }, { returnDocument: 'after' }).lean();
 const defaultRevokeActiveTokens = ({ companyId, orderId, reason }) =>
   BgvConsentAccessToken.updateMany(
     { companyId, bgvOrder: orderId, activeKey: 'ACTIVE' },

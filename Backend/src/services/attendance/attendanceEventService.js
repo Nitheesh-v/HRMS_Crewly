@@ -863,7 +863,7 @@ export const recordEvent = async ({
   const updated = await AttendanceModel.findOneAndUpdate(
     { companyId, user: userId, date: control.date, eventSeq: seqFilter },
     { $set: patch, $inc: { eventSeq: 1 } },
-    { new: true },
+    { returnDocument: 'after' },
   );
 
   if (!updated) {

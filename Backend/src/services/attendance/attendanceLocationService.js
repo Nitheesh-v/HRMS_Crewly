@@ -149,7 +149,7 @@ export const updateLocation = async ({
   const updated = await AttendanceLocationModel.findOneAndUpdate(
     { _id: locationId, companyId },
     { $set: patch },
-    { new: true },
+    { returnDocument: 'after' },
   );
   const plain = updated.toObject ? updated.toObject() : updated;
   await auditMutation({ audit, req, action: 'ATTENDANCE_LOCATION_UPDATED', companyId, actor, row: plain });
@@ -169,7 +169,7 @@ export const setLocationActive = async ({
   const updated = await AttendanceLocationModel.findOneAndUpdate(
     { _id: locationId, companyId },
     { $set: { isActive: Boolean(isActive), updatedBy: actor?._id || actor?.id || null } },
-    { new: true },
+    { returnDocument: 'after' },
   );
   if (!updated) throw ApiError.notFound('Attendance location not found');
   const plain = updated.toObject ? updated.toObject() : updated;

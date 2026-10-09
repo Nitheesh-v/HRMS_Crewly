@@ -120,7 +120,7 @@ export const unassignSchedule = async (req, res) => {
     const doc = await WorkSchedule.findOneAndUpdate(
       { _id: req.params.id, companyId: req.user.companyId },
       { $pull: { employees: { $in: userIds }, departments: { $in: departmentIds } } },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (!doc) return fail(res, 404, 'Schedule not found');
     // Data to frontend - response to frontend

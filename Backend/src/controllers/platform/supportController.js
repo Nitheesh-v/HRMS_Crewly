@@ -109,7 +109,7 @@ const updateTicketStatus = asyncHandler(async (req, res) => {
   const ticket = await Ticket.findOneAndUpdate(
     { _id: req.params.id, companyId: req.companyId },
     { $set: { status } },
-    { new: true }
+    { returnDocument: 'after' }
   );
   if (!ticket) return res.status(404).json({ success: false, message: 'Ticket not found' });
 

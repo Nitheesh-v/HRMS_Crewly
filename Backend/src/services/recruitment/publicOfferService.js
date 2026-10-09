@@ -102,7 +102,7 @@ export const recordPublicOfferView = async ({ rawToken, requestContext }) => {
     const updated = await OfferLetter.findOneAndUpdate(
       { _id: offer._id, companyId: offer.companyId, status: 'SENT' },
       { $set: { status: 'VIEWED', viewedAt } },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (updated) {
       let candidateEvent = null;
@@ -236,7 +236,7 @@ const decision = async ({ rawToken, action, rejection = {}, requestContext }) =>
   const updated = await OfferLetter.findOneAndUpdate(
     { _id: offer._id, companyId: offer.companyId, status: previousStatus },
     { $set: set },
-    { new: true, runValidators: true }
+    { returnDocument: 'after', runValidators: true }
   );
   if (!updated) {
     const concurrent = await OfferLetter.findOne({ _id: offer._id, companyId: offer.companyId });

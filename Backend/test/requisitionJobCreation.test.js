@@ -227,7 +227,7 @@ test('approved requisition creates one linked job with tenant-owned approved dat
       status: 'APPROVED',
       jobPosting: null,
     });
-    assert.equal(linkCall.options.new, true);
+    assert.equal(linkCall.options.returnDocument, 'after');
     assert.equal(linkCall.options.runValidators, true);
     assert.equal(linkCall.update.$set.jobPosting, 'job-1');
     assert.equal(

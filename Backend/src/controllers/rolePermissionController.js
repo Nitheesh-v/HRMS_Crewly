@@ -1074,7 +1074,7 @@ export const updateRolePermissions = async (
           },
         },
         {
-          new: true,
+          returnDocument: 'after',
           runValidators: true,
         }
       ).populate('permissions');

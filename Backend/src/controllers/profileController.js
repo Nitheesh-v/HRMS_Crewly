@@ -53,7 +53,7 @@ const updateMyProfile = asyncHandler(async (req, res) => {
     // Data from frontend - requests from frontend
     req.user._id,
     { $set: updates },
-    { new: true, runValidators: true }
+    { returnDocument: 'after', runValidators: true }
   )
     .populate('department', 'name')
     .populate('reportingTo', 'name designation role');

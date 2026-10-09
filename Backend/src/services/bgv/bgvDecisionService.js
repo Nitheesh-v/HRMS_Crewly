@@ -77,7 +77,7 @@ const defaultClaimDecision = async ({
         'bgvDecision.reason': reason,
       },
     },
-    { new: true }
+    { returnDocument: 'after' }
   ).lean();
 
 const defaultReloadCandidate = async ({ companyId, candidateId }) =>

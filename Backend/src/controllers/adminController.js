@@ -165,7 +165,7 @@ const setCompanyStatus = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'status must be ACTIVE or SUSPENDED' });
   }
   // DB Logic - DB logics
-  const company = await Company.findByIdAndUpdate(req.params.id, { status }, { new: true });
+  const company = await Company.findByIdAndUpdate(req.params.id, { status }, { returnDocument: 'after' });
   if (!company) {
     return res.status(404).json({ success: false, message: 'Company not found' });
   }

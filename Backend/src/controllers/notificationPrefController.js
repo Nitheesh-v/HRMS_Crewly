@@ -32,7 +32,7 @@ export const updateMyPrefs = asyncHandler(async (req, res) => {
     // Data from frontend - requests from frontend
     { user: req.user._id },
     { $set: { company: req.companyId, ...clean } },
-    { new: true, upsert: true, setDefaultsOnInsert: true }
+    { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true }
   );
   // Data to frontend - response to frontend
   ok(res, 200, pref, 'Preferences saved');

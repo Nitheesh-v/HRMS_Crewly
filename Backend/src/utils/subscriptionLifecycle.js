@@ -18,7 +18,7 @@ const DEFAULT_REMINDERS = [30, 15, 7, 3, 1];
 //  than one API instance the runs overlap, so every STATUS
 //  TRANSITION is now an atomic Mongo compare-and-set claim:
 //
-//    findOneAndUpdate({ _id, <old-state guard> }, { $set }, { new: true })
+//    findOneAndUpdate({ _id, <old-state guard> }, { $set }, { returnDocument: 'after' })
 //
 //  Exactly one instance wins a given transition; the loser reads
 //  `null` and silently skips the side effects (SubscriptionHistory,
@@ -144,7 +144,7 @@ export const runSubscriptionLifecycle = async (collaborators = {}) => {
         $set: update,
       },
       {
-        new: true,
+        returnDocument: 'after',
       },
     );
 

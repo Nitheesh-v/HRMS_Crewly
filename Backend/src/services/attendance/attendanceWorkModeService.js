@@ -468,7 +468,7 @@ export const decideWorkModeRequest = async ({
         decidedAt,
       },
     },
-    { new: true },
+    { returnDocument: 'after' },
   );
   // Lost a decide race (or left PENDING concurrently): refuse, never
   // silently double-decide.
@@ -558,7 +558,7 @@ export const cancelWorkModeRequest = async ({
   const updated = await RequestModel.findOneAndUpdate(
     { _id: row._id, companyId, status: fromStatus },
     { $set: { status: REQUEST_STATUS.CANCELLED, cancelledBy: viewerId, cancelledAt } },
-    { new: true },
+    { returnDocument: 'after' },
   );
   if (!updated) throw ApiError.conflict('Request changed while cancelling — please retry');
 
