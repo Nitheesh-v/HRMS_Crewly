@@ -68,7 +68,7 @@ const startServer = async () => {
     const permissionCount = (await ensurePermissions()).length;
 
     logger.info(
-      `🛡️ System permission catalogue verified: ${permissionCount} permissions (v36)`
+      `🛡️ System permission catalogue verified: ${permissionCount} permissions (v${getSystemPermissionVersion()})`
     );
 
     // Phase 28.1 — optional Redis infrastructure. Never throws at the
