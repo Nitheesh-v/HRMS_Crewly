@@ -136,10 +136,15 @@ different options → IndexOptionsConflict). Against the cluster/database in the
    Each should list an entry with `unique: true, partialFilterExpression: { isCurrent: true }`.
 
 ### Reported, NOT changed (payroll domain — needs authorization)
-The `errors` reserved-schema-path warning comes from payroll models using `errors` as a
+> **Correction (2026-10-09, per-model isolation):** only
+> `PayrollPaymentBatch.js` `excludedSchema.errors` actually emits the warning;
+> `PayrollRun.js`'s plain-nested `progress.errors` / `summary.errors` never did (plain
+> nested object paths don't reach Mongoose's reserved check). The original text below
+> over-attributed because Node prints the identical warning once per process.
+
+The `errors` reserved-schema-path warning comes from a payroll model using `errors` as a
 plain data field (Mongoose reserves the name for validation errors):
-`PayrollPaymentBatch.js` `excludedSchema.errors: [String]` (exclusion reason codes) and
-`PayrollRun.js` `progress.errors` / `summary.errors` (Number counters). They work today
+`PayrollPaymentBatch.js` `excludedSchema.errors: [String]` (exclusion reason codes). They work today
 because they are data-only subdocument fields. Options: (a) rename + one-time data
 migration, or (b) `suppressReservedKeysWarning: true` on those schemas. Payroll is out of
 bounds for this unit — say the word and it becomes its own small unit.
