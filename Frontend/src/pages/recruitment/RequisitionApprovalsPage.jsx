@@ -288,17 +288,22 @@ const RequisitionApprovalsPage = () => {
         normalizedComment
       );
 
+      const rawJob = decisionModal.decision === 'APPROVED'
+        ? result?.jobPosting?._id || result?.jobPosting || null
+        : null;
+      const jobId = typeof rawJob === 'string' ? rawJob : rawJob?._id || null;
+
       const successMessage = {
-        APPROVED: `${result.requisitionNumber} approved — job posting created as a draft`,
+        APPROVED: `${result.requisitionNumber} approved${jobId ? ' — job posting created as a draft' : ' — next: create the job posting'}`,
         REJECTED: `${result.requisitionNumber} rejected`,
         SENT_BACK: `${result.requisitionNumber} sent back for changes`,
       }[decisionModal.decision];
 
       if (decisionModal.decision === 'APPROVED') {
-        const rawJob = result?.jobPosting?._id || result?.jobPosting || null;
         setJustApproved({
           number: result.requisitionNumber,
-          jobId: typeof rawJob === 'string' ? rawJob : rawJob?._id || null,
+          requisitionId: decisionModal.requisition._id,
+          jobId,
         });
       }
 
@@ -373,15 +378,17 @@ const RequisitionApprovalsPage = () => {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-emerald-200">
-                ✓ {justApproved.number} approved — the job posting was created as a draft
+                ✓ {justApproved.number} approved
+                {justApproved.jobId ? ' — the job posting was created as a draft' : ''}
               </p>
               <p className="mt-1 text-xs text-slate-300">
-                Open it, give it a final look, and publish. Published jobs appear on the
-                careers page and in every employee&apos;s Job Referrals.
+                {justApproved.jobId
+                  ? 'Open it, give it a final look, and publish. Published jobs appear on the careers page and in every employee’s Job Referrals.'
+                  : 'Next: create the job posting from this approval, give it a final look, and publish — published jobs appear on the careers page and in every employee’s Job Referrals.'}
               </p>
             </div>
             <div className="flex gap-2">
-              {justApproved.jobId && (
+              {justApproved.jobId ? (
                 <button
                   type="button"
                   className="btn-primary gap-2 !px-3 !py-2 text-xs"
@@ -392,6 +399,18 @@ const RequisitionApprovalsPage = () => {
                   }}
                 >
                   Open job posting
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn-primary gap-2 !px-3 !py-2 text-xs"
+                  onClick={() => {
+                    const target = justApproved.requisitionId;
+                    setJustApproved(null);
+                    navigate(`/app/recruitment/legacy?requisition=${target}`);
+                  }}
+                >
+                  Create job posting
                 </button>
               )}
               <button

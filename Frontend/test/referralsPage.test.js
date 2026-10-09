@@ -107,13 +107,18 @@ test('the candidate model carries the REFERRAL source and the referrer', async (
 
 test('approving a requisition hands the reviewer to the next step, not a dead end', async () => {
   const page = await read('src/pages/recruitment/RequisitionApprovalsPage.jsx');
-  // the toast names what actually happened…
-  assert.match(page, /approved — job posting created as a draft/);
-  // …and a persistent banner offers the one-click continuation
+  // the handoff is truthful for BOTH branches — approve does NOT auto-create
+  // the posting; the reviewer creates it in a separate one-time step.
+  assert.match(page, /jobId \? ' — job posting created as a draft' : ' — next: create the job posting'/);
   assert.match(page, /justApproved && \(/);
   assert.match(page, /the job posting was created as a draft/);
+  assert.match(page, /Next: create the job posting from this approval/);
   assert.match(page, /Open job posting/);
+  assert.match(page, /Create job posting/);
   assert.match(page, /careers page and in every employee/);
+  // both continuation deep links exist
+  assert.match(page, /legacy\?job=\$\{target\}/);
+  assert.match(page, /legacy\?requisition=\$\{target\}/);
 });
 
 test('the requisition drawer shows the next step as a section, not a buried button', async () => {
