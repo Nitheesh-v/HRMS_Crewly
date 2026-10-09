@@ -92,10 +92,21 @@ test('one CURRENT AttendancePolicy per tenant is enforced by exactly one partial
 
 test('the boot log reports the real permission-catalogue version, not a hardcoded one', async () => {
   const source = await readFile(join(testDir, '..', 'src', 'server.js'), 'utf8');
+  // The call must be there…
   assert.match(
     source,
     /getSystemPermissionVersion\(\)/,
     'the permission-catalogue log line must interpolate the live version constant',
+  );
+  // …AND the identifier must actually be imported. A call without the import
+  // passes every source grep and then kills the server at boot with
+  // "getSystemPermissionVersion is not defined" — which is exactly what
+  // shipped once. No test executes server.js (it connects the database), so
+  // this pin is the only guard for the binding.
+  assert.match(
+    source,
+    /import\s*\{[^}]*getSystemPermissionVersion[^}]*\}\s*from\s*['"]\.\/utils\/permissionService\.js['"]/,
+    'getSystemPermissionVersion must be imported from ./utils/permissionService.js in server.js',
   );
   assert.doesNotMatch(
     source,
