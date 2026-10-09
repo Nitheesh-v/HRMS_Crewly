@@ -102,3 +102,36 @@ test('the candidate model carries the REFERRAL source and the referrer', async (
   assert.match(model, /CANDIDATE_SOURCES = \['INTERNAL', 'CAREER_PAGE', 'REFERRAL'\]/);
   assert.match(model, /referredBy: \{ type: mongoose\.Schema\.Types\.ObjectId, ref: 'User', default: null \}/);
 });
+
+// ── post-requisition handoff (the "bad UX after approving" fix) ────────────
+
+test('approving a requisition hands the reviewer to the next step, not a dead end', async () => {
+  const page = await read('src/pages/recruitment/RequisitionApprovalsPage.jsx');
+  // the toast names what actually happened…
+  assert.match(page, /approved — job posting created as a draft/);
+  // …and a persistent banner offers the one-click continuation
+  assert.match(page, /justApproved && \(/);
+  assert.match(page, /the job posting was created as a draft/);
+  assert.match(page, /Open job posting/);
+  assert.match(page, /careers page and in every employee/);
+});
+
+test('the requisition drawer shows the next step as a section, not a buried button', async () => {
+  const page = await read('src/pages/recruitment/RequisitionsPage.jsx');
+  assert.match(page, /Next step: the job posting/);
+  assert.match(page, /Open job posting/);
+  assert.match(page, /Create job posting/);
+  // the old buried header-row button is gone
+  assert.doesNotMatch(page, /Open created job/);
+  // the user-facing tab no longer says "legacy"
+  assert.doesNotMatch(page, /Existing jobs/);
+  assert.match(page, /Job postings &amp; pipeline/);
+});
+
+test('job-save feedback tells the truth about draft vs published', async () => {
+  const page = await read('src/pages/recruitment/RecruitmentPage.jsx');
+  assert.match(page, /Job published — now visible on the careers page and in employee Job Referrals/);
+  assert.match(page, /Job saved as draft — publish it when it is ready/);
+  // the misleading unconditional toast is gone
+  assert.doesNotMatch(page, /flash\('success', 'Job posted'\)/);
+});

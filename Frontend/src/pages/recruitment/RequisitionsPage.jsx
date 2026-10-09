@@ -492,7 +492,7 @@ const RequisitionsPage = () => {
             to="/app/recruitment/legacy"
             className="px-1 pb-3 text-slate-400 transition hover:text-slate-200"
           >
-            Existing jobs & candidate pipeline
+            Job postings &amp; pipeline
           </Link>
         )}
         {canReview && (
@@ -833,8 +833,31 @@ const RequisitionsPage = () => {
                 <StatusBadge status={detail.status} />
                 <span className={`text-xs font-semibold ${PRIORITY_STYLE[detail.priority]}`}>{enumLabel(detail.priority)} priority</span>
                 <span className="text-xs text-slate-500">Requested by {detail.requester?.name || detail.requesterName || 'Unknown'}</span>
-                {detail.status === 'APPROVED' && canCreateJob && (
-                  <div className="ml-auto">
+{canManageRecord(detail) && ['DRAFT', 'SENT_BACK'].includes(detail.status) && (
+                  <div className="ml-auto flex gap-2">
+                    <button type="button" className="btn-ghost gap-2 !px-3 !py-2 text-xs" onClick={() => { setDetail(null); openEdit(detail); }}>
+                      <FilePenLine className="h-3.5 w-3.5" /> Edit
+                    </button>
+                    <button type="button" className="btn-primary gap-2 !px-3 !py-2 text-xs" onClick={() => setSubmitTarget(detail)}>
+                      <Send className="h-3.5 w-3.5" /> Submit to HR
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {detail.status === 'APPROVED' && canCreateJob && (
+                <section className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-emerald-200">
+                        Next step: the job posting
+                      </h3>
+                      <p className="mt-1 max-w-2xl text-xs text-slate-400">
+                        {detail.jobPosting
+                          ? 'This approval already has a job posting. Open it, give it a final look, and publish — published jobs appear on the careers page and in every employee\u2019s Job Referrals.'
+                          : 'Turn this approval into a job posting. Once published, it appears on the careers page and in every employee\u2019s Job Referrals.'}
+                      </p>
+                    </div>
                     <button
                       type="button"
                       className="btn-primary gap-2 !px-3 !py-2 text-xs"
@@ -849,21 +872,11 @@ const RequisitionsPage = () => {
                       }}
                     >
                       <BriefcaseBusiness className="h-3.5 w-3.5" />
-                      {detail.jobPosting ? 'Open created job' : 'Create job from approval'}
+                      {detail.jobPosting ? 'Open job posting' : 'Create job posting'}
                     </button>
                   </div>
-                )}
-                {canManageRecord(detail) && ['DRAFT', 'SENT_BACK'].includes(detail.status) && (
-                  <div className="ml-auto flex gap-2">
-                    <button type="button" className="btn-ghost gap-2 !px-3 !py-2 text-xs" onClick={() => { setDetail(null); openEdit(detail); }}>
-                      <FilePenLine className="h-3.5 w-3.5" /> Edit
-                    </button>
-                    <button type="button" className="btn-primary gap-2 !px-3 !py-2 text-xs" onClick={() => setSubmitTarget(detail)}>
-                      <Send className="h-3.5 w-3.5" /> Submit to HR
-                    </button>
-                  </div>
-                )}
-              </div>
+                </section>
+              )}
 
               <section>
                 <h3 className="mb-3 text-sm font-semibold text-slate-200">Requirement details</h3>

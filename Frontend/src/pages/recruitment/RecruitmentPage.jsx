@@ -394,7 +394,12 @@ const RecruitmentPage = () => {
 
       if (jobModal.editing) {
         await recruitmentService.updateJob(jobModal.editing._id, payload);
-        flash('success', 'Job updated');
+        flash(
+          'success',
+          payload.publicationStatus === 'PUBLISHED'
+            ? 'Job published — now visible on the careers page and in employee Job Referrals'
+            : 'Job saved as draft — publish it when it is ready'
+        );
       } else if (jobModal.requisition) {
         createdJob = await requisitionService.createJob(
           jobModal.requisition._id,
@@ -402,11 +407,16 @@ const RecruitmentPage = () => {
         );
         flash(
           'success',
-          `${createdJob.title} created from ${jobModal.requisition.requisitionNumber}`
+          `${createdJob.title} created from ${jobModal.requisition.requisitionNumber} — open it to review and publish`
         );
       } else {
         createdJob = await recruitmentService.createJob(payload);
-        flash('success', 'Job posted');
+        flash(
+          'success',
+          payload.publicationStatus === 'PUBLISHED'
+            ? 'Job published — now visible on the careers page and in employee Job Referrals'
+            : 'Job saved as draft — publish it when it is ready'
+        );
       }
 
       setJobModal({ open: false, editing: null, requisition: null });

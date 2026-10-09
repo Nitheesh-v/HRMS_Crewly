@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
   BadgeCheck,
@@ -160,6 +160,7 @@ const RequisitionApprovalsPage = () => {
     'REQUISITION_SEND_BACK',
   ]);
 
+  const navigate = useNavigate();
   const [queue, setQueue] = useState([]);
   const [summary, setSummary] = useState({});
   const [search, setSearch] = useState('');
@@ -171,6 +172,10 @@ const RequisitionApprovalsPage = () => {
   const [comment, setComment] = useState('');
   const [decisionError, setDecisionError] = useState('');
   const [busy, setBusy] = useState(false);
+  // Post-approval handoff — after an approve, say WHAT happened (a job
+  // posting was created as a draft) and give the reviewer a one-click way
+  // to continue, instead of a dead-end toast.
+  const [justApproved, setJustApproved] = useState(null);
 
   /*
    * 35.1 — feedback is a toast now. The signature is unchanged so every call
@@ -284,10 +289,18 @@ const RequisitionApprovalsPage = () => {
       );
 
       const successMessage = {
-        APPROVED: `${result.requisitionNumber} approved`,
+        APPROVED: `${result.requisitionNumber} approved — job posting created as a draft`,
         REJECTED: `${result.requisitionNumber} rejected`,
         SENT_BACK: `${result.requisitionNumber} sent back for changes`,
       }[decisionModal.decision];
+
+      if (decisionModal.decision === 'APPROVED') {
+        const rawJob = result?.jobPosting?._id || result?.jobPosting || null;
+        setJustApproved({
+          number: result.requisitionNumber,
+          jobId: typeof rawJob === 'string' ? rawJob : rawJob?._id || null,
+        });
+      }
 
       setDecisionModal(null);
       setDetail(null);
@@ -351,6 +364,47 @@ const RequisitionApprovalsPage = () => {
           Refresh queue
         </button>
       </header>
+
+      {justApproved && (
+        <section
+          className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4"
+          role="status"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-emerald-200">
+                ✓ {justApproved.number} approved — the job posting was created as a draft
+              </p>
+              <p className="mt-1 text-xs text-slate-300">
+                Open it, give it a final look, and publish. Published jobs appear on the
+                careers page and in every employee&apos;s Job Referrals.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              {justApproved.jobId && (
+                <button
+                  type="button"
+                  className="btn-primary gap-2 !px-3 !py-2 text-xs"
+                  onClick={() => {
+                    const target = justApproved.jobId;
+                    setJustApproved(null);
+                    navigate(`/app/recruitment/legacy?job=${target}`);
+                  }}
+                >
+                  Open job posting
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn-ghost !px-3 !py-2 text-xs"
+                onClick={() => setJustApproved(null)}
+              >
+                Later
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
 
       <nav className="flex gap-6 overflow-x-auto border-b border-slate-800 text-sm">
         <Link
