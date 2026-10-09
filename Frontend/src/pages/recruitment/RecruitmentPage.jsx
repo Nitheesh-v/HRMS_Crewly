@@ -368,6 +368,17 @@ const RecruitmentPage = () => {
 
   const saveJob = async (event) => {
     event.preventDefault();
+
+    // Same contract the backend enforces (PATCH /jobs/:id — title 3–120).
+    // Caught here so the user fixes it at the field, not in a toast.
+    if (String(jobForm.title || '').trim().length < 3) {
+      flash(
+        'error',
+        'Job title must be at least 3 characters — e.g. change "hr" to "HR Executive" — then save again'
+      );
+      return;
+    }
+
     setBusy(true);
 
     try {
@@ -427,7 +438,14 @@ const RecruitmentPage = () => {
         setSearchParams({ job: createdJob._id }, { replace: true });
       }
     } catch (error) {
-      flash('error', errText(error));
+      // Prefer the backend's per-field messages (validators attach `errors`)
+      // over the generic top-level message, so "Title must be 3–120
+      // characters" beats an unexplained "Invalid value".
+      const fieldErrors = error?.response?.data?.errors;
+      const detail = Array.isArray(fieldErrors) && fieldErrors.length
+        ? fieldErrors.map((e) => e.message).join(' · ')
+        : errText(error);
+      flash('error', detail);
     } finally {
       setBusy(false);
     }

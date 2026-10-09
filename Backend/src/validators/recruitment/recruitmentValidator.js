@@ -73,12 +73,12 @@ export const createJobRules = [
 ];
 
 export const updateJobRules = [
-  body('title').optional({ values: 'falsy' }).trim().isLength({ min: 3, max: 120 }),
+  body('title').optional({ values: 'falsy' }).trim().isLength({ min: 3, max: 120 }).withMessage('Title must be 3–120 characters'),
   body('department').optional({ values: 'falsy' }).isMongoId().withMessage('Invalid department'),
-  body('location').optional({ values: 'falsy' }).trim().isLength({ max: 80 }),
+  body('location').optional({ values: 'falsy' }).trim().isLength({ max: 80 }).withMessage('Location must be 80 characters or fewer'),
   body('employmentType').optional({ values: 'falsy' }).isIn(EMPLOYMENT_TYPES).withMessage('Invalid employment type'),
   body('openings').optional({ values: 'falsy' }).isInt({ min: 1, max: 500 }).withMessage('Openings must be 1–500'),
-  body('description').optional().trim().isLength({ max: 2000 }),
+  body('description').optional().trim().isLength({ max: 2000 }).withMessage('Description must be 2000 characters or fewer'),
   body('status').optional({ values: 'falsy' }).isIn(JOB_STATUS).withMessage('Invalid job status'),
   body('publicationStatus')
     .optional({ values: 'falsy' })

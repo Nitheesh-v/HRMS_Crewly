@@ -135,3 +135,25 @@ test('job-save feedback tells the truth about draft vs published', async () => {
   // the misleading unconditional toast is gone
   assert.doesNotMatch(page, /flash\('success', 'Job posted'\)/);
 });
+
+// ── the "Invalid value" toast (2-char job title from a requisition) ────────
+
+test('the job form catches a too-short title before the server does', async () => {
+  const page = await read('src/pages/recruitment/RecruitmentPage.jsx');
+  assert.match(
+    page,
+    /Job title must be at least 3 characters — e\.g\. change "hr" to "HR Executive" — then save again/,
+    'saveJob must guard the title contract with a fix-it message',
+  );
+  // and backend field errors are surfaced per-field instead of a bare toast
+  assert.match(page, /response\?\.data\?\.errors/);
+});
+
+test('the backend update validator names the field instead of "Invalid value"', async () => {
+  const validator = await read('../Backend/src/validators/recruitment/recruitmentValidator.js');
+  const block = validator.slice(
+    validator.indexOf('export const updateJobRules'),
+    validator.indexOf('export const candidateRules'),
+  );
+  assert.match(block, /isLength\(\{ min: 3, max: 120 \}\)\.withMessage\('Title must be 3–120 characters'\)/);
+});
