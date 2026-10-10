@@ -8,6 +8,7 @@ import {
   getMonthlyReport,
 } from '../../controllers/attendance/attendanceController.js';
 import {
+  getMyWeeklyTarget,
   getTodayLive,
   postEvent,
 } from '../../controllers/attendance/attendanceEventController.js';
@@ -129,6 +130,17 @@ router.get(
     'ATTENDANCE_READ',
   ]),
   getMyToday
+);
+
+// Weekly-hours flexi policy — running Mon→Sun context for the dashboard
+// chip. Read-only; reuses the established self-read permissions.
+router.get(
+  '/weekly-target',
+  requireAnyPermission([
+    'ATTENDANCE_READ_SELF',
+    'ATTENDANCE_READ',
+  ]),
+  getMyWeeklyTarget
 );
 
 // Phase 31.2 — advanced self-service punching. Reuses the established

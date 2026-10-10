@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
 import { dashboardService } from "../../services/selfService";
+import attendanceWeeklyTargetService from "../../services/attendanceWeeklyTargetService.js";
 import useAuth from "../../hooks/useAuth";
 import { notify } from '../../utils/notify.js';
 import PresenceIndicator from "../../components/presence/PresenceIndicator.jsx";
@@ -142,6 +143,11 @@ const DashboardPage = () => {
   const [data, setData] = useState(null);
   const [team, setTeam] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Weekly-hours flexi target — running Mon→Sun context for the chip.
+  // Silent on failure: the chip is additive, the card works without it
+  // (policy disabled → the endpoint still answers with enabled:false,
+  // but a network error must never disturb the dashboard).
+  const [weekTarget, setWeekTarget] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -162,6 +168,14 @@ const DashboardPage = () => {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Weekly-hours flexi policy chip — one small read; silent on failure.
+  useEffect(() => {
+    attendanceWeeklyTargetService
+      .weeklyTarget()
+      .then((res) => setWeekTarget(res?.data || null))
+      .catch(() => setWeekTarget(null));
+  }, []);
 
   // 37.4 — load the team presence rows so the My Team tile can show
   // a presence dot + work-location chip per row. The slice maintains
@@ -250,6 +264,39 @@ const DashboardPage = () => {
             {today ? "Go to Attendance →" : "Mark Attendance →"}
           </Link>
         </div>
+        {weekTarget?.enabled ? (
+          <div className="mt-4 border-t border-white/10 pt-3">
+            {(() => {
+              const done = Math.max(0, Number(weekTarget.achievedMinutes) || 0);
+              const goal = Math.max(1, Number(weekTarget.targetMinutes) || 1);
+              const pct = Math.min(100, Math.round((done / goal) * 100));
+              const h = (m) => (Math.round((m / 60) * 10) / 10).toString();
+              return (
+                <>
+                  <div className="mb-1.5 flex items-center justify-between text-[11px]">
+                    <span className="text-crewly-dim">
+                      Weekly hours goal{weekTarget.qualified ? " — met 🎉" : ""}
+                    </span>
+                    <span className="font-semibold text-crewly-text">
+                      {h(done)}h / {h(goal)}h
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className={`h-full rounded-full ${weekTarget.qualified ? "bg-crewly-green" : "bg-crewly-green/60"}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-crewly-dim">
+                    {weekTarget.qualified
+                      ? "Remaining working days this week are earned rest — paid, no leave deducted. Punch in any day you feel like working."
+                      : `${h(goal - done)}h more this week unlocks paid earned rest for the remaining working days.`}
+                  </p>
+                </>
+              );
+            })()}
+          </div>
+        ) : null}
       </div>
 
 

@@ -842,7 +842,9 @@ test('compat: legacy Attendance contract and routes are intact', async () => {
   ['companyId', 'user', 'date', 'punchIn', 'punchOut', 'workMinutes', 'status', 'shift', 'schedule', 'shiftSource', 'lateMinutes', 'earlyMinutes', 'overtimeMinutes'].forEach(
     (field) => assert.ok(paths[field], `Attendance.${field} still exists`),
   );
-  assert.deepEqual([...AttendanceReal.default.schema.paths.status.enumValues], ['PRESENT', 'LATE', 'HALF_DAY']);
+  // Legacy values are intact; WEEKLY_TARGET_OFF is the additive
+  // weekly-hours flexi status (never written by the legacy punch paths).
+  assert.deepEqual([...AttendanceReal.default.schema.paths.status.enumValues], ['PRESENT', 'LATE', 'HALF_DAY', 'WEEKLY_TARGET_OFF']);
 
   const routesSource = await readFile(new URL('../src/routes/attendance/attendanceRoutes.js', import.meta.url), 'utf8');
   ['/punch-in', '/punch-out', '/today', '/my', '/company', '/report', '/events', '/today/live'].forEach(

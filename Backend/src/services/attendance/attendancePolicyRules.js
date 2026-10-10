@@ -394,6 +394,7 @@ export const validatePolicy = (policy = {}) => {
     ...validateBreaks(policy.breaks),
     ...validateMissingPunch(policy.missingPunch),
     ...validateOvertime(policy.overtime),
+    ...validateWeeklyTarget(policy.weeklyTarget),
     ...validateWeekendHoliday(policy.weekendHoliday),
     ...validateWorkModes(policy.workModes),
     ...validateWorkModeApproval(policy.workModeApproval),
@@ -401,6 +402,57 @@ export const validatePolicy = (policy = {}) => {
   );
 
   return { valid: errors.length === 0, errors };
+};
+
+// ── Weekly-hours flexi target (owner unit) ───────────────────
+// A weekly goal between 1h and 7×24h; the rest-day behaviour is either
+// AUTO_MARK (system writes the earned-rest rows) or SUGGEST_ONLY.
+export const WEEKLY_TARGET_LIMITS = Object.freeze({
+  minMinutes: 60,
+  maxMinutes: 10080, // 7 × 24h
+});
+
+export const validateWeeklyTarget = (weeklyTarget = {}) => {
+  const errors = [];
+
+  // Absent/legacy blocks default to the disabled defaults — validating the
+  // effective values keeps legacy policies valid while still rejecting
+  // garbage when HR actually sends the block.
+  const block = !weeklyTarget || typeof weeklyTarget !== 'object'
+    ? {}
+    : weeklyTarget;
+  const effective = {
+    enabled: block.enabled === undefined ? false : block.enabled,
+    targetMinutes: block.targetMinutes === undefined ? 2400 : block.targetMinutes,
+    restDayMode: block.restDayMode === undefined ? 'AUTO_MARK' : block.restDayMode,
+    includeApprovedOvertime: block.includeApprovedOvertime === undefined
+      ? false
+      : block.includeApprovedOvertime,
+  };
+
+  if (typeof effective.enabled !== 'boolean') {
+    errors.push('weeklyTarget.enabled must be a boolean');
+  }
+
+  if (
+    !isInt(effective.targetMinutes) ||
+    effective.targetMinutes < WEEKLY_TARGET_LIMITS.minMinutes ||
+    effective.targetMinutes > WEEKLY_TARGET_LIMITS.maxMinutes
+  ) {
+    errors.push(
+      `weeklyTarget.targetMinutes must be an integer between ${WEEKLY_TARGET_LIMITS.minMinutes} and ${WEEKLY_TARGET_LIMITS.maxMinutes}`,
+    );
+  }
+
+  if (!['AUTO_MARK', 'SUGGEST_ONLY'].includes(effective.restDayMode)) {
+    errors.push('weeklyTarget.restDayMode must be AUTO_MARK or SUGGEST_ONLY');
+  }
+
+  if (typeof effective.includeApprovedOvertime !== 'boolean') {
+    errors.push('weeklyTarget.includeApprovedOvertime must be a boolean');
+  }
+
+  return errors;
 };
 
 // ── Classification primitives (pure) ─────────────────────────

@@ -256,6 +256,20 @@ const buildDay = ({
     bucket = TIMESHEET_OUTCOME.UNRESOLVED;
   }
 
+  // Weekly-hours flexi policy — a materialized earned-rest day is PAID
+  // rest with weekly-off parity: never absent, zero fractions, no
+  // missing-punch noise (there are no punches by design). The weekly
+  // target block rides on the day for labels and analytics.
+  const weeklyRestMeta = !isFuture && control?.status === 'WEEKLY_TARGET_OFF'
+    ? control?.weeklyTarget || null
+    : null;
+  if (weeklyRestMeta) {
+    bucket = TIMESHEET_OUTCOME.WEEKLY_OFF;
+    fractions.worked = 0;
+    fractions.leave = 0;
+    fractions.absent = 0;
+  }
+
   const effectiveMode = control?.regularization?.correctedWorkMode || control?.workMode || null;
   const hasSession = Boolean(workFacts.effectiveIn || workFacts.effectiveOut);
   const openNow = isToday && control && OPEN_STATES.includes(control.liveState);
@@ -364,6 +378,13 @@ const buildDay = ({
       approvedTypes: [...new Set(approvedRegs.map((row) => row?.type).filter(Boolean))],
     },
     regularized: control?.regularization?.appliedAt != null,
+    weeklyTarget: weeklyRestMeta
+      ? {
+        weekStart: weeklyRestMeta.weekStart || null,
+        targetMinutes: weeklyRestMeta.targetMinutes ?? null,
+        achievedMinutes: weeklyRestMeta.achievedMinutes ?? null,
+      }
+      : null,
     exceptions,
     conflicts: isFuture ? [] : safeCodes(resolution?.conflicts),
     needsReview: isFuture ? false : resolution?.needsReview === true,

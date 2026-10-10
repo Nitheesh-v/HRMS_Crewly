@@ -15,6 +15,7 @@ import {
   MoonStar,
   Save,
   ShieldCheck,
+  Target,
 } from 'lucide-react';
 import usePermission from '../../hooks/usePermission.js';
 import attendancePolicyService from '../../services/attendancePolicyService.js';
@@ -39,6 +40,14 @@ const DEFAULT_FORM = {
     weeklyOffBenefit: 'NONE',
     holidayBenefit: 'NONE',
     compOffMinutesPerDay: 480,
+  },
+  // Weekly-hours flexi target — OFF by default; the form keeps the goal in
+  // whole hours for readability and the payload converts to minutes.
+  weeklyTarget: {
+    enabled: false,
+    targetHours: 40,
+    restDayMode: 'AUTO_MARK',
+    includeApprovedOvertime: false,
   },
   weekendHoliday: { allowWorkOnWeeklyOff: true, allowWorkOnHoliday: true },
   workModes: { office: true, wfh: false, field: false, clientSite: false, businessTravel: false },
@@ -88,6 +97,14 @@ const toForm = (policy) => {
       weeklyOffBenefit: policy.overtime?.weeklyOffBenefit ?? 'NONE',
       holidayBenefit: policy.overtime?.holidayBenefit ?? 'NONE',
       compOffMinutesPerDay: policy.overtime?.compOffMinutesPerDay ?? 480,
+    },
+    weeklyTarget: {
+      enabled: policy.weeklyTarget?.enabled ?? false,
+      targetHours: policy.weeklyTarget?.targetMinutes != null
+        ? Math.round((Number(policy.weeklyTarget.targetMinutes) / 60) * 100) / 100
+        : 40,
+      restDayMode: policy.weeklyTarget?.restDayMode ?? 'AUTO_MARK',
+      includeApprovedOvertime: policy.weeklyTarget?.includeApprovedOvertime ?? false,
     },
     weekendHoliday: {
       allowWorkOnWeeklyOff: policy.weekendHoliday?.allowWorkOnWeeklyOff ?? true,
@@ -165,6 +182,12 @@ const toPayload = (form, expectedConfigVersion) => ({
     weeklyOffBenefit: form.overtime.weeklyOffBenefit || 'NONE',
     holidayBenefit: form.overtime.holidayBenefit || 'NONE',
     compOffMinutesPerDay: Number(form.overtime.compOffMinutesPerDay) || 480,
+  },
+  weeklyTarget: {
+    enabled: Boolean(form.weeklyTarget.enabled),
+    targetMinutes: Math.round(Number(form.weeklyTarget.targetHours || 0) * 60) || 2400,
+    restDayMode: form.weeklyTarget.restDayMode || 'AUTO_MARK',
+    includeApprovedOvertime: Boolean(form.weeklyTarget.includeApprovedOvertime),
   },
   weekendHoliday: {
     allowWorkOnWeeklyOff: Boolean(form.weekendHoliday.allowWorkOnWeeklyOff),
@@ -852,6 +875,49 @@ const AttendancePolicyPage = () => {
               onChange={(value) => setSection('overtime', 'compOffMinutesPerDay', value)}
             />
           </div>
+        </div>
+      </Section>
+
+      <Section icon={Target} title="Weekly hours target (flexi week)">
+        <div className="space-y-3">
+          <Toggle
+            label="Enable weekly hours target"
+            checked={form.weeklyTarget.enabled}
+            disabled={readOnly}
+            hint="Employees who finish their weekly hours goal early get the remaining working days as paid earned rest — never absent, never LOP, no leave deducted."
+            onChange={(value) => setSection('weeklyTarget', 'enabled', value)}
+          />
+          <div className="max-w-xs">
+            <NumberField
+              label="Weekly hours goal (hours)"
+              value={form.weeklyTarget.targetHours}
+              disabled={readOnly || !form.weeklyTarget.enabled}
+              min={1}
+              onChange={(value) => setSection('weeklyTarget', 'targetHours', value)}
+            />
+          </div>
+          <div className="max-w-xs">
+            <label className="label">After the goal is met</label>
+            <select
+              className="input w-full"
+              value={form.weeklyTarget.restDayMode}
+              disabled={readOnly || !form.weeklyTarget.enabled}
+              onChange={(event) => setSection('weeklyTarget', 'restDayMode', event.target.value)}
+            >
+              <option value="AUTO_MARK">Auto-mark remaining days as earned rest</option>
+              <option value="SUGGEST_ONLY">Only suggest (no auto-marking)</option>
+            </select>
+            <p className="mt-1 text-xs text-crewly-dim">
+              Earned rest applies only to days with no punches and no approved leave; the week runs Monday→Sunday and hours never carry over.
+            </p>
+          </div>
+          <Toggle
+            label="Count approved overtime toward the goal"
+            checked={form.weeklyTarget.includeApprovedOvertime}
+            disabled={readOnly || !form.weeklyTarget.enabled}
+            hint="Off by default — regular worked hours only. Punching in on an earned-rest day simply makes it a normal worked day."
+            onChange={(value) => setSection('weeklyTarget', 'includeApprovedOvertime', value)}
+          />
         </div>
       </Section>
 

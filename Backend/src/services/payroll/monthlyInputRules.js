@@ -553,6 +553,10 @@ export const computeAutomaticSummary = ({
     presentDays: 0,
     lateMarks: 0,
     halfDays: 0,
+    // Weekly-hours flexi policy — earned rest (paid, never absent, never
+    // LOP). Counted as paid non-working days beside the present total so
+    // the absent math below can subtract them from workingDays.
+    weeklyTargetOffDays: 0,
     absentDays: 0,
     paidLeaveDays: 0,
     // §7 — the leave split (casual / sick / earned / other) is kept beside the
@@ -577,6 +581,11 @@ export const computeAutomaticSummary = ({
   (attendance || []).forEach((row) => {
     if (row.status === 'HALF_DAY') summary.halfDays += 1;
     else if (row.status === 'PRESENT' || row.status === 'LATE') summary.presentDays += 1;
+    // Weekly-hours flexi policy — an earned-rest day is paid time off the
+    // employee already covered by finishing the weekly hours goal early.
+    // It MUST count toward `counted` below or it would fall through to
+    // absentDays → LOP, which the policy explicitly forbids.
+    else if (row.status === 'WEEKLY_TARGET_OFF') summary.weeklyTargetOffDays += 1;
     if (Number(row.lateMinutes) > 0) summary.lateMarks += 1;
     summary.otMinutes += Number(row.overtimeMinutes) || 0;
 
@@ -602,7 +611,7 @@ export const computeAutomaticSummary = ({
     }
   });
 
-  const counted = summary.presentDays + summary.halfDays * 0.5;
+  const counted = summary.presentDays + summary.halfDays * 0.5 + summary.weeklyTargetOffDays;
   summary.absentDays = Math.max(0, Math.round((summary.workingDays - counted) * 100) / 100);
   if (!lopLeaveType) summary.lopDays = summary.absentDays;
 

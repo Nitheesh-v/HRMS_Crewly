@@ -18,6 +18,9 @@
 // break a punch.
 // ─────────────────────────────────────────────────────────────
 import Attendance from '../../models/Attendance.js';
+import {
+  onControlDayFinalized,
+} from './attendanceWeeklyTargetService.js';
 import AttendanceEvent from '../../models/AttendanceEvent.js';
 import AttendanceLocation from '../../models/AttendanceLocation.js';
 import AttendanceWorkModeRequest from '../../models/AttendanceWorkModeRequest.js';
@@ -918,6 +921,18 @@ export const recordEvent = async ({
     }
     throw ApiError.conflict('Attendance state changed — please refresh and retry');
   }
+
+  // Weekly-hours flexi policy — this day's minutes are now final, so
+  // recompute the employee's running week. Crossing the target fires the
+  // one-time earned-rest nudge (eventKey-indexed, exactly-once per week).
+  // Best-effort by design: the punch outcome above must never wait on it.
+  onControlDayFinalized({
+    companyId,
+    userId,
+    date: control.date,
+    policy,
+    AttendanceModel,
+  }).catch(() => { /* the service logs; a nudge can never fail the punch */ });
 
   let created;
   try {

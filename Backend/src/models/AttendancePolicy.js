@@ -158,6 +158,25 @@ const attendancePolicySchema = new mongoose.Schema(
       compOffMinutesPerDay: { type: Number, default: 480, min: 1, max: 1440 },
     },
 
+    // ── Weekly-hours flexi target (owner unit, 2026-10-10) ──
+    // Finish the weekly hours goal early, rest the remaining working days.
+    // OFF for every company until explicitly enabled. targetMinutes is the
+    // Mon→Sun worked-hours goal (default 2400 = 40h; cap 10080 = 7×24h so
+    // any target is representable). When the target is crossed mid-week,
+    // remaining scheduled working days that resolve with no punches and no
+    // approved leave become WEEKLY_TARGET_OFF — paid earned rest: never
+    // absent, never LOP, never a leave-balance deduction.
+    weeklyTarget: {
+      enabled: { type: Boolean, default: false },
+      targetMinutes: { type: Number, default: 2400, min: 60, max: 10080 },
+      restDayMode: {
+        type: String,
+        enum: ['AUTO_MARK', 'SUGGEST_ONLY'],
+        default: 'AUTO_MARK',
+      },
+      includeApprovedOvertime: { type: Boolean, default: false },
+    },
+
     // Evaluation BEHAVIOR only. Holiday/WorkSchedule remain authoritative
     // for WHICH days are holidays/week-offs.
     weekendHoliday: {
