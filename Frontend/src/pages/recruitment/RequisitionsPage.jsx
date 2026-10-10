@@ -123,7 +123,12 @@ const splitSkills = (value) =>
     .map((skill) => skill.trim())
     .filter(Boolean);
 
-const personId = (person) => String(person?._id || person || '');
+// Identity normaliser: populated records carry `_id`, the auth-store user
+// carries `id` (authController.publicUser), and some callers pass a raw id
+// string. The auth user has ONLY `id` — comparing `._id` against it made
+// creators never match their own requisitions, so Edit / Submit to HR never
+// rendered for the one person who must see them.
+const personId = (person) => String(person?._id ?? person?.id ?? person ?? '');
 
 const StatusBadge = ({ status }) => (
   <span

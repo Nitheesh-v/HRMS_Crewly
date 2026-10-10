@@ -144,6 +144,24 @@ test('the requisition drawer shows the next step as a section, not a buried butt
   assert.match(page, /Job postings &amp; pipeline/);
 });
 
+// ── creator identity: the auth user carries `id`, records carry `_id` ──────
+
+test('creator matching understands both id shapes (id on the auth user, _id on records)', async () => {
+  const requisitions = await read('src/pages/recruitment/RequisitionsPage.jsx');
+  assert.match(
+    requisitions,
+    /const personId = \(person\) => String\(person\?\._id \?\? person\?\.id \?\? person \?\? ''\);/,
+    'personId must read _id, then id, then the raw value — the auth user has only `id`, so `._id ||` alone makes creators unrecognizable and hides Edit / Submit to HR',
+  );
+
+  const meetings = await read('src/pages/meetings/MeetingsPage.jsx');
+  assert.match(
+    meetings,
+    /const me = String\(user\?\.id \?\? user\?\._id \?\? ''\);/,
+    'the meetings page must read the auth user by id first — `user?._id || \u0027\u0027` was always empty and locked creators out of their own meetings',
+  );
+});
+
 test('job-save feedback tells the truth about draft vs published', async () => {
   const page = await read('src/pages/recruitment/RecruitmentPage.jsx');
   assert.match(page, /Job published — now visible on the careers page and in employee Job Referrals/);

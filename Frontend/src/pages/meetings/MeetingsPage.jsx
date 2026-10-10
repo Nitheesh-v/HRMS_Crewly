@@ -250,7 +250,10 @@ const MeetingFormModal = ({ initial, me, role, onClose, onSaved }) => {
 export default function MeetingsPage() {
   const user = useSelector((s) => s.auth.user);
   const role = user?.role;
-  const me = String(user?._id || '');
+  // `id`, not `_id`: the auth-store user (authController.publicUser) carries
+  // only `id`. With `user?._id || ''` this was always '' and creators could
+  // never edit or cancel their own meetings from the UI.
+  const me = String(user?.id ?? user?._id ?? '');
   const canCreate = CREATE_ROLES.includes(role);
 
   const [view, setView] = useState('month'); // month | week | day | agenda | history
