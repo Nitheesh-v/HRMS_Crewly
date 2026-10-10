@@ -25,13 +25,24 @@ test('the route exists, is lazy, and has no role gate', async () => {
   );
 });
 
-test('every role menu exposes Job Referrals (5 roles)', async () => {
+test('every role menu exposes Job Referrals (exactly once per role)', async () => {
   const layout = await read('src/layout/AppLayout.jsx');
-  const count = (layout.match(/to: "\/app\/referrals", label: "Job Referrals"/g) || []).length;
-  assert.ok(
-    count >= 5,
-    `expected the entry in all five role arrays (COMPANY_ADMIN, HR_MANAGER, MANAGER, TEAM_LEAD, EMPLOYEE), found ${count}`,
-  );
+  // Count PER ROLE BLOCK. A whole-file count once passed while EMPLOYEE had
+  // zero and MANAGER had two — a bad anchor inserted into the first
+  // "Time Tracking" line, which exists in two role arrays. The owner's
+  // employee screenshot caught what the weak pin hid.
+  const roles = ['COMPANY_ADMIN', 'HR_MANAGER', 'MANAGER', 'TEAM_LEAD', 'EMPLOYEE'];
+  for (const role of roles) {
+    const start = layout.indexOf(`[ROLES.${role}]: [`);
+    assert.ok(start !== -1, `role block ${role} missing from NAV_BY_ROLE`);
+    const end = layout.indexOf('],', start);
+    const count = layout.slice(start, end).split('to: "/app/referrals"').length - 1;
+    assert.equal(
+      count,
+      1,
+      `${role} must have exactly one Job Referrals entry, found ${count}`,
+    );
+  }
 });
 
 test('the sidebar groups referrals under Work and gives it an icon', async () => {
