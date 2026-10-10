@@ -129,3 +129,38 @@ sane default of `2400` (40 h). Any target up to the cap works mechanically — "
    should HR confirm each one (SUGGEST_ONLY mode)?
 
 Say "go" (with any changes to the three decisions) and this becomes the active build unit.
+
+## F. SHIPPED — commit `38ce41e` (2026-10-10)
+
+All three locked decisions implemented as planned; nothing else changed.
+
+- **Model:** `weeklyTarget` block on AttendancePolicy (`enabled:false`,
+  `targetMinutes` 60–10080 default 2400, `restDayMode` AUTO_MARK|SUGGEST_ONLY,
+  `includeApprovedOvertime:false`); additive Attendance status
+  `WEEKLY_TARGET_OFF` + `weeklyTarget` why-subdoc (weekStart/targetMinutes/
+  achievedMinutes). Policy save path (whitelist, serializer, validator)
+  round-trips the block.
+- **Rules/service:** `attendanceWeeklyTargetRules.js` (pure: Mon→Sun windows,
+  strictly-before qualification, crossing, rest-day precedence) +
+  `attendanceWeeklyTargetService.js` (`materializeRestDays` idempotent,
+  `getWeekContext`, `onControlDayFinalized` one-time nudge keyed by the
+  Notification `{companyId, eventKey}` unique index).
+- **Seams:** punch checkout → fire-and-forget crossing check; payroll
+  buildAutoSummary → materialize-before-read (fail-open); timesheet buildDay →
+  earned rest reads as paid WEEKLY_OFF-equivalent (zero fractions, no
+  MISSING_PUNCH); monthlyInputRules → WEEKLY_TARGET_OFF counts as paid so it
+  can never become absent/LOP; finalization reuses the same buildDay parity.
+- **API:** `GET /api/attendance/weekly-target` (self-read permissions).
+- **Frontend:** policy editor section "Weekly hours target (flexi week)";
+  dashboard weekly-goal chip (additive, silent on failure); timesheet
+  labels "Earned off (weekly target)" + drawer why-row.
+- **Gates:** backend `test:all` 3386 tests / 178 files / 0 fail (incl. new
+  `attendanceWeeklyTarget.test.js` 15/15 and the two enum compat pins updated
+  for the additive status); frontend 436/0 (incl. `weeklyHoursFlexi.test.js`
+  4 pins); `vite build` OK.
+- **V1 limits (unchanged, by design):** weekly offs/holidays don't
+  participate; approved leave stays leave; no cross-week carry; disabling
+  mid-week stops future marking but keeps already-written rest rows (paid);
+  working on an earned-rest day makes it a normal worked day under normal OT
+  rules; hours never carry into next week; SUGGEST_ONLY mode computes but
+  writes nothing.
