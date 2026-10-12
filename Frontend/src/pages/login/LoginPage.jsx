@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Loader2 } from "lucide-react";
+import { AlertCircle, Check, Loader2 } from "lucide-react";
 import authService from "../../services/authService.js";
 import useAuth from "../../hooks/useAuth.jsx";
 import { getDashboardPath } from "../../utils/roles.js";
 import AuthLayout from "../../layout/AuthLayout.jsx";
 import PasswordField from "../../components/auth/PasswordField.jsx";
-import { notify } from '../../utils/notify.js';
+import { notify } from "../../utils/notify.js";
 
 const REMEMBER_KEY = "crewly.rememberedLogin";
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Remembered company code / email (NEVER the password) — read once at
 // first render instead of hydrating inside an effect.
@@ -45,22 +46,22 @@ const LoginPage = () => {
   const initial = rememberedLogin();
 
   /*
-   * 35.1 — the "password changed" / "account is set up" notice that the reset
-   * and setup flows hand back through the URL is a toast now: it is a message
-   * about something that happened elsewhere, not a strip that belongs to the
-   * form. Raised once, on arrival.
+   * 35.1 — the "password changed" / "account is set up" notice that the
+   * reset and setup flows hand back through the URL is a toast: it is a
+   * message about something that happened elsewhere, not a form strip.
    */
   useEffect(() => {
     const notice = noticeFor(searchParams);
 
     if (notice) {
-      notify.info(notice, { id: 'login-arrival-notice' });
+      notify.info(notice, { id: "login-arrival-notice" });
     }
   }, [searchParams]);
 
   const [form, setForm] = useState(initial.form);
   const [remember, setRemember] = useState(initial.remember);
   const [fieldErrors, setFieldErrors] = useState({});
+  const [serverError, setServerError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const onChange = (e) => {
@@ -71,6 +72,7 @@ const LoginPage = () => {
     setFieldErrors((current) => (current[name] ? { ...current, [name]: "" } : current));
   };
 
+  const emailLooksValid = EMAIL_RE.test(form.email.trim());
   const canSubmit = form.companyCode.trim() && form.email.trim() && form.password;
 
   // Fast, local nudges. The server stays the authority on credentials.
@@ -79,7 +81,7 @@ const LoginPage = () => {
 
     if (!form.companyCode.trim()) next.companyCode = "Enter the company code you registered with.";
     if (!form.email.trim()) next.email = "Enter your email address.";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+    else if (!EMAIL_RE.test(form.email.trim())) {
       next.email = "That does not look like an email address.";
     }
     if (!form.password) next.password = "Enter your password.";
@@ -91,14 +93,14 @@ const LoginPage = () => {
 
   const onSubmit = async (e) => {
     e.preventDefault();
-    /* 35.1 — nothing to report (failure state cleared) */
-    /* 35.1 — nothing to report (failure state cleared) */
+    setServerError("");
 
     if (!validate()) return;
 
     setLoading(true);
     try {
       if (remember) {
+        // Identifiers only — the password never touches localStorage.
         localStorage.setItem(
           REMEMBER_KEY,
           JSON.stringify({ companyCode: form.companyCode, email: form.email }),
@@ -112,33 +114,35 @@ const LoginPage = () => {
       login(data.user);
       navigate(getDashboardPath(data.user.role), { replace: true });
     } catch (err) {
-      notify.error(err.message);
+      // The backend's generic message, verbatim — it deliberately does not
+      // reveal which of company / email / password was wrong, and neither
+      // does this screen.
+      setServerError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <AuthLayout
-      headline="Amazing Platform!"
-      quote="The human resource platform helped streamline our hiring process and saved us a significant amount of time and effort."
-      quoteAuthor="Katie Waters"
-      quoteRole="Head Resource Management · Fintech Company"
-      activeDot={0}
-    >
-      <div className="mx-auto w-full max-w-sm">
-        <h1 className="text-2xl font-bold tracking-tight text-white sm:text-[28px]">
-          Welcome back
+    <AuthLayout>
+      <div>
+        <h1 className="auth-heading text-2xl font-bold tracking-tight sm:text-[28px]">
+          Sign in to your account
         </h1>
-        <p className="mt-1.5 text-sm text-slate-400">
-          Sign in with your company code to continue to your workspace.
+        <p className="auth-sub mt-1.5 text-sm">
+          Use your company code to continue to your workspace.
         </p>
 
-
+        {serverError && (
+          <p role="alert" className="auth-error-banner mt-4">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <span>{serverError}</span>
+          </p>
+        )}
 
         <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate aria-busy={loading}>
           <div>
-            <label htmlFor="companyCode" className="mb-1.5 block text-sm font-medium text-slate-200">
+            <label htmlFor="companyCode" className="auth-label auth-required">
               Company code
             </label>
             <input
@@ -155,54 +159,54 @@ const LoginPage = () => {
               required
             />
             {fieldErrors.companyCode ? (
-              <p id="companyCode-error" className="mt-1.5 text-xs text-rose-300">
+              <p id="companyCode-error" className="auth-error-text mt-1.5 text-xs">
                 {fieldErrors.companyCode}
               </p>
             ) : (
-              <p id="companyCode-hint" className="mt-1.5 text-xs text-slate-500">
+              <p id="companyCode-hint" className="auth-hint mt-1.5 text-xs">
                 Sent to you at registration. Super Admins use CREWLY.
               </p>
             )}
           </div>
 
           <div>
-            <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-slate-200">
+            <label htmlFor="email" className="auth-label auth-required">
               Email address
             </label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              className="auth-input"
-              placeholder="you@company.com"
-              value={form.email}
-              onChange={onChange}
-              autoComplete="email"
-              inputMode="email"
-              autoFocus={Boolean(initial.form.companyCode) && !initial.form.email}
-              aria-invalid={fieldErrors.email ? "true" : undefined}
-              aria-describedby={fieldErrors.email ? "email-error" : undefined}
-              required
-            />
+            <div className="relative">
+              <input
+                id="email"
+                name="email"
+                type="email"
+                className="auth-input pr-10"
+                placeholder="you@company.com"
+                value={form.email}
+                onChange={onChange}
+                autoComplete="email"
+                inputMode="email"
+                autoFocus={Boolean(initial.form.companyCode) && !initial.form.email}
+                aria-invalid={fieldErrors.email ? "true" : undefined}
+                aria-describedby={fieldErrors.email ? "email-error" : undefined}
+                required
+              />
+              {emailLooksValid && (
+                <Check
+                  className="auth-check pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2"
+                  aria-hidden="true"
+                />
+              )}
+            </div>
             {fieldErrors.email && (
-              <p id="email-error" className="mt-1.5 text-xs text-rose-300">
+              <p id="email-error" className="auth-error-text mt-1.5 text-xs">
                 {fieldErrors.email}
               </p>
             )}
           </div>
 
           <div>
-            <div className="mb-1.5 flex items-baseline justify-between">
-              <label htmlFor="password" className="block text-sm font-medium text-slate-200">
-                Password
-              </label>
-              <Link
-                to="/forgot-password"
-                className="text-xs font-medium text-slate-400 underline-offset-2 hover:text-emerald-300 hover:underline"
-              >
-                Forgot password?
-              </Link>
-            </div>
+            <label htmlFor="password" className="auth-label auth-required">
+              Password
+            </label>
             <PasswordField
               id="password"
               name="password"
@@ -213,21 +217,29 @@ const LoginPage = () => {
               describedBy={fieldErrors.password ? "password-error" : undefined}
             />
             {fieldErrors.password && (
-              <p id="password-error" className="mt-1.5 text-xs text-rose-300">
+              <p id="password-error" className="auth-error-text mt-1.5 text-xs">
                 {fieldErrors.password}
               </p>
             )}
           </div>
 
-          <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-slate-300 select-none">
-            <input
-              type="checkbox"
-              checked={remember}
-              onChange={(e) => setRemember(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-600 bg-slate-800 accent-emerald-500"
-            />
-            Keep me signed in on this device
-          </label>
+          <div className="flex items-center justify-between gap-3">
+            <label className="auth-sub flex w-fit cursor-pointer items-center gap-2 text-sm select-none">
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(e) => setRemember(e.target.checked)}
+                className="auth-checkbox h-4 w-4 rounded"
+              />
+              Remember me
+            </label>
+            <Link
+              to="/forgot-password"
+              className="auth-muted-link text-sm underline-offset-2 hover:underline"
+            >
+              Forgot password?
+            </Link>
+          </div>
 
           <button type="submit" disabled={loading || !canSubmit} className="auth-primary">
             {loading ? (
@@ -236,24 +248,21 @@ const LoginPage = () => {
                 Signing in…
               </>
             ) : (
-              "Sign in"
+              "Login"
             )}
           </button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-slate-400">
-          New to Crewly?{" "}
-          <Link to="/register" className="font-medium text-emerald-400 hover:underline">
+        <p className="auth-sub mt-6 text-center text-sm">
+          You're new here?{" "}
+          <Link to="/register" className="auth-link font-medium hover:underline">
             Create an account
           </Link>
         </p>
 
-        <p className="mt-3 text-center text-xs text-slate-500">
+        <p className="auth-sub mt-3 text-center text-xs">
           SaaS provider?{" "}
-          <Link
-            to="/super-admin/login"
-            className="text-slate-400 underline-offset-2 hover:text-slate-300 hover:underline"
-          >
+          <Link to="/super-admin/login" className="auth-muted-link underline-offset-2 hover:underline">
             Super Admin portal
           </Link>
         </p>

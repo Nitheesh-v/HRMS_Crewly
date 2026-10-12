@@ -95,22 +95,98 @@ h3 {
   }
 }
 
-/* ---- Auth screens ----------------------------------------------------
-   These class names are referenced by LoginPage, RegisterCompanyPage,
-   ForgotPasswordPage, ResetPasswordPage and ResetPasswordPage's success card,
-   but were never defined anywhere: every auth input and primary button fell
-   back to browser defaults on a dark canvas. Defined ONCE, here, so the five
-   screens share one look. Plain CSS (not @apply) so the focus ring, invalid
-   state and placeholder colour stay under our control. */
+/* ---- Auth screens (Figma redesign, dark + light) ---------------------
+   One token layer drives every auth screen: login, register, forgot and
+   reset. Dark is the default palette so the app stays coherent; the
+   AuthLayout root carries data-theme, and [data-theme="light"] redefines
+   the same custom properties to flip ONLY the auth subtree - the other
+   140+ files keep their hardcoded surfaces untouched.
+   Direction taken from the Figma export: near-black canvas with a white
+   primary slab in dark; near-white canvas with a dark slab in light;
+   Crewly emerald accent and a red error state in both. */
+
+.auth-root {
+  --auth-bg: #0b1120;
+  --auth-surface: rgba(255, 255, 255, 0.04);
+  --auth-surface-focus: rgba(255, 255, 255, 0.06);
+  --auth-border: rgba(255, 255, 255, 0.1);
+  --auth-border-hover: rgba(255, 255, 255, 0.18);
+  --auth-text: #e6edf3;
+  --auth-heading: #ffffff;
+  --auth-dim: #94a3b8;
+  --auth-faint: #64748b;
+  --auth-accent: #34d399;
+  --auth-accent-strong: #10b981;
+  --auth-ring: rgba(16, 185, 129, 0.14);
+  --auth-error: #fb7185;
+  --auth-error-strong: #f43f5e;
+  --auth-error-ring: rgba(244, 63, 94, 0.14);
+  --auth-error-bg: rgba(244, 63, 94, 0.08);
+  --auth-warn: #fbbf24;
+  --auth-btn-bg: #ffffff;
+  --auth-btn-text: #0b1120;
+  --auth-btn-hover: #e2e8f0;
+  --auth-autofill-text: #ffffff;
+  --auth-autofill-bg: #101a2e;
+  background-color: var(--auth-bg);
+  color: var(--auth-text);
+}
+
+.auth-root[data-theme="light"] {
+  --auth-bg: #f6f8fa;
+  --auth-surface: #ffffff;
+  --auth-surface-focus: #ffffff;
+  --auth-border: #d0d7de;
+  --auth-border-hover: #afb8c1;
+  --auth-text: #1f2328;
+  --auth-heading: #0d1117;
+  --auth-dim: #57606a;
+  --auth-faint: #6e7781;
+  --auth-accent: #059669;
+  --auth-accent-strong: #047857;
+  --auth-ring: rgba(5, 150, 105, 0.16);
+  --auth-error: #cf222e;
+  --auth-error-strong: #cf222e;
+  --auth-error-ring: rgba(207, 34, 46, 0.14);
+  --auth-error-bg: rgba(207, 34, 46, 0.06);
+  --auth-warn: #b45309;
+  --auth-btn-bg: #0d1117;
+  --auth-btn-text: #ffffff;
+  --auth-btn-hover: #24292f;
+  --auth-autofill-text: #1f2328;
+  --auth-autofill-bg: #ffffff;
+}
+
+.auth-heading { color: var(--auth-heading); }
+.auth-sub { color: var(--auth-dim); }
+.auth-hint { color: var(--auth-faint); }
+.auth-link { color: var(--auth-accent); }
+.auth-muted-link { color: var(--auth-dim); }
+.auth-muted-link:hover { color: var(--auth-text); }
+.auth-error-text { color: var(--auth-error); }
+.auth-check { color: var(--auth-accent); }
+.auth-warn { color: var(--auth-warn); }
+
+.auth-label {
+  margin-bottom: 0.375rem;
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--auth-text);
+}
+.auth-required::after {
+  content: " *";
+  color: var(--auth-error-strong);
+}
+
 .auth-input {
   width: 100%;
   border-radius: 0.75rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background-color: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--auth-border);
+  background-color: var(--auth-surface);
   padding: 0.7rem 1rem;
   font-size: 0.875rem;
-  line-height: 1.5;
-  color: #fff;
+  color: var(--auth-text);
   outline: none;
   transition:
     border-color 150ms ease,
@@ -118,33 +194,51 @@ h3 {
     box-shadow 150ms ease;
 }
 .auth-input::placeholder {
-  color: #64748b;
+  color: var(--auth-faint);
 }
 .auth-input:hover:not(:focus) {
-  border-color: rgba(255, 255, 255, 0.18);
+  border-color: var(--auth-border-hover);
 }
 .auth-input:focus {
-  border-color: rgba(52, 211, 153, 0.7);
-  background-color: rgba(255, 255, 255, 0.06);
-  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.14);
+  border-color: var(--auth-accent);
+  background-color: var(--auth-surface-focus);
+  box-shadow: 0 0 0 4px var(--auth-ring);
 }
 .auth-input[aria-invalid='true'] {
-  border-color: rgba(244, 63, 94, 0.6);
+  border-color: var(--auth-error-strong);
 }
 .auth-input[aria-invalid='true']:focus {
-  box-shadow: 0 0 0 4px rgba(244, 63, 94, 0.14);
+  box-shadow: 0 0 0 4px var(--auth-error-ring);
 }
 .auth-input:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }
-/* Chrome's autofill paint is light-blue by default — keep it on-palette */
+/* Chrome's autofill paint is light-blue by default - keep it on palette */
 .auth-input:-webkit-autofill,
 .auth-input:-webkit-autofill:hover,
 .auth-input:-webkit-autofill:focus {
-  -webkit-text-fill-color: #fff;
-  -webkit-box-shadow: 0 0 0 1000px #101a2e inset;
-  caret-color: #fff;
+  -webkit-text-fill-color: var(--auth-autofill-text);
+  -webkit-box-shadow: 0 0 0 1000px var(--auth-autofill-bg) inset;
+  caret-color: var(--auth-autofill-text);
+}
+
+.auth-eye { color: var(--auth-faint); }
+.auth-eye:hover,
+.auth-eye:focus-visible { color: var(--auth-text); }
+
+.auth-checkbox { accent-color: var(--auth-accent-strong); }
+
+.auth-error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--auth-error-ring);
+  background-color: var(--auth-error-bg);
+  padding: 0.65rem 0.9rem;
+  font-size: 0.8125rem;
+  color: var(--auth-error);
 }
 
 .auth-primary {
@@ -154,11 +248,11 @@ h3 {
   justify-content: center;
   gap: 0.5rem;
   border-radius: 0.75rem;
-  background-color: #10b981;
+  background-color: var(--auth-btn-bg);
   padding: 0.7rem 1.25rem;
   font-size: 0.875rem;
   font-weight: 600;
-  color: #04170d;
+  color: var(--auth-btn-text);
   outline: none;
   transition:
     background-color 150ms ease,
@@ -166,17 +260,17 @@ h3 {
     box-shadow 150ms ease;
 }
 .auth-primary:hover:not(:disabled) {
-  background-color: #34d399;
+  background-color: var(--auth-btn-hover);
 }
 .auth-primary:active:not(:disabled) {
   transform: scale(0.99);
 }
 .auth-primary:focus-visible {
-  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.35);
+  box-shadow: 0 0 0 4px var(--auth-ring);
 }
 .auth-primary:disabled {
   cursor: not-allowed;
-  opacity: 0.5;
+  opacity: 0.45;
 }
 
 .auth-secondary {
@@ -186,30 +280,44 @@ h3 {
   justify-content: center;
   gap: 0.5rem;
   border-radius: 0.75rem;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--auth-border);
   padding: 0.65rem 1.25rem;
   font-size: 0.875rem;
   font-weight: 500;
-  color: #e2e8f0;
+  color: var(--auth-text);
   outline: none;
   transition:
     border-color 150ms ease,
     background-color 150ms ease;
 }
 .auth-secondary:hover {
-  border-color: rgba(255, 255, 255, 0.28);
-  background-color: rgba(255, 255, 255, 0.04);
+  border-color: var(--auth-border-hover);
+  background-color: var(--auth-surface);
 }
 .auth-secondary:focus-visible {
-  box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.25);
+  box-shadow: 0 0 0 4px var(--auth-ring);
 }
 
-/* The centered variant's canvas: two soft emerald blooms over navy. */
-.auth-wave-bg {
-  background-color: #0b1120;
-  background-image:
-    radial-gradient(60rem 40rem at 15% -10%, rgba(16, 185, 129, 0.16), transparent 60%),
-    radial-gradient(50rem 34rem at 110% 10%, rgba(59, 130, 246, 0.14), transparent 55%);
+.auth-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.25rem;
+  width: 2.25rem;
+  border-radius: 9999px;
+  border: 1px solid var(--auth-border);
+  color: var(--auth-dim);
+  transition:
+    color 150ms ease,
+    border-color 150ms ease;
+}
+.auth-theme-toggle:hover {
+  color: var(--auth-text);
+  border-color: var(--auth-border-hover);
+}
+.auth-theme-toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px var(--auth-ring);
 }
 
 /* ---- Chat helpers ---- */

@@ -1,0 +1,84 @@
+# Auth & Onboarding UX Redesign (Figma reference)
+
+**Status:** implemented, frontend gates green, **owner localhost acceptance not yet run.**
+**Scope:** the four auth screens (login, register, forgot, reset) rebuilt around the
+Figma "Authentication & Onboarding" export — dark and light — without touching the
+backend, adding packages, or introducing app-wide theming.
+
+Phase numbering is deferred to the owner (38 and 39 are already implemented phases;
+the next free number is 40). The Helpdesk unit follows in a later batch.
+
+---
+
+## 1. What the Figma showed and what shipped
+
+| Figma element | Decision | Why |
+| --- | --- | --- |
+| Centered single column: logo → headline → labelled fields → remember/forgot row → full-width primary → accent link → footer | **KEPT** | Directly supports the auth flow; matches Crewly's `max-w-md` conventions |
+| Accent focus ring, green check on valid email, red border + inline icon message on error | **KEPT** | Real, useful states; the check is a client-side format hint only |
+| Dim-disabled primary until the form is valid | **KEPT** | Matches existing `canSubmit` gating |
+| Password eye toggle | **KEPT** | Reuses `PasswordField` (also Caps-Lock hint) |
+| Dark palette (phones) + light palette (light strip) | **KEPT, adapted** | Token layer: `.auth-root` defines dark custom properties by default; `[data-theme="light"]` redefines them. Toggle (Sun/Moon) persists `crewly.theme`. Scoped to the auth subtree — the other 140+ files are untouched |
+| "HRDashboard" brand, "© 2025 … Alrights reserved" | **REMOVED** | Truthful branding: Crewly logo + wordmark, dynamic year, correct spelling |
+| Google / Apple buttons + "Or login/register with" dividers | **REMOVED** | No OAuth exists in the backend (§20: no dead buttons). Deferred |
+| "Remember Me" | **ADAPTED** | Existing identifier-only remember (company code + email in `localStorage`, never the password) |
+| Email-only login form | **ADAPTED** | Backend `POST /auth/login` requires **company code + email + password** — the company code field stays |
+| Error copy "The email you entered is not registered…" | **REMOVED** | Backend deliberately returns a generic 401 to prevent account enumeration. The screen renders the backend message verbatim in the Figma red presentation |
+| Sign-up: Name / Work Email / Password | **ADAPTED** | Real contract is company name + your name + work email + password + confirm; truthful "14 days, no payment details" copy (`TRIAL_DAYS = 14`) |
+| Figma typos ("Iinput", "employess", "Alrights") | **REMOVED** | Truthful copy rule |
+
+## 2. Removed from the OLD Crewly auth shell (truth rules)
+
+- Fabricated testimonial ("Katie Waters, Head Resource Management · Fintech Company").
+- Fake-stat dashboard ("Total Employees 3,540", "+28.5%", "Hi, Priya 👋") — invented
+  usage numbers and an emoji.
+- Hero stock photo side panel.
+- Dead "Terms & Conditions / Privacy Policy" footer spans (pages do not exist).
+
+## 3. Files changed
+
+- **Modified** `Frontend/src/style.css` — auth token layer (dark default + light override),
+  token-driven `.auth-input/.auth-primary/.auth-secondary`, label/required/checkbox/eye/
+  banner/toggle classes. Old unused `.auth-wave-bg` removed.
+- **Modified** `Frontend/src/layout/AuthLayout.jsx` — clean themed shell + toggle + footer;
+  legacy `variant/headline/quote` props accepted and ignored so `ForgotPasswordPage` and
+  `ResetPasswordPage` work unchanged with zero edits.
+- **Modified** `Frontend/src/pages/login/LoginPage.jsx` — Figma shell, inline verbatim
+  server error, valid-email check icon, remember row + forgot link.
+- **Modified** `Frontend/src/pages/register/RegisterCompanyPage.jsx` — same treatment with
+  the full register-company contract.
+- **Modified** `Frontend/src/components/auth/PasswordField.jsx` — eye/caps/counter colours
+  moved to theme tokens.
+- **Added** `Frontend/test/authUxRedesign.test.js` — source pins (contract, no password in
+  localStorage, no social login/fake proof/emoji, verbatim 401, theme palettes, gating, a11y).
+- **Added** `docs/AUTH_UX_REDESIGN.md` — this record.
+
+## 4. Deferred (needs backend work / later units)
+
+- Social sign-in (Google/Apple) — no OAuth in the backend.
+- Session-length "remember me" — needs backend support; current remember is identifier-only.
+- App-wide light theme for the authenticated app (140+ files carry hardcoded surfaces).
+- Helpdesk screens — next Figma batch.
+
+## 5. Gates
+
+- `npm test` (Frontend) — all source-pin suites incl. `authUxRedesign.test.js`.
+- `npm run build` — vite production build.
+- `npm run lint` — must not grow the repo baseline (139 problems at this branch tip).
+- Backend unchanged — no backend gate needed.
+
+## 6. Owner localhost acceptance (Windows PowerShell)
+
+```powershell
+cd C:\Users\megal\Desktop\HRMS
+git fetch origin
+git merge --no-edit arena/5990b69a-hrms-crewly   # or pull the session branch
+cd Backend  ; npm run dev      # terminal 1 (port 5000)
+cd Frontend ; npm run dev      # terminal 2 (port 5173)
+# browser: Ctrl + Shift + R on http://localhost:5173
+```
+
+Walkthrough: `/login` (dark) → toggle Sun/Moon top-right → `/register` in light →
+submit empty (button disabled) → type a valid email (green check) → submit with a wrong
+company code (inline red banner with the backend's generic message) → "Forgot password?"
+and "Create an account" navigate to the real routes; forgot/reset render in the new shell.
