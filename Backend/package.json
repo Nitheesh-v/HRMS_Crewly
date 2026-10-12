@@ -138,7 +138,8 @@
     "test:schema-hygiene": "node --test test/schemaIndexHygiene.test.js test/reservedSchemaPath.test.js",
     "test:query-hygiene": "node --test test/queryOptionHygiene.test.js",
     "test:referrals": "node --test test/referrals.test.js",
-    "test:job-validator": "node --test test/recruitmentJobValidator.test.js"
+    "test:job-validator": "node --test test/recruitmentJobValidator.test.js",
+    "seed:demo": "node src/seedDemoTenant.js"
   },
   "nodemonConfig": {
     "watch": [

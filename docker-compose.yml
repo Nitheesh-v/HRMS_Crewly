@@ -1,0 +1,33 @@
+# Local full-stack for Crewly (Mongo + Backend + Frontend).
+# The Arena sandbox cannot host MongoDB (its network policy blocks MongoDB's
+# binary CDN and all external DB hosts) — run this on your machine instead:
+#   ./dev-up.sh
+services:
+  mongo:
+    image: mongo:7
+    container_name: crewly-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    # Single-node replica set: the register-company flow uses Mongo
+    # transactions, which standalone mode refuses.
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 4s
+      retries: 20
+    volumes:
+      - crewly-mongo-data:/data/db
+
+  mongo-rs-init:
+    image: mongo:7
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: "no"
+    entrypoint:
+      ["/bin/sh", "-c", "mongosh --host mongo --quiet --eval 'try{rs.initiate({_id:\"rs0\",members:[{_id:0,host:\"127.0.0.1:27017\"}]})}catch(e){print(\"rs already initiated\")}'"]
+
+volumes:
+  crewly-mongo-data:
