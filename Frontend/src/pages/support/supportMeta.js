@@ -1,9 +1,28 @@
 // ============================================================
-// 🎫 HELPDESK META — departments, statuses, formatters (Phase 38)
-// Visual language mirrors the Figma "Help Center" exports;
-// category codes are constrained by the existing SupportTicket schema.
+// 🎫 HELPDESK META — Phase 38
+// HD palette sampled pixel-exact from the Figma desktop-dark
+// exports (15/129/130/131/132) so the helpdesk renders like the
+// design images inside the existing Crewly shell.
 // ============================================================
 import { Banknote, Building2, Laptop, Users, Wallet } from 'lucide-react';
+
+// Sampled Figma dark-theme values (google_drive exports, 2026-10-12)
+export const HD = {
+  page: '#121828',   // canvas behind content
+  panel: '#202938',  // cards / panes / sidebar in Figma
+  panel2: '#192231', // inset rows, inputs, table head
+  border: '#2a3444', // visible borders
+  divider: '#222b3a',// hairlines between rows/panes
+  green: '#16ad66',  // primary accent (pill, buttons, circles)
+  greenSoft: 'rgba(22,173,102,0.12)',
+  dim: '#8b94a3',    // secondary text
+  text: '#ffffff',
+  sent: '#f5fcfc',   // own message bubble
+  sentInk: '#16202e',
+  recv: '#394251',   // other side bubble
+  recvInk: '#e8edf5',
+  red: '#ef4444',
+};
 
 // Phase-38 support departments. `code` maps to SupportTicket.category enum.
 export const DEPARTMENTS = [
@@ -27,11 +46,11 @@ export const CATEGORY_LABELS = {
 export const categoryLabel = (code) => CATEGORY_LABELS[code] || code;
 
 export const STATUSES = [
-  { code: 'OPEN', label: 'Open', badge: 'bg-crewly-orange/15 text-crewly-orange', dot: 'bg-crewly-orange' },
-  { code: 'IN_PROGRESS', label: 'In progress', badge: 'bg-blue-500/15 text-blue-400', dot: 'bg-blue-400' },
-  { code: 'WAITING_FOR_CUSTOMER', label: 'Waiting', badge: 'bg-amber-400/15 text-amber-300', dot: 'bg-amber-300' },
-  { code: 'RESOLVED', label: 'Resolved', badge: 'bg-crewly-green/15 text-crewly-green', dot: 'bg-crewly-green' },
-  { code: 'CLOSED', label: 'Closed', badge: 'bg-gray-500/15 text-gray-400', dot: 'bg-gray-400' },
+  { code: 'OPEN', label: 'Open', badge: 'bg-[#ffb020]/15 text-[#ffb020]' },
+  { code: 'IN_PROGRESS', label: 'In progress', badge: 'bg-[#4c9aff]/15 text-[#7ab8ff]' },
+  { code: 'WAITING_FOR_CUSTOMER', label: 'Waiting', badge: 'bg-[#f5d90a]/10 text-[#e8d44d]' },
+  { code: 'RESOLVED', label: 'Resolved', badge: 'bg-[#16ad66]/15 text-[#3dd68c]' },
+  { code: 'CLOSED', label: 'Closed', badge: 'bg-[#8b94a3]/15 text-[#8b94a3]' },
 ];
 
 export const statusMeta = (code) => STATUSES.find((s) => s.code === code) || STATUSES[0];

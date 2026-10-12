@@ -1,10 +1,12 @@
-// 🎫 Ticket conversation — Figma "130. Messages" bubble thread adapted to a
-// single-pane ticket view: meta header, chat bubbles, rounded composer.
+// 🎫 Ticket conversation — Figma fidelity: "135" breadcrumb + inset meta
+// card, "130 Messages" bubbles (near-white sent / grey-blue received,
+// meta line with time + read ticks under the bubble) and pane composer
+// with circular green action.
 import { useState } from 'react';
-import { ArrowLeft, Send } from 'lucide-react';
-import { HR_STATUSES, PRIORITY_LABELS, categoryLabel, fmtTime, statusMeta } from './supportMeta';
+import { CheckCheck, ChevronRight, Send } from 'lucide-react';
+import { HD, HR_STATUSES, PRIORITY_LABELS, categoryLabel, fmtTime, statusMeta } from './supportMeta';
 
-const TicketThread = ({ ticket, isHR, meId, busy, onBack, onReply, onStatus }) => {
+const TicketThread = ({ ticket, listLabel, isHR, meId, busy, onBack, onReply, onStatus }) => {
   const [reply, setReply] = useState('');
   const sm = statusMeta(ticket.status);
 
@@ -20,70 +22,80 @@ const TicketThread = ({ ticket, isHR, meId, busy, onBack, onReply, onStatus }) =
   };
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-crewly-dim transition hover:text-crewly-text">
-        <ArrowLeft className="h-4 w-4" aria-hidden="true" />Back to tickets
+    <div>
+      {/* Breadcrumb — 135 pattern */}
+      <button onClick={onBack} className="flex max-w-full items-center gap-1.5 text-[13px] transition hover:brightness-125" style={{ color: HD.dim }}>
+        Help Center<ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <span className="truncate" style={{ color: HD.text }}>{listLabel}</span>
+        <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <span className="truncate" style={{ color: HD.text }}>{ticket.subject}</span>
       </button>
 
-      {/* Meta header */}
-      <div className="card mt-3 p-4 sm:p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="break-words text-lg font-bold sm:text-xl">{ticket.subject}</h1>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-crewly-dim">
-              <span className={`badge ${sm.badge}`}>{sm.label}</span>
-              <span className="rounded-full border border-crewly-border px-2.5 py-0.5">{categoryLabel(ticket.category)}</span>
-              <span className="rounded-full border border-crewly-border px-2.5 py-0.5">
-                {PRIORITY_LABELS[ticket.priority] || 'Medium priority'}
-              </span>
-              <span>Raised {fmtTime(ticket.createdAt)}</span>
-              {isHR && ticket.user?.name && <span>· by {ticket.user.name}</span>}
+      {/* Meta card with inset bordered box (135 "Customer Contact Support") */}
+      <div className="mt-4 rounded-xl p-5 sm:p-6" style={{ backgroundColor: HD.panel }}>
+        <div className="rounded-lg border p-5 sm:p-6" style={{ borderColor: HD.border }}>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h1 className="break-words text-lg font-bold" style={{ color: HD.text }}>{ticket.subject}</h1>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs" style={{ color: HD.dim }}>
+                <span className={`rounded-full px-3 py-1 font-semibold ${sm.badge}`}>{sm.label}</span>
+                <span className="rounded-full border px-3 py-1" style={{ borderColor: HD.border }}>{categoryLabel(ticket.category)}</span>
+                <span className="rounded-full border px-3 py-1" style={{ borderColor: HD.border }}>
+                  {PRIORITY_LABELS[ticket.priority] || 'Medium priority'}
+                </span>
+                <span>Raised {fmtTime(ticket.createdAt)}</span>
+                {isHR && ticket.user?.name && <span>· by {ticket.user.name}</span>}
+              </div>
             </div>
+            {isHR && (
+              <div className="flex flex-wrap gap-2">
+                {HR_STATUSES.filter((s) => s !== ticket.status).map((s) => (
+                  <button
+                    key={s}
+                    disabled={busy}
+                    onClick={() => onStatus(s)}
+                    className="rounded-lg border px-3 py-1.5 text-xs transition hover:brightness-125 disabled:opacity-50"
+                    style={{ borderColor: HD.border, color: HD.dim }}
+                  >
+                    Mark {statusMeta(s).label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-          {isHR && (
-            <div className="flex flex-wrap gap-1.5">
-              {HR_STATUSES.filter((s) => s !== ticket.status).map((s) => (
-                <button
-                  key={s}
-                  disabled={busy}
-                  onClick={() => onStatus(s)}
-                  className="btn-ghost px-3 py-1.5 text-xs disabled:opacity-50"
-                >
-                  Mark {statusMeta(s).label}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Conversation */}
-      <div className="mt-4 space-y-3">
+      {/* Conversation — 130 bubble language */}
+      <div className="mt-6 space-y-4">
         {messages.map((m) => {
           const mine = String(m.by?._id || m.by) === String(meId);
           const name = mine ? 'You' : (m.by?.name || 'Support team');
           return (
-            <div key={m.key} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+            <div key={m.key} className={`flex flex-col ${mine ? 'items-end' : 'items-start'}`}>
               <div
-                className={`max-w-[85%] rounded-2xl border px-4 py-3 text-sm sm:max-w-[75%] ${
-                  mine
-                    ? 'rounded-br-sm border-crewly-green/25 bg-crewly-green/10'
-                    : 'rounded-bl-sm border-crewly-border bg-crewly-card'
-                }`}
+                className="max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed sm:max-w-[65%]"
+                style={mine
+                  ? { backgroundColor: HD.sent, color: HD.sentInk, borderBottomRightRadius: 6 }
+                  : { backgroundColor: HD.recv, color: HD.recvInk, borderBottomLeftRadius: 6 }}
               >
                 <p className="whitespace-pre-wrap break-words">{m.message}</p>
-                <p className="mt-1.5 text-[11px] text-crewly-dim">{name} · {fmtTime(m.createdAt)}</p>
               </div>
+              <p className="mt-1.5 flex items-center gap-1 text-[11px]" style={{ color: HD.dim }}>
+                {name} · {fmtTime(m.createdAt)}
+                {mine && <CheckCheck className="h-3.5 w-3.5" style={{ color: HD.green }} aria-hidden="true" />}
+              </p>
             </div>
           );
         })}
       </div>
 
-      {/* Composer — Figma rounded input + circular send */}
-      <div className="card mt-4 flex items-center gap-2 p-2 sm:p-3">
+      {/* Composer pane — circular green action like 130 */}
+      <div className="mt-6 flex items-center gap-3 rounded-xl p-3" style={{ backgroundColor: HD.panel }}>
         <input
-          className="input flex-1 rounded-full"
-          placeholder="Write a reply…"
+          className="h-10 flex-1 bg-transparent px-2 text-sm outline-none"
+          style={{ color: HD.text }}
+          placeholder="Write message here…"
           value={reply}
           onChange={(e) => setReply(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && send()}
@@ -93,7 +105,8 @@ const TicketThread = ({ ticket, isHR, meId, busy, onBack, onReply, onStatus }) =
           onClick={send}
           disabled={!reply.trim() || busy}
           title="Send reply"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-crewly-green text-crewly-bg transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          style={{ backgroundColor: HD.green }}
         >
           <Send className="h-4 w-4" aria-hidden="true" />
         </button>

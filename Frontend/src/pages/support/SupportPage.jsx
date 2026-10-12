@@ -1,6 +1,8 @@
 // ============================================================
-// 🎫 HELPDESK (Phase 38) — hub → list → conversation, UI/UX per Figma
-// exports (desktop + mobile), inside the existing Crewly shell.
+// 🎫 HELPDESK (Phase 38) — hub → list → conversation.
+// UI/UX pixel-faithful to the Figma Drive exports (desktop dark +
+// responsive), rendered INSIDE the existing Crewly shell. The page
+// paints the Figma canvas colour edge-to-edge behind its content.
 // Uses only existing backend endpoints (create / my / all / reply / status).
 // ============================================================
 import { useEffect, useMemo, useState } from 'react';
@@ -11,7 +13,7 @@ import SupportHub from './SupportHub';
 import TicketList from './TicketList';
 import TicketThread from './TicketThread';
 import RaiseTicketModal from './RaiseTicketModal';
-import { DEPARTMENTS, categoryLabel, isOpen, statusMeta } from './supportMeta';
+import { DEPARTMENTS, HD, categoryLabel, isOpen, statusMeta } from './supportMeta';
 
 const HR_SIDE = ['COMPANY_ADMIN', 'HR_MANAGER'];
 
@@ -55,12 +57,6 @@ const SupportPage = () => {
       notify.error(err);
     }
   };
-
-  const openCountByCat = useMemo(() => {
-    const counts = {};
-    for (const t of tickets) if (isOpen(t)) counts[t.category] = (counts[t.category] || 0) + 1;
-    return counts;
-  }, [tickets]);
 
   const myOpenCount = useMemo(() => tickets.filter(isOpen).length, [tickets]);
 
@@ -139,11 +135,14 @@ const SupportPage = () => {
     : (scope === 'all' ? 'All Tickets' : 'My Tickets');
 
   return (
-    <div className="mx-auto w-full max-w-6xl">
+    /* Figma canvas colour, edge-to-edge inside Crewly's <main> padding */
+    <div
+      className="-m-3 min-h-dvh p-4 sm:-m-4 sm:p-6 md:-m-6 md:p-8 lg:-m-7 lg:p-7"
+      style={{ backgroundColor: HD.page }}
+    >
       {view === 'hub' && (
         <SupportHub
           myOpenCount={myOpenCount}
-          openCountByCat={openCountByCat}
           onOpenDepartment={openList}
           onOpenMy={() => openList(null)}
           onRaise={() => { setCreateCat(null); setCreateOpen(true); }}
@@ -174,6 +173,7 @@ const SupportPage = () => {
       {view === 'thread' && active && (
         <TicketThread
           ticket={active}
+          listLabel={listTitle}
           isHR={isHR}
           meId={user?._id}
           busy={busy}
@@ -184,9 +184,9 @@ const SupportPage = () => {
       )}
 
       {view === 'thread' && !active && !loading && (
-        <div className="card text-center text-sm text-crewly-dim">
+        <div className="rounded-xl p-6 text-center text-sm" style={{ backgroundColor: HD.panel, color: HD.dim }}>
           Ticket not found in this view.{' '}
-          <button className="text-crewly-green underline" onClick={() => setView('list')}>Back to tickets</button>
+          <button className="underline" style={{ color: HD.green }} onClick={() => setView('list')}>Back to tickets</button>
         </div>
       )}
 
