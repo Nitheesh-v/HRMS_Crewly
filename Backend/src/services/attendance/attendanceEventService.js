@@ -18,6 +18,9 @@
 // break a punch.
 // ─────────────────────────────────────────────────────────────
 import Attendance from '../../models/Attendance.js';
+import {
+  onControlDayFinalized,
+} from './attendanceWeeklyTargetService.js';
 import AttendanceEvent from '../../models/AttendanceEvent.js';
 import AttendanceLocation from '../../models/AttendanceLocation.js';
 import AttendanceWorkModeRequest from '../../models/AttendanceWorkModeRequest.js';
@@ -863,7 +866,7 @@ export const recordEvent = async ({
   const updated = await AttendanceModel.findOneAndUpdate(
     { companyId, user: userId, date: control.date, eventSeq: seqFilter },
     { $set: patch, $inc: { eventSeq: 1 } },
-    { new: true },
+    { returnDocument: 'after' },
   );
 
   if (!updated) {
@@ -918,6 +921,18 @@ export const recordEvent = async ({
     }
     throw ApiError.conflict('Attendance state changed — please refresh and retry');
   }
+
+  // Weekly-hours flexi policy — this day's minutes are now final, so
+  // recompute the employee's running week. Crossing the target fires the
+  // one-time earned-rest nudge (eventKey-indexed, exactly-once per week).
+  // Best-effort by design: the punch outcome above must never wait on it.
+  onControlDayFinalized({
+    companyId,
+    userId,
+    date: control.date,
+    policy,
+    AttendanceModel,
+  }).catch(() => { /* the service logs; a nudge can never fail the punch */ });
 
   let created;
   try {
@@ -985,15 +1000,31 @@ export const recordEvent = async ({
   }
 
   const schedule = await bestEffortSchedule({ resolveScheduleRule, engine, companyId, userId, at, timezone, attendanceDate: control.date, models: full });
-  const snapshot = await buildSnapshot({
-    control: updated,
-    events: [...events, created.toObject ? created.toObject() : created],
-    policy,
-    timezone,
-    todayKey,
-    schedule,
-    now: at,
-  });
+  let snapshot;
+  // 31.16 — after a CLOCK_OUT (or any action that COMPLETES a session),
+  // the just-closed doc is no longer the user's interactive state. The
+  // frontend's "Showing your open session from {date}" banner would
+  // stay stuck because buildSnapshot uses control.date, which is the
+  // legacy date. Re-resolve the live snapshot so the user lands on
+  // today's NOT_IN / WORKING state, with the otherOpenSession probe
+  // (e.g. another still-open legacy session) still attached.
+  if (
+    action === EVENT_TYPE.CLOCK_OUT &&
+    updated.liveState === LIVE_STATE.COMPLETED &&
+    updated.date !== todayKey
+  ) {
+    snapshot = await getLiveAttendance({ companyId, userId, deps: full });
+  } else {
+    snapshot = await buildSnapshot({
+      control: updated,
+      events: [...events, created.toObject ? created.toObject() : created],
+      policy,
+      timezone,
+      todayKey,
+      schedule,
+      now: at,
+    });
+  }
   // 31.13: reactive reminder scheduling — fire-and-forget (the
   // event committed; scheduling can never fail this response).
   fireReminderHooks({ companyId, userId, action, day: control.date, at, events });

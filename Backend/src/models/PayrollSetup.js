@@ -65,11 +65,15 @@ const bankSubSchema = new Schema(
 
 const payrollSetupSchema = new Schema(
   {
+    // No `index: true` here on purpose. The partial-unique index below is the
+    // single authority on { companyId: 1 }: Mongoose builds schema indexes one
+    // at a time in declaration order, so a field-level flag as well would make
+    // this pattern a duplicate — the plain index wins and the UNIQUE constraint
+    // silently never reaches MongoDB (gh-15056).
     companyId: {
       type: Schema.Types.ObjectId,
       ref: 'Company',
       required: true,
-      index: true,
     },
 
     status: {

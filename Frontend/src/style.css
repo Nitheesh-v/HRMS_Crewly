@@ -452,3 +452,93 @@ aside .truncate {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* 11) Landing page (public home) — in-page navigation.
+   The header's nav links jump within the page. Smooth scrolling is a nicety,
+   so it is applied only to the html element that actually contains the landing
+   shell (`:has` — if a browser does not support it, anchors simply jump, which
+   is the pre-existing behaviour everywhere else in the app). Users who ask for
+   reduced motion keep the instant jump. */
+html:has(.landing-shell) {
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  html:has(.landing-shell) {
+    scroll-behavior: auto;
+  }
+}
+
+/* 12) Landing (public home) — texture + motion layer.
+   The dot grid is static. Entrance/float/breathe animations are gated behind
+   prefers-reduced-motion: no-preference here, and would in any case be
+   neutralised by the global reduce block (rule 10) — both belts, on purpose. */
+.landing-dots {
+  background-image: radial-gradient(rgba(148, 163, 184, 0.13) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+.landing-hairline {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(16, 185, 129, 0.45),
+    rgba(99, 102, 241, 0.35),
+    transparent
+  );
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes landing-rise {
+    from {
+      opacity: 0;
+      transform: translateY(18px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes landing-float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-9px);
+    }
+  }
+
+  @keyframes landing-breathe {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.45;
+      transform: scale(0.8);
+    }
+  }
+
+  .landing-rise {
+    animation: landing-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .landing-rise-1 {
+    animation-delay: 0.08s;
+  }
+  .landing-rise-2 {
+    animation-delay: 0.16s;
+  }
+  .landing-rise-3 {
+    animation-delay: 0.24s;
+  }
+
+  .landing-float {
+    animation: landing-float 7s ease-in-out infinite;
+  }
+
+  .landing-breathe {
+    animation: landing-breathe 3.2s ease-in-out infinite;
+  }
+}

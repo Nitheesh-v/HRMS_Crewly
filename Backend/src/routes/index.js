@@ -39,7 +39,9 @@ import billingRoutes from "./platform/billingRoutes.js";
 import subscriptionRoutes from "./platform/subscriptionRoutes.js";
 import systemRoutes from "./systemRoutes.js";
 import profileRoutes from "./profileRoutes.js";
+import profileChangeRoutes from "./profileChangeRoutes.js";
 import selfServiceRoutes from "./selfServiceRoutes.js";
+import referralRoutes from "./referralRoutes.js";
 import meetingRoutes from "./meetingRoutes.js";
 import notificationPrefRoutes from "./notificationPrefRoutes.js";
 import scheduleRoutes from "./scheduleRoutes.js";
@@ -48,6 +50,8 @@ import superAdminRoutes from "./platform/superAdminRoutes.js";
 import rolePermissionRoutes from "./rolePermissionRoutes.js";
 import auditRoutes from "./auditRoutes.js";
 import securityRoutes from "./securityRoutes.js";
+import presenceRoutes from "./presence.js";
+import workLocationRequestRoutes from "./presence/workLocationRequestRoutes.js";
 import publicCareerRoutes from "./recruitment/publicCareerRoutes.js";
 import publicCandidateOfferRoutes from "./recruitment/publicCandidateOfferRoutes.js";
 import publicBgvConsentRoutes from "./bgv/publicBgvConsentRoutes.js";
@@ -175,6 +179,16 @@ router.use("/audit", auditRoutes);
 
 router.use("/security", securityRoutes);
 
+router.use("/presence", presenceRoutes);
+router.use(
+  "/presence/work-location-requests",
+  workLocationRequestRoutes,
+);
+
+// Phase 38 — profile change requests. Mounted BEFORE /profile so its
+// literal /change-requests paths always win the match.
+router.use("/profile/change-requests", profileChangeRoutes);
+
 router.use("/profile", profileRoutes);
 
 router.use("/meetings", meetingRoutes);
@@ -189,7 +203,10 @@ router.use("/", systemRoutes);
 router.use("/realtime", realtimeRoutes);
 
 // Existing self-service routes are mounted at API root.
+// Employee referrals — posted jobs visible to every employee (tenant-gated,
+// no permission: see docs/EMPLOYEE_REFERRALS_PLAN.md §B).
 router.use("/", selfServiceRoutes);
+router.use("/referrals", referralRoutes);
 
 // Schedule routes already contain /holidays, /schedules and /shifts.
 router.use(scheduleRoutes);

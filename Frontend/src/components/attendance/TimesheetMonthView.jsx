@@ -52,6 +52,11 @@ const OUTCOME_DOT = {
   FUTURE: 'bg-white/10',
 };
 
+// Weekly-hours flexi policy — an earned-rest day buckets as WEEKLY_OFF but
+// must read truthfully, not as a roster weekly off.
+const dayOutcomeLabel = (day) =>
+  day?.weeklyTarget ? 'Earned off (weekly target)' : OUTCOME_LABEL[day?.bucket] || day?.bucket || '';
+
 const EXCEPTION_LABEL = {
   LATE_ARRIVAL: 'Late arrival',
   EARLY_EXIT: 'Early exit',
@@ -113,7 +118,7 @@ const DayDrawer = ({ day, onClose }) => {
     <Modal title={fmtDay(day.date)} onClose={onClose} wide>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className={`rounded-full px-3 py-1 text-xs font-medium ${OUTCOME_STYLE[day.bucket] || ''}`}>
-          {OUTCOME_LABEL[day.bucket] || day.bucket}
+          {dayOutcomeLabel(day)}
         </span>
         {day.workMode && (
           <span className="rounded-full bg-white/10 px-3 py-1 text-xs">
@@ -191,8 +196,15 @@ const DayDrawer = ({ day, onClose }) => {
             {day.calendar?.holiday ? (
               <Row label="Holiday">{day.calendar.holiday.name || 'Holiday'}</Row>
             ) : null}
-            {day.calendar?.primary === 'WEEKLY_OFF' && !day.calendar?.holiday ? (
+            {day.calendar?.primary === 'WEEKLY_OFF' && !day.calendar?.holiday && !day.weeklyTarget ? (
               <Row label="Day type">Weekly off</Row>
+            ) : null}
+            {day.weeklyTarget ? (
+              <Row label="Earned rest">
+                Weekly hours goal met
+                {' '}({(Math.round(((day.weeklyTarget.achievedMinutes || 0) / 60) * 10) / 10)}h of{' '}
+                {(Math.round(((day.weeklyTarget.targetMinutes || 0) / 60) * 10) / 10)}h) — paid, no leave deducted.
+              </Row>
             ) : null}
             {!day.calendar?.leave && !day.calendar?.holiday && day.calendar?.primary === 'WORK_DAY' ? (
               <p className="text-sm text-crewly-dim">Regular working day.</p>
@@ -325,7 +337,7 @@ const TimesheetMonthView = ({ sheet, employeeName = '' }) => {
                 key={day.date}
                 type="button"
                 onClick={() => setOpenDate(day.date)}
-                title={`${fmtDay(day.date)} — ${OUTCOME_LABEL[day.bucket] || day.bucket}`}
+                title={`${fmtDay(day.date)} — ${dayOutcomeLabel(day)}`}
                 className={`flex min-h-14 flex-col items-start justify-between rounded-lg border p-1.5 text-left transition-colors hover:border-crewly-green/50 ${
                   day.isToday ? 'border-crewly-green/60' : 'border-white/10'
                 } ${day.isFuture ? 'opacity-50' : ''}`}
@@ -340,7 +352,7 @@ const TimesheetMonthView = ({ sheet, employeeName = '' }) => {
                   {day.bucket === 'WEEKLY_OFF' && <Moon size={11} />}
                   {day.bucket === 'PRESENT' && day.workMode === 'OFFICE' && <Building2 size={11} />}
                   {day.bucket === 'PRESENT' && day.workMode && day.workMode !== 'OFFICE' && <CheckCircle2 size={11} />}
-                  <span className="hidden sm:inline">{OUTCOME_LABEL[day.bucket] || ''}</span>
+                  <span className="hidden sm:inline">{dayOutcomeLabel(day)}</span>
                 </span>
                 {day.exceptions?.length > 0 && (
                   <span className="text-[11px] font-medium text-crewly-orange">

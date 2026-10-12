@@ -427,7 +427,7 @@ export const expireOfferIfDue = async ({ offer: source, requestContext = null })
         expiredAt,
       },
     },
-    { new: true }
+    { returnDocument: 'after' }
   );
   if (!updated) return source;
 
@@ -688,7 +688,7 @@ export const updateOffer = async ({
   const updated = await OfferLetter.findOneAndUpdate(
     { _id: current._id, companyId, status: current.status, updatedAt: current.updatedAt },
     { $set: set },
-    { new: true, runValidators: true }
+    { returnDocument: 'after', runValidators: true }
   );
   if (!updated) throw statusConflict();
 
@@ -801,7 +801,7 @@ export const submitOffer = async ({ companyId, actor, offerId }) => {
       },
       $inc: { 'approval.attempt': 1 },
     },
-    { new: true, runValidators: true }
+    { returnDocument: 'after', runValidators: true }
   );
   if (!updated) throw statusConflict();
 
@@ -838,7 +838,7 @@ export const returnOffer = async ({ companyId, actor, offerId, reason }) => {
         updatedBy: actor.id,
       },
     },
-    { new: true, runValidators: true }
+    { returnDocument: 'after', runValidators: true }
   );
   if (!updated) throw statusConflict();
   try {
@@ -935,7 +935,7 @@ export const approveOffer = async ({ companyId, actor, offerId }) => {
           updatedBy: actor.id,
         },
       },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
     if (!updated) throw statusConflict();
 
@@ -1021,7 +1021,7 @@ export const sendOffer = async ({ companyId, actor, offerId, requestContext }) =
         'delivery.lastError': '',
       },
     },
-    { new: true }
+    { returnDocument: 'after' }
   ).select('+delivery.sendClaimHash');
   if (!offer) throw ApiError.conflict('Offer is not approved, has no document, or is already being sent');
   try {
@@ -1189,7 +1189,7 @@ export const sendOffer = async ({ companyId, actor, offerId, requestContext }) =
           updatedBy: actor.id,
         },
       },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
     if (!updated) throw statusConflict();
 
@@ -1263,7 +1263,7 @@ export const withdrawOffer = async ({ companyId, actor, offerId, reason, request
         updatedBy: actor.id,
       },
     },
-    { new: true, runValidators: true }
+    { returnDocument: 'after', runValidators: true }
   );
   if (!updated) throw statusConflict();
 

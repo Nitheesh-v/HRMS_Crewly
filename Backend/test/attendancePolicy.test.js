@@ -750,10 +750,13 @@ test('compat: legacy Attendance contract is untouched', () => {
     (field) => assert.ok(paths[field], `Attendance.${field} still exists`),
   );
 
+  // Legacy values are intact; WEEKLY_TARGET_OFF is the additive
+  // weekly-hours flexi status (never written by the legacy punch paths).
   assert.deepEqual([...Attendance.default.schema.paths.status.enumValues], [
     'PRESENT',
     'LATE',
     'HALF_DAY',
+    'WEEKLY_TARGET_OFF',
   ]);
 });
 

@@ -843,7 +843,7 @@ const CandidateDetailPage = () => {
                 {PIPELINE_STAGE_LABELS[candidate.overview.currentStage || candidate.overview.stage] || enumLabel(candidate.overview.stage)}
               </span>
               <span className="rounded-full border border-slate-700 bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300">
-                {candidate.overview.source === 'CAREER_PAGE' ? 'Career page' : 'Internal'}
+                {candidate.overview.source === 'CAREER_PAGE' ? 'Career page' : candidate.overview.source === 'REFERRAL' ? 'Referral' : 'Internal'}
               </span>
             </div>
             <h1 className="mt-2 text-2xl font-bold text-slate-100 sm:text-3xl">{candidate.overview.name}</h1>

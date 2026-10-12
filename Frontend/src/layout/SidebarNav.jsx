@@ -53,6 +53,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Target,
+  UserPlus,
   Timer,
   UserCircle,
   Users,
@@ -113,6 +114,7 @@ const NAV_ICON_BY_PATH = {
   "/app/recruitment/candidates": Users,
   "/app/recruitment/interviews": CalendarClock,
   "/app/recruitment/my-interviews": CalendarClock,
+  "/app/referrals": UserPlus,
   "/app/recruitment/pre-onboarding": ClipboardList,
   "/app/support": LifeBuoy,
   "/app/exit": DoorOpen,
@@ -122,12 +124,16 @@ const NAV_ICON_BY_PATH = {
   "/app/governance": ShieldCheck,
   "/app/roles-permissions": KeyRound,
   "/app/profile": UserCircle,
+  // Phase 38 — the reviewer queue for employee profile change requests.
+  "/app/profile/change-requests": ShieldCheck,
   "/app/notifications": Bell,
   "/app/notification-settings": BellRing,
 
   // Phase 36.6 / 36.7 — the admin AI pages.
   "/app/settings/ai-settings": SlidersHorizontal,
   "/app/settings/ai-usage": Activity,
+  // Phase 37.7 — tenant presence / work-location admin.
+  "/app/settings/presence": SlidersHorizontal,
   "/app/security/sessions": LockKeyhole,
   "/app/security": ShieldCheck,
   "/app/audit-logs": ScrollText,
@@ -174,6 +180,9 @@ const NAV_GROUPS = [
       "/app/performance",
       "/app/documents",
       "/app/assets",
+      // Phase 38 — reviewers approve profile edits from here; it belongs to
+      // the people surface, not to "Me" (the employee's own preference area).
+      "/app/profile/change-requests",
     ],
   },
 
@@ -205,7 +214,8 @@ const NAV_GROUPS = [
     id: "work",
     label: "Work",
     icon: FolderOpen,
-    paths: ["/app/tasks", "/app/meetings", "/app/announcements"],
+    // Employee referrals live here too: they are work, not personal prefs.
+    paths: ["/app/tasks", "/app/meetings", "/app/announcements", "/app/referrals"],
     prefixes: ["/app/projects"],
   },
 
@@ -263,7 +273,7 @@ const NAV_GROUPS = [
     id: "admin",
     label: "Administration",
     icon: ShieldCheck,
-    paths: ["/app/company", "/app/governance", "/app/roles-permissions", "/app/support", "/app/exit"],
+    paths: ["/app/company", "/app/governance", "/app/roles-permissions", "/app/support", "/app/exit", "/app/settings/presence"],
     prefixes: ["/app/security", "/app/audit-logs"],
     more: true,
   },

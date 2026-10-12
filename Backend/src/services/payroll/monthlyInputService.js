@@ -78,6 +78,10 @@ export const makeMonthlyInputService = ({
   // 31.11 — when wired, the legacy import refuses to reinterpret
   // live attendance after it was finalized + sent to payroll.
   AttendancePeriodModel = null,
+  // Weekly-hours flexi policy — materializes earned-rest rows before the
+  // automatic summary reads attendance. Null keeps the feature inert
+  // (tests and legacy callers); the real instance wires it below.
+  WeeklyTargetMaterializer = null,
   cache = {},
   audit = async () => null,
   notify = async () => null,
@@ -197,6 +201,24 @@ export const makeMonthlyInputService = ({
     const empty = computeAutomaticSummary({ month, workingDays: 0, attendance: [], leaves: [] });
 
     if (!AttendanceModel) return empty;
+
+    // Weekly-hours flexi policy — materialize earned rest for this month's
+    // elapsed, unworked, leave-free days BEFORE the summary reads, so a
+    // qualified week's remaining days read as paid rest at payroll time.
+    // Fail-open: the punch-time recompute and the next read re-materialize;
+    // a materializer outage must never block payroll inputs.
+    if (WeeklyTargetMaterializer) {
+      try {
+        await WeeklyTargetMaterializer({
+          companyId,
+          userId: employeeId,
+          startKey,
+          endKey,
+        });
+      } catch {
+        // Intentionally swallowed — buildAutoSummary stays best-effort.
+      }
+    }
 
     const setup = await loadSetup(companyId);
     const weekendPolicy = setup?.weekendPolicy || {};
@@ -920,6 +942,7 @@ export const makeMonthlyInputService = ({
 };
 
 import Attendance from '../../models/Attendance.js';
+import { materializeRestDays } from '../attendance/attendanceWeeklyTargetService.js';
 import AttendancePeriod from '../../models/AttendancePeriod.js';
 import EmployeeMonthlyInput from '../../models/EmployeeMonthlyInput.js';
 import EmployeePayrollProfile from '../../models/EmployeePayrollProfile.js';
@@ -950,6 +973,7 @@ const monthlyInputService = makeMonthlyInputService({
   ShiftModel: Shift,
   PayrollSetupModel: PayrollSetup,
   AttendancePeriodModel: AttendancePeriod,
+  WeeklyTargetMaterializer: materializeRestDays,
   cache: {
     buildKey: buildTenantCacheKey,
     getOrSet: getOrSetCache,

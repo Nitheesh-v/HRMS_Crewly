@@ -135,7 +135,7 @@ const loadFromMongo = async (Model, companyId) => {
     { $setOnInsert: { companyId } },
     {
       upsert: true,
-      new: true,
+      returnDocument: 'after',
       setDefaultsOnInsert: true,
     },
   );
@@ -291,7 +291,7 @@ export const updateTenantConfig = async (
       },
       {
         upsert: true,
-        new: true,
+        returnDocument: 'after',
         setDefaultsOnInsert: true,
         runValidators: true,
       },

@@ -92,6 +92,7 @@ const candidateHistorySchema = new mongoose.Schema(
       enum: [
         'CAREER_PAGE',
         'INTERNAL',
+        'REFERRAL',
         'RESUME_PARSER',
         'ATS_ENGINE',
         'PIPELINE',

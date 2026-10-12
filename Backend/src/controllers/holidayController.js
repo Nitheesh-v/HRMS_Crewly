@@ -180,7 +180,7 @@ export const unpickOptional = async (req, res) => {
       // Data from frontend - requests from frontend
       { _id: req.params.id, companyId: req.user.companyId, isOptional: true },
       { $pull: { optionalPicks: req.user._id } },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (!doc) return fail(res, 404, 'Optional holiday not found');
     // Data to frontend - response to frontend

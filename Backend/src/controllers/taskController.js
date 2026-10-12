@@ -27,9 +27,14 @@ const isAdmin = (req) => ADMIN_ROLES.includes(req.user.role);
 const ok = (res, status, data, message) =>
   res.status(status).json({ statusCode: status, success: true, data, message });
 
-const notify = async (userId, payload) => {
+// notifyUser(companyId, user, payload) — three arguments. This helper passed
+// two, so the third destructured `undefined`, threw inside notifyUser, and the
+// catch below swallowed it: every task notification (assigned, reassigned,
+// ready for review, status change, comment) was silently dropped. The tenant
+// travels with every call now (Phase 39).
+const notify = async (companyId, userId, payload) => {
   try {
-    if (userId) await notifyUser(userId, payload);
+    if (companyId && userId) await notifyUser(companyId, userId, payload);
   } catch (e) { /* silent */ }
 };
 
@@ -197,7 +202,7 @@ export const createTask = asyncHandler(async (req, res) => {
 
   docs.forEach((t) => {
     if (String(t.assignedTo) !== String(req.user._id)) {
-      notify(t.assignedTo, { title: '📝 New task assigned', message: `"${t.title}" was assigned to you`, link: '/app/tasks' });
+      notify(req.companyId, t.assignedTo, { title: '📝 New task assigned', message: `"${t.title}" was assigned to you`, link: '/app/tasks' });
     }
   });
 
@@ -232,7 +237,7 @@ export const updateTask = asyncHandler(async (req, res) => {
       throw new ApiError(403, 'You can only assign inside your team');
     }
     task.assignedTo = assignedToId;
-    notify(assignedToId, { title: '📝 Task reassigned to you', message: `"${task.title}"`, link: '/app/tasks' });
+    notify(req.companyId, assignedToId, { title: '📝 Task reassigned to you', message: `"${task.title}"`, link: '/app/tasks' });
   }
 
   await task.save();
@@ -277,7 +282,7 @@ export const updateTaskStatus = asyncHandler(async (req, res) => {
   await task.save();
 
   if (isAssignee && status === 'IN_REVIEW') {
-    notify(task.assignedBy, { title: '📤 Task ready for review', message: `"${task.title}" was submitted for review`, link: '/app/tasks' });
+    notify(req.companyId, task.assignedBy, { title: '📤 Task ready for review', message: `"${task.title}" was submitted for review`, link: '/app/tasks' });
   }
   if (!isAssignee && String(task.assignedTo) !== me) {
     const title = status === 'COMPLETED'
@@ -285,7 +290,7 @@ export const updateTaskStatus = asyncHandler(async (req, res) => {
       : prev === 'IN_REVIEW' && status === 'IN_PROGRESS'
         ? '🔁 Task sent back for rework'
         : `Task moved to ${status}`;
-    notify(task.assignedTo, { title, message: `"${task.title}"${note ? ` — ${note}` : ''}`, link: '/app/tasks' });
+    notify(req.companyId, task.assignedTo, { title, message: `"${task.title}"${note ? ` — ${note}` : ''}`, link: '/app/tasks' });
   }
 
   // Data to frontend - response to frontend
@@ -308,9 +313,9 @@ export const addComment = asyncHandler(async (req, res) => {
 
   const me = String(req.user._id);
   if (String(task.assignedTo) !== me) {
-    notify(task.assignedTo, { title: '💬 New comment on your task', message: `"${task.title}"`, link: '/app/tasks' });
+    notify(req.companyId, task.assignedTo, { title: '💬 New comment on your task', message: `"${task.title}"`, link: '/app/tasks' });
   } else if (String(task.assignedBy) !== me) {
-    notify(task.assignedBy, { title: '💬 New comment', message: `"${task.title}"`, link: '/app/tasks' });
+    notify(req.companyId, task.assignedBy, { title: '💬 New comment', message: `"${task.title}"`, link: '/app/tasks' });
   }
 
   await task.populate({ path: 'comments.user', select: 'name avatarUrl role' });

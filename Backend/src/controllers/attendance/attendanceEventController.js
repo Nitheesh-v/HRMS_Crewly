@@ -5,6 +5,38 @@ import {
   getLiveAttendance,
   recordEvent,
 } from '../../services/attendance/attendanceEventService.js';
+import { getCurrentPolicy } from '../../services/attendance/attendancePolicyService.js';
+import { dayKeyInZone } from '../../services/attendance/attendancePolicyRules.js';
+import {
+  getWeekContext,
+} from '../../services/attendance/attendanceWeeklyTargetService.js';
+
+// GET /api/attendance/weekly-target — the employee's running Mon→Sun flexi
+// window (achieved vs target minutes) for the dashboard chip. Read-only:
+// rest-day materialization happens on the payroll/finalization paths.
+export const getMyWeeklyTarget = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const companyId = req.companyId;
+  const userId = req.user._id;
+  const { date = null } = req.query || {};
+
+  // DB Logic - DB logics
+  const { policy } = await getCurrentPolicy({ companyId });
+  const todayKey = dayKeyInZone(new Date(), policy?.timezone || 'Asia/Kolkata');
+  const context = await getWeekContext({
+    companyId,
+    userId,
+    date: date || todayKey,
+    todayKey,
+    policy,
+  });
+
+  // Data to frontend - response to frontend
+  return ApiResponse.success(res, {
+    message: 'Weekly target context fetched',
+    data: context,
+  });
+});
 
 // POST /api/attendance/events — record one self-service punch action.
 // Identity comes from req.user / req.companyId only (see validator).

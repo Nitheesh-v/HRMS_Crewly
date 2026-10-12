@@ -20,7 +20,7 @@ const attendanceSchema = new Schema(
     workMinutes: { type: Number, default: 0 },
     status: {
       type: String,
-      enum: ["PRESENT", "LATE", "HALF_DAY"],
+      enum: ["PRESENT", "LATE", "HALF_DAY", "WEEKLY_TARGET_OFF"],
       default: "PRESENT",
     },
     shift: {
@@ -58,6 +58,15 @@ const attendanceSchema = new Schema(
     overtimeMinutes: {
       type: Number,
       default: 0,
+    },
+
+    // Weekly-hours flexi policy — why this day is WEEKLY_TARGET_OFF.
+    // Null unless status is WEEKLY_TARGET_OFF; snapshot of the week the
+    // rest day was earned in (for labels, audits and analytics).
+    weeklyTarget: {
+      weekStart: { type: String, default: null }, // 'YYYY-MM-DD' (Monday)
+      targetMinutes: { type: Number, default: null },
+      achievedMinutes: { type: Number, default: null },
     },
 
     // ── Phase 31.2 (all additive; legacy readers ignore them) ──

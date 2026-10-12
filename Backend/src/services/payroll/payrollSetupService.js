@@ -455,7 +455,7 @@ export const startPayrollSetup = async ({
     doc = await PayrollSetupModel.findOneAndUpdate(
       { companyId, isCurrent: true },
       { $setOnInsert: seed },
-      { upsert: true, new: true, setDefaultsOnInsert: true, runValidators: true },
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true, runValidators: true },
     );
   } catch (error) {
     // Two admins clicked "Start" at once — the loser re-reads the winner.
@@ -687,7 +687,7 @@ export const updatePayrollSetupSection = async ({
       $addToSet: { 'setup.savedSections': sectionKey },
       $inc: { configVersion: 1 },
     },
-    { new: true, runValidators: true, context: 'query' },
+    { returnDocument: 'after', runValidators: true, context: 'query' },
   );
 
   if (!updated) {
@@ -814,7 +814,7 @@ export const activatePayrollSetup = async ({
       },
       $inc: { configVersion: 1 },
     },
-    { new: true, runValidators: true },
+    { returnDocument: 'after', runValidators: true },
   );
 
   if (!updated) {
@@ -881,7 +881,7 @@ export const suspendPayrollSetup = async ({
       },
       $inc: { configVersion: 1 },
     },
-    { new: true, runValidators: true },
+    { returnDocument: 'after', runValidators: true },
   );
 
   if (!updated) {

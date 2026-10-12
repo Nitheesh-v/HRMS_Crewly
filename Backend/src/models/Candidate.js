@@ -25,7 +25,7 @@ export const BGV_DECISION_STATUSES = [
   'PROCEEDED_WITHOUT_BGV',
   'BGV_INITIATED',
 ];
-export const CANDIDATE_SOURCES = ['INTERNAL', 'CAREER_PAGE'];
+export const CANDIDATE_SOURCES = ['INTERNAL', 'CAREER_PAGE', 'REFERRAL'];
 export const CANDIDATE_STATUSES = ['ACTIVE', 'ARCHIVED'];
 export const CANDIDATE_APPLICATION_STATUSES = ['APPLIED'];
 
@@ -67,6 +67,10 @@ const candidateSchema = new mongoose.Schema(
       portfolio: { type: String, trim: true, maxlength: 300, default: '' },
     },
     source: { type: String, enum: CANDIDATE_SOURCES, default: 'INTERNAL', index: true },
+    // Employee referrals — the User who referred this candidate. Null for
+    // INTERNAL / CAREER_PAGE rows; the referral service sets it and scopes
+    // the referrer's own "my referrals" view by it.
+    referredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     applicationDate: { type: Date, default: Date.now, index: true },
     applicationStatus: {
       type: String,

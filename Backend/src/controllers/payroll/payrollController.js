@@ -129,7 +129,7 @@ export const upsertStructure = asyncHandler(async (req, res) => {
   const structure = await SalaryStructure.findOneAndUpdate(
     { companyId: req.companyId, user: target._id },
     { $set: { companyId: req.companyId, basic, hra, allowances, pfPercent, professionalTax } },
-    { new: true, upsert: true, runValidators: true }
+    { returnDocument: 'after', upsert: true, runValidators: true }
   );
   // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: `Salary structure saved for ${target.name}`, data: { structure } });

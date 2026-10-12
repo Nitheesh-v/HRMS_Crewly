@@ -1,10 +1,11 @@
-import Meeting from '../models/Meeting.js';
+import Meeting, { MEETING_TYPES, RECURRENCE } from '../models/Meeting.js';
 import User from '../models/User.js';
 import ApiError from '../utils/ApiError.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { getScopedUserIds } from '../utils/scope.js';
 import { getSubtreeIds } from '../utils/orgHelpers.js';
 import { notifyUser } from '../utils/notify.js';
+import { parseMeetingLink } from '../utils/meetingLink.js';
 
 // Per your rule: HR joins meetings when INVITED — creation is for Admin / Manager / Team Lead
 const CREATE_ROLES = ['COMPANY_ADMIN', 'MANAGER', 'TEAM_LEAD'];
@@ -13,9 +14,15 @@ const MANAGE_ROLES = ['COMPANY_ADMIN']; // edit/cancel/delete: creator or compan
 const ok = (res, status, data, message) =>
   res.status(status).json({ statusCode: status, success: true, data, message });
 
-const notify = async (userId, payload) => {
+// notifyUser(companyId, user, payload) — three arguments. Passing only
+// (userId, payload) made the third argument `undefined`, so the destructuring
+// in notifyUser threw BEFORE its own try/catch and the controller's catch
+// swallowed it: every invite, update, cancel and reminder was silently
+// dropped. The company id is not decoration, it is half of the notification's
+// identity (Notification.companyId is what scopes the bell to a tenant).
+const notify = async (companyId, userId, payload) => {
   try {
-    if (userId) await notifyUser(userId, payload);
+    if (companyId && userId) await notifyUser(companyId, userId, payload);
   } catch (e) { /* notifications never block */ }
 };
 
@@ -119,10 +126,21 @@ export const createMeeting = asyncHandler(async (req, res) => {
   } = req.body;
 
   if (!title?.trim()) throw new ApiError(400, 'Meeting title is required');
+  if (!MEETING_TYPES.includes(type)) throw new ApiError(400, 'Unknown meeting type');
+  if (!RECURRENCE.includes(recurrence)) throw new ApiError(400, 'Unknown repeat option');
+  if (type === 'COMPANY' && req.user.role !== 'COMPANY_ADMIN') {
+    throw new ApiError(403, 'Only a Company Admin can schedule a company-wide meeting');
+  }
   const start = new Date(startAt);
   const end = new Date(endAt);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) throw new ApiError(400, 'Start and end time are required');
   if (end <= start) throw new ApiError(400, 'End time must be after start time');
+
+  // A scheme-less link ("meet.google.com/abc") is a relative path to a browser,
+  // so it is normalised to https before it is ever stored, and anything that is
+  // not a normal web address is refused instead of saved broken.
+  const parsedLink = parseMeetingLink(link);
+  if (parsedLink.error) throw new ApiError(400, parsedLink.error);
 
   // participants: dedupe + always include creator; TEAM type auto-adds the whole team (reports + self)
   let participants = [...new Set(participantIds.map(String))];
@@ -154,14 +172,14 @@ export const createMeeting = asyncHandler(async (req, res) => {
     title: title.trim(), description, type,
     company: req.companyId, department,
     participants, createdBy: req.user._id,
-    startAt: start, endAt: end, link,
+    startAt: start, endAt: end, link: parsedLink.link,
     recurrence, recurrenceEnd: recurrenceEnd || null,
     reminderMinutes,
   });
 
   participants
     .filter((p) => p !== String(req.user._id))
-    .forEach((p) => notify(p, {
+    .forEach((p) => notify(req.companyId, p, {
       title: '📅 Meeting invite',
       message: `"${meeting.title}" — ${start.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`,
       link: '/app/meetings',
@@ -180,17 +198,62 @@ export const updateMeeting = asyncHandler(async (req, res) => {
   if (!canManage(req, meeting)) throw new ApiError(403, 'Only the organizer or company admin can edit this meeting');
 
   const { title, description, type, departmentId, participantIds, startAt, endAt, link, recurrence, recurrenceEnd, reminderMinutes } = req.body;
-  if (title !== undefined) meeting.title = title.trim();
+  const tenantId = meeting.company || meeting.companyId || req.companyId;
+
+  // The validations createMeeting has always done and updateMeeting never did.
+  // Without them an empty title reached save(), where `required` + `trim` threw
+  // a Mongoose ValidationError — a 500 the client can only render as "Could not
+  // save meeting". A bad request has to answer as a bad request (400), with a
+  // message the person editing can act on.
+  if (title !== undefined) {
+    const trimmed = String(title).trim();
+    if (!trimmed) throw new ApiError(400, 'Meeting title is required');
+    meeting.title = trimmed;
+  }
   if (description !== undefined) meeting.description = description;
-  if (type) meeting.type = type;
-  if (link !== undefined) meeting.link = link;
-  if (reminderMinutes !== undefined) meeting.reminderMinutes = reminderMinutes;
-  if (recurrence) meeting.recurrence = recurrence;
-  if (recurrenceEnd !== undefined) meeting.recurrenceEnd = recurrenceEnd || null;
+  if (type !== undefined) {
+    if (!MEETING_TYPES.includes(type)) throw new ApiError(400, 'Unknown meeting type');
+    if (type === 'COMPANY' && req.user.role !== 'COMPANY_ADMIN') {
+      throw new ApiError(403, 'Only a Company Admin can schedule a company-wide meeting');
+    }
+    meeting.type = type;
+  }
+  if (link !== undefined) {
+    const parsedLink = parseMeetingLink(link);
+    if (parsedLink.error) throw new ApiError(400, parsedLink.error);
+    meeting.link = parsedLink.link;
+  }
+  if (reminderMinutes !== undefined) {
+    const minutes = Number(reminderMinutes);
+    if (!Number.isFinite(minutes) || minutes < 0 || minutes > 10080) {
+      throw new ApiError(400, 'Remind minutes must be between 0 and 10080');
+    }
+    meeting.reminderMinutes = minutes;
+  }
+  if (recurrence !== undefined) {
+    if (!RECURRENCE.includes(recurrence)) throw new ApiError(400, 'Unknown repeat option');
+    meeting.recurrence = recurrence;
+    // A meeting that stopped repeating must not keep a stale "repeat until".
+    if (recurrence === 'NONE') meeting.recurrenceEnd = null;
+  }
+  if (recurrenceEnd !== undefined) {
+    if (recurrenceEnd === null || recurrenceEnd === '') {
+      meeting.recurrenceEnd = null;
+    } else {
+      const parsedRecurrenceEnd = new Date(recurrenceEnd);
+      if (Number.isNaN(parsedRecurrenceEnd.getTime())) {
+        throw new ApiError(400, 'Repeat-until is not a valid date');
+      }
+      meeting.recurrenceEnd = parsedRecurrenceEnd;
+    }
+  }
 
   if (startAt || endAt) {
     const start = startAt ? new Date(startAt) : meeting.startAt;
     const end = endAt ? new Date(endAt) : meeting.endAt;
+    if (Number.isNaN(new Date(start).getTime()) || Number.isNaN(new Date(end).getTime())) {
+      throw new ApiError(400, 'Start and end time must be valid dates');
+    }
     if (end <= start) throw new ApiError(400, 'End time must be after start time');
     meeting.startAt = start;
     meeting.endAt = end;
@@ -198,16 +261,26 @@ export const updateMeeting = asyncHandler(async (req, res) => {
   }
 
   if (participantIds !== undefined) {
+    if (!Array.isArray(participantIds)) throw new ApiError(400, 'Participants must be a list of employees');
     let participants = [...new Set(participantIds.map(String))];
     participants.push(String(meeting.createdBy));
-    if (meeting.type === 'TEAM') {
-      const team = await getSubtreeIds(req.companyId, meeting.createdBy);
-      participants = [...new Set([...participants, ...team.map(String)])];
-    }
     const found = await User.countDocuments({ _id: { $in: participants }, companyId: req.companyId });
     if (found !== participants.length) throw new ApiError(400, 'Every participant must belong to your company');
     meeting.participants = participants;
   }
+
+  // A TEAM meeting owns its roster: the organizer's whole subtree is derived
+  // server-side. That used to run only when participants were edited too, so
+  // switching a private meeting to TEAM saved the label without the team —
+  // while the modal promises "Your whole team is added automatically".
+  if (meeting.type === 'TEAM') {
+    const team = await getSubtreeIds(req.companyId, meeting.createdBy);
+    const merged = [
+      ...new Set([...meeting.participants.map(String), String(meeting.createdBy), ...team.map(String)]),
+    ];
+    if (merged.length !== meeting.participants.length) meeting.participants = merged;
+  }
+
   if (meeting.type === 'DEPARTMENT') {
     meeting.department = req.user.role === 'COMPANY_ADMIN' ? (departmentId || meeting.department) : (req.user.department || meeting.department);
   }
@@ -216,7 +289,7 @@ export const updateMeeting = asyncHandler(async (req, res) => {
 
   meeting.participants
     .filter((p) => String(p) !== String(req.user._id))
-    .forEach((p) => notify(p, { title: '✏️ Meeting updated', message: `"${meeting.title}" details changed`, link: '/app/meetings' }));
+    .forEach((p) => notify(tenantId, p, { title: '✏️ Meeting updated', message: `"${meeting.title}" details changed`, link: '/app/meetings' }));
 
   // Data to frontend - response to frontend
   ok(res, 200, meeting, 'Meeting updated');
@@ -238,7 +311,7 @@ export const cancelMeeting = asyncHandler(async (req, res) => {
 
   meeting.participants
     .filter((p) => String(p) !== String(req.user._id))
-    .forEach((p) => notify(p, { title: '❌ Meeting cancelled', message: `"${meeting.title}"${meeting.cancelReason ? ` — ${meeting.cancelReason}` : ''}`, link: '/app/meetings' }));
+    .forEach((p) => notify(meeting.company || meeting.companyId || req.companyId, p, { title: '❌ Meeting cancelled', message: `"${meeting.title}"${meeting.cancelReason ? ` — ${meeting.cancelReason}` : ''}`, link: '/app/meetings' }));
 
   // Data to frontend - response to frontend
   ok(res, 200, meeting, 'Meeting cancelled');
@@ -266,12 +339,12 @@ if (!global.__crewlyMeetingReminders) {
         status: 'SCHEDULED',
         reminderSent: false,
         startAt: { $gte: new Date(now - 3600000), $lte: new Date(now + 3600000) },
-      }).select('title participants startAt reminderMinutes createdBy');
+      }).select('title participants startAt reminderMinutes createdBy company');
       candidates.forEach((m) => {
         const leadMs = (m.reminderMinutes || 15) * 60000;
         const due = new Date(m.startAt).getTime() - leadMs;
         if (now >= due && now < new Date(m.startAt).getTime()) {
-          m.participants.forEach((p) => notify(p, {
+          m.participants.forEach((p) => notify(m.company, p, {
             title: '⏰ Meeting starting soon',
             message: `"${m.title}" starts at ${new Date(m.startAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`,
             link: '/app/meetings',

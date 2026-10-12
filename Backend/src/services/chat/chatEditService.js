@@ -114,7 +114,7 @@ export const editTextMessage = async ({
       $set: { text: newText, editedAt: now, editedByUserId: editorUserId },
       $inc: { editVersion: 1 },
     },
-    { new: true, runValidators: true }
+    { returnDocument: 'after', runValidators: true }
   ).lean();
 
   if (!updated) {
@@ -224,7 +224,7 @@ export const tombstoneMessage = async ({
         editedByUserId: null,
       },
     },
-    { new: true, runValidators: true }
+    { returnDocument: 'after', runValidators: true }
   ).lean();
 
   if (!updated) {

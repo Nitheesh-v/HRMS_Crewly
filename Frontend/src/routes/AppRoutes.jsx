@@ -58,6 +58,11 @@ const AttendanceWorkModePage = lazy(() => import("../pages/attendance/Attendance
 const AttendanceRegularizationPage = lazy(() => import("../pages/attendance/AttendanceRegularizationPage.jsx"));
 const AttendanceOvertimePage = lazy(() => import("../pages/attendance/AttendanceOvertimePage.jsx"));
 const AttendanceTeamPage = lazy(() => import("../pages/attendance/AttendanceTeamPage.jsx"));
+// Phase 37.3 — Team availability (read-only). Lazy-loaded like every
+// other page in this file; nothing about presence forces eager code.
+const TeamAvailabilityPage = lazy(() => import("../pages/team/TeamAvailabilityPage.jsx"));
+const WorkLocationReviewPage = lazy(() => import("../pages/presence/WorkLocationReviewPage.jsx"));
+const PresenceSettingsPage = lazy(() => import("../pages/settings/presence/PresenceSettingsPage.jsx"));
 const AttendanceTimesheetPage = lazy(() => import("../pages/attendance/AttendanceTimesheetPage.jsx"));
 const AttendanceTeamTimesheetsPage = lazy(() => import("../pages/attendance/AttendanceTeamTimesheetsPage.jsx"));
 const AttendanceOperationsPage = lazy(() => import("../pages/attendance/AttendanceOperationsPage.jsx"));
@@ -79,6 +84,9 @@ const PayrollPage = lazy(() => import("../pages/payroll/PayrollPage.jsx"));
 const PayrollSetupPage = lazy(() => import("../pages/payroll/PayrollSetupPage.jsx"));
 const SalaryComponentsPage = lazy(() => import("../pages/payroll/SalaryComponentsPage.jsx"));
 const SalaryStructuresPage = lazy(() => import("../pages/payroll/SalaryStructuresPage.jsx"));
+// Employee referrals — posted jobs, visible to every employee (no role gate;
+// the server scopes to the caller’s company).
+const ReferralsPage = lazy(() => import("../pages/referrals/ReferralsPage.jsx"));
 const EmployeePayrollPage = lazy(() => import("../pages/payroll/EmployeePayrollPage.jsx"));
 const MonthlyInputsPage = lazy(() => import("../pages/payroll/MonthlyInputsPage.jsx"));
 const RunPayrollPage = lazy(() => import("../pages/payroll/RunPayrollPage.jsx"));
@@ -139,6 +147,8 @@ const GovernancePage = lazy(() => import("../pages/governance/GovernancePage.jsx
 const RolesPermissionsPage = lazy(() => import("../pages/settings/RolesPermissionsPage.jsx"));
 
 const MyProfilePage = lazy(() => import("../pages/profile/MyProfilePage.jsx"));
+// Phase 38 — HR/admin reviewer queue for employee profile change requests.
+const ProfileChangeRequestsPage = lazy(() => import("../pages/profile/ProfileChangeRequestsPage.jsx"));
 const MyDocumentsPage = lazy(() => import("../pages/documents/MyDocumentsPage.jsx"));
 const EmployeeFilesPage = lazy(() => import("../pages/documents/EmployeeFilesPage.jsx"));
 
@@ -436,6 +446,20 @@ const AppRoutes = () => (
         }
       />
 
+      {/* Phase 37.7 — tenant presence / work-location configuration.
+          The backend re-uses the SETTINGS_MANAGE permission; the
+          route is gated to COMPANY_ADMIN to mirror the AI settings
+          UX. The API will 403 for any other role even if they
+          type the URL. */}
+      <Route
+        path="settings/presence"
+        element={
+          <RequireRole roles={COMPANY_ADMIN}>
+            <PresenceSettingsPage />
+          </RequireRole>
+        }
+      />
+
       {/* Organization */}
       <Route
         path="departments"
@@ -475,6 +499,46 @@ const AppRoutes = () => (
         element={
           <RequireRole roles={SENIORS}>
             <AttendanceTeamPage />
+          </RequireRole>
+        }
+      />
+
+      {/* Phase 37.3 — Team availability (read-only). Same SENIORS
+          audience as the attendance team board; the backend reuses
+          utils/scope.js so visibility follows the existing employee
+          scope rule, and the page never exposes anything the backend
+          didn't authorize. */}
+      <Route
+        path="team/availability"
+        element={
+          <RequireRole roles={SENIORS}>
+            <TeamAvailabilityPage />
+          </RequireRole>
+        }
+      />
+
+      {/* Phase 37.7 — Convenience alias /app/team → /app/team/availability.
+          Same role gate (SENIORS) so a non-senior hitting /app/team
+          still sees the role check. The redirect preserves the URL
+          in the address bar (Navigate replace). */}
+      <Route
+        path="team"
+        element={
+          <RequireRole roles={SENIORS}>
+            <Navigate to="team/availability" replace />
+          </RequireRole>
+        }
+      />
+
+      {/* Phase 37.5 — WFH request review queue. HR / admin / manager
+          (anyone with PRESENCE_WORK_MODE_REVIEW) may visit. The
+          backend reuses the same scope helper as 31.4 work-mode
+          (utils/orgHelpers.js). */}
+      <Route
+        path="presence/work-location-requests/review"
+        element={
+          <RequireRole roles={HR}>
+            <WorkLocationReviewPage />
           </RequireRole>
         }
       />
@@ -674,6 +738,8 @@ const AppRoutes = () => (
       <Route path="payroll/analytics/salary-history/:employeeId" element={<SalaryHistoryPage />} />
       <Route path="payroll/analytics/register" element={<PayrollRegisterPage />} />
       <Route path="payroll/analytics/scheduled" element={<ScheduledReportsPage />} />
+      {/* Employee referrals — every authenticated employee of the tenant. */}
+      <Route path="referrals" element={<ReferralsPage />} />
       <Route path="payroll/employees" element={<EmployeePayrollPage />} />
       <Route path="payroll/employees/:employeeId" element={<EmployeePayrollDetailPage />} />
 
@@ -912,6 +978,19 @@ const AppRoutes = () => (
       <Route
         path="profile"
         element={<MyProfilePage />}
+      />
+
+      {/* Phase 38 — profile change request queue. The guard is the REVIEW
+          permission, not a role name: a company that grants it to a custom
+          role gets the page, and the server re-checks the org scope on
+          every request anyway. */}
+      <Route
+        path="profile/change-requests"
+        element={
+          <RequirePermission any={['PROFILE_CHANGE_REVIEW']}>
+            <ProfileChangeRequestsPage />
+          </RequirePermission>
+        }
       />
 
       <Route

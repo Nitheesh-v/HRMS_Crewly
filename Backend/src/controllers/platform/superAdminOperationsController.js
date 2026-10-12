@@ -723,7 +723,7 @@ export const getSettings = async (req, res) => {
         },
         {
           upsert: true,
-          new: true,
+          returnDocument: 'after',
           setDefaultsOnInsert: true,
         }
       ).lean();
@@ -773,7 +773,7 @@ export const updateSettings = async (req, res) => {
         },
         {
           upsert: true,
-          new: true,
+          returnDocument: 'after',
           runValidators: true,
         }
       );

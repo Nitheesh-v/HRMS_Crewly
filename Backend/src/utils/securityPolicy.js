@@ -53,7 +53,7 @@ export const getSecurityPolicy = async (
     },
     {
       upsert: true,
-      new: true,
+      returnDocument: 'after',
       setDefaultsOnInsert: true,
     }
   ).lean();

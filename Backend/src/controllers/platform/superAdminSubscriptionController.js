@@ -424,7 +424,7 @@ export const savePlan = async (req, res) => {
       },
       {
         upsert: true,
-        new: true,
+        returnDocument: 'after',
         runValidators: true,
       }
     );

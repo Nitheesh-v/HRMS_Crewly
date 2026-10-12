@@ -162,7 +162,7 @@ const resolveScopedFilters = async ({ companyId, query = {} }) => {
 
   if (query.source) {
     const source = String(query.source).toUpperCase();
-    if (!['INTERNAL', 'CAREER_PAGE'].includes(source)) {
+    if (!['INTERNAL', 'CAREER_PAGE', 'REFERRAL'].includes(source)) {
       throw ApiError.badRequest('Choose a valid candidate source');
     }
     filters.source = source;
@@ -841,13 +841,13 @@ const calculateRecruitmentAnalyticsOverview = async ({
   const joinedSourceMap = Object.fromEntries(
     joinedBySource.map((row) => [row._id || 'INTERNAL', row.count])
   );
-  const sourceAnalytics = ['CAREER_PAGE', 'INTERNAL'].map((source) => {
+  const sourceAnalytics = ['CAREER_PAGE', 'INTERNAL', 'REFERRAL'].map((source) => {
     const applicationCount =
       sourceApplicationRows.find((row) => row._id === source)?.count || 0;
     const joinedCount = joinedSourceMap[source] || 0;
     return {
       source,
-      label: source === 'CAREER_PAGE' ? 'Career page' : 'Internal / manual',
+      label: source === 'CAREER_PAGE' ? 'Career page' : source === 'REFERRAL' ? 'Employee referral' : 'Internal / manual',
       applications: applicationCount,
       joined: joinedCount,
       conversionRate: rate(joinedCount, applicationCount),
@@ -1224,6 +1224,7 @@ const calculateRecruitmentAnalyticsOverview = async ({
       sources: [
         { value: 'CAREER_PAGE', label: 'Career page' },
         { value: 'INTERNAL', label: 'Internal / manual' },
+        { value: 'REFERRAL', label: 'Employee referral' },
       ],
       ranges: [
         'LAST_7_DAYS',

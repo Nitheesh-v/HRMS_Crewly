@@ -8,10 +8,23 @@ import SubscriptionStatusBanner from "../components/SubscriptionStatusBanner.jsx
 import { Power, Menu, X } from "lucide-react";
 import SidebarNav from "./SidebarNav.jsx";
 import AiAssistantWidget from "../components/AIAssistant/AiAssistantWidget.jsx";
+import { PresenceMenu } from "../components/presence/index.js";
 import { useEffect, useState } from "react";
 import { useDispatch } from "react-redux";
+import store from "../redux/store.js";
 import { startRealtimeSession, stopRealtimeSession } from "../services/realtime/realtimeClient.js";
+// Phase 37.7 — start the presence runtime on auth. The runtime owns
+// the single /presence socket, the visibility ticker, and the
+// presence:changed listener. It is idempotent (epoch-guarded) so
+// React StrictMode's double-invoke is safe. The runtime STARTS only
+// when the user's tenant config has `enabled: true` — if the tenant
+// has presence disabled, no socket is opened and no heartbeat fires.
 import { fetchMyPermissions } from "../redux/slices/PermissionSlices.js";
+import {
+  startPresenceRuntime,
+  stopPresenceRuntime,
+} from "../services/realtime/presenceRuntime.js";
+import { loadPresenceConfig } from "../redux/slices/presenceSlice.js";
 
 
 
@@ -45,6 +58,7 @@ const NAV_BY_ROLE = {
     { to: "/app/projects", label: "Projects" },
     { to: "/app/tasks", label: "Tasks" },
     { to: "/app/recruitment", label: "Recruitment" },
+    { to: "/app/referrals", label: "Job Referrals" },
     { to: "/app/support", label: "Support Tickets" },
     { to: "/app/exit", label: "Resignations & Exit" },
     { to: "/app/company", label: "Company Settings" },
@@ -69,6 +83,13 @@ const NAV_BY_ROLE = {
     // tenant's kill switch and token budget.
     { to: "/app/settings/ai-settings", label: "AI Settings" },
     { to: "/app/settings/ai-usage", label: "AI Usage" },
+
+    // Phase 37.7 — the tenant presence / work-location admin page.
+    // COMPANY_ADMIN ONLY, matching the RequireRole guard on the route
+    // and the SETTINGS_MANAGE check the server does independently.
+    // The label intentionally mirrors the company-setting area, not
+    // "Me" — this is tenant policy, not personal preference.
+    { to: "/app/settings/presence", label: "Presence Settings" },
 
     { to: "/app/profile", label: "My Profile" },
     { to: "/app/notifications", label: "Notifications" },
@@ -98,6 +119,7 @@ const NAV_BY_ROLE = {
     { to: "/app/announcements", label: "Announcements" },
     { label: "Celebrations", soon: true },
     { to: "/app/recruitment", label: "Recruitment" },
+    { to: "/app/referrals", label: "Job Referrals" },
     { to: "/app/documents", label: "Documents" },
     { to: "/app/employee-files", label: "Employee Files" },
     { to: "/app/lifecycle", label: "Lifecycle" },
@@ -131,6 +153,7 @@ const NAV_BY_ROLE = {
     { to: "/app/expenses", label: "Expenses" },
     { to: "/app/assets", label: "Assets" },
     { to: "/app/recruitment/requisitions", label: "Hiring Requisitions" },
+    { to: "/app/referrals", label: "Job Referrals" },
     { label: "Daily Reports", soon: true },
     { to: "/app/reports", label: "Report Builder" },
     { to: "/app/payslips", label: "Payslips" },
@@ -166,6 +189,7 @@ const NAV_BY_ROLE = {
     { to: "/app/expenses", label: "Expenses" },
     { to: "/app/assets", label: "Assets" },
     { to: "/app/recruitment/requisitions", label: "Hiring Requisitions" },
+    { to: "/app/referrals", label: "Job Referrals" },
     { label: "Daily Reports", soon: true },
     { to: "/app/payslips", label: "Payslips" },
     { to: "/app/documents", label: "Documents" },
@@ -187,6 +211,7 @@ const NAV_BY_ROLE = {
     { to: "/app/chat", label: "Chat" },
     { label: "Chat Hub", soon: true },
     { to: "/app/meetings", label: "Meetings" },
+    { to: "/app/referrals", label: "Job Referrals" },
     { label: "Time Tracking", soon: true },
     { to: "/app/profile", label: "My Profile" },
     { to: "/app/notifications", label: "Notifications" },
@@ -222,6 +247,45 @@ const AppLayout = () => {
     if (userId) {
       dispatch(fetchMyPermissions());
     }
+    return undefined;
+  }, [dispatch, userId]);
+
+  // Phase 37.7 — start the presence runtime on auth (gated on
+  // tenant config `enabled`). One socket, one ticker, one listener.
+  // Idempotent across StrictMode + login-as-different-user.
+  useEffect(() => {
+    let cancelled = false;
+
+    const startIfEnabled = async () => {
+      try {
+        // First, ensure the tenant config is loaded into redux.
+        await dispatch(loadPresenceConfig()).unwrap().catch(() => null);
+        if (cancelled) return;
+        const cfg = store.getState().presence?.config?.data || null;
+        const enabled = cfg?.enabled !== false; // default true if missing
+        if (!enabled) {
+          // Tenant has presence disabled. No socket. The REST reads
+          // on the menu / tile / team page continue to work.
+          return;
+        }
+        await startPresenceRuntime();
+      } catch {
+        /* runtime start never throws up */
+      }
+    };
+
+    if (userId) startIfEnabled();
+
+    return () => {
+      cancelled = true;
+      // Always stop on unmount / userId change so we don't leak the
+      // socket across login-as-different-user.
+      try {
+        stopPresenceRuntime();
+      } catch {
+        /* never throws */
+      }
+    };
   }, [dispatch, userId]);
 
   const handleLogout = async () => {
@@ -448,8 +512,16 @@ const AppLayout = () => {
     ? [{ to: '/app/attendance/overtime', label: 'Overtime & Comp-Off' }]
     : [];
 
+  // Phase 37.3 — team availability lives in the same teamMenu surface
+  //   as "Who's Working". Same permission gate (ATTENDANCE_READ);
+  //   same scope semantics; the backend reuses utils/scope.js so a
+  //   user without ATTENDANCE_READ who somehow reaches this still sees
+  //   the empty population of [self].
   const teamMenu = hasAnyPermission(['ATTENDANCE_READ'])
-    ? [{ to: '/app/attendance/team', label: "Who's Working" }]
+    ? [
+        { to: '/app/attendance/team', label: "Who's Working" },
+        { to: '/app/team/availability', label: 'Team Availability' },
+      ]
     : [];
 
   const timesheetMenu = hasAnyPermission(['ATTENDANCE_READ_SELF', 'ATTENDANCE_READ'])
@@ -465,6 +537,14 @@ const AppLayout = () => {
 
   const analyticsMenu = hasAnyPermission(['ATTENDANCE_ANALYTICS_READ', 'ATTENDANCE_READ_SELF'])
     ? [{ to: '/app/attendance/analytics', label: 'Attendance Analytics' }]
+    : [];
+
+  // Phase 38 — the profile change request queue. Same idea as every other
+  // permission-driven menu here: the SERVER holds the real gate
+  // (requirePermission('PROFILE_CHANGE_REVIEW') + org scope); this only
+  // decides whether a person is given a door to knock on.
+  const profileChangeMenu = hasPermission('PROFILE_CHANGE_REVIEW')
+    ? [{ to: '/app/profile/change-requests', label: 'Profile Change Requests' }]
     : [];
 
   const captureMenu = hasAnyPermission(['ATTENDANCE_CAPTURE_MANAGE'])
@@ -487,6 +567,7 @@ const AppLayout = () => {
     ...operationsMenu,
     ...analyticsMenu,
     ...captureMenu,
+    ...profileChangeMenu,
     ...payrollMenu,
     ...recruitmentDashboardMenu,
     ...candidateMenu,
@@ -561,6 +642,7 @@ const AppLayout = () => {
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-3 lg:gap-4">
+            <PresenceMenu />
             <NotificationBell />
             <button
               onClick={handleLogout}

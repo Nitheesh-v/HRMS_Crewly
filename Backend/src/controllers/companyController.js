@@ -49,7 +49,7 @@ export const updateMyCompany = asyncHandler(async (req, res) => {
   const company = await Company.findOneAndUpdate(
     { _id: req.companyId },
     { $set: set },
-    { new: true, runValidators: true }
+    { returnDocument: 'after', runValidators: true }
   );
 
   // Data to frontend - response to frontend

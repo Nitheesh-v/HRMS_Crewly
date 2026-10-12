@@ -211,7 +211,7 @@ test('all decisions use an atomic tenant-and-status filter and preserve review e
         companyId: 'company-a',
         status: 'PENDING_HR',
       });
-      assert.equal(atomicCall.options.new, true);
+      assert.equal(atomicCall.options.returnDocument, 'after');
       assert.equal(atomicCall.options.runValidators, true);
       assert.equal(atomicCall.update.$set.status, reviewCase.decision);
       assert.equal(

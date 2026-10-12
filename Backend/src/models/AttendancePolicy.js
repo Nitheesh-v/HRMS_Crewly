@@ -17,11 +17,15 @@ export const LOCATION_ENFORCEMENT = ['DISABLED', 'OPTIONAL', 'REQUIRED'];
 
 const attendancePolicySchema = new mongoose.Schema(
   {
+    // No `index: true` here on purpose. The partial-unique index below is the
+    // single authority on { companyId: 1 }: Mongoose builds schema indexes one
+    // at a time in declaration order, so a field-level flag as well would make
+    // this pattern a duplicate — the plain index wins and the UNIQUE constraint
+    // silently never reaches MongoDB (gh-15056).
     companyId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Company',
       required: true,
-      index: true,
     },
 
     name: {
@@ -152,6 +156,25 @@ const attendancePolicySchema = new mongoose.Schema(
       weeklyOffBenefit: { type: String, enum: ['NONE', 'OVERTIME', 'COMP_OFF'], default: 'NONE' },
       holidayBenefit: { type: String, enum: ['NONE', 'OVERTIME', 'COMP_OFF'], default: 'NONE' },
       compOffMinutesPerDay: { type: Number, default: 480, min: 1, max: 1440 },
+    },
+
+    // ── Weekly-hours flexi target (owner unit, 2026-10-10) ──
+    // Finish the weekly hours goal early, rest the remaining working days.
+    // OFF for every company until explicitly enabled. targetMinutes is the
+    // Mon→Sun worked-hours goal (default 2400 = 40h; cap 10080 = 7×24h so
+    // any target is representable). When the target is crossed mid-week,
+    // remaining scheduled working days that resolve with no punches and no
+    // approved leave become WEEKLY_TARGET_OFF — paid earned rest: never
+    // absent, never LOP, never a leave-balance deduction.
+    weeklyTarget: {
+      enabled: { type: Boolean, default: false },
+      targetMinutes: { type: Number, default: 2400, min: 60, max: 10080 },
+      restDayMode: {
+        type: String,
+        enum: ['AUTO_MARK', 'SUGGEST_ONLY'],
+        default: 'AUTO_MARK',
+      },
+      includeApprovedOvertime: { type: Boolean, default: false },
     },
 
     // Evaluation BEHAVIOR only. Holiday/WorkSchedule remain authoritative

@@ -26,6 +26,7 @@ import {
 } from './utils/candidatePipelineMigration.js';
 import {
   ensurePermissions,
+  getSystemPermissionVersion,
 } from './utils/permissionService.js';
 import {
   markReady,
@@ -41,6 +42,7 @@ import {
 import {
   getChatSocketServer,
 } from './socket/initSocketServer.js';
+import { parsePresenceSocketEnabled } from './socket/presenceSocketConfig.js';
 import {
   startProcessDiagnostics,
   stopProcessDiagnostics,
@@ -49,6 +51,7 @@ import {
 import { initAIProvider } from './services/ai/aiProvider.js';
 
 const startServer = async () => {
+  let presenceSocketServer = null;
   try {
     // Connect to MongoDB before accepting requests.
     await connectDB();
@@ -66,7 +69,7 @@ const startServer = async () => {
     const permissionCount = (await ensurePermissions()).length;
 
     logger.info(
-      `🛡️ System permission catalogue verified: ${permissionCount} permissions (v36)`
+      `🛡️ System permission catalogue verified: ${permissionCount} permissions (v${getSystemPermissionVersion()})`
     );
 
     // Phase 28.1 — optional Redis infrastructure. Never throws at the
@@ -113,6 +116,39 @@ const startServer = async () => {
     // preserved. Refuses every connection as FEATURE_UNAVAILABLE when
     // Redis is disabled/unreachable — the HTTP API is never affected.
     await getChatSocketServer().attach(server);
+
+    // Phase 37 — presence Socket.IO namespace (opt-in). Attach before
+    // listen, sharing chat's Socket.IO engine when chat is enabled. If
+    // Redis or its adapter is unavailable, the optional namespace refuses
+    // socket connections as FEATURE_UNAVAILABLE; the HTTP API still boots.
+    if (parsePresenceSocketEnabled()) {
+      try {
+        const { getPresenceSocketServer } = await import('./socket/presenceSocket.js');
+        presenceSocketServer = getPresenceSocketServer();
+        const result = await presenceSocketServer.attach(server, {
+          sharedIo: getChatSocketServer().getIo(),
+        });
+        if (result.pending) {
+          logger.warn(
+            `[PresenceSocket] namespace mounted with adapter pending (${result.reason || 'FEATURE_UNAVAILABLE'}); socket admission is closed until recovery, REST remains available.`,
+          );
+        } else if (!result.started) {
+          logger.warn(
+            `[PresenceSocket] not started (${result.reason || 'FEATURE_UNAVAILABLE'}); REST remains available.`,
+          );
+        }
+      } catch (error) {
+        logger.error(
+          `[PresenceSocket] optional startup failed (${error?.code || error?.name || 'error'}); REST remains available.`,
+        );
+        try {
+          await presenceSocketServer?.stop();
+        } catch {
+          /* optional realtime cleanup */
+        }
+        presenceSocketServer = null;
+      }
+    }
 
     server.listen(
       env.PORT,
@@ -165,12 +201,27 @@ const startServer = async () => {
     const shutdownWithRealtime = (signal) => {
       beginDrain(`realtime-drain:${signal}`);
       Promise.resolve()
-        .then(() => {
+        .then(async () => {
           stopProcessDiagnostics();
-          return getChatSocketServer().stop();
+          // Drain the namespace before its shared chat Engine.IO owner.
+          // Keep later shutdown steps running even if an optional realtime
+          // cleanup encounters an error.
+          try {
+            await presenceSocketServer?.stop();
+          } catch {
+            /* best-effort optional realtime cleanup */
+          }
+          try {
+            await getChatSocketServer().stop();
+          } catch {
+            /* continue draining the remaining services */
+          }
+          try {
+            await getRealtimeGateway().stop();
+          } catch {
+            /* continue to HTTP shutdown */
+          }
         })
-        .then(() => getRealtimeGateway().stop())
-        .catch(() => {})
         .finally(() => shutdown(signal));
     };
 
@@ -188,9 +239,9 @@ const startServer = async () => {
           `Unhandled Rejection: ${reason}`
         );
 
-        // Same bounded drain path as a signal — owned resources are
-        // closed instead of abandoned (exit code 1: failure).
-        shutdown('unhandledRejection');
+        // Use the same realtime-aware drain as a signal so the optional
+        // presence namespace is closed before the HTTP listener (exit code 1).
+        shutdownWithRealtime('unhandledRejection');
       }
     );
   } catch (error) {

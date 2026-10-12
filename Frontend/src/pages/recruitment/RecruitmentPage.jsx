@@ -368,6 +368,17 @@ const RecruitmentPage = () => {
 
   const saveJob = async (event) => {
     event.preventDefault();
+
+    // Same contract the backend enforces (PATCH /jobs/:id — title 3–120).
+    // Caught here so the user fixes it at the field, not in a toast.
+    if (String(jobForm.title || '').trim().length < 3) {
+      flash(
+        'error',
+        'Job title must be at least 3 characters — e.g. change "hr" to "HR Executive" — then save again'
+      );
+      return;
+    }
+
     setBusy(true);
 
     try {
@@ -394,7 +405,12 @@ const RecruitmentPage = () => {
 
       if (jobModal.editing) {
         await recruitmentService.updateJob(jobModal.editing._id, payload);
-        flash('success', 'Job updated');
+        flash(
+          'success',
+          payload.publicationStatus === 'PUBLISHED'
+            ? 'Job published — now visible on the careers page and in employee Job Referrals'
+            : 'Job saved as draft — publish it when it is ready'
+        );
       } else if (jobModal.requisition) {
         createdJob = await requisitionService.createJob(
           jobModal.requisition._id,
@@ -402,11 +418,16 @@ const RecruitmentPage = () => {
         );
         flash(
           'success',
-          `${createdJob.title} created from ${jobModal.requisition.requisitionNumber}`
+          `${createdJob.title} created from ${jobModal.requisition.requisitionNumber} — open it to review and publish`
         );
       } else {
         createdJob = await recruitmentService.createJob(payload);
-        flash('success', 'Job posted');
+        flash(
+          'success',
+          payload.publicationStatus === 'PUBLISHED'
+            ? 'Job published — now visible on the careers page and in employee Job Referrals'
+            : 'Job saved as draft — publish it when it is ready'
+        );
       }
 
       setJobModal({ open: false, editing: null, requisition: null });
@@ -417,7 +438,14 @@ const RecruitmentPage = () => {
         setSearchParams({ job: createdJob._id }, { replace: true });
       }
     } catch (error) {
-      flash('error', errText(error));
+      // Prefer the backend's per-field messages (validators attach `errors`)
+      // over the generic top-level message, so "Title must be 3–120
+      // characters" beats an unexplained "Invalid value".
+      const fieldErrors = error?.response?.data?.errors;
+      const detail = Array.isArray(fieldErrors) && fieldErrors.length
+        ? fieldErrors.map((e) => e.message).join(' · ')
+        : errText(error);
+      flash('error', detail);
     } finally {
       setBusy(false);
     }

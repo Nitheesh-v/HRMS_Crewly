@@ -25,8 +25,31 @@ export const myNotifications = asyncHandler(async (req, res) => {
 });
 
 export const unreadCount = asyncHandler(async (req, res) => {
+  // 37.4 — diagnostic: a slow read here is part of the user's
+  // 25s / pending-request symptom. The bell polls every 60s, so
+  // any pending /api/notifications/unread-count shows up in
+  // DevTools. Log only when >500ms.
+  const slowThresholdMs = 500;
+  const t0 = process.hrtime.bigint();
+  const slowTimer = setTimeout(() => {
+    const elapsed = Number(process.hrtime.bigint() - t0) / 1e6;
+    console.warn(
+      '[system/unreadCount] STILL RUNNING after',
+      Math.round(elapsed),
+      'ms — userId:',
+      String(req.user?._id || '?'),
+    );
+  }, slowThresholdMs);
+
   // DB Logic - DB logics
   const count = await Notification.countDocuments({ user: req.user._id, readAt: null });
+
+  clearTimeout(slowTimer);
+  const t1 = Number(process.hrtime.bigint() - t0) / 1e6;
+  if (t1 > slowThresholdMs) {
+    console.warn('[system/unreadCount] Notification.countDocuments took', Math.round(t1), 'ms');
+  }
+
   // Data to frontend - response to frontend
   return ApiResponse.success(res, { message: 'Unread count', data: { count } });
 });

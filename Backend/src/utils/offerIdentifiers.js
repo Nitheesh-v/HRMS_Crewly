@@ -12,7 +12,7 @@ export const nextOfferCode = async (companyId) => {
         $inc: { value: 1 },
         $setOnInsert: { companyId, key: SEQUENCE_KEY },
       },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     );
   } catch (error) {
     if (error.code !== 11000) throw error;
@@ -20,7 +20,7 @@ export const nextOfferCode = async (companyId) => {
     sequence = await TenantSequence.findOneAndUpdate(
       { companyId, key: SEQUENCE_KEY },
       { $inc: { value: 1 } },
-      { new: true }
+      { returnDocument: 'after' }
     );
   }
 

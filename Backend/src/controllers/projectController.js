@@ -18,9 +18,13 @@ const isAdmin = (req) => ADMIN_ROLES.includes(req.user.role);
 const ok = (res, status, data, message) =>
   res.status(status).json({ statusCode: status, success: true, data, message });
 
-const notify = async (userId, payload) => {
+// notifyUser(companyId, user, payload) — three arguments. This helper passed
+// two, so the third destructured `undefined`, threw inside notifyUser, and the
+// catch below swallowed it: no project notification has ever been delivered.
+// The tenant travels with every call now (Phase 39).
+const notify = async (companyId, userId, payload) => {
   try {
-    if (userId) await notifyUser(userId, payload);
+    if (companyId && userId) await notifyUser(companyId, userId, payload);
   } catch (e) { /* notifications never block */ }
 };
 
@@ -175,7 +179,7 @@ export const createProject = asyncHandler(async (req, res) => {
   });
 
   if (String(managerFinal) !== String(req.user._id)) {
-    notify(managerFinal, {
+    notify(req.companyId, managerFinal, {
       title: '📁 You are the Project Manager',
       message: `"${project.name}" was assigned to you — open it and assign your Team Leads`,
       link: `/app/projects/${project._id}`,
@@ -262,14 +266,14 @@ export const updateProject = asyncHandler(async (req, res) => {
 
   // 🔔 assignment notifications
   if (String(project.manager) !== prevManager) {
-    notify(project.manager, { title: '📁 You are the Project Manager', message: `"${project.name}" was assigned to you`, link: `/app/projects/${project._id}` });
+    notify(req.companyId, project.manager, { title: '📁 You are the Project Manager', message: `"${project.name}" was assigned to you`, link: `/app/projects/${project._id}` });
   }
   (project.teamLeads || [])
     .filter((t) => !prevTLs.has(String(t)))
-    .forEach((t) => notify(t, { title: '🧑‍🤝‍🧑 You are now Team Lead', message: `Project "${project.name}" — start assigning tasks to your team`, link: `/app/projects/${project._id}` }));
+    .forEach((t) => notify(req.companyId, t, { title: '🧑‍🤝‍🧑 You are now Team Lead', message: `Project "${project.name}" — start assigning tasks to your team`, link: `/app/projects/${project._id}` }));
   project.members
     .filter((m) => !prevMembers.has(String(m)) && String(m) !== String(project.manager))
-    .forEach((m) => notify(m, { title: '📁 Added to project', message: `You were added to project "${project.name}"`, link: `/app/projects/${project._id}` }));
+    .forEach((m) => notify(req.companyId, m, { title: '📁 Added to project', message: `You were added to project "${project.name}"`, link: `/app/projects/${project._id}` }));
 
   // Data to frontend - response to frontend
   ok(res, 200, project, 'Project updated');

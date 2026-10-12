@@ -21,7 +21,16 @@ const excludedSchema = new Schema(
     errors: { type: [String], default: [] },
     messages: { type: [String], default: [] },
   },
-  { _id: false },
+  {
+    _id: false,
+    // `errors` is deliberate here: it is DATA on the excluded row (the reason
+    // codes the UI renders), not Mongoose's validation-error bag. Mongoose
+    // reserves the name for Document#errors and warns on every boot; this is
+    // its documented opt-out. Renaming the field would ripple through the
+    // payment service, API payloads and the frontend for zero behaviour
+    // change — revisit only if a real collision ever shows up.
+    suppressReservedKeysWarning: true,
+  },
 );
 
 const payrollPaymentBatchSchema = new Schema(

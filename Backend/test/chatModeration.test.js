@@ -301,8 +301,20 @@ test('33.9 role matrix: moderation is granted deliberately, never to employees',
   assert.ok(!employee.includes('CHAT_GROUP_MANAGE'));
 });
 
-test('33.9 bumps the permission version to 37 (one-shot role migration)', () => {
-  assert.equal(getSystemPermissionVersion(), 37);
+/*
+ * 33.9 introduced CHAT_MODERATE / CHAT_GROUP_MANAGE and moved the catalogue
+ * to version 37. Phase 38 then added PROFILE_CHANGE_REVIEW and moved it to
+ * 38, so this pin now tracks the live constant instead of freezing a number
+ * that a later phase legitimately advances. The guarantee the test exists
+ * for is unchanged and still enforced: the version is a single integer the
+ * role migration compares against, and every catalogue change moves it
+ * forward (nothing here may regress to an older numbering).
+ */
+test('catalogue changes advance the permission version (one-shot role migration)', () => {
+  const version = getSystemPermissionVersion();
+  assert.equal(Number.isInteger(version), true);
+  assert.ok(version >= 37, `permission version regressed: ${version}`);
+  assert.equal(version, 38);
 });
 
 // ── 2. conversation lock ──────────────────────────────────────────────────
