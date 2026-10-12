@@ -1,13 +1,15 @@
-// Auth & Onboarding UX redesign (Figma reference) — source pins.
+// Auth & Onboarding UX redesign (Figma reference) — source pins, v2.
 //
 // Convention: these tests READ the source files and assert the contract,
 // the same way every other frontend test in this repo does. They pin the
 // decisions the redesign made against the Figma export:
 //
-//   · real backend contract on the wire (company code + email + password),
+//   · real backend contract on the wire (company code + email + password;
+//     register sends exactly { companyName, adminName, email, password }),
 //   · remember-me stores identifiers ONLY, never the password,
-//   · no social login buttons and no fake social proof (testimonials,
-//     stats, emojis) on the auth screens,
+//   · the Figma's Google/Apple buttons render but disabled with a "soon"
+//     chip and no handler — no OAuth exists in the backend,
+//   · no fake social proof (testimonials, stats) and no emojis,
 //   · the backend's generic 401 is shown verbatim — the Figma artwork's
 //     "email not registered" copy would leak account enumeration,
 //   · dark + light palettes exist and are scoped to the auth subtree,
@@ -57,16 +59,52 @@ test("login posts the real backend contract and remember stores identifiers only
   );
 });
 
-test("no social login, fake testimonials, fake stats or emojis on auth screens", async () => {
+test("register sends exactly the backend contract — no invented fields", async () => {
+  const register = await read("src/pages/register/RegisterCompanyPage.jsx");
+
+  assert.match(register, /authService\.registerCompany\(form\)/);
+  for (const name of ["companyName", "adminName", "email", "password"]) {
+    assert.match(register, new RegExp(`name="${name}"`), `${name} field missing`);
+  }
+  // The backend has no confirm-password; the form must not invent one.
+  assert.doesNotMatch(register, /name="confirmPassword"/);
+});
+
+test("social buttons render like the design but disabled and handler-less", async () => {
+  const login = await read("src/pages/login/LoginPage.jsx");
+  const register = await read("src/pages/register/RegisterCompanyPage.jsx");
+
+  for (const src of [login, register]) {
+    assert.match(src, /Or (login|register) with/);
+    assert.match(src, /<button[^>]*disabled[^>]*>\s*Google <span className="auth-soon">soon<\/span>/);
+    assert.match(src, /<button[^>]*disabled[^>]*>\s*Apple <span className="auth-soon">soon<\/span>/);
+  }
+});
+
+test("no fake testimonials, fake stats or emojis on auth screens", async () => {
   for (const rel of AUTH_FILES) {
     const src = await read(rel);
 
-    assert.doesNotMatch(src, /Google|Apple/, `${rel} must not render social login`);
-    assert.doesNotMatch(src, /Or (login|register) with/, `${rel} must not render the social divider`);
     assert.doesNotMatch(src, /Katie Waters|Total Employees|Job Applicants/, `${rel} must not carry fake social proof`);
     assert.doesNotMatch(src, /login-hero/, `${rel} must not use the stock hero photo`);
     assert.doesNotMatch(src, /[\u{1F000}-\u{1FAFF}]/u, `${rel} must not use emojis in product UI`);
   }
+});
+
+test("the Figma copy ships verbatim (typos corrected)", async () => {
+  const login = await read("src/pages/login/LoginPage.jsx");
+  const register = await read("src/pages/register/RegisterCompanyPage.jsx");
+
+  assert.match(login, /Login first to your account/);
+  assert.match(login, /Remember Me/);
+  assert.match(login, /Forgot Password/);
+  assert.match(login, /You're new in here\?/);
+  assert.match(login, /Input your registered email/);
+  assert.match(register, /Manage employees easily starting from now!/);
+  assert.match(register, /Get started for free today!/);
+  // Figma typos stay fixed.
+  assert.doesNotMatch(login, /Iinput/);
+  assert.doesNotMatch(register, /employess/);
 });
 
 test("the backend's generic failure is shown verbatim; enumeration copy is gone", async () => {

@@ -63,7 +63,7 @@ const ThemeToggle = ({ theme, onToggle }) => (
   </button>
 );
 
-const AuthLayout = ({ children }) => {
+const AuthLayout = ({ children, centerLogo = false }) => {
   const [theme, setTheme] = useState(initialTheme);
 
   const toggleTheme = () => {
@@ -80,9 +80,15 @@ const AuthLayout = ({ children }) => {
 
   return (
     <div data-theme={theme} className="auth-root flex min-h-screen flex-col">
-      <header className="mx-auto flex w-full max-w-md items-center justify-between px-6 pt-6 sm:pt-8">
+      <header
+        className={`mx-auto w-full max-w-md px-6 pt-6 sm:pt-8 ${
+          centerLogo ? "relative flex items-center justify-center" : "flex items-center justify-between"
+        }`}
+      >
         <Logo />
-        <ThemeToggle theme={theme} onToggle={toggleTheme} />
+        <div className={centerLogo ? "absolute right-6 top-6 sm:top-8" : ""}>
+          <ThemeToggle theme={theme} onToggle={toggleTheme} />
+        </div>
       </header>
 
       <main className="flex flex-1 items-center justify-center px-6 py-10">

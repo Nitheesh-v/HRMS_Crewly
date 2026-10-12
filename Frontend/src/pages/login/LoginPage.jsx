@@ -39,6 +39,33 @@ const noticeFor = (searchParams) => {
   return "";
 };
 
+// Figma parity: the design shows Google / Apple sign-in. Crewly has no
+// OAuth backend, so the buttons render disabled with a "soon" chip instead
+// of faking a flow (a beautiful button that does nothing is a product bug).
+const SocialRow = ({ divider }) => (
+  <div className="mt-6">
+    <div className="auth-divider">{divider}</div>
+    <div className="mt-4 grid grid-cols-2 gap-3">
+      <button
+        type="button"
+        disabled
+        className="auth-secondary"
+        title="Google sign-in is not enabled yet — use your email and password."
+      >
+        Google <span className="auth-soon">soon</span>
+      </button>
+      <button
+        type="button"
+        disabled
+        className="auth-secondary"
+        title="Apple sign-in is not enabled yet — use your email and password."
+      >
+        Apple <span className="auth-soon">soon</span>
+      </button>
+    </div>
+  </div>
+);
+
 const LoginPage = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -124,14 +151,11 @@ const LoginPage = () => {
   };
 
   return (
-    <AuthLayout>
+    <AuthLayout centerLogo>
       <div>
         <h1 className="auth-heading text-2xl font-bold tracking-tight sm:text-[28px]">
-          Sign in to your account
+          Login first to your account
         </h1>
-        <p className="auth-sub mt-1.5 text-sm">
-          Use your company code to continue to your workspace.
-        </p>
 
         {serverError && (
           <p role="alert" className="auth-error-banner mt-4">
@@ -171,7 +195,7 @@ const LoginPage = () => {
 
           <div>
             <label htmlFor="email" className="auth-label auth-required">
-              Email address
+              Email Address
             </label>
             <div className="relative">
               <input
@@ -179,7 +203,7 @@ const LoginPage = () => {
                 name="email"
                 type="email"
                 className="auth-input pr-10"
-                placeholder="you@company.com"
+                placeholder="Input your registered email"
                 value={form.email}
                 onChange={onChange}
                 autoComplete="email"
@@ -212,7 +236,7 @@ const LoginPage = () => {
               name="password"
               value={form.password}
               onChange={onChange}
-              placeholder="Your password"
+              placeholder="Input your password"
               invalid={Boolean(fieldErrors.password)}
               describedBy={fieldErrors.password ? "password-error" : undefined}
             />
@@ -231,13 +255,13 @@ const LoginPage = () => {
                 onChange={(e) => setRemember(e.target.checked)}
                 className="auth-checkbox h-4 w-4 rounded"
               />
-              Remember me
+              Remember Me
             </label>
             <Link
               to="/forgot-password"
               className="auth-muted-link text-sm underline-offset-2 hover:underline"
             >
-              Forgot password?
+              Forgot Password
             </Link>
           </div>
 
@@ -253,10 +277,12 @@ const LoginPage = () => {
           </button>
         </form>
 
+        <SocialRow divider="Or login with" />
+
         <p className="auth-sub mt-6 text-center text-sm">
-          You're new here?{" "}
+          You're new in here?{" "}
           <Link to="/register" className="auth-link font-medium hover:underline">
-            Create an account
+            Create Account
           </Link>
         </p>
 

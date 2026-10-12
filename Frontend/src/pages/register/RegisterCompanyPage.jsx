@@ -10,16 +10,45 @@ import { notify } from "../../utils/notify.js";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Figma parity: the design shows Google / Apple sign-up. Crewly has no
+// OAuth backend, so the buttons render disabled with a "soon" chip instead
+// of faking a flow (a beautiful button that does nothing is a product bug).
+const SocialRow = ({ divider }) => (
+  <div className="mt-6">
+    <div className="auth-divider">{divider}</div>
+    <div className="mt-4 grid grid-cols-2 gap-3">
+      <button
+        type="button"
+        disabled
+        className="auth-secondary"
+        title="Google sign-up is not enabled yet — create your account with email."
+      >
+        Google <span className="auth-soon">soon</span>
+      </button>
+      <button
+        type="button"
+        disabled
+        className="auth-secondary"
+        title="Apple sign-up is not enabled yet — create your account with email."
+      >
+        Apple <span className="auth-soon">soon</span>
+      </button>
+    </div>
+  </div>
+);
+
 const RegisterCompanyPage = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
 
+  // The backend contract is exactly { companyName, adminName, email,
+  // password } — no confirm-password field exists server-side, so the
+  // form mirrors the contract (and the Figma) with a single password.
   const [form, setForm] = useState({
     companyName: "",
     adminName: "",
     email: "",
     password: "",
-    confirmPassword: "",
   });
   const [fieldErrors, setFieldErrors] = useState({});
   const [serverError, setServerError] = useState("");
@@ -32,16 +61,10 @@ const RegisterCompanyPage = () => {
     setFieldErrors((current) => (current[name] ? { ...current, [name]: "" } : current));
   };
 
-  const mismatch = form.confirmPassword && form.password !== form.confirmPassword;
   const longEnough = form.password.length >= 6;
   const emailLooksValid = EMAIL_RE.test(form.email.trim());
   const canSubmit =
-    form.companyName.trim() &&
-    form.adminName.trim() &&
-    form.email.trim() &&
-    longEnough &&
-    form.confirmPassword &&
-    !mismatch;
+    form.companyName.trim() && form.adminName.trim() && form.email.trim() && longEnough;
 
   const validate = () => {
     const next = {};
@@ -53,8 +76,6 @@ const RegisterCompanyPage = () => {
       next.email = "That does not look like an email address.";
     }
     if (!longEnough) next.password = "Use at least 6 characters.";
-    if (!form.confirmPassword) next.confirmPassword = "Re-type your password.";
-    else if (mismatch) next.confirmPassword = "Passwords do not match yet.";
 
     setFieldErrors(next);
 
@@ -65,18 +86,11 @@ const RegisterCompanyPage = () => {
     e.preventDefault();
     setServerError("");
 
-    if (form.password !== form.confirmPassword) {
-      setServerError("Passwords do not match");
-      return;
-    }
-
     if (!validate()) return;
 
     setLoading(true);
     try {
-      const payload = { ...form };
-      delete payload.confirmPassword;
-      const data = await authService.registerCompany(payload);
+      const data = await authService.registerCompany(form);
       // 33.14 — auto login after register: cookies are set by the server,
       // so only the profile goes into the store.
       login(data.user);
@@ -93,11 +107,9 @@ const RegisterCompanyPage = () => {
     <AuthLayout>
       <div>
         <h1 className="auth-heading text-2xl font-bold tracking-tight sm:text-[28px]">
-          Manage employees easily, starting now
+          Manage employees easily starting from now!
         </h1>
-        <p className="auth-sub mt-1.5 text-sm">
-          Get started for free today — 14 days, no payment details needed.
-        </p>
+        <p className="auth-sub mt-1.5 text-sm">Get started for free today!</p>
 
         {serverError && (
           <p role="alert" className="auth-error-banner mt-4">
@@ -133,13 +145,13 @@ const RegisterCompanyPage = () => {
 
           <div>
             <label htmlFor="adminName" className="auth-label auth-required">
-              Your name
+              Name
             </label>
             <input
               id="adminName"
               name="adminName"
               className="auth-input"
-              placeholder="Full name"
+              placeholder="Input your full name"
               value={form.adminName}
               onChange={onChange}
               autoComplete="name"
@@ -156,7 +168,7 @@ const RegisterCompanyPage = () => {
 
           <div>
             <label htmlFor="email" className="auth-label auth-required">
-              Work email
+              Work Email
             </label>
             <div className="relative">
               <input
@@ -196,7 +208,7 @@ const RegisterCompanyPage = () => {
               name="password"
               value={form.password}
               onChange={onChange}
-              placeholder="At least 6 characters"
+              placeholder="Input your password"
               autoComplete="new-password"
               minLength={6}
               invalid={Boolean(fieldErrors.password)}
@@ -209,27 +221,6 @@ const RegisterCompanyPage = () => {
             )}
           </div>
 
-          <div>
-            <label htmlFor="confirmPassword" className="auth-label auth-required">
-              Confirm password
-            </label>
-            <PasswordField
-              id="confirmPassword"
-              name="confirmPassword"
-              value={form.confirmPassword}
-              onChange={onChange}
-              placeholder="Re-type your password"
-              autoComplete="new-password"
-              invalid={Boolean(fieldErrors.confirmPassword)}
-              describedBy={fieldErrors.confirmPassword ? "confirmPassword-error" : undefined}
-            />
-            {fieldErrors.confirmPassword && (
-              <p id="confirmPassword-error" className="auth-error-text mt-1.5 text-xs">
-                {fieldErrors.confirmPassword}
-              </p>
-            )}
-          </div>
-
           <button type="submit" disabled={loading || !canSubmit} className="auth-primary">
             {loading ? (
               <>
@@ -237,10 +228,12 @@ const RegisterCompanyPage = () => {
                 Creating your workspace…
               </>
             ) : (
-              "Create account"
+              "Create Account"
             )}
           </button>
         </form>
+
+        <SocialRow divider="Or register with" />
 
         <p className="auth-sub mt-6 text-center text-sm">
           Already have an account?{" "}

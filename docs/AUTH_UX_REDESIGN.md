@@ -20,12 +20,26 @@ the next free number is 40). The Helpdesk unit follows in a later batch.
 | Password eye toggle | **KEPT** | Reuses `PasswordField` (also Caps-Lock hint) |
 | Dark palette (phones) + light palette (light strip) | **KEPT, adapted** | Token layer: `.auth-root` defines dark custom properties by default; `[data-theme="light"]` redefines them. Toggle (Sun/Moon) persists `crewly.theme`. Scoped to the auth subtree — the other 140+ files are untouched |
 | "HRDashboard" brand, "© 2025 … Alrights reserved" | **REMOVED** | Truthful branding: Crewly logo + wordmark, dynamic year, correct spelling |
-| Google / Apple buttons + "Or login/register with" dividers | **REMOVED** | No OAuth exists in the backend (§20: no dead buttons). Deferred |
+| Google / Apple buttons + "Or login/register with" dividers | **KEPT, DISABLED** | Owner asked for image parity; no OAuth exists in the backend, so the buttons render disabled with a "soon" chip and an explanatory tooltip — never faked (§20 option B) |
 | "Remember Me" | **ADAPTED** | Existing identifier-only remember (company code + email in `localStorage`, never the password) |
 | Email-only login form | **ADAPTED** | Backend `POST /auth/login` requires **company code + email + password** — the company code field stays |
 | Error copy "The email you entered is not registered…" | **REMOVED** | Backend deliberately returns a generic 401 to prevent account enumeration. The screen renders the backend message verbatim in the Figma red presentation |
-| Sign-up: Name / Work Email / Password | **ADAPTED** | Real contract is company name + your name + work email + password + confirm; truthful "14 days, no payment details" copy (`TRIAL_DAYS = 14`) |
+| Sign-up: Name / Work Email / Password | **ADAPTED** | Real contract is company name + your name + work email + password — the backend has no confirm-password field, so v2 dropped it; truthful "Get started for free today!" copy (`TRIAL_DAYS = 14`) |
 | Figma typos ("Iinput", "employess", "Alrights") | **REMOVED** | Truthful copy rule |
+
+### 1.1 V2 — image-faithful pass (owner: "i want same like in the images")
+
+- Copy verbatim from the art, typos corrected: "Login first to your account", "Remember Me",
+  "Forgot Password", "You're new in here? Create Account", "Manage employees easily starting
+  from now!", "Get started for free today!", placeholder "Input your registered email".
+- Login logo centered (the art centers it); signup logo left as in the art.
+- Disabled Login / Create Account renders as the art's muted slab with dim text
+  (`--auth-btn-disabled-*`), not a faded white button.
+- Login field order follows the art (Email Address, Password, Remember Me / Forgot Password
+  row, Login button); the backend-mandatory Company code sits above them as the single
+  extra field the API requires.
+- Confirm-password dropped from signup (backend `register-company` takes exactly
+  `{ companyName, adminName, email, password }`).
 
 ## 2. Removed from the OLD Crewly auth shell (truth rules)
 

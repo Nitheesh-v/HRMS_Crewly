@@ -126,6 +126,8 @@ h3 {
   --auth-btn-bg: #ffffff;
   --auth-btn-text: #0b1120;
   --auth-btn-hover: #e2e8f0;
+  --auth-btn-disabled-bg: #1c2532;
+  --auth-btn-disabled-text: #64748b;
   --auth-autofill-text: #ffffff;
   --auth-autofill-bg: #101a2e;
   background-color: var(--auth-bg);
@@ -153,6 +155,8 @@ h3 {
   --auth-btn-bg: #0d1117;
   --auth-btn-text: #ffffff;
   --auth-btn-hover: #24292f;
+  --auth-btn-disabled-bg: #eaeef2;
+  --auth-btn-disabled-text: #8b949e;
   --auth-autofill-text: #1f2328;
   --auth-autofill-bg: #ffffff;
 }
@@ -270,7 +274,8 @@ h3 {
 }
 .auth-primary:disabled {
   cursor: not-allowed;
-  opacity: 0.45;
+  background-color: var(--auth-btn-disabled-bg);
+  color: var(--auth-btn-disabled-text);
 }
 
 .auth-secondary {
@@ -296,6 +301,35 @@ h3 {
 }
 .auth-secondary:focus-visible {
   box-shadow: 0 0 0 4px var(--auth-ring);
+}
+.auth-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* "Or login with" separator and the deferred social buttons (Figma parity:
+   the buttons render, but disabled with a "soon" chip until OAuth exists). */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--auth-faint);
+  font-size: 0.75rem;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: var(--auth-border);
+}
+.auth-soon {
+  border-radius: 9999px;
+  border: 1px solid var(--auth-border);
+  background: var(--auth-surface);
+  padding: 0 0.5rem;
+  font-size: 10px;
+  color: var(--auth-dim);
 }
 
 .auth-theme-toggle {
