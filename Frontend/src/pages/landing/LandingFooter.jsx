@@ -21,7 +21,9 @@ import { BRAND, FOOTER_COLUMNS, FOOTER_SUPPORT } from './landingData.js';
 
 const BrandMark = () => (
   <div className="flex items-center gap-2.5">
-    <img src="/logo-crewly.png" alt="" className="h-8 w-8 object-contain" />
+    <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] p-1.5">
+      <img src="/logo-crewly.png" alt="" className="h-full w-full object-contain" />
+    </span>
     <span className="text-lg font-semibold tracking-tight text-white">{BRAND.name}</span>
   </div>
 );
@@ -46,7 +48,9 @@ const FooterLink = ({ link }) => {
 };
 
 const LandingFooter = () => (
-  <footer className="border-t border-white/10 bg-[#080e1b]">
+  <footer className="relative border-t border-white/10 bg-[#080e1b]">
+    <div className="landing-hairline absolute inset-x-0 top-0 h-px" aria-hidden="true" />
+
     <div className="mx-auto max-w-7xl px-5 py-14 sm:px-6 lg:px-8">
       <div className="grid gap-10 lg:grid-cols-[1.4fr_repeat(3,1fr)]">
         <div>
@@ -72,10 +76,10 @@ const LandingFooter = () => (
         ))}
       </div>
 
-      <div className="mt-12 rounded-2xl border border-white/10 bg-white/[0.02] p-5 sm:p-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mt-12 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
+        <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
           <div className="flex items-start gap-3">
-            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-300">
+            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-400/20 bg-emerald-500/10 text-emerald-300">
               <LifeBuoy className="h-4 w-4" aria-hidden="true" />
             </span>
             <div>
@@ -86,7 +90,7 @@ const LandingFooter = () => (
 
           <Link
             to={FOOTER_SUPPORT.link.to}
-            className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-white/15 px-4 py-2 text-sm font-semibold text-slate-100 transition-colors hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400"
+            className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-white/15 bg-white/[0.02] px-4 py-2 text-sm font-semibold text-slate-100 transition-colors hover:border-white/25 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400"
           >
             {FOOTER_SUPPORT.link.label}
             <ArrowUpRight className="h-4 w-4" aria-hidden="true" />

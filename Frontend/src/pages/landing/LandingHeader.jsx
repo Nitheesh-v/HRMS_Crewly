@@ -1,8 +1,8 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // HOME PAGE — HEADER
 //
-//   · sticky, and it only gains a background once the page has scrolled, so the
-//     hero is not fighting a solid bar at the top
+//   · sticky; transparent over the hero, then it gains a blurred panel, a
+//     hairline and a shadow once the page scrolls
 //   · anchored nav that matches the sections that actually exist (tested)
 //   · the CTA knows who is looking: a signed-in visitor gets "Open dashboard"
 //     instead of a "Sign in" button they would bounce off
@@ -48,19 +48,21 @@ const LandingHeader = () => {
 
   return (
     <header
-      className={`sticky top-0 z-50 transition-colors duration-300 ${
+      className={`sticky top-0 z-50 transition-all duration-300 ${
         scrolled || menuOpen
-          ? 'border-b border-white/10 bg-[#0b1120]/85 backdrop-blur-xl'
+          ? 'border-b border-white/10 bg-[#0b1120]/85 shadow-[0_16px_40px_-24px_rgba(2,6,23,0.9)] backdrop-blur-xl'
           : 'border-b border-transparent'
       }`}
     >
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-5 sm:px-6 lg:px-8">
         <Link
           to="/"
-          className="flex items-center gap-2.5 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-400"
+          className="group flex items-center gap-2.5 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-400"
           aria-label="Crewly home"
         >
-          <img src="/logo-crewly.png" alt="" className="h-7 w-7 object-contain" />
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] p-1.5 transition-colors group-hover:border-emerald-400/30">
+            <img src="/logo-crewly.png" alt="" className="h-full w-full object-contain" />
+          </span>
           <span className="text-lg font-semibold tracking-tight text-white">Crewly</span>
         </Link>
 
@@ -81,7 +83,7 @@ const LandingHeader = () => {
           {signedIn ? (
             <Link
               to="/app"
-              className="group inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-[#06251a] transition-colors hover:bg-emerald-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
+              className="group inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-[#06251a] shadow-[0_8px_24px_-10px_rgba(16,185,129,0.7)] transition-all hover:-translate-y-0.5 hover:bg-emerald-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
             >
               <LayoutDashboard className="h-4 w-4" aria-hidden="true" />
               Open dashboard
@@ -96,7 +98,7 @@ const LandingHeader = () => {
               </Link>
               <Link
                 to="/register"
-                className="group inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-[#06251a] transition-colors hover:bg-emerald-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
+                className="group inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-[#06251a] shadow-[0_8px_24px_-10px_rgba(16,185,129,0.7)] transition-all hover:-translate-y-0.5 hover:bg-emerald-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
               >
                 Start free
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
@@ -119,7 +121,7 @@ const LandingHeader = () => {
       </div>
 
       {menuOpen && (
-        <div id="landing-mobile-menu" className="border-t border-white/10 bg-[#0b1120]/95 backdrop-blur-xl md:hidden">
+        <div id="landing-mobile-menu" className="landing-rise border-t border-white/10 bg-[#0b1120]/95 backdrop-blur-xl md:hidden">
           <nav aria-label="Sections" className="mx-auto max-w-7xl px-5 py-3 sm:px-6">
             {NAV_LINKS.map((link) => (
               <a

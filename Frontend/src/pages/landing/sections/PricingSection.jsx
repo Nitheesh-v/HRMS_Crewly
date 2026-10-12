@@ -16,10 +16,19 @@ const PricingSection = () => {
   const yearly = cycle === 'yearly';
 
   return (
-    <section id={SECTION_IDS.pricing} className="scroll-mt-24 border-t border-white/10 px-5 py-16 sm:px-6 lg:px-8 lg:py-24">
+    <section id={SECTION_IDS.pricing} className="relative scroll-mt-24 border-t border-white/10 px-5 py-16 sm:px-6 lg:px-8 lg:py-24">
+      <div
+        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_60%_45%_at_50%_100%,rgba(16,185,129,0.06),transparent)]"
+        aria-hidden="true"
+      />
+
       <div className="mx-auto max-w-7xl">
         <div className="mx-auto max-w-2xl text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-400">Pricing</p>
+          <div className="flex items-center justify-center gap-3">
+            <span className="h-px w-8 bg-gradient-to-l from-emerald-400 to-transparent" aria-hidden="true" />
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-400">Pricing</p>
+            <span className="h-px w-8 bg-gradient-to-r from-emerald-400 to-transparent" aria-hidden="true" />
+          </div>
           <h2 className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-4xl">
             Start free. Pay when the team grows into it.
           </h2>
@@ -53,7 +62,7 @@ const PricingSection = () => {
           </div>
         </div>
 
-        <div className="mt-10 grid gap-5 lg:grid-cols-4">
+        <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
           {PLANS.map((plan) => {
             const price = yearly ? plan.yearly : plan.monthly;
             const free = monthsFree(plan);
@@ -63,12 +72,12 @@ const PricingSection = () => {
                 key={plan.code}
                 className={`relative flex flex-col rounded-2xl border p-6 transition-all duration-200 hover:-translate-y-1 ${
                   plan.featured
-                    ? 'border-emerald-400/40 bg-emerald-500/[0.06] shadow-[0_0_40px_-16px_rgba(16,185,129,0.55)]'
+                    ? 'border-emerald-400/40 bg-gradient-to-b from-emerald-500/[0.09] to-emerald-500/[0.03] shadow-[0_0_50px_-18px_rgba(16,185,129,0.6)] ring-1 ring-emerald-400/20 lg:-my-2 lg:py-8'
                     : 'border-white/10 bg-white/[0.03] hover:border-white/20'
                 }`}
               >
                 {plan.featured && (
-                  <p className="absolute -top-3 left-6 inline-flex items-center gap-1.5 rounded-full bg-emerald-500 px-3 py-1 text-[11px] font-bold text-[#06251a]">
+                  <p className="absolute -top-3 left-6 inline-flex items-center gap-1.5 rounded-full bg-emerald-500 px-3 py-1 text-[11px] font-bold text-[#06251a] shadow-[0_6px_20px_-6px_rgba(16,185,129,0.8)]">
                     <Sparkles className="h-3 w-3" aria-hidden="true" />
                     Most popular
                   </p>
@@ -89,10 +98,14 @@ const PricingSection = () => {
                   </p>
                 )}
 
-                <ul className="mt-5 flex-1 space-y-2.5">
+                <div className="my-5 h-px bg-gradient-to-r from-white/10 via-white/5 to-transparent" aria-hidden="true" />
+
+                <ul className="flex-1 space-y-2.5">
                   {plan.highlights.map((highlight) => (
                     <li key={highlight} className="flex gap-2.5 text-sm text-slate-300">
-                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" aria-hidden="true" />
+                      <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500/15">
+                        <Check className="h-2.5 w-2.5 text-emerald-300" aria-hidden="true" />
+                      </span>
                       <span>{highlight}</span>
                     </li>
                   ))}
@@ -102,8 +115,8 @@ const PricingSection = () => {
                   to={plan.cta.to}
                   className={`mt-6 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400 ${
                     plan.featured
-                      ? 'bg-emerald-500 text-[#06251a] hover:bg-emerald-400'
-                      : 'border border-white/15 text-slate-100 hover:bg-white/5'
+                      ? 'bg-emerald-500 text-[#06251a] shadow-[0_10px_30px_-12px_rgba(16,185,129,0.8)] hover:bg-emerald-400'
+                      : 'border border-white/15 text-slate-100 hover:border-white/25 hover:bg-white/5'
                   }`}
                 >
                   {plan.cta.label}
