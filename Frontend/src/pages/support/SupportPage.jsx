@@ -1,163 +1,202 @@
-// SUPPORT — raise tickets, track thread; HR manages all tickets
-import { useCallback, useEffect, useState } from 'react';
-import { MessageCircle, Plus, Ticket, Wrench } from 'lucide-react';
-import { supportService } from '../../services/selfService';
+// ============================================================
+// 🎫 HELPDESK (Phase 38) — hub → list → conversation, UI/UX per Figma
+// exports (desktop + mobile), inside the existing Crewly shell.
+// Uses only existing backend endpoints (create / my / all / reply / status).
+// ============================================================
+import { useEffect, useMemo, useState } from 'react';
 import useAuth from '../../hooks/useAuth';
-import Modal from '../../components/Modal';
+import { supportService } from '../../services/selfService';
 import { notify } from '../../utils/notify.js';
-
+import SupportHub from './SupportHub';
+import TicketList from './TicketList';
+import TicketThread from './TicketThread';
+import RaiseTicketModal from './RaiseTicketModal';
+import { DEPARTMENTS, categoryLabel, isOpen, statusMeta } from './supportMeta';
 
 const HR_SIDE = ['COMPANY_ADMIN', 'HR_MANAGER'];
-const CATEGORIES = ['PAYROLL', 'ATTENDANCE', 'LEAVE', 'IT', 'FACILITIES', 'HR', 'OTHER'];
-const STATUS_STYLE = {
-  OPEN: 'bg-crewly-orange/15 text-crewly-orange',
-  IN_PROGRESS: 'bg-blue-500/15 text-blue-400',
-  RESOLVED: 'bg-crewly-green/15 text-crewly-green',
-  CLOSED: 'bg-gray-500/15 text-gray-400',
-};
 
 const SupportPage = () => {
   const { user } = useAuth();
   const isHR = HR_SIDE.includes(user?.role);
-  const [view, setView] = useState('my'); // 'my' | 'all'
+
+  const [scope, setScope] = useState('my'); // 'my' | 'all' (HR only)
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const [view, setView] = useState('hub'); // 'hub' | 'list' | 'thread'
+  const [listCat, setListCat] = useState(null);
+  const [listStatus, setListStatus] = useState('ALL');
+  const [listQuery, setListQuery] = useState('');
+  const [activeId, setActiveId] = useState(null);
+
   const [createOpen, setCreateOpen] = useState(false);
-  const [active, setActive] = useState(null); // open ticket thread
-  const [reply, setReply] = useState('');
-  const [form, setForm] = useState({ subject: '', category: 'OTHER', message: '' });
+  const [createCat, setCreateCat] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true); /* 35.1 — nothing to report; failures are toasted by api.js */;
-    try {
-      const res = view === 'all' && isHR ? await supportService.listAll() : await supportService.my();
-      setTickets(Array.isArray(res) ? res : res?.data || []);
-    } catch (err) { notify.error(err); }
-    finally { setLoading(false); }
-  }, [view, isHR]);
+  // Fetch helper shared by the mount/scope effect and manual refreshes.
+  const fetchTickets = (sc) =>
+    (sc === 'all' ? supportService.listAll() : supportService.my())
+      .then((res) => (Array.isArray(res) ? res : res?.data || []));
 
-  useEffect(() => { load(); }, [load]);
+  // setState only inside promise callbacks (repo eslint rule set-state-in-effect).
+  useEffect(() => {
+    let alive = true;
+    fetchTickets(scope)
+      .then((list) => { if (alive) setTickets(list); })
+      .catch((err) => { if (alive) notify.error(err); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [scope]);
 
-  const onCreate = async () => {
-    if (!form.subject.trim() || !form.message.trim()) { notify.warning('Subject and message are required'); return; }
-    setBusy(true); /* 35.1 — nothing to report; failures are toasted by api.js */;
+  const refresh = async () => {
     try {
-      await supportService.create(form);
-      notify.success('Support ticket raised.');
-      setCreateOpen(false); setForm({ subject: '', category: 'OTHER', message: '' });
-      await load();
-    } catch (err) { notify.error(err); }
-    finally { setBusy(false); }
+      setTickets(await fetchTickets(scope));
+    } catch (err) {
+      notify.error(err);
+    }
   };
 
-  const onReply = async () => {
-    if (!reply.trim()) return;
+  const openCountByCat = useMemo(() => {
+    const counts = {};
+    for (const t of tickets) if (isOpen(t)) counts[t.category] = (counts[t.category] || 0) + 1;
+    return counts;
+  }, [tickets]);
+
+  const myOpenCount = useMemo(() => tickets.filter(isOpen).length, [tickets]);
+
+  const filtered = useMemo(() => {
+    const q = listQuery.trim().toLowerCase();
+    return tickets.filter((t) => {
+      if (listCat && t.category !== listCat) return false;
+      if (listStatus !== 'ALL' && t.status !== listStatus) return false;
+      if (q && !`${t.subject} ${t.message}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [tickets, listCat, listStatus, listQuery]);
+
+  const active = tickets.find((t) => t._id === activeId) || null;
+
+  const openList = (cat) => {
+    setListCat(cat);
+    setListStatus('ALL');
+    setListQuery('');
+    setView('list');
+  };
+
+  const onCreate = async (payload) => {
     setBusy(true);
     try {
-      const res = await supportService.reply(active._id, reply.trim());
-      setActive(res?.data || res); setReply('');
-      notify.success('Reply sent.');
-      await load();
-    } catch (err) { notify.error(err); }
-    finally { setBusy(false); }
+      await supportService.create(payload);
+      notify.success('Support ticket raised — HR has been notified.');
+      setCreateOpen(false);
+      setListCat(null);
+      setListStatus('ALL');
+      setView('list');
+      await refresh();
+    } catch (err) {
+      notify.error(err);
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const onStatus = async (id, status) => {
-    try { await supportService.setStatus(id, status); setActive(null); await load(); }
-    catch (err) { notify.error(err); }
+  const onReply = async (message) => {
+    setBusy(true);
+    try {
+      await supportService.reply(activeId, message);
+      notify.success('Reply sent.');
+      await refresh();
+    } catch (err) {
+      notify.error(err);
+    } finally {
+      setBusy(false);
+    }
   };
+
+  const onStatus = async (status) => {
+    setBusy(true);
+    try {
+      await supportService.setStatus(activeId, status);
+      notify.success(`Ticket marked ${statusMeta(status).label.toLowerCase()}.`);
+      await refresh();
+    } catch (err) {
+      notify.error(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onScope = (next) => {
+    if (next === scope) return;
+    setLoading(true);
+    setScope(next);
+    setActiveId(null);
+    setView('list');
+  };
+
+  const listTitle = listCat
+    ? (DEPARTMENTS.find((d) => d.code === listCat)?.label || categoryLabel(listCat))
+    : (scope === 'all' ? 'All Tickets' : 'My Tickets');
 
   return (
-    <div className="max-w-4xl">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold"><Ticket className="h-6 w-6 text-crewly-green" />Support</h1>
-          <p className="mt-1 text-sm text-crewly-dim">Raise a ticket — HR gets notified instantly and replies here.</p>
-        </div>
-        <button className="btn-primary px-5 py-2.5 text-sm" onClick={() => setCreateOpen(true)}>+ Raise Ticket</button>
-      </div>
+    <div className="mx-auto w-full max-w-6xl">
+      {view === 'hub' && (
+        <SupportHub
+          myOpenCount={myOpenCount}
+          openCountByCat={openCountByCat}
+          onOpenDepartment={openList}
+          onOpenMy={() => openList(null)}
+          onRaise={() => { setCreateCat(null); setCreateOpen(true); }}
+          onSearch={(q) => { setListQuery(q); setListCat(null); setListStatus('ALL'); setView('list'); }}
+        />
+      )}
 
+      {view === 'list' && (
+        <TicketList
+          title={listTitle}
+          tickets={filtered}
+          loading={loading}
+          isHR={isHR}
+          scope={scope}
+          onScope={onScope}
+          statusTab={listStatus}
+          onStatusTab={setListStatus}
+          categoryCode={listCat}
+          onCategory={setListCat}
+          query={listQuery}
+          onQuery={setListQuery}
+          onSelect={(id) => { setActiveId(id); setView('thread'); }}
+          onRaise={() => { setCreateCat(listCat); setCreateOpen(true); }}
+          onBack={() => setView('hub')}
+        />
+      )}
 
-      {isHR && (
-        <div className="mt-5 flex gap-2">
-          {[['my', 'My Tickets'], ['all', <span key="hr" className="flex items-center gap-1.5"><Wrench className="h-3.5 w-3.5" />All Tickets (HR)</span>]].map(([k, label]) => (
-            <button key={k} onClick={() => setView(k)} className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${view === k ? 'bg-crewly-green/15 text-crewly-green' : 'text-crewly-dim hover:bg-crewly-card'}`}>{label}</button>
-          ))}
+      {view === 'thread' && active && (
+        <TicketThread
+          ticket={active}
+          isHR={isHR}
+          meId={user?._id}
+          busy={busy}
+          onBack={() => setView('list')}
+          onReply={onReply}
+          onStatus={onStatus}
+        />
+      )}
+
+      {view === 'thread' && !active && !loading && (
+        <div className="card text-center text-sm text-crewly-dim">
+          Ticket not found in this view.{' '}
+          <button className="text-crewly-green underline" onClick={() => setView('list')}>Back to tickets</button>
         </div>
       )}
 
-      <div className="mt-4 space-y-2">
-        {loading && <p className="text-crewly-dim">Loading…</p>}
-        {!loading && tickets.length === 0 && <div className="card text-center text-crewly-dim">No tickets here. Need help? Raise one!</div>}
-        {tickets.map((t) => (
-          <button key={t._id} onClick={() => { setActive(t); setReply(''); }} className="card flex w-full items-center gap-4 py-3 text-left transition hover:border-crewly-green/40">
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-semibold">{t.subject}</p>
-              <p className="text-xs text-crewly-dim">
-                {t.category} · {view === 'all' ? `${t.user?.name || ''} · ` : ''}{new Date(t.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} · <MessageCircle className="mr-0.5 inline h-3 w-3" />{t.replies?.length || 0}
-              </p>
-            </div>
-            <span className={`badge ${STATUS_STYLE[t.status]}`}>{t.status.replace('_', ' ')}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* ── Create modal ── */}
       {createOpen && (
-        <Modal onClose={() => setCreateOpen(false)} title="Raise a Ticket">
-          <div className="space-y-3">
-            <div>
-              <label className="label">Subject *</label>
-              <input className="input" value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} placeholder="PF amount wrong in June payslip" />
-            </div>
-            <div>
-              <label className="label">Category</label>
-              <select className="input" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="label">Describe the issue *</label>
-              <textarea className="input" rows="4" value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} />
-            </div>
-          </div>
-          <div className="mt-4 flex justify-end gap-2 border-t border-crewly-border pt-3">
-            <button className="btn-ghost px-4 py-2 text-sm" onClick={() => setCreateOpen(false)}>Cancel</button>
-            <button className="btn-primary px-5 py-2 text-sm" onClick={onCreate} disabled={busy}>{busy ? 'Raising…' : <><Plus className="mr-1 inline h-4 w-4" />Raise</>}</button>
-          </div>
-        </Modal>
-      )}
-
-      {/* ── Thread modal ── */}
-      {active && (
-        <Modal onClose={() => setActive(null)} title={`${active.subject}`}>
-          <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
-            <div className="flex items-center gap-2 text-xs text-crewly-dim">
-              <span className={`badge ${STATUS_STYLE[active.status]}`}>{active.status.replace('_', ' ')}</span>
-              <span>{active.category}</span>
-              {active.user?.name && <span>· by {active.user.name}</span>}
-            </div>
-            <div className="rounded-lg bg-crewly-bg p-3 text-sm">{active.message}</div>
-            {(active.replies || []).map((r, i) => (
-              <div key={i} className="rounded-lg border border-crewly-border p-3 text-sm">
-                <p className="mb-1 text-xs text-crewly-dim">{r.by?.name || 'User'} · {r.createdAt ? new Date(r.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}</p>
-                {r.message}
-              </div>
-            ))}
-            <div className="flex gap-2">
-              <input className="input" placeholder="Write a reply…" value={reply} onChange={(e) => setReply(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && onReply()} />
-              <button className="btn-primary shrink-0 px-4 text-sm" onClick={onReply} disabled={busy || !reply.trim()}>Send</button>
-            </div>
-          </div>
-          {isHR && (
-            <div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-crewly-border pt-3">
-              {['IN_PROGRESS', 'RESOLVED', 'CLOSED', 'OPEN'].filter((s) => s !== active.status).map((s) => (
-                <button key={s} onClick={() => onStatus(active._id, s)} className="btn-ghost px-3 py-1.5 text-xs">{s.replace('_', ' ')}</button>
-              ))}
-            </div>
-          )}
-        </Modal>
+        <RaiseTicketModal
+          defaultCategory={createCat || 'IT'}
+          busy={busy}
+          onClose={() => setCreateOpen(false)}
+          onSubmit={onCreate}
+        />
       )}
     </div>
   );
