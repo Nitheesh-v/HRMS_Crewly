@@ -110,7 +110,7 @@ const RegisterCompanyPage = () => {
   };
 
   return (
-    <AuthLayout>
+    <AuthLayout visual="green">
       <div>
         <h1 className="auth-heading text-2xl font-bold tracking-tight sm:text-[28px]">
           Manage employees easily starting from now!

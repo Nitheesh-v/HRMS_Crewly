@@ -151,7 +151,7 @@ const LoginPage = () => {
   };
 
   return (
-    <AuthLayout centerLogo>
+    <AuthLayout centerLogo visual="photo">
       <div>
         <h1 className="auth-heading text-2xl font-bold tracking-tight sm:text-[28px]">
           Login first to your account

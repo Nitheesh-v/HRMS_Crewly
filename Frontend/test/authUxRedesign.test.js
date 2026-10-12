@@ -84,14 +84,21 @@ test("social buttons render like the design but disabled and handler-less", asyn
   }
 });
 
-test("no fake testimonials, fake stats or emojis on auth screens", async () => {
+test("no fake testimonials or emojis on auth screens; visual panels are Crewly-owned and decorative", async () => {
   for (const rel of AUTH_FILES) {
     const src = await read(rel);
 
-    assert.doesNotMatch(src, /Katie Waters|Total Employees|Job Applicants/, `${rel} must not carry fake social proof`);
-    assert.doesNotMatch(src, /login-hero/, `${rel} must not use the stock hero photo`);
+    assert.doesNotMatch(src, /Katie Waters/, `${rel} must not carry a fake testimonial`);
     assert.doesNotMatch(src, /[\u{1F000}-\u{1FAFF}]/u, `${rel} must not use emojis in product UI`);
   }
+
+  const layout = await read("src/layout/AuthLayout.jsx");
+  // The photo panel uses the repo's own approved asset, not a stock URL.
+  assert.match(layout, /login-hero/);
+  // The register preview is illustrative and hidden from assistive tech,
+  // the same convention as the landing page's DashboardPreview.
+  assert.match(layout, /aria-hidden="true"/);
+  assert.match(layout, /ILLUSTRATIVE VALUES/);
 });
 
 test("the Figma copy ships verbatim (typos corrected)", async () => {

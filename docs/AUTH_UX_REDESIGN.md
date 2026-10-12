@@ -63,6 +63,18 @@ the next free number is 40). The Helpdesk unit follows in a later batch.
   Crewly's role-aware navigation and replace a real-data dashboard with the Figma's
   fabricated stats — §6/§19/§27).
 
+### 1.3 V4 — desktop split composition (from the light + dark desktop art)
+
+- Login (lg+): left panel = the repo's approved `login-hero.jpg` above a navy brand
+  block (logo, "Let's empower your employees today.", truthful one-line feature
+  summary). Navy stays fixed in both themes, per the art.
+- Register (lg+): form left, emerald panel right with the CSS dashboard preview.
+  The preview's values are ILLUSTRATIVE and the block is `aria-hidden` — the same
+  convention as the landing page's `DashboardPreview`; the pre-redesign fabricated
+  testimonial remains removed and the "👋" is gone.
+- Mobile keeps the centered single column; the theme toggle is present at every
+  breakpoint.
+
 ## 2. Removed from the OLD Crewly auth shell (truth rules)
 
 - Fabricated testimonial ("Katie Waters, Head Resource Management · Fintech Company").

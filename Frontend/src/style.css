@@ -265,6 +265,11 @@ h3 {
   background-color: var(--auth-accent-strong);
 }
 
+/* Login's left brand block stays navy in both themes (per the art). */
+.auth-panel-navy {
+  background-color: #161f2c;
+}
+
 .auth-primary {
   display: inline-flex;
   width: 100%;
