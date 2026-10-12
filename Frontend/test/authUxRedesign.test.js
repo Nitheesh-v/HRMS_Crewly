@@ -30,6 +30,9 @@ const AUTH_FILES = [
   "src/pages/login/LoginPage.jsx",
   "src/pages/register/RegisterCompanyPage.jsx",
   "src/components/auth/PasswordField.jsx",
+  "src/components/auth/PasswordRules.jsx",
+  "src/pages/security/ForgotPasswordPage.jsx",
+  "src/pages/security/ResetPasswordPage.jsx",
 ];
 
 test("the four auth routes stay reachable and lazy", async () => {
@@ -105,6 +108,33 @@ test("the Figma copy ships verbatim (typos corrected)", async () => {
   // Figma typos stay fixed.
   assert.doesNotMatch(login, /Iinput/);
   assert.doesNotMatch(register, /employess/);
+  // The weak "6 characters" client hint is gone — platform minimums rule.
+  assert.doesNotMatch(register, /at least 6/);
+});
+
+test("security screens mirror the platform password policy and stay emoji-free", async () => {
+  const reset = await read("src/pages/security/ResetPasswordPage.jsx");
+  const forgot = await read("src/pages/security/ForgotPasswordPage.jsx");
+
+  // The checklist is the real PLATFORM_MINIMUMS, not the Figma's 8-char art.
+  // Labels live in the data module; both pages must consume the component.
+  const rulesModule = await read("src/components/auth/passwordRules.js");
+  assert.match(rulesModule, /10 characters/);
+  assert.match(rulesModule, /Special character/);
+  assert.doesNotMatch(rulesModule, /8 characters/);
+  assert.match(reset, /from "..\/..\/components\/auth\/PasswordRules\.jsx"/);
+  assert.match(reset, /from "..\/..\/components\/auth\/passwordRules\.js"/);
+  // No emoji confetti on the success card; lucide icons only.
+  assert.doesNotMatch(reset, /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/u);
+  assert.doesNotMatch(forgot, /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/u);
+  // Forgot needs the company code (backend contract) and one back action.
+  assert.match(forgot, /name="companyCode"/);
+  assert.equal((forgot.match(/Back to Login/g) || []).length, 1);
+  // Reset stays gated on token + rules + confirmation.
+  assert.match(
+    reset,
+    /disabled=\{busy \|\| !token \|\| !allRulesOk \|\| !form\.confirmPassword \|\| Boolean\(mismatch\)\}/,
+  );
 });
 
 test("the backend's generic failure is shown verbatim; enumeration copy is gone", async () => {

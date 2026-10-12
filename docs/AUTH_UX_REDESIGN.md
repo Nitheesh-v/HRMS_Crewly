@@ -41,6 +41,28 @@ the next free number is 40). The Helpdesk unit follows in a later batch.
 - Confirm-password dropped from signup (backend `register-company` takes exactly
   `{ companyName, adminName, email, password }`).
 
+### 1.2 V3 — security screens batch (forgot / reset / success)
+
+- **Forgot** (`/forgot-password`): centered themed column; Company Code + Registered
+  Email (backend contract — the Figma shows email only); generic anti-enumeration
+  success line in a green `role="status"` banner; single "Back to Login" (the Figma's
+  duplicate button pair removed); 30-minute expiry note kept.
+- **Reset** (`/reset-password`): Figma's requirements-checklist pattern kept, but the
+  items are the real `PLATFORM_MINIMUMS` — 10 characters, upper, lower, number,
+  special (`Backend/src/utils/securityPolicy.js`) — not the artwork's 8-char list.
+  The same shared checklist (`components/auth/PasswordRules.jsx`) now also renders on
+  signup, which previously suggested a wrong "6 characters" minimum the server
+  rejects. Submit stays gated on token + all rules + confirmation.
+- **Success card**: Figma's celebration rebuilt with lucide icons (Sparkles + Check in
+  a green ring/white core) — the old emoji confetti (🎉✨) is gone (§8). Copy grammar
+  fixed: "You've successfully changed your password".
+- **Deferred with reasons:** OTP Verification screen (reset is token-link based; no
+  OTP endpoint exists), the 4-step onboarding wizard (no backend fields for company
+  size / industry / role / purpose — collecting and discarding them would be fake),
+  and the Home V1/V2 dashboard + welcome popup (rebuilding the app shell would break
+  Crewly's role-aware navigation and replace a real-data dashboard with the Figma's
+  fabricated stats — §6/§19/§27).
+
 ## 2. Removed from the OLD Crewly auth shell (truth rules)
 
 - Fabricated testimonial ("Katie Waters, Head Resource Management · Fintech Company").
@@ -72,6 +94,9 @@ the next free number is 40). The Helpdesk unit follows in a later batch.
 - Social sign-in (Google/Apple) — no OAuth in the backend.
 - Session-length "remember me" — needs backend support; current remember is identifier-only.
 - App-wide light theme for the authenticated app (140+ files carry hardcoded surfaces).
+- OTP verification screen — the reset flow is token-link based; no OTP endpoint.
+- 4-step onboarding wizard (company size / industry / role / purpose) — no backend fields.
+- Home/dashboard V1-V2 + welcome popup — Crewly keeps its role-aware shell and real-data dashboard.
 - Helpdesk screens — next Figma batch.
 
 ## 5. Gates

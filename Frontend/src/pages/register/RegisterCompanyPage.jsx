@@ -6,6 +6,8 @@ import useAuth from "../../hooks/useAuth.jsx";
 import { getDashboardPath } from "../../utils/roles.js";
 import AuthLayout from "../../layout/AuthLayout.jsx";
 import PasswordField from "../../components/auth/PasswordField.jsx";
+import PasswordRules from "../../components/auth/PasswordRules.jsx";
+import { passwordRules } from "../../components/auth/passwordRules.js";
 import { notify } from "../../utils/notify.js";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -61,10 +63,14 @@ const RegisterCompanyPage = () => {
     setFieldErrors((current) => (current[name] ? { ...current, [name]: "" } : current));
   };
 
-  const longEnough = form.password.length >= 6;
+  // Repo-truth policy: the platform minimums (10 chars + upper + lower +
+  // number + special) — the backend rejects anything weaker, so the client
+  // checks the same rules before submitting.
+  const rules = passwordRules(form.password);
+  const rulesOk = rules.every((rule) => rule.ok);
   const emailLooksValid = EMAIL_RE.test(form.email.trim());
   const canSubmit =
-    form.companyName.trim() && form.adminName.trim() && form.email.trim() && longEnough;
+    form.companyName.trim() && form.adminName.trim() && form.email.trim() && rulesOk;
 
   const validate = () => {
     const next = {};
@@ -75,7 +81,7 @@ const RegisterCompanyPage = () => {
     else if (!EMAIL_RE.test(form.email.trim())) {
       next.email = "That does not look like an email address.";
     }
-    if (!longEnough) next.password = "Use at least 6 characters.";
+    if (!rulesOk) next.password = "Meet all password requirements below.";
 
     setFieldErrors(next);
 
@@ -210,10 +216,11 @@ const RegisterCompanyPage = () => {
               onChange={onChange}
               placeholder="Input your password"
               autoComplete="new-password"
-              minLength={6}
+              maxLength={128}
               invalid={Boolean(fieldErrors.password)}
               describedBy={fieldErrors.password ? "password-error" : undefined}
             />
+            <PasswordRules password={form.password} />
             {fieldErrors.password && (
               <p id="password-error" className="auth-error-text mt-1.5 text-xs">
                 {fieldErrors.password}

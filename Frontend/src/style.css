@@ -123,6 +123,8 @@ h3 {
   --auth-error-ring: rgba(244, 63, 94, 0.14);
   --auth-error-bg: rgba(244, 63, 94, 0.08);
   --auth-warn: #fbbf24;
+  --auth-success-border: rgba(16, 185, 129, 0.35);
+  --auth-success-bg: rgba(16, 185, 129, 0.08);
   --auth-btn-bg: #ffffff;
   --auth-btn-text: #0b1120;
   --auth-btn-hover: #e2e8f0;
@@ -152,6 +154,8 @@ h3 {
   --auth-error-ring: rgba(207, 34, 46, 0.14);
   --auth-error-bg: rgba(207, 34, 46, 0.06);
   --auth-warn: #b45309;
+  --auth-success-border: rgba(5, 150, 105, 0.35);
+  --auth-success-bg: rgba(5, 150, 105, 0.06);
   --auth-btn-bg: #0d1117;
   --auth-btn-text: #ffffff;
   --auth-btn-hover: #24292f;
@@ -243,6 +247,22 @@ h3 {
   padding: 0.65rem 0.9rem;
   font-size: 0.8125rem;
   color: var(--auth-error);
+}
+
+.auth-success-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--auth-success-border);
+  background-color: var(--auth-success-bg);
+  padding: 0.65rem 0.9rem;
+  font-size: 0.8125rem;
+  color: var(--auth-accent);
+}
+
+.auth-success-ring {
+  background-color: var(--auth-accent-strong);
 }
 
 .auth-primary {

@@ -1,47 +1,30 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { Check, Loader2, Sparkles } from "lucide-react";
 import authService from "../../services/authService.js";
 import AuthLayout from "../../layout/AuthLayout.jsx";
 import PasswordField from "../../components/auth/PasswordField.jsx";
-import { notify } from '../../utils/notify.js';
+import PasswordRules from "../../components/auth/PasswordRules.jsx";
+import { passwordRules } from "../../components/auth/passwordRules.js";
+import { notify } from "../../utils/notify.js";
 
-const Check = ({ ok }) => (
-  <svg
-    width="14"
-    height="14"
-    viewBox="0 0 24 24"
-    fill="none"
-    strokeWidth="2.4"
-    className={ok ? "text-emerald-400" : "text-rose-400"}
-    aria-hidden="true"
-  >
-    {ok ? (
-      <path d="M20 6 9 17l-5-5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-    ) : (
-      <g stroke="currentColor" strokeLinecap="round">
-        <circle cx="12" cy="12" r="9" />
-        <line x1="12" y1="8" x2="12" y2="12" />
-        <line x1="12" y1="16" x2="12.01" y2="16" />
-      </g>
-    )}
-  </svg>
-);
-
+// Success card, Figma's celebration without the emoji confetti: a green
+// ring, white core and dark check, with two lucide sparkles for the bits.
 const SuccessState = ({ isSetup, onBack }) => (
   <div className="flex flex-col items-center py-6 text-center">
     <div className="relative">
-      <span className="absolute -left-7 -top-3 text-lg" aria-hidden="true">🎉</span>
-      <span className="absolute -right-8 -top-1 text-lg" aria-hidden="true">✨</span>
-      <span className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/20 ring-8 ring-emerald-500/10">
-        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M20 6 9 17l-5-5" />
-        </svg>
+      <Sparkles className="auth-check absolute -left-10 -top-1 h-4 w-4 rotate-12" aria-hidden="true" />
+      <Sparkles className="auth-check absolute -right-10 -top-3 h-5 w-5 -rotate-12" aria-hidden="true" />
+      <span className="auth-success-ring flex h-16 w-16 items-center justify-center rounded-full">
+        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white">
+          <Check className="h-5 w-5" style={{ color: "#0d1117" }} aria-hidden="true" />
+        </span>
       </span>
     </div>
-    <h1 className="mt-8 text-2xl font-bold text-white">
-      {isSetup ? "Your account is ready" : "You successfully changed your password"}
+    <h1 className="auth-heading mt-8 text-2xl font-bold tracking-tight">
+      {isSetup ? "Your account is ready" : "You've successfully changed your password"}
     </h1>
-    <p className="mt-3 max-w-xs text-sm leading-relaxed text-slate-400">
+    <p className="auth-sub mt-3 max-w-xs text-sm leading-relaxed">
       Always remember the password for your account at Crewly!
     </p>
     <button type="button" onClick={onBack} className="auth-primary mt-8">
@@ -63,25 +46,15 @@ const ResetPasswordPage = () => {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
 
-  // Repo-truth policy: minimum 10 characters with uppercase, lowercase,
-  // number and special character (mirrors the backend validator).
-  const rules = useMemo(
-    () => [
-      { label: "10 characters", ok: form.newPassword.length >= 10 },
-      { label: "Uppercase letter (A-Z)", ok: /[A-Z]/.test(form.newPassword) },
-      { label: "Lowercase letter (a-z)", ok: /[a-z]/.test(form.newPassword) },
-      { label: "Number (0-9)", ok: /[0-9]/.test(form.newPassword) },
-      { label: "Special character", ok: /[^A-Za-z0-9]/.test(form.newPassword) },
-    ],
-    [form.newPassword],
-  );
-
+  // Repo-truth policy: the live checklist mirrors PLATFORM_MINIMUMS in
+  // Backend/src/utils/securityPolicy.js (10 chars, upper, lower, number,
+  // special) — the backend stays the authority.
+  const rules = passwordRules(form.newPassword);
   const allRulesOk = rules.every((rule) => rule.ok);
   const mismatch = form.confirmPassword && form.newPassword !== form.confirmPassword;
 
   const submit = async (event) => {
     event.preventDefault();
-    /* 35.1 — nothing to report (failure state cleared) */
 
     if (!token) {
       notify.error(
@@ -114,7 +87,7 @@ const ResetPasswordPage = () => {
 
   if (done) {
     return (
-      <AuthLayout variant="centered">
+      <AuthLayout>
         <SuccessState
           isSetup={isSetup}
           onBack={() =>
@@ -128,21 +101,20 @@ const ResetPasswordPage = () => {
   }
 
   return (
-    <AuthLayout variant="centered">
-      <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-8 backdrop-blur-sm sm:p-10">
-        <h1 className="text-center text-2xl font-bold text-white">
+    <AuthLayout>
+      <div>
+        <h1 className="auth-heading text-center text-2xl font-bold tracking-tight sm:text-[28px]">
           {isSetup ? "Set up your Crewly account" : "Update your password"}
         </h1>
-        <p className="mt-2 text-center text-sm leading-relaxed text-slate-400">
+        <p className="auth-sub mt-2 text-center text-sm leading-relaxed">
           Set your new password with a minimum of 10 characters including
           uppercase, lowercase, a number and a special character.
         </p>
 
-
-        <form onSubmit={submit} className="mt-7 space-y-4" noValidate>
+        <form onSubmit={submit} className="mt-6 space-y-4" noValidate aria-busy={busy}>
           <div>
-            <label htmlFor="newPassword" className="mb-1.5 block text-sm font-medium text-slate-300">
-              New Password <span className="text-rose-400">*</span>
+            <label htmlFor="newPassword" className="auth-label auth-required">
+              New Password
             </label>
             <PasswordField
               id="newPassword"
@@ -154,19 +126,12 @@ const ResetPasswordPage = () => {
               minLength={10}
               maxLength={128}
             />
-            <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5">
-              {rules.map((rule) => (
-                <li key={rule.label} className={`flex items-center gap-1.5 text-xs ${rule.ok ? "text-emerald-400" : "text-rose-400"}`}>
-                  <Check ok={rule.ok} />
-                  {rule.label}
-                </li>
-              ))}
-            </ul>
+            <PasswordRules password={form.newPassword} />
           </div>
 
           <div>
-            <label htmlFor="confirmPassword" className="mb-1.5 block text-sm font-medium text-slate-300">
-              Confirmation New Password <span className="text-rose-400">*</span>
+            <label htmlFor="confirmPassword" className="auth-label auth-required">
+              Confirmation New Password
             </label>
             <PasswordField
               id="confirmPassword"
@@ -178,7 +143,7 @@ const ResetPasswordPage = () => {
               required={false}
             />
             {mismatch && (
-              <p className="mt-2 text-xs text-rose-400">Passwords do not match yet.</p>
+              <p className="auth-error-text mt-2 text-xs">Passwords do not match yet.</p>
             )}
           </div>
 
@@ -187,11 +152,16 @@ const ResetPasswordPage = () => {
             className="auth-primary !mt-6"
             disabled={busy || !token || !allRulesOk || !form.confirmPassword || Boolean(mismatch)}
           >
-            {busy
-              ? "Saving…"
-              : isSetup
-                ? "Set password and continue"
-                : "Submit"}
+            {busy ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                Saving…
+              </>
+            ) : isSetup ? (
+              "Set password and continue"
+            ) : (
+              "Submit"
+            )}
           </button>
         </form>
       </div>
