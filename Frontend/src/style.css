@@ -709,3 +709,12 @@ html:has(.landing-shell) {
     animation: landing-breathe 3.2s ease-in-out infinite;
   }
 }
+
+/* ---- Employees Figma pass: right slide-over drawer (Add New Profile) ---- */
+@keyframes employees-drawer-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.employees-drawer {
+  animation: employees-drawer-in 0.25s ease both;
+}

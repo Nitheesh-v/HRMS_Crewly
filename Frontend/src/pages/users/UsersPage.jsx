@@ -1,13 +1,26 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Building2, KeyRound, Landmark, Pencil, Users } from 'lucide-react';
+import {
+  AlertCircle,
+  Building2,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  KeyRound,
+  Landmark,
+  LayoutGrid,
+  List,
+  Mail,
+  Pencil,
+  Phone,
+  Plus,
+  Search,
+  Users,
+} from 'lucide-react';
 import api from '../../services/api';
 import Modal from '../../components/Modal';
 import useAuth from '../../hooks/useAuth';
-import permissionService from '../../services/permissionService.js';
 import { ROLES, CREATION_RIGHTS, ROLE_STYLES, roleLabel } from '../../utils/roles';
 import { notify } from '../../utils/notify.js';
-
-
 
 const EMPTY_FORM = {
   name: '', email: '', password: '', role: 'EMPLOYEE', department: '', reportingTo: '', status: 'ACTIVE',
@@ -15,7 +28,49 @@ const EMPTY_FORM = {
   pan: '', uan: '', esic: '', bankAccount: '', ifsc: '',
 };
 
+// Figma "Add New Profile" drawer shape. The backend stores a single `name`,
+// so first + last are joined on submit; role + initial password are required
+// by POST /api/users even though the artwork's drawer omits them.
+const EMPTY_DRAWER = { firstName: '', lastName: '', email: '', joinDate: '', role: 'EMPLOYEE', password: '' };
+
 const isoDate = (d) => (d ? String(d).slice(0, 10) : '');
+
+const initials = (name = '') =>
+  String(name).trim().split(/\s+/).slice(0, 2).map((w) => (w[0] || '').toUpperCase()).join('') || '–';
+
+// Compact numbered pagination: 1 … around current … N (Figma row style).
+const pageItems = (pages, current) => {
+  if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1);
+  const wanted = [1, 2, current - 1, current, current + 1, pages - 1, pages]
+    .filter((p) => p >= 1 && p <= pages);
+  const uniq = [...new Set(wanted)].sort((a, b) => a - b);
+  const out = [];
+  uniq.forEach((p, i) => {
+    if (i > 0 && p - uniq[i - 1] > 1) out.push('gap');
+    out.push(p);
+  });
+  return out;
+};
+
+function Avatar({ user, className = 'h-9 w-9 text-xs' }) {
+  if (user?.avatarUrl) {
+    return <img src={user.avatarUrl} alt="" className={`${className} rounded-full object-cover`} />;
+  }
+  return (
+    <span className={`${className} inline-flex items-center justify-center rounded-full bg-crewly-green/15 font-semibold text-crewly-green`}>
+      {initials(user?.name)}
+    </span>
+  );
+}
+
+function StatusPill({ status }) {
+  const active = status === 'ACTIVE';
+  return (
+    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide ${active ? 'bg-crewly-green/15 text-crewly-green' : 'bg-crewly-red/15 text-crewly-red'}`}>
+      {active ? 'ACTIVE' : 'INACTIVE'}
+    </span>
+  );
+}
 
 export default function UsersPage() {
   const { user: me } = useAuth();
@@ -46,14 +101,22 @@ export default function UsersPage() {
   const [departments, setDepartments] = useState([]);
   const [meta, setMeta] = useState({ page: 1, pages: 1, total: 0 });
   const [page, setPage] = useState(1);
+  const [view, setView] = useState('table');        // 'table' | 'directory'
   const [filters, setFilters] = useState({ search: '', role: '', department: '', status: '' });
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
 
   const [modal, setModal] = useState({ open: false, mode: 'create', user: null });
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [pwModal, setPwModal] = useState({ open: false, user: null, password: '', confirm: '' });
   const [pwSaving, setPwSaving] = useState(false);
+
+  // Figma "Add New Profile" right-hand drawer (create only; edit keeps the
+  // full modal because the artwork has no edit surface of its own).
+  const [drawer, setDrawer] = useState(false);
+  const [dForm, setDForm] = useState(EMPTY_DRAWER);
+  const [dErrors, setDErrors] = useState({});
 
   /*
    * 35.1 — feedback is a toast now. The signature is unchanged so every call
@@ -85,7 +148,7 @@ export default function UsersPage() {
   const loadUsers = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { page, limit: 10 };
+      const params = { page, limit: view === 'directory' ? 24 : 10 };
       Object.entries(filters).forEach(([k, v]) => { if (v) params[k] = v; });
       const res = await api.get('/users', { params });
       const { list, meta: m } = extractUsers(res);
@@ -96,7 +159,7 @@ export default function UsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, filters]);
+  }, [page, filters, view]);
 
   const loadOptions = useCallback(async () => {
     try {
@@ -105,6 +168,9 @@ export default function UsersPage() {
     } catch { /* non-fatal */ }
   }, []);
 
+  // Repo convention (49 call sites): data-loading effects trip this rule
+  // because the fetch starts synchronously; the pattern is intentional.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => { loadUsers(); }, [loadUsers]);
   useEffect(() => {
     loadOptions();
@@ -113,14 +179,22 @@ export default function UsersPage() {
         const res = await api.get('/departments');
         setDepartments(Array.isArray(res) ? res : res?.departments || res?.data || []);
       } catch { /* non-fatal */ }
+      try {
+        // Phase 29.1 company roles (GET /api/roles, SETTINGS_READ-gated).
+        // Non-fatal: actors without the permission still get built-in roles.
+        const res = await api.get('/roles');
+        setCompanyRoles(Array.isArray(res) ? res : res?.data || res?.roles || []);
+      } catch { /* non-fatal: built-in roles still work */ }
     })();
   }, [loadOptions]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
-  const openCreate = () => {
-    setForm({ ...EMPTY_FORM, role: assignable[assignable.length - 1]?.code || 'EMPLOYEE' });
-    setModal({ open: true, mode: 'create', user: null });
+  const openDrawer = () => {
+    setDForm({ ...EMPTY_DRAWER, role: assignable[assignable.length - 1]?.code || 'EMPLOYEE' });
+    setDErrors({});
+    setDrawer(true);
   };
 
   const openEdit = (u) => {
@@ -177,6 +251,41 @@ export default function UsersPage() {
     }
   };
 
+  // Drawer create — inline "This field is required." validation, exactly the
+  // artwork's red-ring + message pattern; payload matches POST /api/users.
+  const submitDrawer = async (e) => {
+    e.preventDefault();
+    const errs = {};
+    if (!dForm.firstName.trim()) errs.firstName = true;
+    if (!dForm.lastName.trim()) errs.lastName = true;
+    if (!dForm.email.trim()) errs.email = true;
+    else if (!/^\S+@\S+\.\S+$/.test(dForm.email.trim())) errs.email = 'Enter a valid email';
+    if (!dForm.joinDate) errs.joinDate = true;
+    if (!dForm.password) errs.password = true;
+    else if (dForm.password.length < 8) errs.password = 'Password must be at least 8 characters';
+    setDErrors(errs);
+    if (Object.keys(errs).length > 0) return;
+
+    setSaving(true);
+    try {
+      await api.post('/users', {
+        name: `${dForm.firstName.trim()} ${dForm.lastName.trim()}`,
+        email: dForm.email.trim(),
+        password: dForm.password,
+        role: dForm.role,
+        dateOfJoining: dForm.joinDate,
+      });
+      flash('success', `Employee ${dForm.firstName.trim()} ${dForm.lastName.trim()} created`);
+      setDrawer(false);
+      loadUsers();
+      loadOptions();
+    } catch (err) {
+      flash('error', errText(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const submitPassword = async (e) => {
     e.preventDefault();
     if (pwModal.password !== pwModal.confirm) return flash('error', 'Passwords do not match');
@@ -192,106 +301,292 @@ export default function UsersPage() {
     }
   };
 
+  // Download — real client-side CSV of the current filter set (bounded at
+  // 200 rows, the same cap the backend allows per request).
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      const params = { limit: 200 };
+      Object.entries(filters).forEach(([k, v]) => { if (v) params[k] = v; });
+      const res = await api.get('/users', { params });
+      const list = extractUsers(res).list;
+      const rows = [
+        ['Name', 'Email', 'Role', 'Designation', 'Department', 'Reports To', 'Status', 'Join Date'],
+        ...list.map((u) => [
+          u.name, u.email, roleLabel(u.role), u.designation || '',
+          u.department?.name || '', u.reportingTo?.name || '', u.status || '', isoDate(u.dateOfJoining),
+        ]),
+      ];
+      const csv = rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'employees.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+      flash('success', `Exported ${list.length} employees`);
+    } catch (err) {
+      flash('error', errText(err));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const editingSelf = modal.user && String(modal.user._id) === myId;
   const roleEditable =
     modal.mode === 'create' ||
     (!editingSelf && (manages(modal.user?.role) || (canAssignCompanyRoles && isKnownRole(modal.user?.role))));
 
+  const dSet = (key) => (e) => setDForm((f) => ({ ...f, [key]: e.target.value }));
+  const dRing = (key) => `input ${dErrors[key] ? '!border-crewly-red !ring-2 !ring-crewly-red/20' : ''}`;
+  const dErr = (key) =>
+    dErrors[key] ? (
+      <p className="mt-1.5 flex items-center gap-1 text-xs text-crewly-red">
+        <AlertCircle className="h-3.5 w-3.5" />
+        {dErrors[key] === true ? 'This field is required.' : dErrors[key]}
+      </p>
+    ) : null;
+
   return (
     <div className="p-3 sm:p-4 lg:p-6 space-y-4 sm:space-y-6">
+      {/* ── header — Figma: title left, Download + Add New right ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold"><Users className="h-5 w-5" />User Management</h1>
-          <p className="text-sm text-crewly-dim">{meta.total} people in your company</p>
+          <h1 className="flex items-center gap-2 text-xl font-bold"><Users className="h-5 w-5" />Employees</h1>
+          <p className="text-sm text-crewly-dim">Manage your employees — {meta.total} people in your company</p>
         </div>
-        {creatable.length > 0 && (
-          <button className="btn-primary" onClick={openCreate}>+ Add User</button>
-        )}
-      </div>
-
-
-      {/* filters — stack on mobile, row on desktop */}
-      <div className="card p-3 sm:p-4 flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:gap-3">
-        <input
-          className="input w-full sm:flex-1 sm:min-w-[180px]"
-          placeholder="Search name or email…"
-          value={filters.search}
-          onChange={(e) => { setPage(1); setFilters((f) => ({ ...f, search: e.target.value })); }}
-        />
-        <select className="input w-full sm:w-auto" value={filters.role} onChange={(e) => { setPage(1); setFilters((f) => ({ ...f, role: e.target.value })); }}>
-          <option value="">All roles</option>
-          {[...[ROLES.HR_MANAGER, ROLES.MANAGER, ROLES.TEAM_LEAD, ROLES.EMPLOYEE].map((r) => (
-            <option key={r} value={r}>{roleLabel(r)}</option>
-          )),
-          ...companyRoles.map((role) => (
-            <option key={role.code} value={role.code}>{role.name || roleLabel(role.code)}</option>
-          ))]}
-        </select>
-        <select className="input w-full sm:w-auto" value={filters.department} onChange={(e) => { setPage(1); setFilters((f) => ({ ...f, department: e.target.value })); }}>
-          <option value="">All departments</option>
-          {departments.map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}
-        </select>
-        <select className="input w-full sm:w-auto" value={filters.status} onChange={(e) => { setPage(1); setFilters((f) => ({ ...f, status: e.target.value })); }}>
-          <option value="">Any status</option>
-          <option value="ACTIVE">Active</option>
-          <option value="INACTIVE">Inactive</option>
-        </select>
-      </div>
-
-      {/* table */}
-      <div className="card overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-crewly-dim border-b border-crewly-border">
-              <th className="p-3">Employee</th>
-              <th className="p-3">Role</th>
-              <th className="p-3">Department</th>
-              <th className="p-3">Reports To</th>
-              <th className="p-3">Status</th>
-              <th className="p-3 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td className="p-4 text-crewly-dim" colSpan={6}>Loading…</td></tr>
-            ) : users.length === 0 ? (
-              <tr><td className="p-4 text-crewly-dim" colSpan={6}>No users found.</td></tr>
-            ) : users.map((u) => (
-              <tr key={u._id} className="border-b border-crewly-border/50">
-                <td className="p-3">
-                  <div className="font-medium">{u.name}</div>
-                  <div className="text-xs text-crewly-dim">{u.email}</div>
-                </td>
-                <td className="p-3"><span className={ROLE_STYLES[u.role] || 'badge'}>{roleLabel(u.role)}</span></td>
-                <td className="p-3">{u.department?.name || '—'}</td>
-                <td className="p-3">{u.reportingTo?.name || '—'}</td>
-                <td className="p-3">
-                  <span className={`badge ${u.status === 'ACTIVE' ? 'text-crewly-green' : 'text-crewly-red'}`}>{u.status}</span>
-                </td>
-                <td className="p-3 text-right space-x-2">
-                  {(manages(u.role) || String(u._id) === myId) && (
-                    <button className="btn-ghost text-xs" onClick={() => openEdit(u)}><Pencil className="mr-1 inline h-3 w-3" />Edit</button>
-                  )}
-                  {manages(u.role) && String(u._id) !== myId && (
-                    <button className="btn-ghost text-xs" onClick={() => setPwModal({ open: true, user: u, password: '', confirm: '' })}><KeyRound className="mr-1 inline h-3 w-3" />Reset PW</button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* pagination — wrap on mobile */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sm text-crewly-dim">
-        <span>Page {meta.page} of {meta.pages}</span>
         <div className="flex gap-2">
-          <button className="btn-ghost flex-1 sm:flex-none" disabled={meta.page <= 1} onClick={() => setPage((p) => p - 1)}>← Prev</button>
-          <button className="btn-ghost flex-1 sm:flex-none" disabled={meta.page >= meta.pages} onClick={() => setPage((p) => p + 1)}>Next →</button>
+          <button className="btn-ghost" onClick={exportCsv} disabled={exporting}>
+            <Download className="mr-1 inline h-4 w-4" />{exporting ? 'Exporting…' : 'Download'}
+          </button>
+          {creatable.length > 0 && (
+            <button className="btn-primary" onClick={openDrawer}>
+              <Plus className="mr-1 inline h-4 w-4" />Add New
+            </button>
+          )}
         </div>
       </div>
 
-      {/* ── Add / Edit modal ── */}
+      {/* ── controls — search + filters + view toggle ── */}
+      <div className="card p-3 sm:p-4 flex flex-col lg:flex-row gap-2 sm:gap-3">
+        <div className="relative w-full lg:flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-crewly-dim" />
+          <input
+            className="input w-full pl-9"
+            placeholder="Search employee"
+            value={filters.search}
+            onChange={(e) => { setPage(1); setFilters((f) => ({ ...f, search: e.target.value })); }}
+          />
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+          <select className="input w-full sm:w-auto" value={filters.department} onChange={(e) => { setPage(1); setFilters((f) => ({ ...f, department: e.target.value })); }}>
+            <option value="">All Departments</option>
+            {departments.map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}
+          </select>
+          <select className="input w-full sm:w-auto" value={filters.role} onChange={(e) => { setPage(1); setFilters((f) => ({ ...f, role: e.target.value })); }}>
+            <option value="">All Roles</option>
+            {[...[ROLES.HR_MANAGER, ROLES.MANAGER, ROLES.TEAM_LEAD, ROLES.EMPLOYEE].map((r) => (
+              <option key={r} value={r}>{roleLabel(r)}</option>
+            )),
+            ...companyRoles.map((role) => (
+              <option key={role.code} value={role.code}>{role.name || roleLabel(role.code)}</option>
+            ))]}
+          </select>
+          <select className="input w-full sm:w-auto" value={filters.status} onChange={(e) => { setPage(1); setFilters((f) => ({ ...f, status: e.target.value })); }}>
+            <option value="">All Status</option>
+            <option value="ACTIVE">Active</option>
+            <option value="INACTIVE">Inactive</option>
+          </select>
+          <div className="flex rounded-lg border border-crewly-border overflow-hidden">
+            <button
+              type="button"
+              className={`px-3 py-2 text-sm ${view === 'table' ? 'bg-crewly-green text-crewly-bg font-semibold' : 'text-crewly-dim hover:text-crewly-text'}`}
+              onClick={() => { setPage(1); setView('table'); }}
+              aria-pressed={view === 'table'}
+            >
+              <List className="h-4 w-4" /><span className="sr-only">Table view</span>
+            </button>
+            <button
+              type="button"
+              className={`px-3 py-2 text-sm ${view === 'directory' ? 'bg-crewly-green text-crewly-bg font-semibold' : 'text-crewly-dim hover:text-crewly-text'}`}
+              onClick={() => { setPage(1); setView('directory'); }}
+              aria-pressed={view === 'directory'}
+            >
+              <LayoutGrid className="h-4 w-4" /><span className="sr-only">Directory view</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── table view ── */}
+      {view === 'table' && (
+        <div className="card overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-crewly-dim border-b border-crewly-border">
+                <th className="p-3">Employee</th>
+                <th className="p-3">Job Title</th>
+                <th className="p-3">Line Manager</th>
+                <th className="p-3">Department</th>
+                <th className="p-3">Employee Status</th>
+                <th className="p-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td className="p-4 text-crewly-dim" colSpan={6}>Loading…</td></tr>
+              ) : users.length === 0 ? (
+                <tr><td className="p-4 text-crewly-dim" colSpan={6}>No users found.</td></tr>
+              ) : users.map((u) => (
+                <tr key={u._id} className="border-b border-crewly-border/50">
+                  <td className="p-3">
+                    <div className="flex items-center gap-3">
+                      <Avatar user={u} />
+                      <div>
+                        <div className="font-medium">{u.name}</div>
+                        <div className="text-xs text-crewly-dim">{u.email}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="p-3">
+                    <div>{u.designation || roleLabel(u.role)}</div>
+                    <div className="text-xs text-crewly-dim"><span className={ROLE_STYLES[u.role] || 'badge'}>{roleLabel(u.role)}</span></div>
+                  </td>
+                  <td className="p-3">{u.reportingTo?.name || '—'}</td>
+                  <td className="p-3">{u.department?.name || '—'}</td>
+                  <td className="p-3"><StatusPill status={u.status} /></td>
+                  <td className="p-3">
+                    <div className="flex justify-end gap-2">
+                      {(manages(u.role) || String(u._id) === myId) && (
+                        <button
+                          className="rounded-lg bg-crewly-green/15 p-2 text-crewly-green transition hover:bg-crewly-green/25"
+                          title="Edit"
+                          onClick={() => openEdit(u)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      )}
+                      {manages(u.role) && String(u._id) !== myId && (
+                        <button
+                          className="rounded-lg bg-blue-400/15 p-2 text-blue-300 transition hover:bg-blue-400/25"
+                          title="Reset password"
+                          onClick={() => setPwModal({ open: true, user: u, password: '', confirm: '' })}
+                        >
+                          <KeyRound className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ── directory view — Figma card grid ── */}
+      {view === 'directory' && (
+        <div>
+          {loading ? (
+            <div className="card p-4 text-crewly-dim">Loading…</div>
+          ) : users.length === 0 ? (
+            <div className="card p-4 text-crewly-dim">No users found.</div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+              {users.map((u) => (
+                <div key={u._id} className="card p-5 flex flex-col items-center text-center gap-1">
+                  <Avatar user={u} className="h-16 w-16 text-lg" />
+                  <div className="mt-2 font-semibold">{u.name}</div>
+                  <div className="text-sm text-crewly-dim">{u.designation || roleLabel(u.role)}</div>
+                  <div className="mt-3 w-full border-t border-crewly-border/50 pt-3 space-y-2 text-sm">
+                    <div className="flex items-center justify-center gap-2 text-crewly-dim"><Mail className="h-4 w-4" />{u.email}</div>
+                    {u.phone && (
+                      <div className="flex items-center justify-center gap-2 text-crewly-dim"><Phone className="h-4 w-4" />{u.phone}</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── pagination — numbered, Figma row style ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sm text-crewly-dim">
+        <span>Page {meta.page} of {meta.pages} — {meta.total} people</span>
+        <div className="flex items-center gap-1">
+          <button className="btn-ghost px-2" disabled={meta.page <= 1} onClick={() => setPage((p) => p - 1)} aria-label="Previous page">
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          {pageItems(meta.pages, meta.page).map((item, idx) =>
+            item === 'gap' ? (
+              <span key={`gap-${idx}`} className="px-1">…</span>
+            ) : (
+              <button
+                key={item}
+                className={`min-w-[32px] rounded-lg px-2 py-1.5 ${item === meta.page ? 'bg-crewly-green text-crewly-bg font-semibold' : 'hover:bg-crewly-border/30'}`}
+                onClick={() => setPage(item)}
+                aria-current={item === meta.page ? 'page' : undefined}
+              >
+                {item}
+              </button>
+            ),
+          )}
+          <button className="btn-ghost px-2" disabled={meta.page >= meta.pages} onClick={() => setPage((p) => p + 1)} aria-label="Next page">
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* ── Add New Profile drawer (Figma right slide-over) ── */}
+      {drawer && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setDrawer(false)} />
+          <div className="employees-drawer absolute right-0 top-0 h-full w-full max-w-md overflow-y-auto border-l border-crewly-border bg-crewly-card p-6">
+            <h2 className="text-lg font-bold">Add New Profile</h2>
+            <form onSubmit={submitDrawer} className="mt-5 space-y-4" noValidate>
+              <div>
+                <label className="label">First Name *</label>
+                <input className={dRing('firstName')} value={dForm.firstName} onChange={dSet('firstName')} />
+                {dErr('firstName')}
+              </div>
+              <div>
+                <label className="label">Last Name *</label>
+                <input className={dRing('lastName')} value={dForm.lastName} onChange={dSet('lastName')} />
+                {dErr('lastName')}
+              </div>
+              <div>
+                <label className="label">Email Address *</label>
+                <input className={dRing('email')} type="email" value={dForm.email} onChange={dSet('email')} />
+                {dErr('email')}
+              </div>
+              <div>
+                <label className="label">Join Date *</label>
+                <input className={dRing('joinDate')} type="date" value={dForm.joinDate} onChange={dSet('joinDate')} />
+                {dErr('joinDate')}
+              </div>
+              <div>
+                <label className="label">Role *</label>
+                <select className="input" value={dForm.role} onChange={dSet('role')}>
+                  {assignable.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">Initial Password *</label>
+                <input className={dRing('password')} type="text" value={dForm.password} onChange={dSet('password')} placeholder="min 8 characters" />
+                {dErr('password')}
+                <p className="mt-1.5 text-xs text-crewly-dim">The backend requires a role and an initial password when creating an account — the artwork's drawer omits both.</p>
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-crewly-border/50">
+                <button type="button" className="btn-ghost" onClick={() => setDrawer(false)}>Cancel</button>
+                <button type="submit" className="btn-primary" disabled={saving}>{saving ? 'Creating…' : 'Create'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add / Edit modal (full backend field set) ── */}
       {/* Form = flex column capped at 70vh; only the FIELDS scroll,
           the footer buttons stay pinned & visible at the bottom. */}
       {modal.open && (
@@ -321,7 +616,7 @@ export default function UsersPage() {
                   <label className="label">Role *</label>
                   {roleEditable ? (
                     <select className="input" value={form.role} onChange={set('role')}>
-                      {assignable.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
+                      {assignable.map((r) => <option key={r.code}>{r.label}</option>)}
                     </select>
                   ) : (
                     <input className="input opacity-60" value={roleLabel(form.role)} disabled />
