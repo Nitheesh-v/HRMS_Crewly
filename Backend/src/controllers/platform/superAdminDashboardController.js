@@ -7,6 +7,7 @@ import Payment from "../../models/Payment.js";
 import UsageMetric from "../../models/UsageMetric.js";
 import AdminSession from "../../models/AdminSession.js";
 import SupportTicket from "../../models/SupportTicket.js";
+import { legacySupportTicketFilter } from "../../utils/supportTicketKinds.js";
 import Document from "../../models/Document.js";
 import { ensureDefaultPlans } from "../../utils/platformPlans.js";
 import platformAnalyticsService from "../../services/payroll/platformAnalyticsService.js";
@@ -355,6 +356,7 @@ export const dashboard = async (req, res) => {
       }),
 
       SupportTicket.aggregate([
+        { $match: legacySupportTicketFilter() },
         {
           $group: {
             _id: "$status",

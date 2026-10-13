@@ -31,6 +31,10 @@ class ApiError extends Error {
   static gone(message = 'Gone') {
     return new ApiError(410, message);
   }
+
+  static unavailable(message = 'Service unavailable') {
+    return new ApiError(503, message);
+  }
 }
 
 export default ApiError;

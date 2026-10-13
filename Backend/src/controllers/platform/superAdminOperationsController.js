@@ -12,6 +12,7 @@ import Company from '../../models/Company.js';
 import UsageMetric from '../../models/UsageMetric.js';
 import Document from '../../models/Document.js';
 import SupportTicket from '../../models/SupportTicket.js';
+import { legacySupportTicketFilter } from '../../utils/supportTicketKinds.js';
 import AuditLog from '../../models/AuditLog.js';
 import PlatformSettings from '../../models/PlatformSettings.js';
 import SystemEvent from '../../models/SystemEvent.js';
@@ -436,7 +437,7 @@ export const support = async (req, res) => {
 
     // DB Logic - DB logics
     const [rows, total, counts] = await Promise.all([
-      SupportTicket.find(match)
+      SupportTicket.find(legacySupportTicketFilter(match))
         .populate('companyId', 'name code')
         .populate('user', 'name email role')
         .populate('assignedSupportAgent', 'name email')
@@ -445,9 +446,10 @@ export const support = async (req, res) => {
         .limit(limit)
         .lean(),
 
-      SupportTicket.countDocuments(match),
+      SupportTicket.countDocuments(legacySupportTicketFilter(match)),
 
       SupportTicket.aggregate([
+        { $match: legacySupportTicketFilter(match) },
         {
           $group: {
             _id: '$status',
@@ -480,11 +482,10 @@ export const support = async (req, res) => {
 
 export const updateSupport = async (req, res) => {
   try {
-    // DB Logic - DB logics
-    const ticket = await SupportTicket.findById(
-      // Data from frontend - requests from frontend
-      req.params.ticketId
-    );
+    // Data from frontend - the opaque id only selects a legacy platform-support record.
+    const ticketId = req.params.ticketId;
+    // DB Logic - exclude Helpdesk discriminators and historical-kind ambiguity is handled by the legacy filter.
+    const ticket = await SupportTicket.findOne(legacySupportTicketFilter({ _id: ticketId }));
 
     if (!ticket) {
       return fail(res, 404, 'Ticket not found');

@@ -43,6 +43,11 @@ export const RESOURCES = [
   "HOLIDAY",
   "SHIFT",
   "SUPPORT",
+  // Phase 38.1 — Helpdesk routing and ticket permissions are separate from
+  // legacy/platform SUPPORT tickets; queue membership remains an additional
+  // service-level access boundary for every queue ticket.
+  "HELPDESK_QUEUE",
+  "HELPDESK_TICKET",
   "PROFILE",
   // Phase 38 — reviewing employees' profile change requests. Deliberately a
   // separate resource from PROFILE: holding "my profile is editable" must
@@ -348,6 +353,12 @@ export const DEFAULT_PERMISSIONS = [
 
   ...actions("SUPPORT", ["READ", "CREATE", "UPDATE", "MANAGE"]),
 
+  // Phase 38.1 — employee service queues use a distinct permission family;
+  // queue membership is still checked for every non-requester ticket read.
+  ...actions("HELPDESK_QUEUE", ["READ", "MANAGE"]),
+  ...actions("HELPDESK_TICKET", ["READ", "MANAGE"]),
+  ...actions("HELPDESK_TICKET", ["READ", "CREATE"], "SELF"),
+
   ...actions("DOCUMENT", ["CREATE", "DELETE"], "SELF"),
 
   ...actions("EXPENSE", ["READ", "CREATE", "UPDATE"], "SELF"),
@@ -463,6 +474,12 @@ const SELF_SERVICE_PERMISSIONS = [
   "SUPPORT_READ_SELF",
   "SUPPORT_CREATE",
   "SUPPORT_UPDATE_SELF",
+
+  // Phase 38.1 — any employee can discover enabled Helpdesk service queues,
+  // submit requests for themselves, and read only their own tickets.
+  "HELPDESK_QUEUE_READ",
+  "HELPDESK_TICKET_CREATE_SELF",
+  "HELPDESK_TICKET_READ_SELF",
 
   "ANNOUNCEMENT_READ",
   "HOLIDAY_READ",
@@ -668,6 +685,11 @@ export const DEFAULT_ROLE_MATRIX = {
 
     "SUPPORT_READ",
     "SUPPORT_MANAGE",
+    // Phase 38.1 — HR may administer tenant queues; ticket access still
+    // requires explicit membership in each queue (confidential access is narrower).
+    "HELPDESK_QUEUE_MANAGE",
+    "HELPDESK_TICKET_READ",
+    "HELPDESK_TICKET_MANAGE",
     "ASSET_READ",
     "ASSET_CREATE",
     "ASSET_UPDATE",

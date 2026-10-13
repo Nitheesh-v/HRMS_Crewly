@@ -9,6 +9,8 @@
 import * as TicketNS from '../../models/SupportTicket.js';
 import * as asyncHandlerNS from '../../utils/asyncHandler.js';
 import * as notifyNS from '../../utils/notify.js';
+import { hasAnyPermission } from '../../utils/permissionService.js';
+import { legacySupportTicketFilter } from '../../utils/supportTicketKinds.js';
 
 const pickModel = (ns) => (typeof ns.default === 'function' ? ns.default : ns.default || ns);
 const mergeExports = (ns) => ({ ...ns, ...(ns.default && typeof ns.default === 'object' ? ns.default : {}) });
@@ -16,14 +18,17 @@ const mergeExports = (ns) => ({ ...ns, ...(ns.default && typeof ns.default === '
 const Ticket = pickModel(TicketNS);
 const asyncHandler = typeof asyncHandlerNS.default === 'function' ? asyncHandlerNS.default : asyncHandlerNS.asyncHandler;
 const notify = mergeExports(notifyNS);
-
-const HR_SIDE = ['COMPANY_ADMIN', 'HR_MANAGER'];
+// Legacy support notification target roles only; authorization is enforced by RBAC routes.
+const SUPPORT_NOTIFICATION_ROLES = ['COMPANY_ADMIN', 'HR_MANAGER'];
 
 const createTicket = asyncHandler(async (req, res) => {
+  // Data from frontend - request payload is read only after this boundary marker.
   const { subject, category = 'OTHER', message } = req.body;
   if (!subject?.trim() || !message?.trim()) {
+    // Data to frontend - reject invalid legacy support input.
     return res.status(400).json({ success: false, message: 'subject and message are required' });
   }
+  // DB Logic - create a legacy-only support ticket in the authenticated tenant.
   const ticket = await Ticket.create({
     companyId: req.companyId,
     user: req.user._id,
@@ -33,31 +38,34 @@ const createTicket = asyncHandler(async (req, res) => {
   });
   try {
     // DB Logic - DB logics
-    await notify.notifyRoles?.(req.companyId, HR_SIDE, {
+    await notify.notifyRoles?.(req.companyId, SUPPORT_NOTIFICATION_ROLES, {
       title: '🎫 New support ticket',
       message: `${req.user.name}: ${ticket.subject}`,
       link: '/app/support',
     });
   } catch { /* best-effort */ }
+  // Data to frontend - response is kept separate from database and notification work.
   res.status(201).json({ success: true, message: 'Ticket raised 🎫 HR will get back to you', data: ticket });
 });
 
 const myTickets = asyncHandler(async (req, res) => {
-  // DB Logic - DB logics
-  const list = await Ticket.find({ user: req.user._id }).sort({ createdAt: -1 }).lean();
+  // Data from frontend - authenticated requester comes only from req.user.
+  const requesterId = req.user._id;
+  const companyId = req.companyId;
+  // DB Logic - reads only legacy tickets in the authenticated tenant.
+  const list = await Ticket.find(legacySupportTicketFilter({ companyId, user: requesterId }))
+    .sort({ createdAt: -1 })
+    .lean();
   // Data to frontend - response to frontend
   res.json({ success: true, data: list });
 });
 
 const listTickets = asyncHandler(async (req, res) => {
-  // Data from frontend - requests from frontend
-  if (!HR_SIDE.includes(req.user.role)) {
-    return res.status(403).json({ success: false, message: 'HR access only' });
-  }
+  // Data from frontend - tenant and filters come from the authenticated request context.
   const filter = { companyId: req.companyId };
   if (req.query.status) filter.status = req.query.status;
-  // DB Logic - DB logics
-  const list = await Ticket.find(filter)
+  // DB Logic - the legacy discriminator filter excludes Helpdesk records and historical tickets remain included.
+  const list = await Ticket.find(legacySupportTicketFilter(filter))
     .populate('user', 'name email role designation')
     .sort({ status: 1, createdAt: -1 })
     .lean();
@@ -66,14 +74,22 @@ const listTickets = asyncHandler(async (req, res) => {
 });
 
 const replyTicket = asyncHandler(async (req, res) => {
+  // Data from frontend - reply body, requester, and tenant are trusted only through this request context.
   const { message } = req.body;
-  if (!message?.trim()) return res.status(400).json({ success: false, message: 'message is required' });
+  if (!message?.trim()) {
+    // Data to frontend - malformed reply.
+    return res.status(400).json({ success: false, message: 'message is required' });
+  }
 
-  const ticket = await Ticket.findOne({ _id: req.params.id, companyId: req.companyId });
+  // DB Logic - legacy-only tenant-scoped lookup; Helpdesk tickets never enter this workflow.
+  const ticket = await Ticket.findOne(legacySupportTicketFilter({
+    _id: req.params.id,
+    companyId: req.companyId,
+  }));
   if (!ticket) return res.status(404).json({ success: false, message: 'Ticket not found' });
 
   const isOwner = String(ticket.user) === String(req.user._id);
-  const isHR = HR_SIDE.includes(req.user.role);
+  const isHR = await hasAnyPermission(req.user, ['SUPPORT_UPDATE', 'SUPPORT_MANAGE']);
   if (!isOwner && !isHR) return res.status(403).json({ success: false, message: 'Not your ticket' });
 
   ticket.replies.push({ by: req.user._id, message: message.trim() });
@@ -99,22 +115,24 @@ const replyTicket = asyncHandler(async (req, res) => {
 });
 
 const updateTicketStatus = asyncHandler(async (req, res) => {
-  if (!HR_SIDE.includes(req.user.role)) {
-    return res.status(403).json({ success: false, message: 'HR access only' });
-  }
+  // Data from frontend - route RBAC protects this legacy support operation.
   const { status } = req.body;
   if (!['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'].includes(status)) {
+    // Data to frontend - invalid legacy status.
     return res.status(400).json({ success: false, message: 'Invalid status' });
   }
+  // DB Logic - update only a legacy ticket belonging to the authenticated tenant.
   const ticket = await Ticket.findOneAndUpdate(
-    { _id: req.params.id, companyId: req.companyId },
+    legacySupportTicketFilter({ _id: req.params.id, companyId: req.companyId }),
     { $set: { status } },
-    { returnDocument: 'after' }
+    { returnDocument: 'after' },
   );
-  if (!ticket) return res.status(404).json({ success: false, message: 'Ticket not found' });
+  if (!ticket) {
+    // Data to frontend - do not disclose Helpdesk or cross-tenant tickets.
+    return res.status(404).json({ success: false, message: 'Ticket not found' });
+  }
 
   try {
-    // DB Logic - DB logics
     await notify.notifyUser?.(req.companyId, ticket.user, {
       title: `🎫 Ticket ${status.replace('_', ' ')}`,
       message: ticket.subject,
@@ -122,6 +140,7 @@ const updateTicketStatus = asyncHandler(async (req, res) => {
     });
   } catch { /* best-effort */ }
 
+  // Data to frontend - response contains only the legacy record matched above.
   res.json({ success: true, message: `Ticket ${status}`, data: ticket });
 });
 

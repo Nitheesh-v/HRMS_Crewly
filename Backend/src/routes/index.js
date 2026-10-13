@@ -40,6 +40,7 @@ import subscriptionRoutes from "./platform/subscriptionRoutes.js";
 import systemRoutes from "./systemRoutes.js";
 import profileRoutes from "./profileRoutes.js";
 import profileChangeRoutes from "./profileChangeRoutes.js";
+import helpdeskRoutes from "./helpdeskRoutes.js";
 import selfServiceRoutes from "./selfServiceRoutes.js";
 import referralRoutes from "./referralRoutes.js";
 import meetingRoutes from "./meetingRoutes.js";
@@ -201,6 +202,9 @@ router.use("/", systemRoutes);
 // Phase 32.11 — realtime infrastructure surface (ticket + SSE stream).
 // Handlers are inert (503) unless REALTIME_ENABLED=true at boot.
 router.use("/realtime", realtimeRoutes);
+
+// Phase 38.1 — employee Helpdesk is separate from legacy platform support.
+router.use("/helpdesk", helpdeskRoutes);
 
 // Existing self-service routes are mounted at API root.
 // Employee referrals — posted jobs visible to every employee (tenant-gated,
