@@ -93,6 +93,9 @@ const FOREIGN_QUEUE_ID = oid(401);
 const TICKET_NUMBER = 'HD-000042';
 const OTHER_TICKET_NUMBER = 'HD-000043';
 const PDF_BYTES = Buffer.from('%PDF-1.7\nCrewly Helpdesk test document\n%%EOF\n');
+const NOOP_SLA_SERVICE = {
+  async persistFirstResponse() { return { updated: false }; },
+};
 
 const clone = (value) => {
   if (value === null || value === undefined || typeof value !== 'object') return value;
@@ -422,6 +425,7 @@ const makeWorld = (options = {}) => {
     AttachmentModel,
     UserModel,
     configService,
+    slaService: NOOP_SLA_SERVICE,
     planAttachmentStorage: ({ companyId, ticketId, attachmentId }) => ({
       storageProvider: 'CLOUDINARY_AUTHENTICATED',
       storageKey: buildHelpdeskAttachmentStorageKey({ companyId, ticketId, attachmentId }),

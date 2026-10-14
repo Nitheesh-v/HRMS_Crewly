@@ -270,6 +270,14 @@ const makeSequenceModel = () => {
   };
 };
 
+const NOOP_SLA_SERVICE = {
+  async initializeTicketSla() { return null; },
+  async applyStatusTransition() { return null; },
+  async applyPriorityChange() { return null; },
+  async applyQueueTransfer() { return null; },
+  async persistFirstResponse() { return { updated: false }; },
+};
+
 const makeWorld = ({ tickets = [], queues = [makeQueue()], config = {}, configFailure = null } = {}) => {
   const TicketModel = makeTicketModel(tickets);
   const QueueModel = makeQueueModel(queues);
@@ -289,7 +297,13 @@ const makeWorld = ({ tickets = [], queues = [makeQueue()], config = {}, configFa
       };
     },
   };
-  const ticketService = helpdeskTicketService({ TicketModel, QueueModel, SequenceModel, configService });
+  const ticketService = helpdeskTicketService({
+    TicketModel,
+    QueueModel,
+    SequenceModel,
+    configService,
+    slaService: NOOP_SLA_SERVICE,
+  });
   return { TicketModel, QueueModel, SequenceModel, configService, ticketService };
 };
 

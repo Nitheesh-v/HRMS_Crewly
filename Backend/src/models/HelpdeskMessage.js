@@ -84,4 +84,12 @@ helpdeskMessageSchema.index(
   },
 );
 
+helpdeskMessageSchema.index(
+  { companyId: 1, ticketId: 1, createdAt: 1, _id: 1 },
+  {
+    name: 'helpdesk_first_public_agent_reply',
+    partialFilterExpression: { messageType: 'PUBLIC' },
+  },
+);
+
 export default mongoose.model('HelpdeskMessage', helpdeskMessageSchema);

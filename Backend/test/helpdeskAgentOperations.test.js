@@ -300,6 +300,14 @@ const makeUserModel = () => {
   };
 };
 
+const NOOP_SLA_SERVICE = {
+  async initializeTicketSla() { return null; },
+  async applyStatusTransition() { return null; },
+  async applyPriorityChange() { return null; },
+  async applyQueueTransfer() { return null; },
+  async persistFirstResponse() { return { updated: false }; },
+};
+
 const makeWorld = ({ tickets = [], queues, config = {} } = {}) => {
   const TicketModel = makeTicketModel(tickets);
   const QueueModel = makeQueueModel(queues);
@@ -311,7 +319,13 @@ const makeWorld = ({ tickets = [], queues, config = {} } = {}) => {
       return { confidentialTicketsEnabled: true, ...clone(config) };
     },
   };
-  const ticketService = helpdeskTicketService({ TicketModel, QueueModel, UserModel, configService });
+  const ticketService = helpdeskTicketService({
+    TicketModel,
+    QueueModel,
+    UserModel,
+    configService,
+    slaService: NOOP_SLA_SERVICE,
+  });
   return { TicketModel, QueueModel, UserModel, configService, ticketService };
 };
 

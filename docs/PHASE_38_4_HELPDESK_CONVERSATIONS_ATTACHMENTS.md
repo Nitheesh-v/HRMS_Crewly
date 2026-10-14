@@ -62,3 +62,7 @@ npm run dev
 ```
 
 For recovery-path checks, open a second PowerShell window, repeat the environment assignments above (omit `PORT` if it is already used), and run `npm run worker:dev` from `Backend`. With the server running, use the existing authenticated local application session and a disposable Helpdesk tenant to exercise: public reply/history; internal-note exclusion for requester and reviewer views; wrong-tenant, wrong-ticket, non-member, and confidential-ticket denial; an allowed signature-valid upload/download; invalid MIME/signature and over-10-MiB rejection; and a resolved/closed-ticket write conflict. Keep the local private directory under `Backend/private_storage/helpdesk-attachments` out of static serving and deployment artifacts. This local adapter check does **not** validate Cloudinary; if staging-provider acceptance is required, an authorized operator must use a dedicated non-production Cloudinary account/configuration and must not upload test files to production Cloudinary. Restore the PowerShell environment by closing those windows after the check.
+
+## Follow-on phase
+
+Phase 38.5 subsequently adds backend-only queue-specific SLA policies and durable ticket clocks. That later unit does not change Phase 38.4 conversation or attachment semantics; see [`PHASE_38_5_HELPDESK_SLA.md`](./PHASE_38_5_HELPDESK_SLA.md) for its APIs, deployment/worker impact, verification, and pending localhost acceptance.

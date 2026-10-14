@@ -144,6 +144,22 @@ export const helpdeskQueueIdParamValidator = [
   validate,
 ];
 
+export const helpdeskSlaPolicyValidator = [
+  param('queueId').isMongoId().withMessage('queueId is invalid'),
+  onlyBodyFields([
+    'enabled',
+    'clockMode',
+    'timeZone',
+    'excludeHolidays',
+    'weeklyHours',
+    'targets',
+    'warningPercent',
+    'pauseStatuses',
+  ]),
+  body().isObject().withMessage('SLA policy must be an object'),
+  validate,
+];
+
 export const helpdeskTicketCreateValidator = [
   onlyBodyFields([
     'queueId',

@@ -5,6 +5,99 @@ import {
   HELPDESK_TICKET_STATUSES,
 } from '../services/helpdesk/helpdeskRules.js';
 
+const slaWindowSchema = new mongoose.Schema(
+  {
+    start: { type: String, required: true, match: /^(?:[01]\d|2[0-3]):[0-5]\d$/ },
+    end: { type: String, required: true, match: /^(?:[01]\d|2[0-3]):[0-5]\d$/ },
+  },
+  { _id: false },
+);
+
+const slaWeekdaySchema = new mongoose.Schema(
+  {
+    weekday: { type: String, required: true, enum: ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'] },
+    windows: { type: [slaWindowSchema], default: [] },
+  },
+  { _id: false },
+);
+
+const slaTargetSchema = new mongoose.Schema(
+  {
+    firstResponseMinutes: { type: Number, required: true, min: 1, max: 10_080 },
+    resolutionMinutes: { type: Number, required: true, min: 1, max: 10_080 },
+  },
+  { _id: false },
+);
+
+const slaTargetsSchema = new mongoose.Schema(
+  Object.fromEntries(HELPDESK_PRIORITIES.map((priority) => [priority, { type: slaTargetSchema, required: true }])),
+  { _id: false },
+);
+
+const slaPauseStatusesSchema = new mongoose.Schema(
+  {
+    firstResponse: { type: [String], default: [] },
+    resolution: { type: [String], default: ['waiting_for_employee'] },
+  },
+  { _id: false },
+);
+
+const slaClockSchema = new mongoose.Schema(
+  {
+    state: { type: String, required: true, enum: ['RUNNING', 'PAUSED', 'COMPLETED', 'STOPPED'] },
+    targetMinutes: { type: Number, required: true, min: 1, max: 10_080 },
+    activeElapsedMs: { type: Number, required: true, min: 0, default: 0 },
+    startedAt: { type: Date, required: true },
+    resumedAt: { type: Date, default: null },
+    pausedAt: { type: Date, default: null },
+    dueAt: { type: Date, default: null },
+    warningAt: { type: Date, default: null },
+    warningEligibleAt: { type: Date, default: null },
+    completedAt: { type: Date, default: null },
+    lastCompletedAt: { type: Date, default: null },
+    firstResponseAt: { type: Date, default: null },
+    breachedAt: { type: Date, default: null },
+    stoppedAt: { type: Date, default: null },
+  },
+  { _id: false },
+);
+
+const slaEscalationSchema = new mongoose.Schema(
+  {
+    state: { type: String, required: true, enum: ['NONE', 'ELIGIBLE'], default: 'NONE' },
+    queueId: { type: mongoose.Schema.Types.ObjectId, ref: 'HelpdeskQueue', default: null },
+    eligibleAt: { type: Date, default: null },
+    triggers: { type: [String], enum: ['FIRST_RESPONSE', 'RESOLUTION'], default: [] },
+  },
+  { _id: false },
+);
+
+const helpdeskSlaSchema = new mongoose.Schema(
+  {
+    version: { type: Number, required: true, min: 1, default: 1 },
+    policyQueueId: { type: mongoose.Schema.Types.ObjectId, ref: 'HelpdeskQueue', required: true },
+    policyVersion: { type: Number, required: true, min: 1 },
+    appliedPriority: { type: String, required: true, enum: HELPDESK_PRIORITIES },
+    clockMode: { type: String, required: true, enum: ['CALENDAR', 'BUSINESS_HOURS'] },
+    timeZone: { type: String, required: true, maxlength: 100 },
+    excludeHolidays: { type: Boolean, required: true, default: false },
+    weeklyHours: { type: [slaWeekdaySchema], required: true },
+    targets: { type: slaTargetsSchema, required: true },
+    warningPercent: { type: Number, required: true, min: 1, max: 99 },
+    pauseStatuses: { type: slaPauseStatusesSchema, required: true },
+    holidayContext: {
+      department: { type: mongoose.Schema.Types.ObjectId, default: null },
+      branch: { type: String, default: '' },
+    },
+    firstResponse: { type: slaClockSchema, required: true },
+    resolution: { type: slaClockSchema, required: true },
+    escalation: { type: slaEscalationSchema, required: true },
+    nextActionAt: { type: Date, default: null },
+    updatedAt: { type: Date, required: true },
+  },
+  { _id: false },
+);
+
 const helpdeskTicketSchema = new mongoose.Schema(
   {
     ticketNumber: {
@@ -42,6 +135,9 @@ const helpdeskTicketSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // Phase 38.5 — Mongo-authoritative ticket SLA clocks. Legacy Helpdesk rows
+    // remain untracked unless a policy snapshot was written at ticket creation.
+    sla: { type: helpdeskSlaSchema, default: undefined },
     // Phase 38.4 — atomic per-ticket ordering counters. Legacy tickets need no
     // backfill: Mongo's first $inc creates a counter starting at one.
     lastMessageSequence: { type: Number, default: 0, min: 0 },
@@ -128,6 +224,17 @@ helpdeskTicketSchema.index(
   {
     name: 'helpdesk_requester_ticket_list_updated',
     partialFilterExpression: { ticketKind: 'HELPDESK' },
+  },
+);
+
+helpdeskTicketSchema.index(
+  { 'sla.nextActionAt': 1, companyId: 1, _id: 1 },
+  {
+    name: 'helpdesk_sla_due_reconcile',
+    partialFilterExpression: {
+      ticketKind: 'HELPDESK',
+      'sla.nextActionAt': { $type: 'date' },
+    },
   },
 );
 

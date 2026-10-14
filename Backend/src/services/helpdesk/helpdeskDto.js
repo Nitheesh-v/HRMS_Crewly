@@ -1,3 +1,5 @@
+import { serializeHelpdeskSla } from './helpdeskSlaRules.js';
+
 const idOf = (value) => {
   if (!value) return null;
   if (typeof value === 'object' && value._id) return String(value._id);
@@ -64,6 +66,7 @@ export const serializeHelpdeskTicket = (ticket) => ({
   confidential: ticket?.isConfidential === true,
   createdAt: ticket?.createdAt || null,
   updatedAt: ticket?.updatedAt || null,
+  ...(ticket?.sla ? { sla: serializeHelpdeskSla(ticket.sla) } : {}),
 });
 
 const agentTicketBaseDto = (ticket, queueName) => ({
@@ -83,6 +86,7 @@ const agentTicketBaseDto = (ticket, queueName) => ({
   confidential: ticket?.isConfidential === true,
   createdAt: ticket?.createdAt || null,
   updatedAt: ticket?.updatedAt || null,
+  ...(ticket?.sla ? { sla: serializeHelpdeskSla(ticket.sla, { includeEscalation: true }) } : {}),
 });
 
 export const serializeHelpdeskAgentTicketListItem = (ticket, { queueName = null } = {}) =>
@@ -110,6 +114,7 @@ const employeeTicketBaseDto = (ticket, queueName) => ({
   confidential: ticket?.isConfidential === true,
   createdAt: ticket?.createdAt || null,
   updatedAt: ticket?.updatedAt || null,
+  ...(ticket?.sla ? { sla: serializeHelpdeskSla(ticket.sla) } : {}),
 });
 
 export const serializeHelpdeskEmployeeTicketListItem = (ticket, { queueName = null } = {}) =>

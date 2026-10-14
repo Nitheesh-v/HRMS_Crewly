@@ -398,6 +398,15 @@ const makeUsers = () => makeUserModel([
   { _id: OTHER_TENANT_USER, companyId: COMPANY_B, status: 'ACTIVE', name: 'Other Tenant', email: 'other@example.test' },
 ]);
 
+const NOOP_SLA_SERVICE = {
+  async initializeTicketSla() { return null; },
+  async applyStatusTransition() { return null; },
+  async applyPriorityChange() { return null; },
+  async applyQueueTransfer() { return null; },
+  async stopTicketSla() { return null; },
+  async persistFirstResponse() { return { updated: false }; },
+};
+
 const makeWorld = () => {
   const QueueModel = makeQueueModel();
   const TicketModel = makeTicketModel();
@@ -413,6 +422,7 @@ const makeWorld = () => {
     ConfigModel,
     SequenceModel,
     configService,
+    slaService: NOOP_SLA_SERVICE,
   });
   return { QueueModel, TicketModel, UserModel, ConfigModel, SequenceModel, configService, queueService, ticketService };
 };
@@ -968,6 +978,7 @@ test('Phase 38.4 conversations and private attachments do not add later-phase in
     ConfigModel: world.ConfigModel,
     SequenceModel: world.SequenceModel,
     configService: world.configService,
+    slaService: NOOP_SLA_SERVICE,
     AttendanceModel: sentinel('attendance'),
     LeaveModel: sentinel('leave'),
     PayrollModel: sentinel('payroll'),

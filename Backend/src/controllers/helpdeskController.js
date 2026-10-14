@@ -6,12 +6,14 @@ import { helpdeskTenantConfigService } from '../services/helpdesk/helpdeskTenant
 import { helpdeskQueueService } from '../services/helpdesk/helpdeskQueueService.js';
 import { helpdeskTicketService } from '../services/helpdesk/helpdeskTicketService.js';
 import { helpdeskConversationService } from '../services/helpdesk/helpdeskConversationService.js';
+import { helpdeskSlaService } from '../services/helpdesk/helpdeskSlaService.js';
 import { recordAudit } from '../utils/securityauditService.js';
 
 const configService = helpdeskTenantConfigService();
 const queueService = helpdeskQueueService();
-const ticketService = helpdeskTicketService({ configService });
-const conversationService = helpdeskConversationService({ configService });
+const slaService = helpdeskSlaService();
+const ticketService = helpdeskTicketService({ configService, slaService });
+const conversationService = helpdeskConversationService({ configService, slaService });
 
 const success = (res, data, status = 200, message = 'Helpdesk request completed', meta = null) =>
   res.status(status).json({
@@ -137,6 +139,36 @@ export const updateQueue = asyncHandler(async (req, res) => {
   return success(res, queue, 200, 'Helpdesk queue updated');
 });
 
+export const getQueueSlaPolicy = asyncHandler(async (req, res) => {
+  // Tenant and actor identity are authenticated; queueId is only a resource selector.
+  const companyId = req.companyId;
+  const queueId = req.params.queueId;
+  await assertHelpdeskPermission(req.user, 'HELPDESK_QUEUE_MANAGE');
+  const policy = await slaService.getQueuePolicy({ companyId, queueId });
+  return success(res, policy, 200, 'Helpdesk queue SLA policy');
+});
+
+export const updateQueueSlaPolicy = asyncHandler(async (req, res) => {
+  const companyId = req.companyId;
+  const actorId = req.user._id;
+  const queueId = req.params.queueId;
+  const input = req.body || {};
+  assertBodyFields(input, [
+    'enabled',
+    'clockMode',
+    'timeZone',
+    'excludeHolidays',
+    'weeklyHours',
+    'targets',
+    'warningPercent',
+    'pauseStatuses',
+  ]);
+  await assertHelpdeskPermission(req.user, 'HELPDESK_QUEUE_MANAGE');
+  const policy = await slaService.updateQueuePolicy({ companyId, queueId, actorId, input });
+  req.helpdeskAuditAction = 'Updated a Helpdesk queue SLA policy';
+  return success(res, policy, 200, 'Helpdesk queue SLA policy updated');
+});
+
 export const listMyTickets = asyncHandler(async (req, res) => {
   // Data from frontend - filters are selectors only; requester identity comes from req.user._id.
   const companyId = req.companyId;
@@ -237,6 +269,24 @@ export const getTicket = asyncHandler(async (req, res) => {
   });
   // Data to frontend - unauthorized callers receive the same not-found response as missing tickets.
   return success(res, ticket, 200, 'Helpdesk ticket');
+});
+
+export const getTicketSla = asyncHandler(async (req, res) => {
+  const companyId = req.companyId;
+  const viewerId = req.user._id;
+  const ticketNumber = req.params.ticketNumber;
+  const [canReadOwn, canReadQueue] = await Promise.all([
+    hasPermission(req.user, 'HELPDESK_TICKET_READ_SELF'),
+    hasPermission(req.user, 'HELPDESK_TICKET_READ'),
+  ]);
+  const ticket = await ticketService.getTicket({
+    companyId,
+    viewerId,
+    ticketNumber,
+    canReadOwn,
+    canReadQueue,
+  });
+  return success(res, ticket.sla || { configured: false }, 200, 'Helpdesk ticket SLA');
 });
 
 export const claimTicket = asyncHandler(async (req, res) => {

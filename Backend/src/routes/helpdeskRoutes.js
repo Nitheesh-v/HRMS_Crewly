@@ -26,6 +26,7 @@ import {
   helpdeskTicketListQueryValidator,
   helpdeskQueueTicketListQueryValidator,
   helpdeskMessageHistoryQueryValidator,
+  helpdeskSlaPolicyValidator,
   helpdeskMessageCreateValidator,
   helpdeskAttachmentMessageValidator,
   helpdeskAttachmentIdParamValidator,
@@ -99,6 +100,19 @@ router.patch(
   ...helpdeskQueueUpdateValidator,
   controller.updateQueue,
 );
+router.get(
+  '/admin/queues/:queueId/sla-policy',
+  requirePermission('HELPDESK_QUEUE_MANAGE'),
+  ...helpdeskQueueIdParamValidator,
+  controller.getQueueSlaPolicy,
+);
+router.put(
+  '/admin/queues/:queueId/sla-policy',
+  checkWriteAccess,
+  requirePermission('HELPDESK_QUEUE_MANAGE'),
+  ...helpdeskSlaPolicyValidator,
+  controller.updateQueueSlaPolicy,
+);
 
 router.get(
   '/tickets/mine',
@@ -150,6 +164,15 @@ router.get(
   ]),
   ...helpdeskTicketReadParamValidator,
   controller.getTicket,
+);
+router.get(
+  '/tickets/:ticketNumber/sla',
+  requireAnyPermission([
+    'HELPDESK_TICKET_READ_SELF',
+    'HELPDESK_TICKET_READ',
+  ]),
+  ...helpdeskTicketReadParamValidator,
+  controller.getTicketSla,
 );
 router.get(
   '/tickets/:ticketNumber/messages',

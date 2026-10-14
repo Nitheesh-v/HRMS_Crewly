@@ -10,6 +10,7 @@ import logger from '../../config/logger.js';
 import ApiError from '../../utils/ApiError.js';
 import { SUPPORT_TICKET_KIND } from '../../utils/supportTicketKinds.js';
 import { helpdeskTenantConfigService } from './helpdeskTenantConfigService.js';
+import { helpdeskSlaService } from './helpdeskSlaService.js';
 import {
   canReadHelpdeskTicket,
   hasConfidentialHelpdeskAgentAccess,
@@ -63,6 +64,15 @@ export const helpdeskConversationService = (deps = {}) => {
   const UserModel = deps.UserModel || User;
   const configService = deps.configService || helpdeskTenantConfigService({
     ConfigModel: deps.ConfigModel,
+  });
+  const slaService = deps.slaService || helpdeskSlaService({
+    TicketModel,
+    QueueModel,
+    UserModel,
+    MessageModel,
+    PolicyModel: deps.PolicyModel,
+    holidayReader: deps.holidayReader,
+    now: deps.now,
   });
   const storeAttachment = deps.storeAttachment || storeHelpdeskAttachment;
   const planAttachmentStorage = deps.planAttachmentStorage || planHelpdeskAttachmentStorage;
@@ -437,6 +447,14 @@ export const helpdeskConversationService = (deps = {}) => {
       }
     }
 
+    if (messageType === 'PUBLIC' && context.audience === 'staff') {
+      await slaService.persistFirstResponse({
+        companyId,
+        ticketId: context.ticket._id,
+        createdAt: row?.createdAt || new Date(now()),
+      });
+    }
+
     return serializeMessage({
       row,
       ticket: context.ticket,
@@ -725,6 +743,14 @@ export const helpdeskConversationService = (deps = {}) => {
           messageWriteState = 'missing';
           throw error;
         }
+      }
+
+      if (messageType === 'PUBLIC' && finalContext.audience === 'staff') {
+        await slaService.persistFirstResponse({
+          companyId: input.companyId,
+          ticketId: finalContext.ticket._id,
+          createdAt: messageRow?.createdAt || new Date(now()),
+        });
       }
 
       try {

@@ -496,6 +496,35 @@ const startWorker = async () => {
   );
   helpdeskAttachmentRecoveryTimer.unref?.();
 
+  // --- Phase 38.5 Helpdesk SLA reconciliation -----------------------
+  // Deadlines, warnings, and escalation eligibility live on Mongo tickets.
+  // The bounded due-index sweep is run at startup and periodically so a worker
+  // restart or missed pass is recoverable; duplicate workers rely on ticket
+  // version compare-and-set, not Redis locks. It never delivers notifications.
+  let helpdeskSlaSweepRunning = false;
+  const runHelpdeskSlaSweep = async () => {
+    if (helpdeskSlaSweepRunning) return;
+    helpdeskSlaSweepRunning = true;
+    try {
+      const { helpdeskSlaService } = await import('../services/helpdesk/helpdeskSlaService.js');
+      const result = await helpdeskSlaService().reconcileDueTickets({ limit: 100 });
+      if (result.inspected) {
+        logger.info(
+          `[Worker] Helpdesk SLA reconciliation (inspected=${result.inspected}, ` +
+            `processed=${result.processed}, failed=${result.failed})`,
+        );
+      }
+    } catch (error) {
+      logger.warn(`[Worker] Helpdesk SLA reconciliation skipped: ${safeErrorText(error)}`);
+    } finally {
+      helpdeskSlaSweepRunning = false;
+    }
+  };
+
+  await runHelpdeskSlaSweep();
+  const helpdeskSlaSweepTimer = setInterval(() => void runHelpdeskSlaSweep(), 60 * 1000);
+  helpdeskSlaSweepTimer.unref?.();
+
   // --- 28.8 ops heartbeat ------------------------------------------
   // One ephemeral Redis key tells the Super Admin "Background
   // Operations" page this worker process is alive (ONLINE /

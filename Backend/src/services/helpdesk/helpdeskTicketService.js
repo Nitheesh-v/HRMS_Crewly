@@ -6,6 +6,7 @@ import TenantSequence from '../../models/TenantSequence.js';
 import { SUPPORT_TICKET_KIND } from '../../utils/supportTicketKinds.js';
 import { nextHelpdeskTicketNumber } from './helpdeskTicketNumbers.js';
 import { helpdeskTenantConfigService } from './helpdeskTenantConfigService.js';
+import { helpdeskSlaService } from './helpdeskSlaService.js';
 import {
   HELPDESK_TICKET_LIST_SEARCH_MAX_LENGTH,
   canTransitionHelpdeskTicket,
@@ -36,7 +37,7 @@ const OBJECT_ID = /^[a-f\d]{24}$/i;
 const TICKET_NUMBER = /^HD-\d{6,}$/;
 const AGENT_LIST_FIELDS =
   'ticketNumber subject queueId categoryId categoryName status priority assignedTo ' +
-  'isConfidential createdAt updatedAt';
+  'isConfidential createdAt updatedAt sla';
 
 const ensureCompanyId = (companyId) => {
   if (!companyId) throw ApiError.forbidden('A tenant is required');
@@ -54,6 +55,16 @@ export const helpdeskTicketService = (deps = {}) => {
   const configService = deps.configService || helpdeskTenantConfigService({
     ConfigModel: deps.ConfigModel,
   });
+  const slaService = deps.slaService || helpdeskSlaService({
+    TicketModel,
+    QueueModel,
+    UserModel,
+    PolicyModel: deps.PolicyModel,
+    MessageModel: deps.MessageModel,
+    holidayReader: deps.holidayReader,
+    now: deps.now,
+  });
+  const now = deps.now || (() => new Date());
 
   const findQueue = async (companyId, queueId) => {
     if (!OBJECT_ID.test(String(queueId || ''))) return null;
@@ -99,7 +110,12 @@ export const helpdeskTicketService = (deps = {}) => {
     return { ticket, queue };
   };
 
-  const conditionalTicketFilter = ({ companyId, ticket, includePriority = false }) => ({
+  const conditionalTicketFilter = ({
+    companyId,
+    ticket,
+    includePriority = false,
+    includeSlaVersion = false,
+  }) => ({
     companyId,
     ticketKind: SUPPORT_TICKET_KIND.HELPDESK,
     ticketNumber: ticket.ticketNumber,
@@ -107,6 +123,9 @@ export const helpdeskTicketService = (deps = {}) => {
     status: ticket.status,
     assignedTo: ticket.assignedTo ?? null,
     ...(includePriority ? { priority: ticket.priority } : {}),
+    ...(includeSlaVersion
+      ? { 'sla.version': ticket.sla?.version ?? { $exists: false } }
+      : {}),
   });
 
   const commitConditionalUpdate = async ({
@@ -116,10 +135,11 @@ export const helpdeskTicketService = (deps = {}) => {
     ticket,
     update,
     includePriority = false,
+    includeSlaVersion = false,
     managersOnly = false,
   }) => {
     const updated = await TicketModel.findOneAndUpdate(
-      conditionalTicketFilter({ companyId, ticket, includePriority }),
+      conditionalTicketFilter({ companyId, ticket, includePriority, includeSlaVersion }),
       { $set: update },
       { returnDocument: 'after', runValidators: true },
     );
@@ -168,7 +188,7 @@ export const helpdeskTicketService = (deps = {}) => {
       TicketModel.find(filter)
         .select(
           'ticketNumber subject queueId categoryId categoryName status priority ' +
-            'isConfidential createdAt updatedAt',
+            'isConfidential createdAt updatedAt sla',
         )
         .sort(sort)
         .skip(skip)
@@ -364,6 +384,21 @@ export const helpdeskTicketService = (deps = {}) => {
       throw ApiError.badRequest('Confidential tickets are not enabled for this queue');
     }
 
+    const createdAtValue = now();
+    const createdAt = createdAtValue instanceof Date
+      ? new Date(createdAtValue.getTime())
+      : new Date(createdAtValue);
+    if (Number.isNaN(createdAt.getTime())) {
+      throw ApiError.unavailable('A trusted Helpdesk ticket timestamp is unavailable.');
+    }
+    const priority = config.defaultPriority || 'normal';
+    const sla = await slaService.initializeTicketSla({
+      companyId,
+      queueId: queue._id,
+      requesterId,
+      priority,
+      createdAt,
+    });
     const ticketNumber = await nextHelpdeskTicketNumber(companyId, { SequenceModel });
     const ticket = await TicketModel.create({
       companyId,
@@ -379,9 +414,11 @@ export const helpdeskTicketService = (deps = {}) => {
       message: normalized.description,
       requestedPriority: normalized.requestedPriority,
       assignedTo: null,
-      priority: config.defaultPriority || 'normal',
+      priority,
       status: 'open',
       isConfidential: normalized.confidential,
+      createdAt,
+      ...(sla ? { sla } : {}),
     });
 
     return serializeHelpdeskTicket(ticket);
@@ -417,12 +454,23 @@ export const helpdeskTicketService = (deps = {}) => {
       // Returning an active assignment to the open queue also releases its agent.
       update.assignedTo = null;
     }
+    const sla = ticket.sla
+      ? await slaService.applyStatusTransition({
+        companyId,
+        ticket,
+        fromStatus: ticket.status,
+        toStatus: nextStatus,
+        at: now(),
+      })
+      : null;
     const updated = await commitConditionalUpdate({
       companyId,
       actorId,
       ticketNumber,
       ticket,
-      update,
+      update: { ...update, ...(sla ? { sla } : {}) },
+      includePriority: true,
+      includeSlaVersion: Boolean(ticket.sla),
     });
     return serializeHelpdeskAgentTicketDetails(updated, { queueName: queue.name });
   };
@@ -440,13 +488,22 @@ export const helpdeskTicketService = (deps = {}) => {
       return serializeHelpdeskAgentTicketDetails(ticket, { queueName: queue.name });
     }
 
+    const sla = ticket.sla
+      ? await slaService.applyPriorityChange({
+        companyId,
+        ticket,
+        priority: nextPriority,
+        at: now(),
+      })
+      : null;
     const updated = await commitConditionalUpdate({
       companyId,
       actorId,
       ticketNumber,
       ticket,
-      update: { priority: nextPriority },
+      update: { priority: nextPriority, ...(sla ? { sla } : {}) },
       includePriority: true,
+      includeSlaVersion: Boolean(ticket.sla),
     });
     return serializeHelpdeskAgentTicketDetails(updated, { queueName: queue.name });
   };
@@ -600,18 +657,30 @@ export const helpdeskTicketService = (deps = {}) => {
     if (nextStatus !== ticket.status && !canTransitionHelpdeskTicket(ticket.status, nextStatus)) {
       throw ApiError.conflict('The ticket cannot move to the assigned state');
     }
+    const sla = ticket.sla
+      ? await slaService.applyQueueTransfer({
+        companyId,
+        ticket,
+        queueId: targetQueue._id,
+        priority: ticket.priority,
+        at: now(),
+      })
+      : null;
     const updated = await commitConditionalUpdate({
       companyId,
       actorId,
       ticketNumber,
       ticket,
       managersOnly: true,
+      includePriority: true,
+      includeSlaVersion: Boolean(ticket.sla),
       update: {
         queueId: targetQueue._id,
         categoryId: category._id,
         categoryName: category.name,
         assignedTo: activeAssignee?._id || null,
         status: nextStatus,
+        ...(sla ? { sla } : {}),
       },
     });
     return serializeHelpdeskAgentTicketDetails(updated, { queueName: targetQueue.name });
@@ -624,18 +693,44 @@ export const helpdeskTicketService = (deps = {}) => {
       throw ApiError.notFound('Helpdesk ticket not found');
     }
 
-    const ticket = await TicketModel.findOneAndUpdate(
-      {
-        companyId,
-        ticketKind: SUPPORT_TICKET_KIND.HELPDESK,
-        user: requesterId,
-        ticketNumber,
-        status: { $in: ['open', 'assigned'] },
-      },
-      { $set: { status: 'cancelled' } },
-      { returnDocument: 'after', runValidators: true },
-    );
-    if (ticket) return serializeHelpdeskTicket(ticket);
+    const activeFilter = {
+      companyId,
+      ticketKind: SUPPORT_TICKET_KIND.HELPDESK,
+      user: requesterId,
+      ticketNumber,
+      status: { $in: ['open', 'assigned'] },
+    };
+    const currentQuery = TicketModel.findOne(activeFilter);
+    const current = await (typeof currentQuery?.select === 'function'
+      ? currentQuery.select('_id companyId user queueId ticketNumber status priority sla').lean()
+      : currentQuery);
+    if (current) {
+      const sla = current.sla
+        ? await slaService.applyStatusTransition({
+          companyId,
+          ticket: current,
+          fromStatus: current.status,
+          toStatus: 'cancelled',
+          at: now(),
+        })
+        : null;
+      const updated = await TicketModel.findOneAndUpdate(
+        {
+          _id: current._id,
+          companyId,
+          ticketKind: SUPPORT_TICKET_KIND.HELPDESK,
+          user: requesterId,
+          ticketNumber,
+          status: { $in: ['open', 'assigned'] },
+          ...(current.sla
+            ? { 'sla.version': current.sla.version ?? { $exists: false } }
+            : {}),
+        },
+        { $set: { status: 'cancelled', ...(sla ? { sla } : {}) } },
+        { returnDocument: 'after', runValidators: true },
+      );
+      if (updated) return serializeHelpdeskTicket(updated);
+    }
 
     const existingOwnedTicket = await TicketModel.findOne({
       companyId,
