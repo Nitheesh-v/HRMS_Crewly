@@ -2,6 +2,7 @@ import { body, param, query, validationResult } from 'express-validator';
 import ApiError from '../utils/ApiError.js';
 import {
   HELPDESK_PRIORITIES,
+  HELPDESK_QUEUE_TICKET_LIST_QUERY_FIELDS,
   HELPDESK_TICKET_LIST_MAX_LIMIT,
   HELPDESK_TICKET_LIST_MAX_PAGE,
   HELPDESK_TICKET_LIST_QUERY_FIELDS,
@@ -9,6 +10,9 @@ import {
   HELPDESK_TICKET_LIST_SORTS,
   isHelpdeskPriority,
   isHelpdeskStatus,
+  HELPDESK_MESSAGE_BODY_MAX,
+  HELPDESK_MESSAGE_HISTORY_MAX_LIMIT,
+  HELPDESK_MESSAGE_VISIBILITIES,
 } from '../services/helpdesk/helpdeskRules.js';
 
 const validate = (req, _res, next) => {
@@ -76,6 +80,16 @@ const onlyTicketListQueryFields = (req, _res, next) => {
   );
   if (unsupported) {
     return next(ApiError.badRequest(`Unsupported Helpdesk ticket filter: ${unsupported}`));
+  }
+  return next();
+};
+
+const onlyQueueTicketListQueryFields = (req, _res, next) => {
+  const unsupported = Object.keys(req.query || {}).find(
+    (field) => !HELPDESK_QUEUE_TICKET_LIST_QUERY_FIELDS.includes(field),
+  );
+  if (unsupported) {
+    return next(ApiError.badRequest(`Unsupported Helpdesk queue ticket filter: ${unsupported}`));
   }
   return next();
 };
@@ -174,6 +188,21 @@ export const helpdeskTicketAssignmentValidator = [
   validate,
 ];
 
+export const helpdeskTicketClaimValidator = [
+  ticketNumberParam,
+  onlyBodyFields([]),
+  validate,
+];
+
+export const helpdeskTicketTransferValidator = [
+  ticketNumberParam,
+  onlyBodyFields(['queueId', 'categoryId', 'assigneeId']),
+  body('queueId').isMongoId().withMessage('queueId is invalid'),
+  body('categoryId').isMongoId().withMessage('categoryId is invalid'),
+  body('assigneeId').optional().isMongoId().withMessage('assigneeId is invalid'),
+  validate,
+];
+
 export const helpdeskTicketCancelValidator = [
   ticketNumberParam,
   onlyBodyFields([]),
@@ -217,6 +246,115 @@ export const helpdeskTicketListQueryValidator = [
     .matches(/^[0-9]+$/)
     .isInt({ min: 1, max: HELPDESK_TICKET_LIST_MAX_LIMIT })
     .withMessage(`limit must be between 1 and ${HELPDESK_TICKET_LIST_MAX_LIMIT}`),
+  validate,
+];
+
+export const helpdeskQueueTicketListQueryValidator = [
+  onlyQueueTicketListQueryFields,
+  query('status')
+    .optional()
+    .isString()
+    .bail()
+    .custom((value) => isHelpdeskStatus(value))
+    .withMessage('status is not supported'),
+  query('priority')
+    .optional()
+    .isString()
+    .bail()
+    .custom((value) => isHelpdeskPriority(value))
+    .withMessage('priority is not supported'),
+  query('search')
+    .optional()
+    .isString()
+    .trim()
+    .isLength({ max: HELPDESK_TICKET_LIST_SEARCH_MAX_LENGTH })
+    .withMessage(`search must be at most ${HELPDESK_TICKET_LIST_SEARCH_MAX_LENGTH} characters`),
+  query('sort')
+    .optional()
+    .isString()
+    .bail()
+    .custom((value) => HELPDESK_TICKET_LIST_SORTS.includes(value.trim().toLowerCase()))
+    .withMessage('sort is not supported'),
+  query('page')
+    .optional()
+    .matches(/^[0-9]+$/)
+    .isInt({ min: 1, max: HELPDESK_TICKET_LIST_MAX_PAGE })
+    .withMessage(`page must be between 1 and ${HELPDESK_TICKET_LIST_MAX_PAGE}`),
+  query('limit')
+    .optional()
+    .matches(/^[0-9]+$/)
+    .isInt({ min: 1, max: HELPDESK_TICKET_LIST_MAX_LIMIT })
+    .withMessage(`limit must be between 1 and ${HELPDESK_TICKET_LIST_MAX_LIMIT}`),
+  validate,
+];
+
+
+export const helpdeskMessageHistoryQueryValidator = [
+  param('ticketNumber').isString().matches(/^HD-\d{6,}$/).withMessage('ticketNumber is invalid'),
+  query().custom((_value, { req }) => {
+    const unsupported = Object.keys(req.query || {}).find((field) => !['cursor', 'limit'].includes(field));
+    if (unsupported) throw new Error(`Unsupported Helpdesk message filter: ${unsupported}`);
+    return true;
+  }),
+  query('cursor')
+    .optional()
+    .isString()
+    .isLength({ min: 1, max: 128 })
+    .matches(/^[A-Za-z0-9_-]+$/)
+    .withMessage('cursor is invalid'),
+  query('limit')
+    .optional()
+    .matches(/^[0-9]+$/)
+    .isInt({ min: 1, max: HELPDESK_MESSAGE_HISTORY_MAX_LIMIT })
+    .withMessage(`limit must be between 1 and ${HELPDESK_MESSAGE_HISTORY_MAX_LIMIT}`),
+  validate,
+];
+
+export const helpdeskMessageCreateValidator = [
+  ticketNumberParam,
+  onlyBodyFields(['body', 'messageType']),
+  body('body')
+    .exists()
+    .withMessage('body is required')
+    .bail()
+    .isString()
+    .withMessage('body must be plain text')
+    .bail()
+    .trim()
+    .isLength({ min: 1, max: HELPDESK_MESSAGE_BODY_MAX })
+    .withMessage(`body must be 1–${HELPDESK_MESSAGE_BODY_MAX} characters`),
+  body('messageType')
+    .optional()
+    .isString()
+    .bail()
+    .isIn(HELPDESK_MESSAGE_VISIBILITIES)
+    .withMessage('messageType must be public or internal'),
+  validate,
+];
+
+export const helpdeskAttachmentMessageValidator = [
+  ticketNumberParam,
+  onlyBodyFields(['body', 'messageType']),
+  body('body')
+    .optional({ nullable: true })
+    .isString()
+    .withMessage('body must be plain text')
+    .bail()
+    .trim()
+    .isLength({ max: HELPDESK_MESSAGE_BODY_MAX })
+    .withMessage(`body must be at most ${HELPDESK_MESSAGE_BODY_MAX} characters`),
+  body('messageType')
+    .optional()
+    .isString()
+    .bail()
+    .isIn(HELPDESK_MESSAGE_VISIBILITIES)
+    .withMessage('messageType must be public or internal'),
+  validate,
+];
+
+export const helpdeskAttachmentIdParamValidator = [
+  ticketNumberParam,
+  param('attachmentId').isMongoId().withMessage('attachmentId is invalid'),
   validate,
 ];
 

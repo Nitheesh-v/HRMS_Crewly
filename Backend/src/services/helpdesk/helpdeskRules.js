@@ -1,4 +1,100 @@
 import ApiError from '../../utils/ApiError.js';
+import { hasVisibleText } from '../../utils/chatTextRules.js';
+
+export const HELPDESK_MESSAGE_TYPES = Object.freeze(['PUBLIC', 'INTERNAL']);
+export const HELPDESK_MESSAGE_VISIBILITIES = Object.freeze(['public', 'internal']);
+export const HELPDESK_MESSAGE_BODY_MAX = 4000;
+export const HELPDESK_MESSAGE_HISTORY_DEFAULT_LIMIT = 20;
+export const HELPDESK_MESSAGE_HISTORY_MAX_LIMIT = 100;
+export const HELPDESK_MESSAGE_ACTIVE_STATUSES = Object.freeze([
+  'open',
+  'assigned',
+  'in_progress',
+  'waiting_for_employee',
+  'waiting_for_department',
+]);
+
+export const normalizeHelpdeskMessageType = (value = 'public') => {
+  const normalized = String(value || 'public').trim().toUpperCase();
+  if (!HELPDESK_MESSAGE_TYPES.includes(normalized)) {
+    throw ApiError.badRequest('messageType must be public or internal');
+  }
+  return normalized;
+};
+
+export const normalizeHelpdeskMessageBody = (value, { allowEmpty = false } = {}) => {
+  if (value === undefined || value === null) {
+    if (allowEmpty) return null;
+    throw ApiError.badRequest('A message body is required.');
+  }
+  if (typeof value !== 'string') {
+    throw ApiError.badRequest('Message body must be plain text.');
+  }
+
+  const normalized = value.replace(/\r\n?/g, '\n').trim();
+  if (normalized.length > HELPDESK_MESSAGE_BODY_MAX) {
+    throw ApiError.badRequest(`Message body must be ${HELPDESK_MESSAGE_BODY_MAX} characters or fewer.`);
+  }
+  if (!hasVisibleText(normalized)) {
+    if (allowEmpty) return null;
+    throw ApiError.badRequest('Message body must contain visible text.');
+  }
+  return normalized;
+};
+
+export const encodeHelpdeskMessageCursor = (sequence) => {
+  if (!Number.isSafeInteger(sequence) || sequence < 1) {
+    throw new ApiError(500, 'Cannot encode an invalid Helpdesk message cursor');
+  }
+  return Buffer.from(JSON.stringify({ v: 1, s: sequence }), 'utf8').toString('base64url');
+};
+
+export const decodeHelpdeskMessageCursor = (cursor) => {
+  if (cursor === undefined || cursor === null || cursor === '') return null;
+  if (
+    typeof cursor !== 'string'
+    || cursor.length > 128
+    || !/^[A-Za-z0-9_-]+$/.test(cursor)
+  ) {
+    throw ApiError.badRequest('Helpdesk message cursor is invalid.');
+  }
+
+  try {
+    const decoded = Buffer.from(cursor, 'base64url').toString('utf8');
+    const value = JSON.parse(decoded);
+    if (
+      Buffer.from(decoded, 'utf8').toString('base64url') !== cursor
+      || !value
+      || value.v !== 1
+      || !Number.isSafeInteger(value.s)
+      || value.s < 1
+      || Object.keys(value).sort().join(',') !== 's,v'
+    ) {
+      throw new Error('invalid cursor');
+    }
+    return value.s;
+  } catch {
+    throw ApiError.badRequest('Helpdesk message cursor is invalid.');
+  }
+};
+
+export const normalizeHelpdeskMessageHistoryQuery = (query = {}) => {
+  if (!query || typeof query !== 'object' || Array.isArray(query)) {
+    throw ApiError.badRequest('Helpdesk message filters must be an object.');
+  }
+  const unsupported = Object.keys(query).find((field) => !['cursor', 'limit'].includes(field));
+  if (unsupported) throw ApiError.badRequest(`Unsupported Helpdesk message filter: ${unsupported}`);
+
+  return {
+    cursorSequence: decodeHelpdeskMessageCursor(query.cursor),
+    limit: parsePositiveListInteger(
+      query.limit,
+      'limit',
+      HELPDESK_MESSAGE_HISTORY_DEFAULT_LIMIT,
+      HELPDESK_MESSAGE_HISTORY_MAX_LIMIT,
+    ),
+  };
+};
 
 export const HELPDESK_TICKET_STATUSES = Object.freeze([
   'open',
@@ -76,6 +172,18 @@ export const HELPDESK_TICKET_LIST_QUERY_FIELDS = Object.freeze([
   'page',
   'limit',
 ]);
+
+export const HELPDESK_QUEUE_TICKET_LIST_QUERY_FIELDS = Object.freeze([
+  'status',
+  'priority',
+  'search',
+  'sort',
+  'page',
+  'limit',
+]);
+
+export const isHelpdeskTerminalStatus = (status) =>
+  HELPDESK_TICKET_TRANSITIONS[String(status || '').toLowerCase()]?.length === 0;
 
 const parsePositiveListInteger = (value, field, defaultValue, maximum) => {
   if (value === undefined) return defaultValue;
@@ -162,6 +270,66 @@ export const normalizeHelpdeskTicketListQuery = (query = {}) => {
     page: parsePositiveListInteger(query.page, 'page', 1, HELPDESK_TICKET_LIST_MAX_PAGE),
     limit: parsePositiveListInteger(query.limit, 'limit', HELPDESK_TICKET_LIST_DEFAULT_LIMIT, HELPDESK_TICKET_LIST_MAX_LIMIT),
   };
+};
+
+export const normalizeHelpdeskQueueTicketListQuery = (query = {}) => {
+  if (!query || typeof query !== 'object' || Array.isArray(query)) {
+    throw ApiError.badRequest('Helpdesk ticket filters must be an object');
+  }
+
+  const unsupportedField = Object.keys(query).find(
+    (field) => !HELPDESK_QUEUE_TICKET_LIST_QUERY_FIELDS.includes(field),
+  );
+  if (unsupportedField) {
+    throw ApiError.badRequest(`Unsupported Helpdesk queue ticket filter: ${unsupportedField}`);
+  }
+
+  const options = normalizeHelpdeskTicketListQuery(query);
+  return {
+    status: options.status,
+    priority: options.priority,
+    search: options.search,
+    sort: options.sort,
+    page: options.page,
+    limit: options.limit,
+  };
+};
+
+export const validateHelpdeskTransferInput = (input = {}) => {
+  assertNoClientIdentity(input);
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw ApiError.badRequest('Transfer details must be an object');
+  }
+
+  const allowedFields = ['queueId', 'categoryId', 'assigneeId'];
+  const unsupportedField = Object.keys(input).find((field) => !allowedFields.includes(field));
+  if (unsupportedField) {
+    throw ApiError.badRequest(`Unsupported transfer field: ${unsupportedField}`);
+  }
+
+  if (typeof input.queueId !== 'string') {
+    throw ApiError.badRequest('queueId must be a string identifier');
+  }
+  if (typeof input.categoryId !== 'string') {
+    throw ApiError.badRequest('categoryId must be a string identifier');
+  }
+  if (input.assigneeId !== undefined && typeof input.assigneeId !== 'string') {
+    throw ApiError.badRequest('assigneeId must be a string identifier');
+  }
+  const queueId = input.queueId.trim();
+  const categoryId = input.categoryId.trim();
+  const assigneeId = input.assigneeId === undefined ? null : input.assigneeId.trim();
+  if (!/^[a-f\d]{24}$/i.test(queueId)) {
+    throw ApiError.badRequest('queueId must be a valid identifier');
+  }
+  if (!/^[a-f\d]{24}$/i.test(categoryId)) {
+    throw ApiError.badRequest('categoryId must be a valid identifier');
+  }
+  if (assigneeId !== null && !/^[a-f\d]{24}$/i.test(assigneeId)) {
+    throw ApiError.badRequest('assigneeId must be a valid identifier');
+  }
+
+  return { queueId, categoryId, assigneeId };
 };
 
 export const assertNoClientIdentity = (input = {}) => {

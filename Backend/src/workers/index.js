@@ -433,6 +433,69 @@ const startWorker = async () => {
   const fileSweepTimer = setInterval(() => void runFileSweep(), 60 * 60 * 1000);
   fileSweepTimer.unref?.();
 
+  // --- Phase 38.4 private Helpdesk attachment reconciliation --------
+  // Mongo stores a non-deliverable UPLOADING intent before provider I/O. This bounded worker
+  // sweep activates attachments whose immutable message committed, or
+  // compensates orphaned private objects after the service grace period.
+  // Every attachment/message lookup remains tenant- and ticket-scoped.
+  let helpdeskRecoveryCursor = null;
+  let helpdeskRecoveryRunning = false;
+  const runHelpdeskAttachmentRecovery = async () => {
+    if (helpdeskRecoveryRunning) return;
+    helpdeskRecoveryRunning = true;
+    try {
+      const [{ default: HelpdeskTenantConfig }, { helpdeskConversationService }] = await Promise.all([
+        import('../models/HelpdeskTenantConfig.js'),
+        import('../services/helpdesk/helpdeskConversationService.js'),
+      ]);
+      const baseFilter = helpdeskRecoveryCursor ? { _id: { $gt: helpdeskRecoveryCursor } } : {};
+      let tenantRows = await HelpdeskTenantConfig.find(baseFilter)
+        .select('_id companyId')
+        .sort({ _id: 1 })
+        .limit(25)
+        .lean();
+      if (!tenantRows.length && helpdeskRecoveryCursor) {
+        helpdeskRecoveryCursor = null;
+        tenantRows = await HelpdeskTenantConfig.find({})
+          .select('_id companyId')
+          .sort({ _id: 1 })
+          .limit(25)
+          .lean();
+      }
+      if (!tenantRows.length) return;
+      helpdeskRecoveryCursor = tenantRows.at(-1)._id;
+      const conversationService = helpdeskConversationService();
+      let inspected = 0;
+      let cleanupPending = 0;
+      for (const tenant of tenantRows) {
+        try {
+          const result = await conversationService.reconcilePendingAttachments({
+            companyId: tenant.companyId,
+            limit: 10,
+          });
+          inspected += result.inspected;
+          cleanupPending += result.cleanupPending;
+        } catch (error) {
+          logger.warn(`[Worker] Helpdesk attachment recovery tenant skipped: ${safeErrorText(error)}`);
+        }
+      }
+      if (inspected) {
+        logger.info(`[Worker] Helpdesk attachment recovery (inspected=${inspected}, cleanupPending=${cleanupPending})`);
+      }
+    } catch (error) {
+      logger.warn(`[Worker] Helpdesk attachment recovery skipped: ${safeErrorText(error)}`);
+    } finally {
+      helpdeskRecoveryRunning = false;
+    }
+  };
+
+  await runHelpdeskAttachmentRecovery();
+  const helpdeskAttachmentRecoveryTimer = setInterval(
+    () => void runHelpdeskAttachmentRecovery(),
+    60 * 60 * 1000,
+  );
+  helpdeskAttachmentRecoveryTimer.unref?.();
+
   // --- 28.8 ops heartbeat ------------------------------------------
   // One ephemeral Redis key tells the Super Admin "Background
   // Operations" page this worker process is alive (ONLINE /

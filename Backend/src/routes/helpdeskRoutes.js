@@ -20,10 +20,17 @@ import {
   helpdeskTicketStatusValidator,
   helpdeskTicketPriorityValidator,
   helpdeskTicketAssignmentValidator,
+  helpdeskTicketClaimValidator,
+  helpdeskTicketTransferValidator,
   helpdeskTicketCancelValidator,
   helpdeskTicketListQueryValidator,
-  helpdeskLimitValidator,
+  helpdeskQueueTicketListQueryValidator,
+  helpdeskMessageHistoryQueryValidator,
+  helpdeskMessageCreateValidator,
+  helpdeskAttachmentMessageValidator,
+  helpdeskAttachmentIdParamValidator,
 } from '../validators/helpdeskValidator.js';
+import { helpdeskAttachmentUpload } from '../middlewares/helpdeskAttachmentUpload.js';
 
 const mergeExports = (namespace) => ({
   ...namespace,
@@ -115,10 +122,24 @@ router.patch(
 );
 
 router.get(
+  '/queues/:queueId/tickets/assigned-to-me',
+  requirePermission('HELPDESK_TICKET_READ'),
+  ...helpdeskQueueIdParamValidator,
+  ...helpdeskQueueTicketListQueryValidator,
+  controller.listAssignedTicketsToMe,
+);
+router.get(
+  '/queues/:queueId/tickets/unassigned',
+  requirePermission('HELPDESK_TICKET_READ'),
+  ...helpdeskQueueIdParamValidator,
+  ...helpdeskQueueTicketListQueryValidator,
+  controller.listUnassignedTickets,
+);
+router.get(
   '/queues/:queueId/tickets',
   requirePermission('HELPDESK_TICKET_READ'),
   ...helpdeskQueueIdParamValidator,
-  ...helpdeskLimitValidator,
+  ...helpdeskQueueTicketListQueryValidator,
   controller.listQueueTickets,
 );
 router.get(
@@ -129,6 +150,55 @@ router.get(
   ]),
   ...helpdeskTicketReadParamValidator,
   controller.getTicket,
+);
+router.get(
+  '/tickets/:ticketNumber/messages',
+  requireAnyPermission([
+    'HELPDESK_TICKET_READ_SELF',
+    'HELPDESK_TICKET_READ',
+  ]),
+  ...helpdeskMessageHistoryQueryValidator,
+  controller.listMessages,
+);
+router.post(
+  '/tickets/:ticketNumber/messages',
+  checkWriteAccess,
+  requireAnyPermission([
+    'HELPDESK_TICKET_READ_SELF',
+    'HELPDESK_TICKET_MANAGE',
+  ]),
+  ...helpdeskMessageCreateValidator,
+  controller.createMessage,
+);
+router.post(
+  '/tickets/:ticketNumber/attachments',
+  checkWriteAccess,
+  requireAnyPermission([
+    'HELPDESK_TICKET_READ_SELF',
+    'HELPDESK_TICKET_MANAGE',
+  ]),
+  ...helpdeskTicketReadParamValidator,
+  controller.authorizeAttachmentUpload,
+  helpdeskAttachmentUpload,
+  ...helpdeskAttachmentMessageValidator,
+  controller.uploadAttachment,
+);
+router.get(
+  '/tickets/:ticketNumber/attachments/:attachmentId/download',
+  requireAnyPermission([
+    'HELPDESK_TICKET_READ_SELF',
+    'HELPDESK_TICKET_READ',
+  ]),
+  ...helpdeskAttachmentIdParamValidator,
+  controller.downloadAttachment,
+);
+
+router.patch(
+  '/tickets/:ticketNumber/claim',
+  checkWriteAccess,
+  requirePermission('HELPDESK_TICKET_MANAGE'),
+  ...helpdeskTicketClaimValidator,
+  controller.claimTicket,
 );
 router.patch(
   '/tickets/:ticketNumber/status',
@@ -150,6 +220,13 @@ router.patch(
   requirePermission('HELPDESK_TICKET_MANAGE'),
   ...helpdeskTicketAssignmentValidator,
   controller.assignTicket,
+);
+router.patch(
+  '/tickets/:ticketNumber/transfer',
+  checkWriteAccess,
+  requirePermission('HELPDESK_TICKET_MANAGE'),
+  ...helpdeskTicketTransferValidator,
+  controller.transferTicket,
 );
 
 export default router;

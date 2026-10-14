@@ -66,6 +66,34 @@ export const serializeHelpdeskTicket = (ticket) => ({
   updatedAt: ticket?.updatedAt || null,
 });
 
+const agentTicketBaseDto = (ticket, queueName) => ({
+  ticketNumber: String(ticket?.ticketNumber || ''),
+  subject: String(ticket?.subject || ''),
+  queue: {
+    id: idOf(ticket?.queueId),
+    name: queueName === null || queueName === undefined ? null : String(queueName),
+  },
+  category: {
+    id: idOf(ticket?.categoryId),
+    name: String(ticket?.categoryName || ''),
+  },
+  status: String(ticket?.status || 'open'),
+  priority: String(ticket?.priority || 'normal'),
+  assignedTo: idOf(ticket?.assignedTo),
+  confidential: ticket?.isConfidential === true,
+  createdAt: ticket?.createdAt || null,
+  updatedAt: ticket?.updatedAt || null,
+});
+
+export const serializeHelpdeskAgentTicketListItem = (ticket, { queueName = null } = {}) =>
+  agentTicketBaseDto(ticket, queueName);
+
+export const serializeHelpdeskAgentTicketDetails = (ticket, { queueName = null } = {}) => ({
+  ...agentTicketBaseDto(ticket, queueName),
+  requesterId: idOf(ticket?.user),
+  description: String(ticket?.message || ''),
+});
+
 const employeeTicketBaseDto = (ticket, queueName) => ({
   ticketNumber: String(ticket?.ticketNumber || ''),
   subject: String(ticket?.subject || ''),

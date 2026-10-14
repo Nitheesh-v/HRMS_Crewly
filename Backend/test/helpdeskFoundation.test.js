@@ -102,6 +102,7 @@ const getPath = (value, dottedPath) =>
   String(dottedPath).split('.').reduce((current, part) => current == null ? undefined : current[part], value);
 
 const matchesValue = (actual, expected) => {
+  if (expected instanceof RegExp) return expected.test(String(actual ?? ''));
   if (expected && typeof expected === 'object' && !Array.isArray(expected) && !(expected instanceof Date)) {
     if (Object.prototype.hasOwnProperty.call(expected, '$in')) {
       return expected.$in.some((candidate) => norm(actual) === norm(candidate));
@@ -133,13 +134,14 @@ const clone = (value) => value == null ? value : structuredClone(value);
 const query = (resolver) => {
   let leanResult = false;
   let sortSpec = null;
+  let skipCount = 0;
   let limitCount = null;
   let selectedFields = null;
   const chain = {
     select(fields) { selectedFields = fields; return chain; },
     sort(spec) { sortSpec = spec; return chain; },
     limit(amount) { limitCount = amount; return chain; },
-    skip() { return chain; },
+    skip(amount) { skipCount = amount; return chain; },
     populate() { return chain; },
     lean() { leanResult = true; return chain; },
     then(onFulfilled, onRejected) {
@@ -161,6 +163,7 @@ const query = (resolver) => {
                 return 0;
               });
             }
+            result = result.slice(skipCount);
             if (Number.isInteger(limitCount)) result = result.slice(0, limitCount);
           }
           return leanResult ? clone(result) : result;
@@ -335,7 +338,7 @@ const makeSequenceModel = ({ duplicateFirstUpsert = false } = {}) => {
 
 const makeTicketModel = () => {
   const rows = [];
-  const calls = { find: [], findOne: [], create: [] };
+  const calls = { find: [], findOne: [], findOneAndUpdate: [], create: [] };
   let nextId = 3000;
   const persist = (row, value) => {
     for (const key of Object.keys(row)) delete row[key];
@@ -353,6 +356,16 @@ const makeTicketModel = () => {
       return query(() => {
         const row = rows.find((candidate) => matches(candidate, filter));
         return row ? documentFor(row, (value) => persist(row, value)) : null;
+      });
+    },
+    findOneAndUpdate(filter, update, options = {}) {
+      calls.findOneAndUpdate.push({ filter: clone(filter), update: clone(update), options: clone(options) });
+      return query(() => {
+        const row = rows.find((candidate) => matches(candidate, filter));
+        if (!row) return null;
+        Object.assign(row, clone(update.$set || {}));
+        row.updatedAt = new Date('2026-01-02T00:00:00.000Z');
+        return documentFor(row, (value) => persist(row, value));
       });
     },
     async create(input) {
@@ -751,12 +764,12 @@ test('queue requester, agent, manager, reviewer, and confidentiality boundaries 
   );
 
   const managerList = await world.ticketService.listQueueTickets({ companyId: COMPANY_A, viewerId: QUEUE_MANAGER, queueId: queue.id, canReadQueue: true });
-  assert.deepEqual(managerList.map((ticket) => ticket.ticketNumber), [normal.ticketNumber]);
-  assert.equal(Object.hasOwn(managerList, 'count'), false);
+  assert.deepEqual(managerList.tickets.map((ticket) => ticket.ticketNumber), [normal.ticketNumber]);
+  assert.equal(Object.hasOwn(managerList.meta, 'total'), false);
   const reviewerList = await world.ticketService.listQueueTickets({ companyId: COMPANY_A, viewerId: CONFIDENTIAL_REVIEWER, queueId: queue.id, canReadQueue: true });
-  assert.deepEqual(reviewerList.map((ticket) => ticket.ticketNumber), [secret.ticketNumber]);
+  assert.deepEqual(reviewerList.tickets.map((ticket) => ticket.ticketNumber), [secret.ticketNumber]);
   const restrictedAgentList = await world.ticketService.listQueueTickets({ companyId: COMPANY_A, viewerId: RESTRICTED_AGENT, queueId: queue.id, canReadQueue: true });
-  assert.equal(restrictedAgentList.length, 2);
+  assert.equal(restrictedAgentList.tickets.length, 2);
   await expectStatus(
     world.ticketService.listQueueTickets({ companyId: COMPANY_A, viewerId: EMPLOYEE, queueId: queue.id, canReadQueue: true }),
     404,
@@ -912,26 +925,32 @@ test('legacy/platform ticket readers classify historical rows as legacy and excl
   }
 });
 
-test('Phase 38.1 has no conversation, attachment, notification, AI, NATS, or Helpdesk realtime integration', async () => {
+test('Phase 38.4 conversations and private attachments do not add later-phase integrations', async () => {
   const sourceFiles = [
     'src/models/HelpdeskTicket.js',
     'src/models/HelpdeskQueue.js',
     'src/models/HelpdeskTenantConfig.js',
+    'src/models/HelpdeskMessage.js',
+    'src/models/HelpdeskAttachment.js',
     'src/services/helpdesk/helpdeskRules.js',
     'src/services/helpdesk/helpdeskQueueService.js',
     'src/services/helpdesk/helpdeskTicketService.js',
+    'src/services/helpdesk/helpdeskConversationService.js',
+    'src/services/helpdesk/helpdeskAttachmentStorage.js',
     'src/services/helpdesk/helpdeskTenantConfigService.js',
     'src/services/helpdesk/helpdeskTicketNumbers.js',
     'src/controllers/helpdeskController.js',
     'src/routes/helpdeskRoutes.js',
     'src/validators/helpdeskValidator.js',
+    'src/middlewares/helpdeskAttachmentUpload.js',
   ];
   const clean = sourceFiles.map((file) => sourceWithoutComments(read(file))).join('\n');
   assert.doesNotMatch(clean, /from\s+['"][^'"]*(?:attendance|leave|payroll|ai|nats|socket|realtime|notification)[^'"]*['"]/i);
   assert.doesNotMatch(clean, /\b(?:Attendance|Leave|Payroll|AI|NATS|Socket|Realtime|Notification)(?:Model|Service|Gateway)?\.(?:create|updateOne|findOneAndUpdate|emit|publish)\s*\(/i);
-  assert.doesNotMatch(clean, /\b(?:console|logger)\s*\.\s*(?:log|info|warn|error|debug)\s*\(/i);
+  assert.doesNotMatch(clean, /\bconsole\s*\.\s*(?:log|info|warn|error|debug)\s*\(/i);
   assert.doesNotMatch(clean, /\.populate\s*\(/);
-  assert.doesNotMatch(clean, /\b(?:replyTicket|addReply|replies|notifyRoles|notifyUser)\b|\.emit\s*\(|attachment(?:Upload|Id|Url|Storage|Controller|Route)/i);
+  assert.match(clean, /\/tickets\/:ticketNumber\/messages/);
+  assert.match(clean, /\/tickets\/:ticketNumber\/attachments\/:attachmentId\/download/);
 
   const forbiddenWrites = { attendance: 0, leave: 0, payroll: 0 };
   const sentinel = (key) => ({

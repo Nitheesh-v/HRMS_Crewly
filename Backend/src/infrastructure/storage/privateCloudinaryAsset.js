@@ -107,16 +107,19 @@ export const destroyPrivateAsset = async ({
   _cloudinary = cloudinary,
   _ready = cloudinaryReady,
 } = {}) => {
-  if (!storageKey) return;
-  if (!_ready) return;
+  if (!storageKey) return true;
+  if (!_ready) return false;
 
   try {
-    await _cloudinary.uploader.destroy(storageKey, {
+    const result = await _cloudinary.uploader.destroy(storageKey, {
       resource_type: resourceType,
       type: 'authenticated',
       invalidate: true,
     });
+    // Cloudinary's idempotent outcomes: an already absent object is clean too.
+    return result?.result === 'ok' || result?.result === 'not found';
   } catch {
     // Best-effort, like every established storage delete in Crewly.
+    return false;
   }
 };

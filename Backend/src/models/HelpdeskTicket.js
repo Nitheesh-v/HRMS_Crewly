@@ -42,6 +42,10 @@ const helpdeskTicketSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // Phase 38.4 — atomic per-ticket ordering counters. Legacy tickets need no
+    // backfill: Mongo's first $inc creates a counter starting at one.
+    lastMessageSequence: { type: Number, default: 0, min: 0 },
+    lastPublicMessageSequence: { type: Number, default: 0, min: 0 },
     // These paths override the legacy defaults for this discriminator only.
     status: {
       type: String,
@@ -73,6 +77,40 @@ helpdeskTicketSchema.index(
   { companyId: 1, queueId: 1, createdAt: -1 },
   {
     name: 'helpdesk_queue_ticket_list',
+    partialFilterExpression: { ticketKind: 'HELPDESK' },
+  },
+);
+
+// Phase 38.3 — queue-agent list paths use stable date + _id ordering.
+// Assignment indexes also cover the unassigned view (`assignedTo: null`).
+helpdeskTicketSchema.index(
+  { companyId: 1, queueId: 1, createdAt: -1, _id: -1 },
+  {
+    name: 'helpdesk_agent_queue_ticket_created',
+    partialFilterExpression: { ticketKind: 'HELPDESK' },
+  },
+);
+
+helpdeskTicketSchema.index(
+  { companyId: 1, queueId: 1, updatedAt: -1, _id: -1 },
+  {
+    name: 'helpdesk_agent_queue_ticket_updated',
+    partialFilterExpression: { ticketKind: 'HELPDESK' },
+  },
+);
+
+helpdeskTicketSchema.index(
+  { companyId: 1, queueId: 1, assignedTo: 1, createdAt: -1, _id: -1 },
+  {
+    name: 'helpdesk_agent_queue_assigned_created',
+    partialFilterExpression: { ticketKind: 'HELPDESK' },
+  },
+);
+
+helpdeskTicketSchema.index(
+  { companyId: 1, queueId: 1, assignedTo: 1, updatedAt: -1, _id: -1 },
+  {
+    name: 'helpdesk_agent_queue_assigned_updated',
     partialFilterExpression: { ticketKind: 'HELPDESK' },
   },
 );
