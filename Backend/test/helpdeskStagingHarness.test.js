@@ -7,6 +7,7 @@ import {
   assertStagingOnlyAuthentication,
   assertTransactionTopology,
   makeExactIdFilter,
+  safeFailureDetails,
   validateOptIn,
 } from '../scripts/helpdesk-staging-integration.js';
 
@@ -125,4 +126,16 @@ test('cleanup filters are limited to exact owned _id values and empty cleanup is
     _id: { $in: ['owned-a'] },
   });
   assert.throws(() => makeExactIdFilter([undefined]));
+});
+
+test('staging failure diagnostics include only sanitized Mongo error metadata', () => {
+  const error = new Error('mongodb://user:secret@host/private?retryWrites=true');
+  error.name = 'MongoServerError';
+  error.code = 13;
+  error.codeName = 'Unauthorized';
+
+  const details = safeFailureDetails(error);
+  assert.equal(details, 'MongoServerError code=13 codeName=Unauthorized');
+  assert.doesNotMatch(details, /mongodb|secret|host|private|retryWrites/i);
+  assert.equal(safeFailureDetails({ name: 'MongoServerError', message: 'private details' }), 'MongoServerError');
 });

@@ -201,6 +201,22 @@ const classNameOf = (error) => {
   return candidate || 'Error';
 };
 
+const safeErrorToken = (value) => {
+  if (typeof value === 'number' && Number.isSafeInteger(value)) return String(value);
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(value) ? value : '';
+};
+
+// Expose only stable driver metadata; never print Mongo error messages, which
+// may contain command details or deployment-specific connection information.
+export const safeFailureDetails = (error) => {
+  const details = [classNameOf(error)];
+  const code = safeErrorToken(error?.code);
+  const codeName = safeErrorToken(error?.codeName);
+  if (code) details.push(`code=${code}`);
+  if (codeName) details.push(`codeName=${codeName}`);
+  return details.join(' ');
+};
+
 const quietLoadServices = async () => {
   const cloudinaryVariables = [
     'CLOUDINARY_CLOUD_NAME',
@@ -288,14 +304,26 @@ const assertRequiredCollections = async (db, models) => {
   }
 };
 
-const assertStagingConnection = async ({ connection, HelpdeskAuthorizationFence, models }) => {
+const assertStagingConnection = async ({ connection, HelpdeskAuthorizationFence, models, setStep }) => {
+  setStep('effective database');
   assertEffectiveDatabase(connection?.db?.databaseName);
+
+  setStep('hello topology command');
   const hello = await connection.db.command({ hello: 1 });
+  setStep('transaction-capable topology');
   assertTransactionTopology(hello);
+
+  setStep('connectionStatus privilege command');
   const status = await connection.db.command({ connectionStatus: 1, showPrivileges: true });
+  setStep('staging-only permissions');
   assertStagingOnlyAuthentication(status);
+
+  setStep('authorization-fence index listing');
   const indexes = await HelpdeskAuthorizationFence.collection.listIndexes().toArray();
+  setStep('authorization-fence unique index');
   assertRequiredFenceIndex(indexes);
+
+  setStep('required staging collections');
   await assertRequiredCollections(connection.db, models);
 };
 
@@ -676,6 +704,7 @@ const runHarness = async () => {
       connection: mongoose.connection,
       HelpdeskAuthorizationFence: models.HelpdeskAuthorizationFence,
       models: modelRegistry,
+      setStep: (step) => { currentCase = `staging safety preflight: ${step}`; },
     });
 
     currentCase = 'disposable tenant and Helpdesk fixture setup';
@@ -1066,20 +1095,20 @@ const runHarness = async () => {
     owned.attachmentIds = uniqueIds(owned.attachmentIds);
   } catch (error) {
     testFailure = error;
-    console.error(`FAIL: ${currentCase} (${classNameOf(error)}).`);
+    console.error(`FAIL: ${currentCase} (${safeFailureDetails(error)}).`);
   } finally {
     try {
       await cleanupOwnedRecords({ owned, models: modelRegistry, privateFiles: services.privateFiles });
       console.log('PASS: exact-identifier cleanup');
     } catch (error) {
       cleanupFailure = error;
-      console.error(`FAIL: exact-identifier cleanup (${classNameOf(error)}).`);
+      console.error(`FAIL: exact-identifier cleanup (${safeFailureDetails(error)}).`);
     }
     try {
       await mongoose.disconnect();
     } catch (error) {
       cleanupFailure ||= error;
-      console.error(`FAIL: MongoDB session shutdown (${classNameOf(error)}).`);
+      console.error(`FAIL: MongoDB session shutdown (${safeFailureDetails(error)}).`);
     }
   }
 
@@ -1093,7 +1122,7 @@ const invokedDirectly = process.argv[1]
   && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url;
 if (invokedDirectly) {
   runHarness().catch((error) => {
-    console.error(`FAIL: staging harness stopped safely (${classNameOf(error)}).`);
+    console.error(`FAIL: staging harness stopped safely (${safeFailureDetails(error)}).`);
     mongoose.disconnect().catch(() => {});
     process.exitCode = 1;
   });

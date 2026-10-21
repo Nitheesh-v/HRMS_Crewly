@@ -1231,7 +1231,11 @@ test('attachment storage adapter keeps local files private in development and pr
       _localDirectory: localRoot,
     });
     const localPath = path.join(localRoot, local.storageKey);
-    assert.equal((await fs.stat(localPath)).mode & 0o777, 0o600);
+    const localStat = await fs.stat(localPath);
+    assert.equal(localStat.isFile(), true);
+    if (process.platform !== 'win32') {
+      assert.equal(localStat.mode & 0o777, 0o600);
+    }
     const checksumSha256 = (await import('node:crypto')).default.createHash('sha256').update(PDF_BYTES).digest('hex');
     const localDelivery = await resolveHelpdeskAttachmentDelivery({
       attachment: {
