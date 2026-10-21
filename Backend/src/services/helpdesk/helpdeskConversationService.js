@@ -64,9 +64,6 @@ export const helpdeskConversationService = (deps = {}) => {
   const QueueModel = deps.QueueModel || HelpdeskQueue;
   const FenceModel = deps.FenceModel || HelpdeskAuthorizationFence;
   const transactionRunner = deps.transactionRunner || runHelpdeskTransaction;
-  // Staging acceptance uses the production authorization/transaction path but
-  // must not enqueue user-facing notifications for disposable fixtures.
-  const notificationIntentsEnabled = deps.notificationIntentsEnabled !== false;
   const MessageModel = deps.MessageModel || HelpdeskMessage;
   const AttachmentModel = deps.AttachmentModel || HelpdeskAttachment;
   const UserModel = deps.UserModel || User;
@@ -81,7 +78,6 @@ export const helpdeskConversationService = (deps = {}) => {
     PolicyModel: deps.PolicyModel,
     holidayReader: deps.holidayReader,
     now: deps.now,
-    notificationIntentsEnabled,
   });
   const storeAttachment = deps.storeAttachment || storeHelpdeskAttachment;
   const planAttachmentStorage = deps.planAttachmentStorage || planHelpdeskAttachmentStorage;
@@ -395,18 +391,6 @@ export const helpdeskConversationService = (deps = {}) => {
     return safe || null;
   };
 
-  const notificationFieldsForMessage = (messageType) => {
-    if (!notificationIntentsEnabled || messageType !== 'PUBLIC') {
-      return { notificationState: 'NOT_REQUIRED' };
-    }
-    return {
-      notificationState: 'PENDING',
-      notificationAttemptCount: 0,
-      notificationNextAttemptAt: new Date(now()),
-      notificationLeaseUntil: null,
-    };
-  };
-
   const readTenantConfigInTransaction = async ({ companyId, session }) => {
     if (typeof configService.readConfig === 'function') {
       return configService.readConfig({ companyId, session });
@@ -464,7 +448,6 @@ export const helpdeskConversationService = (deps = {}) => {
       messageType,
       body,
       attachmentId,
-      ...notificationFieldsForMessage(messageType),
     };
     const created = await MessageModel.create([payload], { session });
     const row = plain(Array.isArray(created) ? created[0] : created);

@@ -640,13 +640,7 @@ test('cancellation is atomic, requester-scoped, only open/assigned, and history 
     assert.equal(call.filter.companyId, COMPANY_A);
     assert.equal(call.filter.user, REQUESTER);
     assert.equal(call.filter.ticketKind, 'HELPDESK');
-    assert.deepEqual(call.update.$set, { status: 'cancelled' });
-    assert.equal(call.update.$inc.notificationSequence, 1);
-    assert.equal(call.update.$push.notificationEvents.$each.length, 1);
-    assert.equal(call.update.$push.notificationEvents.$each[0].type, 'TICKET_CANCELLED');
-    assert.equal(call.update.$push.notificationEvents.$each[0].state, 'PENDING');
-    assert.equal(call.update.$push.notificationEvents.$slice, -128);
-    assert.deepEqual(Object.keys(call.update).sort(), ['$inc', '$push', '$set']);
+    assert.deepEqual(call.update, { $set: { status: 'cancelled' } });
     assert.deepEqual(call.options, { returnDocument: 'after', runValidators: true });
   }
   const history = await world.ticketService.listMine({ companyId: COMPANY_A, requesterId: REQUESTER });
@@ -717,8 +711,7 @@ test('Phase 38.2 code stays isolated from forbidden HR, notification, AI, realti
   const rules = sourceWithoutComments(read('src/services/helpdesk/helpdeskRules.js'));
   const phaseDocs = readRoot('docs/PHASE_38_2_EMPLOYEE_TICKET_LIFECYCLE.md');
 
-  assert.doesNotMatch(service, /Attendance|LeaveModel|Payroll|DepartmentModel|NATS|socket\.io|socket\.emit|attachment/i);
-  assert.doesNotMatch(service, /\b(?:NotificationModel|NotificationService|NotificationGateway)\.(?:create|send|publish|emit)\s*\(/i);
+  assert.doesNotMatch(service, /Attendance|LeaveModel|Payroll|DepartmentModel|Notification|NATS|socket\.io|socket\.emit|attachment/i);
   assert.doesNotMatch(service, /console\.(log|info|warn|error)|logger\.(info|warn|error)/);
   assert.match(controller, /const companyId = req\.companyId;/);
   assert.match(controller, /const requesterId = req\.user\._id;/);

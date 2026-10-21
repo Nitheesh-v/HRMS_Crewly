@@ -488,7 +488,6 @@ const makeWorld = (options = {}) => {
     UserModel,
     configService,
     slaService: NOOP_SLA_SERVICE,
-    notificationIntentsEnabled: options.notificationIntentsEnabled,
     planAttachmentStorage: ({ companyId, ticketId, attachmentId }) => ({
       storageProvider: 'CLOUDINARY_AUTHENTICATED',
       storageKey: buildHelpdeskAttachmentStorageKey({ companyId, ticketId, attachmentId }),
@@ -666,19 +665,6 @@ test('Helpdesk message and attachment schemas enforce immutable metadata, privat
 
   assert.equal(HelpdeskTicket.schema.path('lastMessageSequence').options.default, 0);
   assert.equal(HelpdeskTicket.schema.path('lastPublicMessageSequence').options.default, 0);
-});
-
-test('staging conversation suppression persists authorized public messages without a deliverable notification entry', async () => {
-  const world = makeWorld({ notificationIntentsEnabled: false });
-  const saved = await world.service.createMessage(requester(world, { body: 'Disposable harness reply.' }));
-
-  assert.equal(saved.body, 'Disposable harness reply.');
-  assert.equal(world.state.messages.length, 1);
-  assert.equal(world.state.messages[0].sequence, 1);
-  assert.equal(world.state.messages[0].publicSequence, 1);
-  assert.equal(world.state.messages[0].notificationState, 'NOT_REQUIRED');
-  assert.equal(world.state.ticket.lastMessageSequence, 1);
-  assert.equal(world.state.ticket.lastPublicMessageSequence, 1);
 });
 
 test('message bodies are plain text, bounded, and server-authored; employee and reviewer history never includes internal notes', async () => {

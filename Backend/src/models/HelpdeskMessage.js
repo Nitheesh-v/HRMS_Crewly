@@ -53,18 +53,6 @@ const helpdeskMessageSchema = new Schema(
       default: null,
       immutable: true,
     },
-    // Phase 38.6 — public messages carry durable notification intent; internal
-    // notes are NOT_REQUIRED and are never selected by the delivery worker.
-    notificationState: {
-      type: String,
-      enum: ['NOT_REQUIRED', 'PENDING', 'DELIVERED', 'SUPPRESSED', 'FAILED'],
-      default: 'NOT_REQUIRED',
-      select: false,
-    },
-    notificationAttemptCount: { type: Number, min: 0, max: 5, default: 0, select: false },
-    notificationNextAttemptAt: { type: Date, default: null, select: false },
-    notificationLeaseUntil: { type: Date, default: null, select: false },
-    notificationDeliveredAt: { type: Date, default: null, select: false },
   },
   { timestamps: true, versionKey: false },
 );
@@ -101,14 +89,6 @@ helpdeskMessageSchema.index(
   {
     name: 'helpdesk_first_public_agent_reply',
     partialFilterExpression: { messageType: 'PUBLIC' },
-  },
-);
-
-helpdeskMessageSchema.index(
-  { notificationState: 1, notificationNextAttemptAt: 1, companyId: 1, createdAt: 1, _id: 1 },
-  {
-    name: 'helpdesk_message_notification_recovery',
-    partialFilterExpression: { messageType: 'PUBLIC', notificationState: 'PENDING' },
   },
 );
 

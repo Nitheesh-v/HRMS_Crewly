@@ -28,12 +28,6 @@ import {
 } from './helpdeskDto.js';
 import { boundedSearchTerm } from '../../utils/searchInput.js';
 import {
-  addHelpdeskNotificationSequenceFilter,
-  buildHelpdeskTicketNotificationAppend,
-  buildHelpdeskTicketNotificationCreateFields,
-  diffHelpdeskSlaNotificationEvents,
-} from './helpdeskNotificationRules.js';
-import {
   canReadHelpdeskTicket as canReadTicket,
   hasConfidentialHelpdeskAgentAccess as hasConfidentialAgentAccess,
   idString,
@@ -61,9 +55,6 @@ export const helpdeskTicketService = (deps = {}) => {
   const QueueModel = deps.QueueModel || HelpdeskQueue;
   const FenceModel = deps.FenceModel || HelpdeskAuthorizationFence;
   const transactionRunner = deps.transactionRunner || runHelpdeskTransaction;
-  // Integration harnesses may suppress only notification intent; authorization,
-  // transaction, and ticket persistence behavior remain the real service path.
-  const notificationIntentsEnabled = deps.notificationIntentsEnabled !== false;
   const UserModel = deps.UserModel || User;
   const SequenceModel = deps.SequenceModel || TenantSequence;
   const configService = deps.configService || helpdeskTenantConfigService({
@@ -77,7 +68,6 @@ export const helpdeskTicketService = (deps = {}) => {
     MessageModel: deps.MessageModel,
     holidayReader: deps.holidayReader,
     now: deps.now,
-    notificationIntentsEnabled,
   });
   const now = deps.now || (() => new Date());
 
@@ -191,7 +181,6 @@ export const helpdeskTicketService = (deps = {}) => {
     ticketNumber,
     ticket,
     update,
-    notificationEvents = [],
     includePriority = false,
     includeSlaVersion = false,
     managersOnly = false,
@@ -239,13 +228,6 @@ export const helpdeskTicketService = (deps = {}) => {
       });
     }
 
-    const notificationAppend = notificationIntentsEnabled
-      ? buildHelpdeskTicketNotificationAppend({
-        ticket: currentTicket,
-        eventTypes: notificationEvents,
-        at: now(),
-      })
-      : null;
     const filter = conditionalTicketFilter({
       companyId,
       ticket: currentTicket,
@@ -253,14 +235,6 @@ export const helpdeskTicketService = (deps = {}) => {
       includeSlaVersion,
     });
     const updateDocument = { $set: updatePatch };
-    if (notificationAppend) {
-      Object.assign(updateDocument, notificationAppend.update);
-      updateDocument.$set = {
-        ...updateDocument.$set,
-        ...(notificationAppend.update.$set || {}),
-      };
-      Object.assign(filter, addHelpdeskNotificationSequenceFilter({}, currentTicket));
-    }
     let query = TicketModel.findOneAndUpdate(
       filter,
       updateDocument,
@@ -525,21 +499,11 @@ export const helpdeskTicketService = (deps = {}) => {
       createdAt,
     });
     const ticketNumber = await nextHelpdeskTicketNumber(companyId, { SequenceModel });
-    const creationNotificationAppend = notificationIntentsEnabled
-      ? buildHelpdeskTicketNotificationAppend({
-        ticket: {},
-        eventTypes: ['TICKET_CREATED'],
-        at: createdAt,
-      })
-      : null;
     const ticket = await TicketModel.create({
       companyId,
       user: requesterId,
       ticketKind: SUPPORT_TICKET_KIND.HELPDESK,
       ticketNumber,
-      ...(creationNotificationAppend
-        ? buildHelpdeskTicketNotificationCreateFields(creationNotificationAppend)
-        : {}),
       queueId: queue._id,
       categoryId: category._id,
       categoryName: category.name,
@@ -599,19 +563,12 @@ export const helpdeskTicketService = (deps = {}) => {
         at: transitionAt,
       })
       : null;
-    const statusEvent = nextStatus === 'resolved'
-      ? 'TICKET_RESOLVED'
-      : 'TICKET_STATUS_CHANGED';
     const result = await commitConditionalUpdate({
       companyId,
       actorId,
       ticketNumber,
       ticket,
       update: { ...update, ...(sla ? { sla } : {}) },
-      notificationEvents: [
-        statusEvent,
-        ...diffHelpdeskSlaNotificationEvents(ticket.sla, sla),
-      ],
       includePriority: true,
       includeSlaVersion: Boolean(ticket.sla),
       validateInTransaction: async ({ ticket: currentTicket, queue: currentQueue, session }) => {
@@ -666,7 +623,6 @@ export const helpdeskTicketService = (deps = {}) => {
       ticketNumber,
       ticket,
       update: { priority: nextPriority, ...(sla ? { sla } : {}) },
-      notificationEvents: diffHelpdeskSlaNotificationEvents(ticket.sla, sla),
       includePriority: true,
       includeSlaVersion: Boolean(ticket.sla),
     });
@@ -718,7 +674,6 @@ export const helpdeskTicketService = (deps = {}) => {
       ticket,
       managersOnly: true,
       update: { assignedTo: activeAssignee._id, status: nextStatus },
-      notificationEvents: [ticket.assignedTo ? 'TICKET_REASSIGNED' : 'TICKET_ASSIGNED'],
       validateInTransaction: async ({ ticket: currentTicket, queue: currentQueue, session }) => {
         if (!includesId(currentQueue.agents, assigneeId)) {
           throw ApiError.badRequest('Assignee must be an explicitly assigned queue agent');
@@ -760,7 +715,6 @@ export const helpdeskTicketService = (deps = {}) => {
       ticket,
       agentsOnly: true,
       update: { assignedTo: actorId, status: 'assigned' },
-      notificationEvents: ['TICKET_CLAIMED'],
       validateInTransaction: async ({ ticket: currentTicket }) => {
         if (currentTicket.status !== 'open' || currentTicket.assignedTo) {
           throw ApiError.conflict('The ticket was claimed or changed by another agent');
@@ -865,10 +819,6 @@ export const helpdeskTicketService = (deps = {}) => {
         ...validation.update,
         ...(sla ? { sla } : {}),
       }),
-      notificationEvents: [
-        'TICKET_TRANSFERRED',
-        ...diffHelpdeskSlaNotificationEvents(ticket.sla, sla),
-      ],
       validateInTransaction: async ({ ticket: currentTicket, queue: currentSourceQueue, session }) => {
         const currentTargetQueue = await findQueue(companyId, normalized.queueId, session);
         if (!currentTargetQueue || currentTargetQueue.enabled === false) {
@@ -963,8 +913,7 @@ export const helpdeskTicketService = (deps = {}) => {
     const currentQuery = TicketModel.findOne(activeFilter);
     const current = await (typeof currentQuery?.select === 'function'
       ? currentQuery.select(
-        '_id companyId user queueId ticketNumber status priority sla ' +
-          'notificationSequence notificationProcessedSequence notificationEvents notificationGap',
+        '_id companyId user queueId ticketNumber status priority sla',
       ).lean()
       : currentQuery);
     if (current) {
@@ -989,25 +938,7 @@ export const helpdeskTicketService = (deps = {}) => {
           ? { 'sla.version': current.sla.version ?? { $exists: false } }
           : {}),
       };
-      const notificationAppend = notificationIntentsEnabled
-        ? buildHelpdeskTicketNotificationAppend({
-          ticket: current,
-          eventTypes: [
-            'TICKET_CANCELLED',
-            ...diffHelpdeskSlaNotificationEvents(current.sla, sla),
-          ],
-          at: cancelledAt,
-        })
-        : null;
       const cancellationUpdate = { $set: { status: 'cancelled', ...(sla ? { sla } : {}) } };
-      if (notificationAppend) {
-        Object.assign(cancellationFilter, addHelpdeskNotificationSequenceFilter({}, current));
-        Object.assign(cancellationUpdate, notificationAppend.update);
-        cancellationUpdate.$set = {
-          ...cancellationUpdate.$set,
-          ...(notificationAppend.update.$set || {}),
-        };
-      }
       const updated = await TicketModel.findOneAndUpdate(
         cancellationFilter,
         cancellationUpdate,

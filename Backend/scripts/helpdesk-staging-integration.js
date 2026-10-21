@@ -409,7 +409,7 @@ const cleanupOwnedRecords = async ({ owned, models, privateFiles }) => {
   if (firstFailure) throw new Error('Exact-identifier cleanup did not fully complete.');
 };
 
-export const createHarnessServices = ({ models, runHelpdeskTransaction }) => {
+const createHarnessServices = ({ models, runHelpdeskTransaction }) => {
   const transactionLabels = new WeakMap();
   const transactionAttempts = { queue: 0, ticket: 0, message: 0 };
   let fenceBarrier = null;
@@ -506,12 +506,10 @@ export const createHarnessServices = ({ models, runHelpdeskTransaction }) => {
     ticketService: models.helpdeskTicketService({
       FenceModel: fenceModel,
       transactionRunner: makeTransactionRunner('ticket'),
-      notificationIntentsEnabled: false,
     }),
     conversationService: models.helpdeskConversationService({
       FenceModel: fenceModel,
       transactionRunner: makeTransactionRunner('message'),
-      notificationIntentsEnabled: false,
       planAttachmentStorage,
       storeAttachment,
       destroyAttachment,
@@ -616,39 +614,10 @@ const createTicketFixture = async ({ tenant, subject, confidential = false, mode
     companyId: tenant.companyId,
     ticketKind: models.HELPDESK_TICKET_KIND,
     ticketNumber: created.ticketNumber,
-  }).select('_id notificationSequence notificationEvents notificationGap').lean();
+  }).select('_id').lean();
   assertion(Boolean(row?._id), 'ticket service persisted its test ticket');
-  assertion(
-    Number(row.notificationSequence || 0) === 0
-      && !(row.notificationEvents || []).length
-      && !row.notificationGap,
-    'ticket fixture created no deliverable notification intent',
-  );
   owned.ticketIds.push(row._id);
   return { id: row._id, ticketNumber: created.ticketNumber };
-};
-
-const assertNoDeliverableNotificationIntents = async ({ owned, models }) => {
-  const ticketFilter = makeExactIdFilter(uniqueIds(owned.ticketIds));
-  const ticketRows = ticketFilter
-    ? await models.HelpdeskTicket.find(ticketFilter)
-      .select('_id notificationSequence notificationEvents notificationGap')
-      .lean()
-    : [];
-  const ticketIds = uniqueIds(owned.ticketIds);
-  const messageRows = ticketIds.length
-    ? await models.HelpdeskMessage.find({
-      companyId: { $in: uniqueIds(owned.companyIds) },
-      ticketId: { $in: ticketIds },
-    }).select('_id +notificationState').lean()
-    : [];
-  const ticketHasIntent = ticketRows.some((ticket) =>
-    Number(ticket.notificationSequence || 0) !== 0
-    || Boolean(ticket.notificationGap)
-    || (ticket.notificationEvents || []).length > 0);
-  const messageHasIntent = messageRows.some((message) =>
-    message.notificationState !== 'NOT_REQUIRED');
-  assertion(!ticketHasIntent && !messageHasIntent, 'disposable fixtures created no deliverable notification intents');
 };
 
 const updateQueueAgents = async ({ tenant, services, agentIds }) => services.queueService.updateQueue({
@@ -1090,10 +1059,6 @@ const runHarness = async () => {
     assertion(deniedAttachmentMessageCount === 0 && deniedAttachmentCount === 0, 'revoked attachment left no Mongo message or metadata');
     assertion(services.privateFiles.size === 1, 'failed authorization compensated only its in-memory staged bytes');
     console.log('PASS: attachment authorization without Cloudinary');
-
-    currentCase = 'notification outbox safety';
-    await assertNoDeliverableNotificationIntents({ owned, models: modelRegistry });
-    console.log('PASS: fixture notification intents suppressed');
 
     // Retain exact fixture references for cleanup if a test completed before a later failure.
     owned.ticketIds = uniqueIds(owned.ticketIds);

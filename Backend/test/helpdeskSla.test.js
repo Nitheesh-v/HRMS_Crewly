@@ -722,42 +722,6 @@ test('ticket initialization snapshots the actual priority and fails closed when 
   assert.equal(legacyHolidayReads, 0);
 });
 
-test('staging SLA projection updates skip notification outbox writes while retaining the SLA compare-and-set', async () => {
-  const sla = slaFor({ startedAt: new Date('2026-02-02T09:00:00Z') });
-  const ticket = ticketWithSla(sla, {
-    notificationSequence: 0,
-    notificationProcessedSequence: 0,
-    notificationEvents: [],
-  });
-  const replyAt = new Date('2026-02-02T09:25:00Z');
-  const rows = modelRows({
-    tickets: [ticket],
-    messages: [{
-      _id: oid(19),
-      companyId: COMPANY_A,
-      ticketId: TICKET_ID,
-      authorUserId: AGENT,
-      messageType: 'PUBLIC',
-      createdAt: replyAt,
-    }],
-  });
-  const service = serviceFor(rows, {
-    now: () => new Date('2026-02-02T09:30:00Z'),
-    notificationIntentsEnabled: false,
-  });
-  const result = await service.persistFirstResponse({ companyId: COMPANY_A, ticketId: TICKET_ID, createdAt: replyAt });
-
-  assert.equal(result.updated, true);
-  const mutation = rows.TicketModel.calls.findOneAndUpdate[0];
-  assert.equal(mutation.filter.companyId, COMPANY_A);
-  assert.equal(mutation.filter['sla.version'], sla.version);
-  assert.equal(Object.hasOwn(mutation.filter, 'notificationSequence'), false);
-  assert.deepEqual(Object.keys(mutation.update), ['$set']);
-  assert.equal(Object.hasOwn(mutation.update.$set, 'sla'), true);
-  assert.equal(rows.TicketModel.rows[0].notificationSequence, 0);
-  assert.deepEqual(rows.TicketModel.rows[0].notificationEvents, []);
-});
-
 test('earliest agent public reply is re-derived from tenant/ticket-scoped Mongo messages and CAS persisted', async () => {
   const sla = slaFor({ startedAt: new Date('2026-02-02T09:00:00Z') });
   const ticket = ticketWithSla(sla);
