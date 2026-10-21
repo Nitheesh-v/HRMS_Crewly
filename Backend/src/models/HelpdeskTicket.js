@@ -4,6 +4,10 @@ import {
   HELPDESK_PRIORITIES,
   HELPDESK_TICKET_STATUSES,
 } from '../services/helpdesk/helpdeskRules.js';
+import {
+  HELPDESK_NOTIFICATION_EVENT_TYPES,
+  HELPDESK_NOTIFICATION_MILESTONES,
+} from '../services/helpdesk/helpdeskNotificationRules.js';
 
 const slaWindowSchema = new mongoose.Schema(
   {
@@ -98,6 +102,32 @@ const helpdeskSlaSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const helpdeskNotificationEventSchema = new mongoose.Schema(
+  {
+    sequence: { type: Number, required: true, min: 1 },
+    type: { type: String, required: true, enum: HELPDESK_NOTIFICATION_EVENT_TYPES },
+    milestone: { type: String, enum: HELPDESK_NOTIFICATION_MILESTONES, default: null },
+    state: { type: String, enum: ['PENDING', 'DELIVERED', 'SUPPRESSED', 'FAILED'], required: true, default: 'PENDING' },
+    attemptCount: { type: Number, min: 0, max: 5, default: 0 },
+    createdAt: { type: Date, required: true },
+    nextAttemptAt: { type: Date, default: null },
+    leaseUntil: { type: Date, default: null },
+  },
+  { _id: false },
+);
+
+const helpdeskNotificationGapSchema = new mongoose.Schema(
+  {
+    fromSequence: { type: Number, required: true, min: 1 },
+    throughSequence: { type: Number, required: true, min: 1 },
+    state: { type: String, enum: ['PENDING', 'FAILED'], required: true, default: 'PENDING' },
+    attemptCount: { type: Number, min: 0, max: 5, default: 0 },
+    nextAttemptAt: { type: Date, default: null },
+    leaseUntil: { type: Date, default: null },
+  },
+  { _id: false },
+);
+
 const helpdeskTicketSchema = new mongoose.Schema(
   {
     ticketNumber: {
@@ -138,6 +168,12 @@ const helpdeskTicketSchema = new mongoose.Schema(
     // Phase 38.5 — Mongo-authoritative ticket SLA clocks. Legacy Helpdesk rows
     // remain untracked unless a policy snapshot was written at ticket creation.
     sla: { type: helpdeskSlaSchema, default: undefined },
+    // Phase 38.6 — durable Helpdesk-only notification intent. The event array
+    // is capped; a persisted gap marker lets recovery coalesce overflow safely.
+    notificationSequence: { type: Number, default: 0, min: 0 },
+    notificationProcessedSequence: { type: Number, default: 0, min: 0 },
+    notificationEvents: { type: [helpdeskNotificationEventSchema], default: [] },
+    notificationGap: { type: helpdeskNotificationGapSchema, default: undefined },
     // Phase 38.4 — atomic per-ticket ordering counters. Legacy tickets need no
     // backfill: Mongo's first $inc creates a counter starting at one.
     lastMessageSequence: { type: Number, default: 0, min: 0 },
@@ -235,6 +271,22 @@ helpdeskTicketSchema.index(
       ticketKind: 'HELPDESK',
       'sla.nextActionAt': { $type: 'date' },
     },
+  },
+);
+
+helpdeskTicketSchema.index(
+  { 'notificationEvents.state': 1, 'notificationEvents.nextAttemptAt': 1, companyId: 1, _id: 1 },
+  {
+    name: 'helpdesk_ticket_notification_recovery',
+    partialFilterExpression: { ticketKind: 'HELPDESK' },
+  },
+);
+
+helpdeskTicketSchema.index(
+  { 'notificationGap.state': 1, 'notificationGap.nextAttemptAt': 1, companyId: 1, _id: 1 },
+  {
+    name: 'helpdesk_ticket_notification_gap_recovery',
+    partialFilterExpression: { ticketKind: 'HELPDESK' },
   },
 );
 

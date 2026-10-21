@@ -1,6 +1,12 @@
 import ApiError from '../../utils/ApiError.js';
+import HelpdeskAuthorizationFence from '../../models/HelpdeskAuthorizationFence.js';
 import HelpdeskQueue from '../../models/HelpdeskQueue.js';
 import User from '../../models/User.js';
+import { runHelpdeskTransaction } from './helpdeskTransaction.js';
+import {
+  bumpHelpdeskAuthorizationFence,
+  changedHelpdeskQueueFenceUserIds,
+} from './helpdeskAuthorizationFence.js';
 import {
   assertNoClientIdentity,
   helpdeskNameKey,
@@ -195,23 +201,27 @@ const duplicateKeyError = (error) => error?.code === 11000;
 export const helpdeskQueueService = (deps = {}) => {
   const QueueModel = deps.QueueModel || HelpdeskQueue;
   const UserModel = deps.UserModel || User;
+  const FenceModel = deps.FenceModel || HelpdeskAuthorizationFence;
+  const transactionRunner = deps.transactionRunner || runHelpdeskTransaction;
 
-  const validateUsers = async (companyId, ids) => {
+  const validateUsers = async (companyId, ids, session = null) => {
     const uniqueIds = [...new Set(ids.map((id) => id.toLowerCase()))];
     if (!uniqueIds.length) return;
 
-    const found = await UserModel.find({
+    let query = UserModel.find({
       companyId,
       status: 'ACTIVE',
       _id: { $in: uniqueIds },
-    }).select('_id').lean();
+    });
+    if (session && typeof query?.session === 'function') query = query.session(session);
+    const found = await query.select('_id').lean();
     const foundIds = new Set((found || []).map((user) => idString(user._id).toLowerCase()));
     if (foundIds.size !== uniqueIds.length || uniqueIds.some((id) => !foundIds.has(id))) {
       throw ApiError.badRequest('Queue members must be active users in this tenant');
     }
   };
 
-  const assertMembershipConfiguration = async (companyId, patch, current = null) => {
+  const assertMembershipConfiguration = async (companyId, patch, current = null, session = null) => {
     const agents = patch.agents ?? (current?.agents || []).map(idString);
     const managers = patch.managers ?? (current?.managers || []).map(idString);
     const confidentiality = {
@@ -223,7 +233,7 @@ export const helpdeskQueueService = (deps = {}) => {
     };
 
     const allIds = [...agents, ...managers, ...confidentiality.agentIds, ...confidentiality.reviewerIds];
-    await validateUsers(companyId, allIds);
+    await validateUsers(companyId, allIds, session);
 
     const agentSet = new Set(agents.map((id) => id.toLowerCase()));
     if (confidentiality.agentIds.some((id) => !agentSet.has(id.toLowerCase()))) {
@@ -332,32 +342,73 @@ export const helpdeskQueueService = (deps = {}) => {
     ensureCompanyId(companyId);
     if (!OBJECT_ID.test(String(queueId || ''))) throw ApiError.notFound('Helpdesk queue not found');
     const patch = normalizeQueueInput(input, { creating: false });
-    const queue = await QueueModel.findOne({ _id: queueId, companyId });
-    if (!queue) throw ApiError.notFound('Helpdesk queue not found');
-
-    const nextNameKey = patch.nameKey || queue.nameKey;
-    if (patch.nameKey) {
-      const duplicate = await QueueModel.findOne({
-        companyId,
-        nameKey: nextNameKey,
-        _id: { $ne: queue._id },
-      }).select('_id').lean();
-      if (duplicate) throw ApiError.conflict('A queue with this name already exists');
-    }
-
-    await assertMembershipConfiguration(companyId, patch, queue);
-    if (patch.categories !== undefined) {
-      patch.categories = mergeCategories(queue.categories, patch.categories);
-    }
-
-    for (const [key, value] of Object.entries(patch)) queue[key] = value;
-    queue.updatedBy = actorId || null;
 
     try {
-      await queue.save();
-      return serializeHelpdeskQueue(queue, { administrative: true, includeDisabledCategories: true });
+      const updatedQueue = await transactionRunner(async (session) => {
+        let queueQuery = QueueModel.findOne({ _id: queueId, companyId });
+        if (session && typeof queueQuery?.session === 'function') queueQuery = queueQuery.session(session);
+        const queue = await queueQuery;
+        if (!queue) throw ApiError.notFound('Helpdesk queue not found');
+
+        const nextNameKey = patch.nameKey || queue.nameKey;
+        if (patch.nameKey) {
+          let duplicateQuery = QueueModel.findOne({
+            companyId,
+            nameKey: nextNameKey,
+            _id: { $ne: queue._id },
+          });
+          if (session && typeof duplicateQuery?.session === 'function') duplicateQuery = duplicateQuery.session(session);
+          const duplicate = await duplicateQuery.select('_id').lean();
+          if (duplicate) throw ApiError.conflict('A queue with this name already exists');
+        }
+
+        await assertMembershipConfiguration(companyId, patch, queue, session);
+        const nextMembership = {
+          agents: patch.agents ?? (queue.agents || []).map(idString),
+          managers: patch.managers ?? (queue.managers || []).map(idString),
+          confidentiality: {
+            enabled: patch.confidentiality?.enabled ?? queue.confidentiality?.enabled ?? false,
+            agentIds: patch.confidentiality?.agentIds
+              ?? (queue.confidentiality?.agentIds || []).map(idString),
+            reviewerIds: patch.confidentiality?.reviewerIds
+              ?? (queue.confidentiality?.reviewerIds || []).map(idString),
+          },
+        };
+        const changedPrincipals = changedHelpdeskQueueFenceUserIds({
+          current: queue,
+          next: nextMembership,
+        });
+        await bumpHelpdeskAuthorizationFence({
+          FenceModel,
+          companyId,
+          queueId: queue._id,
+          userIds: changedPrincipals,
+          session,
+        });
+
+        const categories = patch.categories === undefined
+          ? undefined
+          : mergeCategories(queue.categories, patch.categories);
+        for (const [key, value] of Object.entries(patch)) {
+          if (key !== 'confidentiality' && key !== 'categories') queue[key] = value;
+        }
+        if (categories !== undefined) queue.categories = categories;
+        if (patch.confidentiality !== undefined) {
+          queue.confidentiality = nextMembership.confidentiality;
+        }
+        queue.updatedBy = actorId || null;
+        await queue.save({ session });
+        return queue;
+      });
+      return serializeHelpdeskQueue(updatedQueue, { administrative: true, includeDisabledCategories: true });
     } catch (error) {
-      if (duplicateKeyError(error)) throw ApiError.conflict('A queue with this name already exists');
+      const causeChain = [];
+      for (let current = error; current && causeChain.length < 5; current = current.cause) {
+        causeChain.push(current);
+      }
+      const fenceConflict = causeChain.some((cause) => cause?.name === 'HelpdeskFenceConflictError');
+      const duplicate = !fenceConflict && causeChain.some(duplicateKeyError);
+      if (duplicate) throw ApiError.conflict('A queue with this name already exists');
       throw error;
     }
   };

@@ -65,6 +65,22 @@ export const helpdeskTenantConfigService = (deps = {}) => {
     }
   };
 
+  const readConfig = async ({ companyId, session } = {}) => {
+    ensureCompanyId(companyId);
+
+    try {
+      let query = ConfigModel.findOne({ companyId });
+      if (session && typeof query?.session === 'function') query = query.session(session);
+      if (typeof query?.lean === 'function') query = query.lean();
+      const config = await query;
+      const plainConfig = typeof config?.toObject === 'function' ? config.toObject() : config;
+      return serializeHelpdeskConfig({ ...HELPDESK_TENANT_DEFAULTS, ...(plainConfig || {}) });
+    } catch (error) {
+      if (error?.statusCode || session) throw error;
+      throw ApiError.unavailable('Helpdesk configuration is unavailable');
+    }
+  };
+
   const getConfig = async ({ companyId }) => {
     ensureCompanyId(companyId);
 
@@ -115,7 +131,7 @@ export const helpdeskTenantConfigService = (deps = {}) => {
     }
   };
 
-  return { getConfig, updateConfig };
+  return { readConfig, getConfig, updateConfig };
 };
 
 export const HELPDESK_CONFIG_FIELDS = CONFIG_FIELDS;

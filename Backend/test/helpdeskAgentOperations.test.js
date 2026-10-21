@@ -3,6 +3,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import {
+  makeFakeHelpdeskFenceModel,
+  makeHelpdeskFenceRaceHarness,
+  runFakeHelpdeskTransaction,
+} from './helpers/helpdeskTransactions.js';
 
 process.env.NODE_ENV ||= 'test';
 process.env.REDIS_ENABLED ||= 'false';
@@ -11,6 +16,7 @@ process.env.MONGO_URI ||= 'mongodb://127.0.0.1:27017/crewly_helpdesk_agents_test
 const [
   rulesModule,
   ticketServiceModule,
+  queueServiceModule,
   ticketModelModule,
   routeModule,
   controllerModule,
@@ -21,6 +27,7 @@ const [
 ] = await Promise.all([
   import('../src/services/helpdesk/helpdeskRules.js'),
   import('../src/services/helpdesk/helpdeskTicketService.js'),
+  import('../src/services/helpdesk/helpdeskQueueService.js'),
   import('../src/models/HelpdeskTicket.js'),
   import('../src/routes/helpdeskRoutes.js'),
   import('../src/controllers/helpdeskController.js'),
@@ -36,6 +43,7 @@ const {
   validateHelpdeskTransferInput,
 } = rulesModule;
 const { helpdeskTicketService } = ticketServiceModule;
+const { helpdeskQueueService } = queueServiceModule;
 const HelpdeskTicket = ticketModelModule.default;
 const helpdeskRouter = routeModule.default;
 const helpdeskController = controllerModule;
@@ -241,7 +249,13 @@ const makeTicketModel = (seed = []) => {
       });
     },
     findOneAndUpdate(filter, update, options = {}) {
-      calls.findOneAndUpdate.push({ filter: clone(filter), update: clone(update), options: clone(options) });
+      const { session, ...recordedOptions } = options;
+      calls.findOneAndUpdate.push({
+        filter: clone(filter),
+        update: clone(update),
+        options: clone(recordedOptions),
+        hasSession: Boolean(session),
+      });
       return makeQuery(() => {
         const row = rows.find((candidate) => matches(candidate, filter));
         if (!row) return null;
@@ -293,6 +307,9 @@ const makeUserModel = () => {
   return {
     rows,
     calls,
+    find(filter) {
+      return makeQuery(() => rows.filter((row) => matches(row, filter)));
+    },
     findOne(filter) {
       calls.findOne.push(clone(filter));
       return makeQuery(() => rows.find((row) => matches(row, filter)) || null);
@@ -308,10 +325,11 @@ const NOOP_SLA_SERVICE = {
   async persistFirstResponse() { return { updated: false }; },
 };
 
-const makeWorld = ({ tickets = [], queues, config = {} } = {}) => {
+const makeWorld = ({ tickets = [], queues, config = {}, transactionRunner = runFakeHelpdeskTransaction, FenceModel: suppliedFenceModel } = {}) => {
   const TicketModel = makeTicketModel(tickets);
   const QueueModel = makeQueueModel(queues);
   const UserModel = makeUserModel();
+  const FenceModel = suppliedFenceModel || makeFakeHelpdeskFenceModel();
   const configService = {
     calls: [],
     async getConfig({ companyId }) {
@@ -319,14 +337,38 @@ const makeWorld = ({ tickets = [], queues, config = {} } = {}) => {
       return { confidentialTicketsEnabled: true, ...clone(config) };
     },
   };
+  const queueService = helpdeskQueueService({ QueueModel, UserModel, FenceModel, transactionRunner });
   const ticketService = helpdeskTicketService({
     TicketModel,
     QueueModel,
     UserModel,
+    FenceModel,
+    transactionRunner,
     configService,
     slaService: NOOP_SLA_SERVICE,
   });
-  return { TicketModel, QueueModel, UserModel, configService, ticketService };
+  return { TicketModel, QueueModel, UserModel, FenceModel, configService, queueService, ticketService };
+};
+
+const attachQueueSaveSupport = (QueueModel) => {
+  const findOne = QueueModel.findOne.bind(QueueModel);
+  QueueModel.findOne = (filter) => {
+    const query = findOne(filter);
+    const then = query.then.bind(query);
+    query.then = (onFulfilled, onRejected) => then((row) => {
+      if (!row) return onFulfilled ? onFulfilled(null) : null;
+      const document = clone(row);
+      document.save = async () => {
+        const stored = QueueModel.rows.find((candidate) => idOf(candidate._id) === idOf(document._id));
+        for (const [key, value] of Object.entries(document)) {
+          if (key !== 'save' && stored) stored[key] = clone(value);
+        }
+        return document;
+      };
+      return onFulfilled ? onFulfilled(document) : document;
+    }, onRejected);
+    return query;
+  };
 };
 
 const expectStatus = async (promise, statusCode) => {
@@ -977,7 +1019,7 @@ test('confidential transfer preserves the restricted-agent allowlist and tenant 
   assert.equal(result.confidential, true);
   assert.equal(result.queue.id, QUEUE_B);
   assert.equal(result.assignedTo, RESTRICTED_AGENT);
-  assert.deepEqual(world.configService.calls, [COMPANY_A]);
+  assert.deepEqual(world.configService.calls, [COMPANY_A, COMPANY_A]);
 
   const disabledConfidentiality = makeWorld({
     tickets: [makeTicket(2, { isConfidential: true })],
@@ -1000,6 +1042,101 @@ test('confidential transfer preserves the restricted-agent allowlist and tenant 
     ticketNumber: 'HD-000003',
     input: { queueId: QUEUE_B, categoryId: CATEGORY_B, assigneeId: RESTRICTED_AGENT },
   }), 409);
+});
+
+test('claim, status, priority, assignment, and transfer mutations all write tenant/queue/principal fences in-session', async () => {
+  const world = makeWorld({ tickets: [makeTicket(1), makeTicket(2), makeTicket(3), makeTicket(4), makeTicket(5)] });
+  await world.ticketService.claimTicket({
+    companyId: COMPANY_A,
+    actorId: AGENT,
+    ticketNumber: 'HD-000001',
+  });
+  await world.ticketService.updateStatus({
+    companyId: COMPANY_A,
+    actorId: AGENT,
+    ticketNumber: 'HD-000002',
+    status: 'in_progress',
+  });
+  await world.ticketService.updatePriority({
+    companyId: COMPANY_A,
+    actorId: AGENT,
+    ticketNumber: 'HD-000003',
+    priority: 'high',
+  });
+  await world.ticketService.assignTicket({
+    companyId: COMPANY_A,
+    actorId: QUEUE_MANAGER,
+    ticketNumber: 'HD-000004',
+    assigneeId: AGENT,
+  });
+  await world.ticketService.transferTicket({
+    companyId: COMPANY_A,
+    actorId: MANAGER_AGENT,
+    ticketNumber: 'HD-000005',
+    input: { queueId: QUEUE_B, categoryId: CATEGORY_B, assigneeId: DESTINATION_AGENT },
+  });
+
+  assert.equal(world.FenceModel.calls.length, 6);
+  assert.ok(world.FenceModel.calls.every((call) => call.hasSession));
+  const fencePairs = world.FenceModel.calls.flatMap((call) => call.operations.map((operation) => [
+    operation.filter.queueId,
+    operation.filter.userId,
+  ]));
+  for (const pair of [
+    [QUEUE_A, AGENT],
+    [QUEUE_A, QUEUE_MANAGER],
+    [QUEUE_A, MANAGER_AGENT],
+    [QUEUE_B, MANAGER_AGENT],
+    [QUEUE_B, DESTINATION_AGENT],
+  ]) {
+    assert.ok(fencePairs.some(([queueId, userId]) => queueId === pair[0] && userId === pair[1]));
+  }
+  assert.equal(world.FenceModel.rows.get(`${COMPANY_A}:${QUEUE_B}:${DESTINATION_AGENT}`).writeVersion, 1);
+});
+
+test('queue membership revocation wins a deterministic fence race and retries agent authorization', async () => {
+  const FenceModel = makeFakeHelpdeskFenceModel();
+  const fenceRace = makeHelpdeskFenceRaceHarness({
+    FenceModel,
+    pauseWhen: ({ operations, session }) => session.id.endsWith('-1')
+      && operations.some((operation) => operation.updateOne.filter.userId === AGENT),
+  });
+  const ticket = makeTicket(1);
+  const world = makeWorld({
+    tickets: [ticket],
+    FenceModel,
+    transactionRunner: fenceRace.transactionRunner,
+  });
+  attachQueueSaveSupport(world.QueueModel);
+
+  const protectedWrite = world.ticketService.updateStatus({
+    companyId: COMPANY_A,
+    actorId: AGENT,
+    ticketNumber: ticket.ticketNumber,
+    status: 'in_progress',
+  });
+  const paused = await fenceRace.waitForPausedWrite();
+  assert.equal(paused.session.id, 'fake-helpdesk-session-1');
+
+  await world.queueService.updateQueue({
+    companyId: COMPANY_A,
+    actorId: QUEUE_MANAGER,
+    queueId: QUEUE_A,
+    input: { agents: [AGENT_TWO, RESTRICTED_AGENT, MANAGER_AGENT, DESTINATION_AGENT] },
+  });
+  fenceRace.releasePausedWrite();
+
+  await expectStatus(protectedWrite, 404);
+  assert.equal(world.TicketModel.rows[0].status, 'open');
+  assert.deepEqual(world.QueueModel.rows[0].agents, [AGENT_TWO, RESTRICTED_AGENT, MANAGER_AGENT, DESTINATION_AGENT]);
+  const sharedPrincipalAttempts = fenceRace.raceAttempts.filter((attempt) =>
+    attempt.operations.some((operation) => operation.filter.userId === AGENT),
+  );
+  assert.equal(sharedPrincipalAttempts.length, 2);
+  assert.equal(sharedPrincipalAttempts[0].sessionId, 'fake-helpdesk-session-1');
+  assert.equal(sharedPrincipalAttempts[1].sessionId, 'fake-helpdesk-session-2');
+  assert.equal(FenceModel.rows.get(`${COMPANY_A}:${QUEUE_A}:${AGENT}`).writeVersion, 1);
+  assert.equal(fenceRace.transactionCount, 3);
 });
 
 test('concurrent claim and transfer cannot leave a ticket with stale queue/assignee state', async () => {

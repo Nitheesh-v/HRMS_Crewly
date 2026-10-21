@@ -3,6 +3,10 @@
 // production worker is started by this suite.
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import {
+  makeFakeHelpdeskFenceModel,
+  runFakeHelpdeskTransaction,
+} from './helpers/helpdeskTransactions.js';
 
 process.env.NODE_ENV ||= 'test';
 process.env.REDIS_ENABLED ||= 'false';
@@ -718,6 +722,42 @@ test('ticket initialization snapshots the actual priority and fails closed when 
   assert.equal(legacyHolidayReads, 0);
 });
 
+test('staging SLA projection updates skip notification outbox writes while retaining the SLA compare-and-set', async () => {
+  const sla = slaFor({ startedAt: new Date('2026-02-02T09:00:00Z') });
+  const ticket = ticketWithSla(sla, {
+    notificationSequence: 0,
+    notificationProcessedSequence: 0,
+    notificationEvents: [],
+  });
+  const replyAt = new Date('2026-02-02T09:25:00Z');
+  const rows = modelRows({
+    tickets: [ticket],
+    messages: [{
+      _id: oid(19),
+      companyId: COMPANY_A,
+      ticketId: TICKET_ID,
+      authorUserId: AGENT,
+      messageType: 'PUBLIC',
+      createdAt: replyAt,
+    }],
+  });
+  const service = serviceFor(rows, {
+    now: () => new Date('2026-02-02T09:30:00Z'),
+    notificationIntentsEnabled: false,
+  });
+  const result = await service.persistFirstResponse({ companyId: COMPANY_A, ticketId: TICKET_ID, createdAt: replyAt });
+
+  assert.equal(result.updated, true);
+  const mutation = rows.TicketModel.calls.findOneAndUpdate[0];
+  assert.equal(mutation.filter.companyId, COMPANY_A);
+  assert.equal(mutation.filter['sla.version'], sla.version);
+  assert.equal(Object.hasOwn(mutation.filter, 'notificationSequence'), false);
+  assert.deepEqual(Object.keys(mutation.update), ['$set']);
+  assert.equal(Object.hasOwn(mutation.update.$set, 'sla'), true);
+  assert.equal(rows.TicketModel.rows[0].notificationSequence, 0);
+  assert.deepEqual(rows.TicketModel.rows[0].notificationEvents, []);
+});
+
 test('earliest agent public reply is re-derived from tenant/ticket-scoped Mongo messages and CAS persisted', async () => {
   const sla = slaFor({ startedAt: new Date('2026-02-02T09:00:00Z') });
   const ticket = ticketWithSla(sla);
@@ -907,15 +947,19 @@ test('only authorized public staff replies start first-response SLA; requester r
     });
     const persisted = [];
     const messages = [];
+    const FenceModel = makeFakeHelpdeskFenceModel();
     const MessageModel = {
       async create(input) {
-        const message = { ...input, createdAt: new Date('2026-02-02T09:15:00Z') };
-        messages.push(message);
-        return message;
+        const docs = Array.isArray(input) ? input : [input];
+        const created = docs.map((payload) => ({ ...payload, createdAt: new Date('2026-02-02T09:15:00Z') }));
+        messages.push(...created);
+        return Array.isArray(input) ? created : created[0];
       },
     };
     const service = helpdeskConversationService({
       ...rows,
+      FenceModel,
+      transactionRunner: runFakeHelpdeskTransaction,
       MessageModel,
       ObjectId: FakeObjectId,
       slaService: { persistFirstResponse: async (input) => persisted.push(input) },

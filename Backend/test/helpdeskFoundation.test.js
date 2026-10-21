@@ -10,6 +10,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import {
+  makeFakeHelpdeskFenceModel,
+  runFakeHelpdeskTransaction,
+} from './helpers/helpdeskTransactions.js';
 
 process.env.NODE_ENV ||= 'test';
 process.env.REDIS_ENABLED ||= 'false';
@@ -29,6 +33,7 @@ const [
   supportTicketModule,
   helpdeskQueueModelModule,
   helpdeskConfigModelModule,
+  helpdeskFenceModelModule,
   mongooseModule,
 ] = await Promise.all([
   import('../src/services/helpdesk/helpdeskRules.js'),
@@ -44,6 +49,7 @@ const [
   import('../src/models/SupportTicket.js'),
   import('../src/models/HelpdeskQueue.js'),
   import('../src/models/HelpdeskTenantConfig.js'),
+  import('../src/models/HelpdeskAuthorizationFence.js'),
   import('mongoose'),
 ]);
 
@@ -68,6 +74,7 @@ const HelpdeskTicket = helpdeskTicketModule.default;
 const SupportTicket = supportTicketModule.default;
 const HelpdeskQueue = helpdeskQueueModelModule.default;
 const HelpdeskTenantConfig = helpdeskConfigModelModule.default;
+const HelpdeskAuthorizationFence = helpdeskFenceModelModule.default;
 const mongoose = mongooseModule.default;
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -407,24 +414,29 @@ const NOOP_SLA_SERVICE = {
   async persistFirstResponse() { return { updated: false }; },
 };
 
-const makeWorld = () => {
+const makeWorld = (options = {}) => {
   const QueueModel = makeQueueModel();
   const TicketModel = makeTicketModel();
   const UserModel = makeUsers();
+  const FenceModel = makeFakeHelpdeskFenceModel();
   const ConfigModel = makeConfigModel();
   const SequenceModel = makeSequenceModel();
   const configService = helpdeskTenantConfigService({ ConfigModel });
-  const queueService = helpdeskQueueService({ QueueModel, UserModel });
+  const transactionRunner = runFakeHelpdeskTransaction;
+  const queueService = helpdeskQueueService({ QueueModel, UserModel, FenceModel, transactionRunner });
   const ticketService = helpdeskTicketService({
     TicketModel,
     QueueModel,
     UserModel,
+    FenceModel,
+    transactionRunner,
     ConfigModel,
     SequenceModel,
     configService,
     slaService: NOOP_SLA_SERVICE,
+    notificationIntentsEnabled: options.notificationIntentsEnabled,
   });
-  return { QueueModel, TicketModel, UserModel, ConfigModel, SequenceModel, configService, queueService, ticketService };
+  return { QueueModel, TicketModel, UserModel, FenceModel, ConfigModel, SequenceModel, configService, queueService, ticketService, transactionRunner };
 };
 
 const makeQueueInput = (overrides = {}) => ({
@@ -580,6 +592,50 @@ test('queue creation is tenant-scoped, normalized, duplicate-safe, and category-
   assert.equal((await world.queueService.listQueues({ companyId: COMPANY_A, includeDisabled: true, administrative: true })).length, 2);
 });
 
+test('coordination fence is metadata-only and queue membership changes serialize affected principals in-session', async () => {
+  const fenceIndex = HelpdeskAuthorizationFence.schema.indexes().find(([keys, options]) =>
+    options.name === 'helpdesk_authorization_fence_unique' && options.unique === true,
+  );
+  assert.ok(fenceIndex);
+  assert.deepEqual(fenceIndex[0], { companyId: 1, queueId: 1, userId: 1 });
+  assert.equal(HelpdeskAuthorizationFence.schema.path('agents'), undefined);
+  assert.equal(HelpdeskAuthorizationFence.schema.path('managers'), undefined);
+  assert.equal(HelpdeskAuthorizationFence.schema.path('activeMembership'), undefined);
+
+  const world = makeWorld();
+  const queue = await world.queueService.createQueue({
+    companyId: COMPANY_A,
+    actorId: QUEUE_MANAGER,
+    input: makeQueueInput(),
+  });
+  assert.equal(world.FenceModel.rows.size, 0);
+
+  await world.queueService.updateQueue({
+    companyId: COMPANY_A,
+    actorId: QUEUE_MANAGER,
+    queueId: queue.id,
+    input: {
+      agents: [RESTRICTED_AGENT, EMPLOYEE],
+      managers: [QUEUE_MANAGER, REPORTING_MANAGER],
+      confidentiality: {
+        enabled: true,
+        agentIds: [EMPLOYEE],
+        reviewerIds: [CONFIDENTIAL_REVIEWER],
+      },
+    },
+  });
+
+  assert.equal(world.FenceModel.calls.length, 1);
+  assert.equal(world.FenceModel.calls[0].hasSession, true);
+  const changedPrincipals = world.FenceModel.calls[0].operations.map((operation) => operation.filter.userId).sort();
+  assert.deepEqual(changedPrincipals, [AGENT, EMPLOYEE, QUEUE_MANAGER, REPORTING_MANAGER, RESTRICTED_AGENT].sort());
+  assert.equal(changedPrincipals.includes(CONFIDENTIAL_REVIEWER), false);
+  for (const row of world.FenceModel.rows.values()) {
+    assert.deepEqual(Object.keys(row).sort(), ['companyId', 'queueId', 'userId', 'writeVersion']);
+    assert.equal(row.writeVersion, 1);
+  }
+});
+
 test('tenant config persists explicit fail-closed defaults and never crosses tenants', async () => {
   const ConfigModel = makeConfigModel();
   const service = helpdeskTenantConfigService({ ConfigModel });
@@ -728,6 +784,35 @@ test('ticket create ignores requested urgency for effective priority and rejects
     () => validateHelpdeskTicketCreateInput({ ...createTicketInput(queue.id, categoryId), priority: 'urgent' }),
     (error) => error.statusCode === 400,
   );
+});
+
+test('staging service suppression omits deliverable ticket notifications without bypassing transactions or assignment authorization', async () => {
+  const world = makeWorld({ notificationIntentsEnabled: false });
+  await enableHelpdesk(world);
+  const queue = await world.queueService.createQueue({
+    companyId: COMPANY_A,
+    actorId: QUEUE_MANAGER,
+    input: makeQueueInput(),
+  });
+  const ticket = await world.ticketService.createTicket({
+    companyId: COMPANY_A,
+    requesterId: REQUESTER,
+    input: createTicketInput(queue.id, queue.categories[0].id),
+  });
+  const storedTicket = world.TicketModel.rows.find((row) => row.ticketNumber === ticket.ticketNumber);
+  assert.equal(storedTicket.notificationSequence, undefined);
+  assert.equal(storedTicket.notificationEvents, undefined);
+
+  const assigned = await world.ticketService.assignTicket({
+    companyId: COMPANY_A,
+    actorId: QUEUE_MANAGER,
+    ticketNumber: ticket.ticketNumber,
+    assigneeId: AGENT,
+  });
+  assert.equal(assigned.assignedTo, AGENT);
+  assert.equal(storedTicket.status, 'assigned');
+  assert.equal(storedTicket.notificationSequence, undefined);
+  assert.equal(storedTicket.notificationEvents, undefined);
 });
 
 test('queue requester, agent, manager, reviewer, and confidentiality boundaries are distinct', async () => {
@@ -955,7 +1040,7 @@ test('Phase 38.4 conversations and private attachments do not add later-phase in
     'src/middlewares/helpdeskAttachmentUpload.js',
   ];
   const clean = sourceFiles.map((file) => sourceWithoutComments(read(file))).join('\n');
-  assert.doesNotMatch(clean, /from\s+['"][^'"]*(?:attendance|leave|payroll|ai|nats|socket|realtime|notification)[^'"]*['"]/i);
+  assert.doesNotMatch(clean, /from\s+['"][^'"]*(?:attendance|leave|payroll|ai|nats|socket|realtime|(?<!helpdesk)notification)[^'"]*['"]/i);
   assert.doesNotMatch(clean, /\b(?:Attendance|Leave|Payroll|AI|NATS|Socket|Realtime|Notification)(?:Model|Service|Gateway)?\.(?:create|updateOne|findOneAndUpdate|emit|publish)\s*\(/i);
   assert.doesNotMatch(clean, /\bconsole\s*\.\s*(?:log|info|warn|error|debug)\s*\(/i);
   assert.doesNotMatch(clean, /\.populate\s*\(/);
@@ -975,6 +1060,8 @@ test('Phase 38.4 conversations and private attachments do not add later-phase in
     TicketModel: world.TicketModel,
     QueueModel: world.QueueModel,
     UserModel: world.UserModel,
+    FenceModel: world.FenceModel,
+    transactionRunner: world.transactionRunner,
     ConfigModel: world.ConfigModel,
     SequenceModel: world.SequenceModel,
     configService: world.configService,

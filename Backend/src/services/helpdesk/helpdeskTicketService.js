@@ -1,4 +1,5 @@
 import ApiError from '../../utils/ApiError.js';
+import HelpdeskAuthorizationFence from '../../models/HelpdeskAuthorizationFence.js';
 import HelpdeskTicket from '../../models/HelpdeskTicket.js';
 import HelpdeskQueue from '../../models/HelpdeskQueue.js';
 import User from '../../models/User.js';
@@ -27,11 +28,19 @@ import {
 } from './helpdeskDto.js';
 import { boundedSearchTerm } from '../../utils/searchInput.js';
 import {
+  addHelpdeskNotificationSequenceFilter,
+  buildHelpdeskTicketNotificationAppend,
+  buildHelpdeskTicketNotificationCreateFields,
+  diffHelpdeskSlaNotificationEvents,
+} from './helpdeskNotificationRules.js';
+import {
   canReadHelpdeskTicket as canReadTicket,
   hasConfidentialHelpdeskAgentAccess as hasConfidentialAgentAccess,
   idString,
   includesId,
 } from './helpdeskAccess.js';
+import { bumpHelpdeskAuthorizationFence } from './helpdeskAuthorizationFence.js';
+import { runHelpdeskTransaction } from './helpdeskTransaction.js';
 
 const OBJECT_ID = /^[a-f\d]{24}$/i;
 const TICKET_NUMBER = /^HD-\d{6,}$/;
@@ -50,6 +59,11 @@ const ensureActorId = (actorId) => {
 export const helpdeskTicketService = (deps = {}) => {
   const TicketModel = deps.TicketModel || HelpdeskTicket;
   const QueueModel = deps.QueueModel || HelpdeskQueue;
+  const FenceModel = deps.FenceModel || HelpdeskAuthorizationFence;
+  const transactionRunner = deps.transactionRunner || runHelpdeskTransaction;
+  // Integration harnesses may suppress only notification intent; authorization,
+  // transaction, and ticket persistence behavior remain the real service path.
+  const notificationIntentsEnabled = deps.notificationIntentsEnabled !== false;
   const UserModel = deps.UserModel || User;
   const SequenceModel = deps.SequenceModel || TenantSequence;
   const configService = deps.configService || helpdeskTenantConfigService({
@@ -63,21 +77,28 @@ export const helpdeskTicketService = (deps = {}) => {
     MessageModel: deps.MessageModel,
     holidayReader: deps.holidayReader,
     now: deps.now,
+    notificationIntentsEnabled,
   });
   const now = deps.now || (() => new Date());
 
-  const findQueue = async (companyId, queueId) => {
+  const withSession = (query, session) =>
+    session && typeof query?.session === 'function' ? query.session(session) : query;
+
+  const findQueue = async (companyId, queueId, session = null) => {
     if (!OBJECT_ID.test(String(queueId || ''))) return null;
-    return QueueModel.findOne({ _id: queueId, companyId }).lean();
+    let query = withSession(QueueModel.findOne({ _id: queueId, companyId }), session);
+    if (typeof query?.lean === 'function') query = query.lean();
+    return query;
   };
 
-  const findTicket = async (companyId, ticketNumber) => {
+  const findTicket = async (companyId, ticketNumber, session = null) => {
     if (!TICKET_NUMBER.test(String(ticketNumber || ''))) return null;
-    return TicketModel.findOne({
+    const query = withSession(TicketModel.findOne({
       companyId,
       ticketKind: SUPPORT_TICKET_KIND.HELPDESK,
       ticketNumber,
-    });
+    }), session);
+    return query;
   };
 
   const assertQueueStaff = ({ queue, actorId, managersOnly = false }) => {
@@ -94,19 +115,34 @@ export const helpdeskTicketService = (deps = {}) => {
     }
   };
 
-  const assertTicketMutationAccess = ({ ticket, queue, actorId, managersOnly = false }) => {
-    assertQueueStaff({ queue, actorId, managersOnly });
+  const assertTicketMutationAccess = ({
+    ticket,
+    queue,
+    actorId,
+    managersOnly = false,
+    agentsOnly = false,
+  }) => {
+    if (agentsOnly) assertQueueAgent({ queue, actorId });
+    else assertQueueStaff({ queue, actorId, managersOnly });
+    // A manager's queue role never substitutes for the restricted-agent list.
     if (ticket.isConfidential === true && !hasConfidentialAgentAccess({ queue, actorId })) {
       throw ApiError.notFound('Helpdesk ticket not found');
     }
   };
 
-  const getMutationContext = async ({ companyId, actorId, ticketNumber, managersOnly = false } = {}) => {
-    const ticket = await findTicket(companyId, ticketNumber);
+  const getMutationContext = async ({
+    companyId,
+    actorId,
+    ticketNumber,
+    managersOnly = false,
+    agentsOnly = false,
+    session = null,
+  } = {}) => {
+    const ticket = await findTicket(companyId, ticketNumber, session);
     if (!ticket) throw ApiError.notFound('Helpdesk ticket not found');
-    const queue = await findQueue(companyId, ticket.queueId);
+    const queue = await findQueue(companyId, ticket.queueId, session);
     if (!queue) throw ApiError.notFound('Helpdesk ticket not found');
-    assertTicketMutationAccess({ ticket, queue, actorId, managersOnly });
+    assertTicketMutationAccess({ ticket, queue, actorId, managersOnly, agentsOnly });
     return { ticket, queue };
   };
 
@@ -116,10 +152,13 @@ export const helpdeskTicketService = (deps = {}) => {
     includePriority = false,
     includeSlaVersion = false,
   }) => ({
+    _id: ticket._id,
     companyId,
     ticketKind: SUPPORT_TICKET_KIND.HELPDESK,
     ticketNumber: ticket.ticketNumber,
+    user: ticket.user,
     queueId: ticket.queueId,
+    isConfidential: ticket.isConfidential === true ? true : { $ne: true },
     status: ticket.status,
     assignedTo: ticket.assignedTo ?? null,
     ...(includePriority ? { priority: ticket.priority } : {}),
@@ -128,28 +167,114 @@ export const helpdeskTicketService = (deps = {}) => {
       : {}),
   });
 
+  const sameMutationSnapshot = (expected, current, { includePriority, includeSlaVersion }) =>
+    idString(expected?._id) === idString(current?._id)
+    && idString(expected?.user) === idString(current?.user)
+    && idString(expected?.queueId) === idString(current?.queueId)
+    && idString(expected?.assignedTo) === idString(current?.assignedTo)
+    && String(expected?.status || '') === String(current?.status || '')
+    && (expected?.isConfidential === true) === (current?.isConfidential === true)
+    && (!includePriority || String(expected?.priority || '') === String(current?.priority || ''))
+    && (!includeSlaVersion
+      || (expected?.sla?.version ?? null) === (current?.sla?.version ?? null));
+
+  const readConfigInTransaction = async ({ companyId, session }) => {
+    if (typeof configService.readConfig === 'function') {
+      return configService.readConfig({ companyId, session });
+    }
+    return configService.getConfig({ companyId });
+  };
+
   const commitConditionalUpdate = async ({
     companyId,
     actorId,
     ticketNumber,
     ticket,
     update,
+    notificationEvents = [],
     includePriority = false,
     includeSlaVersion = false,
     managersOnly = false,
-  }) => {
-    const updated = await TicketModel.findOneAndUpdate(
-      conditionalTicketFilter({ companyId, ticket, includePriority, includeSlaVersion }),
-      { $set: update },
-      { returnDocument: 'after', runValidators: true },
-    );
-    if (updated) return updated;
+    agentsOnly = false,
+    validateInTransaction = async () => ({}),
+  }) => transactionRunner(async (session) => {
+    const { ticket: currentTicket, queue: currentQueue } = await getMutationContext({
+      companyId,
+      actorId,
+      ticketNumber,
+      managersOnly,
+      agentsOnly,
+      session,
+    });
+    if (!sameMutationSnapshot(ticket, currentTicket, { includePriority, includeSlaVersion })) {
+      throw ApiError.conflict('The ticket changed while you were acting. Refresh and try again.');
+    }
 
-    // Re-check visibility after a lost compare-and-set. A race that moved the
-    // ticket to an unauthorized queue/confidential scope remains non-enumerating.
-    await getMutationContext({ companyId, actorId, ticketNumber, managersOnly });
-    throw ApiError.conflict('The ticket changed while you were acting. Refresh and try again.');
-  };
+    const validation = await validateInTransaction({
+      ticket: currentTicket,
+      queue: currentQueue,
+      session,
+    }) || {};
+    const updatePatch = typeof update === 'function'
+      ? await update({ ticket: currentTicket, queue: currentQueue, validation, session })
+      : update;
+    const fenceEntries = [
+      { queueId: currentQueue._id, userId: actorId },
+      ...(validation.fenceEntries || []),
+    ];
+    const fencesByQueue = new Map();
+    for (const entry of fenceEntries) {
+      if (!entry?.queueId || !entry?.userId) continue;
+      const queueKey = idString(entry.queueId).toLowerCase();
+      if (!fencesByQueue.has(queueKey)) fencesByQueue.set(queueKey, { queueId: entry.queueId, userIds: [] });
+      fencesByQueue.get(queueKey).userIds.push(entry.userId);
+    }
+    for (const fence of fencesByQueue.values()) {
+      await bumpHelpdeskAuthorizationFence({
+        FenceModel,
+        companyId,
+        queueId: fence.queueId,
+        userIds: fence.userIds,
+        session,
+      });
+    }
+
+    const notificationAppend = notificationIntentsEnabled
+      ? buildHelpdeskTicketNotificationAppend({
+        ticket: currentTicket,
+        eventTypes: notificationEvents,
+        at: now(),
+      })
+      : null;
+    const filter = conditionalTicketFilter({
+      companyId,
+      ticket: currentTicket,
+      includePriority,
+      includeSlaVersion,
+    });
+    const updateDocument = { $set: updatePatch };
+    if (notificationAppend) {
+      Object.assign(updateDocument, notificationAppend.update);
+      updateDocument.$set = {
+        ...updateDocument.$set,
+        ...(notificationAppend.update.$set || {}),
+      };
+      Object.assign(filter, addHelpdeskNotificationSequenceFilter({}, currentTicket));
+    }
+    let query = TicketModel.findOneAndUpdate(
+      filter,
+      updateDocument,
+      { returnDocument: 'after', runValidators: true, session },
+    );
+    if (typeof query?.lean === 'function') query = query.lean();
+    const updated = await query;
+    if (!updated) {
+      // Membership and confidentiality were rechecked against this snapshot;
+      // a lost conditional write remains non-enumerating and never commits a fence alone.
+      throw ApiError.conflict('The ticket changed while you were acting. Refresh and try again.');
+    }
+    return { updated, queueName: validation.queueName || currentQueue.name };
+  });
 
   const listMine = async ({ companyId, requesterId, query = {} } = {}) => {
     ensureCompanyId(companyId);
@@ -400,11 +525,21 @@ export const helpdeskTicketService = (deps = {}) => {
       createdAt,
     });
     const ticketNumber = await nextHelpdeskTicketNumber(companyId, { SequenceModel });
+    const creationNotificationAppend = notificationIntentsEnabled
+      ? buildHelpdeskTicketNotificationAppend({
+        ticket: {},
+        eventTypes: ['TICKET_CREATED'],
+        at: createdAt,
+      })
+      : null;
     const ticket = await TicketModel.create({
       companyId,
       user: requesterId,
       ticketKind: SUPPORT_TICKET_KIND.HELPDESK,
       ticketNumber,
+      ...(creationNotificationAppend
+        ? buildHelpdeskTicketNotificationCreateFields(creationNotificationAppend)
+        : {}),
       queueId: queue._id,
       categoryId: category._id,
       categoryName: category.name,
@@ -454,25 +589,53 @@ export const helpdeskTicketService = (deps = {}) => {
       // Returning an active assignment to the open queue also releases its agent.
       update.assignedTo = null;
     }
+    const transitionAt = now();
     const sla = ticket.sla
       ? await slaService.applyStatusTransition({
         companyId,
         ticket,
         fromStatus: ticket.status,
         toStatus: nextStatus,
-        at: now(),
+        at: transitionAt,
       })
       : null;
-    const updated = await commitConditionalUpdate({
+    const statusEvent = nextStatus === 'resolved'
+      ? 'TICKET_RESOLVED'
+      : 'TICKET_STATUS_CHANGED';
+    const result = await commitConditionalUpdate({
       companyId,
       actorId,
       ticketNumber,
       ticket,
       update: { ...update, ...(sla ? { sla } : {}) },
+      notificationEvents: [
+        statusEvent,
+        ...diffHelpdeskSlaNotificationEvents(ticket.sla, sla),
+      ],
       includePriority: true,
       includeSlaVersion: Boolean(ticket.sla),
+      validateInTransaction: async ({ ticket: currentTicket, queue: currentQueue, session }) => {
+        if (nextStatus !== 'assigned') return {};
+        const assignedAgentId = idString(currentTicket.assignedTo);
+        if (!assignedAgentId || !includesId(currentQueue.agents, assignedAgentId)
+          || (currentTicket.isConfidential === true
+            && !includesId(currentQueue.confidentiality?.agentIds, assignedAgentId))) {
+          throw ApiError.conflict('Assign the ticket to an eligible queue agent before marking it assigned');
+        }
+        let activeQuery = UserModel.findOne({
+          _id: assignedAgentId,
+          companyId,
+          status: 'ACTIVE',
+        });
+        activeQuery = withSession(activeQuery, session);
+        const activeAssignee = await activeQuery.select('_id').lean();
+        if (!activeAssignee) {
+          throw ApiError.conflict('Assign the ticket to an active queue agent before marking it assigned');
+        }
+        return { fenceEntries: [{ queueId: currentQueue._id, userId: assignedAgentId }] };
+      },
     });
-    return serializeHelpdeskAgentTicketDetails(updated, { queueName: queue.name });
+    return serializeHelpdeskAgentTicketDetails(result.updated, { queueName: result.queueName });
   };
 
   const updatePriority = async ({ companyId, actorId, ticketNumber, priority } = {}) => {
@@ -488,24 +651,26 @@ export const helpdeskTicketService = (deps = {}) => {
       return serializeHelpdeskAgentTicketDetails(ticket, { queueName: queue.name });
     }
 
+    const priorityAt = now();
     const sla = ticket.sla
       ? await slaService.applyPriorityChange({
         companyId,
         ticket,
         priority: nextPriority,
-        at: now(),
+        at: priorityAt,
       })
       : null;
-    const updated = await commitConditionalUpdate({
+    const result = await commitConditionalUpdate({
       companyId,
       actorId,
       ticketNumber,
       ticket,
       update: { priority: nextPriority, ...(sla ? { sla } : {}) },
+      notificationEvents: diffHelpdeskSlaNotificationEvents(ticket.sla, sla),
       includePriority: true,
       includeSlaVersion: Boolean(ticket.sla),
     });
-    return serializeHelpdeskAgentTicketDetails(updated, { queueName: queue.name });
+    return serializeHelpdeskAgentTicketDetails(result.updated, { queueName: result.queueName });
   };
 
   const assignTicket = async ({ companyId, actorId, ticketNumber, assigneeId } = {}) => {
@@ -541,15 +706,39 @@ export const helpdeskTicketService = (deps = {}) => {
     if (nextStatus !== ticket.status && !canTransitionHelpdeskTicket(ticket.status, nextStatus)) {
       throw ApiError.conflict('The ticket cannot move to the assigned state');
     }
-    const updated = await commitConditionalUpdate({
+    const assignmentChanged = idString(ticket.assignedTo) !== idString(activeAssignee._id)
+      || nextStatus !== ticket.status;
+    if (!assignmentChanged) {
+      return serializeHelpdeskAgentTicketDetails(ticket, { queueName: queue.name });
+    }
+    const result = await commitConditionalUpdate({
       companyId,
       actorId,
       ticketNumber,
       ticket,
       managersOnly: true,
       update: { assignedTo: activeAssignee._id, status: nextStatus },
+      notificationEvents: [ticket.assignedTo ? 'TICKET_REASSIGNED' : 'TICKET_ASSIGNED'],
+      validateInTransaction: async ({ ticket: currentTicket, queue: currentQueue, session }) => {
+        if (!includesId(currentQueue.agents, assigneeId)) {
+          throw ApiError.badRequest('Assignee must be an explicitly assigned queue agent');
+        }
+        if (currentTicket.isConfidential === true
+          && !includesId(currentQueue.confidentiality?.agentIds, assigneeId)) {
+          throw ApiError.badRequest('Confidential tickets can only be assigned to a restricted queue agent');
+        }
+        let assigneeQuery = UserModel.findOne({
+          _id: assigneeId,
+          companyId,
+          status: 'ACTIVE',
+        });
+        assigneeQuery = withSession(assigneeQuery, session);
+        const currentAssignee = await assigneeQuery.select('_id').lean();
+        if (!currentAssignee) throw ApiError.badRequest('Assignee must be active in this tenant');
+        return { fenceEntries: [{ queueId: currentQueue._id, userId: assigneeId }] };
+      },
     });
-    return serializeHelpdeskAgentTicketDetails(updated, { queueName: queue.name });
+    return serializeHelpdeskAgentTicketDetails(result.updated, { queueName: result.queueName });
   };
 
   const claimTicket = async ({ companyId, actorId, ticketNumber } = {}) => {
@@ -564,25 +753,22 @@ export const helpdeskTicketService = (deps = {}) => {
       throw ApiError.conflict('Only an open, unassigned ticket can be claimed');
     }
 
-    const updated = await TicketModel.findOneAndUpdate(
-      {
-        ...conditionalTicketFilter({ companyId, ticket }),
-        status: 'open',
-        assignedTo: null,
+    const result = await commitConditionalUpdate({
+      companyId,
+      actorId,
+      ticketNumber,
+      ticket,
+      agentsOnly: true,
+      update: { assignedTo: actorId, status: 'assigned' },
+      notificationEvents: ['TICKET_CLAIMED'],
+      validateInTransaction: async ({ ticket: currentTicket }) => {
+        if (currentTicket.status !== 'open' || currentTicket.assignedTo) {
+          throw ApiError.conflict('The ticket was claimed or changed by another agent');
+        }
+        return {};
       },
-      { $set: { assignedTo: actorId, status: 'assigned' } },
-      { returnDocument: 'after', runValidators: true },
-    );
-    if (!updated) {
-      const latest = await getMutationContext({ companyId, actorId, ticketNumber });
-      assertQueueAgent({ queue: latest.queue, actorId });
-      if (latest.ticket.isConfidential === true
-        && !hasConfidentialAgentAccess({ queue: latest.queue, actorId })) {
-        throw ApiError.notFound('Helpdesk ticket not found');
-      }
-      throw ApiError.conflict('The ticket was claimed or changed by another agent');
-    }
-    return serializeHelpdeskAgentTicketDetails(updated, { queueName: queue.name });
+    });
+    return serializeHelpdeskAgentTicketDetails(result.updated, { queueName: result.queueName });
   };
 
   const transferTicket = async ({
@@ -657,16 +843,17 @@ export const helpdeskTicketService = (deps = {}) => {
     if (nextStatus !== ticket.status && !canTransitionHelpdeskTicket(ticket.status, nextStatus)) {
       throw ApiError.conflict('The ticket cannot move to the assigned state');
     }
+    const transferAt = now();
     const sla = ticket.sla
       ? await slaService.applyQueueTransfer({
         companyId,
         ticket,
         queueId: targetQueue._id,
         priority: ticket.priority,
-        at: now(),
+        at: transferAt,
       })
       : null;
-    const updated = await commitConditionalUpdate({
+    const result = await commitConditionalUpdate({
       companyId,
       actorId,
       ticketNumber,
@@ -674,16 +861,89 @@ export const helpdeskTicketService = (deps = {}) => {
       managersOnly: true,
       includePriority: true,
       includeSlaVersion: Boolean(ticket.sla),
-      update: {
-        queueId: targetQueue._id,
-        categoryId: category._id,
-        categoryName: category.name,
-        assignedTo: activeAssignee?._id || null,
-        status: nextStatus,
+      update: ({ validation }) => ({
+        ...validation.update,
         ...(sla ? { sla } : {}),
+      }),
+      notificationEvents: [
+        'TICKET_TRANSFERRED',
+        ...diffHelpdeskSlaNotificationEvents(ticket.sla, sla),
+      ],
+      validateInTransaction: async ({ ticket: currentTicket, queue: currentSourceQueue, session }) => {
+        const currentTargetQueue = await findQueue(companyId, normalized.queueId, session);
+        if (!currentTargetQueue || currentTargetQueue.enabled === false) {
+          throw ApiError.notFound('Destination Helpdesk queue not found');
+        }
+        assertQueueStaff({ queue: currentTargetQueue, actorId, managersOnly: true });
+        if (idString(currentSourceQueue._id).toLowerCase() === normalized.queueId.toLowerCase()) {
+          throw ApiError.conflict('The ticket is already in that queue');
+        }
+        if (currentTicket.isConfidential === true) {
+          if (!hasConfidentialAgentAccess({ queue: currentSourceQueue, actorId })
+            || !currentTargetQueue.confidentiality?.enabled
+            || !hasConfidentialAgentAccess({ queue: currentTargetQueue, actorId })) {
+            throw ApiError.notFound('Helpdesk ticket not found');
+          }
+          const config = await readConfigInTransaction({ companyId, session });
+          if (!config.confidentialTicketsEnabled) {
+            throw ApiError.conflict('Confidential ticket transfers are not enabled for this tenant');
+          }
+        }
+
+        const currentCategory = (currentTargetQueue.categories || []).find(
+          (item) => idString(item._id).toLowerCase() === normalized.categoryId.toLowerCase(),
+        );
+        if (!currentCategory || currentCategory.enabled === false) {
+          throw ApiError.badRequest('The selected category is not available in the destination queue');
+        }
+
+        const currentAssigneeId = normalized.assigneeId || idString(currentTicket.assignedTo) || null;
+        let currentAssignee = null;
+        const fenceEntries = [{ queueId: currentTargetQueue._id, userId: actorId }];
+        if (currentAssigneeId) {
+          if (!includesId(currentTargetQueue.agents, currentAssigneeId)) {
+            throw ApiError.badRequest('Destination assignee must be an explicitly assigned queue agent');
+          }
+          if (currentTicket.isConfidential === true
+            && !includesId(currentTargetQueue.confidentiality?.agentIds, currentAssigneeId)) {
+            throw ApiError.badRequest('Confidential tickets can only be assigned to a restricted destination agent');
+          }
+          let assigneeQuery = UserModel.findOne({
+            _id: currentAssigneeId,
+            companyId,
+            status: 'ACTIVE',
+          });
+          assigneeQuery = withSession(assigneeQuery, session);
+          currentAssignee = await assigneeQuery.select('_id').lean();
+          if (!currentAssignee) {
+            throw ApiError.conflict('Assign the ticket to an active destination-queue agent before transferring');
+          }
+          fenceEntries.push({ queueId: currentTargetQueue._id, userId: currentAssigneeId });
+        } else if (currentTicket.status === 'assigned') {
+          throw ApiError.conflict('Assign the ticket to an active destination-queue agent before transferring');
+        }
+
+        const currentNextStatus = currentTicket.status === 'open' && currentAssignee
+          ? 'assigned'
+          : currentTicket.status;
+        if (currentNextStatus !== currentTicket.status
+          && !canTransitionHelpdeskTicket(currentTicket.status, currentNextStatus)) {
+          throw ApiError.conflict('The ticket cannot move to the assigned state');
+        }
+        return {
+          queueName: currentTargetQueue.name,
+          fenceEntries,
+          update: {
+            queueId: currentTargetQueue._id,
+            categoryId: currentCategory._id,
+            categoryName: currentCategory.name,
+            assignedTo: currentAssignee?._id || null,
+            status: currentNextStatus,
+          },
+        };
       },
     });
-    return serializeHelpdeskAgentTicketDetails(updated, { queueName: targetQueue.name });
+    return serializeHelpdeskAgentTicketDetails(result.updated, { queueName: result.queueName });
   };
 
   const cancelOwnTicket = async ({ companyId, requesterId, ticketNumber } = {}) => {
@@ -702,31 +962,55 @@ export const helpdeskTicketService = (deps = {}) => {
     };
     const currentQuery = TicketModel.findOne(activeFilter);
     const current = await (typeof currentQuery?.select === 'function'
-      ? currentQuery.select('_id companyId user queueId ticketNumber status priority sla').lean()
+      ? currentQuery.select(
+        '_id companyId user queueId ticketNumber status priority sla ' +
+          'notificationSequence notificationProcessedSequence notificationEvents notificationGap',
+      ).lean()
       : currentQuery);
     if (current) {
+      const cancelledAt = now();
       const sla = current.sla
         ? await slaService.applyStatusTransition({
           companyId,
           ticket: current,
           fromStatus: current.status,
           toStatus: 'cancelled',
-          at: now(),
+          at: cancelledAt,
         })
         : null;
+      const cancellationFilter = {
+        _id: current._id,
+        companyId,
+        ticketKind: SUPPORT_TICKET_KIND.HELPDESK,
+        user: requesterId,
+        ticketNumber,
+        status: { $in: ['open', 'assigned'] },
+        ...(current.sla
+          ? { 'sla.version': current.sla.version ?? { $exists: false } }
+          : {}),
+      };
+      const notificationAppend = notificationIntentsEnabled
+        ? buildHelpdeskTicketNotificationAppend({
+          ticket: current,
+          eventTypes: [
+            'TICKET_CANCELLED',
+            ...diffHelpdeskSlaNotificationEvents(current.sla, sla),
+          ],
+          at: cancelledAt,
+        })
+        : null;
+      const cancellationUpdate = { $set: { status: 'cancelled', ...(sla ? { sla } : {}) } };
+      if (notificationAppend) {
+        Object.assign(cancellationFilter, addHelpdeskNotificationSequenceFilter({}, current));
+        Object.assign(cancellationUpdate, notificationAppend.update);
+        cancellationUpdate.$set = {
+          ...cancellationUpdate.$set,
+          ...(notificationAppend.update.$set || {}),
+        };
+      }
       const updated = await TicketModel.findOneAndUpdate(
-        {
-          _id: current._id,
-          companyId,
-          ticketKind: SUPPORT_TICKET_KIND.HELPDESK,
-          user: requesterId,
-          ticketNumber,
-          status: { $in: ['open', 'assigned'] },
-          ...(current.sla
-            ? { 'sla.version': current.sla.version ?? { $exists: false } }
-            : {}),
-        },
-        { $set: { status: 'cancelled', ...(sla ? { sla } : {}) } },
+        cancellationFilter,
+        cancellationUpdate,
         { returnDocument: 'after', runValidators: true },
       );
       if (updated) return serializeHelpdeskTicket(updated);

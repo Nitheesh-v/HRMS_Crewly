@@ -6,6 +6,7 @@ import {
   assertRequiredFenceIndex,
   assertStagingOnlyAuthentication,
   assertTransactionTopology,
+  createHarnessServices,
   makeExactIdFilter,
   validateOptIn,
 } from '../scripts/helpdesk-staging-integration.js';
@@ -114,6 +115,24 @@ test('staging harness requires the exact unique authorization-fence compound ind
     ...validFenceIndex(),
     key: { companyId: 1, queueId: 1, userId: 1, extra: 1 },
   }]));
+});
+
+test('staging harness disables only disposable Helpdesk notification intents', () => {
+  const services = createHarnessServices({
+    models: {
+      HelpdeskAuthorizationFence: {},
+      helpdeskQueueService: (dependencies) => dependencies,
+      helpdeskTicketService: (dependencies) => dependencies,
+      helpdeskConversationService: (dependencies) => dependencies,
+    },
+    runHelpdeskTransaction: async () => ({ committed: true }),
+  });
+
+  assert.equal(services.ticketService.notificationIntentsEnabled, false);
+  assert.equal(services.conversationService.notificationIntentsEnabled, false);
+  assert.equal(typeof services.ticketService.transactionRunner, 'function');
+  assert.equal(typeof services.conversationService.transactionRunner, 'function');
+  assert.equal(typeof services.conversationService.storeAttachment, 'function');
 });
 
 test('cleanup filters are limited to exact owned _id values and empty cleanup is a no-op', () => {

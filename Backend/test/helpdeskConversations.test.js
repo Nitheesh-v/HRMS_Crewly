@@ -5,6 +5,10 @@ import path from 'node:path';
 import { Readable } from 'node:stream';
 import test from 'node:test';
 import mongoose from 'mongoose';
+import {
+  makeFakeHelpdeskFenceModel,
+  makeHelpdeskFenceRaceHarness,
+} from './helpers/helpdeskTransactions.js';
 
 process.env.NODE_ENV ||= 'test';
 process.env.REDIS_ENABLED ||= 'false';
@@ -12,6 +16,7 @@ process.env.MONGO_URI ||= 'mongodb://127.0.0.1:27017/crewly_helpdesk_conversatio
 
 const [
   conversationModule,
+  queueServiceModule,
   rulesModule,
   fileRulesModule,
   storageModule,
@@ -28,6 +33,7 @@ const [
   supportKindsModule,
 ] = await Promise.all([
   import('../src/services/helpdesk/helpdeskConversationService.js'),
+  import('../src/services/helpdesk/helpdeskQueueService.js'),
   import('../src/services/helpdesk/helpdeskRules.js'),
   import('../src/services/helpdesk/helpdeskFileRules.js'),
   import('../src/services/helpdesk/helpdeskAttachmentStorage.js'),
@@ -45,6 +51,7 @@ const [
 ]);
 
 const { helpdeskConversationService } = conversationModule;
+const { helpdeskQueueService } = queueServiceModule;
 const {
   decodeHelpdeskMessageCursor,
   HELPDESK_MESSAGE_BODY_MAX,
@@ -245,6 +252,18 @@ const makeQueue = (overrides = {}) => ({
   ...clone(overrides),
 });
 
+const restoreRows = (target, snapshot) => {
+  while (target.length > snapshot.length) target.pop();
+  snapshot.forEach((value, index) => {
+    if (target[index] && typeof target[index] === 'object' && !Array.isArray(target[index])) {
+      for (const key of Object.keys(target[index])) delete target[index][key];
+      Object.assign(target[index], clone(value));
+    } else {
+      target[index] = clone(value);
+    }
+  });
+};
+
 const makeWorld = (options = {}) => {
   const state = {
     ticket: makeTicket(options.ticket),
@@ -271,6 +290,7 @@ const makeWorld = (options = {}) => {
     attachmentFindOneCalls: [],
     userFindCalls: [],
     messageCreateMode: null,
+    transactionUnknownMode: null,
     failNextMessageLookup: false,
     attachmentCreateMode: null,
     failActivation: false,
@@ -282,6 +302,44 @@ const makeWorld = (options = {}) => {
   };
   const ticketRows = state.tickets || [state.ticket];
   const queueRows = state.queues || [state.queue];
+  const FenceModel = options.FenceModel || makeFakeHelpdeskFenceModel();
+  const defaultTransactionRunner = async (work) => {
+    const snapshots = {
+      tickets: ticketRows.map(clone),
+      messages: state.messages.map(clone),
+      attachments: state.attachments.map(clone),
+      fences: new Map([...FenceModel.rows].map(([key, row]) => [key, clone(row)])),
+    };
+    try {
+      const result = await work({ id: 'fake-helpdesk-session' });
+      const unknownMode = state.transactionUnknownMode;
+      if (unknownMode) {
+        state.transactionUnknownMode = null;
+        if (unknownMode === 'aborted') {
+          restoreRows(ticketRows, snapshots.tickets);
+          restoreRows(state.messages, snapshots.messages);
+          restoreRows(state.attachments, snapshots.attachments);
+          FenceModel.rows.clear();
+          for (const [key, row] of snapshots.fences) FenceModel.rows.set(key, clone(row));
+          state.failNextMessageLookup = true;
+        }
+        const error = new Error('simulated unknown transaction commit result');
+        error.statusCode = 503;
+        error.commitOutcomeUnknown = true;
+        throw error;
+      }
+      return result;
+    } catch (error) {
+      if (error?.commitOutcomeUnknown === true) throw error;
+      restoreRows(ticketRows, snapshots.tickets);
+      restoreRows(state.messages, snapshots.messages);
+      restoreRows(state.attachments, snapshots.attachments);
+      FenceModel.rows.clear();
+      for (const [key, row] of snapshots.fences) FenceModel.rows.set(key, clone(row));
+      throw error;
+    }
+  };
+  const transactionRunner = options.transactionRunner || defaultTransactionRunner;
 
   const TicketModel = {
     rows: ticketRows,
@@ -290,7 +348,13 @@ const makeWorld = (options = {}) => {
       return makeQuery(() => ticketRows.find((row) => matches(row, filter)) || null);
     },
     findOneAndUpdate(filter, update, queryOptions = {}) {
-      state.ticketUpdateCalls.push({ filter: clone(filter), update: clone(update), options: clone(queryOptions) });
+      const { session, ...recordedOptions } = queryOptions;
+      state.ticketUpdateCalls.push({
+        filter: clone(filter),
+        update: clone(update),
+        options: clone(recordedOptions),
+        hasSession: Boolean(session),
+      });
       return makeQuery(() => {
         const row = ticketRows.find((candidate) => matches(candidate, filter));
         if (!row) return null;
@@ -333,24 +397,20 @@ const makeWorld = (options = {}) => {
         return state.messages.find((row) => matches(row, filter)) || null;
       });
     },
-    async create(payload) {
+    async create(input) {
       if (state.messageCreateMode === 'fail_before') throw new Error('simulated Mongo create failure');
-      const row = {
+      const docs = Array.isArray(input) ? input : [input];
+      const createdRows = docs.map((payload) => ({
         ...clone(payload),
         createdAt: new Date(Date.now() + state.messages.length),
         updatedAt: new Date(Date.now() + state.messages.length),
-      };
-      state.messages.push(row);
+      }));
+      state.messages.push(...createdRows);
       if (state.messageCreateMode === 'commit_then_throw') {
         state.messageCreateMode = null;
         throw new Error('simulated ambiguous Mongo acknowledgement');
       }
-      if (state.messageCreateMode === 'commit_then_lookup_unknown') {
-        state.messageCreateMode = null;
-        state.failNextMessageLookup = true;
-        throw new Error('simulated ambiguous Mongo acknowledgement');
-      }
-      return clone(row);
+      return Array.isArray(input) ? createdRows.map(clone) : clone(createdRows[0]);
     },
   };
 
@@ -421,11 +481,14 @@ const makeWorld = (options = {}) => {
   const service = helpdeskConversationService({
     TicketModel,
     QueueModel,
+    FenceModel,
+    transactionRunner,
     MessageModel,
     AttachmentModel,
     UserModel,
     configService,
     slaService: NOOP_SLA_SERVICE,
+    notificationIntentsEnabled: options.notificationIntentsEnabled,
     planAttachmentStorage: ({ companyId, ticketId, attachmentId }) => ({
       storageProvider: 'CLOUDINARY_AUTHENTICATED',
       storageKey: buildHelpdeskAttachmentStorageKey({ companyId, ticketId, attachmentId }),
@@ -456,7 +519,28 @@ const makeWorld = (options = {}) => {
     now: () => state.nowMs,
   });
 
-  return { state, TicketModel, QueueModel, MessageModel, AttachmentModel, UserModel, service };
+  return { state, TicketModel, QueueModel, FenceModel, transactionRunner, MessageModel, AttachmentModel, UserModel, service };
+};
+
+const attachQueueSaveSupport = (QueueModel) => {
+  const findOne = QueueModel.findOne.bind(QueueModel);
+  QueueModel.findOne = (filter) => {
+    const query = findOne(filter);
+    const then = query.then.bind(query);
+    query.then = (onFulfilled, onRejected) => then((row) => {
+      if (!row) return onFulfilled ? onFulfilled(null) : null;
+      const document = clone(row);
+      document.save = async () => {
+        const stored = QueueModel.rows.find((candidate) => idOf(candidate._id) === idOf(document._id));
+        for (const [key, value] of Object.entries(document)) {
+          if (key !== 'save' && stored) stored[key] = clone(value);
+        }
+        return document;
+      };
+      return onFulfilled ? onFulfilled(document) : document;
+    }, onRejected);
+    return query;
+  };
 };
 
 const requester = (world, extra = {}) => ({
@@ -487,6 +571,60 @@ const attachFile = (overrides = {}) => ({
   buffer: Buffer.from(PDF_BYTES),
   ...overrides,
 });
+
+const runAgentConversationRevocationRace = async ({ messageType = 'public', attachment = false } = {}) => {
+  const FenceModel = makeFakeHelpdeskFenceModel();
+  const fenceRace = makeHelpdeskFenceRaceHarness({
+    FenceModel,
+    pauseWhen: ({ operations, session }) => session.id.endsWith('-1')
+      && operations.some((operation) => operation.updateOne.filter.userId === AGENT),
+  });
+  const world = makeWorld({ FenceModel, transactionRunner: fenceRace.transactionRunner });
+  for (const user of world.state.users) user.status = 'ACTIVE';
+  world.state.users.push({ _id: QUEUE_MANAGER, companyId: COMPANY_A, name: 'Queue Manager', status: 'ACTIVE' });
+  attachQueueSaveSupport(world.QueueModel);
+  const queueService = helpdeskQueueService({
+    QueueModel: world.QueueModel,
+    UserModel: world.UserModel,
+    FenceModel,
+    transactionRunner: fenceRace.transactionRunner,
+  });
+  const input = agent(world, {
+    messageType,
+    body: attachment ? 'A restricted file' : 'Agent response',
+    ...(attachment ? { file: attachFile() } : {}),
+  });
+  const protectedWrite = attachment
+    ? world.service.createMessageWithAttachment(input)
+    : world.service.createMessage(input);
+  await fenceRace.waitForPausedWrite();
+
+  await queueService.updateQueue({
+    companyId: COMPANY_A,
+    actorId: QUEUE_MANAGER,
+    queueId: QUEUE_ID,
+    input: { agents: [CONFIDENTIAL_AGENT] },
+  });
+  fenceRace.releasePausedWrite();
+  await assert.rejects(protectedWrite, (error) => error.statusCode === 404);
+
+  assert.equal(world.state.messages.length, 0);
+  assert.equal(world.state.ticket.lastMessageSequence, 0);
+  assert.equal(world.state.ticket.lastPublicMessageSequence, 0);
+  assert.deepEqual(world.QueueModel.rows[0].agents, [CONFIDENTIAL_AGENT]);
+  const sharedPrincipalAttempts = fenceRace.raceAttempts.filter((attempt) =>
+    attempt.operations.some((operation) => operation.filter.userId === AGENT),
+  );
+  assert.equal(sharedPrincipalAttempts.length, 2);
+  assert.equal(FenceModel.rows.get(`${COMPANY_A}:${QUEUE_ID}:${AGENT}`).writeVersion, 1);
+  assert.equal(fenceRace.transactionCount, 3);
+  if (attachment) {
+    assert.equal(world.state.attachments.length, 0);
+    assert.equal(world.state.stored.size, 0);
+    assert.equal(world.state.destroyCalls.length, 1);
+  }
+  return { world, fenceRace, FenceModel };
+};
 
 const runValidatorStack = async (stack, req) => {
   for (const middleware of stack) {
@@ -528,6 +666,19 @@ test('Helpdesk message and attachment schemas enforce immutable metadata, privat
 
   assert.equal(HelpdeskTicket.schema.path('lastMessageSequence').options.default, 0);
   assert.equal(HelpdeskTicket.schema.path('lastPublicMessageSequence').options.default, 0);
+});
+
+test('staging conversation suppression persists authorized public messages without a deliverable notification entry', async () => {
+  const world = makeWorld({ notificationIntentsEnabled: false });
+  const saved = await world.service.createMessage(requester(world, { body: 'Disposable harness reply.' }));
+
+  assert.equal(saved.body, 'Disposable harness reply.');
+  assert.equal(world.state.messages.length, 1);
+  assert.equal(world.state.messages[0].sequence, 1);
+  assert.equal(world.state.messages[0].publicSequence, 1);
+  assert.equal(world.state.messages[0].notificationState, 'NOT_REQUIRED');
+  assert.equal(world.state.ticket.lastMessageSequence, 1);
+  assert.equal(world.state.ticket.lastPublicMessageSequence, 1);
 });
 
 test('message bodies are plain text, bounded, and server-authored; employee and reviewer history never includes internal notes', async () => {
@@ -714,6 +865,18 @@ test('queue membership, confidential reviewers, requester scope, and internal-no
     canReadQueue: true,
   });
   assert.equal(confidentialAgentHistory.messages[0].messageType, 'internal');
+});
+
+test('queue membership revocation fences public replies, internal notes, and post-upload attachment activation', async (t) => {
+  await t.test('public reply re-reads membership after a revocation conflict', async () => {
+    await runAgentConversationRevocationRace({ messageType: 'public' });
+  });
+  await t.test('internal note re-reads membership after a revocation conflict', async () => {
+    await runAgentConversationRevocationRace({ messageType: 'internal' });
+  });
+  await t.test('attachment bytes and metadata are cleaned after a definite post-upload authorization denial', async () => {
+    await runAgentConversationRevocationRace({ messageType: 'public', attachment: true });
+  });
 });
 
 test('atomic ticket counters assign stable unique total/public sequences under concurrent public replies and notes', async () => {
@@ -953,14 +1116,15 @@ test('ticket authorization and eligible state are revalidated after upload; fail
   assert.equal(failedCleanup.state.stored.size, 0);
 });
 
-test('ambiguous Mongo message acknowledgement preserves bytes until bounded reconciliation confirms the result', async () => {
+test('unknown attachment-message commit retains private bytes until reconciliation can prove the message is absent', async () => {
   const world = makeWorld();
-  world.state.messageCreateMode = 'commit_then_lookup_unknown';
+  world.state.transactionUnknownMode = 'aborted';
   await assert.rejects(
     () => world.service.createMessageWithAttachment(requester(world, { file: attachFile() })),
     (error) => error.statusCode === 503,
   );
-  assert.equal(world.state.messages.length, 1);
+  assert.equal(world.state.messages.length, 0);
+  assert.equal(world.state.ticket.lastMessageSequence, 0);
   assert.equal(world.state.attachments.length, 1);
   assert.equal(world.state.attachments[0].persistenceStatus, 'PENDING');
   assert.equal(world.state.stored.size, 1);
@@ -968,9 +1132,22 @@ test('ambiguous Mongo message acknowledgement preserves bytes until bounded reco
 
   world.state.nowMs += 60 * 60 * 1000;
   const recovery = await world.service.reconcilePendingAttachments({ companyId: COMPANY_A, limit: 5 });
-  assert.equal(recovery.activated, 1);
+  assert.equal(recovery.removed, 1);
+  assert.equal(world.state.attachments.length, 0);
+  assert.equal(world.state.stored.size, 0);
+});
+
+test('unknown commit with a visible message resolves without replay and keeps the atomically active private attachment', async () => {
+  const world = makeWorld();
+  world.state.transactionUnknownMode = 'committed';
+  const message = await world.service.createMessageWithAttachment(requester(world, { file: attachFile() }));
+  assert.equal(world.state.messages.length, 1);
+  assert.equal(world.state.ticket.lastMessageSequence, 1);
+  assert.equal(world.state.attachments.length, 1);
   assert.equal(world.state.attachments[0].persistenceStatus, 'ACTIVE');
   assert.equal(world.state.stored.size, 1);
+  assert.equal(world.state.destroyCalls.length, 0);
+  assert.equal(message.attachments.length, 1);
 });
 
 test('definite Mongo message failure compensates; when provider deletion fails it records cleanup without exposing the file', async () => {
@@ -997,7 +1174,7 @@ test('definite Mongo message failure compensates; when provider deletion fails i
   );
 });
 
-test('upload, metadata, and activation failures never return provider details or delete an uncertain committed message', async () => {
+test('upload and metadata failures normalize provider details; attachment activation aborts the message transaction safely', async () => {
   const storageFailure = makeWorld();
   storageFailure.state.storeFails = true;
   await assert.rejects(
@@ -1020,17 +1197,18 @@ test('upload, metadata, and activation failures never return provider details or
   activationFailure.state.failActivation = true;
   await assert.rejects(
     () => activationFailure.service.createMessageWithAttachment(requester(activationFailure, { file: attachFile() })),
-    (error) => error.statusCode === 503 && /temporarily unavailable/.test(error.message),
+    (error) => error.statusCode === 503,
   );
-  assert.equal(activationFailure.state.messages.length, 1);
-  assert.equal(activationFailure.state.attachments[0].persistenceStatus, 'PENDING');
-  assert.equal(activationFailure.state.stored.size, 1);
-  assert.equal(activationFailure.state.destroyCalls.length, 0);
+  assert.equal(activationFailure.state.messages.length, 0);
+  assert.equal(activationFailure.state.ticket.lastMessageSequence, 0);
+  assert.equal(activationFailure.state.attachments.length, 0);
+  assert.equal(activationFailure.state.stored.size, 0);
+  assert.equal(activationFailure.state.destroyCalls.length, 1);
 
   activationFailure.state.failActivation = false;
   activationFailure.state.nowMs += 60 * 60 * 1000;
   const recovered = await activationFailure.service.reconcilePendingAttachments({ companyId: COMPANY_A, limit: 5 });
-  assert.equal(recovered.activated, 1);
+  assert.equal(recovered.inspected, 0);
 });
 
 test('attachment storage adapter keeps local files private in development and proxies bounded authenticated Cloudinary bytes', async () => {

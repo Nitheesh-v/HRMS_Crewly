@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import mongoose from 'mongoose';
 
 import HelpdeskAttachment from '../../models/HelpdeskAttachment.js';
+import HelpdeskAuthorizationFence from '../../models/HelpdeskAuthorizationFence.js';
 import HelpdeskMessage from '../../models/HelpdeskMessage.js';
 import HelpdeskQueue from '../../models/HelpdeskQueue.js';
 import HelpdeskTicket from '../../models/HelpdeskTicket.js';
@@ -11,6 +12,8 @@ import ApiError from '../../utils/ApiError.js';
 import { SUPPORT_TICKET_KIND } from '../../utils/supportTicketKinds.js';
 import { helpdeskTenantConfigService } from './helpdeskTenantConfigService.js';
 import { helpdeskSlaService } from './helpdeskSlaService.js';
+import { bumpHelpdeskAuthorizationFence } from './helpdeskAuthorizationFence.js';
+import { runHelpdeskTransaction } from './helpdeskTransaction.js';
 import {
   canReadHelpdeskTicket,
   hasConfidentialHelpdeskAgentAccess,
@@ -59,6 +62,11 @@ const assertEligibleState = (ticket) => {
 export const helpdeskConversationService = (deps = {}) => {
   const TicketModel = deps.TicketModel || HelpdeskTicket;
   const QueueModel = deps.QueueModel || HelpdeskQueue;
+  const FenceModel = deps.FenceModel || HelpdeskAuthorizationFence;
+  const transactionRunner = deps.transactionRunner || runHelpdeskTransaction;
+  // Staging acceptance uses the production authorization/transaction path but
+  // must not enqueue user-facing notifications for disposable fixtures.
+  const notificationIntentsEnabled = deps.notificationIntentsEnabled !== false;
   const MessageModel = deps.MessageModel || HelpdeskMessage;
   const AttachmentModel = deps.AttachmentModel || HelpdeskAttachment;
   const UserModel = deps.UserModel || User;
@@ -73,6 +81,7 @@ export const helpdeskConversationService = (deps = {}) => {
     PolicyModel: deps.PolicyModel,
     holidayReader: deps.holidayReader,
     now: deps.now,
+    notificationIntentsEnabled,
   });
   const storeAttachment = deps.storeAttachment || storeHelpdeskAttachment;
   const planAttachmentStorage = deps.planAttachmentStorage || planHelpdeskAttachmentStorage;
@@ -81,14 +90,15 @@ export const helpdeskConversationService = (deps = {}) => {
   const ObjectId = deps.ObjectId || mongoose.Types.ObjectId;
   const now = deps.now || (() => Date.now());
 
-  const queryOne = async (modelQuery, projection = null) => {
+  const queryOne = async (modelQuery, projection = null, session = null) => {
     try {
       let query = modelQuery;
+      if (session && typeof query?.session === 'function') query = query.session(session);
       if (projection && typeof query?.select === 'function') query = query.select(projection);
       if (typeof query?.lean === 'function') query = query.lean();
       return await query;
     } catch (error) {
-      if (error?.statusCode) throw error;
+      if (error?.statusCode || session) throw error;
       throw ApiError.unavailable('Helpdesk conversation data is temporarily unavailable.');
     }
   };
@@ -107,7 +117,7 @@ export const helpdeskConversationService = (deps = {}) => {
     }
   };
 
-  const loadTicketContext = async ({ companyId, ticketNumber }) => {
+  const loadTicketContext = async ({ companyId, ticketNumber }, session = null) => {
     if (!TICKET_NUMBER.test(String(ticketNumber || ''))) {
       throw ApiError.notFound('Helpdesk ticket not found.');
     }
@@ -118,12 +128,14 @@ export const helpdeskConversationService = (deps = {}) => {
         ticketNumber,
       }),
       '_id companyId user queueId ticketNumber status isConfidential lastMessageSequence lastPublicMessageSequence',
+      session,
     );
     if (!ticket) throw ApiError.notFound('Helpdesk ticket not found.');
 
     const queue = await queryOne(
       QueueModel.findOne({ _id: ticket.queueId, companyId }),
       '_id companyId agents managers confidentiality',
+      session,
     );
     if (!queue) throw ApiError.notFound('Helpdesk ticket not found.');
     return { ticket, queue };
@@ -201,15 +213,15 @@ export const helpdeskConversationService = (deps = {}) => {
     return { ...context, ...access };
   };
 
-  const loadWritableContext = async (input, messageType) => {
+  const loadWritableContext = async (input, messageType, session = null) => {
     ensureContextIds(input);
-    const context = await loadTicketContext(input);
+    const context = await loadTicketContext(input, session);
     const access = authorizeWriteContext({ ...context, ...input, messageType });
     assertEligibleState(context.ticket);
     return { ...context, ...access };
   };
 
-  const allocateSequence = async ({ context, companyId, ticketNumber, messageType, actorId, input }) => {
+  const allocateSequence = async ({ context, companyId, ticketNumber, messageType, input, session }) => {
     const filter = {
       _id: context.ticket._id,
       companyId,
@@ -223,27 +235,23 @@ export const helpdeskConversationService = (deps = {}) => {
     const increment = { lastMessageSequence: 1 };
     if (messageType === 'PUBLIC') increment.lastPublicMessageSequence = 1;
 
-    let updated;
-    try {
-      let query = TicketModel.findOneAndUpdate(
-        filter,
-        { $inc: increment },
-        {
-          returnDocument: 'after',
-          runValidators: true,
-          projection: { _id: 1, lastMessageSequence: 1, lastPublicMessageSequence: 1 },
-        },
-      );
-      if (typeof query?.lean === 'function') query = query.lean();
-      updated = await query;
-    } catch {
-      throw ApiError.unavailable('The Helpdesk message could not be saved.');
-    }
+    let query = TicketModel.findOneAndUpdate(
+      filter,
+      { $inc: increment },
+      {
+        returnDocument: 'after',
+        runValidators: true,
+        projection: { _id: 1, lastMessageSequence: 1, lastPublicMessageSequence: 1 },
+        ...(session ? { session } : {}),
+      },
+    );
+    if (typeof query?.lean === 'function') query = query.lean();
+    const updated = await query;
 
     if (!updated) {
-      // Re-evaluate authorization before returning a state conflict so a
-      // concurrent transfer/restriction cannot become an existence oracle.
-      const latest = await loadWritableContext(input, messageType);
+      // Re-evaluate authorization in the same snapshot before returning a
+      // state conflict, preserving non-enumerating transfer/confidentiality behavior.
+      const latest = await loadWritableContext(input, messageType, session);
       assertEligibleState(latest.ticket);
       throw ApiError.conflict('The ticket changed while the message was being saved. Refresh and try again.');
     }
@@ -387,6 +395,99 @@ export const helpdeskConversationService = (deps = {}) => {
     return safe || null;
   };
 
+  const notificationFieldsForMessage = (messageType) => {
+    if (!notificationIntentsEnabled || messageType !== 'PUBLIC') {
+      return { notificationState: 'NOT_REQUIRED' };
+    }
+    return {
+      notificationState: 'PENDING',
+      notificationAttemptCount: 0,
+      notificationNextAttemptAt: new Date(now()),
+      notificationLeaseUntil: null,
+    };
+  };
+
+  const readTenantConfigInTransaction = async ({ companyId, session }) => {
+    if (typeof configService.readConfig === 'function') {
+      return configService.readConfig({ companyId, session });
+    }
+    return configService.getConfig({ companyId });
+  };
+
+  const persistMessageInTransaction = async ({
+    input,
+    body,
+    messageType,
+    messageId,
+    attachmentId = null,
+    attachmentPersistence = null,
+    onContext = () => {},
+  }) => transactionRunner(async (session) => {
+    const context = await loadWritableContext(input, messageType, session);
+    onContext(context);
+
+    if (attachmentPersistence) {
+      const config = await readTenantConfigInTransaction({ companyId: input.companyId, session });
+      if (config.attachmentsEnabled !== true) {
+        throw ApiError.forbidden('Helpdesk attachments are not enabled for this tenant.');
+      }
+      if (idString(context.ticket._id) !== idString(attachmentPersistence.ticketId)) {
+        throw ApiError.notFound('Helpdesk ticket not found.');
+      }
+    }
+
+    if (context.audience === 'staff') {
+      await bumpHelpdeskAuthorizationFence({
+        FenceModel,
+        companyId: input.companyId,
+        queueId: context.queue._id,
+        userIds: [input.actorId],
+        session,
+      });
+    }
+
+    const sequence = await allocateSequence({
+      context,
+      companyId: input.companyId,
+      ticketNumber: input.ticketNumber,
+      messageType,
+      input,
+      session,
+    });
+    const payload = {
+      _id: messageId,
+      companyId: input.companyId,
+      ticketId: context.ticket._id,
+      authorUserId: input.actorId,
+      sequence: sequence.sequence,
+      ...(sequence.publicSequence ? { publicSequence: sequence.publicSequence } : {}),
+      messageType,
+      body,
+      attachmentId,
+      ...notificationFieldsForMessage(messageType),
+    };
+    const created = await MessageModel.create([payload], { session });
+    const row = plain(Array.isArray(created) ? created[0] : created);
+    if (!row) throw ApiError.unavailable('The Helpdesk message could not be saved.');
+
+    if (attachmentPersistence) {
+      const activated = await AttachmentModel.updateOne(
+        attachmentPersistence.filter,
+        { $set: { persistenceStatus: 'ACTIVE', cleanupRequired: false } },
+        { session },
+      );
+      if (
+        activated?.acknowledged === false
+        || activated?.matchedCount === 0
+        || activated?.n === 0
+      ) {
+        throw ApiError.unavailable('Attachment persistence could not be confirmed.');
+      }
+    }
+
+    return { context, row };
+  });
+
   const persistTextMessage = async ({
     companyId,
     actorId,
@@ -399,54 +500,39 @@ export const helpdeskConversationService = (deps = {}) => {
     canManage,
   }) => {
     const messageId = new ObjectId();
-    const context = await loadWritableContext({
+    const input = {
       companyId,
       actorId,
       ticketNumber,
       canReadOwn,
       canReadQueue,
       canManage,
-    }, messageType);
-    const sequence = await allocateSequence({
-      context,
-      companyId,
-      ticketNumber,
-      messageType,
-      actorId,
-      input: { companyId, actorId, ticketNumber, canReadOwn, canReadQueue, canManage },
-    });
-    const payload = {
-      _id: messageId,
-      companyId,
-      ticketId: context.ticket._id,
-      authorUserId: actorId,
-      sequence: sequence.sequence,
-      ...(sequence.publicSequence ? { publicSequence: sequence.publicSequence } : {}),
-      messageType,
-      body,
-      attachmentId: null,
     };
-
-    let row;
+    let transactionContext = null;
+    let persisted;
     try {
-      row = plain(await MessageModel.create(payload));
+      persisted = await persistMessageInTransaction({
+        input,
+        body,
+        messageType,
+        messageId,
+        onContext: (context) => { transactionContext = context; },
+      });
     } catch (error) {
+      if (error?.commitOutcomeUnknown !== true) throw error;
       const outcome = await resolveMessageAfterAmbiguousWrite({
         messageId,
         companyId,
-        ticketId: context.ticket._id,
+        ticketId: transactionContext?.ticket?._id,
         actorId,
       });
-      if (outcome.state === 'found') {
-        row = outcome.row;
-      } else if (outcome.state === 'missing') {
-        if (error?.statusCode) throw error;
-        throw ApiError.unavailable('The Helpdesk message could not be saved.');
-      } else {
+      if (outcome.state !== 'found') {
         throw ApiError.unavailable('Helpdesk message persistence could not be confirmed.');
       }
+      persisted = { context: transactionContext, row: outcome.row };
     }
 
+    const { context, row } = persisted;
     if (messageType === 'PUBLIC' && context.audience === 'staff') {
       await slaService.persistFirstResponse({
         companyId,
@@ -692,83 +778,61 @@ export const helpdeskConversationService = (deps = {}) => {
         throw ApiError.unavailable('Attachment persistence could not be confirmed.');
       }
 
-      // Storage and Mongo are separate systems: re-read current authorization,
-      // confidentiality, attachment configuration and ticket state after the
-      // upload, immediately before the atomic ticket sequence reservation.
-      const finalContext = await loadWritableContext(input, messageType);
-      const finalConfig = await configService.getConfig({ companyId: input.companyId });
-      if (finalConfig.attachmentsEnabled !== true) {
-        throw ApiError.forbidden('Helpdesk attachments are not enabled for this tenant.');
-      }
-      const sequence = await allocateSequence({
-        context: finalContext,
-        companyId: input.companyId,
-        ticketNumber: input.ticketNumber,
-        messageType,
-        actorId: input.actorId,
-        input,
-      });
-
-      attachmentPayload = { ...attachmentPayload, ticketId: finalContext.ticket._id };
-      const messagePayload = {
-        _id: messageId,
-        companyId: input.companyId,
-        ticketId: finalContext.ticket._id,
-        authorUserId: input.actorId,
-        sequence: sequence.sequence,
-        ...(sequence.publicSequence ? { publicSequence: sequence.publicSequence } : {}),
-        messageType,
-        body,
-        attachmentId,
-      };
-      let messageRow;
+      // The provider upload remains outside Mongo. This transaction re-reads
+      // current authorization and tenant configuration, allocates both message
+      // counters, inserts the message, and activates its private metadata atomically.
+      let transactionContext = null;
+      let persisted;
       messageWriteState = 'attempted';
       try {
-        messageRow = plain(await MessageModel.create(messagePayload));
+        persisted = await persistMessageInTransaction({
+          input,
+          body,
+          messageType,
+          messageId,
+          attachmentId,
+          attachmentPersistence: {
+            ticketId: attachmentPayload.ticketId,
+            filter: {
+              ...attachmentScope(),
+              persistenceStatus: 'PENDING',
+              cleanupRequired: { $ne: true },
+            },
+          },
+          onContext: (context) => { transactionContext = context; },
+        });
         messageWriteState = 'committed';
       } catch (error) {
+        if (error?.commitOutcomeUnknown !== true) throw error;
         const outcome = await resolveMessageAfterAmbiguousWrite({
           messageId,
           companyId: input.companyId,
-          ticketId: finalContext.ticket._id,
+          ticketId: transactionContext?.ticket?._id || attachmentPayload.ticketId,
           actorId: input.actorId,
         });
         if (outcome.state === 'found') {
-          messageRow = outcome.row;
+          persisted = { context: transactionContext || initialContext, row: outcome.row };
           messageWriteState = 'committed';
-        } else if (outcome.state === 'unknown') {
+        } else {
+          // A missing read after an unknown commit is not proof of abort. Keep
+          // both private bytes and metadata for the existing reconciler.
           messageWriteState = 'unknown';
           throw ApiError.unavailable('Helpdesk message persistence could not be confirmed.');
-        } else {
-          messageWriteState = 'missing';
-          throw error;
         }
       }
 
-      if (messageType === 'PUBLIC' && finalContext.audience === 'staff') {
+      attachmentPayload = { ...attachmentPayload, ticketId: persisted.context.ticket._id };
+      if (messageType === 'PUBLIC' && persisted.context.audience === 'staff') {
         await slaService.persistFirstResponse({
           companyId: input.companyId,
-          ticketId: finalContext.ticket._id,
-          createdAt: messageRow?.createdAt || new Date(now()),
+          ticketId: persisted.context.ticket._id,
+          createdAt: persisted.row?.createdAt || new Date(now()),
         });
       }
 
-      try {
-        const activation = await AttachmentModel.updateOne(
-          { ...attachmentScope(), persistenceStatus: 'PENDING', cleanupRequired: { $ne: true } },
-          { $set: { persistenceStatus: 'ACTIVE', cleanupRequired: false } },
-        );
-        if (activation?.acknowledged === false || activation?.matchedCount === 0 || activation?.n === 0) {
-          throw new Error('attachment activation was not acknowledged');
-        }
-      } catch {
-        logRecovery('helpdesk.attachment.activation_pending');
-        throw ApiError.unavailable('The Helpdesk message was saved, but its attachment is temporarily unavailable.');
-      }
-
       return serializeMessage({
-        row: messageRow,
-        ticket: finalContext.ticket,
+        row: persisted.row,
+        ticket: persisted.context.ticket,
         authorName: displayNameForNewMessage(input.actorDisplayName),
         attachment: {
           _id: attachmentId,
@@ -786,8 +850,8 @@ export const helpdeskConversationService = (deps = {}) => {
           || !stored
         ) {
           // Never delete bytes while Mongo may have committed the referencing
-          // message. A bounded worker later activates a confirmed message or
-          // removes an unattached private object after a grace period.
+          // message. The bounded reconciler resolves uncertain/pending metadata
+          // against the message row and removes only confirmed orphans.
           logRecovery('helpdesk.attachment.reconciliation_pending');
         } else if (stored) {
           await compensateAttachmentWrite({ stored, attachmentPayload, attachmentPersisted });
