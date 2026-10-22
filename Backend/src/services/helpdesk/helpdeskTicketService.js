@@ -1,6 +1,7 @@
 import ApiError from '../../utils/ApiError.js';
 import HelpdeskAuthorizationFence from '../../models/HelpdeskAuthorizationFence.js';
 import HelpdeskTicket from '../../models/HelpdeskTicket.js';
+import HelpdeskTicketLifecycleEvent from '../../models/HelpdeskTicketLifecycleEvent.js';
 import HelpdeskQueue from '../../models/HelpdeskQueue.js';
 import User from '../../models/User.js';
 import TenantSequence from '../../models/TenantSequence.js';
@@ -28,6 +29,22 @@ import {
 } from './helpdeskDto.js';
 import { boundedSearchTerm } from '../../utils/searchInput.js';
 import {
+  addHelpdeskNotificationSequenceFilter,
+  buildHelpdeskTicketNotificationAppend,
+  buildHelpdeskTicketNotificationCreateFields,
+  diffHelpdeskSlaNotificationEvents,
+} from './helpdeskNotificationRules.js';
+import {
+  HELPDESK_AUTO_CLOSE_BATCH_MAX,
+  HELPDESK_AUTO_CLOSE_DELAY_DEFAULT_HOURS,
+  HELPDESK_REOPEN_WINDOW_DEFAULT_HOURS,
+  lifecycleCounterFilter,
+  normalizeHelpdeskFeedback,
+  normalizeHelpdeskReopenReason,
+  serializeHelpdeskFeedback,
+  snapshotHelpdeskSla,
+} from './helpdeskLifecycleRules.js';
+import {
   canReadHelpdeskTicket as canReadTicket,
   hasConfidentialHelpdeskAgentAccess as hasConfidentialAgentAccess,
   idString,
@@ -50,11 +67,38 @@ const ensureActorId = (actorId) => {
   if (!actorId) throw ApiError.unauthorized('An authenticated user is required');
 };
 
+const dateValue = (value) => {
+  if (value instanceof Date) return new Date(value.getTime());
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const addHours = (value, hours) => {
+  const date = dateValue(value);
+  return date ? new Date(date.getTime() + Number(hours) * 60 * 60 * 1000) : null;
+};
+
+const lifecycleTicketDto = (ticket) => ({
+  ticketNumber: String(ticket?.ticketNumber || ''),
+  status: String(ticket?.status || ''),
+  resolvedAt: ticket?.resolvedAt || null,
+  resolutionCycle: Number(ticket?.resolutionCycle) || 0,
+  reopenUntilAt: ticket?.reopenUntilAt || null,
+  reopenedAt: ticket?.reopenedAt || null,
+  closedAt: ticket?.closedAt || null,
+  resolutionConfirmedAt: ticket?.resolutionConfirmedAt || null,
+  autoCloseAt: ticket?.autoCloseAt || null,
+});
+
 export const helpdeskTicketService = (deps = {}) => {
   const TicketModel = deps.TicketModel || HelpdeskTicket;
+  const LifecycleEventModel = deps.LifecycleEventModel || HelpdeskTicketLifecycleEvent;
   const QueueModel = deps.QueueModel || HelpdeskQueue;
   const FenceModel = deps.FenceModel || HelpdeskAuthorizationFence;
   const transactionRunner = deps.transactionRunner || runHelpdeskTransaction;
+  // Integration harnesses may suppress only notification intent; authorization,
+  // transaction, and ticket persistence behavior remain the real service path.
+  const notificationIntentsEnabled = deps.notificationIntentsEnabled !== false;
   const UserModel = deps.UserModel || User;
   const SequenceModel = deps.SequenceModel || TenantSequence;
   const configService = deps.configService || helpdeskTenantConfigService({
@@ -68,6 +112,7 @@ export const helpdeskTicketService = (deps = {}) => {
     MessageModel: deps.MessageModel,
     holidayReader: deps.holidayReader,
     now: deps.now,
+    notificationIntentsEnabled,
   });
   const now = deps.now || (() => new Date());
 
@@ -181,6 +226,8 @@ export const helpdeskTicketService = (deps = {}) => {
     ticketNumber,
     ticket,
     update,
+    notificationEvents = [],
+    lifecycleEvent = null,
     includePriority = false,
     includeSlaVersion = false,
     managersOnly = false,
@@ -204,9 +251,28 @@ export const helpdeskTicketService = (deps = {}) => {
       queue: currentQueue,
       session,
     }) || {};
-    const updatePatch = typeof update === 'function'
+    const rawUpdatePatch = typeof update === 'function'
       ? await update({ ticket: currentTicket, queue: currentQueue, validation, session })
       : update;
+    const updatePatch = { ...(rawUpdatePatch || {}) };
+    const lifecycleSpec = typeof lifecycleEvent === 'function'
+      ? await lifecycleEvent({
+        ticket: currentTicket,
+        queue: currentQueue,
+        update: updatePatch,
+        validation,
+        session,
+      })
+      : lifecycleEvent;
+    const lifecycleSequence = lifecycleSpec
+      ? (Number(currentTicket.lifecycleSequence) || 0) + 1
+      : null;
+    if (lifecycleSpec) {
+      if (!Number.isSafeInteger(lifecycleSequence) || lifecycleSequence < 1) {
+        throw ApiError.conflict('The Helpdesk lifecycle sequence is invalid.');
+      }
+      updatePatch.lifecycleSequence = lifecycleSequence;
+    }
     const fenceEntries = [
       { queueId: currentQueue._id, userId: actorId },
       ...(validation.fenceEntries || []),
@@ -228,13 +294,31 @@ export const helpdeskTicketService = (deps = {}) => {
       });
     }
 
+    const notificationAppend = notificationIntentsEnabled
+      ? buildHelpdeskTicketNotificationAppend({
+        ticket: currentTicket,
+        eventTypes: notificationEvents,
+        at: now(),
+      })
+      : null;
     const filter = conditionalTicketFilter({
       companyId,
       ticket: currentTicket,
       includePriority,
       includeSlaVersion,
     });
+    if (lifecycleSpec) {
+      filter.lifecycleSequence = lifecycleCounterFilter(currentTicket.lifecycleSequence);
+    }
     const updateDocument = { $set: updatePatch };
+    if (notificationAppend) {
+      Object.assign(updateDocument, notificationAppend.update);
+      updateDocument.$set = {
+        ...updateDocument.$set,
+        ...(notificationAppend.update.$set || {}),
+      };
+      Object.assign(filter, addHelpdeskNotificationSequenceFilter({}, currentTicket));
+    }
     let query = TicketModel.findOneAndUpdate(
       filter,
       updateDocument,
@@ -247,8 +331,101 @@ export const helpdeskTicketService = (deps = {}) => {
       // a lost conditional write remains non-enumerating and never commits a fence alone.
       throw ApiError.conflict('The ticket changed while you were acting. Refresh and try again.');
     }
+    if (lifecycleSpec) {
+      await LifecycleEventModel.create([{
+        companyId,
+        ticketId: currentTicket._id,
+        ticketNumber: currentTicket.ticketNumber,
+        sequence: lifecycleSequence,
+        eventType: lifecycleSpec.eventType,
+        actorType: lifecycleSpec.actorType || 'USER',
+        actorId: lifecycleSpec.actorId ?? actorId ?? null,
+        fromStatus: lifecycleSpec.fromStatus ?? currentTicket.status ?? null,
+        toStatus: lifecycleSpec.toStatus ?? updatePatch.status ?? currentTicket.status ?? null,
+        occurredAt: lifecycleSpec.occurredAt || now(),
+        resolutionCycle: Number(lifecycleSpec.resolutionCycle ?? updatePatch.resolutionCycle ?? currentTicket.resolutionCycle) || 0,
+        reason: lifecycleSpec.reason ?? null,
+        slaSnapshot: lifecycleSpec.slaSnapshot ?? null,
+      }], { session });
+    }
     return { updated, queueName: validation.queueName || currentQueue.name };
   });
+
+  const commitLifecycleUpdate = async ({
+    companyId,
+    ticket,
+    session,
+    patch,
+    eventType,
+    actorType = 'USER',
+    actorId = null,
+    fromStatus = ticket.status,
+    toStatus = patch.status ?? ticket.status,
+    occurredAt,
+    reason = null,
+    resolutionCycle = ticket.resolutionCycle || 0,
+    slaBefore = ticket.sla,
+    slaAfter = patch.sla || ticket.sla,
+    notificationEvents = [],
+    extraFilter = {},
+  }) => {
+    const sequence = (Number(ticket.lifecycleSequence) || 0) + 1;
+    if (!Number.isSafeInteger(sequence) || sequence < 1) {
+      throw ApiError.conflict('The Helpdesk lifecycle sequence is invalid.');
+    }
+    const updatePatch = { ...patch, lifecycleSequence: sequence };
+    const filter = {
+      _id: ticket._id,
+      companyId,
+      ticketKind: SUPPORT_TICKET_KIND.HELPDESK,
+      ticketNumber: ticket.ticketNumber,
+      user: ticket.user,
+      status: ticket.status,
+      lifecycleSequence: lifecycleCounterFilter(ticket.lifecycleSequence),
+      ...extraFilter,
+      ...(ticket.sla ? { 'sla.version': Number(ticket.sla.version) || 1 } : {}),
+    };
+    const notificationAppend = notificationIntentsEnabled
+      ? buildHelpdeskTicketNotificationAppend({ ticket, eventTypes: notificationEvents, at: occurredAt })
+      : null;
+    const updateDocument = { $set: updatePatch };
+    if (notificationAppend) {
+      Object.assign(updateDocument, notificationAppend.update);
+      updateDocument.$set = {
+        ...updateDocument.$set,
+        ...(notificationAppend.update.$set || {}),
+      };
+      Object.assign(filter, addHelpdeskNotificationSequenceFilter({}, ticket));
+    }
+    let query = TicketModel.findOneAndUpdate(
+      filter,
+      updateDocument,
+      { returnDocument: 'after', runValidators: true, session },
+    );
+    if (typeof query?.lean === 'function') query = query.lean();
+    const updated = await query;
+    if (!updated) throw ApiError.conflict('The ticket changed while you were acting. Refresh and try again.');
+
+    await LifecycleEventModel.create([{
+      companyId,
+      ticketId: ticket._id,
+      ticketNumber: ticket.ticketNumber,
+      sequence,
+      eventType,
+      actorType,
+      actorId,
+      fromStatus,
+      toStatus,
+      occurredAt,
+      resolutionCycle: Number(resolutionCycle) || 0,
+      reason,
+      slaSnapshot: {
+        before: snapshotHelpdeskSla(slaBefore),
+        after: snapshotHelpdeskSla(slaAfter),
+      },
+    }], { session });
+    return updated;
+  };
 
   const listMine = async ({ companyId, requesterId, query = {} } = {}) => {
     ensureCompanyId(companyId);
@@ -499,11 +676,21 @@ export const helpdeskTicketService = (deps = {}) => {
       createdAt,
     });
     const ticketNumber = await nextHelpdeskTicketNumber(companyId, { SequenceModel });
+    const creationNotificationAppend = notificationIntentsEnabled
+      ? buildHelpdeskTicketNotificationAppend({
+        ticket: {},
+        eventTypes: ['TICKET_CREATED'],
+        at: createdAt,
+      })
+      : null;
     const ticket = await TicketModel.create({
       companyId,
       user: requesterId,
       ticketKind: SUPPORT_TICKET_KIND.HELPDESK,
       ticketNumber,
+      ...(creationNotificationAppend
+        ? buildHelpdeskTicketNotificationCreateFields(creationNotificationAppend)
+        : {}),
       queueId: queue._id,
       categoryId: category._id,
       categoryName: category.name,
@@ -553,7 +740,8 @@ export const helpdeskTicketService = (deps = {}) => {
       // Returning an active assignment to the open queue also releases its agent.
       update.assignedTo = null;
     }
-    const transitionAt = now();
+    const transitionAt = dateValue(now());
+    if (!transitionAt) throw ApiError.unavailable('A trusted Helpdesk timestamp is unavailable.');
     const sla = ticket.sla
       ? await slaService.applyStatusTransition({
         companyId,
@@ -563,16 +751,86 @@ export const helpdeskTicketService = (deps = {}) => {
         at: transitionAt,
       })
       : null;
+    const statusEvent = nextStatus === 'resolved'
+      ? 'TICKET_RESOLVED'
+      : ticket.status === 'resolved' && nextStatus === 'in_progress'
+        ? 'TICKET_REOPENED_BY_STAFF'
+        : ticket.status === 'resolved' && nextStatus === 'closed'
+          ? 'TICKET_CLOSED'
+          : 'TICKET_STATUS_CHANGED';
+    const lifecycleEventType = nextStatus === 'resolved'
+      ? 'RESOLVED'
+      : ticket.status === 'resolved' && nextStatus === 'in_progress'
+        ? 'STAFF_REOPENED'
+        : ticket.status === 'resolved' && nextStatus === 'closed'
+          ? 'STAFF_CLOSED'
+          : null;
     const result = await commitConditionalUpdate({
       companyId,
       actorId,
       ticketNumber,
       ticket,
-      update: { ...update, ...(sla ? { sla } : {}) },
+      update: ({ ticket: currentTicket, validation }) => {
+        const patch = { ...update, ...(sla ? { sla } : {}) };
+        if (nextStatus === 'resolved') {
+          const config = validation.tenantConfig || {};
+          const reopenWindowHours = Number(config.reopenWindowHours) || HELPDESK_REOPEN_WINDOW_DEFAULT_HOURS;
+          const autoCloseDelayHours = Number(config.autoCloseDelayHours) || HELPDESK_AUTO_CLOSE_DELAY_DEFAULT_HOURS;
+          patch.resolvedAt = transitionAt;
+          patch.resolvedBy = actorId;
+          patch.resolutionCycle = (Number(currentTicket.resolutionCycle) || 0) + 1;
+          patch.reopenUntilAt = addHours(transitionAt, reopenWindowHours);
+          patch.autoCloseAt = config.autoCloseEnabled === true
+            ? addHours(transitionAt, autoCloseDelayHours)
+            : null;
+          patch.reopenedAt = null;
+          patch.reopenedBy = null;
+          patch.reopenReason = null;
+          patch.resolutionConfirmedAt = null;
+          patch.resolutionConfirmedBy = null;
+          patch.closedAt = null;
+          patch.closedBy = null;
+          patch.closureReason = null;
+        } else if (ticket.status === 'resolved' && nextStatus === 'in_progress') {
+          patch.reopenedAt = transitionAt;
+          patch.reopenedBy = actorId;
+          patch.reopenReason = null;
+          patch.autoCloseAt = null;
+        } else if (nextStatus === 'closed') {
+          patch.closedAt = transitionAt;
+          patch.closedBy = actorId;
+          patch.closureReason = 'STAFF_CLOSED';
+          patch.autoCloseAt = null;
+        }
+        return patch;
+      },
+      notificationEvents: [
+        statusEvent,
+        ...diffHelpdeskSlaNotificationEvents(ticket.sla, sla),
+      ],
+      lifecycleEvent: lifecycleEventType
+        ? ({ ticket: currentTicket, update: patch }) => ({
+          eventType: lifecycleEventType,
+          actorType: 'USER',
+          actorId,
+          fromStatus: currentTicket.status,
+          toStatus: nextStatus,
+          occurredAt: transitionAt,
+          resolutionCycle: patch.resolutionCycle ?? currentTicket.resolutionCycle ?? 0,
+          slaSnapshot: {
+            before: snapshotHelpdeskSla(currentTicket.sla),
+            after: snapshotHelpdeskSla(patch.sla || currentTicket.sla),
+          },
+        })
+        : null,
       includePriority: true,
       includeSlaVersion: Boolean(ticket.sla),
       validateInTransaction: async ({ ticket: currentTicket, queue: currentQueue, session }) => {
-        if (nextStatus !== 'assigned') return {};
+        const validation = {};
+        if (nextStatus === 'resolved') {
+          validation.tenantConfig = await readConfigInTransaction({ companyId, session });
+        }
+        if (nextStatus !== 'assigned') return validation;
         const assignedAgentId = idString(currentTicket.assignedTo);
         if (!assignedAgentId || !includesId(currentQueue.agents, assignedAgentId)
           || (currentTicket.isConfidential === true
@@ -589,10 +847,322 @@ export const helpdeskTicketService = (deps = {}) => {
         if (!activeAssignee) {
           throw ApiError.conflict('Assign the ticket to an active queue agent before marking it assigned');
         }
-        return { fenceEntries: [{ queueId: currentQueue._id, userId: assignedAgentId }] };
+        validation.fenceEntries = [{ queueId: currentQueue._id, userId: assignedAgentId }];
+        return validation;
       },
     });
     return serializeHelpdeskAgentTicketDetails(result.updated, { queueName: result.queueName });
+  };
+
+  const getTenantTicketContext = async ({ companyId, ticketNumber, session }) => {
+    const ticket = await findTicket(companyId, ticketNumber, session);
+    if (!ticket) throw ApiError.notFound('Helpdesk ticket not found');
+    const queue = await findQueue(companyId, ticket.queueId, session);
+    if (!queue) throw ApiError.notFound('Helpdesk ticket not found');
+    return { ticket, queue };
+  };
+
+  const getRequesterTicketContext = async ({ companyId, requesterId, ticketNumber, session }) => {
+    const context = await getTenantTicketContext({ companyId, ticketNumber, session });
+    if (idString(context.ticket.user) !== idString(requesterId)) {
+      throw ApiError.notFound('Helpdesk ticket not found');
+    }
+    return context;
+  };
+
+  const confirmResolution = async ({ companyId, requesterId, ticketNumber } = {}) => {
+    ensureCompanyId(companyId);
+    ensureActorId(requesterId);
+    if (!TICKET_NUMBER.test(String(ticketNumber || ''))) throw ApiError.notFound('Helpdesk ticket not found');
+
+    return transactionRunner(async (session) => {
+      const { ticket } = await getRequesterTicketContext({ companyId, requesterId, ticketNumber, session });
+      if (
+        ticket.status === 'closed'
+        && ticket.closureReason === 'REQUESTER_CONFIRMED'
+        && idString(ticket.resolutionConfirmedBy) === idString(requesterId)
+      ) {
+        return { ...lifecycleTicketDto(ticket), idempotent: true };
+      }
+      if (ticket.status !== 'resolved') {
+        throw ApiError.conflict('Only a resolved ticket can be confirmed.');
+      }
+      const confirmedAt = dateValue(now());
+      if (!confirmedAt) throw ApiError.unavailable('A trusted Helpdesk timestamp is unavailable.');
+      const sla = ticket.sla
+        ? await slaService.applyStatusTransition({
+          companyId,
+          ticket,
+          fromStatus: 'resolved',
+          toStatus: 'closed',
+          at: confirmedAt,
+        })
+        : null;
+      const patch = {
+        status: 'closed',
+        closedAt: confirmedAt,
+        closedBy: requesterId,
+        closureReason: 'REQUESTER_CONFIRMED',
+        resolutionConfirmedAt: confirmedAt,
+        resolutionConfirmedBy: requesterId,
+        autoCloseAt: null,
+        ...(sla ? { sla } : {}),
+      };
+      const updated = await commitLifecycleUpdate({
+        companyId,
+        ticket,
+        session,
+        patch,
+        eventType: 'REQUESTER_CONFIRMED_RESOLUTION',
+        actorType: 'USER',
+        actorId: requesterId,
+        fromStatus: 'resolved',
+        toStatus: 'closed',
+        occurredAt: confirmedAt,
+        resolutionCycle: ticket.resolutionCycle || 0,
+        slaBefore: ticket.sla,
+        slaAfter: sla || ticket.sla,
+        notificationEvents: ['TICKET_RESOLUTION_CONFIRMED'],
+      });
+      return { ...lifecycleTicketDto(updated), idempotent: false };
+    });
+  };
+
+  const reopenOwnTicket = async ({ companyId, requesterId, ticketNumber, reason } = {}) => {
+    ensureCompanyId(companyId);
+    ensureActorId(requesterId);
+    const normalizedReason = normalizeHelpdeskReopenReason(reason);
+    if (!TICKET_NUMBER.test(String(ticketNumber || ''))) throw ApiError.notFound('Helpdesk ticket not found');
+
+    return transactionRunner(async (session) => {
+      const { ticket } = await getRequesterTicketContext({ companyId, requesterId, ticketNumber, session });
+      if (ticket.status !== 'resolved') {
+        throw ApiError.conflict('Only a resolved ticket can be reopened.');
+      }
+      const config = await readConfigInTransaction({ companyId, session });
+      if (config.allowEmployeeReopen === false) {
+        throw ApiError.forbidden('Employee reopening is disabled for this tenant.');
+      }
+      const resolvedAt = dateValue(ticket.resolvedAt);
+      if (!resolvedAt) {
+        throw ApiError.conflict('This ticket has no recorded resolution time and cannot be reopened.');
+      }
+      const configuredWindow = Number(config.reopenWindowHours) || HELPDESK_REOPEN_WINDOW_DEFAULT_HOURS;
+      const reopenUntilAt = dateValue(ticket.reopenUntilAt) || addHours(resolvedAt, configuredWindow);
+      const reopenedAt = dateValue(now());
+      if (!reopenedAt) throw ApiError.unavailable('A trusted Helpdesk timestamp is unavailable.');
+      if (!reopenUntilAt || reopenedAt.getTime() > reopenUntilAt.getTime()) {
+        throw ApiError.conflict('The Helpdesk reopening window has expired.');
+      }
+      const sla = ticket.sla
+        ? await slaService.applyStatusTransition({
+          companyId,
+          ticket,
+          fromStatus: 'resolved',
+          toStatus: 'in_progress',
+          at: reopenedAt,
+        })
+        : null;
+      const patch = {
+        status: 'in_progress',
+        reopenUntilAt,
+        reopenedAt,
+        reopenedBy: requesterId,
+        reopenReason: normalizedReason,
+        autoCloseAt: null,
+        ...(sla ? { sla } : {}),
+      };
+      const updated = await commitLifecycleUpdate({
+        companyId,
+        ticket,
+        session,
+        patch,
+        eventType: 'REQUESTER_REOPENED',
+        actorType: 'USER',
+        actorId: requesterId,
+        fromStatus: 'resolved',
+        toStatus: 'in_progress',
+        occurredAt: reopenedAt,
+        reason: normalizedReason,
+        resolutionCycle: ticket.resolutionCycle || 0,
+        slaBefore: ticket.sla,
+        slaAfter: sla || ticket.sla,
+        notificationEvents: ['TICKET_REOPENED_BY_REQUESTER'],
+      });
+      return lifecycleTicketDto(updated);
+    });
+  };
+
+  const submitFeedback = async ({ companyId, requesterId, ticketNumber, rating, comment } = {}) => {
+    ensureCompanyId(companyId);
+    ensureActorId(requesterId);
+    const feedback = normalizeHelpdeskFeedback({ rating, comment });
+    if (!TICKET_NUMBER.test(String(ticketNumber || ''))) throw ApiError.notFound('Helpdesk ticket not found');
+
+    return transactionRunner(async (session) => {
+      const { ticket } = await getRequesterTicketContext({ companyId, requesterId, ticketNumber, session });
+      if (!['resolved', 'closed'].includes(String(ticket.status || '').toLowerCase())) {
+        throw ApiError.conflict('Feedback is available only after ticket resolution.');
+      }
+      if (ticket.feedback) throw ApiError.conflict('Feedback has already been submitted for this ticket.');
+      const submittedAt = dateValue(now());
+      if (!submittedAt) throw ApiError.unavailable('A trusted Helpdesk timestamp is unavailable.');
+      const feedbackRecord = {
+        ...feedback,
+        submittedAt,
+        submittedBy: requesterId,
+      };
+      const updated = await commitLifecycleUpdate({
+        companyId,
+        ticket,
+        session,
+        patch: { feedback: feedbackRecord },
+        eventType: 'FEEDBACK_SUBMITTED',
+        actorType: 'USER',
+        actorId: requesterId,
+        fromStatus: ticket.status,
+        toStatus: ticket.status,
+        occurredAt: submittedAt,
+        resolutionCycle: ticket.resolutionCycle || 0,
+        slaBefore: ticket.sla,
+        slaAfter: ticket.sla,
+        notificationEvents: ['TICKET_FEEDBACK_SUBMITTED'],
+        extraFilter: { $or: [{ feedback: { $exists: false } }, { feedback: null }] },
+      });
+      return serializeHelpdeskFeedback(updated.feedback);
+    });
+  };
+
+  const getFeedback = async ({
+    companyId,
+    viewerId,
+    ticketNumber,
+    canReadOwn = false,
+    canReadQueue = false,
+  } = {}) => {
+    ensureCompanyId(companyId);
+    ensureActorId(viewerId);
+    const ticket = await findTicket(companyId, ticketNumber);
+    if (!ticket) throw ApiError.notFound('Helpdesk ticket not found');
+    const queue = await findQueue(companyId, ticket.queueId);
+    if (!queue) throw ApiError.notFound('Helpdesk ticket not found');
+    const isRequester = canReadOwn === true && idString(ticket.user) === idString(viewerId);
+    if (!isRequester && !canReadTicket({
+      ticket,
+      queue,
+      viewerId,
+      access: { canReadOwn: false, canReadQueue },
+    })) {
+      throw ApiError.notFound('Helpdesk ticket not found');
+    }
+    return {
+      ticketNumber: ticket.ticketNumber,
+      feedback: serializeHelpdeskFeedback(ticket.feedback),
+    };
+  };
+
+  const closeAutoDueTicket = async ({ candidate, at }) => transactionRunner(async (session) => {
+    const { ticket } = await getTenantTicketContext({
+      companyId: candidate.companyId,
+      ticketNumber: candidate.ticketNumber,
+      session,
+    });
+    if (
+      idString(ticket._id) !== idString(candidate._id)
+      || ticket.status !== 'resolved'
+      || !dateValue(ticket.autoCloseAt)
+      || dateValue(ticket.autoCloseAt).getTime() > at.getTime()
+    ) return { closed: false, skipped: true };
+
+    const config = await readConfigInTransaction({ companyId: ticket.companyId, session });
+    if (config.autoCloseEnabled !== true) {
+      const filter = {
+        _id: ticket._id,
+        companyId: ticket.companyId,
+        ticketKind: SUPPORT_TICKET_KIND.HELPDESK,
+        user: ticket.user,
+        status: 'resolved',
+        autoCloseAt: ticket.autoCloseAt,
+        lifecycleSequence: lifecycleCounterFilter(ticket.lifecycleSequence),
+      };
+      const query = TicketModel.findOneAndUpdate(
+        filter,
+        { $set: { autoCloseAt: null } },
+        { returnDocument: 'after', runValidators: true, session },
+      );
+      await query;
+      return { closed: false, skipped: true, policyDisabled: true };
+    }
+
+    const sla = ticket.sla
+      ? await slaService.applyStatusTransition({
+        companyId: ticket.companyId,
+        ticket,
+        fromStatus: 'resolved',
+        toStatus: 'closed',
+        at,
+      })
+      : null;
+    const patch = {
+      status: 'closed',
+      closedAt: at,
+      closedBy: null,
+      closureReason: 'AUTO_CLOSED',
+      autoCloseAt: null,
+      ...(sla ? { sla } : {}),
+    };
+    const updated = await commitLifecycleUpdate({
+      companyId: ticket.companyId,
+      ticket,
+      session,
+      patch,
+      eventType: 'AUTO_CLOSED',
+      actorType: 'SYSTEM',
+      actorId: null,
+      fromStatus: 'resolved',
+      toStatus: 'closed',
+      occurredAt: at,
+      resolutionCycle: ticket.resolutionCycle || 0,
+      slaBefore: ticket.sla,
+      slaAfter: sla || ticket.sla,
+      notificationEvents: ['TICKET_AUTO_CLOSED'],
+      extraFilter: { autoCloseAt: ticket.autoCloseAt },
+    });
+    return { closed: Boolean(updated), skipped: !updated };
+  });
+
+  const reconcileDueAutoClosures = async ({ limit = HELPDESK_AUTO_CLOSE_BATCH_MAX, now: at } = {}) => {
+    const when = dateValue(at) || dateValue(now());
+    if (!when) throw ApiError.unavailable('A trusted Helpdesk timestamp is unavailable.');
+    const batchSize = Number.isInteger(Number(limit))
+      ? Math.min(HELPDESK_AUTO_CLOSE_BATCH_MAX, Math.max(1, Number(limit)))
+      : HELPDESK_AUTO_CLOSE_BATCH_MAX;
+    let candidates = TicketModel.find({
+      ticketKind: SUPPORT_TICKET_KIND.HELPDESK,
+      status: 'resolved',
+      autoCloseAt: { $type: 'date', $lte: when },
+    });
+    if (typeof candidates?.select === 'function') {
+      candidates = candidates.select(
+        '_id companyId user queueId ticketNumber status lifecycleSequence resolutionCycle resolvedAt autoCloseAt sla ' +
+          'notificationSequence notificationProcessedSequence notificationEvents notificationGap',
+      );
+    }
+    if (typeof candidates?.sort === 'function') candidates = candidates.sort({ autoCloseAt: 1, companyId: 1, _id: 1 });
+    if (typeof candidates?.limit === 'function') candidates = candidates.limit(batchSize);
+    if (typeof candidates?.lean === 'function') candidates = candidates.lean();
+    const rows = await candidates;
+    const summary = { inspected: (rows || []).length, closed: 0, skipped: 0, failed: 0, limit: batchSize };
+    for (const candidate of rows || []) {
+      try {
+        const result = await closeAutoDueTicket({ candidate, at: when });
+        if (result.closed) summary.closed += 1;
+        else summary.skipped += 1;
+      } catch {
+        summary.failed += 1;
+      }
+    }
+    return summary;
   };
 
   const updatePriority = async ({ companyId, actorId, ticketNumber, priority } = {}) => {
@@ -623,6 +1193,7 @@ export const helpdeskTicketService = (deps = {}) => {
       ticketNumber,
       ticket,
       update: { priority: nextPriority, ...(sla ? { sla } : {}) },
+      notificationEvents: diffHelpdeskSlaNotificationEvents(ticket.sla, sla),
       includePriority: true,
       includeSlaVersion: Boolean(ticket.sla),
     });
@@ -674,6 +1245,7 @@ export const helpdeskTicketService = (deps = {}) => {
       ticket,
       managersOnly: true,
       update: { assignedTo: activeAssignee._id, status: nextStatus },
+      notificationEvents: [ticket.assignedTo ? 'TICKET_REASSIGNED' : 'TICKET_ASSIGNED'],
       validateInTransaction: async ({ ticket: currentTicket, queue: currentQueue, session }) => {
         if (!includesId(currentQueue.agents, assigneeId)) {
           throw ApiError.badRequest('Assignee must be an explicitly assigned queue agent');
@@ -715,6 +1287,7 @@ export const helpdeskTicketService = (deps = {}) => {
       ticket,
       agentsOnly: true,
       update: { assignedTo: actorId, status: 'assigned' },
+      notificationEvents: ['TICKET_CLAIMED'],
       validateInTransaction: async ({ ticket: currentTicket }) => {
         if (currentTicket.status !== 'open' || currentTicket.assignedTo) {
           throw ApiError.conflict('The ticket was claimed or changed by another agent');
@@ -819,6 +1392,10 @@ export const helpdeskTicketService = (deps = {}) => {
         ...validation.update,
         ...(sla ? { sla } : {}),
       }),
+      notificationEvents: [
+        'TICKET_TRANSFERRED',
+        ...diffHelpdeskSlaNotificationEvents(ticket.sla, sla),
+      ],
       validateInTransaction: async ({ ticket: currentTicket, queue: currentSourceQueue, session }) => {
         const currentTargetQueue = await findQueue(companyId, normalized.queueId, session);
         if (!currentTargetQueue || currentTargetQueue.enabled === false) {
@@ -913,7 +1490,8 @@ export const helpdeskTicketService = (deps = {}) => {
     const currentQuery = TicketModel.findOne(activeFilter);
     const current = await (typeof currentQuery?.select === 'function'
       ? currentQuery.select(
-        '_id companyId user queueId ticketNumber status priority sla',
+        '_id companyId user queueId ticketNumber status priority sla ' +
+          'notificationSequence notificationProcessedSequence notificationEvents notificationGap',
       ).lean()
       : currentQuery);
     if (current) {
@@ -938,7 +1516,25 @@ export const helpdeskTicketService = (deps = {}) => {
           ? { 'sla.version': current.sla.version ?? { $exists: false } }
           : {}),
       };
+      const notificationAppend = notificationIntentsEnabled
+        ? buildHelpdeskTicketNotificationAppend({
+          ticket: current,
+          eventTypes: [
+            'TICKET_CANCELLED',
+            ...diffHelpdeskSlaNotificationEvents(current.sla, sla),
+          ],
+          at: cancelledAt,
+        })
+        : null;
       const cancellationUpdate = { $set: { status: 'cancelled', ...(sla ? { sla } : {}) } };
+      if (notificationAppend) {
+        Object.assign(cancellationFilter, addHelpdeskNotificationSequenceFilter({}, current));
+        Object.assign(cancellationUpdate, notificationAppend.update);
+        cancellationUpdate.$set = {
+          ...cancellationUpdate.$set,
+          ...(notificationAppend.update.$set || {}),
+        };
+      }
       const updated = await TicketModel.findOneAndUpdate(
         cancellationFilter,
         cancellationUpdate,
@@ -966,6 +1562,11 @@ export const helpdeskTicketService = (deps = {}) => {
     createTicket,
     claimTicket,
     updateStatus,
+    confirmResolution,
+    reopenOwnTicket,
+    submitFeedback,
+    getFeedback,
+    reconcileDueAutoClosures,
     updatePriority,
     assignTicket,
     transferTicket,

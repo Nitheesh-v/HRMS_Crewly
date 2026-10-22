@@ -4,6 +4,12 @@ import HelpdeskTenantConfig, {
 import ApiError from '../../utils/ApiError.js';
 import { serializeHelpdeskConfig } from './helpdeskDto.js';
 import { HELPDESK_PRIORITIES } from './helpdeskRules.js';
+import {
+  HELPDESK_AUTO_CLOSE_DELAY_MAX_HOURS,
+  HELPDESK_AUTO_CLOSE_DELAY_MIN_HOURS,
+  HELPDESK_REOPEN_WINDOW_MAX_HOURS,
+  HELPDESK_REOPEN_WINDOW_MIN_HOURS,
+} from './helpdeskLifecycleRules.js';
 
 const CONFIG_FIELDS = Object.freeze([
   'enabled',
@@ -11,6 +17,10 @@ const CONFIG_FIELDS = Object.freeze([
   'attachmentsEnabled',
   'confidentialTicketsEnabled',
   'defaultPriority',
+  'allowEmployeeReopen',
+  'reopenWindowHours',
+  'autoCloseEnabled',
+  'autoCloseDelayHours',
 ]);
 
 const ensureCompanyId = (companyId) => {
@@ -30,7 +40,7 @@ const validateConfigPatch = (input = {}) => {
   }
 
   const patch = {};
-  for (const field of ['enabled', 'allowEmployeeTickets', 'attachmentsEnabled', 'confidentialTicketsEnabled']) {
+  for (const field of ['enabled', 'allowEmployeeTickets', 'attachmentsEnabled', 'confidentialTicketsEnabled', 'allowEmployeeReopen', 'autoCloseEnabled']) {
     if (input[field] === undefined) continue;
     if (typeof input[field] !== 'boolean') {
       throw ApiError.badRequest(`${field} must be a boolean`);
@@ -44,6 +54,17 @@ const validateConfigPatch = (input = {}) => {
       throw ApiError.badRequest('defaultPriority is not supported');
     }
     patch.defaultPriority = priority;
+  }
+
+  for (const [field, minimum, maximum] of [
+    ['reopenWindowHours', HELPDESK_REOPEN_WINDOW_MIN_HOURS, HELPDESK_REOPEN_WINDOW_MAX_HOURS],
+    ['autoCloseDelayHours', HELPDESK_AUTO_CLOSE_DELAY_MIN_HOURS, HELPDESK_AUTO_CLOSE_DELAY_MAX_HOURS],
+  ]) {
+    if (input[field] === undefined) continue;
+    if (!Number.isInteger(input[field]) || input[field] < minimum || input[field] > maximum) {
+      throw ApiError.badRequest(`${field} must be an integer from ${minimum} to ${maximum}`);
+    }
+    patch[field] = input[field];
   }
 
   return patch;

@@ -14,6 +14,14 @@ import {
   HELPDESK_MESSAGE_HISTORY_MAX_LIMIT,
   HELPDESK_MESSAGE_VISIBILITIES,
 } from '../services/helpdesk/helpdeskRules.js';
+import {
+  HELPDESK_AUTO_CLOSE_DELAY_MAX_HOURS,
+  HELPDESK_AUTO_CLOSE_DELAY_MIN_HOURS,
+  HELPDESK_FEEDBACK_COMMENT_MAX,
+  HELPDESK_REOPEN_REASON_MAX,
+  HELPDESK_REOPEN_WINDOW_MAX_HOURS,
+  HELPDESK_REOPEN_WINDOW_MIN_HOURS,
+} from '../services/helpdesk/helpdeskLifecycleRules.js';
 
 const validate = (req, _res, next) => {
   const errors = validationResult(req);
@@ -56,6 +64,10 @@ const configFields = [
   'attachmentsEnabled',
   'confidentialTicketsEnabled',
   'defaultPriority',
+  'allowEmployeeReopen',
+  'reopenWindowHours',
+  'autoCloseEnabled',
+  'autoCloseDelayHours',
 ];
 
 const queueFields = [
@@ -100,9 +112,19 @@ export const helpdeskConfigUpdateValidator = [
     if (!Object.keys(req.body || {}).length) throw new Error('Supply at least one Helpdesk setting');
     return true;
   }),
-  ...['enabled', 'allowEmployeeTickets', 'attachmentsEnabled', 'confidentialTicketsEnabled'].map((field) =>
+  ...['enabled', 'allowEmployeeTickets', 'attachmentsEnabled', 'confidentialTicketsEnabled', 'allowEmployeeReopen', 'autoCloseEnabled'].map((field) =>
     body(field).optional().isBoolean().withMessage(`${field} must be a boolean`),
   ),
+  body('reopenWindowHours')
+    .optional()
+    .isInt({ min: HELPDESK_REOPEN_WINDOW_MIN_HOURS, max: HELPDESK_REOPEN_WINDOW_MAX_HOURS })
+    .withMessage(`reopenWindowHours must be an integer from ${HELPDESK_REOPEN_WINDOW_MIN_HOURS} to ${HELPDESK_REOPEN_WINDOW_MAX_HOURS}`)
+    .toInt(),
+  body('autoCloseDelayHours')
+    .optional()
+    .isInt({ min: HELPDESK_AUTO_CLOSE_DELAY_MIN_HOURS, max: HELPDESK_AUTO_CLOSE_DELAY_MAX_HOURS })
+    .withMessage(`autoCloseDelayHours must be an integer from ${HELPDESK_AUTO_CLOSE_DELAY_MIN_HOURS} to ${HELPDESK_AUTO_CLOSE_DELAY_MAX_HOURS}`)
+    .toInt(),
   body('defaultPriority')
     .optional()
     .custom((value) => isHelpdeskPriority(value))
@@ -371,6 +393,51 @@ export const helpdeskAttachmentMessageValidator = [
 export const helpdeskAttachmentIdParamValidator = [
   ticketNumberParam,
   param('attachmentId').isMongoId().withMessage('attachmentId is invalid'),
+  validate,
+];
+
+export const helpdeskTicketConfirmResolutionValidator = [
+  ticketNumberParam,
+  onlyBodyFields([]),
+  validate,
+];
+
+export const helpdeskTicketReopenValidator = [
+  ticketNumberParam,
+  onlyBodyFields(['reason']),
+  body('reason')
+    .exists()
+    .withMessage('reason is required')
+    .bail()
+    .isString()
+    .trim()
+    .isLength({ min: 1, max: HELPDESK_REOPEN_REASON_MAX })
+    .withMessage(`reason must be 1–${HELPDESK_REOPEN_REASON_MAX} characters`),
+  validate,
+];
+
+export const helpdeskTicketFeedbackValidator = [
+  ticketNumberParam,
+  onlyBodyFields(['rating', 'comment']),
+  body('rating')
+    .exists()
+    .withMessage('rating is required')
+    .bail()
+    .isInt({ min: 1, max: 5 })
+    .withMessage('rating must be an integer from 1 to 5')
+    .toInt(),
+  body('comment')
+    .optional({ nullable: true })
+    .isString()
+    .withMessage('comment must be plain text')
+    .bail()
+    .isLength({ max: HELPDESK_FEEDBACK_COMMENT_MAX })
+    .withMessage(`comment must be ${HELPDESK_FEEDBACK_COMMENT_MAX} characters or fewer`),
+  validate,
+];
+
+export const helpdeskTicketFeedbackReadValidator = [
+  ticketNumberParam,
   validate,
 ];
 

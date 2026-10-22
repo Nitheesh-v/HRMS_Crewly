@@ -3,6 +3,20 @@ import { runHelpdeskTransaction } from '../../src/services/helpdesk/helpdeskTran
 export const runFakeHelpdeskTransaction = async (work) =>
   work({ id: 'fake-helpdesk-session' });
 
+export const makeFakeHelpdeskLifecycleEventModel = () => {
+  const rows = [];
+  return {
+    rows,
+    async create(documents, options = {}) {
+      const inserted = (Array.isArray(documents) ? documents : [documents]).map((document) => ({
+        ...structuredClone(document),
+      }));
+      rows.push(...inserted);
+      return inserted;
+    },
+  };
+};
+
 export const makeFakeHelpdeskFenceModel = () => {
   const rows = new Map();
   const calls = [];

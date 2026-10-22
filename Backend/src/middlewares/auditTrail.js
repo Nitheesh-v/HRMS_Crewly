@@ -14,6 +14,9 @@ const LABELS = [
   [/^PATCH \/api\/helpdesk\/tickets\/.*\/priority$/, 'Changed a Helpdesk ticket priority'],
   [/^PATCH \/api\/helpdesk\/tickets\/.*\/status$/, 'Changed a Helpdesk ticket status'],
   [/^PATCH \/api\/helpdesk\/tickets\/.*\/transfer$/, 'Transferred a Helpdesk ticket'],
+  [/^POST \/api\/helpdesk\/tickets\/mine\/.*\/confirm-resolution$/, 'Confirmed a Helpdesk resolution'],
+  [/^POST \/api\/helpdesk\/tickets\/mine\/.*\/reopen$/, 'Reopened a Helpdesk ticket'],
+  [/^POST \/api\/helpdesk\/tickets\/mine\/.*\/feedback$/, 'Submitted Helpdesk satisfaction feedback'],
   [/^POST \/api\/helpdesk\/tickets\/.*\/messages$/, 'Posted a Helpdesk message'],
   [/^POST \/api\/helpdesk\/tickets\/.*\/attachments$/, 'Added a Helpdesk attachment'],
   [/^POST \/api\/users$/, 'Created a user'],
@@ -60,6 +63,9 @@ const EXPLICIT_HELPDESK_AUDIT_ACTIONS = new Set([
   'Added a Helpdesk internal note',
   'Added an attachment to a Helpdesk public reply',
   'Added an attachment to a Helpdesk internal note',
+  'Confirmed a Helpdesk resolution',
+  'Reopened a Helpdesk ticket',
+  'Submitted Helpdesk satisfaction feedback',
 ]);
 
 const labelFor = (method, url, explicitAction = null) => {

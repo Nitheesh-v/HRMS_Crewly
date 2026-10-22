@@ -5,6 +5,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
   makeFakeHelpdeskFenceModel,
+  makeFakeHelpdeskLifecycleEventModel,
   makeHelpdeskFenceRaceHarness,
   runFakeHelpdeskTransaction,
 } from './helpers/helpdeskTransactions.js';
@@ -330,6 +331,7 @@ const makeWorld = ({ tickets = [], queues, config = {}, transactionRunner = runF
   const QueueModel = makeQueueModel(queues);
   const UserModel = makeUserModel();
   const FenceModel = suppliedFenceModel || makeFakeHelpdeskFenceModel();
+  const LifecycleEventModel = makeFakeHelpdeskLifecycleEventModel();
   const configService = {
     calls: [],
     async getConfig({ companyId }) {
@@ -343,11 +345,12 @@ const makeWorld = ({ tickets = [], queues, config = {}, transactionRunner = runF
     QueueModel,
     UserModel,
     FenceModel,
+    LifecycleEventModel,
     transactionRunner,
     configService,
     slaService: NOOP_SLA_SERVICE,
   });
-  return { TicketModel, QueueModel, UserModel, FenceModel, configService, queueService, ticketService };
+  return { TicketModel, QueueModel, UserModel, FenceModel, LifecycleEventModel, configService, queueService, ticketService };
 };
 
 const attachQueueSaveSupport = (QueueModel) => {

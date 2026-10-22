@@ -1,4 +1,8 @@
 import { serializeHelpdeskSla } from './helpdeskSlaRules.js';
+import {
+  HELPDESK_AUTO_CLOSE_DELAY_DEFAULT_HOURS,
+  HELPDESK_REOPEN_WINDOW_DEFAULT_HOURS,
+} from './helpdeskLifecycleRules.js';
 
 const idOf = (value) => {
   if (!value) return null;
@@ -19,6 +23,10 @@ export const serializeHelpdeskConfig = (config) => ({
   attachmentsEnabled: config?.attachmentsEnabled === true,
   confidentialTicketsEnabled: config?.confidentialTicketsEnabled === true,
   defaultPriority: String(config?.defaultPriority || 'normal'),
+  allowEmployeeReopen: config?.allowEmployeeReopen !== false,
+  reopenWindowHours: Number(config?.reopenWindowHours) || HELPDESK_REOPEN_WINDOW_DEFAULT_HOURS,
+  autoCloseEnabled: config?.autoCloseEnabled === true,
+  autoCloseDelayHours: Number(config?.autoCloseDelayHours) || HELPDESK_AUTO_CLOSE_DELAY_DEFAULT_HOURS,
   updatedAt: config?.updatedAt || null,
 });
 

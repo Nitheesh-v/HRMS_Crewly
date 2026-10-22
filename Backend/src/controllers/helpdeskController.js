@@ -375,6 +375,85 @@ export const cancelOwnTicket = asyncHandler(async (req, res) => {
   return success(res, ticket, 200, 'Helpdesk ticket cancelled');
 });
 
+export const confirmResolution = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const companyId = req.companyId;
+  const requesterId = req.user._id;
+  const ticketNumber = req.params.ticketNumber;
+  assertBodyFields(req.body || {}, []);
+  // DB Logic - DB logics
+  await assertHelpdeskPermission(req.user, 'HELPDESK_TICKET_READ_SELF');
+  const result = await ticketService.confirmResolution({ companyId, requesterId, ticketNumber });
+  req.helpdeskAuditAction = 'Confirmed a Helpdesk resolution';
+  // Data to frontend - response to frontend
+  return success(res, result, 200, 'Helpdesk resolution confirmed');
+});
+
+export const reopenOwnTicket = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const companyId = req.companyId;
+  const requesterId = req.user._id;
+  const ticketNumber = req.params.ticketNumber;
+  const input = req.body || {};
+  assertBodyFields(input, ['reason']);
+  // DB Logic - DB logics
+  await assertHelpdeskPermission(req.user, 'HELPDESK_TICKET_READ_SELF');
+  const result = await ticketService.reopenOwnTicket({
+    companyId,
+    requesterId,
+    ticketNumber,
+    reason: input.reason,
+  });
+  req.helpdeskAuditAction = 'Reopened a Helpdesk ticket';
+  // Data to frontend - response to frontend
+  return success(res, result, 200, 'Helpdesk ticket reopened');
+});
+
+export const submitFeedback = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const companyId = req.companyId;
+  const requesterId = req.user._id;
+  const ticketNumber = req.params.ticketNumber;
+  const input = req.body || {};
+  assertBodyFields(input, ['rating', 'comment']);
+  // DB Logic - DB logics
+  await assertHelpdeskPermission(req.user, 'HELPDESK_TICKET_READ_SELF');
+  const result = await ticketService.submitFeedback({
+    companyId,
+    requesterId,
+    ticketNumber,
+    rating: input.rating,
+    comment: input.comment,
+  });
+  req.helpdeskAuditAction = 'Submitted Helpdesk satisfaction feedback';
+  // Data to frontend - response to frontend
+  return success(res, result, 201, 'Helpdesk feedback submitted');
+});
+
+export const getFeedback = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const companyId = req.companyId;
+  const viewerId = req.user._id;
+  const ticketNumber = req.params.ticketNumber;
+  // DB Logic - DB logics
+  const [canReadOwn, canReadQueue] = await Promise.all([
+    hasPermission(req.user, 'HELPDESK_TICKET_READ_SELF'),
+    hasPermission(req.user, 'HELPDESK_TICKET_READ'),
+  ]);
+  if (!canReadOwn && !canReadQueue) {
+    throw ApiError.forbidden('You do not have permission to read Helpdesk feedback.');
+  }
+  const result = await ticketService.getFeedback({
+    companyId,
+    viewerId,
+    ticketNumber,
+    canReadOwn,
+    canReadQueue,
+  });
+  // Data to frontend - response to frontend
+  return success(res, result, 200, 'Helpdesk ticket feedback');
+});
+
 const sanitizeHelpdeskDownloadName = (rawName) =>
   String(rawName || 'attachment')
     .replace(/[\r\n"]/g, '')
@@ -562,6 +641,10 @@ export default {
   assignTicket,
   transferTicket,
   cancelOwnTicket,
+  confirmResolution,
+  reopenOwnTicket,
+  submitFeedback,
+  getFeedback,
   listMessages,
   createMessage,
   authorizeAttachmentUpload,

@@ -698,7 +698,7 @@ export const transitionHelpdeskSlaStatus = ({
 
   if (normalizedTo === 'resolved') {
     completeResolutionClock({ clock: sla.resolution, snapshot, now, holidays });
-  } else if (normalizedFrom === 'resolved' && normalizedTo !== 'resolved') {
+  } else if (normalizedFrom === 'resolved' && normalizedTo === 'in_progress') {
     const resolutionTarget = sla.resolution?.targetMinutes;
     if (resolutionTarget && sla.resolution?.state === 'COMPLETED') {
       resumeClock({

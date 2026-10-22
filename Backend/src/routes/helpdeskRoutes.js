@@ -23,6 +23,10 @@ import {
   helpdeskTicketClaimValidator,
   helpdeskTicketTransferValidator,
   helpdeskTicketCancelValidator,
+  helpdeskTicketConfirmResolutionValidator,
+  helpdeskTicketReopenValidator,
+  helpdeskTicketFeedbackValidator,
+  helpdeskTicketFeedbackReadValidator,
   helpdeskTicketListQueryValidator,
   helpdeskQueueTicketListQueryValidator,
   helpdeskMessageHistoryQueryValidator,
@@ -134,6 +138,27 @@ router.patch(
   ...helpdeskTicketCancelValidator,
   controller.cancelOwnTicket,
 );
+router.post(
+  '/tickets/mine/:ticketNumber/confirm-resolution',
+  checkWriteAccess,
+  requirePermission('HELPDESK_TICKET_READ_SELF'),
+  ...helpdeskTicketConfirmResolutionValidator,
+  controller.confirmResolution,
+);
+router.post(
+  '/tickets/mine/:ticketNumber/reopen',
+  checkWriteAccess,
+  requirePermission('HELPDESK_TICKET_READ_SELF'),
+  ...helpdeskTicketReopenValidator,
+  controller.reopenOwnTicket,
+);
+router.post(
+  '/tickets/mine/:ticketNumber/feedback',
+  checkWriteAccess,
+  requirePermission('HELPDESK_TICKET_READ_SELF'),
+  ...helpdeskTicketFeedbackValidator,
+  controller.submitFeedback,
+);
 
 router.get(
   '/queues/:queueId/tickets/assigned-to-me',
@@ -164,6 +189,15 @@ router.get(
   ]),
   ...helpdeskTicketReadParamValidator,
   controller.getTicket,
+);
+router.get(
+  '/tickets/:ticketNumber/feedback',
+  requireAnyPermission([
+    'HELPDESK_TICKET_READ_SELF',
+    'HELPDESK_TICKET_READ',
+  ]),
+  ...helpdeskTicketFeedbackReadValidator,
+  controller.getFeedback,
 );
 router.get(
   '/tickets/:ticketNumber/sla',

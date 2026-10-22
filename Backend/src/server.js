@@ -49,9 +49,11 @@ import {
   getInstanceId,
 } from './infrastructure/observability/processDiagnostics.js';
 import { initAIProvider } from './services/ai/aiProvider.js';
+import { startHelpdeskNotificationDispatcher } from './services/helpdesk/helpdeskNotificationDispatcher.js';
 
 const startServer = async () => {
   let presenceSocketServer = null;
+  let stopHelpdeskNotificationDispatcher = () => {};
   try {
     // Connect to MongoDB before accepting requests.
     await connectDB();
@@ -116,6 +118,10 @@ const startServer = async () => {
     // preserved. Refuses every connection as FEATURE_UNAVAILABLE when
     // Redis is disabled/unreachable — the HTTP API is never affected.
     await getChatSocketServer().attach(server);
+
+    // Phase 38.6/38.7 — Mongo outbox recovery is bounded and durable; the
+    // existing Socket.IO personal-room nudge is best-effort and data-less.
+    stopHelpdeskNotificationDispatcher = startHelpdeskNotificationDispatcher();
 
     // Phase 37 — presence Socket.IO namespace (opt-in). Attach before
     // listen, sharing chat's Socket.IO engine when chat is enabled. If
@@ -203,6 +209,7 @@ const startServer = async () => {
       Promise.resolve()
         .then(async () => {
           stopProcessDiagnostics();
+          stopHelpdeskNotificationDispatcher();
           // Drain the namespace before its shared chat Engine.IO owner.
           // Keep later shutdown steps running even if an optional realtime
           // cleanup encounters an error.

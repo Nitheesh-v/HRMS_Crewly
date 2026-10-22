@@ -525,6 +525,15 @@ const startWorker = async () => {
   const helpdeskSlaSweepTimer = setInterval(() => void runHelpdeskSlaSweep(), 60 * 1000);
   helpdeskSlaSweepTimer.unref?.();
 
+  // --- Phase 38.7 Helpdesk automatic closure -----------------------
+  // Resolution dates are Mongo-authoritative. The bounded sweep is safe to
+  // run on multiple workers; conditional ticket state and lifecycle sequence
+  // updates—not Redis locks—select the single business transition.
+  const { startHelpdeskAutoCloseDispatcher } = await import(
+    '../services/helpdesk/helpdeskAutoCloseDispatcher.js'
+  );
+  const stopHelpdeskAutoCloseDispatcher = startHelpdeskAutoCloseDispatcher();
+
   // --- 28.8 ops heartbeat ------------------------------------------
   // One ephemeral Redis key tells the Super Admin "Background
   // Operations" page this worker process is alive (ONLINE /
@@ -615,6 +624,7 @@ const startWorker = async () => {
       process.exit(1);
     }
     shuttingDown = true;
+    stopHelpdeskAutoCloseDispatcher();
     logger.info(`[Worker] ${signal} received — shutting down gracefully...`);
 
     // Tell the ops UI we are on purpose (brief SHUTTING_DOWN

@@ -12,6 +12,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
   makeFakeHelpdeskFenceModel,
+  makeFakeHelpdeskLifecycleEventModel,
   runFakeHelpdeskTransaction,
 } from './helpers/helpdeskTransactions.js';
 
@@ -274,6 +275,9 @@ const makeConfigModel = ({ fail = false, seed = [], duplicateFirstUpsert = false
     rows,
     calls,
     fail,
+    findOne(filter) {
+      return query(() => rows.get(String(filter.companyId)) || null);
+    },
     async findOneAndUpdate(filter, update, options = {}) {
       calls.push({ filter: clone(filter), update: clone(update), options: clone(options) });
       if (fail) throw new Error('database unavailable');
@@ -414,11 +418,12 @@ const NOOP_SLA_SERVICE = {
   async persistFirstResponse() { return { updated: false }; },
 };
 
-const makeWorld = () => {
+const makeWorld = (options = {}) => {
   const QueueModel = makeQueueModel();
   const TicketModel = makeTicketModel();
   const UserModel = makeUsers();
   const FenceModel = makeFakeHelpdeskFenceModel();
+  const LifecycleEventModel = makeFakeHelpdeskLifecycleEventModel();
   const ConfigModel = makeConfigModel();
   const SequenceModel = makeSequenceModel();
   const configService = helpdeskTenantConfigService({ ConfigModel });
@@ -429,13 +434,15 @@ const makeWorld = () => {
     QueueModel,
     UserModel,
     FenceModel,
+    LifecycleEventModel,
     transactionRunner,
     ConfigModel,
     SequenceModel,
     configService,
     slaService: NOOP_SLA_SERVICE,
+    notificationIntentsEnabled: options.notificationIntentsEnabled,
   });
-  return { QueueModel, TicketModel, UserModel, FenceModel, ConfigModel, SequenceModel, configService, queueService, ticketService, transactionRunner };
+  return { QueueModel, TicketModel, UserModel, FenceModel, LifecycleEventModel, ConfigModel, SequenceModel, configService, queueService, ticketService, transactionRunner };
 };
 
 const makeQueueInput = (overrides = {}) => ({
@@ -783,6 +790,35 @@ test('ticket create ignores requested urgency for effective priority and rejects
     () => validateHelpdeskTicketCreateInput({ ...createTicketInput(queue.id, categoryId), priority: 'urgent' }),
     (error) => error.statusCode === 400,
   );
+});
+
+test('staging service suppression omits deliverable ticket notifications without bypassing transactions or assignment authorization', async () => {
+  const world = makeWorld({ notificationIntentsEnabled: false });
+  await enableHelpdesk(world);
+  const queue = await world.queueService.createQueue({
+    companyId: COMPANY_A,
+    actorId: QUEUE_MANAGER,
+    input: makeQueueInput(),
+  });
+  const ticket = await world.ticketService.createTicket({
+    companyId: COMPANY_A,
+    requesterId: REQUESTER,
+    input: createTicketInput(queue.id, queue.categories[0].id),
+  });
+  const storedTicket = world.TicketModel.rows.find((row) => row.ticketNumber === ticket.ticketNumber);
+  assert.equal(storedTicket.notificationSequence, undefined);
+  assert.equal(storedTicket.notificationEvents, undefined);
+
+  const assigned = await world.ticketService.assignTicket({
+    companyId: COMPANY_A,
+    actorId: QUEUE_MANAGER,
+    ticketNumber: ticket.ticketNumber,
+    assigneeId: AGENT,
+  });
+  assert.equal(assigned.assignedTo, AGENT);
+  assert.equal(storedTicket.status, 'assigned');
+  assert.equal(storedTicket.notificationSequence, undefined);
+  assert.equal(storedTicket.notificationEvents, undefined);
 });
 
 test('queue requester, agent, manager, reviewer, and confidentiality boundaries are distinct', async () => {

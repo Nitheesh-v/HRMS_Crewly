@@ -18,6 +18,11 @@ import {
   transitionHelpdeskSlaStatus,
   validateHelpdeskSlaPolicy,
 } from './helpdeskSlaRules.js';
+import {
+  addHelpdeskNotificationSequenceFilter,
+  buildHelpdeskTicketNotificationAppend,
+  diffHelpdeskSlaNotificationEvents,
+} from './helpdeskNotificationRules.js';
 
 const FIVE_YEAR_MS = (366 * 5) * 24 * 60 * 60 * 1000;
 const ID_RE = /^[a-f\d]{24}$/i;
@@ -94,6 +99,7 @@ export const helpdeskSlaService = (deps = {}) => {
   const UserModel = deps.UserModel || User;
   const holidayReader = deps.holidayReader || getHolidaysForUser;
   const now = deps.now || (() => new Date());
+  const notificationIntentsEnabled = deps.notificationIntentsEnabled !== false;
 
   const requireTenant = (companyId) => {
     if (!companyId) throw ApiError.forbidden('A tenant is required for Helpdesk SLA access.');
@@ -427,6 +433,23 @@ export const helpdeskSlaService = (deps = {}) => {
     return toDate(message?.createdAt);
   };
 
+  const withSlaNotificationIntent = ({ ticket, previousSla, nextSla, filter, at }) => {
+    if (!notificationIntentsEnabled) return { filter, update: { $set: { sla: nextSla } } };
+    const append = buildHelpdeskTicketNotificationAppend({
+      ticket,
+      eventTypes: diffHelpdeskSlaNotificationEvents(previousSla, nextSla),
+      at,
+    });
+    if (!append) return { filter, update: { $set: { sla: nextSla } } };
+
+    const update = { $set: { sla: nextSla }, ...append.update };
+    update.$set = { ...update.$set, ...(append.update.$set || {}) };
+    return {
+      filter: addHelpdeskNotificationSequenceFilter(filter, ticket),
+      update,
+    };
+  };
+
   const persistFirstResponse = async ({ companyId, ticketId, createdAt } = {}) => {
     requireTenant(companyId);
     if (!ticketId) return { updated: false, recoveryPending: true };
@@ -443,7 +466,10 @@ export const helpdeskSlaService = (deps = {}) => {
             companyId,
             ticketKind: SUPPORT_TICKET_KIND.HELPDESK,
           }),
-          { select: '_id companyId user queueId ticketNumber sla' },
+          {
+            select: '_id companyId user queueId ticketNumber sla notificationSequence ' +
+              'notificationProcessedSequence notificationEvents notificationGap',
+          },
         );
         if (!ticket?.sla) return { updated: false, recoveryPending: false };
         let earliestReplyAt;
@@ -463,14 +489,21 @@ export const helpdeskSlaService = (deps = {}) => {
           firstResponseAt: timestamp,
           queueId: ticket.queueId,
         });
-        const updated = await TicketModel.findOneAndUpdate(
-          {
+        const mutation = withSlaNotificationIntent({
+          ticket,
+          previousSla: ticket.sla,
+          nextSla,
+          at: when,
+          filter: {
             _id: ticket._id,
             companyId,
             ticketKind: SUPPORT_TICKET_KIND.HELPDESK,
             'sla.version': Number(ticket.sla.version) || 1,
           },
-          { $set: { sla: nextSla } },
+        });
+        const updated = await TicketModel.findOneAndUpdate(
+          mutation.filter,
+          mutation.update,
           { returnDocument: 'after', runValidators: true, timestamps: false },
         );
         if (updated) return { updated: true, recoveryPending: false };
@@ -491,7 +524,10 @@ export const helpdeskSlaService = (deps = {}) => {
         companyId,
         ticketKind: SUPPORT_TICKET_KIND.HELPDESK,
       }),
-      { select: '_id companyId user queueId ticketNumber status sla' },
+      {
+        select: '_id companyId user queueId ticketNumber status sla notificationSequence ' +
+          'notificationProcessedSequence notificationEvents notificationGap',
+      },
     );
     if (!ticket?.sla) return { processed: false, skipped: true };
     const storedNextAction = toDate(ticket.sla.nextActionAt);
@@ -511,15 +547,22 @@ export const helpdeskSlaService = (deps = {}) => {
       firstResponseAt,
       queueId: ticket.queueId,
     });
-    const updated = await TicketModel.findOneAndUpdate(
-      {
+    const mutation = withSlaNotificationIntent({
+      ticket,
+      previousSla: ticket.sla,
+      nextSla,
+      at: nowAt,
+      filter: {
         _id: ticket._id,
         companyId,
         ticketKind: SUPPORT_TICKET_KIND.HELPDESK,
         'sla.version': Number(ticket.sla.version) || 1,
         'sla.nextActionAt': storedNextAction,
       },
-      { $set: { sla: nextSla } },
+    });
+    const updated = await TicketModel.findOneAndUpdate(
+      mutation.filter,
+      mutation.update,
       { returnDocument: 'after', runValidators: true, timestamps: false },
     );
     return updated
