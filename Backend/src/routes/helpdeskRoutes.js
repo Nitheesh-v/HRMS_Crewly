@@ -10,6 +10,7 @@ import {
   requirePermission,
 } from '../middlewares/permissionMiddleware.js';
 import * as helpdeskControllerNS from '../controllers/helpdeskController.js';
+import * as helpdeskKnowledgeBaseControllerNS from '../controllers/helpdeskKnowledgeBaseController.js';
 import {
   helpdeskConfigUpdateValidator,
   helpdeskQueueCreateValidator,
@@ -36,6 +37,20 @@ import {
   helpdeskAttachmentIdParamValidator,
 } from '../validators/helpdeskValidator.js';
 import { helpdeskAttachmentUpload } from '../middlewares/helpdeskAttachmentUpload.js';
+import {
+  helpdeskKbSearchValidator,
+  helpdeskKbArticleSlugParamValidator,
+  helpdeskKbArticleIdParamValidator,
+  helpdeskKbCategoryIdParamValidator,
+  helpdeskKbAdminArticleListValidator,
+  helpdeskKbAdminRevisionListValidator,
+  helpdeskKbRevisionParamValidator,
+  helpdeskKbArticleCreateValidator,
+  helpdeskKbArticleUpdateValidator,
+  helpdeskKbArticleTransitionValidator,
+  helpdeskKbCategoryCreateValidator,
+  helpdeskKbCategoryUpdateValidator,
+} from '../validators/helpdeskKnowledgeBaseValidator.js';
 
 const mergeExports = (namespace) => ({
   ...namespace,
@@ -45,6 +60,7 @@ const mergeExports = (namespace) => ({
 const { protect } = mergeExports(authMwNS);
 const { tenantContext } = mergeExports(tenantNS);
 const controller = mergeExports(helpdeskControllerNS);
+const knowledgeBaseController = mergeExports(helpdeskKnowledgeBaseControllerNS);
 const router = express.Router();
 
 const requireTenant = (req, res, next) => {
@@ -116,6 +132,119 @@ router.put(
   requirePermission('HELPDESK_QUEUE_MANAGE'),
   ...helpdeskSlaPolicyValidator,
   controller.updateQueueSlaPolicy,
+);
+
+// Phase 38.8 — published Knowledge Base reads reauthorize tenant and audience access in the service.
+router.get(
+  '/knowledge-base/categories',
+  requirePermission('HELPDESK_KB_READ'),
+  knowledgeBaseController.listEmployeeCategories,
+);
+router.get(
+  '/knowledge-base/articles',
+  requirePermission('HELPDESK_KB_READ'),
+  ...helpdeskKbSearchValidator,
+  knowledgeBaseController.searchEmployeeArticles,
+);
+router.get(
+  '/knowledge-base/articles/:slug',
+  requirePermission('HELPDESK_KB_READ'),
+  ...helpdeskKbArticleSlugParamValidator,
+  knowledgeBaseController.getEmployeeArticle,
+);
+
+// Phase 38.8 — only authorized Knowledge Base managers can inspect or author drafts.
+router.get(
+  '/admin/knowledge-base/categories',
+  requirePermission('HELPDESK_KB_MANAGE'),
+  knowledgeBaseController.listAdminCategories,
+);
+router.post(
+  '/admin/knowledge-base/categories',
+  checkWriteAccess,
+  requirePermission('HELPDESK_KB_MANAGE'),
+  ...helpdeskKbCategoryCreateValidator,
+  knowledgeBaseController.createCategory,
+);
+router.patch(
+  '/admin/knowledge-base/categories/:categoryId',
+  checkWriteAccess,
+  requirePermission('HELPDESK_KB_MANAGE'),
+  ...helpdeskKbCategoryIdParamValidator,
+  ...helpdeskKbCategoryUpdateValidator,
+  knowledgeBaseController.updateCategory,
+);
+router.post(
+  '/admin/knowledge-base/categories/:categoryId/archive',
+  checkWriteAccess,
+  requirePermission('HELPDESK_KB_MANAGE'),
+  ...helpdeskKbCategoryIdParamValidator,
+  ...helpdeskKbArticleTransitionValidator,
+  knowledgeBaseController.archiveCategory,
+);
+router.get(
+  '/admin/knowledge-base/articles',
+  requirePermission('HELPDESK_KB_MANAGE'),
+  ...helpdeskKbAdminArticleListValidator,
+  knowledgeBaseController.listAdminArticles,
+);
+router.post(
+  '/admin/knowledge-base/articles',
+  checkWriteAccess,
+  requirePermission('HELPDESK_KB_MANAGE'),
+  ...helpdeskKbArticleCreateValidator,
+  knowledgeBaseController.createArticleDraft,
+);
+router.get(
+  '/admin/knowledge-base/articles/:articleId',
+  requirePermission('HELPDESK_KB_MANAGE'),
+  ...helpdeskKbArticleIdParamValidator,
+  knowledgeBaseController.getAdminArticle,
+);
+router.get(
+  '/admin/knowledge-base/articles/:articleId/revisions',
+  requirePermission('HELPDESK_KB_MANAGE'),
+  ...helpdeskKbArticleIdParamValidator,
+  ...helpdeskKbAdminRevisionListValidator,
+  knowledgeBaseController.listAdminArticleRevisions,
+);
+router.get(
+  '/admin/knowledge-base/articles/:articleId/revisions/:revision',
+  requirePermission('HELPDESK_KB_MANAGE'),
+  ...helpdeskKbRevisionParamValidator,
+  knowledgeBaseController.getAdminArticleRevision,
+);
+router.post(
+  '/admin/knowledge-base/articles/:articleId/revisions/:revision/restore',
+  checkWriteAccess,
+  requirePermission('HELPDESK_KB_MANAGE'),
+  ...helpdeskKbRevisionParamValidator,
+  ...helpdeskKbArticleTransitionValidator,
+  knowledgeBaseController.restoreArticleRevision,
+);
+router.patch(
+  '/admin/knowledge-base/articles/:articleId',
+  checkWriteAccess,
+  requirePermission('HELPDESK_KB_MANAGE'),
+  ...helpdeskKbArticleIdParamValidator,
+  ...helpdeskKbArticleUpdateValidator,
+  knowledgeBaseController.updateArticleDraft,
+);
+router.post(
+  '/admin/knowledge-base/articles/:articleId/publish',
+  checkWriteAccess,
+  requireAnyPermission(['HELPDESK_KB_MANAGE', 'HELPDESK_KB_PUBLISH']),
+  ...helpdeskKbArticleIdParamValidator,
+  ...helpdeskKbArticleTransitionValidator,
+  knowledgeBaseController.publishArticle,
+);
+router.post(
+  '/admin/knowledge-base/articles/:articleId/archive',
+  checkWriteAccess,
+  requirePermission('HELPDESK_KB_MANAGE'),
+  ...helpdeskKbArticleIdParamValidator,
+  ...helpdeskKbArticleTransitionValidator,
+  knowledgeBaseController.archiveArticle,
 );
 
 router.get(

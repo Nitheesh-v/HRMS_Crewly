@@ -996,12 +996,22 @@ test('config RBAC refuses an unauthorized actor without role-name shortcuts', as
   assert.equal(employeePermissions.includes('HELPDESK_TICKET_READ'), false);
   assert.equal(employeePermissions.includes('HELPDESK_TICKET_CREATE_SELF'), true);
   assert.equal(employeePermissions.includes('HELPDESK_TICKET_READ_SELF'), true);
+  assert.equal(employeePermissions.includes('HELPDESK_KB_READ'), true);
+  assert.equal(employeePermissions.includes('HELPDESK_KB_MANAGE'), false);
+  assert.equal(employeePermissions.includes('HELPDESK_KB_PUBLISH'), false);
   assert.equal(hrPermissions.includes('HELPDESK_QUEUE_MANAGE'), true);
   assert.equal(hrPermissions.includes('HELPDESK_TICKET_READ'), true);
   assert.equal(hrPermissions.includes('HELPDESK_TICKET_MANAGE'), true);
+  assert.equal(hrPermissions.includes('HELPDESK_KB_READ'), true);
+  assert.equal(hrPermissions.includes('HELPDESK_KB_MANAGE'), true);
+  assert.equal(hrPermissions.includes('HELPDESK_KB_PUBLISH'), true);
   assert.equal(companyAdminPermissions.includes('HELPDESK_TICKET_MANAGE'), true);
+  assert.equal(companyAdminPermissions.includes('HELPDESK_KB_READ'), true);
+  assert.equal(companyAdminPermissions.includes('HELPDESK_KB_MANAGE'), true);
+  assert.equal(companyAdminPermissions.includes('HELPDESK_KB_PUBLISH'), true);
   assert.equal(DEFAULT_PERMISSIONS.some((permission) => permission.name === 'HELPDESK_TICKET_READ'), true);
-  assert.equal(getSystemPermissionVersion(), 39);
+  assert.equal(DEFAULT_PERMISSIONS.some((permission) => permission.name === 'HELPDESK_KB_READ'), true);
+  assert.equal(getSystemPermissionVersion(), 40);
 });
 
 test('legacy/platform ticket readers classify historical rows as legacy and exclude Helpdesk discriminators', () => {

@@ -223,7 +223,10 @@ export const _resetEnsurePermissionsForTests = () => {
 //             The existing version-gated matrix migration grants these
 //             idempotently to current system roles; queue membership remains
 //             the additional per-queue data-access boundary.
-const SYSTEM_PERMISSION_VERSION = 39;
+//   39 → 40 : Phase 38.8 adds HELPDESK_KB_READ / MANAGE / PUBLISH.
+//             Employees receive published-article read access; HR Manager
+//             receives authoring and publication; Company Admin inherits all.
+const SYSTEM_PERMISSION_VERSION = 40;
 
 // Exported for bootstrap verification/tests — the value itself is owned
 // by this module; bump it ONLY when the catalogue or default role

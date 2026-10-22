@@ -48,6 +48,7 @@ export const RESOURCES = [
   // service-level access boundary for every queue ticket.
   "HELPDESK_QUEUE",
   "HELPDESK_TICKET",
+  "HELPDESK_KB",
   "PROFILE",
   // Phase 38 — reviewing employees' profile change requests. Deliberately a
   // separate resource from PROFILE: holding "my profile is editable" must
@@ -359,6 +360,9 @@ export const DEFAULT_PERMISSIONS = [
   ...actions("HELPDESK_TICKET", ["READ", "MANAGE"]),
   ...actions("HELPDESK_TICKET", ["READ", "CREATE"], "SELF"),
 
+  // Phase 38.8 — tenant Knowledge Base read, authoring, and publication duties.
+  ...actions("HELPDESK_KB", ["READ", "MANAGE", "PUBLISH"]),
+
   ...actions("DOCUMENT", ["CREATE", "DELETE"], "SELF"),
 
   ...actions("EXPENSE", ["READ", "CREATE", "UPDATE"], "SELF"),
@@ -480,6 +484,8 @@ const SELF_SERVICE_PERMISSIONS = [
   "HELPDESK_QUEUE_READ",
   "HELPDESK_TICKET_CREATE_SELF",
   "HELPDESK_TICKET_READ_SELF",
+  // Phase 38.8 — every employee may search only the published audience they can access.
+  "HELPDESK_KB_READ",
 
   "ANNOUNCEMENT_READ",
   "HOLIDAY_READ",
@@ -690,6 +696,9 @@ export const DEFAULT_ROLE_MATRIX = {
     "HELPDESK_QUEUE_MANAGE",
     "HELPDESK_TICKET_READ",
     "HELPDESK_TICKET_MANAGE",
+    // Phase 38.8 — HR authors articles and has the distinct publication grant.
+    "HELPDESK_KB_MANAGE",
+    "HELPDESK_KB_PUBLISH",
     "ASSET_READ",
     "ASSET_CREATE",
     "ASSET_UPDATE",

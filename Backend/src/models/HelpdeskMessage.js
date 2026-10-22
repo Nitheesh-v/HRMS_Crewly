@@ -5,6 +5,7 @@ import {
   HELPDESK_MESSAGE_TYPES,
 } from '../services/helpdesk/helpdeskRules.js';
 import { hasVisibleText } from '../utils/chatTextRules.js';
+import { HELPDESK_KB_MESSAGE_ARTICLES_MAX } from '../services/helpdesk/helpdeskKnowledgeBaseRules.js';
 
 const { Schema } = mongoose;
 
@@ -53,6 +54,15 @@ const helpdeskMessageSchema = new Schema(
       default: null,
       immutable: true,
     },
+    // Phase 38.8 — public replies may cite bounded, employee-readable KB articles.
+    relatedArticleIds: {
+      type: [{ type: Schema.Types.ObjectId, ref: 'HelpdeskKnowledgeBaseArticle', immutable: true }],
+      default: [],
+      immutable: true,
+      validate: (value) => Array.isArray(value)
+        && value.length <= HELPDESK_KB_MESSAGE_ARTICLES_MAX
+        && new Set(value.map((id) => String(id).toLowerCase())).size === value.length,
+    },
     // Phase 38.6 — public messages carry durable notification intent; internal
     // notes are NOT_REQUIRED and are never selected by the delivery worker.
     notificationState: {
@@ -73,6 +83,9 @@ helpdeskMessageSchema.pre('validate', function validateMessageShape() {
   const hasBody = hasVisibleText(this.body);
   if (!hasBody && !this.attachmentId) {
     this.invalidate('body', 'A Helpdesk message requires visible text or one attachment.');
+  }
+  if (this.messageType !== 'PUBLIC' && this.relatedArticleIds?.length) {
+    this.invalidate('relatedArticleIds', 'Internal notes cannot link Knowledge Base articles.');
   }
   if (this.messageType === 'PUBLIC') {
     if (!Number.isSafeInteger(this.publicSequence) || this.publicSequence < 1) {

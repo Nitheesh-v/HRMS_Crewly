@@ -66,6 +66,14 @@ const EXPLICIT_HELPDESK_AUDIT_ACTIONS = new Set([
   'Confirmed a Helpdesk resolution',
   'Reopened a Helpdesk ticket',
   'Submitted Helpdesk satisfaction feedback',
+  'Created a Helpdesk Knowledge Base category',
+  'Updated a Helpdesk Knowledge Base category',
+  'Archived a Helpdesk Knowledge Base category',
+  'Created a Helpdesk Knowledge Base article draft',
+  'Updated a Helpdesk Knowledge Base article draft',
+  'Published a Helpdesk Knowledge Base article',
+  'Archived a Helpdesk Knowledge Base article',
+  'Restored a Helpdesk Knowledge Base revision to draft',
 ]);
 
 const labelFor = (method, url, explicitAction = null) => {

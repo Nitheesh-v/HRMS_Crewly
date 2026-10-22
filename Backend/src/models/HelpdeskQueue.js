@@ -68,5 +68,18 @@ helpdeskQueueSchema.index(
   { companyId: 1, nameKey: 1 },
   { unique: true, name: 'helpdesk_queue_name_unique_by_tenant' },
 );
+// Phase 38.8 — indexed current-membership reads for Knowledge Base audience authorization.
+helpdeskQueueSchema.index(
+  { companyId: 1, enabled: 1, agents: 1 },
+  { name: 'helpdesk_queue_enabled_agent_membership' },
+);
+helpdeskQueueSchema.index(
+  { companyId: 1, enabled: 1, managers: 1 },
+  { name: 'helpdesk_queue_enabled_manager_membership' },
+);
+helpdeskQueueSchema.index(
+  { companyId: 1, enabled: 1, 'confidentiality.enabled': 1, 'confidentiality.agentIds': 1 },
+  { name: 'helpdesk_queue_enabled_confidential_agent_membership' },
+);
 
 export default mongoose.model('HelpdeskQueue', helpdeskQueueSchema);

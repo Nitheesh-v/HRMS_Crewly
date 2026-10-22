@@ -496,8 +496,9 @@ export const createMessage = asyncHandler(async (req, res) => {
   const actorId = req.user._id;
   const ticketNumber = req.params.ticketNumber;
   const input = req.body || {};
-  assertBodyFields(input, ['body', 'messageType']);
+  assertBodyFields(input, ['body', 'messageType', 'relatedArticleIds']);
   const messageType = String(input.messageType || 'public').trim().toLowerCase();
+  // Phase 38.8 — optional article ids are references only; the conversation service revalidates employee visibility in the ticket transaction.
   // DB Logic - RBAC, explicit queue membership, confidentiality and eligible-state checks precede immutable message persistence.
   const { canReadOwn, canReadQueue, canManage } = await getHelpdeskMessagePermissions(req.user);
   if ((messageType === 'internal' || !canReadOwn) && !canManage) {
@@ -510,6 +511,7 @@ export const createMessage = asyncHandler(async (req, res) => {
     ticketNumber,
     body: input.body,
     messageType,
+    relatedArticleIds: input.relatedArticleIds,
     canReadOwn,
     canReadQueue,
     canManage,

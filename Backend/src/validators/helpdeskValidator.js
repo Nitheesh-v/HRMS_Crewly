@@ -22,6 +22,7 @@ import {
   HELPDESK_REOPEN_WINDOW_MAX_HOURS,
   HELPDESK_REOPEN_WINDOW_MIN_HOURS,
 } from '../services/helpdesk/helpdeskLifecycleRules.js';
+import { HELPDESK_KB_MESSAGE_ARTICLES_MAX } from '../services/helpdesk/helpdeskKnowledgeBaseRules.js';
 
 const validate = (req, _res, next) => {
   const errors = validationResult(req);
@@ -350,7 +351,7 @@ export const helpdeskMessageHistoryQueryValidator = [
 
 export const helpdeskMessageCreateValidator = [
   ticketNumberParam,
-  onlyBodyFields(['body', 'messageType']),
+  onlyBodyFields(['body', 'messageType', 'relatedArticleIds']),
   body('body')
     .exists()
     .withMessage('body is required')
@@ -367,6 +368,23 @@ export const helpdeskMessageCreateValidator = [
     .bail()
     .isIn(HELPDESK_MESSAGE_VISIBILITIES)
     .withMessage('messageType must be public or internal'),
+  body('relatedArticleIds')
+    .optional()
+    .isArray({ max: HELPDESK_KB_MESSAGE_ARTICLES_MAX })
+    .withMessage(`relatedArticleIds must contain at most ${HELPDESK_KB_MESSAGE_ARTICLES_MAX} ids`),
+  body('relatedArticleIds.*')
+    .isMongoId()
+    .withMessage('relatedArticleIds must contain valid ids'),
+  body().custom((_value, { req }) => {
+    if (
+      String(req.body?.messageType || 'public').toLowerCase() === 'internal'
+      && Array.isArray(req.body?.relatedArticleIds)
+      && req.body.relatedArticleIds.length
+    ) {
+      throw new Error('Internal notes cannot link Knowledge Base articles');
+    }
+    return true;
+  }),
   validate,
 ];
 

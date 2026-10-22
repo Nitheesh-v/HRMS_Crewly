@@ -14,6 +14,7 @@ import { helpdeskTenantConfigService } from './helpdeskTenantConfigService.js';
 import { helpdeskSlaService } from './helpdeskSlaService.js';
 import { bumpHelpdeskAuthorizationFence } from './helpdeskAuthorizationFence.js';
 import { runHelpdeskTransaction } from './helpdeskTransaction.js';
+import { helpdeskKnowledgeBaseService } from './helpdeskKnowledgeBaseService.js';
 import {
   canReadHelpdeskTicket,
   hasConfidentialHelpdeskAgentAccess,
@@ -41,7 +42,7 @@ import {
 const TICKET_NUMBER = /^HD-\d{6,}$/;
 const HELPDESK_ATTACHMENT_RECOVERY_GRACE_MS = 30 * 60 * 1000;
 const MESSAGE_PROJECTION =
-  '_id companyId ticketId authorUserId sequence publicSequence messageType body attachmentId createdAt';
+  '_id companyId ticketId authorUserId sequence publicSequence messageType body attachmentId relatedArticleIds createdAt';
 const ATTACHMENT_METADATA_PROJECTION =
   '_id messageId originalFileName mimeType sizeBytes scanStatus createdAt';
 
@@ -89,6 +90,13 @@ export const helpdeskConversationService = (deps = {}) => {
   const deliverAttachment = deps.deliverAttachment || resolveHelpdeskAttachmentDelivery;
   const ObjectId = deps.ObjectId || mongoose.Types.ObjectId;
   const now = deps.now || (() => Date.now());
+  const knowledgeBaseService = deps.knowledgeBaseService || helpdeskKnowledgeBaseService({
+    ArticleModel: deps.KnowledgeBaseArticleModel,
+    CategoryModel: deps.KnowledgeBaseCategoryModel,
+    QueueModel,
+    transactionRunner,
+    now: () => new Date(now()),
+  });
 
   const queryOne = async (modelQuery, projection = null, session = null) => {
     try {
@@ -277,7 +285,7 @@ export const helpdeskConversationService = (deps = {}) => {
     return new Map((users || []).map((user) => [idString(user._id), String(user.name || '').slice(0, 60)]));
   };
 
-  const serializeMessage = ({ row, authorName, ticket, attachment = null }) => ({
+  const serializeMessage = ({ row, authorName, ticket, attachment = null, knowledgeBaseArticles = [] }) => ({
     id: idString(row._id),
     messageType: String(row.messageType || 'PUBLIC').toLowerCase(),
     body: row.body || null,
@@ -294,6 +302,9 @@ export const helpdeskConversationService = (deps = {}) => {
           sizeBytes: attachment.sizeBytes,
         }]
       : [],
+    ...(String(row.messageType || 'PUBLIC') === 'PUBLIC' && knowledgeBaseArticles.length
+      ? { knowledgeBaseArticles }
+      : {}),
   });
 
   const listMessages = async ({
@@ -357,13 +368,34 @@ export const helpdeskConversationService = (deps = {}) => {
     if (pageRows.some((row) => row.attachmentId && !attachmentById.has(idString(row.attachmentId)))) {
       throw ApiError.unavailable('Helpdesk attachment metadata is temporarily unavailable.');
     }
+    const articleIds = [...new Set(pageRows
+      .filter((row) => row.messageType === 'PUBLIC')
+      .flatMap((row) => row.relatedArticleIds || [])
+      .map(idString)
+      .filter(Boolean))];
+    const linkedArticles = articleIds.length
+      ? await knowledgeBaseService.listTicketArticleReferences({
+        companyId,
+        ticketQueueId: ticket.queueId,
+        articleIds,
+      })
+      : [];
+    const linkedArticleById = new Map((linkedArticles || []).map((article) => [idString(article.id).toLowerCase(), article]));
     const authorNames = await loadAuthorNames({ companyId, rows: pageRows });
-    const messages = pageRows.map((row) => serializeMessage({
-      row,
-      ticket,
-      authorName: authorNames.get(idString(row.authorUserId)),
-      attachment: row.attachmentId ? attachmentById.get(idString(row.attachmentId)) ?? null : null,
-    }));
+    const messages = pageRows.map((row) => {
+      const visibleArticleLinks = row.messageType === 'PUBLIC'
+        ? (row.relatedArticleIds || [])
+          .map((id) => linkedArticleById.get(idString(id).toLowerCase()))
+          .filter(Boolean)
+        : [];
+      return serializeMessage({
+        row,
+        ticket,
+        authorName: authorNames.get(idString(row.authorUserId)),
+        attachment: row.attachmentId ? attachmentById.get(idString(row.attachmentId)) ?? null : null,
+        knowledgeBaseArticles: visibleArticleLinks,
+      });
+    });
     const lastRow = pageRows.at(-1);
     const nextCursor = hasMore && lastRow
       ? encodeHelpdeskMessageCursor(Number(lastRow[sequenceField]))
@@ -436,6 +468,19 @@ export const helpdeskConversationService = (deps = {}) => {
       }
     }
 
+    if (input.relatedArticleIds !== undefined && messageType !== 'PUBLIC'
+      && Array.isArray(input.relatedArticleIds) && input.relatedArticleIds.length) {
+      throw ApiError.badRequest('Internal notes cannot link Knowledge Base articles.');
+    }
+    const relatedArticleIds = input.relatedArticleIds === undefined
+      ? []
+      : await knowledgeBaseService.getTicketArticleReferences({
+        companyId: input.companyId,
+        ticketQueueId: context.ticket.queueId,
+        articleIds: input.relatedArticleIds,
+        session,
+      });
+
     if (context.audience === 'staff') {
       await bumpHelpdeskAuthorizationFence({
         FenceModel,
@@ -464,6 +509,7 @@ export const helpdeskConversationService = (deps = {}) => {
       messageType,
       body,
       attachmentId,
+      ...(relatedArticleIds.length ? { relatedArticleIds } : {}),
       ...notificationFieldsForMessage(messageType),
     };
     const created = await MessageModel.create([payload], { session });
@@ -495,6 +541,7 @@ export const helpdeskConversationService = (deps = {}) => {
     ticketNumber,
     body,
     messageType,
+    relatedArticleIds,
     canReadOwn,
     canReadQueue,
     canManage,
@@ -504,6 +551,7 @@ export const helpdeskConversationService = (deps = {}) => {
       companyId,
       actorId,
       ticketNumber,
+      relatedArticleIds,
       canReadOwn,
       canReadQueue,
       canManage,

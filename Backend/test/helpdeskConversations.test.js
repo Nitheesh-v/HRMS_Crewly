@@ -488,6 +488,7 @@ const makeWorld = (options = {}) => {
     UserModel,
     configService,
     slaService: NOOP_SLA_SERVICE,
+    knowledgeBaseService: options.knowledgeBaseService,
     notificationIntentsEnabled: options.notificationIntentsEnabled,
     planAttachmentStorage: ({ companyId, ticketId, attachmentId }) => ({
       storageProvider: 'CLOUDINARY_AUTHENTICATED',
@@ -737,6 +738,78 @@ test('message bodies are plain text, bounded, and server-authored; employee and 
   assert.equal(idOf(employeeQuery.filter.ticketId), TICKET_ID);
   assert.equal(employeeQuery.sort.publicSequence, -1);
   assert.ok(world.state.userFindCalls.every((call) => call.projection === '_id name'));
+});
+
+test('public ticket replies persist only current employee-visible Knowledge Base references and reauthorize them in history', async () => {
+  const ARTICLE_A = oid(720);
+  const ARTICLE_HIDDEN = oid(721);
+  const referenceCalls = [];
+  const knowledgeBaseService = {
+    async getTicketArticleReferences(input) {
+      referenceCalls.push({ ...input });
+      assert.equal(idOf(input.companyId), COMPANY_A);
+      assert.equal(idOf(input.ticketQueueId), QUEUE_ID);
+      assert.ok(input.session);
+      if (input.articleIds.some((id) => idOf(id) !== ARTICLE_A)) {
+        throw Object.assign(new Error('article unavailable'), { statusCode: 400 });
+      }
+      return input.articleIds;
+    },
+    async listTicketArticleReferences(input) {
+      assert.equal(idOf(input.companyId), COMPANY_A);
+      assert.equal(idOf(input.ticketQueueId), QUEUE_ID);
+      return input.articleIds.includes(ARTICLE_A)
+        ? [{ id: ARTICLE_A, slug: 'vpn-access', title: 'VPN access', summary: 'Connect securely.' }]
+        : [];
+    },
+  };
+  const world = makeWorld({ knowledgeBaseService });
+  const created = await world.service.createMessage(requester(world, {
+    body: 'The guide explains the reset steps.',
+    relatedArticleIds: [ARTICLE_A],
+  }));
+  assert.equal(world.state.messages.length, 1);
+  assert.deepEqual(world.state.messages[0].relatedArticleIds, [ARTICLE_A]);
+  assert.equal(referenceCalls.length, 1);
+  assert.equal(referenceCalls[0].session.id, 'fake-helpdesk-session');
+  assert.equal(Object.hasOwn(created, 'knowledgeBaseArticles'), false);
+
+  const history = await world.service.listMessages({
+    companyId: COMPANY_A,
+    actorId: REQUESTER,
+    ticketNumber: TICKET_NUMBER,
+    canReadOwn: true,
+  });
+  assert.deepEqual(history.messages[0].knowledgeBaseArticles, [
+    { id: ARTICLE_A, slug: 'vpn-access', title: 'VPN access', summary: 'Connect securely.' },
+  ]);
+  assert.equal(Object.hasOwn(history.messages[0].knowledgeBaseArticles[0], 'body'), false);
+
+  await assert.rejects(
+    () => world.service.createMessage(agent(world, {
+      messageType: 'internal',
+      body: 'Internal note.',
+      relatedArticleIds: [ARTICLE_A],
+    })),
+    (error) => error.statusCode === 400,
+  );
+  await assert.rejects(
+    () => world.service.createMessage(requester(world, {
+      body: 'Try a restricted guide.',
+      relatedArticleIds: [ARTICLE_HIDDEN],
+    })),
+    (error) => error.statusCode === 400,
+  );
+  assert.equal(world.state.messages.length, 1);
+  assert.equal(referenceCalls.length, 2);
+  await assert.rejects(
+    () => runValidatorStack(helpdeskMessageCreateValidator, {
+      body: { body: 'Internal note.', messageType: 'internal', relatedArticleIds: [ARTICLE_A] },
+      params: { ticketNumber: TICKET_NUMBER },
+      query: {},
+    }),
+    (error) => error.statusCode === 400,
+  );
 });
 
 test('invalid bodies, client identity fields, unsupported history filters, and terminal ticket comments fail closed', async () => {
