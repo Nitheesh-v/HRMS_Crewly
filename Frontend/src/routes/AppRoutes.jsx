@@ -155,6 +155,7 @@ const EmployeeFilesPage = lazy(() => import("../pages/documents/EmployeeFilesPag
 const MeetingsPage = lazy(() => import("../pages/meetings/MeetingsPage.jsx"));
 const AnnouncementsPage = lazy(() => import("../pages/announcements/AnnouncementsPage.jsx"));
 const SupportPage = lazy(() => import("../pages/support/SupportPage.jsx"));
+const HelpdeskRouter = lazy(() => import("../pages/helpdesk/HelpdeskRouter.jsx"));
 
 const NotificationsPage = lazy(() => import("../pages/notifications/NotificationsPage.jsx"));
 const NotificationSettingsPage = lazy(() => import("../pages/notifications/NotificationSettingsPage.jsx"));
@@ -1062,6 +1063,11 @@ const AppRoutes = () => (
       <Route
         path="support"
         element={<SupportPage />}
+      />
+
+      <Route
+        path="helpdesk/*"
+        element={<HelpdeskRouter />}
       />
 
       <Route

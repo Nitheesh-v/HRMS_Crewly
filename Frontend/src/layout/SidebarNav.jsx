@@ -117,6 +117,7 @@ const NAV_ICON_BY_PATH = {
   "/app/referrals": UserPlus,
   "/app/recruitment/pre-onboarding": ClipboardList,
   "/app/support": LifeBuoy,
+  "/app/helpdesk": LifeBuoy,
   "/app/exit": DoorOpen,
   "/app/company": Settings,
   "/app/billing": CreditCard,
@@ -217,6 +218,14 @@ const NAV_GROUPS = [
     // Employee referrals live here too: they are work, not personal prefs.
     paths: ["/app/tasks", "/app/meetings", "/app/announcements", "/app/referrals"],
     prefixes: ["/app/projects"],
+  },
+
+  {
+    id: "support",
+    label: "Support",
+    icon: LifeBuoy,
+    paths: ["/app/helpdesk"],
+    prefixes: ["/app/helpdesk"],
   },
 
   {
