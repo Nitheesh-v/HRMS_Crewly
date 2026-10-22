@@ -132,7 +132,7 @@
     "test:ai-own-records": "node --test test/hrContextOwnRecords.test.js",
     "test:phase36-closeout": "node --test test/phase36Closeout.test.js",
     "test:profile-changes": "node --test test/profileChangeRequests.test.js",
-    "test:helpdesk": "node --test test/helpdeskFoundation.test.js test/helpdeskAuthorizationFence.test.js test/helpdeskTransaction.test.js test/helpdeskEmployeeLifecycle.test.js test/helpdeskAgentOperations.test.js test/helpdeskConversations.test.js test/helpdeskKnowledgeBase.test.js test/helpdeskSla.test.js test/helpdeskResolutionFeedback.test.js test/helpdeskNotificationRecovery.test.js test/helpdeskStagingHarness.test.js",
+    "test:helpdesk": "node --test test/helpdeskFoundation.test.js test/helpdeskAuthorizationFence.test.js test/helpdeskTransaction.test.js test/helpdeskEmployeeLifecycle.test.js test/helpdeskAgentOperations.test.js test/helpdeskConversations.test.js test/helpdeskKnowledgeBase.test.js test/helpdeskSla.test.js test/helpdeskResolutionFeedback.test.js test/helpdeskNotificationRecovery.test.js test/helpdeskAnalytics.test.js test/helpdeskStagingHarness.test.js",
     "test:helpdesk-authorization": "node --test test/helpdeskAuthorizationFence.test.js test/helpdeskTransaction.test.js",
     "test:helpdesk-lifecycle": "node --test test/helpdeskEmployeeLifecycle.test.js",
     "test:helpdesk-agents": "node --test test/helpdeskAgentOperations.test.js",

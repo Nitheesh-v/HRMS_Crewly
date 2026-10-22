@@ -294,6 +294,18 @@ helpdeskTicketSchema.index(
   },
 );
 
+// Phase 38.9 — bounded feedback-period aggregates by tenant and authorized queue.
+helpdeskTicketSchema.index(
+  { companyId: 1, queueId: 1, 'feedback.submittedAt': -1 },
+  {
+    name: 'helpdesk_ticket_feedback_analytics',
+    partialFilterExpression: {
+      ticketKind: 'HELPDESK',
+      'feedback.submittedAt': { $type: 'date' },
+    },
+  },
+);
+
 helpdeskTicketSchema.index(
   { 'sla.nextActionAt': 1, companyId: 1, _id: 1 },
   {

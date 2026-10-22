@@ -370,6 +370,7 @@ test('tenant policy defaults, lifecycle fields, immutable history, and bounded i
   assert.deepEqual(HelpdeskTicketLifecycleEvent.schema.indexes().map(([keys, options]) => ({ keys, unique: options.unique === true })), [
     { keys: { companyId: 1, ticketId: 1, sequence: 1 }, unique: true },
     { keys: { companyId: 1, ticketId: 1, occurredAt: -1, sequence: -1 }, unique: false },
+    { keys: { companyId: 1, eventType: 1, occurredAt: -1, ticketId: 1 }, unique: false },
   ]);
   for (const field of ['companyId', 'ticketId', 'sequence', 'eventType', 'actorType', 'actorId', 'occurredAt', 'resolutionCycle']) {
     assert.equal(HelpdeskTicketLifecycleEvent.schema.path(field).options.immutable, true, `${field} must be immutable`);

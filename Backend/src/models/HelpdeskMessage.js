@@ -117,6 +117,15 @@ helpdeskMessageSchema.index(
   },
 );
 
+// Phase 38.9 — tenant/date filtering for persisted public Knowledge Base references.
+helpdeskMessageSchema.index(
+  { companyId: 1, createdAt: -1, ticketId: 1 },
+  {
+    name: 'helpdesk_public_message_analytics',
+    partialFilterExpression: { messageType: 'PUBLIC' },
+  },
+);
+
 helpdeskMessageSchema.index(
   { notificationState: 1, notificationNextAttemptAt: 1, companyId: 1, createdAt: 1, _id: 1 },
   {

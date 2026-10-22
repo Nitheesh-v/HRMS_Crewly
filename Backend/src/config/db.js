@@ -4,6 +4,7 @@ import logger from './logger.js';
 import HelpdeskAuthorizationFence from '../models/HelpdeskAuthorizationFence.js';
 import HelpdeskTicket from '../models/HelpdeskTicket.js';
 import HelpdeskQueue from '../models/HelpdeskQueue.js';
+import HelpdeskMessage from '../models/HelpdeskMessage.js';
 import HelpdeskTicketLifecycleEvent from '../models/HelpdeskTicketLifecycleEvent.js';
 import HelpdeskKnowledgeBaseArticle from '../models/HelpdeskKnowledgeBaseArticle.js';
 import HelpdeskKnowledgeBaseCategory from '../models/HelpdeskKnowledgeBaseCategory.js';
@@ -40,6 +41,16 @@ const ensureHelpdeskLifecycleIndexes = async () => {
       },
     },
   );
+  await HelpdeskTicket.collection.createIndex(
+    { companyId: 1, queueId: 1, 'feedback.submittedAt': -1 },
+    {
+      name: 'helpdesk_ticket_feedback_analytics',
+      partialFilterExpression: {
+        ticketKind: 'HELPDESK',
+        'feedback.submittedAt': { $type: 'date' },
+      },
+    },
+  );
   await HelpdeskTicketLifecycleEvent.collection.createIndex(
     { companyId: 1, ticketId: 1, sequence: 1 },
     { unique: true, name: 'helpdesk_ticket_lifecycle_sequence_unique' },
@@ -47,6 +58,17 @@ const ensureHelpdeskLifecycleIndexes = async () => {
   await HelpdeskTicketLifecycleEvent.collection.createIndex(
     { companyId: 1, ticketId: 1, occurredAt: -1, sequence: -1 },
     { name: 'helpdesk_ticket_lifecycle_history' },
+  );
+  await HelpdeskTicketLifecycleEvent.collection.createIndex(
+    { companyId: 1, eventType: 1, occurredAt: -1, ticketId: 1 },
+    { name: 'helpdesk_lifecycle_analytics' },
+  );
+  await HelpdeskMessage.collection.createIndex(
+    { companyId: 1, createdAt: -1, ticketId: 1 },
+    {
+      name: 'helpdesk_public_message_analytics',
+      partialFilterExpression: { messageType: 'PUBLIC' },
+    },
   );
 
   const ticketCursor = HelpdeskTicket.collection.listIndexes();
@@ -57,6 +79,10 @@ const ensureHelpdeskLifecycleIndexes = async () => {
   const lifecycleIndexes = typeof lifecycleCursor?.toArray === 'function'
     ? await lifecycleCursor.toArray()
     : await lifecycleCursor;
+  const messageCursor = HelpdeskMessage.collection.listIndexes();
+  const messageIndexes = typeof messageCursor?.toArray === 'function'
+    ? await messageCursor.toArray()
+    : await messageCursor;
   const keyMatches = (index, expected) =>
     JSON.stringify(Object.entries(index?.key || {})) === JSON.stringify(Object.entries(expected));
   const autoCloseIndex = (ticketIndexes || []).find((index) =>
@@ -72,8 +98,27 @@ const ensureHelpdeskLifecycleIndexes = async () => {
     index.name === 'helpdesk_ticket_lifecycle_history'
       && keyMatches(index, { companyId: 1, ticketId: 1, occurredAt: -1, sequence: -1 }),
   );
-  if (!autoCloseIndex || !sequenceIndex || !historyIndex) {
-    throw new Error('Required Helpdesk lifecycle indexes are not available');
+  const lifecycleAnalyticsIndex = (lifecycleIndexes || []).find((index) =>
+    index.name === 'helpdesk_lifecycle_analytics'
+      && keyMatches(index, { companyId: 1, eventType: 1, occurredAt: -1, ticketId: 1 }),
+  );
+  const feedbackAnalyticsIndex = (ticketIndexes || []).find((index) =>
+    index.name === 'helpdesk_ticket_feedback_analytics'
+      && keyMatches(index, { companyId: 1, queueId: 1, 'feedback.submittedAt': -1 }),
+  );
+  const messageAnalyticsIndex = (messageIndexes || []).find((index) =>
+    index.name === 'helpdesk_public_message_analytics'
+      && keyMatches(index, { companyId: 1, createdAt: -1, ticketId: 1 }),
+  );
+  if (
+    !autoCloseIndex
+    || !sequenceIndex
+    || !historyIndex
+    || !lifecycleAnalyticsIndex
+    || !feedbackAnalyticsIndex
+    || !messageAnalyticsIndex
+  ) {
+    throw new Error('Required Helpdesk lifecycle/analytics indexes are not available');
   }
 };
 

@@ -47,4 +47,10 @@ helpdeskTicketLifecycleEventSchema.index(
   { name: 'helpdesk_ticket_lifecycle_history' },
 );
 
+// Phase 38.9 — tenant/time-window lifecycle reporting with event-type filters.
+helpdeskTicketLifecycleEventSchema.index(
+  { companyId: 1, eventType: 1, occurredAt: -1, ticketId: 1 },
+  { name: 'helpdesk_lifecycle_analytics' },
+);
+
 export default mongoose.model('HelpdeskTicketLifecycleEvent', helpdeskTicketLifecycleEventSchema);

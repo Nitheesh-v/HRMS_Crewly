@@ -11,6 +11,7 @@ import {
 } from '../middlewares/permissionMiddleware.js';
 import * as helpdeskControllerNS from '../controllers/helpdeskController.js';
 import * as helpdeskKnowledgeBaseControllerNS from '../controllers/helpdeskKnowledgeBaseController.js';
+import * as helpdeskAnalyticsControllerNS from '../controllers/helpdeskAnalyticsController.js';
 import {
   helpdeskConfigUpdateValidator,
   helpdeskQueueCreateValidator,
@@ -51,6 +52,10 @@ import {
   helpdeskKbCategoryCreateValidator,
   helpdeskKbCategoryUpdateValidator,
 } from '../validators/helpdeskKnowledgeBaseValidator.js';
+import {
+  helpdeskAnalyticsQueueIdValidator,
+  helpdeskAnalyticsQueryValidator,
+} from '../validators/helpdeskAnalyticsValidator.js';
 
 const mergeExports = (namespace) => ({
   ...namespace,
@@ -61,6 +66,7 @@ const { protect } = mergeExports(authMwNS);
 const { tenantContext } = mergeExports(tenantNS);
 const controller = mergeExports(helpdeskControllerNS);
 const knowledgeBaseController = mergeExports(helpdeskKnowledgeBaseControllerNS);
+const analyticsController = mergeExports(helpdeskAnalyticsControllerNS);
 const router = express.Router();
 
 const requireTenant = (req, res, next) => {
@@ -245,6 +251,36 @@ router.post(
   ...helpdeskKbArticleIdParamValidator,
   ...helpdeskKbArticleTransitionValidator,
   knowledgeBaseController.archiveArticle,
+);
+
+// Phase 38.9 — aggregate reports remain limited to tickets the caller can already read.
+router.get(
+  '/admin/analytics/overview',
+  requirePermission('HELPDESK_TICKET_READ'),
+  ...helpdeskAnalyticsQueryValidator,
+  analyticsController.getOverview,
+);
+router.get(
+  '/admin/analytics/queues/:queueId',
+  requirePermission('HELPDESK_TICKET_READ'),
+  ...helpdeskAnalyticsQueueIdValidator,
+  ...helpdeskAnalyticsQueryValidator,
+  analyticsController.getQueueReport,
+);
+router.get(
+  '/admin/analytics/queues/:queueId/agents',
+  requirePermission('HELPDESK_TICKET_READ'),
+  requirePermission('HELPDESK_QUEUE_MANAGE'),
+  ...helpdeskAnalyticsQueueIdValidator,
+  ...helpdeskAnalyticsQueryValidator,
+  analyticsController.getQueueAgentPerformance,
+);
+router.get(
+  '/admin/analytics/knowledge-base/usage',
+  requirePermission('HELPDESK_KB_MANAGE'),
+  requirePermission('HELPDESK_TICKET_READ'),
+  ...helpdeskAnalyticsQueryValidator,
+  analyticsController.getKnowledgeBaseUsage,
 );
 
 router.get(
