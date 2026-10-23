@@ -30,6 +30,7 @@ import {
   HELPDESK_TRANSITIONS,
   helpdeskAcceptedAttachment,
   helpdeskData,
+  helpdeskFeedback,
   helpdeskDateTime,
   helpdeskErrorStatus,
   helpdeskMeta,
@@ -162,7 +163,7 @@ const HelpdeskTicketDetailPage = () => {
         return;
       }
       setSla(optionalCalls[0].status === 'fulfilled' ? helpdeskData(optionalCalls[0].value) : nextTicket?.sla || null);
-      setFeedback(optionalCalls[1].status === 'fulfilled' ? helpdeskData(optionalCalls[1].value) : null);
+      setFeedback(optionalCalls[1].status === 'fulfilled' ? helpdeskFeedback(optionalCalls[1].value) : null);
       setConfig(optionalCalls[2].status === 'fulfilled' ? helpdeskData(optionalCalls[2].value) : null);
       setQueues(optionalCalls[3].status === 'fulfilled' && optionalCalls[3].value ? (helpdeskData(optionalCalls[3].value) || []) : []);
     } catch (requestError) {
@@ -440,7 +441,7 @@ const HelpdeskTicketDetailPage = () => {
     setActionError('');
     try {
       const response = await helpdeskService.submitFeedback(ticketNumber, { rating, comment: feedbackComment.trim() || undefined });
-      setFeedback(helpdeskData(response));
+      setFeedback(helpdeskFeedback(response));
       setNotice('Thank you for your feedback.');
       setFeedbackComment('');
     } catch (requestError) {

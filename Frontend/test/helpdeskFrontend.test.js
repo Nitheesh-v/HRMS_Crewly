@@ -13,6 +13,7 @@ import {
   helpdeskDateOnly,
   helpdeskDateTime,
   helpdeskErrorStatus,
+  helpdeskFeedback,
   helpdeskMeta,
   nextUtcDate,
   safeHelpdeskError,
@@ -79,6 +80,10 @@ test('response helpers unwrap API data and pagination metadata', () => {
   const unwrappedPage = { data: [{ id: 'c' }], meta: { total: 1 } };
   assert.deepEqual(helpdeskData(unwrappedPage), [{ id: 'c' }]);
   assert.deepEqual(helpdeskMeta(unwrappedPage), { total: 1 });
+  assert.equal(helpdeskFeedback({ ticketNumber: 'HD-000001', feedback: null }), null);
+  const submittedFeedback = { rating: 5, comment: 'Resolved', submittedAt: '2026-10-23T00:00:00.000Z' };
+  assert.deepEqual(helpdeskFeedback({ ticketNumber: 'HD-000001', feedback: submittedFeedback }), submittedFeedback);
+  assert.deepEqual(helpdeskFeedback(submittedFeedback), submittedFeedback);
   assert.equal(helpdeskMeta({}), null);
 });
 

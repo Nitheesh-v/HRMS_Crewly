@@ -47,6 +47,12 @@ export const helpdeskArray = (value) => (Array.isArray(value) ? value : []);
 export const helpdeskData = (response) => response?.data?.data ?? response?.data ?? response ?? null;
 export const helpdeskMeta = (response) => response?.data?.meta ?? response?.meta ?? null;
 
+export const helpdeskFeedback = (response) => {
+  const data = helpdeskData(response);
+  if (!data || typeof data !== 'object') return null;
+  return Object.prototype.hasOwnProperty.call(data, 'feedback') ? data.feedback : data;
+};
+
 export const HELPDESK_STATUSES = Object.freeze([
   'open',
   'assigned',
