@@ -41,7 +41,10 @@ export const helpdeskDateOnly = (value) => {
 
 export const helpdeskArray = (value) => (Array.isArray(value) ? value : []);
 
-export const helpdeskData = (response) => response?.data?.data ?? response?.data ?? null;
+// The shared Axios client unwraps ordinary `{ data }` API envelopes before
+// these helpers run, while paginated responses retain their top-level data/meta.
+// Accept both shapes so plain DTOs are not mistaken for an empty response.
+export const helpdeskData = (response) => response?.data?.data ?? response?.data ?? response ?? null;
 export const helpdeskMeta = (response) => response?.data?.meta ?? response?.meta ?? null;
 
 export const HELPDESK_STATUSES = Object.freeze([

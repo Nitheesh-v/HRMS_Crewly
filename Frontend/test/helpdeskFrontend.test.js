@@ -74,6 +74,11 @@ test('response helpers unwrap API data and pagination metadata', () => {
   assert.deepEqual(helpdeskData(response), [{ id: 'a' }]);
   assert.deepEqual(helpdeskMeta(response), { nextCursor: 'next' });
   assert.equal(helpdeskData({ data: { id: 'b' } }).id, 'b');
+  const unwrappedConfig = { enabled: true, allowEmployeeTickets: true };
+  assert.deepEqual(helpdeskData(unwrappedConfig), unwrappedConfig);
+  const unwrappedPage = { data: [{ id: 'c' }], meta: { total: 1 } };
+  assert.deepEqual(helpdeskData(unwrappedPage), [{ id: 'c' }]);
+  assert.deepEqual(helpdeskMeta(unwrappedPage), { total: 1 });
   assert.equal(helpdeskMeta({}), null);
 });
 
