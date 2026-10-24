@@ -270,7 +270,10 @@ const SuperAdminLayout = () => {
   );
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
+    // The provider console is an internal, dark-only tool: it opts out of the
+    // app-wide light theme (see block 12b in style.css) rather than shipping a
+    // second palette nobody asked for.
+    <div className="theme-fixed-dark min-h-screen bg-slate-950 text-slate-100">
       <div className="fixed inset-y-0 left-0 z-40 hidden lg:block">
         {sidebar}
       </div>

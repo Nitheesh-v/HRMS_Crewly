@@ -114,7 +114,7 @@ const SalaryHistoryPage = () => {
               rows={months}
               empty="No payroll snapshots for this employee yet"
             />
-            <p className="mt-3 border-t border-white/5 pt-2 text-xs text-crewly-dim">
+            <p className="mt-3 border-t border-crewly-hairline pt-2 text-xs text-crewly-dim">
               These are actuals, not a projection: every figure is what the payroll run calculated
               and stored that month. Nothing here is recalculated.
             </p>
@@ -138,7 +138,7 @@ const SalaryHistoryPage = () => {
               rows={versions}
               empty="No salary revisions recorded"
             />
-            <p className="mt-3 border-t border-white/5 pt-2 text-xs text-crewly-dim">
+            <p className="mt-3 border-t border-crewly-hairline pt-2 text-xs text-crewly-dim">
               A revision never rewrites the one before it, which is why this list can be longer than
               one row: the old version stays on record with the date it stopped applying.
             </p>

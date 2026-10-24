@@ -194,7 +194,7 @@ const CareerApplyShellPage = () => {
       <div className="mx-auto max-w-3xl px-5 py-12 sm:py-16">
         <section className="rounded-3xl border border-slate-800 bg-slate-900 p-7 sm:p-10">
           <BriefcaseBusiness className="h-10 w-10 text-slate-600" />
-          <h1 className="mt-4 text-xl font-semibold text-white">Application unavailable</h1>
+          <h1 className="mt-4 text-xl font-semibold text-slate-50">Application unavailable</h1>
           <p className="mt-2 text-sm text-slate-400">{state.error}</p>
           <Link
             to={`/careers/${companySlug}/jobs`}
@@ -217,7 +217,7 @@ const CareerApplyShellPage = () => {
           <p className="mt-6 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300">
             Application received
           </p>
-          <h1 className="mt-3 text-2xl font-bold text-white sm:text-3xl">
+          <h1 className="mt-3 text-2xl font-bold text-slate-50 sm:text-3xl">
             Thank you for applying
           </h1>
           <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-400">
@@ -258,7 +258,7 @@ const CareerApplyShellPage = () => {
     <div className="mx-auto max-w-5xl px-5 py-10 sm:py-14">
       <Link
         to={`/careers/${companySlug}/jobs/${jobCode}`}
-        className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white"
+        className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100"
       >
         <ArrowLeft className="h-4 w-4" /> Back to role
       </Link>
@@ -271,14 +271,14 @@ const CareerApplyShellPage = () => {
           <p className="mt-5 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-300">
             {state.job.jobCode}
           </p>
-          <h1 className="mt-2 text-2xl font-bold text-white sm:text-3xl">
+          <h1 className="mt-2 text-2xl font-bold text-slate-50 sm:text-3xl">
             Apply for {state.job.title}
           </h1>
           <p className="mt-2 text-sm text-slate-400">{company.name}</p>
 
           <form className="mt-9 space-y-8" onSubmit={submitApplication}>
             <fieldset>
-              <legend className="text-base font-semibold text-white">Contact information</legend>
+              <legend className="text-base font-semibold text-slate-50">Contact information</legend>
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <Field label="Full name" required>
                   <input className="input" name="fullName" value={form.fullName} onChange={updateField} required minLength={2} maxLength={100} autoComplete="name" />
@@ -296,7 +296,7 @@ const CareerApplyShellPage = () => {
             </fieldset>
 
             <fieldset>
-              <legend className="text-base font-semibold text-white">Professional profile</legend>
+              <legend className="text-base font-semibold text-slate-50">Professional profile</legend>
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <Field label="Current company">
                   <input className="input" name="currentCompany" value={form.currentCompany} onChange={updateField} maxLength={120} autoComplete="organization" />
@@ -320,7 +320,7 @@ const CareerApplyShellPage = () => {
             </fieldset>
 
             <fieldset>
-              <legend className="text-base font-semibold text-white">Education and skills</legend>
+              <legend className="text-base font-semibold text-slate-50">Education and skills</legend>
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <Field label="Degree">
                   <input className="input" name="degree" value={form.degree} onChange={updateField} maxLength={120} />
@@ -338,7 +338,7 @@ const CareerApplyShellPage = () => {
             </fieldset>
 
             <fieldset>
-              <legend className="text-base font-semibold text-white">Professional links</legend>
+              <legend className="text-base font-semibold text-slate-50">Professional links</legend>
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <Field label="LinkedIn">
                   <input className="input" type="url" name="linkedIn" value={form.linkedIn} onChange={updateField} maxLength={300} placeholder="https://www.linkedin.com/in/..." />
@@ -355,7 +355,7 @@ const CareerApplyShellPage = () => {
             </fieldset>
 
             <fieldset>
-              <legend className="text-base font-semibold text-white">Resume</legend>
+              <legend className="text-base font-semibold text-slate-50">Resume</legend>
               <label className="mt-4 flex cursor-pointer flex-col items-center rounded-2xl border border-dashed border-slate-700 bg-slate-950/40 px-5 py-7 text-center transition hover:border-indigo-400/60 hover:bg-indigo-500/5">
                 <UploadCloud className="h-7 w-7 text-indigo-300" />
                 <span className="mt-3 text-sm font-medium text-slate-200">
@@ -407,7 +407,7 @@ const CareerApplyShellPage = () => {
         <aside className="space-y-4 lg:sticky lg:top-24">
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Role</p>
-            <p className="mt-2 font-semibold text-white">{state.job.title}</p>
+            <p className="mt-2 font-semibold text-slate-50">{state.job.title}</p>
             <p className="mt-1 font-mono text-xs text-indigo-300">{state.job.jobCode}</p>
           </div>
           <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5">

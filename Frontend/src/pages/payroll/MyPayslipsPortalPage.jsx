@@ -322,7 +322,7 @@ const MyPayslipsPortalPage = () => {
       {/* §14 — month, gross, net, payment date, status, download */}
       <div className="card overflow-x-auto p-0">
         <table className="w-full text-left text-sm">
-          <thead className="bg-white/5 text-xs uppercase tracking-wide text-crewly-dim">
+          <thead className="bg-crewly-inset text-xs uppercase tracking-wide text-crewly-dim">
             <tr>
               <th className="px-3 py-2">Month</th>
               <th className="px-3 py-2">Gross</th>
@@ -346,7 +346,7 @@ const MyPayslipsPortalPage = () => {
               />
             ) : (
               visible.map((row) => (
-                <tr key={row._id} className="border-t border-white/5 hover:bg-white/5">
+                <tr key={row._id} className="border-t border-crewly-hairline hover:bg-crewly-inset">
                   <td className="px-3 py-2">
                     <button className="font-medium text-indigo-300 hover:underline" onClick={() => openPayslip(row)}>
                       {row.monthLabel || row.month}

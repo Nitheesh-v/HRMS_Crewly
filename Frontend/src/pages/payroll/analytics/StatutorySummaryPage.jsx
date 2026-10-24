@@ -116,7 +116,7 @@ const StatutorySummaryPage = () => {
               ]}
               empty="No statutory liability for this month"
             />
-            <p className="mt-3 border-t border-white/5 pt-2 text-xs text-crewly-dim">
+            <p className="mt-3 border-t border-crewly-hairline pt-2 text-xs text-crewly-dim">
               Professional tax and TDS are remitted, not matched, so they carry no employer share.
               Gratuity is a provision shown separately, annualised at {money(totals.gratuityAnnualised)}.
             </p>
@@ -158,7 +158,7 @@ const StatutorySummaryPage = () => {
             actions={
               <div className="flex items-center gap-2">
                 <select
-                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm text-crewly-text"
+                  className="rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm text-crewly-text"
                   value={financialYear}
                   onChange={(event) => setFinancialYear(event.target.value)}
                 >

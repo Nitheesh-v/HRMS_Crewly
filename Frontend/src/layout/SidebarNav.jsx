@@ -557,7 +557,7 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
       <aside className="flex h-dvh w-full flex-col border-r border-crewly-border bg-crewly-card py-4 px-3 overflow-hidden">
         <div className="flex items-center justify-between gap-2 px-1">
           <div className="flex items-center gap-1.5">
-            <img src="/logo-crewly.png" alt="Crewly" className="h-8 w-auto mix-blend-screen" />
+            <img src="/logo-crewly.png" alt="Crewly" className="h-8 w-auto crewly-logo" />
             <span className="text-sm font-extrabold tracking-widest text-slate-400">HRMS</span>
           </div>
           <button
@@ -688,7 +688,7 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
         ) : (
           <>
             <div className="flex items-center gap-1.5 min-w-0">
-              <img src="/logo-crewly.png" alt="Crewly" className="h-8 w-auto mix-blend-screen sm:h-9" />
+              <img src="/logo-crewly.png" alt="Crewly" className="h-8 w-auto crewly-logo sm:h-9" />
               <span className="text-xs sm:text-sm font-extrabold tracking-widest text-slate-400 truncate">HRMS</span>
             </div>
 

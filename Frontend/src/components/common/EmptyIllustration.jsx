@@ -23,8 +23,12 @@ const PINK = '#f778ba';
 const TEAL = '#39c5cf';
 const YELLOW = '#e3b341';
 
-const ink = (alpha = 0.55) => `rgba(230, 237, 243, ${alpha})`;
-const dim = (alpha = 0.35) => `rgba(139, 148, 158, ${alpha})`;
+// Ink and paper are theme tokens, not literals: the same scene has to read on a
+// near-black card and on cream paper. Everything else here keeps its mid-tone
+// accent hexes because those are the illustration's own colours, and they are
+// legible on both surfaces.
+const ink = (alpha = 0.55) => `rgba(var(--art-ink-rgb), ${alpha})`;
+const dim = (alpha = 0.35) => `rgba(var(--art-dim-rgb), ${alpha})`;
 const wash = (hex, alpha = 0.18) => `${hex}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`;
 
 // The plate every scene sits on: two tinted discs, a dashed orbit, a floor
@@ -155,7 +159,7 @@ const scenes = {
       <rect x="140" y="60" width="66" height="86" rx="7" fill={wash(BLUE, 0.13)} stroke={BLUE} strokeOpacity="0.6" strokeWidth="2.5" />
       <path d="M192 60 v20 h14" stroke={BLUE} strokeOpacity="0.5" strokeWidth="2.4" strokeLinejoin="round" />
       <TextLines x={152} y={82} widths={[40, 30, 38, 26]} />
-      <circle cx="207" cy="134" r="12" fill="#161b22" stroke={PURPLE} strokeOpacity="0.9" strokeWidth="2.2" />
+      <circle cx="207" cy="134" r="12" fill="var(--art-plate)" stroke={PURPLE} strokeOpacity="0.9" strokeWidth="2.2" />
       <circle cx="207" cy="134" r="12" fill={wash(PURPLE, 0.25)} />
       <path d="M202 134 l3.5 3.5 l6.5 -7" stroke={PURPLE} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
     </>

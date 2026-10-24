@@ -38,7 +38,7 @@ const DECISIONS = {
     placeholder: 'Add context for the requester or recruitment team',
     required: false,
     icon: Check,
-    buttonClass: 'bg-emerald-500 text-slate-950 hover:bg-emerald-400',
+    buttonClass: 'bg-emerald-500 text-crewly-coal hover:bg-emerald-400',
   },
   REJECTED: {
     title: 'Reject requisition',
@@ -58,7 +58,7 @@ const DECISIONS = {
     placeholder: 'List the information or corrections the requester must provide',
     required: true,
     icon: SendToBack,
-    buttonClass: 'bg-sky-500 text-slate-950 hover:bg-sky-400',
+    buttonClass: 'bg-sky-500 text-crewly-coal hover:bg-sky-400',
   },
 };
 
@@ -122,7 +122,7 @@ const Modal = ({ title, subtitle = '', onClose, wide = false, children }) => (
         <button
           type="button"
           onClick={onClose}
-          className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white"
+          className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-slate-100"
           aria-label="Close"
         >
           <X className="h-4 w-4" />
@@ -724,7 +724,7 @@ const RequisitionApprovalsPage = () => {
                 {canApprove && (
                   <button
                     type="button"
-                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-semibold text-slate-950 transition hover:bg-emerald-400"
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-semibold text-crewly-coal transition hover:bg-emerald-400"
                     onClick={() => openDecision('APPROVED')}
                   >
                     <Check className="h-4 w-4" /> Approve

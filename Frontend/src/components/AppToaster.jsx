@@ -20,16 +20,17 @@ import { notify } from '../utils/notify.js';
 
 
 /*
- * Crewly's own palette (Frontend/src/style.css `@theme`), so the cards sit on
- * the dark shell instead of sonner's light default.
+ * Crewly's own palette (Frontend/src/style.css `@theme`) through its variables,
+ * so the cards sit on the app shell instead of sonner's own default — and follow
+ * the theme switch without this file knowing which theme is on.
  */
 const TOAST_STYLE = {
-  background: '#161b22',
-  border: '1px solid #30363d',
-  color: '#e6edf3',
+  background: 'var(--color-crewly-card)',
+  border: '1px solid var(--color-crewly-border)',
+  color: 'var(--color-crewly-text)',
   borderRadius: '12px',
   fontSize: '13.5px',
-  boxShadow: '0 12px 32px rgba(0, 0, 0, 0.45)',
+  boxShadow: 'var(--toast-shadow)',
 };
 
 const TOAST_OPTIONS = {

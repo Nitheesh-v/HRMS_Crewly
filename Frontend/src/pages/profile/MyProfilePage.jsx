@@ -43,7 +43,7 @@ const STATUS_STYLE = {
   pending: 'bg-amber-400/15 text-amber-200',
   approved: 'bg-crewly-green/15 text-crewly-green',
   rejected: 'bg-crewly-red/15 text-crewly-red',
-  cancelled: 'bg-white/10 text-crewly-dim',
+  cancelled: 'bg-crewly-inset-strong text-crewly-dim',
 };
 
 const dayValue = (value) => (value ? String(value).slice(0, 10) : '');

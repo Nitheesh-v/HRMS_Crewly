@@ -102,7 +102,7 @@ const CareerPublicLayout = () => {
           <nav className="flex items-center gap-2">
             <Link
               to={`/careers/${companySlug}/jobs`}
-              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-900 hover:text-white"
+              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-300 transition hover:bg-slate-900 hover:text-slate-100"
             >
               <BriefcaseBusiness className="h-4 w-4" /> Open jobs
             </Link>
@@ -111,7 +111,7 @@ const CareerPublicLayout = () => {
                 href={company.website}
                 target="_blank"
                 rel="noreferrer"
-                className="hidden items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-slate-400 transition hover:bg-slate-900 hover:text-white sm:inline-flex"
+                className="hidden items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-slate-400 transition hover:bg-slate-900 hover:text-slate-100 sm:inline-flex"
               >
                 Company website <ExternalLink className="h-3.5 w-3.5" />
               </a>

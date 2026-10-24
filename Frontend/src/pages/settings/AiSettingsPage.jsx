@@ -584,7 +584,7 @@ const AiSettingsPage = () => {
             type="button"
             onClick={save}
             disabled={saving || !dirty || loading}
-            className="flex items-center gap-1.5 rounded-lg bg-crewly-green px-3 py-1.5 text-[12px] font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-lg bg-crewly-green px-3 py-1.5 text-[12px] font-semibold text-slate-50 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Save className="h-3.5 w-3.5" aria-hidden="true" strokeWidth={1.9} />
 
@@ -963,7 +963,7 @@ const AiSettingsPage = () => {
                   type="button"
                   onClick={save}
                   disabled={saving || loading}
-                  className="flex items-center gap-1.5 rounded-lg bg-crewly-green px-3 py-1.5 text-[12px] font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex items-center gap-1.5 rounded-lg bg-crewly-green px-3 py-1.5 text-[12px] font-semibold text-slate-50 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Save
                     className="h-3.5 w-3.5"

@@ -97,7 +97,7 @@ const CareerJobDetailPage = () => {
       <div className="mx-auto max-w-3xl px-5 py-16">
         <section className="rounded-2xl border border-slate-800 bg-slate-900 p-10 text-center">
           <BriefcaseBusiness className="mx-auto h-10 w-10 text-slate-600" />
-          <h1 className="mt-4 text-xl font-semibold text-white">
+          <h1 className="mt-4 text-xl font-semibold text-slate-50">
             {state.unavailable ? 'No longer accepting applications' : 'Job not found'}
           </h1>
           <p className="mt-2 text-sm text-slate-400">{state.error}</p>
@@ -118,7 +118,7 @@ const CareerJobDetailPage = () => {
     <div className="mx-auto max-w-5xl px-5 py-10 sm:py-14">
       <Link
         to={`/careers/${companySlug}/jobs`}
-        className="inline-flex items-center gap-2 text-sm text-slate-400 transition hover:text-white"
+        className="inline-flex items-center gap-2 text-sm text-slate-400 transition hover:text-slate-100"
       >
         <ArrowLeft className="h-4 w-4" /> Back to all jobs
       </Link>
@@ -130,7 +130,7 @@ const CareerJobDetailPage = () => {
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-300">
                 {job.jobCode}
               </p>
-              <h1 className="mt-2 text-3xl font-bold text-white sm:text-4xl">{job.title}</h1>
+              <h1 className="mt-2 text-3xl font-bold text-slate-50 sm:text-4xl">{job.title}</h1>
               <p className="mt-3 text-sm text-slate-400">{company.name}</p>
             </div>
             <button
@@ -166,14 +166,14 @@ const CareerJobDetailPage = () => {
         <div className="grid gap-8 p-6 sm:p-9 lg:grid-cols-[1fr_280px]">
           <div className="space-y-8">
             <section>
-              <h2 className="text-lg font-semibold text-white">About this role</h2>
+              <h2 className="text-lg font-semibold text-slate-50">About this role</h2>
               <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-300">
                 {job.description || 'Role details will be discussed during the hiring process.'}
               </p>
             </section>
 
             <section>
-              <h2 className="text-lg font-semibold text-white">Required skills</h2>
+              <h2 className="text-lg font-semibold text-slate-50">Required skills</h2>
               <div className="mt-3 flex flex-wrap gap-2">
                 {(job.requiredSkills || []).length > 0 ? (
                   job.requiredSkills.map((skill) => (
@@ -189,7 +189,7 @@ const CareerJobDetailPage = () => {
 
             {(job.preferredSkills || []).length > 0 && (
               <section>
-                <h2 className="text-lg font-semibold text-white">Preferred skills</h2>
+                <h2 className="text-lg font-semibold text-slate-50">Preferred skills</h2>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {job.preferredSkills.map((skill) => (
                     <span key={skill} className="rounded-full bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-300">
@@ -202,7 +202,7 @@ const CareerJobDetailPage = () => {
           </div>
 
           <aside className="h-fit rounded-2xl border border-slate-800 bg-slate-950/50 p-5">
-            <h2 className="font-semibold text-white">Role summary</h2>
+            <h2 className="font-semibold text-slate-50">Role summary</h2>
             <dl className="mt-4 space-y-4 text-xs">
               <div>
                 <dt className="flex items-center gap-2 text-slate-500">

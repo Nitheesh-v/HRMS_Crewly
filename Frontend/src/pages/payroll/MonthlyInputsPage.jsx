@@ -451,7 +451,7 @@ const MonthlyInputsPage = () => {
 
       {/* §18 — table */}
       <div className="card overflow-x-auto p-0">
-        <div className="flex flex-wrap items-center gap-2 border-b border-white/5 p-3">
+        <div className="flex flex-wrap items-center gap-2 border-b border-crewly-hairline p-3">
           <input
             className="input max-w-xs"
             placeholder="Search name, code or email"
@@ -475,7 +475,7 @@ const MonthlyInputsPage = () => {
         </div>
 
         <table className="w-full text-left text-sm">
-          <thead className="bg-white/5 text-xs uppercase tracking-wide text-crewly-dim">
+          <thead className="bg-crewly-inset text-xs uppercase tracking-wide text-crewly-dim">
             <tr>
               <th className="w-10 px-3 py-2">
                 <input
@@ -514,7 +514,7 @@ const MonthlyInputsPage = () => {
               />
             ) : (
               visible.map((row) => (
-                <tr key={row._id} className="border-t border-white/5 hover:bg-white/5">
+                <tr key={row._id} className="border-t border-crewly-hairline hover:bg-crewly-inset">
                   <td className="px-3 py-2">
                     <input
                       type="checkbox"
@@ -821,7 +821,7 @@ const EmployeeDrawer = ({ employeeId, month, entryTypes, locked, canManage, onCl
                 ['Weekend shifts', auto.weekendShiftCount],
                 ['Holiday shifts', auto.holidayShiftCount],
               ].map(([label, value]) => (
-                <div key={label} className="rounded-lg bg-white/5 p-2">
+                <div key={label} className="rounded-lg bg-crewly-inset p-2">
                   <p className="text-[11px] uppercase text-crewly-dim">{label}</p>
                   <p className="text-sm font-semibold">{formatNumber(value)}</p>
                 </div>
@@ -893,7 +893,7 @@ const EmployeeDrawer = ({ employeeId, month, entryTypes, locked, canManage, onCl
                       {group.rows.map((entry) => (
                         <tr
                           key={entry.entryId}
-                          className={`border-t border-white/5 ${
+                          className={`border-t border-crewly-hairline ${
                             entry.claimStatus === 'REJECTED' ? 'opacity-60 line-through' : ''
                           }`}
                         >
@@ -1159,15 +1159,15 @@ const BulkImportModal = ({ month, onClose, onDone, flash }) => {
                 <p className="text-xs uppercase text-crewly-dim">Rejected</p>
                 <p className="text-lg font-semibold text-red-300">{preview.totals?.rejected || 0}</p>
               </div>
-              <div className="rounded-lg bg-white/5 p-3">
+              <div className="rounded-lg bg-crewly-inset p-3">
                 <p className="text-xs uppercase text-crewly-dim">Total amount</p>
                 <p className="text-lg font-semibold">{formatMoney(preview.totals?.amount)}</p>
               </div>
             </div>
 
-            <div className="max-h-64 overflow-y-auto rounded-lg border border-white/5">
+            <div className="max-h-64 overflow-y-auto rounded-lg border border-crewly-hairline">
               <table className="w-full text-left text-xs">
-                <thead className="bg-white/5 uppercase tracking-wide text-crewly-dim">
+                <thead className="bg-crewly-inset uppercase tracking-wide text-crewly-dim">
                   <tr>
                     <th className="px-2 py-1">Line</th>
                     <th className="px-2 py-1">Employee</th>
@@ -1178,7 +1178,7 @@ const BulkImportModal = ({ month, onClose, onDone, flash }) => {
                 </thead>
                 <tbody>
                   {(preview.accepted || []).map((row) => (
-                    <tr key={`a-${row.line}`} className="border-t border-white/5">
+                    <tr key={`a-${row.line}`} className="border-t border-crewly-hairline">
                       <td className="px-2 py-1">{row.line}</td>
                       <td className="px-2 py-1">{row.employeeName || row.employeeCode}</td>
                       <td className="px-2 py-1">{row.entry?.type}</td>
@@ -1187,7 +1187,7 @@ const BulkImportModal = ({ month, onClose, onDone, flash }) => {
                     </tr>
                   ))}
                   {(preview.rejected || []).map((row, index) => (
-                    <tr key={`r-${index}`} className="border-t border-white/5">
+                    <tr key={`r-${index}`} className="border-t border-crewly-hairline">
                       <td className="px-2 py-1">{row.line}</td>
                       <td className="px-2 py-1">{row.employeeCode || '—'}</td>
                       <td className="px-2 py-1">—</td>
@@ -1291,7 +1291,7 @@ const BulkActionModal = ({ month, actions, employees, onClose, onDone, flash }) 
           onChange={(event) => setReason(event.target.value)}
         />
 
-        <div className="max-h-40 overflow-y-auto rounded-lg border border-white/5 p-2 text-xs text-crewly-dim">
+        <div className="max-h-40 overflow-y-auto rounded-lg border border-crewly-hairline p-2 text-xs text-crewly-dim">
           {employees.map((row) => (
             <p key={row.employeeId}>
               {row.employeeName} · {row.employeeCode}
@@ -1328,9 +1328,9 @@ const ValidationReportModal = ({ month, rows, onClose, onSelect }) => {
             : `${withIssues.length} employee(s) must be fixed before the month can be locked.`}
         </p>
 
-        <div className="max-h-80 overflow-y-auto rounded-lg border border-white/5">
+        <div className="max-h-80 overflow-y-auto rounded-lg border border-crewly-hairline">
           <table className="w-full text-left text-xs">
-            <thead className="bg-white/5 uppercase tracking-wide text-crewly-dim">
+            <thead className="bg-crewly-inset uppercase tracking-wide text-crewly-dim">
               <tr>
                 <th className="px-2 py-1">Employee</th>
                 <th className="px-2 py-1">Issue</th>
@@ -1347,7 +1347,7 @@ const ValidationReportModal = ({ month, rows, onClose, onSelect }) => {
               ) : (
                 withIssues.map((row) =>
                   row.issues.map((issue, index) => (
-                    <tr key={`${row.employeeId}-${index}`} className="border-t border-white/5">
+                    <tr key={`${row.employeeId}-${index}`} className="border-t border-crewly-hairline">
                       <td className="px-2 py-1">
                         {index === 0 ? `${row.employeeName} (${row.employeeCode})` : ''}
                       </td>

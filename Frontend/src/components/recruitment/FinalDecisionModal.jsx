@@ -65,7 +65,7 @@ const FinalDecisionModal = ({ decision, candidateName, busy, error, onClose, onS
             <p className={`flex items-center gap-2 text-sm font-semibold ${config.tone}`}><Icon className="h-4 w-4" /> {config.title}</p>
             <h2 className="mt-1 text-lg font-semibold text-slate-100">{candidateName}</h2>
           </div>
-          <button type="button" className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white" aria-label="Close" disabled={busy} onClick={onClose}><X className="h-4 w-4" /></button>
+          <button type="button" className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-slate-100" aria-label="Close" disabled={busy} onClick={onClose}><X className="h-4 w-4" /></button>
         </header>
         <form className="space-y-4 p-5" onSubmit={submit}>
           <div className="flex gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs leading-5 text-amber-100/80">

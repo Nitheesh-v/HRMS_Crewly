@@ -176,7 +176,7 @@ const ScheduledReportsPage = () => {
           <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
             Name
             <input
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+              className="rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
               value={draft.name}
               onChange={(event) => setDraft({ ...draft, name: event.target.value })}
               placeholder="Monthly payroll summary"
@@ -186,7 +186,7 @@ const ScheduledReportsPage = () => {
           <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
             Report
             <select
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+              className="rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
               value={draft.reportKey}
               onChange={(event) => setDraft({ ...draft, reportKey: event.target.value })}
             >
@@ -199,7 +199,7 @@ const ScheduledReportsPage = () => {
           <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
             Frequency
             <select
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+              className="rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
               value={draft.frequency}
               onChange={(event) => setDraft({ ...draft, frequency: event.target.value })}
             >
@@ -215,7 +215,7 @@ const ScheduledReportsPage = () => {
               type="number"
               min="1"
               max="31"
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+              className="rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
               value={draft.dayOfMonth}
               onChange={(event) => setDraft({ ...draft, dayOfMonth: event.target.value })}
             />
@@ -224,7 +224,7 @@ const ScheduledReportsPage = () => {
           <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
             Format
             <select
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+              className="rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
               value={draft.format}
               onChange={(event) => setDraft({ ...draft, format: event.target.value })}
             >
@@ -237,7 +237,7 @@ const ScheduledReportsPage = () => {
           <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
             Department
             <select
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+              className="rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
               value={draft.departmentId}
               onChange={(event) => setDraft({ ...draft, departmentId: event.target.value })}
             >
@@ -251,7 +251,7 @@ const ScheduledReportsPage = () => {
           <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim xl:col-span-2">
             Notify
             <select
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+              className="rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
               value={draft.notifyPermission}
               onChange={(event) => setDraft({ ...draft, notifyPermission: event.target.value })}
             >
@@ -320,7 +320,7 @@ const ScheduledReportsPage = () => {
                         type="button"
                         disabled={downloading === row._id}
                         onClick={() => download(row)}
-                        className="rounded-md border border-white/10 px-2 py-1 text-xs text-crewly-text hover:bg-white/5 disabled:opacity-40"
+                        className="rounded-md border border-crewly-hairline-strong px-2 py-1 text-xs text-crewly-text hover:bg-crewly-inset disabled:opacity-40"
                         title="Download the last generated report"
                       >
                         {downloading === row._id ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
@@ -330,7 +330,7 @@ const ScheduledReportsPage = () => {
                       type="button"
                       disabled={busy === row._id}
                       onClick={() => toggle(row)}
-                      className="rounded-md border border-white/10 px-2 py-1 text-xs text-crewly-text hover:bg-white/5 disabled:opacity-40"
+                      className="rounded-md border border-crewly-hairline-strong px-2 py-1 text-xs text-crewly-text hover:bg-crewly-inset disabled:opacity-40"
                       title={row.active ? 'Pause' : 'Resume'}
                     >
                       {row.active ? <Pause size={12} /> : <Play size={12} />}
@@ -339,7 +339,7 @@ const ScheduledReportsPage = () => {
                       type="button"
                       disabled={busy === row._id}
                       onClick={() => remove(row)}
-                      className="rounded-md border border-white/10 px-2 py-1 text-xs text-red-300 hover:bg-white/5 disabled:opacity-40"
+                      className="rounded-md border border-crewly-hairline-strong px-2 py-1 text-xs text-red-300 hover:bg-crewly-inset disabled:opacity-40"
                       title="Delete"
                     >
                       <Trash2 size={12} />

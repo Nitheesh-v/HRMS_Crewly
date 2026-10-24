@@ -11,7 +11,7 @@ import usePermission from '../../hooks/usePermission.js';
 // math of any kind.
 
 const STATUS_STYLES = {
-  OPEN: 'bg-white/10 text-crewly-dim',
+  OPEN: 'bg-crewly-inset-strong text-crewly-dim',
   FINALizing: 'bg-crewly-orange/15 text-crewly-orange',
   FINALIZED: 'bg-crewly-green/15 text-crewly-green',
   SENT_TO_PAYROLL: 'bg-blue-400/15 text-blue-300',
@@ -176,7 +176,7 @@ const AttendanceFinalizationPanel = ({ month }) => {
               </h3>
               <table className="w-full min-w-[640px] text-sm">
                 <thead>
-                  <tr className="border-b border-white/10 text-left text-xs text-crewly-dim">
+                  <tr className="border-b border-crewly-hairline-strong text-left text-xs text-crewly-dim">
                     <th className="py-2 pr-3 font-medium">Date</th>
                     <th className="py-2 pr-3 font-medium">Employee</th>
                     <th className="py-2 pr-3 font-medium">Issue</th>
@@ -185,7 +185,7 @@ const AttendanceFinalizationPanel = ({ month }) => {
                 </thead>
                 <tbody>
                   {report.blockers.map((issue, index) => (
-                    <tr key={`${issue.code}-${issue.employeeId}-${issue.date || index}`} className="border-b border-white/5">
+                    <tr key={`${issue.code}-${issue.employeeId}-${issue.date || index}`} className="border-b border-crewly-hairline">
                       <td className="py-2 pr-3">{issue.date || '—'}</td>
                       <td className="py-2 pr-3">
                         <div className="font-medium">{issue.employeeName}</div>

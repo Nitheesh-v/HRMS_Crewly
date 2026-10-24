@@ -114,7 +114,7 @@ const CareerJobsPage = () => {
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-300">
           Join {company.name}
         </p>
-        <h1 className="mt-2 text-3xl font-bold text-white">Open positions</h1>
+        <h1 className="mt-2 text-3xl font-bold text-slate-50">Open positions</h1>
         <p className="mt-2 text-sm text-slate-400">
           Search current opportunities by team, location and work style.
         </p>

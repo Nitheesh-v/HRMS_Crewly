@@ -86,7 +86,7 @@ const BandEditor = ({ bands, onSaved, onClose }) => {
   };
 
   return (
-    <div className="mt-4 rounded-lg border border-white/10 bg-black/20 p-3">
+    <div className="mt-4 rounded-lg border border-crewly-hairline-strong bg-black/20 p-3">
 
       <div className="space-y-2">
         {draft.map((band, index) => (
@@ -97,7 +97,7 @@ const BandEditor = ({ bands, onSaved, onClose }) => {
                 value={band.label}
                 onChange={(event) => update(index, 'label', event.target.value)}
                 placeholder="e.g. 50k to 1 lakh"
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+                className="rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
               />
             </label>
             <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
@@ -107,7 +107,7 @@ const BandEditor = ({ bands, onSaved, onClose }) => {
                 min="0"
                 value={band.min}
                 onChange={(event) => update(index, 'min', event.target.value)}
-                className="w-32 rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+                className="w-32 rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
               />
             </label>
             <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
@@ -119,14 +119,14 @@ const BandEditor = ({ bands, onSaved, onClose }) => {
                 value={index === draft.length - 1 ? '' : band.max ?? ''}
                 onChange={(event) => update(index, 'max', event.target.value)}
                 placeholder="no limit"
-                className="w-32 rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text disabled:opacity-50"
+                className="w-32 rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text disabled:opacity-50"
               />
             </label>
             <button
               type="button"
               onClick={() => removeAt(index)}
               disabled={draft.length <= 2}
-              className="rounded-md border border-white/10 px-2 py-1.5 text-sm text-crewly-dim hover:text-red-300 disabled:opacity-40"
+              className="rounded-md border border-crewly-hairline-strong px-2 py-1.5 text-sm text-crewly-dim hover:text-red-300 disabled:opacity-40"
               title={draft.length <= 2 ? 'At least two bands are needed' : 'Remove this band'}
             >
               <Trash2 size={14} />
@@ -139,7 +139,7 @@ const BandEditor = ({ bands, onSaved, onClose }) => {
         <button
           type="button"
           onClick={addBand}
-          className="flex items-center gap-1 rounded-md border border-white/10 px-2 py-1.5 text-sm text-crewly-text hover:bg-white/5"
+          className="flex items-center gap-1 rounded-md border border-crewly-hairline-strong px-2 py-1.5 text-sm text-crewly-text hover:bg-crewly-inset"
         >
           <Plus size={14} />
           Add band
@@ -148,7 +148,7 @@ const BandEditor = ({ bands, onSaved, onClose }) => {
           type="button"
           onClick={save}
           disabled={saving}
-          className="rounded-md border border-white/10 px-3 py-1.5 text-sm text-crewly-text hover:bg-white/5 disabled:opacity-50"
+          className="rounded-md border border-crewly-hairline-strong px-3 py-1.5 text-sm text-crewly-text hover:bg-crewly-inset disabled:opacity-50"
         >
           {saving ? 'Saving…' : 'Save bands'}
         </button>
@@ -161,7 +161,7 @@ const BandEditor = ({ bands, onSaved, onClose }) => {
         </button>
       </div>
 
-      <p className="mt-3 border-t border-white/5 pt-2 text-xs text-crewly-dim">
+      <p className="mt-3 border-t border-crewly-hairline pt-2 text-xs text-crewly-dim">
         The last band is always open-ended, so nobody earning more than the top of the scale is left
         out of the chart. Bands may not overlap — the server refuses them rather than counting one
         person twice.
@@ -260,7 +260,7 @@ const SalaryDistributionPage = () => {
               <button
                 type="button"
                 onClick={() => setEditing((value) => !value)}
-                className="flex items-center gap-1.5 rounded-md border border-white/10 px-3 py-1.5 text-sm text-crewly-text hover:bg-white/5"
+                className="flex items-center gap-1.5 rounded-md border border-crewly-hairline-strong px-3 py-1.5 text-sm text-crewly-text hover:bg-crewly-inset"
               >
                 <Settings2 size={14} />
                 {editing ? 'Close editor' : 'Edit bands'}
@@ -308,7 +308,7 @@ const SalaryDistributionPage = () => {
                       {count(row.employees)} employee{Number(row.employees) === 1 ? '' : 's'} · {money(row.payroll)}
                     </span>
                   </div>
-                  <div className="mt-1 h-2 overflow-hidden rounded-full bg-white/5">
+                  <div className="mt-1 h-2 overflow-hidden rounded-full bg-crewly-inset">
                     <div
                       className="h-full rounded-full bg-sky-500/60"
                       style={{ width: `${(Number(row.employees || 0) / maxBandEmployees) * 100}%` }}
@@ -321,7 +321,7 @@ const SalaryDistributionPage = () => {
               ))}
             </ul>
 
-            <div className="mt-4 border-t border-white/5 pt-3">
+            <div className="mt-4 border-t border-crewly-hairline pt-3">
               <DataTable
                 headers={[
                   { key: 'label', label: 'Band', strong: true },

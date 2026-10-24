@@ -77,7 +77,7 @@ const AttendanceReportPage = () => {
                 <span className="badge bg-blue-400/15 text-blue-300">Done: {c.punchedOut}</span>
                 <span className="badge bg-crewly-orange/15 text-crewly-orange">Late: {c.late}</span>
                 <span className="badge bg-crewly-red/15 text-crewly-red">Absent: {c.absent}</span>
-                <span className="badge bg-white/10 text-crewly-dim">Total: {c.total}</span>
+                <span className="badge bg-crewly-inset-strong text-crewly-dim">Total: {c.total}</span>
               </div>
             )}
           </div>

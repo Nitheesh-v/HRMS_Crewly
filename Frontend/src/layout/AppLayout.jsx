@@ -4,6 +4,7 @@ import usePermission from "../hooks/usePermission.js";
 
 import { ROLES } from "../utils/roles.js";
 import NotificationBell from "../components/NotificationBell";
+import ThemeToggle from "../components/common/ThemeToggle.jsx";
 import SubscriptionStatusBanner from "../components/SubscriptionStatusBanner.jsx";
 import { Power, Menu, X } from "lucide-react";
 import SidebarNav from "./SidebarNav.jsx";
@@ -643,6 +644,7 @@ const AppLayout = () => {
 
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-3 lg:gap-4">
             <PresenceMenu />
+            <ThemeToggle />
             <NotificationBell />
             <button
               onClick={handleLogout}

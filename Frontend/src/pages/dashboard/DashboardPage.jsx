@@ -325,7 +325,7 @@ const DashboardPage = () => {
           </Link>
         </div>
         {weekTarget?.enabled ? (
-          <div className="mt-4 flex flex-col items-center gap-4 border-t border-white/10 pt-4 sm:flex-row sm:items-center">
+          <div className="mt-4 flex flex-col items-center gap-4 border-t border-crewly-hairline-strong pt-4 sm:flex-row sm:items-center">
             {(() => {
               const done = Math.max(0, Number(weekTarget.achievedMinutes) || 0);
               const goal = Math.max(1, Number(weekTarget.targetMinutes) || 1);

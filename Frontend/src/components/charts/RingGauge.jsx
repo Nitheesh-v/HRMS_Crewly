@@ -11,7 +11,7 @@ const RingGauge = ({
   size = 116,
   thickness = 10,
   color = '#3fb950',
-  trackColor = 'rgba(230,237,243,0.08)',
+  trackColor = 'var(--chart-track)',
   centerValue,
   centerLabel,
   caption,

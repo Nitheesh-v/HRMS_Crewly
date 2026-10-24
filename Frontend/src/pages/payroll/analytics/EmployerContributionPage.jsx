@@ -123,7 +123,7 @@ const EmployerContributionPage = () => {
               rows={byDepartment}
               empty="No employer cost for this period"
             />
-            <p className="mt-3 border-t border-white/5 pt-2 text-xs text-crewly-dim">
+            <p className="mt-3 border-t border-crewly-hairline pt-2 text-xs text-crewly-dim">
               Gratuity is a provision — money set aside against a future liability, not a monthly
               remittance. It is shown here, alongside the remittable contributions, never inside them.
             </p>

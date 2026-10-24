@@ -208,7 +208,7 @@ const AttendanceTeamTimesheetsPage = () => {
         <div className="card overflow-x-auto">
           <table className="w-full min-w-[880px] text-sm">
             <thead>
-              <tr className="border-b border-white/10 text-left text-xs text-crewly-dim">
+              <tr className="border-b border-crewly-hairline-strong text-left text-xs text-crewly-dim">
                 <th className="py-2 pr-3 font-medium">Employee</th>
                 <th className="py-2 pr-3 font-medium">Scheduled</th>
                 <th className="py-2 pr-3 font-medium">Present</th>
@@ -226,7 +226,7 @@ const AttendanceTeamTimesheetsPage = () => {
                 <tr
                   key={row.user.id}
                   onClick={() => openDetail(row.user.id)}
-                  className={`cursor-pointer border-b border-white/5 hover:bg-white/5 ${selectedId === row.user.id ? 'bg-white/5' : ''}`}
+                  className={`cursor-pointer border-b border-crewly-hairline hover:bg-crewly-inset ${selectedId === row.user.id ? 'bg-crewly-inset' : ''}`}
                 >
                   <td className="py-2 pr-3">
                     <div className="font-medium">{row.user.name}</div>

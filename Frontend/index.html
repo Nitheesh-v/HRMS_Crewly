@@ -4,7 +4,28 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0d1117" />
     <title>Crewly</title>
+    <!-- Theme, before anything paints.
+         The app defaults to its night theme. If someone picked the light one,
+         the attribute has to be on <html> before the first frame or the whole
+         page flashes dark and then repaints — the one thing a theme switch must
+         never do. This is a synchronous, dependency-free read of one key, and it
+         is wrapped in try/catch because storage can throw in private modes.
+         The rest of the logic lives in src/utils/theme.js. -->
+    <script>
+      (function () {
+        try {
+          if (window.localStorage.getItem("crewly-theme") === "light") {
+            document.documentElement.setAttribute("data-theme", "light");
+            var meta = document.querySelector('meta[name="theme-color"]');
+            if (meta) meta.setAttribute("content", "#f6efe4");
+          }
+        } catch (error) {
+          /* no storage: keep the default night theme */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

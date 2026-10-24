@@ -9,7 +9,7 @@ const STATUS_STYLE = {
   PENDING: 'bg-crewly-orange/15 text-crewly-orange',
   APPROVED: 'bg-crewly-green/15 text-crewly-green',
   REJECTED: 'bg-crewly-red/15 text-crewly-red',
-  CANCELLED: 'bg-white/10 text-crewly-dim',
+  CANCELLED: 'bg-crewly-inset-strong text-crewly-dim',
 };
 
 const TYPE_BADGE = {

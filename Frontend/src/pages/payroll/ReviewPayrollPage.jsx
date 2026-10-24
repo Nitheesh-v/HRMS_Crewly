@@ -523,7 +523,7 @@ const ReviewPayrollPage = () => {
           <span className="text-xs text-crewly-dim">{formatNumber(checklistProgress.percent)}% complete</span>
         </div>
 
-        <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+        <div className="h-2 w-full overflow-hidden rounded-full bg-crewly-inset-strong">
           <div
             className="h-full rounded-full bg-indigo-500 transition-all"
             style={{ width: `${Math.min(100, Number(checklistProgress.percent) || 0)}%` }}
@@ -539,8 +539,8 @@ const ReviewPayrollPage = () => {
             return (
               <label
                 key={item.key}
-                className={`flex items-center gap-2 rounded-lg border border-white/5 bg-white/5 p-2 text-sm ${
-                  derived || readOnly || !canPrepare ? 'opacity-70' : 'cursor-pointer hover:bg-white/10'
+                className={`flex items-center gap-2 rounded-lg border border-crewly-hairline bg-crewly-inset p-2 text-sm ${
+                  derived || readOnly || !canPrepare ? 'opacity-70' : 'cursor-pointer hover:bg-crewly-inset-strong'
                 }`}
               >
                 <input
@@ -635,7 +635,7 @@ const ReviewPayrollPage = () => {
       </div>
 
       {/* tabs */}
-      <div className="flex flex-wrap gap-1 border-b border-white/10">
+      <div className="flex flex-wrap gap-1 border-b border-crewly-hairline-strong">
         {TABS.map((entry) => (
           <button
             key={entry.key}
@@ -653,7 +653,7 @@ const ReviewPayrollPage = () => {
               </span>
             ) : null}
             {entry.key === 'remarks' && (review?.remarks || []).length ? (
-              <span className="ml-1 rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] text-crewly-dim">
+              <span className="ml-1 rounded-full bg-crewly-inset-strong px-1.5 py-0.5 text-[10px] text-crewly-dim">
                 {formatNumber((review?.remarks || []).length)}
               </span>
             ) : null}
@@ -664,7 +664,7 @@ const ReviewPayrollPage = () => {
       {/* §8 — employee review table */}
       {tab === 'employees' ? (
         <div className="card space-y-3 p-0">
-          <div className="flex flex-wrap items-center gap-2 border-b border-white/5 p-3">
+          <div className="flex flex-wrap items-center gap-2 border-b border-crewly-hairline p-3">
             <input
               className="input max-w-xs"
               placeholder="Search name or code"
@@ -725,7 +725,7 @@ const ReviewPayrollPage = () => {
 
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="bg-white/5 text-xs uppercase tracking-wide text-crewly-dim">
+              <thead className="bg-crewly-inset text-xs uppercase tracking-wide text-crewly-dim">
                 <tr>
                   <th className="px-3 py-2">
                     <input
@@ -770,7 +770,7 @@ const ReviewPayrollPage = () => {
                     const errors = row.reviewErrors || [];
                     const critical = errors.filter((entry) => entry.severity === 'CRITICAL');
                     return (
-                      <tr key={row._id} className="border-t border-white/5 hover:bg-white/5">
+                      <tr key={row._id} className="border-t border-crewly-hairline hover:bg-crewly-inset">
                         <td className="px-3 py-2">
                           <input
                             type="checkbox"
@@ -870,9 +870,9 @@ const ReviewPayrollPage = () => {
             </button>
           </div>
 
-          <div className="max-h-[28rem] overflow-y-auto rounded-lg border border-white/5">
+          <div className="max-h-[28rem] overflow-y-auto rounded-lg border border-crewly-hairline">
             <table className="w-full text-left text-sm">
-              <thead className="bg-white/5 text-xs uppercase tracking-wide text-crewly-dim">
+              <thead className="bg-crewly-inset text-xs uppercase tracking-wide text-crewly-dim">
                 <tr>
                   <th className="px-3 py-2">Employee</th>
                   <th className="px-3 py-2">Severity</th>
@@ -889,7 +889,7 @@ const ReviewPayrollPage = () => {
                 ) : (
                   errorRows.map((row) =>
                     (row.errors || []).map((entry, index) => (
-                      <tr key={`${row.employeeId}-${entry.code}-${index}`} className="border-t border-white/5">
+                      <tr key={`${row.employeeId}-${entry.code}-${index}`} className="border-t border-crewly-hairline">
                         <td className="px-3 py-2">
                           {index === 0 ? (
                             <>
@@ -941,9 +941,9 @@ const ReviewPayrollPage = () => {
             </p>
           </div>
 
-          <div className="max-h-[28rem] overflow-y-auto rounded-lg border border-white/5">
+          <div className="max-h-[28rem] overflow-y-auto rounded-lg border border-crewly-hairline">
             <table className="w-full text-left text-sm">
-              <thead className="bg-white/5 text-xs uppercase tracking-wide text-crewly-dim">
+              <thead className="bg-crewly-inset text-xs uppercase tracking-wide text-crewly-dim">
                 <tr>
                   <th className="px-3 py-2">Employee</th>
                   <th className="px-3 py-2">Component</th>
@@ -964,7 +964,7 @@ const ReviewPayrollPage = () => {
                   />
                 ) : (
                   differences.map((row) => (
-                    <tr key={`${row.employeeId}-${row.component}`} className="border-t border-white/5">
+                    <tr key={`${row.employeeId}-${row.component}`} className="border-t border-crewly-hairline">
                       <td className="px-3 py-2">
                         <p className="font-medium">{row.employeeName}</p>
                         <p className="text-xs text-crewly-dim">{row.employeeCode}</p>
@@ -1013,7 +1013,7 @@ const ReviewPayrollPage = () => {
               />
             ) : (
               (review?.remarks || []).map((entry, index) => (
-                <div key={`${entry.createdAt}-${index}`} className="rounded-lg bg-white/5 p-3 text-sm">
+                <div key={`${entry.createdAt}-${index}`} className="rounded-lg bg-crewly-inset p-3 text-sm">
                   <div className="flex flex-wrap items-center gap-2 text-xs text-crewly-dim">
                     <span className="font-semibold text-crewly-text">{entry.authorName || 'System'}</span>
                     {entry.role ? <span>· {entry.role}</span> : null}
@@ -1067,7 +1067,7 @@ const ReviewPayrollPage = () => {
             {REPORT_KEYS.map((report) => (
               <button
                 key={report.key}
-                className="flex items-center justify-between rounded-lg border border-white/5 bg-white/5 p-3 text-sm hover:bg-white/10"
+                className="flex items-center justify-between rounded-lg border border-crewly-hairline bg-crewly-inset p-3 text-sm hover:bg-crewly-inset-strong"
                 disabled={busy}
                 onClick={() => handleExport(report.key)}
               >
@@ -1096,7 +1096,7 @@ const ReviewPayrollPage = () => {
                   ['Net payroll', formatMoney(summary.netPayroll)],
                   ['Payroll cost', formatMoney(summary.payrollCost)],
                 ].map(([label, value]) => (
-                  <tr key={label} className="border-t border-white/5">
+                  <tr key={label} className="border-t border-crewly-hairline">
                     <td className="px-2 py-1.5">{label}</td>
                     <td className="px-2 py-1.5 text-right font-semibold">{value}</td>
                   </tr>
@@ -1175,7 +1175,7 @@ const Section = ({ title, rows, total, tone = 'default' }) => {
       <table className="w-full text-left text-sm">
         <tbody>
           {rows.map((row, index) => (
-            <tr key={`${row.code || row.type || row.name}-${index}`} className="border-t border-white/5">
+            <tr key={`${row.code || row.type || row.name}-${index}`} className="border-t border-crewly-hairline">
               <td className="px-2 py-1">{row.name || row.label}</td>
               <td className="px-2 py-1 text-xs text-crewly-dim">{row.reason || row.meta?.reason || ''}</td>
               <td className="px-2 py-1 text-right">{formatMoney(row.amount)}</td>
@@ -1246,23 +1246,23 @@ const EmployeeReviewDrawer = ({ month, employeeId, readOnly, busy, onClose, onSa
         <div className="space-y-5">
           {/* §9 — salary summary: CTC, gross, net */}
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-            <div className="rounded-lg bg-white/5 p-3">
+            <div className="rounded-lg bg-crewly-inset p-3">
               <p className="text-[11px] uppercase text-crewly-dim">CTC</p>
               <p className="text-sm font-semibold">{formatMoney(totals.ctc)}</p>
             </div>
-            <div className="rounded-lg bg-white/5 p-3">
+            <div className="rounded-lg bg-crewly-inset p-3">
               <p className="text-[11px] uppercase text-crewly-dim">Gross salary</p>
               <p className="text-sm font-semibold">{formatMoney(totals.gross)}</p>
             </div>
-            <div className="rounded-lg bg-white/5 p-3">
+            <div className="rounded-lg bg-crewly-inset p-3">
               <p className="text-[11px] uppercase text-crewly-dim">Net salary</p>
               <p className="text-sm font-semibold text-emerald-300">{formatMoney(totals.netPay)}</p>
             </div>
-            <div className="rounded-lg bg-white/5 p-3">
+            <div className="rounded-lg bg-crewly-inset p-3">
               <p className="text-[11px] uppercase text-crewly-dim">Deductions</p>
               <p className="text-sm font-semibold text-red-300">{formatMoney(totals.totalDeductions)}</p>
             </div>
-            <div className="rounded-lg bg-white/5 p-3">
+            <div className="rounded-lg bg-crewly-inset p-3">
               <p className="text-[11px] uppercase text-crewly-dim">Employer cost</p>
               <p className="text-sm font-semibold">{formatMoney(totals.employerCost)}</p>
             </div>
@@ -1295,7 +1295,7 @@ const EmployeeReviewDrawer = ({ month, employeeId, readOnly, busy, onClose, onSa
                 ['Paid leave', attendance.paidLeaveDays],
                 ['OT hours', attendance.otHours],
               ].map(([label, value]) => (
-                <div key={label} className="rounded-lg bg-white/5 p-2">
+                <div key={label} className="rounded-lg bg-crewly-inset p-2">
                   <p className="text-[11px] uppercase text-crewly-dim">{label}</p>
                   <p className="text-sm font-semibold">{formatNumber(value)}</p>
                 </div>
@@ -1313,7 +1313,7 @@ const EmployeeReviewDrawer = ({ month, employeeId, readOnly, busy, onClose, onSa
             total={totals.employerCost}
           />
 
-          <div className="space-y-2 border-t border-white/5 pt-3">
+          <div className="space-y-2 border-t border-crewly-hairline pt-3">
             <label className="block text-xs uppercase tracking-wide text-crewly-dim" htmlFor="review-note">
               Review note
             </label>

@@ -51,7 +51,7 @@ const CareerLandingPage = () => {
             <p className="inline-flex items-center gap-2 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-xs font-semibold text-indigo-300">
               <Sparkles className="h-3.5 w-3.5" /> Build your future with us
             </p>
-            <h1 className="mt-5 max-w-3xl text-4xl font-bold tracking-tight text-white sm:text-5xl">
+            <h1 className="mt-5 max-w-3xl text-4xl font-bold tracking-tight text-slate-50 sm:text-5xl">
               Do meaningful work at {company.name}
             </h1>
             <p className="mt-5 max-w-2xl text-base leading-7 text-slate-400 sm:text-lg">
@@ -82,7 +82,7 @@ const CareerLandingPage = () => {
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-300">
               <BriefcaseBusiness className="h-6 w-6" />
             </div>
-            <p className="mt-6 text-4xl font-bold text-white">{openJobs}</p>
+            <p className="mt-6 text-4xl font-bold text-slate-50">{openJobs}</p>
             <p className="mt-1 text-sm text-slate-400">
               open position{openJobs === 1 ? '' : 's'}
             </p>
@@ -106,7 +106,7 @@ const CareerLandingPage = () => {
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-300">
               Latest opportunities
             </p>
-            <h2 className="mt-2 text-2xl font-bold text-white">Find your next role</h2>
+            <h2 className="mt-2 text-2xl font-bold text-slate-50">Find your next role</h2>
           </div>
           {openJobs > 0 && (
             <Link

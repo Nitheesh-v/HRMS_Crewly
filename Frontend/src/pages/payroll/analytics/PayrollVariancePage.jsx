@@ -127,7 +127,7 @@ const PayrollVariancePage = () => {
               rows={rows}
               empty="Nothing to compare yet — variance needs two periods of payroll"
             />
-            <p className="mt-3 border-t border-white/5 pt-2 text-xs text-crewly-dim">
+            <p className="mt-3 border-t border-crewly-hairline pt-2 text-xs text-crewly-dim">
               &ldquo;Stable&rdquo; means the figure moved by less than half a percent. Headcount is
               shown as a count, not as money, so it is never mistaken for a cost.
             </p>

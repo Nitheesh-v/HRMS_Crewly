@@ -129,7 +129,7 @@ const DeductionsReportPage = () => {
                 />
               </div>
             ) : null}
-            <p className="mt-3 border-t border-white/5 pt-2 text-xs text-crewly-dim">
+            <p className="mt-3 border-t border-crewly-hairline pt-2 text-xs text-crewly-dim">
               The totals come from the snapshot&apos;s own deduction figures, not from adding the lines
               up, so a company whose structure deducts without a line is still reported correctly.
             </p>

@@ -6,19 +6,23 @@ import {
 } from '../services/workService.js';
 import EmptyState from './common/EmptyState.jsx';
 
+// Chips are paper on purpose: a pale pill with a dark label, which is what
+// reads as a status next to our dark cards. The colours are literal because
+// the app's hue ramp and its slate ramp both flip in the light theme
+// (block 12b in style.css) — tokens here would print ink on ink.
 export const STATUS_META = {
-  TODO: { label: 'To Do', cls: 'bg-slate-100 text-slate-600' },
-  IN_PROGRESS: { label: 'In Progress', cls: 'bg-blue-100 text-blue-700' },
-  IN_REVIEW: { label: 'In Review', cls: 'bg-amber-100 text-amber-700' },
-  COMPLETED: { label: 'Completed', cls: 'bg-green-100 text-green-700' },
-  BLOCKED: { label: 'Blocked', cls: 'bg-red-100 text-red-700' },
+  TODO: { label: 'To Do', cls: 'bg-[#f1f5f9] text-[#475569]' },
+  IN_PROGRESS: { label: 'In Progress', cls: 'bg-[#dbeafe] text-blue-700' },
+  IN_REVIEW: { label: 'In Review', cls: 'bg-crewly-amber-soft text-crewly-amber-deep' },
+  COMPLETED: { label: 'Completed', cls: 'bg-[#dcfce7] text-green-700' },
+  BLOCKED: { label: 'Blocked', cls: 'bg-[#fee2e2] text-red-700' },
 };
 
 export const PRIORITY_META = {
-  LOW: 'bg-slate-100 text-slate-500',
-  MEDIUM: 'bg-blue-50 text-blue-600',
-  HIGH: 'bg-orange-100 text-orange-700',
-  CRITICAL: 'bg-red-100 text-red-700',
+  LOW: 'bg-[#f1f5f9] text-[#64748b]',
+  MEDIUM: 'bg-[#eff6ff] text-[#2563eb]',
+  HIGH: 'bg-[#ffedd5] text-orange-700',
+  CRITICAL: 'bg-[#fee2e2] text-red-700',
 };
 
 const SENIOR_ROLES = ['COMPANY_ADMIN', 'HR_MANAGER', 'MANAGER', 'TEAM_LEAD'];

@@ -169,7 +169,7 @@ const ExecutiveDashboardPage = () => {
             />
             {preset === 'CURRENT_MONTH' || preset === 'PREVIOUS_MONTH' ? (
               <select
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm text-crewly-text"
+                className="rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm text-crewly-text"
                 value={month}
                 onChange={(event) => setMonth(event.target.value)}
               >
@@ -182,7 +182,7 @@ const ExecutiveDashboardPage = () => {
               type="button"
               onClick={refresh}
               disabled={refreshing}
-              className="flex items-center gap-1.5 rounded-md border border-white/10 px-3 py-1.5 text-sm text-crewly-text hover:bg-white/5 disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-md border border-crewly-hairline-strong px-3 py-1.5 text-sm text-crewly-text hover:bg-crewly-inset disabled:opacity-50"
             >
               <RefreshCcw size={14} className={refreshing ? 'animate-spin' : ''} />
               Refresh
@@ -312,7 +312,7 @@ const ExecutiveDashboardPage = () => {
                   </div>
                 ))}
               </dl>
-              <p className="mt-3 border-t border-white/5 pt-2 text-xs text-crewly-dim">
+              <p className="mt-3 border-t border-crewly-hairline pt-2 text-xs text-crewly-dim">
                 Headcount effect is the money that came and went with people; like-for-like is what
                 changed for the people who were there both periods. The two add up to the movement in
                 total payroll cost
@@ -340,7 +340,7 @@ const ExecutiveDashboardPage = () => {
                           <span className="text-crewly-text">{row.department}</span>
                           <span className="tabular-nums text-crewly-dim">{money(row.totalCost)}</span>
                         </div>
-                        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/5">
+                        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-crewly-inset">
                           <div className="h-full rounded-full bg-sky-500/60" style={{ width: `${Math.min(100, share)}%` }} />
                         </div>
                         <p className="mt-0.5 text-[11px] text-crewly-dim">
@@ -376,7 +376,7 @@ const ExecutiveDashboardPage = () => {
                   </div>
                 ))}
               </dl>
-              <p className="mt-3 border-t border-white/5 pt-2 text-xs text-crewly-dim">
+              <p className="mt-3 border-t border-crewly-hairline pt-2 text-xs text-crewly-dim">
                 Gratuity is a provision, shown alongside the remittable liability rather than inside it.
               </p>
             </SectionCard>
@@ -389,7 +389,7 @@ const ExecutiveDashboardPage = () => {
                 <Link
                   key={to}
                   to={to}
-                  className="flex items-center gap-2 rounded-md border border-white/10 px-3 py-2 text-sm text-crewly-text hover:bg-white/5"
+                  className="flex items-center gap-2 rounded-md border border-crewly-hairline-strong px-3 py-2 text-sm text-crewly-text hover:bg-crewly-inset"
                 >
                   <Icon size={15} className="text-crewly-dim" />
                   {label}

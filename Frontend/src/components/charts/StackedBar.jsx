@@ -11,7 +11,7 @@ export const StackedBar = ({ parts = [], height = 8, className = '', trackClassN
 
   return (
     <div
-      className={`flex w-full overflow-hidden rounded-full bg-white/[0.06] ${trackClassName} ${className}`}
+      className={`flex w-full overflow-hidden rounded-full bg-crewly-inset ${trackClassName} ${className}`}
       style={{ height }}
       role="presentation"
     >

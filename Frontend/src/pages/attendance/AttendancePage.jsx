@@ -531,7 +531,7 @@ const AttendancePage = () => {
                     <button
                       onClick={() => doAction('CLOCK_OUT')}
                       disabled={busy}
-                      className="inline-flex items-center justify-center gap-2 rounded-lg bg-crewly-red px-8 py-3 text-lg font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+                      className="inline-flex items-center justify-center gap-2 rounded-lg bg-crewly-red px-8 py-3 text-lg font-semibold text-slate-50 transition hover:opacity-90 disabled:opacity-50"
                     >
                       <LogOut className="h-5 w-5" /> Clock Out
                     </button>

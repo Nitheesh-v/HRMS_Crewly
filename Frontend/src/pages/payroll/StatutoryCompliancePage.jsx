@@ -443,7 +443,7 @@ const StatutoryCompliancePage = () => {
       </div>
 
       {/* ── tabs ───────────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap gap-1 border-b border-white/10 pb-2">
+      <div className="flex flex-wrap gap-1 border-b border-crewly-hairline-strong pb-2">
         {REPORT_TABS.map(({ key, label, icon: Icon }) => {
           const hidden =
             (key === 'LWF' && !applicability.lwf) || (key === 'GRATUITY' && !applicability.gratuity);
@@ -539,7 +539,7 @@ const StatutoryCompliancePage = () => {
                     />
                   )}
                   {(history.rows || []).map((row) => (
-                    <tr key={row.month} className="border-t border-white/5">
+                    <tr key={row.month} className="border-t border-crewly-hairline">
                       <td className="py-2 pr-4">{row.monthLabel}</td>
                       <td className="py-2 pr-4 text-right">{count(row.employees)}</td>
                       <td className="py-2 pr-4 text-right">{money(row.gross)}</td>
@@ -630,7 +630,7 @@ const SummaryTable = ({ summary = {}, applicability = {} }) => {
   return (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
       {sections.map(([section, rows]) => (
-        <div key={section} className="rounded-lg border border-white/5 p-3">
+        <div key={section} className="rounded-lg border border-crewly-hairline p-3">
           <p className="text-xs uppercase tracking-wide text-crewly-dim">{section}</p>
           <dl className="mt-2 space-y-1.5">
             {rows.map(([label, value]) => (
@@ -705,7 +705,7 @@ const ReportTab = ({
 
         {/* §14 — the filing panel. Reports that are not returns have none. */}
         {report.filable && (
-          <div className="rounded-lg border border-white/5 p-3">
+          <div className="rounded-lg border border-crewly-hairline p-3">
             <div className="flex flex-wrap items-end gap-2">
               <label className="text-xs text-crewly-dim">
                 Status
@@ -1055,7 +1055,7 @@ const DataTable = ({ headers = [], rows = [] }) => (
           />
         )}
         {(rows || []).map((row, rowIndex) => (
-          <tr key={rowIndex} className="border-t border-white/5">
+          <tr key={rowIndex} className="border-t border-crewly-hairline">
             {(row || []).map((cell, cellIndex) => (
               <td key={cellIndex} className="whitespace-nowrap py-2 pr-4">
                 {cell}

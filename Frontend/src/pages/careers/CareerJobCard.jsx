@@ -19,7 +19,7 @@ const CareerJobCard = ({ companySlug, job }) => (
         <p className="text-xs font-semibold uppercase tracking-wide text-indigo-300">
           {job.jobCode}
         </p>
-        <h2 className="mt-1 text-lg font-semibold text-slate-100 group-hover:text-white">
+        <h2 className="mt-1 text-lg font-semibold text-slate-100 group-hover:text-slate-100">
           {job.title}
         </h2>
       </div>

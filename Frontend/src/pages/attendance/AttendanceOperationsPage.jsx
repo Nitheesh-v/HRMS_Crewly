@@ -305,7 +305,7 @@ const AttendanceOperationsPage = () => {
                 key={value}
                 type="button"
                 onClick={() => setWorkMode((current) => (current === value ? '' : value))}
-                className={`rounded-full px-2 py-0.5 text-xs ${workMode === value ? 'bg-white/20' : 'bg-white/5'} hover:bg-white/10`}
+                className={`rounded-full px-2 py-0.5 text-xs ${workMode === value ? 'bg-crewly-inset-heavy' : 'bg-crewly-inset'} hover:bg-crewly-inset-strong`}
                 title={`Filter work mode: ${label}`}
               >
                 {label} {modes[value] ?? 0}
@@ -403,7 +403,7 @@ const AttendanceOperationsPage = () => {
             {groupTab !== 'locations' ? (
               <table className="w-full min-w-[720px] text-sm">
                 <thead>
-                  <tr className="border-b border-white/10 text-left text-xs text-crewly-dim">
+                  <tr className="border-b border-crewly-hairline-strong text-left text-xs text-crewly-dim">
                     <th className="py-2 pr-3 font-medium">{groupTab === 'departments' ? 'Department' : 'Shift'}</th>
                     <th className="py-2 pr-3 font-medium">Expected</th>
                     <th className="py-2 pr-3 font-medium">Working</th>
@@ -417,7 +417,7 @@ const AttendanceOperationsPage = () => {
                 </thead>
                 <tbody>
                   {(dash[groupTab] || []).map((group) => (
-                    <tr key={group.id || group.name} className="border-b border-white/5">
+                    <tr key={group.id || group.name} className="border-b border-crewly-hairline">
                       <td className="py-2 pr-3 font-medium">{group.name}</td>
                       <td className="py-2 pr-3">{group.expected}</td>
                       <td className="py-2 pr-3 text-crewly-green">{group.working}</td>
@@ -450,7 +450,7 @@ const AttendanceOperationsPage = () => {
             ) : (
               <table className="w-full min-w-[520px] text-sm">
                 <thead>
-                  <tr className="border-b border-white/10 text-left text-xs text-crewly-dim">
+                  <tr className="border-b border-crewly-hairline-strong text-left text-xs text-crewly-dim">
                     <th className="py-2 pr-3 font-medium">Office location</th>
                     <th className="py-2 pr-3 font-medium">Checked in</th>
                     <th className="py-2 pr-3 font-medium">Working</th>
@@ -459,7 +459,7 @@ const AttendanceOperationsPage = () => {
                 </thead>
                 <tbody>
                   {(dash.locations || []).map((loc) => (
-                    <tr key={loc.name} className="border-b border-white/5">
+                    <tr key={loc.name} className="border-b border-crewly-hairline">
                       <td className="py-2 pr-3 font-medium">{loc.name}</td>
                       <td className="py-2 pr-3">{loc.checkedIn}</td>
                       <td className="py-2 pr-3 text-crewly-green">{loc.working}</td>
@@ -488,7 +488,7 @@ const AttendanceOperationsPage = () => {
             </h2>
             <table className="w-full min-w-[880px] text-sm">
               <thead>
-                <tr className="border-b border-white/10 text-left text-xs text-crewly-dim">
+                <tr className="border-b border-crewly-hairline-strong text-left text-xs text-crewly-dim">
                   <th className="py-2 pr-3 font-medium">Employee</th>
                   <th className="py-2 pr-3 font-medium">Department</th>
                   <th className="py-2 pr-3 font-medium">Shift</th>
@@ -504,7 +504,7 @@ const AttendanceOperationsPage = () => {
                   <tr
                     key={`${item.category}-${item.employee.id}-${item.since || index}`}
                     onClick={() => openDetail(item)}
-                    className={`cursor-pointer border-b border-white/5 hover:bg-white/5 ${selected?.id === item.employee.id ? 'bg-white/5' : ''}`}
+                    className={`cursor-pointer border-b border-crewly-hairline hover:bg-crewly-inset ${selected?.id === item.employee.id ? 'bg-crewly-inset' : ''}`}
                   >
                     <td className="py-2 pr-3">
                       <div className="font-medium">{item.employee.name}</div>

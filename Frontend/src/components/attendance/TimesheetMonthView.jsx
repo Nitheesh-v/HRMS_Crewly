@@ -36,9 +36,9 @@ const OUTCOME_STYLE = {
   ABSENT: 'bg-crewly-red/15 text-crewly-red',
   LEAVE: 'bg-violet-400/15 text-violet-300',
   HOLIDAY: 'bg-crewly-orange/15 text-crewly-orange',
-  WEEKLY_OFF: 'bg-white/10 text-crewly-dim',
-  UNRESOLVED: 'bg-white/10 text-crewly-dim',
-  FUTURE: 'bg-white/5 text-crewly-dim',
+  WEEKLY_OFF: 'bg-crewly-inset-strong text-crewly-dim',
+  UNRESOLVED: 'bg-crewly-inset-strong text-crewly-dim',
+  FUTURE: 'bg-crewly-inset text-crewly-dim',
 };
 
 const OUTCOME_DOT = {
@@ -47,9 +47,9 @@ const OUTCOME_DOT = {
   ABSENT: 'bg-crewly-red',
   LEAVE: 'bg-violet-400',
   HOLIDAY: 'bg-crewly-orange',
-  WEEKLY_OFF: 'bg-white/20',
-  UNRESOLVED: 'bg-white/20',
-  FUTURE: 'bg-white/10',
+  WEEKLY_OFF: 'bg-crewly-inset-heavy',
+  UNRESOLVED: 'bg-crewly-inset-heavy',
+  FUTURE: 'bg-crewly-inset-strong',
 };
 
 // Weekly-hours flexi policy — an earned-rest day buckets as WEEKLY_OFF but
@@ -98,7 +98,7 @@ const fmtSpan = (totalMinutes) => {
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 const Stat = ({ label, value, tone = '' }) => (
-  <div className="rounded-lg bg-white/5 px-3 py-2">
+  <div className="rounded-lg bg-crewly-inset px-3 py-2">
     <div className={`text-lg font-semibold ${tone}`}>{value}</div>
     <div className="text-xs text-crewly-dim">{label}</div>
   </div>
@@ -121,7 +121,7 @@ const DayDrawer = ({ day, onClose }) => {
           {dayOutcomeLabel(day)}
         </span>
         {day.workMode && (
-          <span className="rounded-full bg-white/10 px-3 py-1 text-xs">
+          <span className="rounded-full bg-crewly-inset-strong px-3 py-1 text-xs">
             {MODE_LABEL[day.workMode] || day.workMode}
           </span>
         )}
@@ -144,7 +144,7 @@ const DayDrawer = ({ day, onClose }) => {
         </p>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-lg bg-white/5 p-3">
+          <div className="rounded-lg bg-crewly-inset p-3">
             <h3 className="mb-1 text-sm font-semibold">Schedule</h3>
             {day.schedule ? (
               <>
@@ -185,7 +185,7 @@ const DayDrawer = ({ day, onClose }) => {
             )}
           </div>
 
-          <div className="rounded-lg bg-white/5 p-3">
+          <div className="rounded-lg bg-crewly-inset p-3">
             <h3 className="mb-1 text-sm font-semibold">Calendar</h3>
             {day.calendar?.leave ? (
               <Row label="Leave">
@@ -269,7 +269,7 @@ const DayDrawer = ({ day, onClose }) => {
         </div>
       )}
 
-      <div className="mt-4 flex flex-wrap gap-3 border-t border-white/10 pt-3 text-sm">
+      <div className="mt-4 flex flex-wrap gap-3 border-t border-crewly-hairline-strong pt-3 text-sm">
         <Link to="/app/attendance/regularizations" className="inline-flex items-center gap-1 text-crewly-green hover:underline">
           Corrections <ArrowRight size={13} />
         </Link>
@@ -339,12 +339,12 @@ const TimesheetMonthView = ({ sheet, employeeName = '' }) => {
                 onClick={() => setOpenDate(day.date)}
                 title={`${fmtDay(day.date)} — ${dayOutcomeLabel(day)}`}
                 className={`flex min-h-14 flex-col items-start justify-between rounded-lg border p-1.5 text-left transition-colors hover:border-crewly-green/50 ${
-                  day.isToday ? 'border-crewly-green/60' : 'border-white/10'
+                  day.isToday ? 'border-crewly-green/60' : 'border-crewly-hairline-strong'
                 } ${day.isFuture ? 'opacity-50' : ''}`}
               >
                 <span className="flex w-full items-center justify-between">
                   <span className="text-sm font-medium">{Number(day.date.slice(8, 10))}</span>
-                  <span className={`h-2 w-2 rounded-full ${OUTCOME_DOT[day.bucket] || 'bg-white/10'}`} />
+                  <span className={`h-2 w-2 rounded-full ${OUTCOME_DOT[day.bucket] || 'bg-crewly-inset-strong'}`} />
                 </span>
                 <span className="flex items-center gap-1 text-[11px] text-crewly-dim">
                   {day.bucket === 'LEAVE' && <Plane size={11} />}

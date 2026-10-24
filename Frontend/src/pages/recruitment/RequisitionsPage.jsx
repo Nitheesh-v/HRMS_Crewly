@@ -159,7 +159,7 @@ const PanelModal = ({ title, subtitle = '', onClose, wide = false, children }) =
         <button
           type="button"
           onClick={onClose}
-          className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white"
+          className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-slate-100"
           aria-label="Close"
         >
           <X className="h-4 w-4" />
@@ -223,7 +223,7 @@ const RequisitionCard = ({ requisition, onView, onEdit, onSubmit, canManage }) =
         <button
           type="button"
           onClick={() => onView(requisition)}
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-300 hover:text-white"
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-300 hover:text-slate-100"
         >
           <Eye className="h-3.5 w-3.5" /> View
         </button>

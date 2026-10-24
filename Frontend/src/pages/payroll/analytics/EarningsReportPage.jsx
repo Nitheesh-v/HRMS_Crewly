@@ -134,7 +134,7 @@ const EarningsReportPage = () => {
               ]}
               empty="No earnings recorded for this period"
             />
-            <p className="mt-3 border-t border-white/5 pt-2 text-xs text-crewly-dim">
+            <p className="mt-3 border-t border-crewly-hairline pt-2 text-xs text-crewly-dim">
               Reimbursements are shown with earnings because they are paid through payroll, but they
               are not salary — they are the company giving an employee their own money back.
             </p>

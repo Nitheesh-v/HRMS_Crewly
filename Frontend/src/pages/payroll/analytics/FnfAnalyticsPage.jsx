@@ -127,7 +127,7 @@ const FnfAnalyticsPage = () => {
               ]}
               empty="No settlements in this period"
             />
-            <p className="mt-3 border-t border-white/5 pt-2 text-xs text-crewly-dim">
+            <p className="mt-3 border-t border-crewly-hairline pt-2 text-xs text-crewly-dim">
               Only PAID and CLOSED settlements count as money spent. A draft is listed because it
               exists, but it is not a payment yet.
             </p>

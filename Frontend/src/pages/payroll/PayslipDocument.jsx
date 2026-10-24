@@ -39,8 +39,8 @@ const LineTable = ({ title, subtitle, rows, totalLabel, total, tone = 'default' 
   };
 
   return (
-    <div className="rounded-lg border border-white/5">
-      <div className="border-b border-white/5 px-3 py-2">
+    <div className="rounded-lg border border-crewly-hairline">
+      <div className="border-b border-crewly-hairline px-3 py-2">
         <p className="text-sm font-semibold">{title}</p>
         {subtitle ? <p className="text-[11px] text-crewly-dim">{subtitle}</p> : null}
       </div>
@@ -52,7 +52,7 @@ const LineTable = ({ title, subtitle, rows, totalLabel, total, tone = 'default' 
             </tr>
           ) : (
             (rows || []).map((row, index) => (
-              <tr key={`${row.name}-${index}`} className={index % 2 ? 'bg-white/5' : ''}>
+              <tr key={`${row.name}-${index}`} className={index % 2 ? 'bg-crewly-inset' : ''}>
                 <td className="px-3 py-1.5">{row.name}</td>
                 <td className="px-3 py-1.5 text-right">{formatMoney(row.amount)}</td>
               </tr>
@@ -60,7 +60,7 @@ const LineTable = ({ title, subtitle, rows, totalLabel, total, tone = 'default' 
           )}
         </tbody>
         <tfoot>
-          <tr className="border-t border-white/10 font-semibold">
+          <tr className="border-t border-crewly-hairline-strong font-semibold">
             <td className="px-3 py-2">{totalLabel}</td>
             <td className={`px-3 py-2 text-right ${tones[tone] || tones.default}`}>
               {formatMoney(total)}
@@ -132,15 +132,19 @@ const PayslipDocument = ({ snapshot, onDownload, downloading = false }) => {
         </button>
       </div>
 
-      <div ref={printRef} data-payslip-print-area className="space-y-4 rounded-lg bg-white p-6 text-slate-900">
+      {/* A payslip is a document, not app chrome: it is white paper in every
+          theme, so its greys are literal values rather than the app's slate ramp
+          (which flips to warm brown in the light theme — block 12b in
+          style.css). Substituting theme tokens here would print ink on ink. */}
+      <div ref={printRef} data-payslip-print-area className="space-y-4 rounded-lg bg-white p-6 text-[#0f172a]">
         {/* §8 — header */}
-        <div className="flex items-start justify-between border-b border-slate-200 pb-3">
+        <div className="flex items-start justify-between border-b border-[#e2e8f0] pb-3">
           <div>
-            <p className="text-lg font-bold uppercase tracking-wide text-slate-900">
+            <p className="text-lg font-bold uppercase tracking-wide text-[#0f172a]">
               {company.name || 'Company'}
             </p>
-            <p className="text-xs text-slate-500">{company.address || 'Address not set'}</p>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-[#64748b]">{company.address || 'Address not set'}</p>
+            <p className="text-xs text-[#64748b]">
               {[company.pan ? `PAN: ${company.pan}` : '', company.tan ? `TAN: ${company.tan}` : '']
                 .filter(Boolean)
                 .join('   ·   ')}
@@ -148,13 +152,13 @@ const PayslipDocument = ({ snapshot, onDownload, downloading = false }) => {
           </div>
           <div className="text-right">
             <p className="text-base font-bold">Payslip — {payroll.monthLabel || payroll.month}</p>
-            <p className="text-xs text-slate-500">Cycle: {payroll.cycle || 'MONTHLY'}</p>
-            <p className="text-xs text-slate-500">Payslip No: {payroll.payslipNumber || '—'}</p>
+            <p className="text-xs text-[#64748b]">Cycle: {payroll.cycle || 'MONTHLY'}</p>
+            <p className="text-xs text-[#64748b]">Payslip No: {payroll.payslipNumber || '—'}</p>
           </div>
         </div>
 
         {/* §8 — employee details */}
-        <div className="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-3 sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 rounded-lg bg-[#f8fafc] p-3 sm:grid-cols-5">
           <Field label="Employee ID" value={employee.employeeCode || employee.employeeId} />
           <Field label="Name" value={employee.name} />
           <Field label="Department" value={employee.department} />
@@ -170,7 +174,7 @@ const PayslipDocument = ({ snapshot, onDownload, downloading = false }) => {
 
         {/* §12 — attendance (copies from the snapshot, never recalculated) */}
         <div>
-          <p className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">
+          <p className="mb-1 text-[11px] uppercase tracking-wide text-[#64748b]">
             Attendance summary — payroll cycle: {payroll.cycle || 'MONTHLY'}
           </p>
           <div className="grid grid-cols-5 gap-2">
@@ -181,8 +185,8 @@ const PayslipDocument = ({ snapshot, onDownload, downloading = false }) => {
               ['LOP', attendance.lopDays],
               ['OT Hours', attendance.overtimeHours],
             ].map(([label, value]) => (
-              <div key={label} className="rounded-lg bg-slate-50 p-2 text-center">
-                <p className="text-[10px] uppercase text-slate-500">{label}</p>
+              <div key={label} className="rounded-lg bg-[#f8fafc] p-2 text-center">
+                <p className="text-[10px] uppercase text-[#64748b]">{label}</p>
                 <p className="text-sm font-semibold">{value ?? '—'}</p>
               </div>
             ))}
@@ -244,23 +248,23 @@ const PayslipDocument = ({ snapshot, onDownload, downloading = false }) => {
         </div>
 
         {/* §8 — salary summary */}
-        <div className="grid grid-cols-3 gap-3 rounded-lg bg-slate-50 p-3">
+        <div className="grid grid-cols-3 gap-3 rounded-lg bg-[#f8fafc] p-3">
           <div>
-            <p className="text-[10px] uppercase text-slate-500">Gross Salary</p>
+            <p className="text-[10px] uppercase text-[#64748b]">Gross Salary</p>
             <p className="text-lg font-semibold">{formatMoney(salary.grossSalary)}</p>
           </div>
           <div>
-            <p className="text-[10px] uppercase text-slate-500">Total Deductions</p>
+            <p className="text-[10px] uppercase text-[#64748b]">Total Deductions</p>
             <p className="text-lg font-semibold">- {formatMoney(salary.totalDeductions)}</p>
           </div>
-          <div className="rounded-lg bg-emerald-100 p-2">
-            <p className="text-[10px] uppercase text-emerald-700">Net Salary</p>
-            <p className="text-lg font-bold text-emerald-800">{formatMoney(salary.netSalary)}</p>
+          <div className="rounded-lg bg-[#d1fae5] p-2">
+            <p className="text-[10px] uppercase text-[#047857]">Net Salary</p>
+            <p className="text-lg font-bold text-[#065f46]">{formatMoney(salary.netSalary)}</p>
           </div>
         </div>
 
         {/* §13 — payment information */}
-        <div className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 p-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 rounded-lg border border-[#e2e8f0] p-3 sm:grid-cols-4">
           <Field label="Payment Date" value={formatDate(payment?.paymentDate || payroll.paymentDate)} />
           <Field label="Payment Mode" value={payment?.method || 'Bank Transfer'} />
           <Field label="Payment Reference" value={payment?.reference} />
@@ -268,7 +272,7 @@ const PayslipDocument = ({ snapshot, onDownload, downloading = false }) => {
         </div>
 
         {/* §8 — footer: no manual signatures */}
-        <p className="border-t border-slate-200 pt-2 text-center text-[10px] text-slate-400">
+        <p className="border-t border-[#e2e8f0] pt-2 text-center text-[10px] text-[#94a3b8]">
           Payslip {payroll.payslipNumber || ''} · Generated {formatDate(snapshot?.generatedAt)} ·
           System generated — no signature required
         </p>

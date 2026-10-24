@@ -196,7 +196,7 @@ const MyFinalSettlementPage = () => {
                 </dl>
               </div>
 
-              <div className="border-t border-white/10 pt-3">
+              <div className="border-t border-crewly-hairline-strong pt-3">
                 <h3 className="text-sm font-semibold uppercase tracking-wide text-crewly-dim">Earnings</h3>
                 <ul className="mt-2 space-y-2 text-sm">
                   <li className="flex items-center justify-between gap-3">
@@ -241,14 +241,14 @@ const MyFinalSettlementPage = () => {
                       <span className="font-medium">{money(item.amount)}</span>
                     </li>
                   ))}
-                  <li className="flex items-center justify-between gap-3 border-t border-white/10 pt-2 font-semibold">
+                  <li className="flex items-center justify-between gap-3 border-t border-crewly-hairline-strong pt-2 font-semibold">
                     <span>Total Earnings</span>
                     <span>{money(totals.totalEarnings)}</span>
                   </li>
                 </ul>
               </div>
 
-              <div className="border-t border-white/10 pt-3">
+              <div className="border-t border-crewly-hairline-strong pt-3">
                 <h3 className="text-sm font-semibold uppercase tracking-wide text-crewly-dim">Recoveries</h3>
                 <ul className="mt-2 space-y-2 text-sm">
                   {(recoveries.notice?.amount || 0) > 0 ? (
@@ -275,7 +275,7 @@ const MyFinalSettlementPage = () => {
                   {(recoveries.notice?.amount || 0) === 0 && !(recoveries.items || []).length ? (
                     <li className="text-sm text-crewly-dim">No recoveries.</li>
                   ) : null}
-                  <li className="flex items-center justify-between gap-3 border-t border-white/10 pt-2 font-semibold">
+                  <li className="flex items-center justify-between gap-3 border-t border-crewly-hairline-strong pt-2 font-semibold">
                     <span>Total Recoveries</span>
                     <span>{money(totals.totalRecoveries)}</span>
                   </li>

@@ -620,7 +620,7 @@ const FinalSettlementPage = () => {
 
 
       {/* ── tabs ───────────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap gap-1 border-b border-white/10 pb-2">
+      <div className="flex flex-wrap gap-1 border-b border-crewly-hairline-strong pb-2">
         {TABS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
@@ -708,7 +708,7 @@ const FinalSettlementPage = () => {
                   </thead>
                   <tbody>
                     {dashboard.recent.map((row) => (
-                      <tr key={row._id} className="border-t border-white/5">
+                      <tr key={row._id} className="border-t border-crewly-hairline">
                         <td className="py-2 pr-3 font-medium">{row.settlementNumber}</td>
                         <td className="py-2 pr-3">
                           {row.employeeName}
@@ -804,7 +804,7 @@ const FinalSettlementPage = () => {
                 </thead>
                 <tbody>
                   {rows.map((row) => (
-                    <tr key={row._id} className="border-t border-white/5">
+                    <tr key={row._id} className="border-t border-crewly-hairline">
                       <td className="py-2 pr-3 font-medium">{row.settlementNumber}</td>
                       <td className="py-2 pr-3">
                         {row.employeeName}
@@ -902,7 +902,7 @@ const FinalSettlementPage = () => {
                     <Field label="Notice Decision" value={NOTICE_LABELS[detail.exit?.noticeDecision] || 'Completed Notice'} />
                   </dl>
                   {detail.exit?.reason ? (
-                    <p className="mt-3 rounded-lg bg-white/5 p-2 text-xs text-crewly-dim">{detail.exit.reason}</p>
+                    <p className="mt-3 rounded-lg bg-crewly-inset p-2 text-xs text-crewly-dim">{detail.exit.reason}</p>
                   ) : null}
                 </div>
 
@@ -913,7 +913,7 @@ const FinalSettlementPage = () => {
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <tbody>
-                        <tr className="border-t border-white/5">
+                        <tr className="border-t border-crewly-hairline">
                           <td className="py-2 pr-3">
                             Pending Salary
                             <span className="block text-xs text-crewly-dim">
@@ -925,7 +925,7 @@ const FinalSettlementPage = () => {
                           <td className="py-2 text-right">{money(pending.amount)}</td>
                         </tr>
                         {leave.amount > 0 ? (
-                          <tr className="border-t border-white/5">
+                          <tr className="border-t border-crewly-hairline">
                             <td className="py-2 pr-3">
                               Leave Encashment ({leave.leaveType || 'EARNED'})
                               <span className="block text-xs text-crewly-dim">
@@ -937,7 +937,7 @@ const FinalSettlementPage = () => {
                           </tr>
                         ) : null}
                         {gratuity.amount > 0 ? (
-                          <tr className="border-t border-white/5">
+                          <tr className="border-t border-crewly-hairline">
                             <td className="py-2 pr-3">
                               Gratuity
                               <span className="block text-xs text-crewly-dim">{gratuity.reason}</span>
@@ -948,7 +948,7 @@ const FinalSettlementPage = () => {
                         {systemPayables
                           .filter((item) => item.type !== 'LEAVE_ENCASHMENT' && item.type !== 'GRATUITY')
                           .map((item, index) => (
-                            <tr key={`system-${index}`} className="border-t border-white/5">
+                            <tr key={`system-${index}`} className="border-t border-crewly-hairline">
                               <td className="py-2 pr-3">
                                 {item.label}
                                 <span className="block text-xs text-crewly-dim">{item.note}</span>
@@ -957,7 +957,7 @@ const FinalSettlementPage = () => {
                             </tr>
                           ))}
                         {manualPayables.map((item, index) => (
-                          <tr key={`manual-${index}`} className="border-t border-white/5">
+                          <tr key={`manual-${index}`} className="border-t border-crewly-hairline">
                             <td className="py-2 pr-3">
                               {item.label}
                               <span className="block text-xs text-crewly-dim">{item.note}</span>
@@ -976,7 +976,7 @@ const FinalSettlementPage = () => {
                             </td>
                           </tr>
                         ))}
-                        <tr className="border-t border-white/10 font-semibold">
+                        <tr className="border-t border-crewly-hairline-strong font-semibold">
                           <td className="py-2 pr-3">Total Earnings</td>
                           <td className="py-2 text-right">{money(totals.totalEarnings)}</td>
                         </tr>
@@ -993,7 +993,7 @@ const FinalSettlementPage = () => {
                     <table className="w-full text-sm">
                       <tbody>
                         {notice.amount > 0 || notice.waived ? (
-                          <tr className="border-t border-white/5">
+                          <tr className="border-t border-crewly-hairline">
                             <td className="py-2 pr-3">
                               Notice Recovery ({NOTICE_LABELS[notice.decision] || 'Notice'})
                               <span className="block text-xs text-crewly-dim">
@@ -1006,7 +1006,7 @@ const FinalSettlementPage = () => {
                           </tr>
                         ) : null}
                         {(detail.recoveries?.items || []).map((item, index) => (
-                          <tr key={`recovery-${index}`} className="border-t border-white/5">
+                          <tr key={`recovery-${index}`} className="border-t border-crewly-hairline">
                             <td className="py-2 pr-3">
                               {item.label}
                               <span className="block text-xs text-crewly-dim">
@@ -1028,7 +1028,7 @@ const FinalSettlementPage = () => {
                             </td>
                           </tr>
                         ))}
-                        <tr className="border-t border-white/10 font-semibold">
+                        <tr className="border-t border-crewly-hairline-strong font-semibold">
                           <td className="py-2 pr-3">Total Recoveries</td>
                           <td className="py-2 text-right">{money(totals.totalRecoveries)}</td>
                         </tr>
@@ -1208,7 +1208,7 @@ const FinalSettlementPage = () => {
                         recovery here — and nothing else: no payable, and the
                         salary figures are not recalculated behind HR's back. */}
                     {canApprove && detail.status === 'HR_REVIEWED' ? (
-                      <div className="space-y-2 border-b border-white/10 pb-3">
+                      <div className="space-y-2 border-b border-crewly-hairline-strong pb-3">
                         <p className="text-xs uppercase tracking-wide text-crewly-dim">
                           Add a recovery (§13)
                         </p>
@@ -1266,7 +1266,7 @@ const FinalSettlementPage = () => {
                     ) : null}
 
                     {canPay && detail.status === 'FINANCE_APPROVED' ? (
-                      <div className="space-y-2 border-t border-white/10 pt-3">
+                      <div className="space-y-2 border-t border-crewly-hairline-strong pt-3">
                         <input
                           type="date"
                           value={paymentDraft.paidAt}
@@ -1343,7 +1343,7 @@ const FinalSettlementPage = () => {
                 </thead>
                 <tbody>
                   {files.map((row) => (
-                    <tr key={row._id} className="border-t border-white/5">
+                    <tr key={row._id} className="border-t border-crewly-hairline">
                       <td className="py-2 pr-3">{row.filename || '—'}</td>
                       <td className="py-2 pr-3 text-crewly-dim">{row.requestedByName || '—'}</td>
                       <td className="py-2 pr-3 text-xs">{row.status}</td>

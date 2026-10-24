@@ -21,7 +21,7 @@ const STATUS_STYLE = {
   pending: 'bg-amber-400/15 text-amber-200',
   approved: 'bg-crewly-green/15 text-crewly-green',
   rejected: 'bg-crewly-red/15 text-crewly-red',
-  cancelled: 'bg-white/10 text-crewly-dim',
+  cancelled: 'bg-crewly-inset-strong text-crewly-dim',
 };
 
 const pretty = (value) => {
@@ -265,7 +265,7 @@ const ProfileChangeRequestsPage = () => {
               disabled={saving || (deciding.action === 'reject' && note.trim().length === 0)}
               className={`w-full ${deciding.action === 'approve'
                 ? 'btn-primary'
-                : 'inline-flex items-center justify-center rounded-lg bg-crewly-red px-5 py-2.5 font-semibold text-white hover:opacity-90 disabled:opacity-50'}`}
+                : 'inline-flex items-center justify-center rounded-lg bg-crewly-red px-5 py-2.5 font-semibold text-slate-50 hover:opacity-90 disabled:opacity-50'}`}
             >
               {saving ? 'Saving…' : `Confirm ${deciding.action === 'approve' ? 'Approval' : 'Rejection'}`}
             </button>

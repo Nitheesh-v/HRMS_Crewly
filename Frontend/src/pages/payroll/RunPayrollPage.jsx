@@ -306,7 +306,7 @@ const RunPayrollPage = () => {
             </span>
             <span className="text-crewly-dim">{formatNumber(progress.percent)}%</span>
           </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+          <div className="h-2 w-full overflow-hidden rounded-full bg-crewly-inset-strong">
             <div
               className="h-full rounded-full bg-indigo-500 transition-all"
               style={{ width: `${Math.min(100, Number(progress.percent) || 0)}%` }}
@@ -392,7 +392,7 @@ const RunPayrollPage = () => {
 
       {/* §24 — results table */}
       <div className="card overflow-x-auto p-0">
-        <div className="flex flex-wrap items-center gap-2 border-b border-white/5 p-3">
+        <div className="flex flex-wrap items-center gap-2 border-b border-crewly-hairline p-3">
           <input
             className="input max-w-xs"
             placeholder="Search name or code"
@@ -414,7 +414,7 @@ const RunPayrollPage = () => {
         </div>
 
         <table className="w-full text-left text-sm">
-          <thead className="bg-white/5 text-xs uppercase tracking-wide text-crewly-dim">
+          <thead className="bg-crewly-inset text-xs uppercase tracking-wide text-crewly-dim">
             <tr>
               <th className="px-3 py-2">Employee</th>
               <th className="px-3 py-2">Paid days</th>
@@ -444,7 +444,7 @@ const RunPayrollPage = () => {
               />
             ) : (
               visible.map((row) => (
-                <tr key={row._id} className="border-t border-white/5 hover:bg-white/5">
+                <tr key={row._id} className="border-t border-crewly-hairline hover:bg-crewly-inset">
                   <td className="px-3 py-2">
                     <p className="font-medium">{row.employeeName}</p>
                     <p className="text-xs text-crewly-dim">{row.employeeCode}</p>
@@ -565,7 +565,7 @@ const Section = ({ title, rows, total, tone = 'default' }) => {
       <table className="w-full text-left text-sm">
         <tbody>
           {rows.map((row, index) => (
-            <tr key={`${row.code || row.type || row.name}-${index}`} className="border-t border-white/5">
+            <tr key={`${row.code || row.type || row.name}-${index}`} className="border-t border-crewly-hairline">
               <td className="px-2 py-1">{row.name || row.label}</td>
               <td className="px-2 py-1 text-xs text-crewly-dim">{row.reason || row.meta?.reason || ''}</td>
               <td className="px-2 py-1 text-right">{formatMoney(row.amount)}</td>
@@ -623,19 +623,19 @@ const PayrollDetailDrawer = ({
       ) : (
         <div className="space-y-5">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <div className="rounded-lg bg-white/5 p-3">
+            <div className="rounded-lg bg-crewly-inset p-3">
               <p className="text-[11px] uppercase text-crewly-dim">Gross salary</p>
               <p className="text-sm font-semibold">{formatMoney(totals.gross)}</p>
             </div>
-            <div className="rounded-lg bg-white/5 p-3">
+            <div className="rounded-lg bg-crewly-inset p-3">
               <p className="text-[11px] uppercase text-crewly-dim">Net salary</p>
               <p className="text-sm font-semibold text-emerald-300">{formatMoney(totals.netPay)}</p>
             </div>
-            <div className="rounded-lg bg-white/5 p-3">
+            <div className="rounded-lg bg-crewly-inset p-3">
               <p className="text-[11px] uppercase text-crewly-dim">Deductions</p>
               <p className="text-sm font-semibold text-red-300">{formatMoney(totals.totalDeductions)}</p>
             </div>
-            <div className="rounded-lg bg-white/5 p-3">
+            <div className="rounded-lg bg-crewly-inset p-3">
               <p className="text-[11px] uppercase text-crewly-dim">Employer cost</p>
               <p className="text-sm font-semibold">{formatMoney(totals.employerCost)}</p>
             </div>
@@ -655,7 +655,7 @@ const PayrollDetailDrawer = ({
                 ['Paid leave', attendance.paidLeaveDays],
                 ['OT hours', attendance.otHours],
               ].map(([label, value]) => (
-                <div key={label} className="rounded-lg bg-white/5 p-2">
+                <div key={label} className="rounded-lg bg-crewly-inset p-2">
                   <p className="text-[11px] uppercase text-crewly-dim">{label}</p>
                   <p className="text-sm font-semibold">{formatNumber(value)}</p>
                 </div>
@@ -733,9 +733,9 @@ const ErrorReportModal = ({ month, results, onClose }) => {
             : `${failed.length} employee(s) could not be calculated. They were skipped — the rest of the month completed normally.`}
         </p>
 
-        <div className="max-h-80 overflow-y-auto rounded-lg border border-white/5">
+        <div className="max-h-80 overflow-y-auto rounded-lg border border-crewly-hairline">
           <table className="w-full text-left text-xs">
-            <thead className="bg-white/5 uppercase tracking-wide text-crewly-dim">
+            <thead className="bg-crewly-inset uppercase tracking-wide text-crewly-dim">
               <tr>
                 <th className="px-2 py-1">Employee</th>
                 <th className="px-2 py-1">Reason</th>
@@ -750,7 +750,7 @@ const ErrorReportModal = ({ month, results, onClose }) => {
                 </tr>
               ) : (
                 failed.map((row) => (
-                  <tr key={row._id} className="border-t border-white/5">
+                  <tr key={row._id} className="border-t border-crewly-hairline">
                     <td className="px-2 py-1">
                       {row.employeeName || row.employeeId} ({row.employeeCode || '—'})
                     </td>

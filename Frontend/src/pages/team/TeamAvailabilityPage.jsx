@@ -50,7 +50,7 @@ const PRESENCE_CHIP_TONE = {
   available: 'bg-crewly-green/15 text-crewly-green border-crewly-green/40',
   busy: 'bg-crewly-orange/15 text-crewly-orange border-crewly-orange/40',
   dnd: 'bg-crewly-red/15 text-crewly-red border-crewly-red/40',
-  unknown: 'bg-white/10 text-crewly-dim border-crewly-border',
+  unknown: 'bg-crewly-inset-strong text-crewly-dim border-crewly-border',
   on_leave: 'bg-violet-500/15 text-violet-300 border-violet-500/40',
   outside_working_hours: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/40',
 };
@@ -321,7 +321,7 @@ const TeamAvailabilityPage = () => {
           icon={Users}
           label="Total"
           value={summary.total || 0}
-          tone="bg-white/10 text-crewly-text"
+          tone="bg-crewly-inset-strong text-crewly-text"
         />
         <SummaryTile
           icon={Coffee}
@@ -345,7 +345,7 @@ const TeamAvailabilityPage = () => {
           icon={SearchIcon}
           label="Unknown"
           value={byPresence.unknown || 0}
-          tone="bg-white/10 text-crewly-dim"
+          tone="bg-crewly-inset-strong text-crewly-dim"
         />
         <SummaryTile
           icon={Briefcase}

@@ -383,7 +383,7 @@ const PayslipsPage = () => {
         {bulkFiles.length ? (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="bg-white/5 text-xs uppercase tracking-wide text-crewly-dim">
+              <thead className="bg-crewly-inset text-xs uppercase tracking-wide text-crewly-dim">
                 <tr>
                   <th className="px-3 py-2">Requested</th>
                   <th className="px-3 py-2">Scope</th>
@@ -395,7 +395,7 @@ const PayslipsPage = () => {
               </thead>
               <tbody>
                 {bulkFiles.map((file) => (
-                  <tr key={file._id} className="border-t border-white/5">
+                  <tr key={file._id} className="border-t border-crewly-hairline">
                     <td className="px-3 py-2 text-xs">{formatStamp(file.createdAt)}</td>
                     <td className="px-3 py-2 text-xs">
                       {file.scope === 'DEPARTMENT' ? `Department · ${file.departmentName || '—'}` : 'Company'}
@@ -445,7 +445,7 @@ const PayslipsPage = () => {
 
       {/* §27.3 — the list */}
       <div className="card overflow-x-auto p-0">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-crewly-hairline p-3">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-crewly-dim">
             Payslips · {formatMonthInput(month)}
           </h2>
@@ -455,7 +455,7 @@ const PayslipsPage = () => {
         </div>
 
         {/* §15 — filters */}
-        <div className="flex flex-wrap items-end gap-3 border-b border-white/5 p-3">
+        <div className="flex flex-wrap items-end gap-3 border-b border-crewly-hairline p-3">
           <div className="min-w-[200px] flex-1">
             <div className="flex items-center gap-2">
               <Search size={15} className="text-crewly-dim" />
@@ -496,7 +496,7 @@ const PayslipsPage = () => {
         </div>
 
         <table className="w-full text-left text-sm">
-          <thead className="bg-white/5 text-xs uppercase tracking-wide text-crewly-dim">
+          <thead className="bg-crewly-inset text-xs uppercase tracking-wide text-crewly-dim">
             <tr>
               <th className="px-3 py-2">Employee</th>
               <th className="px-3 py-2">Payslip number</th>
@@ -531,7 +531,7 @@ const PayslipsPage = () => {
               />
             ) : (
               visible.map((row) => (
-                <tr key={row._id} className="border-t border-white/5 hover:bg-white/5">
+                <tr key={row._id} className="border-t border-crewly-hairline hover:bg-crewly-inset">
                   <td className="px-3 py-2">
                     <button
                       className="font-medium text-indigo-300 hover:underline"

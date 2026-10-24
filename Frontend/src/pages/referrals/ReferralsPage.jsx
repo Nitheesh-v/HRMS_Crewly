@@ -200,7 +200,7 @@ const ReferralsPage = () => {
                       {job.requiredSkills.slice(0, 8).map((skill) => (
                         <span
                           key={skill}
-                          className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-crewly-dim"
+                          className="rounded-full border border-crewly-hairline-strong px-2 py-0.5 text-[11px] text-crewly-dim"
                         >
                           {skill}
                         </span>
@@ -242,7 +242,7 @@ const ReferralsPage = () => {
                     : ""}
                 </p>
               </div>
-              <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-crewly-dim">
+              <span className="rounded-full border border-crewly-hairline-strong px-3 py-1 text-xs text-crewly-dim">
                 {humaniseStage(referral.stage)}
               </span>
             </article>
@@ -274,7 +274,7 @@ const ReferralsPage = () => {
                 type="text"
                 value={form.fullName}
                 onChange={(e) => setForm({ ...form, fullName: e.target.value })}
-                className="mt-1 w-full rounded-lg border border-white/10 bg-transparent px-3 py-2 text-sm outline-none focus:border-crewly-green"
+                className="mt-1 w-full rounded-lg border border-crewly-hairline-strong bg-transparent px-3 py-2 text-sm outline-none focus:border-crewly-green"
                 autoFocus
               />
               {fieldErrors.fullName && (
@@ -288,7 +288,7 @@ const ReferralsPage = () => {
                 type="email"
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className="mt-1 w-full rounded-lg border border-white/10 bg-transparent px-3 py-2 text-sm outline-none focus:border-crewly-green"
+                className="mt-1 w-full rounded-lg border border-crewly-hairline-strong bg-transparent px-3 py-2 text-sm outline-none focus:border-crewly-green"
               />
               {fieldErrors.email && (
                 <span className="mt-1 block text-xs text-red-400">{fieldErrors.email}</span>
@@ -301,7 +301,7 @@ const ReferralsPage = () => {
                 type="tel"
                 value={form.phone}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                className="mt-1 w-full rounded-lg border border-white/10 bg-transparent px-3 py-2 text-sm outline-none focus:border-crewly-green"
+                className="mt-1 w-full rounded-lg border border-crewly-hairline-strong bg-transparent px-3 py-2 text-sm outline-none focus:border-crewly-green"
               />
               {fieldErrors.phone && (
                 <span className="mt-1 block text-xs text-red-400">{fieldErrors.phone}</span>
@@ -315,7 +315,7 @@ const ReferralsPage = () => {
                 maxLength={500}
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                className="mt-1 w-full resize-none rounded-lg border border-white/10 bg-transparent px-3 py-2 text-sm outline-none focus:border-crewly-green"
+                className="mt-1 w-full resize-none rounded-lg border border-crewly-hairline-strong bg-transparent px-3 py-2 text-sm outline-none focus:border-crewly-green"
               />
             </label>
 

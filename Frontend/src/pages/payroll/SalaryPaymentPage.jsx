@@ -327,7 +327,7 @@ const SalaryPaymentPage = () => {
 
       {/* §18 — batch list */}
       <div className="card overflow-x-auto p-0">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-crewly-hairline p-3">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-crewly-dim">
             Payment batches
           </h2>
@@ -337,7 +337,7 @@ const SalaryPaymentPage = () => {
         </div>
 
         <table className="w-full text-left text-sm">
-          <thead className="bg-white/5 text-xs uppercase tracking-wide text-crewly-dim">
+          <thead className="bg-crewly-inset text-xs uppercase tracking-wide text-crewly-dim">
             <tr>
               <th className="px-3 py-2">Batch</th>
               <th className="px-3 py-2">Month</th>
@@ -370,7 +370,7 @@ const SalaryPaymentPage = () => {
               />
             ) : (
               monthBatches.map((batch) => (
-                <tr key={batch._id} className="border-t border-white/5 hover:bg-white/5">
+                <tr key={batch._id} className="border-t border-crewly-hairline hover:bg-crewly-inset">
                   <td className="px-3 py-2">
                     <p className="font-medium">{batch.batchNumber}</p>
                     {batch.attempt > 1 ? (
@@ -605,22 +605,22 @@ const BatchDetail = ({
         <div className="space-y-4">
           {/* §18 — batch summary */}
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <div className="rounded-lg bg-white/5 p-3">
+            <div className="rounded-lg bg-crewly-inset p-3">
               <p className="text-[11px] uppercase text-crewly-dim">Employees</p>
               <p className="text-sm font-semibold">{formatNumber(batch.summary?.totalEmployees)}</p>
             </div>
-            <div className="rounded-lg bg-white/5 p-3">
+            <div className="rounded-lg bg-crewly-inset p-3">
               <p className="text-[11px] uppercase text-crewly-dim">Total net salary</p>
               <p className="text-sm font-semibold">{formatMoney(batch.summary?.totalNetSalary)}</p>
             </div>
-            <div className="rounded-lg bg-white/5 p-3">
+            <div className="rounded-lg bg-crewly-inset p-3">
               <p className="text-[11px] uppercase text-crewly-dim">Paid</p>
               <p className="text-sm font-semibold text-emerald-300">
                 {formatNumber(batch.summary?.successfulTransactions)} ·{' '}
                 {formatMoney(batch.summary?.totalPaid)}
               </p>
             </div>
-            <div className="rounded-lg bg-white/5 p-3">
+            <div className="rounded-lg bg-crewly-inset p-3">
               <p className="text-[11px] uppercase text-crewly-dim">Failed / pending</p>
               <p className="text-sm font-semibold">
                 <span className={batch.summary?.failedTransactions ? 'text-red-300' : ''}>
@@ -645,7 +645,7 @@ const BatchDetail = ({
           </div>
 
           {/* actions */}
-          <div className="flex flex-wrap items-center gap-2 border-y border-white/5 py-3">
+          <div className="flex flex-wrap items-center gap-2 border-y border-crewly-hairline py-3">
             <select
               className="input max-w-[130px]"
               value={format}
@@ -716,7 +716,7 @@ const BatchDetail = ({
           ) : null}
 
           {/* tabs */}
-          <div className="flex flex-wrap gap-1 border-b border-white/10">
+          <div className="flex flex-wrap gap-1 border-b border-crewly-hairline-strong">
             {TABS.map((entry) => (
               <button
                 key={entry.key}
@@ -775,9 +775,9 @@ const BatchDetail = ({
 
           {/* §9 — employee payment table */}
           {tab === 'employees' ? (
-            <div className="max-h-[26rem] overflow-y-auto rounded-lg border border-white/5">
+            <div className="max-h-[26rem] overflow-y-auto rounded-lg border border-crewly-hairline">
               <table className="w-full text-left text-sm">
-                <thead className="bg-white/5 text-xs uppercase tracking-wide text-crewly-dim">
+                <thead className="bg-crewly-inset text-xs uppercase tracking-wide text-crewly-dim">
                   <tr>
                     <th className="px-3 py-2">Employee</th>
                     <th className="px-3 py-2">Bank</th>
@@ -799,7 +799,7 @@ const BatchDetail = ({
                     />
                   ) : (
                     visiblePayments.map((row) => (
-                      <tr key={row._id} className="border-t border-white/5">
+                      <tr key={row._id} className="border-t border-crewly-hairline">
                         <td className="px-3 py-2">
                           <p className="font-medium">{row.employeeName}</p>
                           <p className="text-xs text-crewly-dim">
@@ -950,9 +950,9 @@ const BatchDetail = ({
               )}
 
               {validation && !validation.valid ? (
-                <div className="rounded-lg border border-white/5">
+                <div className="rounded-lg border border-crewly-hairline">
                   <table className="w-full text-left text-sm">
-                    <thead className="bg-white/5 text-xs uppercase tracking-wide text-crewly-dim">
+                    <thead className="bg-crewly-inset text-xs uppercase tracking-wide text-crewly-dim">
                       <tr>
                         <th className="px-3 py-2">Employee</th>
                         <th className="px-3 py-2">Problem</th>
@@ -960,7 +960,7 @@ const BatchDetail = ({
                     </thead>
                     <tbody>
                       {validation.errorRows.map((row) => (
-                        <tr key={String(row.employeeId)} className="border-t border-white/5">
+                        <tr key={String(row.employeeId)} className="border-t border-crewly-hairline">
                           <td className="px-3 py-2">
                             {row.employeeName || row.employeeCode || row.employeeId}
                           </td>
@@ -980,7 +980,7 @@ const BatchDetail = ({
                   {visibleExcluded.map((row) => (
                     <div
                       key={String(row.employeeId)}
-                      className="rounded-lg bg-white/5 p-3 text-sm"
+                      className="rounded-lg bg-crewly-inset p-3 text-sm"
                     >
                       <p className="font-medium">
                         {row.employeeName || row.employeeCode}{' '}
@@ -996,9 +996,9 @@ const BatchDetail = ({
 
           {/* §12 — download history */}
           {tab === 'downloads' ? (
-            <div className="rounded-lg border border-white/5">
+            <div className="rounded-lg border border-crewly-hairline">
               <table className="w-full text-left text-sm">
-                <thead className="bg-white/5 text-xs uppercase tracking-wide text-crewly-dim">
+                <thead className="bg-crewly-inset text-xs uppercase tracking-wide text-crewly-dim">
                   <tr>
                     <th className="px-3 py-2">Generated</th>
                     <th className="px-3 py-2">Format</th>
@@ -1018,7 +1018,7 @@ const BatchDetail = ({
                     />
                   ) : (
                     visibleFiles.map((file) => (
-                      <tr key={file._id} className="border-t border-white/5">
+                      <tr key={file._id} className="border-t border-crewly-hairline">
                         <td className="px-3 py-2 text-xs">{formatStamp(file.generatedAt)}</td>
                         <td className="px-3 py-2">{file.format}</td>
                         <td className="px-3 py-2">{formatNumber(file.rowCount)}</td>
@@ -1060,9 +1060,9 @@ const BatchDetail = ({
 
           {/* §18 / §22 — every recorded action on this batch */}
           {tab === 'audit' ? (
-            <div className="rounded-lg border border-white/5">
+            <div className="rounded-lg border border-crewly-hairline">
               <table className="w-full text-left text-sm">
-                <thead className="bg-white/5 text-xs uppercase tracking-wide text-crewly-dim">
+                <thead className="bg-crewly-inset text-xs uppercase tracking-wide text-crewly-dim">
                   <tr>
                     <th className="px-3 py-2">When</th>
                     <th className="px-3 py-2">Action</th>
@@ -1093,7 +1093,7 @@ const BatchDetail = ({
                         matches(row.action, row.actorName, row.actorRole, row.from, row.to, row.reason),
                       )
                       .map((row, index) => (
-                        <tr key={`${row.action}-${row.at}-${index}`} className="border-t border-white/5">
+                        <tr key={`${row.action}-${row.at}-${index}`} className="border-t border-crewly-hairline">
                           <td className="px-3 py-2 text-xs">{formatStamp(row.at)}</td>
                           <td className="px-3 py-2">
                             <span className="font-medium">{row.action}</span>

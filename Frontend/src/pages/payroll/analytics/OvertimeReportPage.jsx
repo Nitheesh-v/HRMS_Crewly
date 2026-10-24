@@ -134,7 +134,7 @@ const OvertimeReportPage = () => {
               ]}
               empty="No overtime recorded for this month"
             />
-            <p className="mt-3 border-t border-white/5 pt-2 text-xs text-crewly-dim">
+            <p className="mt-3 border-t border-crewly-hairline pt-2 text-xs text-crewly-dim">
               Hours and cost are read from the payroll snapshot as stored — overtime is never
               recalculated here (§13).
             </p>

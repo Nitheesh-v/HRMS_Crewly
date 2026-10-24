@@ -100,14 +100,14 @@ const PayrollTrendsPage = () => {
         departmentId={departmentId}
         onDepartmentChange={setDepartmentId}
       >
-        <div className="flex overflow-hidden rounded-md border border-white/10">
+        <div className="flex overflow-hidden rounded-md border border-crewly-hairline-strong">
           {PERIODS.map(({ key, label }) => (
             <button
               key={key}
               type="button"
               onClick={() => setPeriod(key)}
               className={`px-3 py-1.5 text-sm ${
-                period === key ? 'bg-white/10 text-crewly-text' : 'text-crewly-dim hover:bg-white/5'
+                period === key ? 'bg-crewly-inset-strong text-crewly-text' : 'text-crewly-dim hover:bg-crewly-inset'
               }`}
             >
               {label}
@@ -149,7 +149,7 @@ const PayrollTrendsPage = () => {
             ) : (
               <p className="text-sm text-crewly-dim">No completed payroll in this window.</p>
             )}
-            <div className="mt-3 flex flex-wrap gap-3 border-t border-white/5 pt-3">
+            <div className="mt-3 flex flex-wrap gap-3 border-t border-crewly-hairline pt-3">
               {SERIES.map(({ key, label, tone }) => (
                 <span key={key} className="flex items-center gap-1.5 text-xs text-crewly-dim">
                   <span className={`h-2 w-2 rounded-full ${tone}`} />

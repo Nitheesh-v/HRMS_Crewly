@@ -42,7 +42,7 @@ const DonutChart = ({
           cx={center}
           cy={center}
           r={radius}
-          stroke="rgba(230,237,243,0.07)"
+          stroke="var(--chart-track)"
           strokeWidth={thickness}
         />
         {total > 0 &&

@@ -159,7 +159,7 @@ const InterviewDetailModal = ({ interviewId, onClose, onChanged }) => {
           <button
             type="button"
             aria-label="Close"
-            className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white"
+            className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
             onClick={onClose}
             disabled={busy}
           >

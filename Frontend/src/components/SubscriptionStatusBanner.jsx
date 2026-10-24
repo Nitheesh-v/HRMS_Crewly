@@ -147,7 +147,7 @@ const SubscriptionStatusBanner = () => {
       <div className="flex gap-2">
         <Link
           to="/app/subscription"
-          className="rounded-lg bg-white/10 px-3 py-2 font-semibold hover:bg-white/20"
+          className="rounded-lg bg-crewly-inset-strong px-3 py-2 font-semibold hover:bg-crewly-inset-heavy"
         >
           Manage plan
         </Link>

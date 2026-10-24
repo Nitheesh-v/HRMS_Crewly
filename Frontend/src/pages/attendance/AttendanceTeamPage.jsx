@@ -49,12 +49,12 @@ const PRESENCE_STYLE = {
   WORKING: 'bg-crewly-green/15 text-crewly-green',
   ON_BREAK: 'bg-crewly-orange/15 text-crewly-orange',
   COMPLETED: 'bg-blue-400/15 text-blue-300',
-  NOT_IN: 'bg-white/10 text-crewly-dim',
+  NOT_IN: 'bg-crewly-inset-strong text-crewly-dim',
   LATE_NOT_IN: 'bg-crewly-red/15 text-crewly-red',
   ON_LEAVE: 'bg-blue-400/15 text-blue-300',
   HOLIDAY: 'bg-crewly-orange/15 text-crewly-orange',
-  WEEKLY_OFF: 'bg-white/10 text-crewly-dim',
-  UNRESOLVED: 'bg-white/10 text-crewly-dim',
+  WEEKLY_OFF: 'bg-crewly-inset-strong text-crewly-dim',
+  UNRESOLVED: 'bg-crewly-inset-strong text-crewly-dim',
 };
 
 const MODE_LABEL = {
@@ -502,7 +502,7 @@ const AttendanceTeamPage = () => {
         <KpiCard icon={UserCheck} label="Working now" value={counts.working || 0} tone="bg-crewly-green/10 text-crewly-green" />
         <KpiCard icon={Coffee} label="On break" value={counts.onBreak || 0} tone="bg-crewly-orange/10 text-crewly-orange" />
         <KpiCard icon={CheckCircle2} label="Completed" value={counts.completed || 0} tone="bg-blue-400/10 text-blue-300" />
-        <KpiCard icon={Clock} label="Not yet in" value={counts.notIn || 0} tone="bg-white/10 text-crewly-dim" />
+        <KpiCard icon={Clock} label="Not yet in" value={counts.notIn || 0} tone="bg-crewly-inset-strong text-crewly-dim" />
         <KpiCard icon={Timer} label="Late — not in" value={counts.lateNotIn || 0} tone="bg-crewly-red/10 text-crewly-red" />
         <KpiCard icon={CalendarOff} label="On leave" value={counts.onLeave || 0} tone="bg-blue-400/10 text-blue-300" />
         <KpiCard icon={AlertTriangle} label="Need attention" value={counts.exceptions || 0} tone="bg-crewly-red/10 text-crewly-red" />
@@ -511,11 +511,11 @@ const AttendanceTeamPage = () => {
       {(modes.OFFICE > 0 || modes.WFH > 0 || modes.FIELD > 0 || modes.CLIENT_SITE > 0 || modes.BUSINESS_TRAVEL > 0) && (
         <div className="flex flex-wrap items-center gap-2 text-xs text-crewly-dim">
           <span>Working from:</span>
-          {modes.OFFICE > 0 && <span className="badge bg-white/10 text-crewly-dim">Office · {modes.OFFICE}</span>}
-          {modes.WFH > 0 && <span className="badge bg-white/10 text-crewly-dim">WFH · {modes.WFH}</span>}
-          {modes.FIELD > 0 && <span className="badge bg-white/10 text-crewly-dim">Field · {modes.FIELD}</span>}
-          {modes.CLIENT_SITE > 0 && <span className="badge bg-white/10 text-crewly-dim">Client site · {modes.CLIENT_SITE}</span>}
-          {modes.BUSINESS_TRAVEL > 0 && <span className="badge bg-white/10 text-crewly-dim">Travel · {modes.BUSINESS_TRAVEL}</span>}
+          {modes.OFFICE > 0 && <span className="badge bg-crewly-inset-strong text-crewly-dim">Office · {modes.OFFICE}</span>}
+          {modes.WFH > 0 && <span className="badge bg-crewly-inset-strong text-crewly-dim">WFH · {modes.WFH}</span>}
+          {modes.FIELD > 0 && <span className="badge bg-crewly-inset-strong text-crewly-dim">Field · {modes.FIELD}</span>}
+          {modes.CLIENT_SITE > 0 && <span className="badge bg-crewly-inset-strong text-crewly-dim">Client site · {modes.CLIENT_SITE}</span>}
+          {modes.BUSINESS_TRAVEL > 0 && <span className="badge bg-crewly-inset-strong text-crewly-dim">Travel · {modes.BUSINESS_TRAVEL}</span>}
         </div>
       )}
 
@@ -576,8 +576,8 @@ const AttendanceTeamPage = () => {
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {[0, 1, 2, 3, 4, 5].map((key) => (
             <div key={key} className="card animate-pulse p-4">
-              <div className="h-4 w-2/3 rounded bg-white/10" />
-              <div className="mt-2 h-3 w-1/3 rounded bg-white/10" />
+              <div className="h-4 w-2/3 rounded bg-crewly-inset-strong" />
+              <div className="mt-2 h-3 w-1/3 rounded bg-crewly-inset-strong" />
             </div>
           ))}
         </div>

@@ -128,7 +128,7 @@ const SourceBanner = ({ provenance, range }) => {
 };
 
 const ShareBar = ({ pct }) => (
-  <div className="h-1.5 w-24 overflow-hidden rounded-full bg-white/10">
+  <div className="h-1.5 w-24 overflow-hidden rounded-full bg-crewly-inset-strong">
     <div className="h-full rounded-full bg-crewly-accent" style={{ width: `${Math.min(100, pct || 0)}%` }} />
   </div>
 );
@@ -372,7 +372,7 @@ const AttendanceAnalyticsPage = () => {
                 ['Unresolved', dayCounts.unresolved],
                 ['Missing punch days', totals?.missingPunchDays],
               ].map(([label, value]) => (
-                <div key={label} className="flex items-center justify-between gap-2 rounded bg-white/5 px-2 py-1">
+                <div key={label} className="flex items-center justify-between gap-2 rounded bg-crewly-inset px-2 py-1">
                   <span className="text-crewly-dim">{label}</span>
                   <span className="font-semibold">{value ?? 0}</span>
                 </div>
@@ -519,7 +519,7 @@ const AttendanceAnalyticsPage = () => {
             </thead>
             <tbody>
               {months.map((row) => (
-                <tr key={row.month} className="border-t border-white/5">
+                <tr key={row.month} className="border-t border-crewly-hairline">
                   <td className="px-2 py-1 font-medium">{row.month}</td>
                   <td className="px-2 py-1">
                     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${row.finalized ? 'bg-emerald-400/15 text-emerald-300' : 'bg-crewly-orange/15 text-crewly-orange'}`}>
@@ -565,7 +565,7 @@ const AttendanceAnalyticsPage = () => {
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.employeeId} className="border-t border-white/5">
+                <tr key={row.employeeId} className="border-t border-crewly-hairline">
                   <td className="px-2 py-1">
                     <div className="font-medium">{row.name}</div>
                     <div className="text-xs text-crewly-dim">{row.department?.name || row.designation || ''}</div>
@@ -627,7 +627,7 @@ const AttendanceAnalyticsPage = () => {
               ['Unresolved', totals?.dayCounts?.unresolved],
               ['Missing punch days', totals?.missingPunchDays],
             ].map(([label, value]) => (
-              <div key={label} className="flex items-center justify-between gap-2 rounded bg-white/5 px-2 py-1">
+              <div key={label} className="flex items-center justify-between gap-2 rounded bg-crewly-inset px-2 py-1">
                 <span className="text-crewly-dim">{label}</span>
                 <span className="font-semibold">{value ?? 0}</span>
               </div>
@@ -655,7 +655,7 @@ const AttendanceAnalyticsPage = () => {
             {data.finalized ? `FINALIZED v${data.currentVersion}` : 'NOT FINALIZED'}
           </span>
           {Object.entries(summary).map(([status, count]) => (
-            <span key={status} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${RECON_STYLES[status] || 'bg-white/10'}`}>
+            <span key={status} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${RECON_STYLES[status] || 'bg-crewly-inset-strong'}`}>
               {status}: {count}
             </span>
           ))}
@@ -675,13 +675,13 @@ const AttendanceAnalyticsPage = () => {
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.employeeId} className="border-t border-white/5">
+                <tr key={row.employeeId} className="border-t border-crewly-hairline">
                   <td className="px-2 py-1">
                     <div className="font-medium">{row.name}</div>
                     <div className="text-xs text-crewly-dim">{row.department?.name || row.employeeCode || ''}</div>
                   </td>
                   <td className="px-2 py-1">
-                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${RECON_STYLES[row.status] || 'bg-white/10'}`}>
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${RECON_STYLES[row.status] || 'bg-crewly-inset-strong'}`}>
                       {row.status}
                     </span>
                   </td>
@@ -736,7 +736,7 @@ const AttendanceAnalyticsPage = () => {
             type="button"
             onClick={() => setTab(key)}
             className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm ${
-              tab === key ? 'bg-crewly-accent text-white' : 'bg-white/5 text-crewly-dim hover:bg-white/10'
+              tab === key ? 'bg-crewly-accent text-white' : 'bg-crewly-inset text-crewly-dim hover:bg-crewly-inset-strong'
             }`}
           >
             <Icon size={14} /> {label}

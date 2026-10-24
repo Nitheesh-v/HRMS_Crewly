@@ -393,7 +393,7 @@ const AuditLogsPage = () => {
               {logs.map((log) => (
                 <tr
                   key={log._id}
-                  className="border-t border-crewly-border hover:bg-white/[0.02]"
+                  className="border-t border-crewly-border hover:bg-crewly-inset"
                 >
                   <td className="whitespace-nowrap px-4 py-3 text-xs text-crewly-dim">
                     {formatDate(

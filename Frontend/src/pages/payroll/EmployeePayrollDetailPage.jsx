@@ -813,7 +813,7 @@ const EmployeePayrollDetailPage = () => {
 
         {/* §17 — what the payroll actually deducted, read from the snapshot. */}
         {tab === 'statutory' && (
-          <div className="mt-4 rounded-lg border border-white/5 p-3">
+          <div className="mt-4 rounded-lg border border-crewly-hairline p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs uppercase tracking-wide text-crewly-dim">
                 Deducted this month

@@ -8,7 +8,7 @@ import EmptyState, { TableEmpty } from '../../components/common/EmptyState.jsx';
 const STATUS_STYLE = {
   APPROVED: 'bg-crewly-green/15 text-crewly-green',
   REJECTED: 'bg-crewly-red/15 text-crewly-red',
-  CANCELLED: 'bg-white/10 text-crewly-dim',
+  CANCELLED: 'bg-crewly-inset-strong text-crewly-dim',
 };
 
 const TYPE_BADGE = {
@@ -159,7 +159,7 @@ const LeaveApprovalsPage = () => {
               disabled={saving}
               className={`w-full ${deciding.action === 'APPROVE'
                 ? 'btn-primary'
-                : 'inline-flex items-center justify-center rounded-lg bg-crewly-red px-5 py-2.5 font-semibold text-white hover:opacity-90 disabled:opacity-50'}`}
+                : 'inline-flex items-center justify-center rounded-lg bg-crewly-red px-5 py-2.5 font-semibold text-slate-50 hover:opacity-90 disabled:opacity-50'}`}
             >
               {saving ? 'Saving…' : `Confirm ${deciding.action === 'APPROVE' ? 'Approval' : 'Rejection'}`}
             </button>

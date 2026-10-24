@@ -8,18 +8,22 @@ import EmptyState from '../../components/common/EmptyState.jsx';
 
 const CREATE_ROLES = ['COMPANY_ADMIN', 'HR_MANAGER'];
 
+// Chips are paper on purpose: a pale pill with a dark label, which is what
+// reads as a status next to our dark cards. The colours are literal because
+// the app's hue ramp and its slate ramp both flip in the light theme
+// (block 12b in style.css) — tokens here would print ink on ink.
 const STATUS_META = {
-  NOT_STARTED: { label: 'Not Started', cls: 'bg-slate-100 text-slate-600' },
-  IN_PROGRESS: { label: 'In Progress', cls: 'bg-blue-100 text-blue-700' },
-  ON_HOLD: { label: 'On Hold', cls: 'bg-amber-100 text-amber-700' },
-  COMPLETED: { label: 'Completed', cls: 'bg-green-100 text-green-700' },
-  CANCELLED: { label: 'Cancelled', cls: 'bg-red-100 text-red-600' },
+  NOT_STARTED: { label: 'Not Started', cls: 'bg-[#f1f5f9] text-[#475569]' },
+  IN_PROGRESS: { label: 'In Progress', cls: 'bg-[#dbeafe] text-blue-700' },
+  ON_HOLD: { label: 'On Hold', cls: 'bg-crewly-amber-soft text-crewly-amber-deep' },
+  COMPLETED: { label: 'Completed', cls: 'bg-[#dcfce7] text-green-700' },
+  CANCELLED: { label: 'Cancelled', cls: 'bg-[#fee2e2] text-red-600' },
 };
 const PRIORITY_CLS = {
-  LOW: 'bg-slate-100 text-slate-500',
-  MEDIUM: 'bg-blue-50 text-blue-600',
-  HIGH: 'bg-orange-100 text-orange-700',
-  CRITICAL: 'bg-red-100 text-red-700',
+  LOW: 'bg-[#f1f5f9] text-[#64748b]',
+  MEDIUM: 'bg-[#eff6ff] text-[#2563eb]',
+  HIGH: 'bg-[#ffedd5] text-orange-700',
+  CRITICAL: 'bg-[#fee2e2] text-red-700',
 };
 
 const inp = 'w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-1.5 text-sm text-slate-100 placeholder-slate-500 outline-none focus:border-indigo-400';

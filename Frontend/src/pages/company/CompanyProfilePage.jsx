@@ -280,7 +280,7 @@ const CompanyProfilePage = () => {
                   className="h-9 w-10 rounded-md bg-white object-contain"
                 />
               ) : (
-                <div className="w-10 h-9 rounded-md bg-[#16324f] text-white flex items-center justify-center font-bold text-sm">
+                <div className="w-10 h-9 rounded-md bg-[#16324f] text-slate-50 flex items-center justify-center font-bold text-sm">
                   {initials}
                 </div>
               )}
@@ -380,7 +380,7 @@ const CompanyProfilePage = () => {
               { id: 'CLASSIC_CORPORATE', name: 'Classic Corporate', hint: 'Traditional formal layout with bordered header' },
               { id: 'MINIMAL', name: 'Minimal', hint: 'Printer-friendly grayscale, economical ink' },
             ].map((entry) => (
-              <label key={entry.id} className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm ${templateId === entry.id ? 'border-indigo-500 bg-indigo-500/10' : 'border-white/10 bg-white/5'} ${!isAdmin ? 'pointer-events-none opacity-70' : ''}`}>
+              <label key={entry.id} className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm ${templateId === entry.id ? 'border-indigo-500 bg-indigo-500/10' : 'border-crewly-hairline-strong bg-crewly-inset'} ${!isAdmin ? 'pointer-events-none opacity-70' : ''}`}>
                 <input type="radio" name="payslip-template" className="mt-1" checked={templateId === entry.id} onChange={() => setTemplateId(entry.id)} disabled={!isAdmin} />
                 <span>
                   <span className="block font-medium">{entry.name}</span>

@@ -118,7 +118,12 @@ describe('empty-state art', () => {
     for (const colour of ['#3fb950', '#58a6ff', '#a371f7', '#f0a35e']) {
       assert.ok(art.includes(colour), `scene palette must include ${colour}`);
     }
-    assert.ok(art.includes('rgba(230, 237, 243'), 'ink tone must match the app text colour');
+    // The ink is a theme token now (`--art-ink-rgb`): the scenes have to read on
+    // the dark card and on the light theme's paper, so the neutral tones come
+    // from CSS instead of a hard-coded colour. The accent hexes above stay
+    // because they are the illustration's own palette, legible on both.
+    assert.ok(art.includes('rgba(var(--art-ink-rgb)'), 'ink is the app text colour, via the theme token');
+    assert.ok(art.includes('var(--art-plate)'), 'the little dark plate is a theme token too');
   });
 });
 

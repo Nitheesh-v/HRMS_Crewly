@@ -201,7 +201,7 @@ const PayrollRegisterPage = () => {
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
           Employment
           <select
-            className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+            className="rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
             value={employmentStatus}
             onChange={(event) => setEmploymentStatus(event.target.value)}
           >
@@ -215,7 +215,7 @@ const PayrollRegisterPage = () => {
           <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
             Salary structure
             <select
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+              className="rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
               value={structureId}
               onChange={(event) => setStructureId(event.target.value)}
             >
@@ -232,7 +232,7 @@ const PayrollRegisterPage = () => {
         <button
           type="button"
           onClick={() => { reload(); loadFiles(); }}
-          className="flex items-center gap-1.5 rounded-md border border-white/10 px-3 py-1.5 text-sm text-crewly-text hover:bg-white/5"
+          className="flex items-center gap-1.5 rounded-md border border-crewly-hairline-strong px-3 py-1.5 text-sm text-crewly-text hover:bg-crewly-inset"
         >
           <RefreshCcw size={14} />
           Refresh
@@ -311,7 +311,7 @@ const PayrollRegisterPage = () => {
               empty={search ? 'Nobody matches that search' : 'No payroll records for this month'}
             />
             <Pagination pagination={pagination} onPageChange={setPage} />
-            <p className="mt-3 border-t border-white/5 pt-2 text-xs text-crewly-dim">
+            <p className="mt-3 border-t border-crewly-hairline pt-2 text-xs text-crewly-dim">
               Payment date and status come from the salary payment records. An employee whose transfer
               failed and was retried appears once, with the successful payment (§17). &ldquo;Gross&rdquo;
               is total earnings — structure plus variable pay plus overtime — while &ldquo;structure
@@ -356,7 +356,7 @@ const PayrollRegisterPage = () => {
                           type="button"
                           disabled={row.status !== 'READY' || downloading === row._id}
                           onClick={() => downloadFile(row)}
-                          className="flex items-center gap-1 rounded-md border border-white/10 px-2 py-1 text-xs text-crewly-text hover:bg-white/5 disabled:opacity-40"
+                          className="flex items-center gap-1 rounded-md border border-crewly-hairline-strong px-2 py-1 text-xs text-crewly-text hover:bg-crewly-inset disabled:opacity-40"
                         >
                           {downloading === row._id ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
                           Download

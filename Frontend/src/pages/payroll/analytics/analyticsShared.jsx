@@ -124,7 +124,7 @@ export const DataTable = ({
         </thead>
         <tbody>
           {rows.map((row, rowIndex) => (
-            <tr key={row.key || rowIndex} className="border-t border-white/5">
+            <tr key={row.key || rowIndex} className="border-t border-crewly-hairline">
               {headers.map((header, index) => (
                 <td
                   key={header.key || header.label || index}
@@ -140,7 +140,7 @@ export const DataTable = ({
         </tbody>
         {footer ? (
           <tfoot>
-            <tr className="border-t border-white/10 text-xs uppercase tracking-wide text-crewly-dim">
+            <tr className="border-t border-crewly-hairline-strong text-xs uppercase tracking-wide text-crewly-dim">
               {footer.map((cell, index) => (
                 <td
                   key={index}
@@ -179,7 +179,7 @@ export const FilterBar = ({
     <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
       Payroll month
       <select
-        className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+        className="rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
         value={month}
         onChange={(event) => onMonthChange(event.target.value)}
       >
@@ -196,7 +196,7 @@ export const FilterBar = ({
     <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
       Department
       <select
-        className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+        className="rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
         value={departmentId}
         onChange={(event) => onDepartmentChange(event.target.value)}
       >
@@ -211,7 +211,7 @@ export const FilterBar = ({
       <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
         Designation
         <select
-          className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+          className="rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
           value={designation}
           onChange={(event) => onDesignationChange(event.target.value)}
         >
@@ -227,7 +227,7 @@ export const FilterBar = ({
       <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
         Payment status
         <select
-          className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+          className="rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
           value={status}
           onChange={(event) => onStatusChange(event.target.value)}
         >
@@ -285,14 +285,14 @@ export const ExportMenu = ({ reportKey, filters = {}, disabled = false, onQueued
         type="button"
         disabled={disabled || Boolean(busy)}
         onClick={() => setOpen((value) => !value)}
-        className="flex items-center gap-1.5 rounded-md border border-white/10 px-3 py-1.5 text-sm text-crewly-text hover:bg-white/5 disabled:opacity-50"
+        className="flex items-center gap-1.5 rounded-md border border-crewly-hairline-strong px-3 py-1.5 text-sm text-crewly-text hover:bg-crewly-inset disabled:opacity-50"
       >
         {busy ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
         Export
         <ChevronDown size={13} />
       </button>
       {open ? (
-        <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-md border border-white/10 bg-[#12141c] shadow-lg">
+        <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-md border border-crewly-hairline-strong bg-crewly-card shadow-lg">
           {[
             { format: 'CSV', icon: FileText, label: 'CSV' },
             { format: 'XLSX', icon: FileSpreadsheet, label: 'Excel' },
@@ -302,17 +302,17 @@ export const ExportMenu = ({ reportKey, filters = {}, disabled = false, onQueued
               key={format}
               type="button"
               onClick={() => download(format, false)}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-white/5"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-crewly-inset"
             >
               <Icon size={14} className="text-crewly-dim" />
               Download {label}
             </button>
           ))}
-          <div className="border-t border-white/5" />
+          <div className="border-t border-crewly-hairline" />
           <button
             type="button"
             onClick={() => download('XLSX', true)}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-white/5"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-crewly-inset"
           >
             <RefreshCcw size={14} className="text-crewly-dim" />
             Queue large export
@@ -327,7 +327,7 @@ export const PageHeader = ({ icon: Icon, title, subtitle, actions = null }) => (
   <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
     <div className="flex items-start gap-3">
       {Icon ? (
-        <span className="mt-0.5 rounded-lg border border-white/10 bg-white/5 p-2 text-crewly-dim">
+        <span className="mt-0.5 rounded-lg border border-crewly-hairline-strong bg-crewly-inset p-2 text-crewly-dim">
           <Icon size={18} />
         </span>
       ) : null}
@@ -362,7 +362,7 @@ export const PeriodSelect = ({
       <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
         Period
         <select
-          className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+          className="rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
           value={preset}
           onChange={(event) => onPresetChange(event.target.value)}
         >
@@ -380,7 +380,7 @@ export const PeriodSelect = ({
               type="month"
               value={fromMonth}
               onChange={(event) => onFromMonthChange(event.target.value)}
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+              className="rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
             />
           </label>
           <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
@@ -389,7 +389,7 @@ export const PeriodSelect = ({
               type="month"
               value={toMonth}
               onChange={(event) => onToMonthChange(event.target.value)}
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+              className="rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
             />
           </label>
         </>
@@ -412,7 +412,7 @@ export const Pagination = ({ pagination, onPageChange }) => {
   const { page = 1, pages = 1, total = 0 } = pagination;
 
   return (
-    <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/5 pt-3 text-xs text-crewly-dim">
+    <div className="mt-3 flex items-center justify-between gap-3 border-t border-crewly-hairline pt-3 text-xs text-crewly-dim">
       <span>
         {Number(total).toLocaleString('en-IN')} row(s) · page {page} of {pages}
       </span>
@@ -421,7 +421,7 @@ export const Pagination = ({ pagination, onPageChange }) => {
           type="button"
           disabled={page <= 1}
           onClick={() => onPageChange(page - 1)}
-          className="rounded-md border border-white/10 px-2 py-1 disabled:opacity-40"
+          className="rounded-md border border-crewly-hairline-strong px-2 py-1 disabled:opacity-40"
         >
           Previous
         </button>
@@ -429,7 +429,7 @@ export const Pagination = ({ pagination, onPageChange }) => {
           type="button"
           disabled={page >= pages}
           onClick={() => onPageChange(page + 1)}
-          className="rounded-md border border-white/10 px-2 py-1 disabled:opacity-40"
+          className="rounded-md border border-crewly-hairline-strong px-2 py-1 disabled:opacity-40"
         >
           Next
         </button>
@@ -449,7 +449,7 @@ export const SearchBox = ({ value, onChange, placeholder = 'Search by employee, 
       value={value}
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder}
-      className="w-56 rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+      className="w-56 rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
     />
   </label>
 );

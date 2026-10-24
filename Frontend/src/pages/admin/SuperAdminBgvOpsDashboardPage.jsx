@@ -364,7 +364,7 @@ const SuperAdminBgvOpsDashboardPage = () => {
           ) : (
             <div className="card overflow-x-auto p-0">
               <table className="w-full text-left text-xs">
-                <thead className="border-b border-white/10 text-crewly-muted">
+                <thead className="border-b border-crewly-hairline-strong text-crewly-muted">
                   <tr>
                     <th className="px-3 py-2">Order</th>
                     <th className="px-3 py-2">Organisation</th>
@@ -379,7 +379,7 @@ const SuperAdminBgvOpsDashboardPage = () => {
                 </thead>
                 <tbody>
                   {queue.rows.map((row) => (
-                    <tr key={`${row.orderId}-${row.checkType || 'ORDER'}`} className="border-b border-white/5">
+                    <tr key={`${row.orderId}-${row.checkType || 'ORDER'}`} className="border-b border-crewly-hairline">
                       <td className="px-3 py-2 font-medium text-white">{row.orderCode}</td>
                       <td className="px-3 py-2 text-crewly-muted">{row.companyName}</td>
                       <td className="px-3 py-2 text-crewly-muted">{row.candidateName}</td>
@@ -438,7 +438,7 @@ const SuperAdminBgvOpsDashboardPage = () => {
           ) : (
             <div className="card overflow-x-auto p-0">
               <table className="w-full text-left text-xs">
-                <thead className="border-b border-white/10 text-crewly-muted">
+                <thead className="border-b border-crewly-hairline-strong text-crewly-muted">
                   <tr>
                     <th className="px-3 py-2">Verifier</th>
                     <th className="px-3 py-2">Status</th>
@@ -453,7 +453,7 @@ const SuperAdminBgvOpsDashboardPage = () => {
                 </thead>
                 <tbody>
                   {workload.verifiers.map((verifier) => (
-                    <tr key={verifier.verifierId} className="border-b border-white/5">
+                    <tr key={verifier.verifierId} className="border-b border-crewly-hairline">
                       <td className="px-3 py-2 font-medium text-white">{verifier.name}</td>
                       <td className="px-3 py-2">
                         <span className={`badge ${verifier.status === 'ACTIVE' ? 'bg-crewly-green/10 text-crewly-green' : 'bg-slate-500/10 text-slate-400'}`}>
