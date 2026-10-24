@@ -8,8 +8,8 @@
 // localhost with REALTIME_ENABLED=true.
 //
 // Laws pinned here: server-derived identity only · single-use tickets ·
-// allowlisted bounded protocol · heartbeat ≠ employee Presence · bounded
-// drain · Redis-down degradation · no product vocabulary.
+// allowlisted bounded protocol · one data-less Helpdesk notification nudge ·
+// heartbeat ≠ employee Presence · bounded drain · Redis-down degradation.
 // ─────────────────────────────────────────────────────────────────────────────
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
@@ -213,6 +213,11 @@ describe('realtime config (explicit parsing + namespacing)', () => {
     const key = realtimeTicketKey('crewly:test', 'f'.repeat(64));
     assert.ok(key.startsWith('crewly:test:realtime:ticket:'));
     assert.equal(realtimeEventVocabularySafe(), true);
+    assert.deepEqual(
+      REALTIME_EVENT_TYPES.filter((type) => type.startsWith('helpdesk:')),
+      ['helpdesk:notifications:changed'],
+      'only the data-less notification invalidation is admitted from product vocabulary',
+    );
   });
 
   const realtimeEventVocabularySafe = () =>
@@ -275,11 +280,30 @@ describe('realtime protocol (allowlisted, bounded, safe framing)', () => {
     assert.deepEqual({ ...round, ts: envelope.ts, id: envelope.id }, envelope);
   });
 
-  test('product vocabulary and unknown types are REFUSED at publish and ignored at delivery', () => {
-    for (const bad of ['message:new', 'presence:update', 'typing:start', 'user:away', 'system:pwn']) {
+  test('unsupported product vocabulary and unknown types are refused at publish and delivery', () => {
+    for (const bad of ['message:new', 'presence:update', 'typing:start', 'chat:changed', 'user:away', 'system:pwn']) {
       assert.throws(() => buildRealtimeEnvelope({ type: bad, companyId: COMPANY_A }), /Unknown realtime event type/);
       assert.equal(parseRealtimeEnvelope(JSON.stringify({ type: bad, companyId: COMPANY_A, payload: {} })), null);
     }
+  });
+
+  test('Helpdesk notification invalidation is user-targeted and cannot carry ticket or message data', () => {
+    const envelope = buildRealtimeEnvelope({
+      type: 'helpdesk:notifications:changed',
+      companyId: COMPANY_A,
+      userId: USER_A1,
+      payload: {},
+    });
+    assert.equal(envelope.userId, USER_A1);
+    assert.deepEqual(envelope.payload, {});
+    assert.deepEqual(parseRealtimeEnvelope(JSON.stringify(envelope)), envelope);
+    assert.throws(() => buildRealtimeEnvelope({
+      type: 'helpdesk:notifications:changed',
+      companyId: COMPANY_A,
+      userId: USER_A1,
+      payload: { ticketNumber: 'HD-000001' },
+    }), /must not carry product data/);
+    assert.equal(parseRealtimeEnvelope(JSON.stringify({ ...envelope, payload: { subject: 'private subject' } })), null);
   });
 
   test('oversized payloads are refused (4 KB envelope bound)', () => {

@@ -12,7 +12,6 @@ import { PresenceMenu } from "../components/presence/index.js";
 import { useEffect, useState } from "react";
 import { useDispatch } from "react-redux";
 import store from "../redux/store.js";
-import { startRealtimeSession, stopRealtimeSession } from "../services/realtime/realtimeClient.js";
 // Phase 37.7 — start the presence runtime on auth. The runtime owns
 // the single /presence socket, the visibility ticker, and the
 // presence:changed listener. It is idempotent (epoch-guarded) so
@@ -24,6 +23,10 @@ import {
   startPresenceRuntime,
   stopPresenceRuntime,
 } from "../services/realtime/presenceRuntime.js";
+import {
+  startRealtimeSession,
+  stopRealtimeSession,
+} from "../services/realtime/realtimeClient.js";
 import { loadPresenceConfig } from "../redux/slices/presenceSlice.js";
 
 
@@ -242,6 +245,7 @@ const AppLayout = () => {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const navigate = useNavigate();
   const userId = user?.id || user?._id;
+  const companyId = user?.companyId?._id || user?.companyId || '';
 
   useEffect(() => {
     if (userId) {
@@ -249,6 +253,15 @@ const AppLayout = () => {
     }
     return undefined;
   }, [dispatch, userId]);
+
+  // One existing same-origin SSE session serves all app-level realtime
+  // invalidations. It is identity-bound by the server and never sends the
+  // local tenant id back as authority. The Helpdesk UI owns no extra socket.
+  useEffect(() => {
+    if (!userId || !companyId) return undefined;
+    startRealtimeSession();
+    return () => stopRealtimeSession();
+  }, [companyId, userId]);
 
   // Phase 37.7 — start the presence runtime on auth (gated on
   // tenant config `enabled`). One socket, one ticker, one listener.
@@ -547,6 +560,19 @@ const AppLayout = () => {
     ? [{ to: '/app/profile/change-requests', label: 'Profile Change Requests' }]
     : [];
 
+  const helpdeskMenu = hasAnyPermission([
+    'HELPDESK_TICKET_READ_SELF',
+    'HELPDESK_TICKET_CREATE_SELF',
+    'HELPDESK_TICKET_READ',
+    'HELPDESK_TICKET_MANAGE',
+    'HELPDESK_QUEUE_READ',
+    'HELPDESK_QUEUE_MANAGE',
+    'HELPDESK_KB_READ',
+    'HELPDESK_KB_MANAGE',
+  ])
+    ? [{ to: '/app/helpdesk', label: 'Helpdesk' }]
+    : [];
+
   const captureMenu = hasAnyPermission(['ATTENDANCE_CAPTURE_MANAGE'])
     ? [
         { to: '/app/attendance/kiosks', label: 'Kiosk Stations' },
@@ -568,6 +594,7 @@ const AppLayout = () => {
     ...analyticsMenu,
     ...captureMenu,
     ...profileChangeMenu,
+    ...helpdeskMenu,
     ...payrollMenu,
     ...recruitmentDashboardMenu,
     ...candidateMenu,

@@ -28,6 +28,7 @@
 import '../src/config/loadEnv.js'; // FIRST — before env-snapshotting imports
 
 import { readdirSync } from 'node:fs';
+import { isDeepStrictEqual } from 'node:util';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import mongoose from 'mongoose';
@@ -301,6 +302,123 @@ export const HOT_QUERY_CATALOG = [
 
     note: 'unique {companyId, case, code} serves the filter',
   },
+
+  {
+    id: 'Helpdesk requester ticket list (created)',
+    evidence: 'src/services/helpdesk/helpdeskTicketService.js:455',
+    model: 'HelpdeskTicket',
+    filter: ['companyId', 'user'],
+    sort: ['createdAt', '_id'],
+    partialFilterExpression: { ticketKind: 'HELPDESK' },
+    kind: 'prefix',
+    note: 'tenant/requester-scoped, discriminator-partial, stable createdAt/_id ordering',
+  },
+
+  {
+    id: 'Helpdesk requester ticket list (updated)',
+    evidence: 'src/services/helpdesk/helpdeskTicketService.js:455',
+    model: 'HelpdeskTicket',
+    filter: ['companyId', 'user'],
+    sort: ['updatedAt', '_id'],
+    partialFilterExpression: { ticketKind: 'HELPDESK' },
+    kind: 'prefix',
+    note: 'tenant/requester-scoped, discriminator-partial, stable updatedAt/_id ordering',
+  },
+
+  {
+    id: 'Helpdesk queue ticket list',
+    evidence: 'src/services/helpdesk/helpdeskTicketService.js:536',
+    model: 'HelpdeskTicket',
+    filter: ['companyId', 'queueId'],
+    sort: ['createdAt', '_id'],
+    partialFilterExpression: { ticketKind: 'HELPDESK' },
+    kind: 'prefix',
+    note: 'authorized queue scope leads; confidentiality/search clauses further restrict candidates',
+  },
+
+  {
+    id: 'Helpdesk assigned/unassigned ticket list',
+    evidence: 'src/services/helpdesk/helpdeskTicketService.js:536',
+    model: 'HelpdeskTicket',
+    filter: ['companyId', 'queueId', 'assignedTo'],
+    sort: ['createdAt', '_id'],
+    partialFilterExpression: { ticketKind: 'HELPDESK' },
+    kind: 'prefix',
+    note: 'explicit queue assignment view, including assignedTo:null, with stable ordering',
+  },
+
+  {
+    id: 'Helpdesk SLA due reconciliation',
+    evidence: 'src/services/helpdesk/helpdeskSlaService.js:577',
+    model: 'HelpdeskTicket',
+    filter: ['sla.nextActionAt'],
+    sort: ['companyId', '_id'],
+    partialFilterExpression: {
+      ticketKind: 'HELPDESK',
+      'sla.nextActionAt': { $type: 'date' },
+    },
+    kind: 'prefix',
+    note: 'date-range due sweep ordered by deadline, tenant, and _id',
+  },
+
+  {
+    id: 'Helpdesk automatic closure reconciliation',
+    evidence: 'src/services/helpdesk/helpdeskTicketService.js:1175',
+    model: 'HelpdeskTicket',
+    filter: ['autoCloseAt'],
+    sort: ['companyId', '_id'],
+    partialFilterExpression: {
+      ticketKind: 'HELPDESK',
+      status: 'resolved',
+      autoCloseAt: { $type: 'date' },
+    },
+    kind: 'prefix',
+    note: 'only resolved Helpdesk tickets with persisted date deadlines enter the bounded sweep',
+  },
+
+  {
+    id: 'Helpdesk ticket notification-event recovery',
+    evidence: 'src/services/helpdesk/helpdeskNotificationService.js:696',
+    model: 'HelpdeskTicket',
+    filter: ['notificationEvents.state', 'notificationEvents.nextAttemptAt'],
+    sort: ['companyId', '_id'],
+    partialFilterExpression: { ticketKind: 'HELPDESK' },
+    kind: 'prefix',
+    note: 'pending event branch is tenant/discriminator-scoped and uses a bounded batch',
+  },
+
+  {
+    id: 'Helpdesk notification-gap recovery',
+    evidence: 'src/services/helpdesk/helpdeskNotificationService.js:696',
+    model: 'HelpdeskTicket',
+    filter: ['notificationGap.state', 'notificationGap.nextAttemptAt'],
+    sort: ['companyId', '_id'],
+    partialFilterExpression: { ticketKind: 'HELPDESK' },
+    kind: 'prefix',
+    note: 'gap recovery branch is tenant/discriminator-scoped and uses a bounded batch',
+  },
+
+  {
+    id: 'Helpdesk public-message notification recovery',
+    evidence: 'src/services/helpdesk/helpdeskNotificationService.js:723',
+    model: 'HelpdeskMessage',
+    filter: ['notificationState', 'notificationNextAttemptAt'],
+    sort: ['companyId', 'createdAt', '_id'],
+    partialFilterExpression: { messageType: 'PUBLIC', notificationState: 'PENDING' },
+    kind: 'prefix',
+    note: 'durable public-message retries order by attempt time then tenant/time/_id',
+  },
+
+  {
+    id: 'Helpdesk first qualifying public staff reply',
+    evidence: 'src/services/helpdesk/helpdeskSlaService.js:440',
+    model: 'HelpdeskMessage',
+    filter: ['companyId', 'ticketId'],
+    sort: ['createdAt', '_id'],
+    partialFilterExpression: { messageType: 'PUBLIC' },
+    kind: 'prefix',
+    note: 'SLA re-derives the earliest public reply from immutable tenant/ticket message history',
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────
@@ -321,7 +439,8 @@ export const evaluateCatalogEntry = (entry, declaredIndexes) => {
     return { verdict: 'DOCUMENTED', index: null, note: entry.note };
   }
 
-  for (const [keys] of declaredIndexes) {
+  let coveredByIndex = null;
+  for (const [keys, options] of declaredIndexes) {
     const keyNames = Object.keys(keys);
 
     const matchesEquality = equality.every(
@@ -329,19 +448,24 @@ export const evaluateCatalogEntry = (entry, declaredIndexes) => {
     );
 
     if (!matchesEquality) continue;
+    if (
+      entry.partialFilterExpression
+      && !isDeepStrictEqual(options?.partialFilterExpression, entry.partialFilterExpression)
+    ) continue;
 
     const sortContiguous = sort.every(
       (key, position) => keyNames[equality.length + position] === key,
     );
-
-    return {
+    const result = {
       verdict: sort.length && sortContiguous ? 'FILTER+SORT' : 'COVERED',
-
       index: keyNames.join(', '),
-
       note: entry.note,
     };
+
+    if (result.verdict === 'FILTER+SORT') return result;
+    if (!coveredByIndex) coveredByIndex = result;
   }
+  if (coveredByIndex) return coveredByIndex;
 
   // Unique-led fallback (Mongo findOne semantics): a UNIQUE index
   // leading with ANY equality key caps the candidate set at ONE

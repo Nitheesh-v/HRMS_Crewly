@@ -9,6 +9,16 @@ import logger from '../config/logger.js';
 
 // Friendly labels for common endpoints (first match wins)
 const LABELS = [
+  [/^PATCH \/api\/helpdesk\/tickets\/.*\/claim$/, 'Claimed a Helpdesk ticket'],
+  [/^PATCH \/api\/helpdesk\/tickets\/.*\/assignment$/, 'Changed a Helpdesk ticket assignment'],
+  [/^PATCH \/api\/helpdesk\/tickets\/.*\/priority$/, 'Changed a Helpdesk ticket priority'],
+  [/^PATCH \/api\/helpdesk\/tickets\/.*\/status$/, 'Changed a Helpdesk ticket status'],
+  [/^PATCH \/api\/helpdesk\/tickets\/.*\/transfer$/, 'Transferred a Helpdesk ticket'],
+  [/^POST \/api\/helpdesk\/tickets\/mine\/.*\/confirm-resolution$/, 'Confirmed a Helpdesk resolution'],
+  [/^POST \/api\/helpdesk\/tickets\/mine\/.*\/reopen$/, 'Reopened a Helpdesk ticket'],
+  [/^POST \/api\/helpdesk\/tickets\/mine\/.*\/feedback$/, 'Submitted Helpdesk satisfaction feedback'],
+  [/^POST \/api\/helpdesk\/tickets\/.*\/messages$/, 'Posted a Helpdesk message'],
+  [/^POST \/api\/helpdesk\/tickets\/.*\/attachments$/, 'Added a Helpdesk attachment'],
   [/^POST \/api\/users$/, 'Created a user'],
   [/^POST \/api\/users\/.*\/reset-password/, 'Reset a user password'],
   [/^PATCH \/api\/users\//, 'Updated a user'],
@@ -48,7 +58,26 @@ const LABELS = [
   [/^POST \/api\/billing\/verify/, 'Verified payment / upgraded plan'],
 ];
 
-const labelFor = (method, url) => {
+const EXPLICIT_HELPDESK_AUDIT_ACTIONS = new Set([
+  'Posted a Helpdesk public reply',
+  'Added a Helpdesk internal note',
+  'Added an attachment to a Helpdesk public reply',
+  'Added an attachment to a Helpdesk internal note',
+  'Confirmed a Helpdesk resolution',
+  'Reopened a Helpdesk ticket',
+  'Submitted Helpdesk satisfaction feedback',
+  'Created a Helpdesk Knowledge Base category',
+  'Updated a Helpdesk Knowledge Base category',
+  'Archived a Helpdesk Knowledge Base category',
+  'Created a Helpdesk Knowledge Base article draft',
+  'Updated a Helpdesk Knowledge Base article draft',
+  'Published a Helpdesk Knowledge Base article',
+  'Archived a Helpdesk Knowledge Base article',
+  'Restored a Helpdesk Knowledge Base revision to draft',
+]);
+
+const labelFor = (method, url, explicitAction = null) => {
+  if (EXPLICIT_HELPDESK_AUDIT_ACTIONS.has(explicitAction)) return explicitAction;
   const key = `${method} ${url.split('?')[0]}`;
   const hit = LABELS.find(([re]) => re.test(key));
   return hit ? hit[1] : key; // fallback: "PATCH /api/…"
@@ -63,7 +92,7 @@ export const auditTrail = (req, res, next) => {
         actor: req.user._id,
         actorName: req.user.name,
         actorRole: req.user.role,
-        action: labelFor(req.method, req.originalUrl),
+        action: labelFor(req.method, req.originalUrl, req.helpdeskAuditAction),
         method: req.method,
         path: req.originalUrl.split('?')[0],
         statusCode: res.statusCode,

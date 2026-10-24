@@ -62,6 +62,24 @@ export const notifyConversationsChanged = (userIds = []) => {
   return true;
 };
 
+// Helpdesk notifications carry their durable content only in the tenant-scoped
+// Mongo bell feed. This data-less nudge targets each authorized recipient's
+// personal room so a client may refetch that feed without ticket details.
+export const notifyHelpdeskNotificationsChanged = (userIds = []) => {
+  if (!ioRef) return false;
+
+  const seen = new Set();
+  for (const id of userIds) {
+    if (id == null) continue;
+    const key = String(id);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    ioRef.to(userRoom(key)).emit('helpdesk:notifications:changed', {});
+  }
+
+  return true;
+};
+
 /**
  * 34.6 — a removed member stops receiving the room.
  *

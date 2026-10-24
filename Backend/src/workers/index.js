@@ -433,6 +433,107 @@ const startWorker = async () => {
   const fileSweepTimer = setInterval(() => void runFileSweep(), 60 * 60 * 1000);
   fileSweepTimer.unref?.();
 
+  // --- Phase 38.4 private Helpdesk attachment reconciliation --------
+  // Mongo stores a non-deliverable UPLOADING intent before provider I/O. This bounded worker
+  // sweep activates attachments whose immutable message committed, or
+  // compensates orphaned private objects after the service grace period.
+  // Every attachment/message lookup remains tenant- and ticket-scoped.
+  let helpdeskRecoveryCursor = null;
+  let helpdeskRecoveryRunning = false;
+  const runHelpdeskAttachmentRecovery = async () => {
+    if (helpdeskRecoveryRunning) return;
+    helpdeskRecoveryRunning = true;
+    try {
+      const [{ default: HelpdeskTenantConfig }, { helpdeskConversationService }] = await Promise.all([
+        import('../models/HelpdeskTenantConfig.js'),
+        import('../services/helpdesk/helpdeskConversationService.js'),
+      ]);
+      const baseFilter = helpdeskRecoveryCursor ? { _id: { $gt: helpdeskRecoveryCursor } } : {};
+      let tenantRows = await HelpdeskTenantConfig.find(baseFilter)
+        .select('_id companyId')
+        .sort({ _id: 1 })
+        .limit(25)
+        .lean();
+      if (!tenantRows.length && helpdeskRecoveryCursor) {
+        helpdeskRecoveryCursor = null;
+        tenantRows = await HelpdeskTenantConfig.find({})
+          .select('_id companyId')
+          .sort({ _id: 1 })
+          .limit(25)
+          .lean();
+      }
+      if (!tenantRows.length) return;
+      helpdeskRecoveryCursor = tenantRows.at(-1)._id;
+      const conversationService = helpdeskConversationService();
+      let inspected = 0;
+      let cleanupPending = 0;
+      for (const tenant of tenantRows) {
+        try {
+          const result = await conversationService.reconcilePendingAttachments({
+            companyId: tenant.companyId,
+            limit: 10,
+          });
+          inspected += result.inspected;
+          cleanupPending += result.cleanupPending;
+        } catch (error) {
+          logger.warn(`[Worker] Helpdesk attachment recovery tenant skipped: ${safeErrorText(error)}`);
+        }
+      }
+      if (inspected) {
+        logger.info(`[Worker] Helpdesk attachment recovery (inspected=${inspected}, cleanupPending=${cleanupPending})`);
+      }
+    } catch (error) {
+      logger.warn(`[Worker] Helpdesk attachment recovery skipped: ${safeErrorText(error)}`);
+    } finally {
+      helpdeskRecoveryRunning = false;
+    }
+  };
+
+  await runHelpdeskAttachmentRecovery();
+  const helpdeskAttachmentRecoveryTimer = setInterval(
+    () => void runHelpdeskAttachmentRecovery(),
+    60 * 60 * 1000,
+  );
+  helpdeskAttachmentRecoveryTimer.unref?.();
+
+  // --- Phase 38.5 Helpdesk SLA reconciliation -----------------------
+  // Deadlines, warnings, and escalation eligibility live on Mongo tickets.
+  // The bounded due-index sweep is run at startup and periodically so a worker
+  // restart or missed pass is recoverable; duplicate workers rely on ticket
+  // version compare-and-set, not Redis locks. It never delivers notifications.
+  let helpdeskSlaSweepRunning = false;
+  const runHelpdeskSlaSweep = async () => {
+    if (helpdeskSlaSweepRunning) return;
+    helpdeskSlaSweepRunning = true;
+    try {
+      const { helpdeskSlaService } = await import('../services/helpdesk/helpdeskSlaService.js');
+      const result = await helpdeskSlaService().reconcileDueTickets({ limit: 100 });
+      if (result.inspected) {
+        logger.info(
+          `[Worker] Helpdesk SLA reconciliation (inspected=${result.inspected}, ` +
+            `processed=${result.processed}, failed=${result.failed})`,
+        );
+      }
+    } catch (error) {
+      logger.warn(`[Worker] Helpdesk SLA reconciliation skipped: ${safeErrorText(error)}`);
+    } finally {
+      helpdeskSlaSweepRunning = false;
+    }
+  };
+
+  await runHelpdeskSlaSweep();
+  const helpdeskSlaSweepTimer = setInterval(() => void runHelpdeskSlaSweep(), 60 * 1000);
+  helpdeskSlaSweepTimer.unref?.();
+
+  // --- Phase 38.7 Helpdesk automatic closure -----------------------
+  // Resolution dates are Mongo-authoritative. The bounded sweep is safe to
+  // run on multiple workers; conditional ticket state and lifecycle sequence
+  // updates—not Redis locks—select the single business transition.
+  const { startHelpdeskAutoCloseDispatcher } = await import(
+    '../services/helpdesk/helpdeskAutoCloseDispatcher.js'
+  );
+  const stopHelpdeskAutoCloseDispatcher = startHelpdeskAutoCloseDispatcher();
+
   // --- 28.8 ops heartbeat ------------------------------------------
   // One ephemeral Redis key tells the Super Admin "Background
   // Operations" page this worker process is alive (ONLINE /
@@ -523,6 +624,7 @@ const startWorker = async () => {
       process.exit(1);
     }
     shuttingDown = true;
+    stopHelpdeskAutoCloseDispatcher();
     logger.info(`[Worker] ${signal} received — shutting down gracefully...`);
 
     // Tell the ops UI we are on purpose (brief SHUTTING_DOWN

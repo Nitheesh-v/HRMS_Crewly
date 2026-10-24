@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell } from 'lucide-react';
 import systemService from '../services/systemService';
+import { onRealtimeEvent } from '../services/realtime/realtimeClient.js';
 
 const timeAgo = (d) => {
   const s = Math.floor((Date.now() - new Date(d).getTime()) / 1000);
@@ -16,6 +17,7 @@ export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
   const boxRef = useRef(null);
+  const openRef = useRef(false);
   const navigate = useNavigate();
 
   // poll unread count every 60s. A previous in-flight request is
@@ -43,15 +45,42 @@ export default function NotificationBell() {
     return () => { alive = false; clearInterval(t); };
   }, []);
 
+  // A data-less server nudge accelerates the durable notification feed read.
+  // The payload never supplies tenant or ticket authority/content.
+  useEffect(() => {
+    let alive = true;
+    const unsubscribe = onRealtimeEvent(({ type } = {}) => {
+      if (type !== 'helpdesk:notifications:changed') return;
+      systemService.unreadCount()
+        .then((response) => { if (alive) setCount(response?.count ?? 0); })
+        .catch(() => {});
+      if (openRef.current) {
+        systemService.notifications()
+          .then((response) => { if (alive && openRef.current) setItems(Array.isArray(response) ? response : []); })
+          .catch(() => {});
+      }
+    });
+    return () => {
+      alive = false;
+      unsubscribe();
+    };
+  }, []);
+
   // close dropdown on outside click
   useEffect(() => {
-    const onDoc = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    const onDoc = (e) => {
+      if (boxRef.current && !boxRef.current.contains(e.target)) {
+        openRef.current = false;
+        setOpen(false);
+      }
+    };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, []);
 
   const toggle = async () => {
     const next = !open;
+    openRef.current = next;
     setOpen(next);
     if (next) {
       try {
@@ -67,6 +96,7 @@ export default function NotificationBell() {
       setCount((c) => Math.max(0, c - 1));
       setItems((arr) => arr.map((x) => (x._id === n._id ? { ...x, readAt: new Date().toISOString() } : x)));
     }
+    openRef.current = false;
     setOpen(false);
     if (n.link) navigate(n.link);
   };

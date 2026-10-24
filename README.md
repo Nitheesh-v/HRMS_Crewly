@@ -5,7 +5,8 @@ HRMS Project Infolexus
 
 | Order | File | What it gives you |
 |---|---|---|
-| 1 | `docs/PHASE_33_MEMORY_CAPSULE.md` | **the current capsule** — project map, standing rules, working strategy, Phase 33 chat hub + session/auth state, known pitfalls, exact commands |
+| Current feature handoff | `docs/PHASE_38_5_HELPDESK_SLA.md` | Phase 38.5 SLA behavior, tenant/security boundaries, deployment requirements, tests, and localhost acceptance |
+| 1 | `docs/PHASE_33_MEMORY_CAPSULE.md` | project map, standing rules, working strategy, Phase 33 chat hub + session/auth state, known pitfalls, exact commands |
 | 2 | `docs/PHASE_33_CHAT_HUB.md` | the chat hub itself (§22 = authoritative close-out summary, §23 = the cookie session / socket ticket) |
 | 3 | `docs/COOKIE_SESSION.md` · `docs/SESSION_REFRESH_RESILIENCE.md` | how the browser session works today and how to verify it locally |
 | 4 | `docs/PHASE_32_MEMORY_CAPSULE.md` · `docs/PROJECT_MEMORY_CAPSULE.md` | the infrastructure laws and the full project history (Phases 1–32) |

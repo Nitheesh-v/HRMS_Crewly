@@ -6,6 +6,7 @@ import Subscription from '../../models/Subscription.js';
 import Payment from '../../models/Payment.js';
 import Document from '../../models/Document.js';
 import SupportTicket from '../../models/SupportTicket.js';
+import { legacySupportTicketFilter } from '../../utils/supportTicketKinds.js';
 import AuditLog from '../../models/AuditLog.js';
 import UsageMetric from '../../models/UsageMetric.js';
 import { getPlan } from '../../utils/platformPlans.js';
@@ -326,7 +327,7 @@ export const companyDetail = async (req, res) => {
           .limit(50)
           .lean(),
 
-        SupportTicket.find({ companyId: company._id })
+        SupportTicket.find(legacySupportTicketFilter({ companyId: company._id }))
           .select('subject category priority status createdAt updatedAt')
           .sort('-createdAt')
           .limit(25)
@@ -840,9 +841,9 @@ export const globalSearch = async (req, res) => {
           .limit(10)
           .lean(),
 
-        SupportTicket.find({
+        SupportTicket.find(legacySupportTicketFilter({
           $or: [{ subject: regex }, { message: regex }],
-        })
+        }))
           .select('companyId subject priority status createdAt')
           .limit(10)
           .lean(),

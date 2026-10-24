@@ -20,12 +20,14 @@ export const REALTIME_MAX_ENVELOPE_BYTES = 4096;
 export const REALTIME_MAX_STREAMS_PER_PROCESS = 500;
 export const REALTIME_MAX_STREAMS_PER_USER = 5; // multi-device, bounded
 
-// Infrastructure-only event vocabulary. Product event families (message-*,
-// presence-*, typing-*) are FORBIDDEN here — Phase 33/34 define their own.
+// Bounded realtime vocabulary: infrastructure events plus the existing
+// data-less Helpdesk notification invalidation event. All other product
+// event families remain on their established transports/contracts.
 export const REALTIME_EVENT_TYPES = Object.freeze([
   'connection:ready',
   'system:ping',
   'realtime:proof',
+  'helpdesk:notifications:changed',
 ]);
 
 // Env-namespaced channel + ticket keys (same prefix law as queues/heartbeat:

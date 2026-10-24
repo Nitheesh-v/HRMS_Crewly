@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 32.11 — REALTIME PROTOCOL (envelope + SSE framing, pure)
 //
-// Infrastructure-only vocabulary, bounded envelopes, safe framing:
+// Allowlisted vocabulary, bounded envelopes, safe framing:
 //   · event types are ALLOWLISTED (unknown types are rejected at the
 //     publish boundary and ignored at the delivery boundary);
 //   · envelopes are hard-capped (4 KB serialized) — realtime never carries
@@ -14,6 +14,10 @@ import crypto from 'node:crypto';
 import { REALTIME_EVENT_TYPES, REALTIME_MAX_ENVELOPE_BYTES } from './realtimeConfig.js';
 
 const OBJECT_ID_PATTERN = /^[0-9a-fA-F]{24}$/;
+const EMPTY_PAYLOAD_ONLY_EVENTS = new Set(['helpdesk:notifications:changed']);
+
+const eventPayloadIsAllowed = (type, payload) =>
+  !EMPTY_PAYLOAD_ONLY_EVENTS.has(type) || Object.keys(payload).length === 0;
 
 /**
  * Validates + normalizes an outbound event. Throws ApiError-shaped errors
@@ -35,6 +39,9 @@ export const buildRealtimeEnvelope = ({ type, companyId, userId = null, payload 
 
   if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
     throw new Error('Realtime event payload must be an object');
+  }
+  if (!eventPayloadIsAllowed(type, payload)) {
+    throw new Error('Helpdesk notification realtime events must not carry product data');
   }
 
   const envelope = {
@@ -70,6 +77,7 @@ export const parseRealtimeEnvelope = (raw) => {
     if (!OBJECT_ID_PATTERN.test(String(parsed.companyId || ''))) return null;
     if (parsed.userId !== null && parsed.userId !== undefined && !OBJECT_ID_PATTERN.test(String(parsed.userId))) return null;
     if (parsed.payload === null || typeof parsed.payload !== 'object' || Array.isArray(parsed.payload)) return null;
+    if (!eventPayloadIsAllowed(parsed.type, parsed.payload)) return null;
     if (Buffer.byteLength(JSON.stringify(parsed)) > REALTIME_MAX_ENVELOPE_BYTES) return null;
 
     return {

@@ -18,6 +18,10 @@ process.env.REDIS_ENABLED ||= 'false';
 const indexCheck = await import('../scripts/index-check.js');
 
 import mongoose from 'mongoose';
+import {
+  assertRequiredHelpdeskIndexes,
+  REQUIRED_HELPDESK_OPERATIONAL_INDEXES,
+} from '../src/config/helpdeskIndexVerification.js';
 
 const { HOT_QUERY_CATALOG, evaluateCatalogEntry, loadAllModels, inventoryIndexes } =
   indexCheck;
@@ -209,6 +213,99 @@ test('tenant-first law: high-volume collections keep companyId-led compounds', (
 
     assert.ok(led, `${model} must keep a companyId-led compound index`);
   }
+});
+
+test('Helpdesk hot paths: tenant-scoped ticket, SLA, and recovery query/index shapes stay aligned', () => {
+  assert.ok(optionsFor('HelpdeskTicket', ['companyId', 'user', 'createdAt', '_id'])
+    ?.partialFilterExpression?.ticketKind === 'HELPDESK');
+  assert.ok(optionsFor('HelpdeskTicket', ['companyId', 'user', 'updatedAt', '_id'])
+    ?.partialFilterExpression?.ticketKind === 'HELPDESK');
+  assert.ok(optionsFor('HelpdeskTicket', ['companyId', 'queueId', 'createdAt', '_id'])
+    ?.partialFilterExpression?.ticketKind === 'HELPDESK');
+  assert.ok(optionsFor('HelpdeskTicket', ['companyId', 'queueId', 'assignedTo', 'createdAt', '_id'])
+    ?.partialFilterExpression?.ticketKind === 'HELPDESK');
+
+  assert.deepEqual(optionsFor('HelpdeskTicket', ['sla.nextActionAt', 'companyId', '_id'])
+    ?.partialFilterExpression, {
+    ticketKind: 'HELPDESK',
+    'sla.nextActionAt': { $type: 'date' },
+  });
+  assert.deepEqual(optionsFor('HelpdeskTicket', ['autoCloseAt', 'companyId', '_id'])
+    ?.partialFilterExpression, {
+    ticketKind: 'HELPDESK',
+    status: 'resolved',
+    autoCloseAt: { $type: 'date' },
+  });
+  assert.deepEqual(optionsFor('HelpdeskTicket', [
+    'notificationEvents.state', 'notificationEvents.nextAttemptAt', 'companyId', '_id',
+  ])?.partialFilterExpression, { ticketKind: 'HELPDESK' });
+  assert.deepEqual(optionsFor('HelpdeskTicket', [
+    'notificationGap.state', 'notificationGap.nextAttemptAt', 'companyId', '_id',
+  ])?.partialFilterExpression, { ticketKind: 'HELPDESK' });
+  assert.deepEqual(optionsFor('HelpdeskMessage', [
+    'notificationState', 'notificationNextAttemptAt', 'companyId', 'createdAt', '_id',
+  ])?.partialFilterExpression, { messageType: 'PUBLIC', notificationState: 'PENDING' });
+  assert.deepEqual(optionsFor('HelpdeskMessage', [
+    'companyId', 'ticketId', 'createdAt', '_id',
+  ])?.partialFilterExpression, { messageType: 'PUBLIC' });
+  assert.ok(optionsFor('HelpdeskSlaPolicy', ['companyId', 'queueId'])?.unique);
+
+  const queueEntry = HOT_QUERY_CATALOG.find((entry) => entry.id === 'Helpdesk queue ticket list');
+  const queueResult = evaluateCatalogEntry(queueEntry, indexesOf('HelpdeskTicket'));
+  assert.equal(queueResult.verdict, 'FILTER+SORT');
+  assert.equal(queueResult.index, 'companyId, queueId, createdAt, _id');
+
+  const gapEntry = HOT_QUERY_CATALOG.find((entry) => entry.id === 'Helpdesk notification-gap recovery');
+  assert.equal(evaluateCatalogEntry(gapEntry, indexesOf('HelpdeskTicket')).verdict, 'FILTER+SORT');
+});
+
+test('Helpdesk startup gate: every required operational index exactly matches its Mongoose declaration', () => {
+  for (const [modelName, requirements] of Object.entries(REQUIRED_HELPDESK_OPERATIONAL_INDEXES)) {
+    const indexes = mongoose.model(modelName).schema.indexes().map(([key, options]) => ({
+      name: options.name,
+      key,
+      unique: options.unique,
+      partialFilterExpression: options.partialFilterExpression,
+    }));
+
+    assert.equal(assertRequiredHelpdeskIndexes({ modelName, indexes, requirements }), true);
+  }
+});
+
+test('Helpdesk startup gate fails closed on absent, reordered, non-unique, or narrowed indexes', () => {
+  const requirement = REQUIRED_HELPDESK_OPERATIONAL_INDEXES.HelpdeskTicket
+    .find((index) => index.name === 'helpdesk_ticket_number_unique_by_tenant');
+  const exact = {
+    ...requirement,
+  };
+  assert.equal(assertRequiredHelpdeskIndexes({
+    modelName: 'HelpdeskTicket',
+    indexes: [exact],
+    requirements: [requirement],
+  }), true);
+
+  for (const invalid of [
+    null,
+    { ...exact, key: { ticketNumber: 1, companyId: 1 } },
+    { ...exact, unique: false },
+    { ...exact, partialFilterExpression: { ticketKind: 'HELPDESK' } },
+  ]) {
+    assert.throws(() => assertRequiredHelpdeskIndexes({
+      modelName: 'HelpdeskTicket',
+      indexes: invalid ? [invalid] : [],
+      requirements: [requirement],
+    }), /Required Helpdesk indexes are unavailable/);
+  }
+});
+
+test('Helpdesk startup builds and verifies indexes additively; it never synchronizes or drops them', async () => {
+  const dbSource = await readFile(new URL('../src/config/db.js', import.meta.url), 'utf8');
+
+  assert.match(dbSource, /await model\.createIndexes\(\)/);
+  assert.match(dbSource, /model\.collection\.listIndexes\(\)/);
+  assert.match(dbSource, /assertRequiredHelpdeskIndexes\(/);
+  assert.match(dbSource, /await ensureHelpdeskOperationalIndexes\(\)/);
+  assert.doesNotMatch(dbSource, /syncIndexes\(|dropIndex\(/);
 });
 
 // ─────────────────────────────────────────────────────────────
