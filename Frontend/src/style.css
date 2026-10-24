@@ -567,15 +567,17 @@ html:has(.landing-shell) {
     0 12px 26px -18px rgba(20, 17, 14, 0.4);
 }
 
-/* The name as paper texture: ink at 6%, cropped by the page edge. */
+/* The footer's closing signature: the same face, small enough to be seen in
+   full. Cropping it to a band made it read as a broken image rather than a
+   wordmark, and a full 350px footer wordmark is what made the footer feel like
+   a sixth section. */
 .landing-wordmark {
   font-family: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, 'Times New Roman', serif;
-  font-size: clamp(5rem, 26vw, 22rem);
-  font-weight: 400;
-  line-height: 0.72;
-  letter-spacing: -0.04em;
+  font-size: clamp(3rem, 11vw, 6.5rem);
+  line-height: 0.86;
+  letter-spacing: -0.03em;
   white-space: nowrap;
-  color: rgba(20, 17, 14, 0.07);
+  color: rgba(20, 17, 14, 0.08);
   user-select: none;
   pointer-events: none;
 }

@@ -501,7 +501,7 @@ export const FOOTER_COLUMNS = [
 // number: support is a real screen inside every workspace.
 export const FOOTER_SUPPORT = {
   title: 'Support',
-  copy: 'Every workspace has a support desk built in: raise a ticket, follow the replies and keep the history inside your own company.',
+  copy: 'Every workspace has a support desk built in — raise a ticket and keep the history in your own company.',
   link: { label: 'Sign in to raise a ticket', to: '/login' },
 };
 

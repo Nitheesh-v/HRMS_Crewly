@@ -628,3 +628,24 @@ New tokens: `crewly-ink #14110e`, `crewly-forest #0b3b2e`, `crewly-lilac #e6ccff
 
 **Still not owner-accepted on taste.** The palette and the type are the owner's call; everything
 above is measured.
+
+### K5. The footer was the longest thing on the page
+
+The owner was right, and the screenshots showed why: five stacked blocks (brand, four link columns,
+a full support panel, a legal row, a colophon row) above a **350px wordmark** came to **891px** —
+taller than the hero's own summary and about as tall as the pricing band.
+
+What changed:
+
+* the five blocks became **three**: brand + columns, one support strip, one bottom bar
+  (copyright · the honest legal note · back to top — the separate colophon row is gone, its
+  credit line folded into the copyright line);
+* the brand column lost its trial pill (the trial line now sits under the CTA as plain text);
+* the support panel became a single-line strip with the link inline;
+* **the wordmark is now the same face at `clamp(3rem, 11vw, 6.5rem)` and 8% ink, shown whole.**
+  Cropping the giant version to a 68–108px band was the other half of the problem: it looked like
+  a broken image. A smaller wordmark, fully visible, is both shorter *and* legible.
+
+Measured: **891px → 512px at 1440**, 530px at 1024, and the mobile footer is now 1001px instead of
+~1400px. Everything else on the page is untouched: `npm test` → 454 / 0, eslint clean, and
+`scrollWidth === innerWidth` at 1440 / 1024 / 390.
