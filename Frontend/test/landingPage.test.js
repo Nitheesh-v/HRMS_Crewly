@@ -35,6 +35,9 @@ import landing, {
   FAQS,
   FOOTER_COLUMNS,
   HERO,
+  HERO_NOTIFICATIONS,
+  HERO_STICKERS,
+  HERO_WATERMARK,
   MODULE_GROUPS,
   NAV_LINKS,
   PLANS,
@@ -220,11 +223,11 @@ describe('Home page — structure', () => {
     // defines; the retired pass-#2 classes must not come back, because nothing
     // styles them any more.
     assert.match(shell, /\.landing-shell\s*\{[\s\S]*?background-color:\s*var\(--color-crewly-void\)/, 'the shell is the void canvas in CSS too');
-    assert.match(shell, /--color-crewly-void:\s*#05060b/, 'the void token is declared once');
+    assert.match(shell, /--color-crewly-void:\s*#000000/, 'the canvas is pure black, as the reference is');
     assert.match(shell, /--color-crewly-mint:\s*#34d399/, 'the emerald accent comes from the token file');
     assert.match(shell, /--color-crewly-violet:\s*#8b5cf6/, 'violet is a token, not an ad-hoc hex');
 
-    for (const cls of ['landing-glow', 'landing-glass', 'landing-window', 'landing-mark']) {
+    for (const cls of ['landing-glow', 'landing-glass', 'landing-window', 'landing-mark', 'landing-wordmark', 'landing-sticker']) {
       assert.match(shell, new RegExp(`\\.${cls}\\s*\\{`), `.${cls} is defined in the landing layer`);
     }
 
@@ -252,6 +255,40 @@ describe('Home page — structure', () => {
 
     // The marquee duplicates its list for a seamless loop; the copy is silent.
     assert.match(hero, /aria-hidden=\{copy === 1 \? 'true' : undefined\}/, 'the duplicate marquee row is hidden from AT');
+  });
+
+  test('the name is the page’s texture, and the stickers are honest', () => {
+    const hero = code('src/pages/landing/sections/HeroSection.jsx');
+    const footer = code('src/pages/landing/LandingFooter.jsx');
+
+    // The giant cropped wordmark closes the page, the way the reference ends on
+    // its own name. It is the footer's, not the hero's: at the top it fought the
+    // headline (measured — the letters sat straight through "stops").
+    assert.ok(HERO_WATERMARK.length >= 5, 'the watermark is the product name');
+    assert.ok(footer.includes('landing-wordmark'), 'the footer closes on the wordmark');
+    assert.ok(footer.includes('HERO_WATERMARK'), 'and it comes from the data');
+    assert.equal(hero.includes('landing-wordmark'), false, 'the hero stays black: no second watermark');
+
+    // Stickers are decoration with a shipped fact on them — and every one is
+    // hidden from assistive tech, so a burst of rotated badges cannot become a
+    // wall of stray text for a screen reader.
+    assert.ok(HERO_STICKERS.length >= 4, 'the hero scatters at least four stickers');
+    assert.ok(hero.includes('HERO_STICKERS'), 'the stickers come from the data');
+    assert.match(hero, /const Sticker = \(\{ sticker \}\) => \([\s\S]*?aria-hidden="true"/, 'the stickers are aria-hidden');
+
+    // The notification stack is a drawing of what the product sends, not data.
+    assert.ok(HERO_NOTIFICATIONS.length >= 3, 'three notification rows');
+    assert.ok(hero.includes('HERO_NOTIFICATIONS'), 'the stack comes from the data');
+    assert.match(hero, /const NotificationStack = \(\) => \([\s\S]*?aria-hidden="true"/, 'the stack is aria-hidden');
+
+    // No borrowed assets: no App Store badge, no mascot, no studio credit.
+    for (const borrowed of ['App Store', 'appstore', 'mascot', 'Conscious Engines']) {
+      assert.equal(
+        [...LANDING_FILES, 'src/pages/landing/landingData.js'].map((file) => code(file)).join('\n').includes(borrowed),
+        false,
+        `"${borrowed}" belongs to the reference site, not to this product`,
+      );
+    }
   });
 
   test('the primary action is emerald everywhere, from one shared class', () => {

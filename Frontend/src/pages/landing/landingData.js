@@ -58,6 +58,30 @@ export const HERO = {
   assurances: ['No card at signup', 'Live in minutes', 'Read-only if you stop — nothing deleted'],
 };
 
+// The wordmark used as the page's texture: letters the size of a wall, cropped
+// by the viewport, almost the same value as the black behind them. Decoration —
+// the element that carries it is aria-hidden and unselectable.
+export const HERO_WATERMARK = 'CREWLY';
+
+// The scattered badges. These are the page's only "graphics": white-outlined
+// stickers carrying a shipped fact, rotated a degree or two. No mascot, because
+// this product does not have one and inventing a character is inventing a brand.
+export const HERO_STICKERS = [
+  { label: 'One login', icon: 'key', tone: 'text-emerald-300', rotate: '-rotate-6', className: 'left-[1%] top-[29%] xl:left-[5%]' },
+  { label: 'Geo-fenced', icon: 'kiosk', tone: 'text-sky-300', rotate: 'rotate-6', className: 'right-[2%] top-[34%] xl:right-[6%]' },
+  { label: '20 modules', icon: 'calendarCheck', tone: 'text-violet-300', rotate: 'rotate-3', className: 'left-[2%] top-[47%] xl:left-[7%]' },
+  { label: '14 languages', icon: 'sparkles', tone: 'text-violet-300', rotate: '-rotate-3', className: 'right-[2%] top-[52%] xl:right-[7%]' },
+];
+
+// The notification stack that overlaps the product window, the way the reference
+// lets its cards sit on top of its product shot. Decorative, and every row is
+// something the product actually sends.
+export const HERO_NOTIFICATIONS = [
+  { title: 'Leave approved', body: 'Ravi S. · 2 days casual', time: 'now', icon: 'calendarCheck', tone: 'emerald' },
+  { title: 'Payroll ready', body: 'October · 138 employees', time: '2m', icon: 'creditCard', tone: 'amber' },
+  { title: 'Candidate shortlisted', body: 'Senior engineer · stage 2', time: '9m', icon: 'userPlus', tone: 'violet' },
+];
+
 // Facts the page can stand behind. Each one is a shipped behaviour, not a
 // capability we would like to have. Looped under the hero.
 export const WORKPLACE_FACTS = [
@@ -471,6 +495,13 @@ export const FOOTER_SUPPORT = {
 
 // The footer's bottom bar. Legal pages do not exist yet, so they are stated as
 // plain text (the same honesty rule as above) instead of rendered as links.
+// The colophon under the giant wordmark: a credit line this repo can back up.
+// (No "crafted by <studio>" — there is no studio in this repository.)
+export const FOOTER_CREDIT = {
+  label: 'Built for Indian teams',
+  detail: 'Multi-tenant · INR billing · Each company keeps its own data',
+};
+
 export const LEGAL_NOTE = {
   label: 'Legal',
   text: 'Terms and Privacy pages are not published yet — this footer will not dress them up as links until they are.',
@@ -490,6 +521,9 @@ export default {
   SECTION_IDS,
   NAV_LINKS,
   HERO,
+  HERO_WATERMARK,
+  HERO_STICKERS,
+  HERO_NOTIFICATIONS,
   WORKPLACE_FACTS,
   PRODUCT_MOMENT,
   CAPABILITIES,
@@ -502,6 +536,7 @@ export default {
   FAQS,
   FOOTER_COLUMNS,
   FOOTER_SUPPORT,
+  FOOTER_CREDIT,
   LEGAL_NOTE,
   STICKY_CTA,
 };

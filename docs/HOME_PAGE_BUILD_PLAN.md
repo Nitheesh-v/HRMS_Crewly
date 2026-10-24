@@ -434,3 +434,70 @@ and the standalone FAQ. Adding any of them back is a design decision, not a bug 
 
 **Still not owner-accepted on taste.** Everything above is measured; whether the page looks right
 to the owner is theirs to say.
+
+---
+
+## I. THE BLACK-COLLAGE PASS — the reference, seen properly (2026-10-24)
+
+Pass H was built from a text description of `unclerudy.app` plus an image search. The owner
+then sent two real screenshots of the live page, which showed what the description had missed:
+
+* the canvas is **pure black**, not near-black;
+* the product's **own name is the page's texture** — letters the size of a wall, cropped by the
+  viewport, barely above the black;
+* **stickers** — white-outlined badges, rotated a degree or two — scattered around the fold;
+* a **stack of notification cards** overlapping the product shot;
+* one **heavy pill CTA**, repeated;
+* the page **closes on the giant wordmark** with a small credit line above it.
+
+That is what pass I implements. The layout grammar is the reference's; the accent, the copy and
+every fact remain Crewly's.
+
+### I1. What changed
+
+| | Before (pass H) | Now |
+| --- | --- | --- |
+| Canvas | `#05060b` near-black | **`#000000`** — the reference's defining choice |
+| Name as texture | — | `.landing-wordmark`, `clamp(5rem, 26vw, 22rem)`, 5.5% white, deliberately wider than the viewport |
+| Collage | two glass cards on the window's edge | four `.landing-sticker` badges in the section margins + a rotated stack of three notification cards at `xl` |
+| CTA | `px-6 py-3.5 text-sm` | `sm:px-7 sm:py-4 sm:text-[15px]`, bold — it reads as an object |
+| Footer | links, legal note, back to top | the same, then a credit line and the wordmark cropped by the page edge |
+
+New data: `HERO_WATERMARK`, `HERO_STICKERS` (4 badges, each naming a shipped fact),
+`HERO_NOTIFICATIONS` (3 rows the product actually sends), `FOOTER_CREDIT`.
+
+### I2. What was deliberately not taken from the reference
+
+The **App Store badge** (there is no iOS build of this product), the **mascot** (no character
+exists, and inventing one is inventing a brand), the **studio credit** (“Conscious Engines” is
+their studio, not this project's), the **social icons** (no accounts), and the comic speech
+bubbles. The stickers carry facts instead of jokes. A test now bans those borrowed strings from
+ever appearing in the landing files.
+
+### I3. Four things only the browser showed
+
+1. **The watermark behind the headline fought the headline.** At `top-24` the giant letters sat
+   straight through “stops”, turning a 84px headline into a legibility problem. It is the
+   footer's layer now; the hero stays black.
+2. **Stickers placed inside the `max-w-4xl` text column landed on the words** (“ONE LOGIN” over
+   “stops”, “GEO-FENCED” over “that”). They live in a `pointer-events-none` layer over the whole
+   section now, positioned in percentages near the gutters.
+3. **The notification stack buried the mock's data.** Moved up and left (`-left-28 -top-4`,
+   `w-56`), so it overlaps the window's corner rather than its numbers.
+4. **A 1456px-wide wordmark grew the document.** `document.scrollWidth` went past 1440 until the
+   footer took `overflow-hidden`; the letters are meant to be cropped, not to scroll.
+
+### I4. Evidence
+
+* `npm test` (Frontend) → **452 / 0 fail**; `landingPage.test.js` → 32 pins (a wordmark/sticker/
+  notification pin was added, and it asserts the borrowed strings are absent).
+* `npx eslint src/pages/landing src/routes/AppRoutes.jsx test/landingPage.test.js` → clean.
+* `npm run build` → 1.46 s; `LandingPage` **71.08 kB / 17.67 kB gzip**; `index-*.js` unchanged
+  at 433.72 kB.
+* Headless Chromium at **1440 / 1024 / 390**: `scrollWidth === innerWidth` at all three (the
+  wordmark is cropped, not overflowing), zero console errors, the wordmark computes at 352px on
+  desktop and is cropped at both edges, stickers render only from `lg`, the notification stack
+  only from `xl`.
+
+**Still not owner-accepted on taste.** The structure and the measurements are settled; whether
+this is the page is the owner's call.

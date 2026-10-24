@@ -13,9 +13,9 @@
 
   /* Public home — the cinematic surface. Same night the app paints, pushed to
      near-black so a single emerald light source can carry the page. */
-  --color-crewly-void: #05060b;
-  --color-crewly-void-soft: #080a12;
-  --color-crewly-panel: #0b0e18;
+  --color-crewly-void: #000000;
+  --color-crewly-void-soft: #060607;
+  --color-crewly-panel: #0b0b0d;
   --color-crewly-mint: #34d399;
   --color-crewly-mint-deep: #10b981;
   --color-crewly-violet: #8b5cf6;
@@ -508,8 +508,8 @@ html:has(.landing-shell) {
    right, and a cool teal floor so the bottom of the page does not go dead. */
 .landing-glow {
   background:
-    radial-gradient(52% 44% at 50% 8%, rgba(16, 185, 129, 0.42), transparent 72%),
-    radial-gradient(36% 34% at 84% 10%, rgba(139, 92, 246, 0.24), transparent 70%),
+    radial-gradient(46% 40% at 50% 6%, rgba(16, 185, 129, 0.3), transparent 74%),
+    radial-gradient(32% 30% at 86% 8%, rgba(139, 92, 246, 0.2), transparent 72%),
     radial-gradient(60% 40% at 50% 108%, rgba(45, 212, 191, 0.12), transparent 70%);
 }
 
@@ -551,6 +551,31 @@ html:has(.landing-shell) {
     0 0 0 1px rgba(16, 185, 129, 0.06),
     0 60px 120px -50px rgba(0, 0, 0, 1),
     0 0 90px -30px rgba(16, 185, 129, 0.25);
+}
+
+/* The giant cropped wordmark. The reference site uses its own name as the page's
+   texture: letters the size of a wall, almost the same value as the black
+   behind them, cropped by the viewport. It is decoration, never content — the
+   markup that carries it is aria-hidden and unselectable. */
+.landing-wordmark {
+  /* Sits wider than the viewport on purpose: the letters are cropped by the
+     page edge, which is what makes it read as material rather than a heading. */
+  font-size: clamp(5rem, 26vw, 22rem);
+  font-weight: 800;
+  line-height: 0.72;
+  letter-spacing: -0.06em;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.055);
+  user-select: none;
+  pointer-events: none;
+}
+
+/* Stickers: white-outlined badges with a black fill, rotated a degree or two,
+   the way the reference scatters doodles around its product shot. */
+.landing-sticker {
+  background-color: #0a0a0b;
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.9);
 }
 
 /* A hairline that runs emerald → transparent → violet. Section dividers and the

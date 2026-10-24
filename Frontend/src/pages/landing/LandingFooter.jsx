@@ -16,11 +16,11 @@
 
 import { Link } from 'react-router-dom';
 import { ArrowUp, ArrowUpRight, LifeBuoy } from 'lucide-react';
-import { BRAND, FOOTER_COLUMNS, FOOTER_SUPPORT, LEGAL_NOTE } from './landingData.js';
+import { BRAND, FOOTER_COLUMNS, FOOTER_CREDIT, FOOTER_SUPPORT, HERO_WATERMARK, LEGAL_NOTE } from './landingData.js';
 import { primaryCta } from './landingStyles.js';
 
 const footerLink =
-  'text-sm text-slate-500 transition-colors hover:text-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300';
+  'text-sm text-white/45 transition-colors hover:text-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300';
 
 const FooterLink = ({ link }) =>
   link.to ? (
@@ -34,7 +34,7 @@ const FooterLink = ({ link }) =>
   );
 
 const LandingFooter = () => (
-  <footer className="relative border-t border-white/[0.06] bg-crewly-void-soft">
+  <footer className="relative overflow-hidden border-t border-white/[0.06] bg-crewly-void-soft">
     <div className="landing-beam absolute inset-x-0 top-0 h-px opacity-60" aria-hidden="true" />
 
     <div className="mx-auto max-w-7xl px-5 pb-8 pt-14 sm:px-6 lg:px-8">
@@ -100,29 +100,42 @@ const LandingFooter = () => (
         </div>
       </div>
 
-      <div className="mt-10 flex flex-col gap-4 border-t border-white/[0.06] pt-6 sm:flex-row sm:items-start sm:justify-between">
+      <div className="mt-10 flex flex-col gap-4 border-t border-white/[0.08] pt-6 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-white/45">
             © {new Date().getFullYear()} {BRAND.name}. All rights reserved.
           </p>
-          <p className="mt-1.5 max-w-xl text-[11px] leading-relaxed text-slate-600">
-            <span className="font-semibold text-slate-500">{LEGAL_NOTE.label}:</span> {LEGAL_NOTE.text}
+          <p className="mt-1.5 max-w-xl text-[11px] leading-relaxed text-white/35">
+            <span className="font-semibold text-white/50">{LEGAL_NOTE.label}:</span> {LEGAL_NOTE.text}
           </p>
         </div>
 
         <div className="flex items-center gap-4 sm:flex-col sm:items-end">
-          <p className="text-[11px] text-slate-600">
+          <p className="text-[11px] text-white/35">
             Multi-tenant SaaS · INR billing · Each company&apos;s data stays in its own tenant.
           </p>
           <a
             href="#main"
-            className="inline-flex items-center gap-1.5 rounded-lg text-[11px] font-semibold text-slate-500 transition-colors hover:text-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
+            className="inline-flex items-center gap-1.5 rounded-lg text-[11px] font-semibold text-white/50 transition-colors hover:text-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
           >
             Back to top
             <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />
           </a>
         </div>
       </div>
+
+      {/* The colophon. The reference closes on its own name, cropped by the
+          viewport; so does this one, with a credit line this repo can back up. */}
+      <div className="mt-12 flex flex-col gap-3 border-t border-white/[0.08] pt-6 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/45">
+          {FOOTER_CREDIT.label}
+        </p>
+        <p className="text-[11px] text-white/30">{FOOTER_CREDIT.detail}</p>
+      </div>
+    </div>
+
+    <div className="pointer-events-none relative flex justify-center overflow-hidden" aria-hidden="true">
+      <span className="landing-wordmark translate-y-[16%] text-white/[0.07]">{HERO_WATERMARK}</span>
     </div>
   </footer>
 );
