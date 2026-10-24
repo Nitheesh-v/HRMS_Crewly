@@ -10,6 +10,7 @@
 // three assurances and the two actions; it is never read a fake inbox.
 // ═══════════════════════════════════════════════════════════════════════════
 
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Bell, Check, Sparkles } from 'lucide-react';
 import { HERO, HERO_NOTIFICATIONS, HERO_STICKERS, WORKPLACE_FACTS } from '../landingData.js';
@@ -53,10 +54,11 @@ const FactsMarquee = () => (
   </div>
 );
 
-const Sticker = ({ sticker }) => (
+const Sticker = ({ sticker, index = 0 }) => (
   <span
     aria-hidden="true"
-    className={`landing-sticker absolute hidden items-center gap-1.5 rounded-full px-3.5 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-white lg:inline-flex ${sticker.rotate} ${sticker.className}`}
+    style={{ animationDelay: `${index * -1.7}s` }}
+    className={`landing-sticker landing-wiggle absolute hidden items-center gap-1.5 rounded-full px-3.5 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-white lg:inline-flex ${sticker.rotate} ${sticker.className}`}
   >
     <LandingIcon name={sticker.icon} className={`h-3.5 w-3.5 ${sticker.tone}`} />
     {sticker.label}
@@ -79,8 +81,12 @@ const NotificationStack = () => (
     </p>
 
     <div className="space-y-2">
-      {HERO_NOTIFICATIONS.map((note) => (
-        <div key={note.title} className="landing-glass rounded-2xl p-3">
+      {HERO_NOTIFICATIONS.map((note, index) => (
+        <div
+          key={note.title}
+          style={{ animationDelay: `${0.25 + index * 0.14}s, ${1.1 + index * 0.4}s` }}
+          className="landing-glass landing-pop rounded-2xl p-3"
+        >
           <div className="flex items-start gap-2">
             <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border ${toneClasses[note.tone]}`}>
               <LandingIcon name={note.icon} className="h-3.5 w-3.5" />
@@ -105,7 +111,48 @@ const FloatingCard = ({ className, children }) => (
   </div>
 );
 
-const HeroSection = () => (
+const HeroSection = () => {
+  const [tilt, setTilt] = useState({ x: 0, y: 0 });
+  const tiltRef = useRef(null);
+  // A ref, not state: this flag only guards a pointer handler, and re-rendering
+  // the hero when a media query flips would be a render for nothing.
+  const canTilt = useRef(false);
+
+  // A visitor who has not asked for calm. The pointer check is per event
+  // (`pointerType === 'mouse'`) rather than a media query: a finger scrolling
+  // past must never drag the window, and the media query for that is unreliable
+  // in embedded browsers.
+  useEffect(() => {
+    const query = window.matchMedia('(prefers-reduced-motion: no-preference)');
+
+    canTilt.current = query.matches;
+
+    const onChange = (event) => {
+      canTilt.current = event.matches;
+    };
+
+    query.addEventListener('change', onChange);
+
+    return () => query.removeEventListener('change', onChange);
+  }, []);
+
+  const onPointerMove = useCallback(
+    (event) => {
+      if (!canTilt.current || !tiltRef.current || event.pointerType !== 'mouse') return;
+
+      const box = tiltRef.current.getBoundingClientRect();
+      const x = (event.clientX - box.left) / box.width - 0.5;
+      const y = (event.clientY - box.top) / box.height - 0.5;
+
+      // At most ~3.5 degrees: enough to feel alive, not enough to distort.
+      setTilt({ x: Number((-y * 3.5).toFixed(2)), y: Number((x * 4.5).toFixed(2)) });
+    },
+    [],
+  );
+
+  const resetTilt = useCallback(() => setTilt({ x: 0, y: 0 }), []);
+
+  return (
   <section className="relative overflow-hidden">
     <div className="landing-glow pointer-events-none absolute inset-x-0 -top-48 -z-10 h-[78rem]" aria-hidden="true" />
     <div
@@ -115,8 +162,8 @@ const HeroSection = () => (
 
     {/* Stickers sit in the section's margins, never on the headline. */}
     <div className="pointer-events-none absolute inset-0 hidden lg:block" aria-hidden="true">
-      {HERO_STICKERS.map((sticker) => (
-        <Sticker key={sticker.label} sticker={sticker} />
+      {HERO_STICKERS.map((sticker, index) => (
+        <Sticker key={sticker.label} sticker={sticker} index={index} />
       ))}
     </div>
 
@@ -175,8 +222,20 @@ const HeroSection = () => (
 
         <NotificationStack />
 
-        <div className="landing-drift origin-top">
-          <ProductWindow />
+        {/* The window leans a couple of degrees under the pointer — the
+            reference's product shot is the thing the page is showing off, and
+            movement is what makes it read as an object rather than a picture.
+            Pointer-only, motion-preference-aware, and it returns to rest. */}
+        <div
+          ref={tiltRef}
+          onPointerMove={onPointerMove}
+          onPointerLeave={resetTilt}
+          style={{ transform: `perspective(1600px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)` }}
+          className="transition-transform duration-500 ease-out"
+        >
+          <div className="landing-drift origin-top">
+            <ProductWindow />
+          </div>
         </div>
 
         <FloatingCard className="-right-6 bottom-10 w-44">
@@ -193,6 +252,7 @@ const HeroSection = () => (
 
     <FactsMarquee />
   </section>
-);
+  );
+};
 
 export default HeroSection;

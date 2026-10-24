@@ -98,7 +98,7 @@ const ProductMomentSection = () => (
 
     <div className="mx-auto max-w-7xl px-5 sm:px-6 lg:px-8">
       <div className="grid items-start gap-12 lg:grid-cols-[1.02fr_1fr] lg:gap-16">
-        <div>
+        <div className="landing-scroll-in">
           <p className={eyebrow}>{PRODUCT_MOMENT.eyebrow}</p>
           <h2 className={`mt-4 max-w-xl ${displayLg}`}>{PRODUCT_MOMENT.title}</h2>
           <p className={`mt-5 max-w-lg ${sectionCopy}`}>{PRODUCT_MOMENT.copy}</p>
@@ -107,7 +107,7 @@ const ProductMomentSection = () => (
             {PRODUCT_MOMENT.callouts.map((callout, index) => (
               <li
                 key={callout.title}
-                className="group flex gap-4 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 transition-[background-color,border-color] hover:border-white/15 hover:bg-white/[0.04]"
+                className="landing-scroll-in group flex gap-4 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 transition-[background-color,border-color] hover:border-white/15 hover:bg-white/[0.04]"
               >
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-400/20 bg-emerald-500/[0.08] text-emerald-300">
                   <LandingIcon name={callout.icon} className="h-4 w-4" />
@@ -129,7 +129,7 @@ const ProductMomentSection = () => (
           </a>
         </div>
 
-        <div className="relative">
+        <div className="landing-scroll-in relative">
           <div
             className="pointer-events-none absolute -inset-6 -z-10 rounded-[2.5rem] bg-[radial-gradient(60%_60%_at_60%_30%,rgba(139,92,246,0.16),transparent_70%)] blur-2xl"
             aria-hidden="true"

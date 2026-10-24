@@ -80,7 +80,7 @@ const AiSection = () => (
 
     <div className="mx-auto max-w-7xl px-5 sm:px-6 lg:px-8">
       <div className="grid items-center gap-12 lg:grid-cols-[1fr_0.92fr] lg:gap-16">
-        <div>
+        <div className="landing-scroll-in">
           <p className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-300">
             <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
             {AI_LAYER.eyebrow}
@@ -92,7 +92,7 @@ const AiSection = () => (
             {AI_LAYER.capabilities.map((capability) => (
               <div
                 key={capability.title}
-                className="flex gap-3.5 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 transition-[background-color,border-color] hover:border-violet-400/20 hover:bg-violet-500/[0.04]"
+                className="landing-scroll-in flex gap-3.5 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 transition-[background-color,border-color] hover:border-violet-400/20 hover:bg-violet-500/[0.04]"
               >
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-400/20 bg-violet-500/[0.08] text-violet-300">
                   <LandingIcon name={capability.icon} className="h-4 w-4" />
@@ -126,7 +126,7 @@ const AiSection = () => (
           </a>
         </div>
 
-        <div className="relative">
+        <div className="landing-scroll-in relative">
           <ChatDemo />
         </div>
       </div>

@@ -690,3 +690,112 @@ html:has(.landing-shell) {
     animation-play-state: paused;
   }
 }
+
+/* 13) Public home — the motion layer.
+   The reference site is alive: its stickers drift, its cards land one after the
+   other, its product shot leans under the pointer, its glow breathes. This is
+   that behaviour, with two rules attached:
+
+     · everything here is INSIDE `prefers-reduced-motion: no-preference`, and the
+       static page is the complete page — motion never carries information;
+     · the scroll reveals use the native view timeline (`animation-timeline`),
+       so there is no observer, no intersection math and no flash of hidden
+       content: in a browser without it the CSS simply does not apply and every
+       section is fully visible. Measured in Chromium 131, which supports it. */
+@media (prefers-reduced-motion: no-preference) {
+  /* The glow breathes, very slowly, so the black never looks like a screenshot. */
+  @keyframes landing-glow-breathe {
+    0%,
+    100% {
+      opacity: 0.82;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  .landing-glow {
+    animation: landing-glow-breathe 11s ease-in-out infinite;
+  }
+
+  /* Stickers wobble a degree either way. `rotate` is a separate property from
+     `transform`, so the Tailwind rotation on the same element still applies. */
+  @keyframes landing-wobble {
+    0%,
+    100% {
+      rotate: -1.6deg;
+    }
+    50% {
+      rotate: 1.6deg;
+    }
+  }
+
+  .landing-wiggle {
+    animation: landing-wobble 7s ease-in-out infinite;
+  }
+
+  /* Notification cards land one after the other, then float. */
+  @keyframes landing-pop {
+    from {
+      opacity: 0;
+      transform: translateY(14px) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  .landing-pop {
+    animation:
+      landing-pop 0.7s cubic-bezier(0.22, 1, 0.36, 1) both,
+      landing-float 9s ease-in-out 0.8s infinite;
+  }
+
+  /* A sheen across the primary action on hover — the only "gloss" on the page. */
+  .landing-sheen {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+  }
+
+  .landing-sheen::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(105deg, transparent 34%, rgba(255, 255, 255, 0.5) 50%, transparent 66%);
+    transform: translateX(-130%);
+  }
+
+  .landing-sheen:hover::after {
+    animation: landing-sheen 0.9s ease both;
+  }
+
+  @keyframes landing-sheen {
+    to {
+      transform: translateX(130%);
+    }
+  }
+
+  /* Scroll-driven entrance. Guarded by @supports because a browser without a
+     view timeline would otherwise run this as a one-shot time animation. */
+  @supports (animation-timeline: view()) {
+    @keyframes landing-scroll-in {
+      from {
+        opacity: 0;
+        transform: translateY(26px);
+      }
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    .landing-scroll-in {
+      animation: landing-scroll-in linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 45%;
+    }
+  }
+}

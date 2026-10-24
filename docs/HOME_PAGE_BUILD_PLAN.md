@@ -501,3 +501,64 @@ ever appearing in the landing files.
 
 **Still not owner-accepted on taste.** The structure and the measurements are settled; whether
 this is the page is the owner's call.
+
+---
+
+## J. MOTION — the page moves like the reference (2026-10-24)
+
+The reference is not a static poster: its stickers drift, its cards land in sequence, its product
+shot leans under the pointer, its glow breathes. Pass J adds that, under two rules:
+
+1. **Every moving thing lives inside `@media (prefers-reduced-motion: no-preference)`.** With
+   `reduce` set, every animation computes to `none` and the scroll reveals are at `opacity: 1` —
+   measured, not assumed.
+2. **Motion never carries information.** Nothing is revealed *only* by an animation; the still
+   page is the complete page, and the ornaments stay `aria-hidden`.
+
+### J1. What moves
+
+| Where | What |
+| --- | --- |
+| Hero glow | `landing-glow-breathe` — 11s opacity breath, so the black does not look like a screenshot |
+| Stickers | `landing-wobble` — ±1.6° on the `rotate` property (so the Tailwind rotation still applies), each with a negative, staggered delay |
+| Notification stack | `landing-pop` then `landing-float` on one element, staggered 140ms apart, so the cards land one after another and then hover |
+| Product window | Pointer tilt: ≤3.5° on X and ≤4.5° on Y, `perspective(1600px)`, 500ms ease-out, returns to rest on leave |
+| Section content | `landing-scroll-in` via the native **view timeline** (`animation-timeline: view()`, range `entry 0% → entry 45%`), `@supports`-guarded |
+| Primary CTA | `landing-sheen` — one white sweep across the pill on hover, 0.9s |
+| Fact strip | `landing-marquee` (from pass H), pauses on hover |
+
+### J2. Why CSS view timelines instead of an IntersectionObserver
+
+No observer, no scroll listener, no `requestAnimationFrame`, no flash of hidden content, and no
+extra JavaScript in a lazy chunk. Because the whole reveal lives behind
+`@supports (animation-timeline: view())`, a browser without support does not run it as a one-shot
+time animation — the CSS simply does not apply and the page is fully visible. A
+`MutationObserver`-based reveal tends to leave sections at `opacity: 0` when the observer is
+skipped; this cannot.
+
+### J3. The bug that shaped the tilt
+
+The first version gated the tilt on `matchMedia('(pointer: fine)')`. In the test browser that
+query reports **false** (headless Chromium has no fine pointer), so the handler never armed — and
+the same query is unreliable in embedded browsers. The gate is now per event
+(`event.pointerType !== 'mouse'` → bail), which is both more accurate and verifiable: with the
+pointer inside the window the transform reads
+`perspective(1600px) rotateX(0.15deg) rotateY(1.26deg)`, and it resets to
+`rotateX(0deg) rotateY(0deg)` on leave.
+
+### J4. Evidence
+
+* `npm test` (Frontend) → **453 / 0 fail**; `landingPage.test.js` → 33 pins, including
+  “the page moves, and the still page is the whole page”.
+* `npx eslint src/pages/landing src/routes/AppRoutes.jsx test/landingPage.test.js` → clean
+  (the tilt flag is a `ref`, because setting state synchronously in an effect is a cascading
+  render — the lint rule caught it).
+* `npm run build` → `LandingPage` **72.27 kB / 18.08 kB gzip**, still its own chunk; `index-*`
+  unchanged.
+* Computed in Chromium: `landing-glow-breathe`, `landing-wobble`, `landing-pop, landing-float`,
+  `landing-drift`, `landing-marquee`, `landing-scroll-in` with `animation-timeline: view()`;
+  every reveal measures `opacity: 1.00` once in view; under `prefers-reduced-motion: reduce`
+  every one of them measures `none`; `scrollWidth === innerWidth`; zero console errors.
+
+**Still not owner-accepted on taste** — this is the part that is most a matter of taste, and the
+timings are the easiest thing to change: the numbers all live in `style.css` §13.

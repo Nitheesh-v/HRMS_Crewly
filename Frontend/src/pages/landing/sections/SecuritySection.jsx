@@ -23,7 +23,7 @@ const SecuritySection = () => (
     <div className="landing-glow-soft pointer-events-none absolute inset-0 -z-10 opacity-60" aria-hidden="true" />
 
     <div className="mx-auto max-w-7xl px-5 sm:px-6 lg:px-8">
-      <div className="grid gap-8 lg:grid-cols-[1fr_1fr] lg:items-end lg:gap-16">
+      <div className="landing-scroll-in grid gap-8 lg:grid-cols-[1fr_1fr] lg:items-end lg:gap-16">
         <div>
           <p className={eyebrow}>Trust, stated plainly</p>
           <h2 className={`mt-4 ${displayLg}`}>Your tenant. Your roles. Your record.</h2>
@@ -38,7 +38,7 @@ const SecuritySection = () => (
         {SECURITY_POINTS.map((point) => (
           <article
             key={point.title}
-            className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5 transition-[background-color,border-color] hover:border-emerald-400/20 hover:bg-emerald-500/[0.03]"
+            className="landing-scroll-in rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5 transition-[background-color,border-color] hover:border-emerald-400/20 hover:bg-emerald-500/[0.03]"
           >
             <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-emerald-400/20 bg-emerald-500/[0.07] text-emerald-300">
               <LandingIcon name={point.icon} className="h-4 w-4" />
@@ -49,7 +49,7 @@ const SecuritySection = () => (
         ))}
       </div>
 
-      <div className="mt-3 flex items-start gap-3 rounded-2xl border border-white/[0.07] bg-crewly-panel/60 p-4">
+      <div className="landing-scroll-in mt-3 flex items-start gap-3 rounded-2xl border border-white/[0.07] bg-crewly-panel/60 p-4">
         <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
         <p className="text-[12.5px] leading-relaxed text-slate-500">
           We do not claim ISO, SOC or any other certification on this page. There is no audit behind
@@ -58,7 +58,7 @@ const SecuritySection = () => (
       </div>
 
       {/* Roles, merged in: permissions are a security surface, not a persona page. */}
-      <div id={SECTION_IDS.roles} className="mt-16 scroll-mt-24">
+      <div id={SECTION_IDS.roles} className="landing-scroll-in mt-16 scroll-mt-24">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className={eyebrow}>Who sees what</p>

@@ -24,7 +24,7 @@ export const focusRing =
 export const transition = 'transition-[color,background-color,border-color,box-shadow,transform]';
 
 export const primaryCta =
-  'group inline-flex items-center justify-center gap-2 rounded-full bg-emerald-400 px-6 py-3.5 text-sm font-bold text-[#04231a] sm:px-7 sm:py-4 sm:text-[15px] shadow-[0_0_0_1px_rgba(52,211,153,0.5),0_18px_40px_-16px_rgba(16,185,129,0.75)] transition-[color,background-color,border-color,box-shadow,transform] hover:-translate-y-0.5 hover:bg-emerald-300 hover:shadow-[0_0_0_1px_rgba(52,211,153,0.7),0_22px_50px_-14px_rgba(16,185,129,0.9)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-200';
+  'landing-sheen group inline-flex items-center justify-center gap-2 rounded-full bg-emerald-400 px-6 py-3.5 text-sm font-bold text-[#04231a] sm:px-7 sm:py-4 sm:text-[15px] shadow-[0_0_0_1px_rgba(52,211,153,0.5),0_18px_40px_-16px_rgba(16,185,129,0.75)] transition-[color,background-color,border-color,box-shadow,transform] hover:-translate-y-0.5 hover:bg-emerald-300 hover:shadow-[0_0_0_1px_rgba(52,211,153,0.7),0_22px_50px_-14px_rgba(16,185,129,0.9)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-200';
 
 export const secondaryCta =
   'inline-flex items-center justify-center gap-2 rounded-full border border-white/20 bg-white/[0.04] px-6 py-3.5 text-sm font-semibold text-white backdrop-blur sm:px-7 sm:py-4 sm:text-[15px] transition-[color,background-color,border-color,box-shadow,transform] hover:border-white/30 hover:bg-white/[0.09] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300';

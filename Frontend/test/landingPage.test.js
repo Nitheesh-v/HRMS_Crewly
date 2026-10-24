@@ -274,7 +274,7 @@ describe('Home page — structure', () => {
     // wall of stray text for a screen reader.
     assert.ok(HERO_STICKERS.length >= 4, 'the hero scatters at least four stickers');
     assert.ok(hero.includes('HERO_STICKERS'), 'the stickers come from the data');
-    assert.match(hero, /const Sticker = \(\{ sticker \}\) => \([\s\S]*?aria-hidden="true"/, 'the stickers are aria-hidden');
+    assert.match(hero, /const Sticker = \(\{ sticker[^}]*\}\) => \([\s\S]*?aria-hidden="true"/, 'the stickers are aria-hidden');
 
     // The notification stack is a drawing of what the product sends, not data.
     assert.ok(HERO_NOTIFICATIONS.length >= 3, 'three notification rows');
@@ -633,6 +633,49 @@ describe('Home page — accessibility', () => {
       false,
       'the entrance animation is defined outside the reduced-motion guard',
     );
+  });
+
+  test('the page moves, and the still page is the whole page', () => {
+    const css = read('src/style.css');
+    const hero = code('src/pages/landing/sections/HeroSection.jsx');
+    const layerAt = css.indexOf('13) Public home — the motion layer');
+
+    assert.ok(layerAt > -1, 'the motion layer is its own numbered block');
+
+    const layer = css.slice(layerAt);
+
+    // Everything that moves is defined INSIDE the no-preference guard, so a
+    // visitor who asked for calm gets the same page with none of it.
+    for (const name of ['landing-wobble', 'landing-pop', 'landing-glow-breathe', 'landing-sheen', 'landing-scroll-in']) {
+      const at = layer.indexOf(name);
+
+      assert.ok(at > -1, `${name} is defined in the motion layer`);
+      assert.ok(
+        layer.lastIndexOf('@media (prefers-reduced-motion: no-preference)', at) > -1,
+        `${name} is not inside the reduced-motion guard`,
+      );
+    }
+
+    // Scroll reveals ride the native view timeline and are @supports-guarded:
+    // without support the CSS does not apply and every section is fully visible
+    // (a time-based animation without the guard would leave content at opacity 0).
+    assert.match(layer, /@supports \(animation-timeline: view\(\)\)/, 'the view timeline is feature-tested');
+    assert.match(layer, /animation-timeline: view\(\)/, 'the reveal is scroll-driven');
+
+    // The hero wires the motion: wobbling stickers, cards that land in sequence,
+    // and a window that leans under a precise pointer only.
+    assert.ok(hero.includes('landing-wiggle'), 'stickers wobble');
+    assert.ok(hero.includes('landing-pop'), 'notification cards land in sequence');
+    assert.match(hero, /style=\{\{ animationDelay:/, 'and they are staggered');
+    assert.ok(hero.includes('onPointerMove'), 'the window tilts under the pointer');
+    assert.match(hero, /event\.pointerType !== 'mouse'/, 'a finger never drags the window around');
+    assert.match(hero, /onPointerLeave=\{resetTilt\}/, 'and it returns to rest');
+
+    // The sheen belongs to the shared primary action, nowhere else.
+    assert.match(code('src/pages/landing/landingStyles.js'), /export const primaryCta =\s*\n?\s*'landing-sheen/, 'the primary action carries the sheen');
+
+    // Nothing animates `all`, even here — the focus ring would freeze.
+    assert.equal(/(?<![-\w])(transition-all|transition)(?![- \w[\]])/.test(layer), false, 'the CSS animates named properties');
   });
 
   test('every interactive element has a visible focus style', () => {

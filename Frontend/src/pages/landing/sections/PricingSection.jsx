@@ -57,7 +57,7 @@ const PlanCard = ({ cycle, plan }) => {
 
   return (
     <article
-      className={`relative flex flex-col rounded-3xl border p-5 ${
+      className={`landing-scroll-in relative flex flex-col rounded-3xl border p-5 ${
         plan.featured
           ? 'border-emerald-400/30 bg-[linear-gradient(180deg,rgba(16,185,129,0.10),rgba(16,185,129,0.02))] shadow-[0_30px_70px_-40px_rgba(16,185,129,0.6)]'
           : 'border-white/[0.07] bg-white/[0.02]'
@@ -105,7 +105,7 @@ const FaqList = () => {
   const [open, setOpen] = useState(0);
 
   return (
-    <div id={SECTION_IDS.faq} className="scroll-mt-24">
+    <div id={SECTION_IDS.faq} className="landing-scroll-in scroll-mt-24">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <h3 className="max-w-sm text-2xl font-bold tracking-[-0.025em] text-white sm:text-3xl">
           The questions the price raises.
@@ -170,7 +170,7 @@ const PricingSection = () => {
       <div className="landing-glow-soft pointer-events-none absolute inset-0 -z-10 opacity-50" aria-hidden="true" />
 
       <div className="mx-auto max-w-7xl px-5 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <div className="landing-scroll-in flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
             <p className={eyebrow}>Pricing</p>
             <h2 className={`mt-4 ${displayLg}`}>Priced per company. Not per surprise.</h2>

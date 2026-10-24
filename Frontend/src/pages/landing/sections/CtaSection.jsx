@@ -22,7 +22,7 @@ const CtaSection = () => (
       aria-hidden="true"
     />
 
-    <div className="mx-auto max-w-4xl px-5 text-center sm:px-6 lg:px-8">
+    <div className="landing-scroll-in mx-auto max-w-4xl px-5 text-center sm:px-6 lg:px-8">
       <div className="landing-beam mx-auto h-px w-32" aria-hidden="true" />
 
       <h2 className={`mx-auto mt-8 max-w-3xl ${displayLg}`}>

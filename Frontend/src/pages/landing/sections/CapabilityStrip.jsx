@@ -54,7 +54,7 @@ const CapabilityStrip = () => (
     <div className="landing-glow-soft pointer-events-none absolute inset-0 -z-10 opacity-70" aria-hidden="true" />
 
     <div className="mx-auto max-w-7xl px-5 sm:px-6 lg:px-8">
-      <div className="max-w-3xl">
+      <div className="landing-scroll-in max-w-3xl">
         <p className={eyebrow}>What is actually inside</p>
         <h2 className={`mt-4 ${displayLg}`}>Everything the desk does. One login.</h2>
         <p className={`mt-5 max-w-xl ${sectionCopy}`}>
@@ -66,7 +66,7 @@ const CapabilityStrip = () => (
       {/* The counted numbers */}
       <div className="mt-12 grid gap-3 sm:grid-cols-3">
         {numbers.map((number) => (
-          <div key={number.label} className="landing-glass rounded-2xl p-5">
+          <div key={number.label} className="landing-glass landing-scroll-in rounded-2xl p-5">
             <p className="text-[2.75rem] font-bold leading-none tracking-[-0.04em] text-white">
               {number.value}
             </p>
@@ -83,7 +83,7 @@ const CapabilityStrip = () => (
         {CAPABILITIES.map((capability) => (
           <article
             key={capability.key}
-            className="group relative flex flex-col rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5 transition-[background-color,border-color,transform] hover:-translate-y-0.5 hover:border-white/15 hover:bg-white/[0.04]"
+            className="landing-scroll-in group relative flex flex-col rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5 transition-[background-color,border-color,transform] hover:-translate-y-0.5 hover:border-white/15 hover:bg-white/[0.04]"
           >
             <span className={`inline-flex h-9 w-9 items-center justify-center rounded-xl border ${accentClasses[capability.accent]}`}>
               <LandingIcon name={capability.icon} className="h-4 w-4" />
@@ -108,7 +108,7 @@ const CapabilityStrip = () => (
       </div>
 
       {/* The inventory, in full */}
-      <div id={SECTION_IDS.modules} className="mt-4 scroll-mt-24 overflow-hidden rounded-3xl border border-white/[0.07] bg-white/[0.015]">
+      <div id={SECTION_IDS.modules} className="landing-scroll-in mt-4 scroll-mt-24 overflow-hidden rounded-3xl border border-white/[0.07] bg-white/[0.015]">
         <div className="flex flex-col gap-3 border-b border-white/[0.06] p-5 sm:flex-row sm:items-end sm:justify-between sm:p-6">
           <div>
             <p className={eyebrow}>The full inventory</p>
