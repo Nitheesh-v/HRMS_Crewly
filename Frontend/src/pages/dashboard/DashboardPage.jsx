@@ -25,6 +25,10 @@ import { notify } from '../../utils/notify.js';
 import PresenceIndicator from "../../components/presence/PresenceIndicator.jsx";
 import { fetchTeamAvailability } from "../../redux/slices/presenceSlice.js";
 import EmptyState from '../../components/common/EmptyState.jsx';
+import BarChart from '../../components/charts/BarChart.jsx';
+import DonutChart, { DonutLegend } from '../../components/charts/DonutChart.jsx';
+import RingGauge from '../../components/charts/RingGauge.jsx';
+import { StackedBar, SplitRow } from '../../components/charts/StackedBar.jsx';
 
 // 37.4 — work-location chip for the dashboard My Team tile.
 // Reads the presence slice's `team.items` (loaded by the team page)
@@ -209,6 +213,61 @@ const DashboardPage = () => {
   const totalRemaining = balances.reduce((s, b) => s + b.remaining, 0);
   const today = data?.today;
 
+  // ── charts: every figure below comes straight from the overview payload ──
+  // Attendance is counted in days: `present` excludes late arrivals (the API
+  // reports them separately) and `absent` is "working day elapsed with no
+  // record", so the four slices add up to the working days of the month.
+  const attendanceSegments = [
+    { label: 'Present', value: a.present || 0, color: '#3fb950' },
+    { label: 'Late', value: a.late || 0, color: '#f0a35e' },
+    { label: 'Half day', value: a.halfDay || 0, color: '#58a6ff' },
+    { label: 'Absent', value: a.absent || 0, color: '#f85149' },
+  ].filter((segment) => segment.value > 0);
+  const attendanceTotal = attendanceSegments.reduce((sum, segment) => sum + segment.value, 0);
+  const attendancePct = attendanceTotal
+    ? Math.round((((a.present || 0) + (a.late || 0) + (a.halfDay || 0)) / attendanceTotal) * 100)
+    : 0;
+
+  // Leave bars keep a colour per leave type so the eye can follow one quota
+  // across months; the four tones are the app's own chart palette.
+  const LEAVE_COLORS = ['#a371f7', '#58a6ff', '#3fb950', '#f0a35e', '#f778ba', '#39c5cf'];
+  const leaveRows = balances
+    .filter((balance) => (balance.total || 0) > 0)
+    .map((balance, index) => ({
+      ...balance,
+      label: String(balance.type || '')
+        .replace(/_/g, ' ')
+        .toLowerCase()
+        .replace(/^./, (char) => char.toUpperCase()),
+      color: LEAVE_COLORS[index % LEAVE_COLORS.length],
+    }));
+
+  // Bar chart units are people: each member row already carries today's status
+  // (or null when they have not marked), so the four bars are a real headcount.
+  const teamStatusBars = [
+    { label: 'Present', value: 0, color: '#3fb950' },
+    { label: 'Late', value: 0, color: '#f0a35e' },
+    { label: 'Half day', value: 0, color: '#58a6ff' },
+    { label: 'Not marked', value: 0, color: 'rgba(139,148,158,0.55)' },
+  ];
+  (team?.members || []).forEach((member) => {
+    const status = String(member.today || '').toUpperCase();
+    if (status === 'PRESENT') teamStatusBars[0].value += 1;
+    else if (status === 'LATE') teamStatusBars[1].value += 1;
+    else if (status === 'HALF_DAY') teamStatusBars[2].value += 1;
+    else teamStatusBars[3].value += 1;
+  });
+
+  const teamPresent = team?.today?.present || 0;
+  const teamAbsent = team?.today?.absent || 0;
+  const teamTotal = Math.max(0, Number(team?.memberCount) || 0);
+  const teamSegments = [
+    { label: 'Present', value: teamPresent, color: '#3fb950' },
+    { label: 'Not marked', value: teamAbsent, color: 'rgba(139,148,158,0.45)' },
+  ].filter((segment) => segment.value > 0);
+  const hasTeamChart = Boolean(isSenior && team && teamTotal > 0);
+
+
   return (
     <div>
       <div className="mb-1 flex items-end justify-between">
@@ -266,7 +325,7 @@ const DashboardPage = () => {
           </Link>
         </div>
         {weekTarget?.enabled ? (
-          <div className="mt-4 border-t border-white/10 pt-3">
+          <div className="mt-4 flex flex-col items-center gap-4 border-t border-white/10 pt-4 sm:flex-row sm:items-center">
             {(() => {
               const done = Math.max(0, Number(weekTarget.achievedMinutes) || 0);
               const goal = Math.max(1, Number(weekTarget.targetMinutes) || 1);
@@ -274,25 +333,38 @@ const DashboardPage = () => {
               const h = (m) => (Math.round((m / 60) * 10) / 10).toString();
               return (
                 <>
-                  <div className="mb-1.5 flex items-center justify-between text-[11px]">
-                    <span className="text-crewly-dim">
-                      Weekly hours goal{weekTarget.qualified ? " — met 🎉" : ""}
-                    </span>
-                    <span className="font-semibold text-crewly-text">
-                      {h(done)}h / {h(goal)}h
-                    </span>
-                  </div>
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-                    <div
-                      className={`h-full rounded-full ${weekTarget.qualified ? "bg-crewly-green" : "bg-crewly-green/60"}`}
-                      style={{ width: `${pct}%` }}
+                  <RingGauge
+                    value={done}
+                    max={goal}
+                    size={104}
+                    thickness={9}
+                    color={weekTarget.qualified ? "#3fb950" : "#58a6ff"}
+                    centerValue={`${pct}%`}
+                    centerLabel="of the week"
+                    className="shrink-0"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-1.5 flex items-center justify-between text-[11px]">
+                      <span className="text-crewly-dim">
+                        Weekly hours goal{weekTarget.qualified ? " — met" : ""}
+                      </span>
+                      <span className="font-semibold text-crewly-text">
+                        {h(done)}h / {h(goal)}h
+                      </span>
+                    </div>
+                    <StackedBar
+                      height={6}
+                      parts={[
+                        { label: "Achieved", value: done, color: weekTarget.qualified ? "#3fb950" : "#58a6ff" },
+                        { label: "Still to go", value: Math.max(0, goal - done), color: "rgba(139,148,158,0.28)" },
+                      ]}
                     />
+                    <p className="mt-1.5 text-[11px] leading-snug text-crewly-dim">
+                      {weekTarget.qualified
+                        ? "Remaining working days this week are earned rest — paid, no leave deducted. Punch in any day you feel like working."
+                        : `${h(goal - done)}h more this week unlocks paid earned rest for the remaining working days.`}
+                    </p>
                   </div>
-                  <p className="mt-1.5 text-[11px] text-crewly-dim">
-                    {weekTarget.qualified
-                      ? "Remaining working days this week are earned rest — paid, no leave deducted. Punch in any day you feel like working."
-                      : `${h(goal - done)}h more this week unlocks paid earned rest for the remaining working days.`}
-                  </p>
                 </>
               );
             })()}
@@ -357,6 +429,26 @@ const DashboardPage = () => {
               </p>
             </div>
           </div>
+
+          {team.memberCount ? (
+            <div className="mb-4 rounded-lg bg-crewly-bg px-4 pb-3 pt-4">
+              <BarChart bars={teamStatusBars} height={96} />
+              <p className="mt-2 text-[11px] text-crewly-dim">
+                {team.today.present} of {team.memberCount} marked attendance today
+                {" · "}
+                {Math.round((team.today.present / team.memberCount) * 100)}%
+              </p>
+            </div>
+          ) : null}
+
+          {team.members.length === 0 ? (
+            <EmptyState
+              illustration="team"
+              title="No one in your scope yet"
+              description="When people report to you, or join your department, they appear here with today's attendance and presence."
+              size="sm"
+            />
+          ) : null}
 
           <div className="grid gap-2 md:grid-cols-2">
             {team.members.slice(0, 8).map((m) => {
@@ -480,6 +572,123 @@ const DashboardPage = () => {
         />
       </div>
 
+      {/* ── charts: the same month, as shapes ──
+          Every slice is a figure the API already returns — no projections,
+          no smoothing, no invented history. A month with nothing marked draws
+          no ring at all; the card says so instead. */}
+      <div
+        className={`mt-5 grid gap-4 md:grid-cols-2 ${hasTeamChart ? 'xl:grid-cols-3' : ''}`}
+      >
+        <Panel
+          icon={<CalendarDays className="h-4 w-4" />}
+          title="Attendance this month"
+          action={
+            attendanceTotal ? (
+              <span className="badge bg-crewly-green/15 text-crewly-green">
+                {attendancePct}% attended
+              </span>
+            ) : null
+          }
+        >
+          {attendanceSegments.length ? (
+            <div className="flex flex-wrap items-center justify-center gap-4 sm:flex-nowrap sm:justify-start">
+              <DonutChart
+                segments={attendanceSegments}
+                centerValue={a.marked || 0}
+                centerLabel="days marked"
+                size={136}
+                thickness={15}
+                ariaLabel={`Attendance: ${attendanceSegments
+                  .map((segment) => `${segment.label} ${segment.value} days`)
+                  .join(', ')}`}
+              />
+              <DonutLegend
+                segments={attendanceSegments}
+                formatter={(value) => `${value}d`}
+              />
+            </div>
+          ) : (
+            <EmptyState
+              illustration="calendar"
+              title="No attendance this month"
+              description="Mark attendance from the card above — each day you punch in is counted here by status."
+              size="sm"
+            />
+          )}
+        </Panel>
+
+        <Panel
+          icon={<Palmtree className="h-4 w-4" />}
+          title="Leave balance"
+          action={
+            <Link
+              to="/app/leaves"
+              className="text-xs text-crewly-green hover:underline"
+            >
+              Request leave →
+            </Link>
+          }
+        >
+          {leaveRows.length ? (
+            <ul className="space-y-3">
+              {leaveRows.map((row) => (
+                <SplitRow
+                  key={row.type}
+                  label={row.label}
+                  used={row.used}
+                  total={row.total}
+                  colors={[row.color, `${row.color}2e`]}
+                />
+              ))}
+            </ul>
+          ) : (
+            <EmptyState
+              illustration="calendar"
+              title="No leave types configured"
+              description="Your company's leave policy fills this in. Each quota then shows how much is used and how much is left."
+              size="sm"
+            />
+          )}
+        </Panel>
+
+        {hasTeamChart ? (
+          <Panel
+            icon={<Users className="h-4 w-4" />}
+            title="Your team today"
+            action={
+              <Link
+                to="/app/team/availability"
+                className="text-xs text-crewly-green hover:underline"
+              >
+                Availability →
+              </Link>
+            }
+          >
+            <div className="flex flex-wrap items-center justify-center gap-4 sm:flex-nowrap sm:justify-start">
+              <DonutChart
+                segments={teamSegments}
+                centerValue={`${teamPresent}/${teamTotal}`}
+                centerLabel="present"
+                size={136}
+                thickness={15}
+                ariaLabel={`${teamPresent} of ${teamTotal} people have marked attendance today`}
+              />
+              <div className="min-w-0 flex-1 space-y-3">
+                <DonutLegend
+                  segments={teamSegments}
+                  formatter={(value) => `${value}`}
+                />
+                <p className="text-[11px] leading-snug text-crewly-dim">
+                  {teamAbsent > 0
+                    ? `${teamAbsent} ${teamAbsent === 1 ? 'person has' : 'people have'} not marked attendance yet today.`
+                    : 'Everyone in your scope has marked attendance today.'}
+                </p>
+              </div>
+            </div>
+          </Panel>
+        ) : null}
+      </div>
+
       {/* ── self panels ── */}
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
         <Panel
@@ -511,9 +720,12 @@ const DashboardPage = () => {
               ))}
             </ul>
           ) : (
-            <p className="mt-6 text-center text-sm text-crewly-dim">
-              All clear — no pending tasks
-            </p>
+            <EmptyState
+              illustration="tasks"
+              title="All clear — no pending tasks"
+              description="Nothing is assigned to you right now. New tasks land here with their priority and due date."
+              size="sm"
+            />
           )}
         </Panel>
 
@@ -622,9 +834,12 @@ const DashboardPage = () => {
               ))}
             </ul>
           ) : (
-            <p className="mt-6 text-center text-sm text-crewly-dim">
-              Quiet day — no announcements
-            </p>
+            <EmptyState
+              illustration="bell"
+              title="No announcements yet"
+              description="Company news from HR and pinned notices appear here as they are posted."
+              size="sm"
+            />
           )}
         </Panel>
       </div>

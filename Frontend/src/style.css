@@ -855,6 +855,169 @@ html:has(.landing-shell) {
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   EMPTY-STATE ART — the illustrations breathe, they do not perform.
+   Every rule is inside `prefers-reduced-motion: no-preference` and animates
+   only opacity/transform, so a paused frame is still the finished drawing.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes empty-art-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.975);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes empty-art-float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-5px);
+    }
+  }
+
+  @keyframes empty-art-breathe {
+    0%,
+    100% {
+      opacity: 0.6;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.045);
+    }
+  }
+
+  @keyframes empty-art-turn {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @keyframes empty-art-twinkle {
+    0%,
+    100% {
+      opacity: 0.3;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  .empty-art {
+    animation: empty-art-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .empty-art-float {
+    transform-origin: 160px 120px;
+    animation: empty-art-float 6.5s ease-in-out infinite;
+  }
+
+  .empty-art-halo {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: empty-art-breathe 5.2s ease-in-out infinite;
+  }
+
+  .empty-art-orbit {
+    transform-box: view-box;
+    transform-origin: 160px 98px;
+    animation: empty-art-turn 54s linear infinite;
+  }
+
+  .empty-art-dot {
+    animation: empty-art-twinkle 3.6s ease-in-out infinite;
+  }
+
+  /* A second dot on every scene twinkles out of phase, so the pair reads as
+     movement rather than as a blinking error light. */
+  .empty-art-dot:nth-of-type(2n) {
+    animation-delay: 1.2s;
+    animation-duration: 4.4s;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CHARTS — hand-drawn SVG, so the motion is ours too: bars grow from the
+   baseline, donut segments settle in turn, horizontal splits sweep out.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.chart-segment {
+  transition: opacity 0.2s ease;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes chart-grow-y {
+    from {
+      transform: scaleY(0);
+    }
+    to {
+      transform: scaleY(1);
+    }
+  }
+
+  @keyframes chart-grow-x {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+
+  @keyframes chart-settle {
+    from {
+      opacity: 0;
+      transform: scale(0.94);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes chart-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .chart-bar {
+    transform-box: fill-box;
+    transform-origin: bottom;
+    animation: chart-grow-y 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .chart-split {
+    transform-origin: left;
+    animation: chart-grow-x 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .chart-ring {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: chart-settle 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .chart-segment {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: chart-settle 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .chart-fade {
+    animation: chart-fade 0.6s ease both;
+  }
+}
+
 /* 13) Public home — the motion layer.
    The reference site is alive: its stickers drift, its cards land one after the
    other, its product shot leans under the pointer, its glow breathes. This is
@@ -993,3 +1156,4 @@ html:has(.landing-shell) {
     }
   }
 }
+

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell } from 'lucide-react';
 import systemService from '../services/systemService';
+import EmptyState from './common/EmptyState.jsx';
 
 const timeAgo = (d) => {
   const s = Math.floor((Date.now() - new Date(d).getTime()) / 1000);
@@ -97,7 +98,12 @@ export default function NotificationBell() {
             )}
           </div>
           {items.length === 0 ? (
-            <p className="px-2 py-6 text-center text-xs text-crewly-dim">No notifications yet</p>
+            <EmptyState
+              illustration="bell"
+              title="No notifications yet"
+              description="Leave approvals, mentions and reminders land here."
+              size="xs"
+            />
           ) : items.map((n) => (
             <button key={n._id} onClick={() => openItem(n)}
               className={`block w-full rounded-lg px-2 py-2 text-left hover:bg-crewly-bg ${!n.readAt ? 'bg-crewly-green/5' : ''}`}>

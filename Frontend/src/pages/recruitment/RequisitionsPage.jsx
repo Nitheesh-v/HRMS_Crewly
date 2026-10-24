@@ -633,9 +633,12 @@ const RequisitionsPage = () => {
                 </header>
                 <div className="space-y-3">
                   {records.length === 0 ? (
-                    <div className="rounded-lg border border-dashed border-slate-800 px-3 py-8 text-center text-xs text-slate-600">
-                      No requisitions
-                    </div>
+                    <EmptyState
+                      illustration="hiring"
+                      title="No requisitions"
+                      description={`Nothing in ${column.label.toLowerCase()} yet.`}
+                      size="xs"
+                    />
                   ) : (
                     records.map((requisition) => (
                       <RequisitionCard

@@ -42,8 +42,48 @@ An empty state is not a dead end. It carries four things, in this order:
   scenes use the app's own green/blue/purple/orange mid-tones at low alpha.
 - **Tables keep their columns.** Use `TableEmpty`, not a paragraph under the
   table. It pins itself to the visible part of a horizontally scrolling card.
-- **Sizes**: `sm` (panels, dialogs, side lists), `md` (page-level cards, the
-  default), `lg` (full-page moments).
+- **Sizes**: `xs` (a popover, a dialog strip, a kanban column), `sm` (panels,
+  side lists), `md` (page-level cards, the default), `lg` (full-page moments).
+- **Colour is per scene.** Each illustration passes a `tone` / `alt` pair to the
+  plate behind it, so an inbox is blue-violet, a payslip green-amber, a team
+  blue-green. No scene falls back to a grey plate.
+
+## Motion
+
+The scenes are alive but never loud, and every rule lives inside
+`@media (prefers-reduced-motion: no-preference)` in `src/style.css`:
+
+| class | what moves |
+| --- | --- |
+| `.empty-art` | fades and rises 10px once when the panel mounts |
+| `.empty-art-float` | the whole scene drifts ±5px on a 6.5s cycle |
+| `.empty-art-halo` | the coloured plate breathes behind the subject |
+| `.empty-art-orbit` | the dashed ring turns once a minute |
+| `.empty-art-dot` | the decorative specks twinkle, out of phase |
+
+Only `opacity` and `transform` animate, so a paused frame is the finished
+drawing. `test/dashboardCharts.test.js` pins the classes and the guard.
+
+## Charts
+
+`src/components/charts/` holds four dependency-free SVG primitives:
+
+| component | used for |
+| --- | --- |
+| `DonutChart` + `DonutLegend` | attendance mix, team present / not marked |
+| `BarChart` | today's team by attendance status (people per bar) |
+| `StackedBar` + `SplitRow` | leave quotas (used vs remaining), weekly hours |
+| `RingGauge` | the weekly-hours goal |
+
+Rules that keep them honest:
+
+- every slice is a figure the API returned — no projections, no smoothing, no
+  invented history;
+- the numbers are printed as text next to the shape, so colour is never the only
+  channel;
+- a chart with nothing to draw renders an `EmptyState` instead of an empty axis;
+- bars grow from the baseline and segments settle in turn, from CSS only
+  (`chart-bar`, `chart-split`, `chart-segment`, `chart-ring`).
 
 ## Scenes
 

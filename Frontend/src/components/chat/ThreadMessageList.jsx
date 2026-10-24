@@ -14,6 +14,7 @@ import MentionText from './MentionText.jsx';
 import ReactionBar from './ReactionBar.jsx';
 import { hasVisibleText } from '../../utils/chatText.js';
 import { timeOf } from '../../utils/chatFormat.js';
+import EmptyState from '../common/EmptyState.jsx';
 
 const ThreadMessageList = ({
   items,
@@ -35,10 +36,12 @@ const ThreadMessageList = ({
 
   if (items.length === 0) {
     return (
-      <p className="p-4 text-xs text-crewly-dim">
-        No replies yet. Answer the message to start the thread — everyone in this conversation can
-        follow it here.
-      </p>
+      <EmptyState
+        illustration="chat"
+        title="No replies yet"
+        description="Answer the message to start the thread — everyone in this conversation can follow it here."
+        size="xs"
+      />
     );
   }
 

@@ -14,6 +14,7 @@ import {
   cancelMyWorkLocationRequest,
 } from '../../redux/slices/presenceSlice.js';
 import notify from '../../utils/notify.js';
+import EmptyState from '../common/EmptyState.jsx';
 
 const STATUS_LABEL = {
   pending: { text: 'Pending', className: 'border-crewly-amber/40 bg-crewly-amber/10 text-crewly-amber' },
@@ -73,12 +74,14 @@ export default function WorkLocationRequestHistory() {
           Loading…
         </p>
       ) : !Array.isArray(myRequests) || myRequests.length === 0 ? (
-        <p
-          className="rounded-md border border-crewly-border bg-crewly-bg p-2 text-[11px] text-crewly-dim"
-          data-testid="wlr-history-empty"
-        >
-          You have no WFH requests yet.
-        </p>
+        <div data-testid="wlr-history-empty" className="rounded-md border border-crewly-border bg-crewly-bg">
+          <EmptyState
+            illustration="calendar"
+            title="You have no WFH requests yet."
+            description="Ask to work from home or remotely from the menu above — each request keeps its status and reviewer here."
+            size="xs"
+          />
+        </div>
       ) : (
         <ul className="space-y-1.5" data-testid="wlr-history-list">
           {myRequests.map((row) => {

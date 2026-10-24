@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Check, Search, X } from 'lucide-react';
 
 import Avatar from './Avatar.jsx';
+import EmptyState from '../common/EmptyState.jsx';
 
 const labelOf = (user) => user?.name || user?.fullName || user?.email || 'Unknown user';
 
@@ -135,9 +136,12 @@ const NewConversationModal = ({ users, meId, onClose, onCreate }) => {
               ))}
             </select>
             {others.length === 0 && (
-              <p className="mt-2 text-[11px] text-crewly-dim">
-                No other active people are visible to you right now.
-              </p>
+              <EmptyState
+                illustration="team"
+                title="No one else to message"
+                description="Nobody else is active in your scope right now. People appear here as soon as they have access."
+                size="xs"
+              />
             )}
           </div>
         ) : (

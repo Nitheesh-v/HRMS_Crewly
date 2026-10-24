@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 import {
   getTask, updateTaskStatus, addComment, uploadAttachment, downloadAttachment, deleteTask, obj,
 } from '../services/workService.js';
+import EmptyState from './common/EmptyState.jsx';
 
 export const STATUS_META = {
   TODO: { label: 'To Do', cls: 'bg-slate-100 text-slate-600' },
@@ -264,7 +265,14 @@ export default function TaskDetailModal({ taskId, onClose, onChanged }) {
                     <input type="file" className="hidden" onChange={sendFile} />
                   </label>
                 </div>
-                {(task.attachments || []).length === 0 && <p className="text-xs text-slate-500">No files yet.</p>}
+                {(task.attachments || []).length === 0 && (
+                  <EmptyState
+                    illustration="documents"
+                    title="No files yet"
+                    description="Upload a file above to keep it with this task."
+                    size="xs"
+                  />
+                )}
                 <ul className="space-y-1">
                   {(task.attachments || []).map((a) => (
                     <li key={a._id} className="flex items-center justify-between rounded-lg bg-slate-700/40 px-3 py-1.5 text-sm">

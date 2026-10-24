@@ -16,6 +16,7 @@ import {
   decideWorkLocationRequest,
 } from '../../redux/slices/presenceSlice.js';
 import notify from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const formatRange = (start, end) =>
   start === end ? start : `${start} → ${end}`;
@@ -122,12 +123,14 @@ export default function WorkLocationReviewPage() {
           Loading review queue…
         </p>
       ) : reviewQueue.length === 0 ? (
-        <p
-          className="rounded-md border border-crewly-border bg-crewly-bg p-3 text-xs text-crewly-dim"
-          data-testid="wlr-review-empty"
-        >
-          No pending WFH requests in your team right now.
-        </p>
+        <div data-testid="wlr-review-empty" className="rounded-md border border-crewly-border bg-crewly-bg">
+          <EmptyState
+            illustration="shield"
+            title="No pending WFH requests in your team right now"
+            description="Requests from your team arrive here for a decision, with the days and location they asked for."
+            size="xs"
+          />
+        </div>
       ) : (
         <ul className="space-y-2" data-testid="wlr-review-list">
           {reviewQueue.map((row) => {

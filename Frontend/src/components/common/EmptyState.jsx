@@ -19,12 +19,14 @@
 import EmptyIllustration from './EmptyIllustration.jsx';
 
 const SIZES = {
+  xs: 'h-16 w-24',
   sm: 'h-24 w-40',
   md: 'h-36 w-56',
   lg: 'h-44 w-72',
 };
 
 const PADDING = {
+  xs: 'py-3',
   sm: 'py-6',
   md: 'py-10',
   lg: 'py-14',
