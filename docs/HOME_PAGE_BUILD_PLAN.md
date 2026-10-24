@@ -175,13 +175,25 @@ is yours.
 
 ---
 
-## G. REDESIGN — Keka-shape, Crewly-brand (2026-10-24)
+## G. REDESIGN — Keka's information architecture, Crewly's identity (2026-10-24)
 
-Owner request: *“analyze repo … based on that build a public home page like keka.com.”*
-A presentation unit on the public marketing surface (`/`) only. No auth, API, data-model
-or backend change. The previous version (§F) was a dark, single-column page; this one is
-a **light marketing surface** and the structure follows the way keka.com sells the
-category, section by section.
+Owner request: *“analyze repo … build a public home page like keka.com.”* Follow-up: *“colors
+and designs are the same like keka — lets make it as crewly's original.”*
+
+Two units on the public marketing surface (`/`) only. No auth, API, data-model or backend
+change. The first pass copied Keka too literally (paper-white canvas, violet SaaS buttons);
+the second keeps the **section order and interaction model** that make keka.com work, and
+throws away its palette in favour of Crewly's own:
+
+| | Keka | Crewly (final) |
+|---|---|---|
+| Canvas | white | **night** — `#070b16`, the app's own darkness |
+| Primary | violet / indigo | **emerald 500 → 400**, with dark text — the colour the product uses for “done” |
+| Accent | violet everywhere | **violet is reserved**: AI section, logo mark, secondary labels only |
+| Cards | white, soft shadow | **glass**: `white/[0.03]`, hairline `white/10`, lit top edge |
+| Depth | flat, airy | layered emerald/violet radial glows + a fading graph grid |
+| Product shots | light screenshots | **dark product mocks** that look like the real app |
+| Typography rhythm | big bold display | same — that part was right |
 
 ### G1. What was taken from keka.com, and what was not
 
@@ -189,10 +201,10 @@ category, section by section.
 |---|---|---|
 | Announcement bar | **Yes** — the AI assistant + language facts, dismissible for the session | something that genuinely ships |
 | Mega-menu header | **Yes** — a six-item “Platform” panel that opens the matching tab | real product areas |
-| Hero + product screenshot | **Yes** — CSS-built dashboard mock (no image asset, no client data) | Keka’s hero is a screenshot |
-| “Chosen by 12,500+ companies” logo wall | **No** | **no customers exist in this repo**; inventing them is the one thing a marketing page must not do. Replaced by an honest capability strip + a facts marquee (browser, QR, kiosk, CSV import, PDFs, AI). |
+| Hero + product screenshot | **Yes** — CSS-built dark dashboard mock (no image asset, no client data) | Keka's hero is a screenshot |
+| “Chosen by 12,500+ companies” logo wall | **No** | **no customers exist in this repo**; inventing them is the one thing a marketing page must not do. Replaced by a capability panel + a shipped-facts marquee. |
 | “One platform” tabbed deep-dive | **Yes** — 6 ARIA tabs, each with copy + a product mock | the centrepiece of the page |
-| AI layer (3 behaviours) | **Yes** — violet→teal band, illustrative conversation labelled as such | assistant, languages, guardrails are all implemented |
+| AI layer (3 behaviours) | **Yes** — the one violet-led band, illustrative conversation labelled as such | assistant, languages, guardrails are all implemented |
 | Integrations wall (100+ tools) | **No** | no integration catalogue exists in the codebase |
 | SOC2 / ISO / GDPR badges | **No** — explicit “we do not claim certifications we have not been audited for” | no audit exists |
 | Testimonials / customer quotes | **No** | none exist |
@@ -201,116 +213,116 @@ category, section by section.
 | Deep footer | **Yes** — 4 columns + support panel + honest legal note | no dead legal links |
 
 Sections in order: announcement → header → hero (badge, h1, sub, 2 CTAs, assurances,
-dashboard mock, floating cards, facts marquee) → capability strip → **Platform** tabs →
-**Modules** (20, five groups) → **AI** → **How it works** (3 alternating rows) →
-**Roles** (the five shipped roles) → **Security** (6 implemented controls) → **Pricing**
+dashboard mock, floating cards, facts marquee) → capability panel → **Platform** tabs →
+**Modules** (20, five groups) → **AI** → **How it works** (3 alternating rows) → **Roles**
+(one owner card + four scoped roles) → **Security** (6 implemented controls) → **Pricing**
 → **FAQ** → CTA → footer.
 
-### G2. Design system (new, page-scoped)
+### G2. The design system, and why each decision is Crewly's
 
-The logo is a violet→indigo mark around a deep-navy wordmark, so the marketing surface
-uses the brand’s own colours instead of the app’s dark slate/emerald shell:
+Everything lives in `src/pages/landing/landingStyles.js` (shared class strings) and
+`src/style.css` (tokens + page-scoped CSS):
 
-* tokens in `src/style.css` `@theme`: `crewly-ink`, `crewly-ink-soft`, `crewly-violet`,
-  `crewly-lilac`, `crewly-lilac-line`, `crewly-mint` (+ the existing ones untouched);
-* page-scoped classes: `.landing-shell`, `.landing-grid`, `.landing-aurora`,
-  `.landing-card`, `.landing-preview`, `.landing-hairline`, `.landing-marquee-track`,
-  `.landing-wordmark`, `.landing-mark`;
-* paper-white canvas, violet primary CTA (`from-violet-700 to-[#4c1d95]`), mint tick
-  colour, `rounded-2xl`/`rounded-3xl`, hairline borders, one soft shadow per card;
-* motion is opt-in (`prefers-reduced-motion: no-preference`) and the marquee pauses on
-  hover.
+* tokens: `--color-crewly-night #070b16`, `--color-crewly-night-soft #0b1120`,
+  `--color-crewly-panel #0e1526`, `--color-crewly-mint #34d399`, `--color-crewly-violet #8b5cf6`
+  — the same values the authenticated app paints, so the marketing page and the product
+  cannot drift apart;
+* `.landing-shell` (night canvas), `.landing-grid` (fading graph paper), `.landing-aurora`
+  (emerald + violet halo), `.landing-card` (glass with a lit top edge), `.landing-preview`
+  (the dark product mock), `.landing-hairline` (emerald→violet rule), `.landing-dots`,
+  `.landing-mark` (logo sizing);
+* primitives: `primaryCta` (emerald), `secondaryCta`, `ghostLink`, `navLink`, `eyebrow`,
+  `sectionTitle`, `sectionCopy`, `focusRing`, `transition`;
+* **violet is a semantic colour here, not decoration**: it belongs to the AI surface and
+  the logo. Every action on the page is emerald. That single rule is what stops the page
+  looking like a template;
+* motion is opt-in (`prefers-reduced-motion: no-preference`) and the marquee pauses on hover.
 
-Two global CSS facts had to be handled, both are recorded in `style.css`:
+Two global CSS facts had to be handled, both recorded in `style.css`:
 
-1. the unlayered `h1/h2/h3` responsive scale **outranks Tailwind’s `text-*` utilities**,
-   so it now excludes `.landing-shell` — otherwise every marketing headline was clamped
-   to 1.875rem;
-2. the unlayered `img { max-width:100%; height:auto }` reset outranks Tailwind’s height
-   utilities, so the logo crops are sized by `.landing-wordmark` / `.landing-mark`.
+1. the unlayered `h1/h2/h3` responsive scale **outranks Tailwind's `text-*` utilities**, so
+   it now excludes `.landing-shell` — otherwise every marketing headline was clamped to
+   1.875rem (measured: the hero `h1` now computes at 67px on desktop, 41.6px at 390px);
+2. the unlayered `img { max-width:100%; height:auto }` reset outranks Tailwind's height
+   utilities, so the logo mark is sized by `.landing-mark`.
+
+The square `logo-crewly.png` has its wordmark baked in, so it is invisible on a night
+canvas at 36px. The header and footer therefore pair the **trimmed mark**
+(`public/logo-crewly-mark.png`, generated by cropping the alpha bounding box of the original
+— the source file is untouched) with live text. No light wordmark asset was invented.
 
 ### G3. Files
 
 | File | Change |
 |---|---|
-| `src/pages/landing/landingData.js` | **rewritten** — every section’s content in one JSX-free module (announcement, nav, hero, facts, trust chips, 6 platform tabs, 20 modules, AI layer, 3 workflow blocks, 5 roles, 6 security points, 4 plans, 8 FAQs, 4 footer columns, legal note) |
-| `src/pages/landing/LandingHeader.jsx` | **rewritten** — announcement bar (session-dismissible) + sticky header with a real mega-menu (anchored to the nav so a 56rem panel always fits), auth-aware CTA, mobile menu with a nested Platform disclosure |
-| `src/pages/landing/LandingFooter.jsx` | restyled for the light surface; 4 columns + support panel + legal note + back-to-top |
-| `src/pages/landing/DashboardPreview.jsx` | **rewritten** — light product mock: sidebar, stat tiles, 7-day attendance chart, approvals, chips |
-| `src/pages/landing/PlatformPreview.jsx` | **new** — the six tab mocks (payroll, people, hiring, attendance, performance, collaboration) |
+| `src/pages/landing/landingData.js` | **rewritten** — every section's content in one JSX-free module (announcement, nav, hero, facts, trust chips, 6 platform tabs, 20 modules, AI layer, 3 workflow blocks, 5 roles, 6 security points, 4 plans, 8 FAQs, 4 footer columns, legal note) |
+| `src/pages/landing/landingStyles.js` | **new** — the page's design primitives (see G2) |
+| `src/pages/landing/LandingHeader.jsx` | **rewritten** — night glass header, announcement bar (session-dismissible), platform mega-menu anchored to the nav so a 54rem panel always fits, auth-aware CTA, mobile menu with a nested Platform disclosure |
+| `src/pages/landing/LandingFooter.jsx` | restyled for the night surface; 4 columns + support panel + legal note + back-to-top |
+| `src/pages/landing/DashboardPreview.jsx` | **rewritten** — dark product mock: sidebar, stat tiles, emerald 7-day attendance chart, approvals, chips |
+| `src/pages/landing/PlatformPreview.jsx` | **new** — the six dark tab mocks (payroll, people, hiring, attendance, performance, collaboration) |
 | `src/pages/landing/landingTabs.js` | **new** — one DOM CustomEvent so the header menu can open a tab without a context or a query param |
-| `src/pages/landing/LandingIcon.jsx` | extended registry (26 keys) |
-| `src/pages/landing/sections/*.jsx` | Hero, **CapabilityStrip**, **Platform** (ARIA tablist), Modules, **AI**, Workflow, **Roles**, Security, Pricing, FAQ, CTA |
+| `src/pages/landing/LandingIcon.jsx` | extended registry (32 keys) |
+| `src/pages/landing/sections/*.jsx` | Hero, **CapabilityStrip** (instrument panel), **Platform** (ARIA tablist), Modules, **AI**, Workflow, **Roles** (owner card + four), Security, Pricing, FAQ, CTA |
 | `src/pages/landing/LandingPage.jsx` | composes 11 sections; sets `document.title` and restores it on unmount |
-| `src/routes/AppRoutes.jsx` | `/` moved **out of** `PublicLayout` — nesting it rendered two headers and two footers on the marketing page |
-| `public/logo-crewly-wordmark.png`, `public/logo-crewly-mark.png` | **new** — the square logo (with its baked-in wordmark) trimmed into a lockup and a mark for the light header/footer |
-| `src/style.css` | light landing layer + the two global-CSS carve-outs above |
-| `Frontend/test/landingPage.test.js` | **rewritten** — 29 pins (see G5) |
+| `src/routes/AppRoutes.jsx` | `/` moved **out of** `PublicLayout` — nesting it rendered two headers and two footers |
+| `public/logo-crewly-mark.png` | **new** — the mark cropped out of the original for use on the night canvas |
+| `src/style.css` | night landing layer, tokens, and the two global-CSS carve-outs |
+| `Frontend/test/landingPage.test.js` | **rewritten** — 31 pins (see G5) |
 
-### G4. Two bugs found by rendering it in a real browser
+### G4. Bugs found by rendering it in a real browser
 
-Neither would have failed a test, and both were only visible in a screenshot:
+None of these would have failed a test, and all were caught in Chromium screenshots:
 
-1. **`transition-all` killed the focus ring.** Tailwind’s `transition-all` animates
-   `outline-width`/`outline-offset`, and the app’s global `prefers-reduced-motion` rule
-   collapses durations to `0.01ms` — measured in Chromium, the ring stayed at
-   `outline-width: 0px`. Every landing control now transitions an explicit list
-   (`transition-[color,background-color,border-color,box-shadow,transform]`) and the ring
-   paints at 2px violet.
-2. **The hero accent underline was absolutely positioned.** On a phone the accent wrapped
-   over two lines, so the bar drew under the last line only and the full stop sat alone on
-   its own row. The accent is inline again; `.35`-style sizing is gone.
+1. **`transition-all` killed every focus ring.** Tailwind's `transition-all` animates
+   `outline-width`/`outline-offset`, and the app's global `prefers-reduced-motion` rule
+   collapses durations to `0.01ms` — measured: the ring stayed at `outline-width: 0px`. Every
+   landing control now lists its properties, and a test forbids a bare `transition`/`transition-all`.
+2. **The hero accent underline was absolutely positioned** — on a phone the accent wrapped,
+   so the bar drew under the last line only and the full stop sat alone on its own row.
+3. **The mock's sparkline rendered empty** — percentage heights inside a flex column have no
+   definite parent; they are pixel heights now.
+4. **The roles grid left a dead column** (`row-span-2` admin card beside two stacked cards);
+   it is now an owner card + four scoped roles in a 3-column ladder.
+5. **The platform panel needed `mt-10` when it stacks** on mobile.
+6. **`aria-controls` pointed at unmounted panels** — the desktop menu and both mobile panels
+   are now always mounted and toggled with `hidden`, so the attribute always resolves.
 
-Also fixed while looking: percentage heights in the mock’s sparkline had no definite parent
-(rendered as an empty box) — they are pixel heights now; the role cards go `3 → 5` columns
-only at `xl` so names never break mid-word; the platform panel gets `mt-10` when it stacks
-on mobile; hero halos are inside `isolate` stacking contexts so `-z-10` cannot paint under
-the white shell.
+### G5. Test plan — 31 pins, mostly against sources of truth
 
-### G5. Test plan — 29 pins, mostly against sources of truth
+Prices vs `platformPlans.js`; trial vs `TRIAL_DAYS` (and the digits `14` may not be typed
+into markup); “2 months free” vs the arithmetic; “no credit card” vs the register form;
+**roles vs `ROLE_LABELS`** (all five, both directions); **AI language counts vs
+`chatLanguages.js`** (14 platform / 5 default); module inventory 20 across 5 groups; every
+anchor resolves to a rendered section id; every link resolves to a route in `AppRoutes.jsx`;
+the landing route is **not** nested in `PublicLayout`; **the page wears Crewly's own surface**
+(night token, no light-theme leftovers, `--color-crewly-mint` declared); **the primary action
+is emerald and comes from one shared class** (five section files must import it); **no control
+animates `all`**; no fabricated social proof (incl. “Chosen by”); no compliance badges; ARIA
+tablist keyboard contract (arrows, Home, End, `aria-selected`, roving `tabIndex`); mega-menu
+and mobile menu `aria-expanded`; FAQ disclosure; pricing toggle; announcement dismiss label;
+reduced-motion guard; visible focus style on **every** `Link`/`a`/`button` in the landing
+files — shared class constants *and* `${…}` interpolations are resolved, including imports
+from `landingStyles.js`, so the pin cannot be satisfied by an unreadable expression.
 
-Kept from §D and extended: prices vs `platformPlans.js`; trial vs `TRIAL_DAYS` (and the
-digits `14` may not be typed into markup — a length change must not leave a stale button);
-“2 months free” vs the arithmetic; “no credit card” vs the register form; **roles vs
-`ROLE_LABELS`** (all five, both directions); **AI language counts vs `chatLanguages.js`**
-(14 platform / 5 default); module inventory unchanged at 20 across 5 groups; every anchor
-resolves to a rendered section id; every link resolves to a route in `AppRoutes.jsx`; the
-landing route is **not** nested in `PublicLayout`; no fabricated social proof (incl.
-“Chosen by”); no compliance badges; ARIA tablist keyboard contract (arrows, Home, End,
-`aria-selected`, roving `tabIndex`); mega-menu and mobile menu `aria-expanded`; FAQ
-disclosure; pricing toggle; announcement dismiss label; reduced-motion guard; visible
-focus style on **every** `Link`/`a`/`button` in the landing files (shared class constants and
-`${…}` interpolations are resolved, not exempted); light-surface consistency (no
-`#0b1120` left in the landing files).
+### G6. Evidence
 
-### G6. ARIA detail worth keeping
-
-`aria-controls` must name an element that exists, so the desktop Platform panel and both
-mobile panels stay mounted and are toggled with the `hidden` attribute instead of being
-conditionally rendered — a conditional panel left the trigger pointing at nothing for most
-of the page's life. Verified in Chromium: `display:block` when open, `display:none` after
-Escape, after an outside click, and after choosing an item.
-
-### G7. Evidence
-
-* `npm test` (Frontend) → **449 / 0 fail** (420 existing + 29 landing). Backend untouched.
-* `npm run build` → the page is still its own lazy chunk (`LandingPage-*.js` ≈ 96 kB /
-  22 kB gzip); `index-*.js` unchanged at ≈ 434 kB, so the app shell did not absorb it.
+* `npm test` (Frontend) → **451 / 0 fail**. Backend untouched.
+* `npm run build` → the page is still its own lazy chunk; `index-*.js` unchanged at ≈ 434 kB,
+  so the app shell did not absorb it.
 * `npx eslint src/pages/landing src/routes/AppRoutes.jsx test/landingPage.test.js` → clean.
-* Rendered in headless Chromium at 1440×900 and 390×844: no console/page errors, no
-  horizontal overflow at either width; mega-menu inside the viewport; choosing a menu item
-  selects the matching tab **and** scrolls to it; ArrowRight moves the tab and keeps focus
-  on a tab; Escape closes the menu; the pricing toggle swaps to ₹9,990 / ₹24,990 / ₹49,990
-  with “2 months free”; the announcement stays dismissed after a reload in the same session.
-* `document.title` = “Crewly — HR, payroll and attendance in one workspace”; `h1` computed
-  at 65.6px on desktop and 36px on a 390px viewport (proving the global h1 carve-out).
+* Headless Chromium at 1440, 1024 and 390: no console/page errors, no horizontal overflow;
+  mega-menu inside the viewport and opening the chosen tab; the primary CTA focus ring paints
+  at 2px emerald; the FAQ, pricing toggle and announcement dismissal all behave.
+* `document.title` = “Crewly — HR, payroll and attendance in one workspace”; hero `h1`
+  computes at 67.2px desktop / 41.6px mobile.
 
-### G8. Deliberately not built
+### G7. Deliberately not built
 
-Customers, logos, testimonials, usage counts, certification badges, an integrations wall,
-and Privacy/Terms pages. None of them exist in this repository; the footer states that the
-legal pages are unpublished instead of linking to nothing. Adding any of them is a content
-decision that needs a real source, not a design change.
+Customers, logos, testimonials, usage counts, certification badges, an integrations wall, and
+Privacy/Terms pages. None of them exist in this repository; the footer states that the legal
+pages are unpublished instead of linking to nothing. Adding any of them is a content decision
+that needs a real source, not a design change.
 
 **Not owner-accepted.** The render and interaction checks above are automated; the design
-judgement remains the owner’s.
+judgement remains the owner's.

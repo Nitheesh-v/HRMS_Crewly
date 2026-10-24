@@ -45,11 +45,11 @@ const LandingPage = () => {
   }, []);
 
   return (
-    <div className="landing-shell min-h-screen bg-white text-crewly-ink">
+    <div className="landing-shell min-h-screen bg-crewly-night text-slate-200">
       {/* Keyboard users should not have to tab the whole nav to reach content. */}
       <a
         href="#main"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-lg focus:bg-violet-700 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-lg focus:bg-emerald-500 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-[#04231a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-200"
       >
         Skip to content
       </a>

@@ -154,22 +154,61 @@ describe('Home page — structure', () => {
     }
   });
 
-  test('the page is a light surface, consistently', () => {
+  test('the page wears Crewly’s own surface, not a template’s', () => {
     const page = code('src/pages/landing/LandingPage.jsx');
     const shell = read('src/style.css');
 
     assert.ok(page.includes('landing-shell'), 'the shell class drives the page-scoped CSS');
-    assert.ok(page.includes('bg-white'), 'the canvas is white, not the app’s dark surface');
+    assert.ok(page.includes('bg-crewly-night'), 'the canvas is the app night palette');
 
+    // One brand, two accents — emerald for action, violet reserved for AI and
+    // the logo. A third primary colour would mean the page had drifted into
+    // someone else's identity.
     for (const file of LANDING_FILES) {
-      assert.equal(
-        code(file).includes('#0b1120'),
-        false,
-        `${file} still paints the old dark landing canvas`,
+      const source = code(file);
+
+      for (const foreign of ['bg-[#0b1120] text-crewly-ink', 'from-violet-700 to-[#4c1d95]', 'text-crewly-ink']) {
+        assert.equal(source.includes(foreign), false, `${file} still carries the retired light theme (${foreign})`);
+      }
+    }
+
+    assert.match(shell, /\.landing-shell\s*\{[\s\S]*?background-color:\s*var\(--color-crewly-night\)/, 'the shell is the night canvas in CSS too');
+    assert.match(shell, /--color-crewly-night:\s*#070b16/, 'the night token is declared once');
+    assert.match(shell, /--color-crewly-mint:\s*#34d399/, 'the emerald accent comes from the token file');
+  });
+
+  test('the primary action is emerald everywhere, from one shared class', () => {
+    const styles = code('src/pages/landing/landingStyles.js');
+    const header = code('src/pages/landing/LandingHeader.jsx');
+    const hero = code('src/pages/landing/sections/HeroSection.jsx');
+
+    assert.match(styles, /export const primaryCta =[\s\S]*?bg-emerald-500/, 'primary = emerald');
+    assert.match(styles, /export const primaryCta =[\s\S]*?focus-visible:outline/, 'and it keeps its ring');
+
+    // The sections import the shared class instead of retyping a button.
+    for (const file of ['src/pages/landing/LandingHeader.jsx', 'src/pages/landing/sections/HeroSection.jsx', 'src/pages/landing/sections/CtaSection.jsx', 'src/pages/landing/sections/PlatformSection.jsx', 'src/pages/landing/LandingFooter.jsx']) {
+      assert.ok(
+        code(file).includes('primaryCta'),
+        `${file} must use the shared primary CTA, not its own gradient`,
       );
     }
 
-    assert.match(shell, /\.landing-shell\s*\{[\s\S]*?background-color:\s*#ffffff/, 'the shell is white in CSS too');
+    assert.ok(header.includes('bg-crewly-night'), 'the header sits on the same canvas');
+    assert.ok(hero.includes('landing-aurora'), 'the hero keeps the brand halo');
+  });
+
+  test('no control animates `all` (it freezes the focus ring)', () => {
+    // Tailwind's `transition-all`/`transition` animate outline-width and
+    // outline-offset. The app's global reduced-motion rule collapses durations
+    // to 0.01ms, and in Chromium that left the ring at outline-width: 0px —
+    // measured, not theorised. Every control lists its properties instead.
+    for (const file of LANDING_FILES) {
+      assert.equal(
+        /(?<![-\w])(transition-all|transition)(?![-\w[\]])/.test(code(file)),
+        false,
+        `${file} animates every property; list color/background/border/shadow/transform instead`,
+      );
+    }
   });
 });
 
@@ -510,9 +549,10 @@ describe('Home page — accessibility', () => {
     };
 
     // A shared class string counts: `className={shared}` is resolved from the
-    // file's own `const shared = '…'`, and `${shared}` inside a template literal
-    // is resolved the same way, so the pin stays strict instead of exempting
-    // every expression (which is how a real gap would hide).
+    // file's own `const shared = '…'` OR from the shared design primitives the
+    // file imports, and `${shared}` inside a template literal is resolved the
+    // same way — so the pin stays strict instead of exempting every expression
+    // (which is how a real gap would hide).
     const sharedClassNames = (source) => {
       const map = new Map();
 
@@ -523,6 +563,18 @@ describe('Home page — accessibility', () => {
       return map;
     };
 
+    const designPrimitives = sharedClassNames(read('src/pages/landing/landingStyles.js'));
+
+    const importedNames = (source) => {
+      const names = new Set();
+
+      for (const match of source.matchAll(/import\s*\{([^}]+)\}\s*from\s*'\.\.?\/[^']*landingStyles\.js'/g)) {
+        match[1].split(',').forEach((name) => names.add(name.trim()));
+      }
+
+      return names;
+    };
+
     let scanned = 0;
     const perFile = new Map();
 
@@ -530,6 +582,11 @@ describe('Home page — accessibility', () => {
       const source = code(file);
       const tags = openingTags(source);
       const shared = sharedClassNames(source);
+
+      for (const name of importedNames(source)) {
+        assert.ok(designPrimitives.has(name), `${file} imports ${name} from landingStyles.js but it is not a class string`);
+        shared.set(name, designPrimitives.get(name));
+      }
 
       scanned += tags.length;
       perFile.set(file, tags.length);

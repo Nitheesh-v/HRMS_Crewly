@@ -11,17 +11,15 @@
   --color-crewly-orange: #f0a35e;
   --color-crewly-red: #f85149;
 
-  /* Public home (light marketing surface). These are the logo's own colours:
-     the mark is a violet-to-indigo gradient around a deep navy wordmark. */
-  --color-crewly-ink: #171233;
-  --color-crewly-ink-soft: #3f3a5c;
-  --color-crewly-violet: #5b21b6;
-  --color-crewly-violet-bright: #6d28d9;
-  --color-crewly-violet-deep: #3b1580;
-  --color-crewly-lilac: #f6f4ff;
-  --color-crewly-lilac-line: #e6e1fb;
-  --color-crewly-mint: #0f9d76;
-  --color-crewly-mint-soft: #e7f8f1;
+  /* Public home (marketing surface). These are the app's own colours, not a
+     separate brand: the night canvas, the emerald the product uses for "done",
+     and the violet of the logo mark as the one accent the product reserves for
+     AI. Keeping them here means the marketing page and the app cannot drift. */
+  --color-crewly-night: #070b16;
+  --color-crewly-night-soft: #0b1120;
+  --color-crewly-panel: #0e1526;
+  --color-crewly-mint: #34d399;
+  --color-crewly-violet: #8b5cf6;
 }
 
 /* ---- Base responsive resets ---- */
@@ -488,23 +486,81 @@ html:has(.landing-shell) {
   }
 }
 
-/* 12) Landing (public home) — texture + motion layer.
-   The dot grid is static. Entrance/float/breathe animations are gated behind
-   prefers-reduced-motion: no-preference here, and would in any case be
-   neutralised by the global reduce block (rule 10) — both belts, on purpose. */
-.landing-dots {
-  background-image: radial-gradient(rgba(91, 33, 182, 0.14) 1px, transparent 1px);
-  background-size: 22px 22px;
+/* 12) Landing (public home) — Crewly's own surface.
+   The marketing page is the app's night canvas, not a light template: #070b16
+   with layered emerald and violet glows, hairline glass cards, and the
+   emerald-to-teal primary the product already uses for "done".
+
+   Textures are static (no images, no requests). Motion is opt-in: the marquee
+   and the entrance animations only run when the visitor has not asked for
+   reduced motion, and rule 10 collapses transitions for everyone else. */
+.landing-shell {
+  background-color: var(--color-crewly-night);
+  color: #e2e8f0;
+  -webkit-font-smoothing: antialiased;
 }
 
+/* Faint graph paper, fading toward the middle of the section. */
+.landing-grid {
+  background-image:
+    linear-gradient(to right, rgba(148, 163, 184, 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(148, 163, 184, 0.07) 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+
+/* The hero halo: emerald on one side, the logo's violet on the other. */
+.landing-aurora {
+  background:
+    radial-gradient(58% 55% at 12% 0%, rgba(16, 185, 129, 0.18), transparent 70%),
+    radial-gradient(55% 50% at 92% 6%, rgba(139, 92, 246, 0.16), transparent 70%),
+    radial-gradient(70% 60% at 50% 100%, rgba(45, 212, 191, 0.07), transparent 70%);
+}
+
+/* A glass card with a lit top edge — the house signature on this page. It reads
+   as a panel in the product, not a website box. */
+.landing-card {
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 18px 40px -28px rgba(2, 6, 23, 0.9);
+}
+
+/* The product mocks keep a screenshot feel: a crisp dark canvas, a lit top edge
+   and a deep shadow so they sit above the page. */
+.landing-preview {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0) 40%),
+    #0b1120;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 42px 80px -40px rgba(0, 0, 0, 0.95),
+    0 0 0 1px rgba(148, 163, 184, 0.14);
+}
+
+/* Brand hairline: emerald into violet. Used between bands and under eyebrows. */
 .landing-hairline {
   background: linear-gradient(
     90deg,
     transparent,
-    rgba(109, 40, 217, 0.55),
-    rgba(15, 157, 118, 0.45),
+    rgba(52, 211, 153, 0.55),
+    rgba(139, 92, 246, 0.45),
     transparent
   );
+}
+
+.landing-dots {
+  background-image: radial-gradient(rgba(148, 163, 184, 0.16) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/* Logo sizing. The global `img { max-width:100%; height:auto }` reset above is
+   unlayered and outranks Tailwind's height utilities, so the mark is sized here,
+   once, for the header, the footer and the product mocks. */
+.landing-mark {
+  height: 1.75rem;
+  width: 1.75rem;
+  object-fit: contain;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -538,6 +594,17 @@ html:has(.landing-shell) {
     50% {
       opacity: 0.45;
       transform: scale(0.8);
+    }
+  }
+
+  /* Slow horizontal loop used by the "works everywhere" fact strip. The strip is
+     duplicated in markup, so the loop ends exactly where it started. */
+  @keyframes landing-marquee {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
     }
   }
 
@@ -561,105 +628,6 @@ html:has(.landing-shell) {
   .landing-breathe {
     animation: landing-breathe 3.2s ease-in-out infinite;
   }
-}
-
-/* 13) Public home — light marketing surface.
-   A marketing page sells with calm: paper-white canvas, one violet accent from
-   the logo, and a mint tick colour for things the product actually does. The
-   textures are static and cheap (no images, no requests); motion is opt-in and
-   already neutralised by rule 10 for anyone who asks for reduced motion. */
-.landing-shell {
-  background-color: #ffffff;
-  color: var(--color-crewly-ink);
-  -webkit-font-smoothing: antialiased;
-}
-
-/* Faint graph paper, fading toward the middle of the section. */
-.landing-grid {
-  background-image:
-    linear-gradient(to right, rgba(23, 18, 51, 0.05) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(23, 18, 51, 0.05) 1px, transparent 1px);
-  background-size: 56px 56px;
-}
-
-/* The hero's warm halo: violet on one side, mint on the other. */
-.landing-aurora {
-  background:
-    radial-gradient(60% 55% at 12% 0%, rgba(109, 40, 217, 0.13), transparent 70%),
-    radial-gradient(55% 50% at 92% 8%, rgba(15, 157, 118, 0.12), transparent 70%),
-    radial-gradient(70% 60% at 50% 100%, rgba(109, 40, 217, 0.06), transparent 70%);
-}
-
-/* A card that lifts the way a marketing card should: a hairline, a soft violet
-   shadow, no heavy border. Hover is handled by utilities at the call site. */
-.landing-card {
-  background-color: #ffffff;
-  border: 1px solid var(--color-crewly-lilac-line);
-  box-shadow:
-    0 1px 2px rgba(23, 18, 51, 0.04),
-    0 18px 40px -28px rgba(59, 21, 128, 0.45);
-}
-
-/* The product mock keeps a "screenshot" feel: a fixed, crisp inner canvas that
-   never scales its text out of proportion on wide screens. */
-.landing-preview {
-  background:
-    linear-gradient(180deg, #ffffff 0%, #fbfaff 100%);
-  box-shadow:
-    0 2px 4px rgba(23, 18, 51, 0.04),
-    0 42px 80px -40px rgba(59, 21, 128, 0.55),
-    0 0 0 1px rgba(23, 18, 51, 0.06);
-}
-
-/* Hairline between stacked marketing sections. */
-.landing-rule {
-  border-color: rgba(23, 18, 51, 0.08);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  @keyframes landing-rise {
-    from {
-      opacity: 0;
-      transform: translateY(18px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  @keyframes landing-float {
-    0%,
-    100% {
-      transform: translateY(0);
-    }
-    50% {
-      transform: translateY(-9px);
-    }
-  }
-
-  @keyframes landing-breathe {
-    0%,
-    100% {
-      opacity: 1;
-      transform: scale(1);
-    }
-    50% {
-      opacity: 0.45;
-      transform: scale(0.8);
-    }
-  }
-
-  /* Slow horizontal loop used by the "works everywhere" fact strip. The strip
-     is duplicated in markup, so the loop can end exactly where it started. */
-  @keyframes landing-marquee {
-    from {
-      transform: translateX(0);
-    }
-    to {
-      transform: translateX(-50%);
-    }
-  }
 
   .landing-marquee-track {
     animation: landing-marquee 38s linear infinite;
@@ -668,25 +636,4 @@ html:has(.landing-shell) {
   .landing-marquee:hover .landing-marquee-track {
     animation-play-state: paused;
   }
-}
-
-/* 14) Public home — logo sizing.
-   The global `img { max-width: 100%; height: auto }` reset above is unlayered,
-   so it wins over Tailwind's height utilities. Sizing the two logo crops here,
-   once, keeps the header and footer marks identical and predictable. */
-.landing-wordmark {
-  height: 1.75rem;
-  width: auto;
-  max-width: 9.5rem;
-  object-fit: contain;
-}
-@media (min-width: 640px) {
-  .landing-wordmark {
-    height: 2rem;
-  }
-}
-.landing-mark {
-  height: 1.75rem;
-  width: 1.75rem;
-  object-fit: contain;
 }
