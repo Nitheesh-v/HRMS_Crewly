@@ -172,3 +172,145 @@ reported), and the footer columns.
 
 **Not owner-accepted.** The render checks above are automated; the design judgement
 is yours.
+
+---
+
+## G. REDESIGN — Keka-shape, Crewly-brand (2026-10-24)
+
+Owner request: *“analyze repo … based on that build a public home page like keka.com.”*
+A presentation unit on the public marketing surface (`/`) only. No auth, API, data-model
+or backend change. The previous version (§F) was a dark, single-column page; this one is
+a **light marketing surface** and the structure follows the way keka.com sells the
+category, section by section.
+
+### G1. What was taken from keka.com, and what was not
+
+| Keka section | This page | Why |
+|---|---|---|
+| Announcement bar | **Yes** — the AI assistant + language facts, dismissible for the session | something that genuinely ships |
+| Mega-menu header | **Yes** — a six-item “Platform” panel that opens the matching tab | real product areas |
+| Hero + product screenshot | **Yes** — CSS-built dashboard mock (no image asset, no client data) | Keka’s hero is a screenshot |
+| “Chosen by 12,500+ companies” logo wall | **No** | **no customers exist in this repo**; inventing them is the one thing a marketing page must not do. Replaced by an honest capability strip + a facts marquee (browser, QR, kiosk, CSV import, PDFs, AI). |
+| “One platform” tabbed deep-dive | **Yes** — 6 ARIA tabs, each with copy + a product mock | the centrepiece of the page |
+| AI layer (3 behaviours) | **Yes** — violet→teal band, illustrative conversation labelled as such | assistant, languages, guardrails are all implemented |
+| Integrations wall (100+ tools) | **No** | no integration catalogue exists in the codebase |
+| SOC2 / ISO / GDPR badges | **No** — explicit “we do not claim certifications we have not been audited for” | no audit exists |
+| Testimonials / customer quotes | **No** | none exist |
+| Pricing | **Yes** — the four real tiers, monthly/yearly, arithmetic “2 months free” | pinned to `platformPlans.js` |
+| FAQ | **Yes** — 8 questions incl. trial, tenancy, roles, languages, CSV import | |
+| Deep footer | **Yes** — 4 columns + support panel + honest legal note | no dead legal links |
+
+Sections in order: announcement → header → hero (badge, h1, sub, 2 CTAs, assurances,
+dashboard mock, floating cards, facts marquee) → capability strip → **Platform** tabs →
+**Modules** (20, five groups) → **AI** → **How it works** (3 alternating rows) →
+**Roles** (the five shipped roles) → **Security** (6 implemented controls) → **Pricing**
+→ **FAQ** → CTA → footer.
+
+### G2. Design system (new, page-scoped)
+
+The logo is a violet→indigo mark around a deep-navy wordmark, so the marketing surface
+uses the brand’s own colours instead of the app’s dark slate/emerald shell:
+
+* tokens in `src/style.css` `@theme`: `crewly-ink`, `crewly-ink-soft`, `crewly-violet`,
+  `crewly-lilac`, `crewly-lilac-line`, `crewly-mint` (+ the existing ones untouched);
+* page-scoped classes: `.landing-shell`, `.landing-grid`, `.landing-aurora`,
+  `.landing-card`, `.landing-preview`, `.landing-hairline`, `.landing-marquee-track`,
+  `.landing-wordmark`, `.landing-mark`;
+* paper-white canvas, violet primary CTA (`from-violet-700 to-[#4c1d95]`), mint tick
+  colour, `rounded-2xl`/`rounded-3xl`, hairline borders, one soft shadow per card;
+* motion is opt-in (`prefers-reduced-motion: no-preference`) and the marquee pauses on
+  hover.
+
+Two global CSS facts had to be handled, both are recorded in `style.css`:
+
+1. the unlayered `h1/h2/h3` responsive scale **outranks Tailwind’s `text-*` utilities**,
+   so it now excludes `.landing-shell` — otherwise every marketing headline was clamped
+   to 1.875rem;
+2. the unlayered `img { max-width:100%; height:auto }` reset outranks Tailwind’s height
+   utilities, so the logo crops are sized by `.landing-wordmark` / `.landing-mark`.
+
+### G3. Files
+
+| File | Change |
+|---|---|
+| `src/pages/landing/landingData.js` | **rewritten** — every section’s content in one JSX-free module (announcement, nav, hero, facts, trust chips, 6 platform tabs, 20 modules, AI layer, 3 workflow blocks, 5 roles, 6 security points, 4 plans, 8 FAQs, 4 footer columns, legal note) |
+| `src/pages/landing/LandingHeader.jsx` | **rewritten** — announcement bar (session-dismissible) + sticky header with a real mega-menu (anchored to the nav so a 56rem panel always fits), auth-aware CTA, mobile menu with a nested Platform disclosure |
+| `src/pages/landing/LandingFooter.jsx` | restyled for the light surface; 4 columns + support panel + legal note + back-to-top |
+| `src/pages/landing/DashboardPreview.jsx` | **rewritten** — light product mock: sidebar, stat tiles, 7-day attendance chart, approvals, chips |
+| `src/pages/landing/PlatformPreview.jsx` | **new** — the six tab mocks (payroll, people, hiring, attendance, performance, collaboration) |
+| `src/pages/landing/landingTabs.js` | **new** — one DOM CustomEvent so the header menu can open a tab without a context or a query param |
+| `src/pages/landing/LandingIcon.jsx` | extended registry (26 keys) |
+| `src/pages/landing/sections/*.jsx` | Hero, **CapabilityStrip**, **Platform** (ARIA tablist), Modules, **AI**, Workflow, **Roles**, Security, Pricing, FAQ, CTA |
+| `src/pages/landing/LandingPage.jsx` | composes 11 sections; sets `document.title` and restores it on unmount |
+| `src/routes/AppRoutes.jsx` | `/` moved **out of** `PublicLayout` — nesting it rendered two headers and two footers on the marketing page |
+| `public/logo-crewly-wordmark.png`, `public/logo-crewly-mark.png` | **new** — the square logo (with its baked-in wordmark) trimmed into a lockup and a mark for the light header/footer |
+| `src/style.css` | light landing layer + the two global-CSS carve-outs above |
+| `Frontend/test/landingPage.test.js` | **rewritten** — 29 pins (see G5) |
+
+### G4. Two bugs found by rendering it in a real browser
+
+Neither would have failed a test, and both were only visible in a screenshot:
+
+1. **`transition-all` killed the focus ring.** Tailwind’s `transition-all` animates
+   `outline-width`/`outline-offset`, and the app’s global `prefers-reduced-motion` rule
+   collapses durations to `0.01ms` — measured in Chromium, the ring stayed at
+   `outline-width: 0px`. Every landing control now transitions an explicit list
+   (`transition-[color,background-color,border-color,box-shadow,transform]`) and the ring
+   paints at 2px violet.
+2. **The hero accent underline was absolutely positioned.** On a phone the accent wrapped
+   over two lines, so the bar drew under the last line only and the full stop sat alone on
+   its own row. The accent is inline again; `.35`-style sizing is gone.
+
+Also fixed while looking: percentage heights in the mock’s sparkline had no definite parent
+(rendered as an empty box) — they are pixel heights now; the role cards go `3 → 5` columns
+only at `xl` so names never break mid-word; the platform panel gets `mt-10` when it stacks
+on mobile; hero halos are inside `isolate` stacking contexts so `-z-10` cannot paint under
+the white shell.
+
+### G5. Test plan — 29 pins, mostly against sources of truth
+
+Kept from §D and extended: prices vs `platformPlans.js`; trial vs `TRIAL_DAYS` (and the
+digits `14` may not be typed into markup — a length change must not leave a stale button);
+“2 months free” vs the arithmetic; “no credit card” vs the register form; **roles vs
+`ROLE_LABELS`** (all five, both directions); **AI language counts vs `chatLanguages.js`**
+(14 platform / 5 default); module inventory unchanged at 20 across 5 groups; every anchor
+resolves to a rendered section id; every link resolves to a route in `AppRoutes.jsx`; the
+landing route is **not** nested in `PublicLayout`; no fabricated social proof (incl.
+“Chosen by”); no compliance badges; ARIA tablist keyboard contract (arrows, Home, End,
+`aria-selected`, roving `tabIndex`); mega-menu and mobile menu `aria-expanded`; FAQ
+disclosure; pricing toggle; announcement dismiss label; reduced-motion guard; visible
+focus style on **every** `Link`/`a`/`button` in the landing files (shared class constants and
+`${…}` interpolations are resolved, not exempted); light-surface consistency (no
+`#0b1120` left in the landing files).
+
+### G6. ARIA detail worth keeping
+
+`aria-controls` must name an element that exists, so the desktop Platform panel and both
+mobile panels stay mounted and are toggled with the `hidden` attribute instead of being
+conditionally rendered — a conditional panel left the trigger pointing at nothing for most
+of the page's life. Verified in Chromium: `display:block` when open, `display:none` after
+Escape, after an outside click, and after choosing an item.
+
+### G7. Evidence
+
+* `npm test` (Frontend) → **449 / 0 fail** (420 existing + 29 landing). Backend untouched.
+* `npm run build` → the page is still its own lazy chunk (`LandingPage-*.js` ≈ 96 kB /
+  22 kB gzip); `index-*.js` unchanged at ≈ 434 kB, so the app shell did not absorb it.
+* `npx eslint src/pages/landing src/routes/AppRoutes.jsx test/landingPage.test.js` → clean.
+* Rendered in headless Chromium at 1440×900 and 390×844: no console/page errors, no
+  horizontal overflow at either width; mega-menu inside the viewport; choosing a menu item
+  selects the matching tab **and** scrolls to it; ArrowRight moves the tab and keeps focus
+  on a tab; Escape closes the menu; the pricing toggle swaps to ₹9,990 / ₹24,990 / ₹49,990
+  with “2 months free”; the announcement stays dismissed after a reload in the same session.
+* `document.title` = “Crewly — HR, payroll and attendance in one workspace”; `h1` computed
+  at 65.6px on desktop and 36px on a 390px viewport (proving the global h1 carve-out).
+
+### G8. Deliberately not built
+
+Customers, logos, testimonials, usage counts, certification badges, an integrations wall,
+and Privacy/Terms pages. None of them exist in this repository; the footer states that the
+legal pages are unpublished instead of linking to nothing. Adding any of them is a content
+decision that needs a real source, not a design change.
+
+**Not owner-accepted.** The render and interaction checks above are automated; the design
+judgement remains the owner’s.

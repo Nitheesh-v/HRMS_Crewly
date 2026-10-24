@@ -10,6 +10,18 @@
   --color-crewly-green: #3fb950;
   --color-crewly-orange: #f0a35e;
   --color-crewly-red: #f85149;
+
+  /* Public home (light marketing surface). These are the logo's own colours:
+     the mark is a violet-to-indigo gradient around a deep navy wordmark. */
+  --color-crewly-ink: #171233;
+  --color-crewly-ink-soft: #3f3a5c;
+  --color-crewly-violet: #5b21b6;
+  --color-crewly-violet-bright: #6d28d9;
+  --color-crewly-violet-deep: #3b1580;
+  --color-crewly-lilac: #f6f4ff;
+  --color-crewly-lilac-line: #e6e1fb;
+  --color-crewly-mint: #0f9d76;
+  --color-crewly-mint-soft: #e7f8f1;
 }
 
 /* ---- Base responsive resets ---- */
@@ -49,14 +61,22 @@ canvas {
   overflow-x: clip;
 }
 
-/* ---- Responsive typography scale ---- */
-h1 {
+/* ---- Responsive typography scale ----
+   Applies to the app's screens, which are dense and read from a laptop.
+
+   The public home is excluded on purpose: these are UNLAYERED rules, so they
+   outrank Tailwind's `text-*` utilities in the cascade. That is fine where the
+   base scale is the intended look, but it would silently clamp a marketing
+   `text-5xl` headline down to 1.875rem. The landing surface sets its own
+   display scale with utilities, so it opts out here rather than fighting the
+   cascade from every heading. */
+h1:not(.landing-shell h1) {
   @apply text-xl sm:text-2xl lg:text-3xl;
 }
-h2 {
+h2:not(.landing-shell h2) {
   @apply text-lg sm:text-xl lg:text-2xl;
 }
-h3 {
+h3:not(.landing-shell h3) {
   @apply text-base sm:text-lg;
 }
 
@@ -473,7 +493,7 @@ html:has(.landing-shell) {
    prefers-reduced-motion: no-preference here, and would in any case be
    neutralised by the global reduce block (rule 10) — both belts, on purpose. */
 .landing-dots {
-  background-image: radial-gradient(rgba(148, 163, 184, 0.13) 1px, transparent 1px);
+  background-image: radial-gradient(rgba(91, 33, 182, 0.14) 1px, transparent 1px);
   background-size: 22px 22px;
 }
 
@@ -481,8 +501,8 @@ html:has(.landing-shell) {
   background: linear-gradient(
     90deg,
     transparent,
-    rgba(16, 185, 129, 0.45),
-    rgba(99, 102, 241, 0.35),
+    rgba(109, 40, 217, 0.55),
+    rgba(15, 157, 118, 0.45),
     transparent
   );
 }
@@ -541,4 +561,132 @@ html:has(.landing-shell) {
   .landing-breathe {
     animation: landing-breathe 3.2s ease-in-out infinite;
   }
+}
+
+/* 13) Public home — light marketing surface.
+   A marketing page sells with calm: paper-white canvas, one violet accent from
+   the logo, and a mint tick colour for things the product actually does. The
+   textures are static and cheap (no images, no requests); motion is opt-in and
+   already neutralised by rule 10 for anyone who asks for reduced motion. */
+.landing-shell {
+  background-color: #ffffff;
+  color: var(--color-crewly-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Faint graph paper, fading toward the middle of the section. */
+.landing-grid {
+  background-image:
+    linear-gradient(to right, rgba(23, 18, 51, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(23, 18, 51, 0.05) 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+
+/* The hero's warm halo: violet on one side, mint on the other. */
+.landing-aurora {
+  background:
+    radial-gradient(60% 55% at 12% 0%, rgba(109, 40, 217, 0.13), transparent 70%),
+    radial-gradient(55% 50% at 92% 8%, rgba(15, 157, 118, 0.12), transparent 70%),
+    radial-gradient(70% 60% at 50% 100%, rgba(109, 40, 217, 0.06), transparent 70%);
+}
+
+/* A card that lifts the way a marketing card should: a hairline, a soft violet
+   shadow, no heavy border. Hover is handled by utilities at the call site. */
+.landing-card {
+  background-color: #ffffff;
+  border: 1px solid var(--color-crewly-lilac-line);
+  box-shadow:
+    0 1px 2px rgba(23, 18, 51, 0.04),
+    0 18px 40px -28px rgba(59, 21, 128, 0.45);
+}
+
+/* The product mock keeps a "screenshot" feel: a fixed, crisp inner canvas that
+   never scales its text out of proportion on wide screens. */
+.landing-preview {
+  background:
+    linear-gradient(180deg, #ffffff 0%, #fbfaff 100%);
+  box-shadow:
+    0 2px 4px rgba(23, 18, 51, 0.04),
+    0 42px 80px -40px rgba(59, 21, 128, 0.55),
+    0 0 0 1px rgba(23, 18, 51, 0.06);
+}
+
+/* Hairline between stacked marketing sections. */
+.landing-rule {
+  border-color: rgba(23, 18, 51, 0.08);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes landing-rise {
+    from {
+      opacity: 0;
+      transform: translateY(18px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes landing-float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-9px);
+    }
+  }
+
+  @keyframes landing-breathe {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.45;
+      transform: scale(0.8);
+    }
+  }
+
+  /* Slow horizontal loop used by the "works everywhere" fact strip. The strip
+     is duplicated in markup, so the loop can end exactly where it started. */
+  @keyframes landing-marquee {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+
+  .landing-marquee-track {
+    animation: landing-marquee 38s linear infinite;
+  }
+
+  .landing-marquee:hover .landing-marquee-track {
+    animation-play-state: paused;
+  }
+}
+
+/* 14) Public home — logo sizing.
+   The global `img { max-width: 100%; height: auto }` reset above is unlayered,
+   so it wins over Tailwind's height utilities. Sizing the two logo crops here,
+   once, keeps the header and footer marks identical and predictable. */
+.landing-wordmark {
+  height: 1.75rem;
+  width: auto;
+  max-width: 9.5rem;
+  object-fit: contain;
+}
+@media (min-width: 640px) {
+  .landing-wordmark {
+    height: 2rem;
+  }
+}
+.landing-mark {
+  height: 1.75rem;
+  width: 1.75rem;
+  object-fit: contain;
 }

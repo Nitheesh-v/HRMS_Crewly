@@ -229,13 +229,19 @@ const AppRoutes = () => (
       element={<KioskTerminalPage />}
     />
 
+    {/* Public marketing surface.
+        Deliberately OUTSIDE PublicLayout: the landing page owns its header,
+        main and footer, and PublicLayout supplies the same three landmarks for
+        the auth screens. Nesting them rendered two headers and two footers on
+        `/` — one dark app bar above the marketing header, one dark strip below
+        the marketing footer. */}
+    <Route
+      path="/"
+      element={<LandingPage />}
+    />
+
     {/* Public customer routes */}
     <Route element={<PublicLayout />}>
-      <Route
-        path="/"
-        element={<LandingPage />}
-      />
-
       <Route
         path="/login"
         element={<LoginPage />}
