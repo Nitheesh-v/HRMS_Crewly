@@ -20,6 +20,7 @@ import {
 } from '../landingData.js';
 import LandingIcon from '../LandingIcon.jsx';
 import { displayLg, eyebrow, ghostLink, sectionCopy } from '../landingStyles.js';
+import { TINTS, tintAt } from '../landingTints.js';
 
 const moduleCount = MODULE_GROUPS.reduce((total, group) => total + group.items.length, 0);
 
@@ -41,10 +42,10 @@ const numbers = [
   },
 ];
 
-const accentClasses = {
-  emerald: 'border-crewly-forest/20 bg-crewly-forest/[0.07] text-crewly-forest',
-  violet: 'border-crewly-ink/20 bg-crewly-lilac/60 text-crewly-forest',
-};
+// The three counted numbers get the palest stocks; the six cards get the
+// stronger ones. `TINTS` is shared with the hero's marquee chips, so a colour
+// means the same thing everywhere it appears.
+const NUMBER_TINTS = ['lilac', 'sage', 'amber'].map((name) => TINTS[name]);
 
 const CapabilityStrip = () => (
   <section
@@ -65,15 +66,18 @@ const CapabilityStrip = () => (
 
       {/* The counted numbers */}
       <div className="mt-12 grid gap-3 sm:grid-cols-3">
-        {numbers.map((number) => (
-          <div key={number.label} className="landing-glass landing-scroll-in rounded-2xl p-5">
-            <p className="text-[2.75rem] font-bold leading-none tracking-[-0.04em] text-crewly-ink">
+        {numbers.map((number, index) => (
+          <div
+            key={number.label}
+            className={`landing-scroll-in rounded-2xl border p-5 ${NUMBER_TINTS[index].surface}`}
+          >
+            <p className={`text-[2.75rem] font-bold leading-none tracking-[-0.04em] ${NUMBER_TINTS[index].ink}`}>
               {number.value}
             </p>
-            <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-crewly-forest">
+            <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-crewly-ink/70">
               {number.label}
             </p>
-            <p className="mt-3 text-[13px] leading-relaxed text-crewly-ink/50">{number.copy}</p>
+            <p className="mt-3 text-[13px] leading-relaxed text-crewly-ink/55">{number.copy}</p>
           </div>
         ))}
       </div>
@@ -83,9 +87,9 @@ const CapabilityStrip = () => (
         {CAPABILITIES.map((capability) => (
           <article
             key={capability.key}
-            className="landing-scroll-in group relative flex flex-col rounded-2xl border border-crewly-ink/10 bg-white/60 p-5 transition-[background-color,border-color,transform] hover:-translate-y-0.5 hover:border-crewly-ink/15 hover:bg-white/80"
+            className={`landing-scroll-in group relative flex flex-col rounded-2xl border p-5 transition-[background-color,border-color,transform] hover:-translate-y-0.5 hover:bg-white/70 ${TINTS[capability.accent].surface}`}
           >
-            <span className={`inline-flex h-9 w-9 items-center justify-center rounded-xl border ${accentClasses[capability.accent]}`}>
+            <span className={`inline-flex h-9 w-9 items-center justify-center rounded-xl border ${TINTS[capability.accent].chip}`}>
               <LandingIcon name={capability.icon} className="h-4 w-4" />
             </span>
             <h3 className="mt-4 text-[15px] font-semibold text-crewly-ink">{capability.name}</h3>
@@ -94,9 +98,7 @@ const CapabilityStrip = () => (
               {capability.points.map((point) => (
                 <li key={point} className="flex gap-2 text-[12px] leading-relaxed text-crewly-ink/50">
                   <span
-                    className={`mt-1.5 h-1 w-1 shrink-0 rounded-full ${
-                      capability.accent === 'violet' ? 'bg-crewly-lilac-deep' : 'bg-crewly-lilac'
-                    }`}
+                    className={`mt-1.5 h-1 w-1 shrink-0 rounded-full ${TINTS[capability.accent].dot}`}
                     aria-hidden="true"
                   />
                   {point}
@@ -108,7 +110,7 @@ const CapabilityStrip = () => (
       </div>
 
       {/* The inventory, in full */}
-      <div id={SECTION_IDS.modules} className="landing-scroll-in mt-4 scroll-mt-24 overflow-hidden rounded-3xl border border-crewly-ink/10 bg-crewly-ink/[0.015]">
+      <div id={SECTION_IDS.modules} className="landing-scroll-in mt-4 scroll-mt-24 overflow-hidden rounded-3xl border border-crewly-ink/10 bg-crewly-sand/60">
         <div className="flex flex-col gap-3 border-b border-crewly-ink/[0.06] p-5 sm:flex-row sm:items-end sm:justify-between sm:p-6">
           <div>
             <p className={eyebrow}>The full inventory</p>
@@ -121,11 +123,14 @@ const CapabilityStrip = () => (
           </p>
         </div>
 
-        <div className="divide-y divide-white/[0.05]">
-          {MODULE_GROUPS.map((group) => (
+        <div className="divide-y divide-crewly-ink/[0.07]">
+          {MODULE_GROUPS.map((group, groupIndex) => (
             <div key={group.title} className="grid gap-3 p-5 sm:grid-cols-[13rem_1fr] sm:gap-6 sm:p-6">
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-crewly-ink">{group.title}</p>
+                <p className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-crewly-ink">
+                  <span className={`h-2 w-2 rounded-full ${tintAt(groupIndex).dot}`} aria-hidden="true" />
+                  {group.title}
+                </p>
                 <p className="mt-1.5 text-[11px] leading-relaxed text-crewly-ink/40">{group.blurb}</p>
               </div>
 

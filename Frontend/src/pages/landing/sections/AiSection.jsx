@@ -1,9 +1,9 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // PUBLIC HOME PAGE — THE AI LAYER
 //
-// The one place on the page where violet is allowed to lead: it is the colour the
-// assistant carries inside the app, and keeping it exclusive is what stops the
-// page from turning into a rainbow.
+// The page's first dark moment. The band is forest, the type on it is paper, and
+// lilac is the only accent — the assistant is the one thing on the page that is
+// allowed to sit in the dark, which is also how it reads inside the app.
 //
 // The transcript is labelled illustrative in the data, and the guardrails stated
 // here (permissions, redaction, metering) are the ones the backend implements —
@@ -13,10 +13,10 @@
 import { ArrowRight, Sparkles } from 'lucide-react';
 import { AI_LAYER, SECTION_IDS } from '../landingData.js';
 import LandingIcon from '../LandingIcon.jsx';
-import { displayLg, ghostLink, sectionCopy } from '../landingStyles.js';
+import { displayLgOnDark, eyebrowOnDark, ghostLinkOnDark, sectionCopyOnDark } from '../landingStyles.js';
 
 const ChatDemo = () => (
-  <div aria-hidden="true" className="landing-glass relative overflow-hidden rounded-[24px] p-4 sm:p-5">
+  <div aria-hidden="true" className="landing-sheet relative overflow-hidden rounded-[24px] p-4 sm:p-5">
     <div
       className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-crewly-lilac/60 blur-3xl"
       aria-hidden="true"
@@ -70,57 +70,56 @@ const ChatDemo = () => (
 const AiSection = () => (
   <section
     id={SECTION_IDS.ai}
-    className="relative scroll-mt-24 overflow-hidden py-20 sm:py-24 lg:py-28"
+    className="landing-band relative scroll-mt-24 overflow-hidden py-20 sm:py-24 lg:py-28"
   >
     <div
-      className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(60%_50%_at_75%_25%,rgba(139,92,246,0.16),transparent_70%),radial-gradient(40%_40%_at_10%_80%,rgba(16,185,129,0.1),transparent_70%)]"
+      className="landing-dots-light pointer-events-none absolute inset-0 opacity-[0.35] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,black,transparent)]"
       aria-hidden="true"
     />
-    <div className="landing-dots pointer-events-none absolute inset-0 -z-10 opacity-[0.35] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,black,transparent)]" aria-hidden="true" />
 
     <div className="mx-auto max-w-7xl px-5 sm:px-6 lg:px-8">
       <div className="grid items-center gap-12 lg:grid-cols-[1fr_0.92fr] lg:gap-16">
         <div className="landing-scroll-in">
-          <p className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-crewly-forest">
+          <p className={`inline-flex items-center gap-2 ${eyebrowOnDark}`}>
             <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
             {AI_LAYER.eyebrow}
           </p>
-          <h2 className={`mt-4 ${displayLg}`}>{AI_LAYER.title}</h2>
-          <p className={`mt-5 max-w-xl ${sectionCopy}`}>{AI_LAYER.copy}</p>
+          <h2 className={`mt-4 ${displayLgOnDark}`}>{AI_LAYER.title}</h2>
+          <p className={`mt-5 max-w-xl ${sectionCopyOnDark}`}>{AI_LAYER.copy}</p>
 
           <div className="mt-8 space-y-2">
             {AI_LAYER.capabilities.map((capability) => (
               <div
                 key={capability.title}
-                className="landing-scroll-in flex gap-3.5 rounded-2xl border border-crewly-ink/10 bg-white/60 p-4 transition-[background-color,border-color] hover:border-crewly-ink/20 hover:bg-crewly-lilac/30"
+                className="landing-scroll-in flex gap-3.5 rounded-2xl border border-crewly-void/15 bg-crewly-void/[0.06] p-4 transition-[background-color,border-color] hover:border-crewly-lilac/50 hover:bg-crewly-void/[0.1]"
               >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-crewly-ink/20 bg-crewly-lilac/60 text-crewly-forest">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-crewly-lilac/60 bg-crewly-lilac text-crewly-forest">
                   <LandingIcon name={capability.icon} className="h-4 w-4" />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-crewly-forest/70">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-crewly-lilac/85">
                     {capability.tag}
                   </p>
-                  <h3 className="mt-1 text-sm font-semibold text-crewly-ink">{capability.title}</h3>
-                  <p className="mt-1 text-[12.5px] leading-relaxed text-crewly-ink/60">{capability.copy}</p>
+                  <h3 className="mt-1 text-sm font-semibold text-crewly-void">{capability.title}</h3>
+                  <p className="mt-1 text-[12.5px] leading-relaxed text-crewly-void/65">{capability.copy}</p>
                 </div>
               </div>
             ))}
           </div>
 
-          <p className="mt-6 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-medium text-crewly-ink/50">
-            <span className="rounded-full border border-crewly-forest/25 bg-crewly-forest/[0.09] px-2.5 py-1 text-crewly-forest">
+          <p className="mt-6 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-medium text-crewly-void/70">
+            <span className="rounded-full border border-crewly-lilac/70 bg-crewly-lilac px-2.5 py-1 font-semibold text-crewly-forest">
               {AI_LAYER.languageCount} languages
             </span>
-            <span className="rounded-full border border-crewly-ink/10 bg-crewly-ink/[0.03] px-2.5 py-1">
+            <span className="rounded-full border border-crewly-void/20 bg-crewly-void/[0.07] px-2.5 py-1">
               {AI_LAYER.defaultLanguageCount} on by default
             </span>
-            <span className="rounded-full border border-crewly-ink/10 bg-crewly-ink/[0.03] px-2.5 py-1">
+            <span className="rounded-full border border-crewly-void/20 bg-crewly-void/[0.07] px-2.5 py-1">
               Per-tenant provider and limits
             </span>
           </p>
 
-          <a href={`#${SECTION_IDS.security}`} className={`mt-7 ${ghostLink}`}>
+          <a href={`#${SECTION_IDS.security}`} className={`mt-7 ${ghostLinkOnDark}`}>
             How the data is handled
             <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
           </a>

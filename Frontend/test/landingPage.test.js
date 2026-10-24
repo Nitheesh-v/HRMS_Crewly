@@ -277,6 +277,54 @@ describe('Home page — structure', () => {
     assert.match(hero, /aria-hidden=\{copy === 1 \? 'true' : undefined\}/, 'the duplicate marquee row is hidden from AT');
   });
 
+  test('the page is in colour: four tint families and two forest bands', () => {
+    const shell = read('src/style.css');
+    const tints = code('src/pages/landing/landingTints.js');
+
+    // The palette grew past "cream and one accent" on the owner's request. These
+    // are tokens, not ad-hoc hexes, so a section cannot invent a fifth green.
+    for (const [token, value] of [
+      ['clay', '#d9683f'],
+      ['clay-soft', '#f8d8c6'],
+      ['amber', '#e9b23f'],
+      ['amber-soft', '#f9e7c0'],
+      ['sage', '#c3ddc6'],
+      ['sand', '#f1e7c8'],
+    ]) {
+      assert.ok(
+        shell.includes(`--color-crewly-${token}: ${value}`),
+        `--color-crewly-${token} is a token in @theme`,
+      );
+    }
+
+    // Four families, each with a surface, a chip and one text colour that is
+    // allowed on it — that is what keeps the tints from becoming a rainbow.
+    for (const family of ['lilac', 'sage', 'amber', 'clay']) {
+      const block = tints.slice(tints.indexOf(`${family}: {`), tints.indexOf('},', tints.indexOf(`${family}: {`)));
+      assert.ok(block.includes('surface:'), `${family} defines a card surface`);
+      assert.ok(block.includes('chip:'), `${family} defines an icon chip`);
+      assert.ok(block.includes('ink:'), `${family} defines its text colour`);
+    }
+
+    // Every capability card claims a family that exists — a typo would silently
+    // render `undefined` and drop the card back to no background at all.
+    for (const capability of CAPABILITIES) {
+      assert.ok(['lilac', 'sage', 'amber', 'clay'].includes(capability.accent), `${capability.key} has a real tint`);
+    }
+
+    // The two dark moments share one class. Two hand-rolled gradients would drift.
+    for (const file of ['src/pages/landing/sections/AiSection.jsx', 'src/pages/landing/sections/CtaSection.jsx']) {
+      assert.ok(code(file).includes('landing-band'), `${file} uses the shared forest band`);
+    }
+
+    // A card sitting ON the band is opaque paper: the glass panel is translucent
+    // and over deep green its white text measured grey-on-grey.
+    const ai = code('src/pages/landing/sections/AiSection.jsx');
+
+    assert.ok(ai.includes('landing-sheet'), 'the transcript card is opaque paper on the band');
+    assert.equal(ai.includes('landing-glass'), false, 'glass over forest turns grey');
+  });
+
   test('the hero streams two transcripts, and the waveform is decoration', () => {
     const hero = code('src/pages/landing/sections/HeroSection.jsx');
     const { HERO_RIBBONS } = landing;

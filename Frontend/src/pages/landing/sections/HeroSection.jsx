@@ -28,6 +28,7 @@ import {
 import LandingIcon from '../LandingIcon.jsx';
 import ProductWindow from '../ProductWindow.jsx';
 import { displayXl, primaryCta, secondaryCta, sectionCopy } from '../landingStyles.js';
+import { tintAt } from '../landingTints.js';
 
 // The "what it does" strip. There are no customers in this repository to fill a
 // logo wall, so it carries shipped facts instead and loops. The list is rendered
@@ -51,9 +52,11 @@ const FactsMarquee = () => (
           aria-hidden={copy === 1 ? 'true' : undefined}
           className="flex shrink-0 items-center gap-10 pr-10"
         >
-          {WORKPLACE_FACTS.map((fact) => (
+          {WORKPLACE_FACTS.map((fact, index) => (
             <li key={`${copy}-${fact.label}`} className="flex items-center gap-2 whitespace-nowrap">
-              <span className="flex h-6 w-6 items-center justify-center rounded-md border border-crewly-ink/15 bg-white/70 text-crewly-forest">
+              <span
+                className={`flex h-6 w-6 items-center justify-center rounded-md border ${tintAt(index).chip}`}
+              >
                 <LandingIcon name={fact.icon} className="h-3.5 w-3.5" />
               </span>
               <span className="text-[13px] font-medium text-crewly-ink/65">{fact.label}</span>
@@ -68,7 +71,7 @@ const FactsMarquee = () => (
 const Sticker = ({ sticker, index = 0 }) => (
   <span
     aria-hidden="true"
-    style={{ animationDelay: `${index * -1.7}s` }}
+    style={{ animationDelay: `${index * -1.7}s`, '--sticker-bg': sticker.bg }}
     className={`landing-sticker landing-wiggle absolute hidden items-center gap-1.5 rounded-full px-3.5 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-crewly-ink xl:inline-flex ${sticker.rotate} ${sticker.className}`}
   >
     <LandingIcon name={sticker.icon} className={`h-3.5 w-3.5 ${sticker.tone}`} />
@@ -104,6 +107,10 @@ const Ribbons = () => (
 // The waveform pill that rests where the ribbons cross.
 const WAVEFORM = [8, 14, 20, 11, 24, 16, 9, 22, 13, 18, 10, 15];
 
+// Bars take their colour from the same four families as the cards, so the pill
+// reads as the page's palette moving rather than as a grey equaliser.
+const WAVE_TONES = ['bg-crewly-forest', 'bg-crewly-clay', 'bg-crewly-lilac-deep', 'bg-crewly-amber'];
+
 const Waveform = () => (
   <div
     aria-hidden="true"
@@ -113,16 +120,17 @@ const Waveform = () => (
       <span
         key={index}
         style={{ height: `${height}px`, animationDelay: `${index * 0.08}s` }}
-        className="landing-wave-bar w-[3px] rounded-full bg-crewly-ink/80"
+        className={`landing-wave-bar w-[3px] rounded-full ${WAVE_TONES[index % WAVE_TONES.length]}`}
       />
     ))}
   </div>
 );
 
 const toneClasses = {
-  emerald: 'border-crewly-forest/35 bg-crewly-forest/10 text-crewly-forest',
-  amber: 'border-amber-500/40 bg-amber-400/20 text-amber-700',
-  violet: 'border-crewly-ink/25 bg-crewly-lilac/60 text-crewly-forest',
+  sage: 'border-crewly-sage-deep/30 bg-crewly-sage text-crewly-sage-deep',
+  amber: 'border-crewly-amber/60 bg-crewly-amber-soft text-crewly-amber-deep',
+  lilac: 'border-crewly-lilac-deep/60 bg-crewly-lilac text-crewly-forest',
+  clay: 'border-crewly-clay/40 bg-crewly-clay-soft text-crewly-clay-deep',
 };
 
 // The reference lets small cards sit on top of its product shot; so does this,
@@ -214,7 +222,7 @@ const HeroSection = () => {
 
       <div className="relative mx-auto max-w-7xl px-5 pb-4 pt-12 sm:px-6 sm:pt-16 lg:px-8 lg:pt-20">
         <div className="relative mx-auto max-w-4xl text-center">
-          <p className="landing-rise inline-flex items-center gap-2 rounded-full border border-crewly-ink/20 bg-white/70 px-3.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-crewly-ink/65 backdrop-blur">
+          <p className="landing-rise inline-flex items-center gap-2 rounded-full border border-crewly-lilac-deep/60 bg-crewly-lilac/70 px-3.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-crewly-forest backdrop-blur">
             <span className="landing-breathe h-1.5 w-1.5 rounded-full bg-crewly-forest" aria-hidden="true" />
             {HERO.badge}
             {/* The note is a second thought on a phone: at 390px it turned the
@@ -270,12 +278,12 @@ const HeroSection = () => {
             <span
               key={chip}
               aria-hidden="true"
-              style={{ animationDelay: `${index * -2.2}s` }}
+              style={{ animationDelay: `${index * -2.2}s`, '--sticker-bg': index === 0 ? '#e6ccff' : '#c3ddc6' }}
               className={`landing-sticker landing-wiggle absolute hidden items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-crewly-ink xl:inline-flex ${
                 index === 0 ? 'left-[10%] -top-2 -rotate-3' : 'right-[8%] -bottom-2 rotate-2'
               }`}
             >
-              <Check className="h-3 w-3 text-crewly-forest" />
+              <Check className={`h-3 w-3 ${index === 0 ? 'text-crewly-forest' : 'text-crewly-sage-deep'}`} />
               {chip}
             </span>
           ))}

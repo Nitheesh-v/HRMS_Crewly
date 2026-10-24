@@ -52,7 +52,7 @@ const StickyCta = () => {
         shown ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-6 opacity-0'
       }`}
     >
-      <div className="mx-auto flex max-w-3xl items-center gap-3 rounded-full border border-crewly-ink/12 bg-crewly-void/90 py-2 pl-4 pr-2 shadow-[0_24px_60px_-24px_rgba(0,0,0,0.95)] backdrop-blur-xl sm:pl-5">
+      <div className="mx-auto flex max-w-3xl items-center gap-3 rounded-full border border-crewly-lilac-deep/50 bg-crewly-void/95 py-2 pl-4 pr-2 shadow-[0_18px_44px_-22px_rgba(20,17,14,0.55)] backdrop-blur-xl sm:pl-5">
         <p className="min-w-0 flex-1 truncate text-[12px] font-medium text-crewly-ink/60 sm:text-[13px]">
           <span className="font-semibold text-crewly-ink">{BRAND.name}</span>
           <span className="mx-1.5 text-crewly-ink/25">·</span>

@@ -23,6 +23,27 @@
   --color-crewly-forest: #0b3b2e;
   --color-crewly-lilac: #e6ccff;
   --color-crewly-lilac-deep: #c9a6f0;
+
+  /* The second half of the palette. Cream alone reads as "unfinished white";
+     these four families are what give the page its bands, its card tints and
+     its two dark moments. Every one is a paper-adjacent hue — nothing here is a
+     saturated web blue — so the palette stays editorial instead of turning into
+     a dashboard.
+
+     clay   = terracotta, the warm counterweight to forest
+     amber  = marigold, used for "in progress" states
+     sage   = pale leaf, the calm card tint
+     *-deep = the text-safe version of each (contrast on cream: 7:1+) */
+  --color-crewly-clay: #d9683f;
+  --color-crewly-clay-deep: #9c3d1c;
+  --color-crewly-clay-soft: #f8d8c6;
+  --color-crewly-amber: #e9b23f;
+  --color-crewly-amber-deep: #8a5a06;
+  --color-crewly-amber-soft: #f9e7c0;
+  --color-crewly-sand: #f1e7c8;
+  --color-crewly-sage: #c3ddc6;
+  --color-crewly-sage-deep: #2c6b4f;
+  --color-crewly-forest-deep: #07281f;
 }
 
 /* ---- Base responsive resets ---- */
@@ -523,16 +544,20 @@ html:has(.landing-shell) {
 /* A warm paper wash with a lilac bloom at the top and a sand pool at the right. */
 .landing-glow {
   background:
-    radial-gradient(46% 40% at 50% -4%, rgba(201, 166, 240, 0.5), transparent 70%),
-    radial-gradient(38% 34% at 88% 10%, rgba(255, 206, 155, 0.42), transparent 72%),
+    radial-gradient(40% 34% at 18% -6%, rgba(201, 166, 240, 0.55), transparent 70%),
+    radial-gradient(34% 30% at 84% 4%, rgba(249, 231, 192, 0.85), transparent 72%),
+    radial-gradient(30% 26% at 8% 34%, rgba(195, 221, 198, 0.55), transparent 74%),
+    radial-gradient(26% 22% at 96% 30%, rgba(248, 216, 198, 0.5), transparent 74%),
     radial-gradient(60% 40% at 50% 108%, rgba(11, 59, 46, 0.07), transparent 70%);
 }
 
-/* A second, dimmer wash used behind mid-page bands. */
+/* A second, dimmer wash used behind mid-page bands: sage on one side, amber on
+   the other, so a cream section still has two colours in it. */
 .landing-glow-soft {
   background:
-    radial-gradient(42% 46% at 12% 20%, rgba(230, 204, 255, 0.34), transparent 72%),
-    radial-gradient(40% 42% at 92% 78%, rgba(255, 214, 170, 0.26), transparent 72%);
+    radial-gradient(42% 46% at 10% 16%, rgba(195, 221, 198, 0.55), transparent 72%),
+    radial-gradient(40% 42% at 94% 80%, rgba(249, 231, 192, 0.6), transparent 72%),
+    radial-gradient(30% 34% at 62% 6%, rgba(230, 204, 255, 0.32), transparent 74%);
 }
 
 /* Fine graph paper, in ink at 5%. */
@@ -551,6 +576,16 @@ html:has(.landing-shell) {
     inset 0 1px 0 rgba(255, 255, 255, 0.9),
     0 18px 40px -30px rgba(20, 17, 14, 0.5);
   backdrop-filter: blur(14px);
+}
+
+/* The same paper, opaque. Used where a card sits ON the forest band: the glass
+   version is translucent, and over deep green its white text turns grey. */
+.landing-sheet {
+  background-color: var(--color-crewly-void);
+  border: 1px solid rgba(20, 17, 14, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 26px 60px -34px rgba(7, 40, 31, 0.9);
 }
 
 /* The product window is the ONE dark object on the page — it is the app, which
@@ -577,7 +612,7 @@ html:has(.landing-shell) {
   line-height: 0.86;
   letter-spacing: -0.03em;
   white-space: nowrap;
-  color: rgba(20, 17, 14, 0.08);
+  color: rgba(11, 59, 46, 0.13);
   user-select: none;
   pointer-events: none;
 }
@@ -585,7 +620,7 @@ html:has(.landing-shell) {
 /* Stickers: warm-white badges with an ink outline, rotated a degree or two —
    the little hand-placed chips the reference scatters around its fold. */
 .landing-sticker {
-  background-color: #fffdf4;
+  background-color: var(--sticker-bg, #fffdf4);
   border: 1.5px solid rgba(20, 17, 14, 0.85);
   box-shadow: 0 8px 20px -14px rgba(20, 17, 14, 0.7);
 }
@@ -616,13 +651,37 @@ html:has(.landing-shell) {
 }
 
 .landing-ribbon-clean {
-  fill: var(--color-crewly-ink);
+  fill: var(--color-crewly-forest);
   font-weight: 600;
 }
 
 /* The waveform pill that sits where the two ribbons cross. */
 .landing-wave-bar {
   transform-origin: center;
+}
+
+/* The page's dark moment: a deep forest panel that carries the assistant band
+   and the closing call. Lilac blooms in one corner so the green never reads as
+   flat, and the text inside is paper, not ink. */
+.landing-band {
+  background:
+    radial-gradient(52% 80% at 88% -10%, rgba(201, 166, 240, 0.3), transparent 70%),
+    radial-gradient(48% 70% at 4% 110%, rgba(217, 104, 63, 0.22), transparent 72%),
+    linear-gradient(160deg, #0b3b2e 0%, #07281f 100%);
+  color: var(--color-crewly-void);
+}
+
+.landing-band-soft {
+  background:
+    radial-gradient(40% 60% at 90% 0%, rgba(230, 204, 255, 0.18), transparent 70%),
+    linear-gradient(160deg, #0e4636 0%, #0b3b2e 100%);
+  color: var(--color-crewly-void);
+}
+
+/* The dot field, inverted for use on a dark band. */
+.landing-dots-light {
+  background-image: radial-gradient(rgba(252, 250, 236, 0.28) 1px, transparent 1px);
+  background-size: 20px 20px;
 }
 
 /* Logo mark sizing. The global `img { max-width:100%; height:auto }` reset above

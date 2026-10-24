@@ -22,7 +22,7 @@ import { focusRing, navLink, primaryCta } from './landingStyles.js';
 
 const BrandLockup = () => (
   <>
-    <span className="flex h-8 w-8 items-center justify-center rounded-[10px] border border-crewly-ink/12 bg-crewly-ink/[0.06] p-1.5">
+    <span className="flex h-8 w-8 items-center justify-center rounded-[10px] border border-crewly-lilac-deep/50 bg-crewly-lilac/60 p-1.5">
       <img src="/logo-crewly-mark.png" alt="" className="h-full w-full object-contain" />
     </span>
     <span className="text-[16px] font-bold tracking-tight text-crewly-ink">Crewly</span>
@@ -84,7 +84,7 @@ const LandingHeader = () => {
           className={`flex h-14 items-center justify-between gap-3 rounded-full border px-3 backdrop-blur-xl transition-[background-color,border-color,box-shadow] duration-300 sm:h-16 sm:px-4 ${
             scrolled
               ? 'border-crewly-ink/20 bg-crewly-void/92 shadow-[0_14px_36px_-26px_rgba(20,17,14,0.6)]'
-              : 'border-crewly-ink/15 bg-white/60'
+              : 'border-crewly-ink/15 bg-crewly-void/80'
           }`}
         >
           <Link

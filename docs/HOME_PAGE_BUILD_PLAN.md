@@ -649,3 +649,72 @@ What changed:
 Measured: **891px → 512px at 1440**, 530px at 1024, and the mobile footer is now 1001px instead of
 ~1400px. Everything else on the page is untouched: `npm test` → 454 / 0, eslint clean, and
 `scrollWidth === innerWidth` at 1440 / 1024 / 390.
+
+---
+
+## L. THE COLOUR PASS — "now it's only white" (2026-10-24)
+
+The owner's note was right: pass K had exactly one surface (cream) and one action
+colour (lilac). Every card was `bg-white/60`, and the page read as an unfinished
+white page. This pass adds a **palette**, not decoration: four tint families, two
+dark bands, and a rule for when each is allowed.
+
+### L1. The palette
+
+| Token | Value | Where it is allowed |
+| --- | --- | --- |
+| `crewly-void` | `#fcfaec` | the canvas |
+| `crewly-sand` | `#f1e7c8` | the product band, the module inventory, the FAQ |
+| `crewly-sage` / `-deep` | `#c3ddc6` / `#2c6b4f` | the trust band, the calm card tint |
+| `crewly-lilac` / `-deep` | `#e6ccff` / `#c9a6f0` | the action, the assistant, the featured plan |
+| `crewly-amber` / `-deep` / `-soft` | `#e9b23f` / `#8a5a06` / `#f9e7c0` | "in progress" states only |
+| `crewly-clay` / `-deep` / `-soft` | `#d9683f` / `#9c3d1c` / `#f8d8c6` | the warm counterweight to forest |
+| `crewly-forest` / `-deep` | `#0b3b2e` / `#07281f` | the two dark bands, and every label |
+
+Each family ships as a `TINTS` entry (`surface`, `chip`, `ink`, `dot`) in
+`landingTints.js`, and sections cycle it with `tintAt(index)`. That file exists
+separately from `landingStyles.js` on purpose: the focus-ring test reads that
+module as a list of class strings, and an object plus a helper would trip it.
+
+### L2. The colour rhythm down the page
+
+```
+hero        cream, four-colour stickers, four-colour waveform, lilac badge
+product     SAND band, lilac/clay/sage callouts, forest→clay→grey progress rail
+caps        cream, three tinted numbers, six tinted cards, sand inventory panel
+AI          FOREST band — the page's first dark moment, lilac-only accents
+trust       SAGE band, tinted icon chips, forest featured role among four tints
+pricing     cream, four plan stocks (sage / clay / LILAC / amber), sand FAQ
+closing     FOREST panel set into the paper
+footer      cream, lilac support strip, forest column labels, green wordmark
+```
+
+Six surfaces, two of them dark, and no card repeats the one before it.
+
+### L3. Bugs this pass produced, and the fixes
+
+1. **Glass on the forest band turned grey.** `landing-glass` is
+   `rgba(255,253,244,.82)` plus a backdrop blur; over deep green the transcript
+   card went grey and its ink text lost contrast (visible in the first
+   screenshot). Fixed with `.landing-sheet` — the same paper, opaque — and a test
+   that forbids `landing-glass` inside `AiSection`.
+2. **A naming collision with the retired list.** The new opaque card was first
+   called `.landing-card`, which the test suite already treats as dead CSS from
+   pass #2. Renamed to `.landing-sheet` rather than weakening the pin.
+3. **Multi-line imports broke the focus-ring scanner.** Its regex splits on
+   commas, so a trailing comma produced an empty imported name
+   (`imports  from landingStyles.js`). The imports were collapsed to one line and
+   the tint helpers moved to their own module instead of loosening the check.
+4. **Stickers carried `text-emerald-300` / `text-violet-300`** from the night
+   pass — invisible on cream. They now carry a `bg` (read as `--sticker-bg`) and a
+   `tone` from the tint families.
+5. **`bg-crewly-void-soft` was invisible.** `#f6f1de` against `#fcfaec` measured
+   as no band at all in the screenshot; the sand token is a full step darker.
+
+### L4. Evidence
+
+* `npm test` → **455 / 0 fail** (one new pin: the palette, the four families, the
+  two band usages and the opaque-sheet rule).
+* eslint clean; `npm run build` → 1.17 s, `LandingPage` **76.00 kB / 19.20 kB gzip**.
+* Chromium at 1440 / 1024 / 390: `scrollWidth === innerWidth`, zero console
+  errors; every animation still `none` under `prefers-reduced-motion: reduce`.

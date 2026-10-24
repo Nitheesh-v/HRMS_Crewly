@@ -16,8 +16,14 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Check, Minus, Plus } from 'lucide-react';
 import { BRAND, FAQS, PLANS, PRICING_NOTE, SECTION_IDS } from '../landingData.js';
 import { displayLg, eyebrow, focusRing, primaryCta, secondaryCta, sectionCopy } from '../landingStyles.js';
+import { TINTS } from '../landingTints.js';
 
 const inr = (value) => `₹${value.toLocaleString('en-IN')}`;
+
+// One stock per plan, in the order the plans are sold. The featured plan takes
+// the lilac; the rest cycle through sage, clay and amber, so four cards read as
+// four offers rather than four white boxes.
+const PLAN_TINTS = ['sage', 'clay', 'lilac', 'amber'];
 
 // Rendered from the plan data: yearly is exactly ten months on every paid tier.
 const monthsFree = (plan) =>
@@ -36,7 +42,7 @@ const BillingToggle = ({ cycle, onChange }) => (
         aria-pressed={cycle === option.id}
         className={`rounded-full px-4 py-1.5 text-[12px] font-semibold transition-[color,background-color,box-shadow] ${focusRing} ${
           cycle === option.id
-            ? 'bg-crewly-lilac text-crewly-ink shadow-[0_0_20px_-6px_rgba(16,185,129,0.8)]'
+            ? 'bg-crewly-lilac text-crewly-ink shadow-[0_2px_0_rgba(20,17,14,0.7)]'
             : 'text-crewly-ink/60 hover:text-crewly-ink'
         }`}
       >
@@ -51,7 +57,7 @@ const BillingToggle = ({ cycle, onChange }) => (
   </div>
 );
 
-const PlanCard = ({ cycle, plan }) => {
+const PlanCard = ({ cycle, plan, index }) => {
   const price = cycle === 'yearly' ? plan.yearly : plan.monthly;
   const free = monthsFree(plan);
 
@@ -59,12 +65,12 @@ const PlanCard = ({ cycle, plan }) => {
     <article
       className={`landing-scroll-in relative flex flex-col rounded-3xl border p-5 ${
         plan.featured
-          ? 'border-crewly-ink/45 bg-[linear-gradient(180deg,rgba(230,204,255,0.55),rgba(230,204,255,0.16))] shadow-[0_20px_44px_-34px_rgba(20,17,14,0.55)]'
-          : 'border-crewly-ink/10 bg-white/60'
+          ? 'border-crewly-ink/40 bg-[linear-gradient(180deg,rgba(230,204,255,0.85),rgba(230,204,255,0.35))] shadow-[0_20px_44px_-30px_rgba(20,17,14,0.55)]'
+          : TINTS[PLAN_TINTS[index]].surface
       }`}
     >
       {plan.featured && (
-        <span className="absolute -top-2.5 left-5 rounded-full bg-crewly-lilac px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-crewly-ink">
+        <span className="absolute -top-2.5 left-5 rounded-full border border-crewly-ink bg-crewly-lilac px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-crewly-ink">
           Includes hiring &amp; performance
         </span>
       )}
@@ -115,7 +121,7 @@ const FaqList = () => {
         </p>
       </div>
 
-      <div className="mt-6 divide-y divide-white/[0.06] overflow-hidden rounded-3xl border border-crewly-ink/10 bg-crewly-ink/[0.015]">
+      <div className="mt-6 divide-y divide-crewly-ink/[0.07] overflow-hidden rounded-3xl border border-crewly-ink/10 bg-crewly-sand/60">
         {FAQS.map((faq, index) => {
           const id = `faq-${index}`;
           const openNow = open === index;
@@ -129,7 +135,7 @@ const FaqList = () => {
                   onClick={() => setOpen(openNow ? -1 : index)}
                   aria-expanded={openNow}
                   aria-controls={`${id}-panel`}
-                  className={`flex w-full items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-crewly-ink/[0.03] ${focusRing}`}
+                  className={`flex w-full items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-crewly-lilac/40 ${focusRing}`}
                 >
                   <span className="flex-1 text-[13px] font-semibold text-crewly-ink sm:text-sm">{faq.q}</span>
                   <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-crewly-ink/10 text-crewly-ink/60">
@@ -180,8 +186,8 @@ const PricingSection = () => {
         </div>
 
         <div className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {PLANS.map((plan) => (
-            <PlanCard key={plan.code} cycle={cycle} plan={plan} />
+          {PLANS.map((plan, index) => (
+            <PlanCard key={plan.code} cycle={cycle} plan={plan} index={index} />
           ))}
         </div>
 

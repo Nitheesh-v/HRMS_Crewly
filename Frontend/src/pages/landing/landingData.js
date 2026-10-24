@@ -78,20 +78,23 @@ export const HERO_WATERMARK = 'CREWLY';
 // The scattered badges. These are the page's only "graphics": white-outlined
 // stickers carrying a shipped fact, rotated a degree or two. No mascot, because
 // this product does not have one and inventing a character is inventing a brand.
+// Each sticker is a different paper stock — lilac, amber, sage, clay — so the
+// margins around the headline carry four colours instead of four grey chips.
+// `bg` is read as a CSS variable (see `.landing-sticker`), `tone` is the icon.
 export const HERO_STICKERS = [
-  { label: 'One login', icon: 'key', tone: 'text-emerald-300', rotate: '-rotate-6', className: 'left-[1%] top-[29%] xl:left-[5%]' },
-  { label: 'Geo-fenced', icon: 'kiosk', tone: 'text-sky-300', rotate: 'rotate-6', className: 'right-[2%] top-[34%] xl:right-[6%]' },
-  { label: '20 modules', icon: 'calendarCheck', tone: 'text-violet-300', rotate: 'rotate-3', className: 'left-[2%] top-[47%] xl:left-[7%]' },
-  { label: '14 languages', icon: 'sparkles', tone: 'text-violet-300', rotate: '-rotate-3', className: 'right-[2%] top-[52%] xl:right-[7%]' },
+  { label: 'One login', icon: 'key', tone: 'text-crewly-forest', bg: '#e6ccff', rotate: '-rotate-6', className: 'left-[1%] top-[29%] xl:left-[5%]' },
+  { label: 'Geo-fenced', icon: 'kiosk', tone: 'text-crewly-amber-deep', bg: '#f9e7c0', rotate: 'rotate-6', className: 'right-[2%] top-[34%] xl:right-[6%]' },
+  { label: '20 modules', icon: 'calendarCheck', tone: 'text-crewly-clay-deep', bg: '#f8d8c6', rotate: 'rotate-3', className: 'left-[2%] top-[47%] xl:left-[7%]' },
+  { label: '14 languages', icon: 'sparkles', tone: 'text-crewly-sage-deep', bg: '#c3ddc6', rotate: '-rotate-3', className: 'right-[2%] top-[52%] xl:right-[7%]' },
 ];
 
 // The notification stack that overlaps the product window, the way the reference
 // lets its cards sit on top of its product shot. Decorative, and every row is
 // something the product actually sends.
 export const HERO_NOTIFICATIONS = [
-  { title: 'Leave approved', body: 'Ravi S. · 2 days casual', time: 'now', icon: 'calendarCheck', tone: 'emerald' },
+  { title: 'Leave approved', body: 'Ravi S. · 2 days casual', time: 'now', icon: 'calendarCheck', tone: 'sage' },
   { title: 'Payroll ready', body: 'October · 138 employees', time: '2m', icon: 'creditCard', tone: 'amber' },
-  { title: 'Candidate shortlisted', body: 'Senior engineer · stage 2', time: '9m', icon: 'userPlus', tone: 'violet' },
+  { title: 'Candidate shortlisted', body: 'Senior engineer · stage 2', time: '9m', icon: 'userPlus', tone: 'clay' },
 ];
 
 // Facts the page can stand behind. Each one is a shipped behaviour, not a
@@ -132,7 +135,7 @@ export const CAPABILITIES = [
       'PF, ESI, professional tax and TDS computed in the run.',
       'Final settlement and payslips from the numbers that were paid.',
     ],
-    accent: 'emerald',
+    accent: 'clay',
   },
   {
     key: 'attendance',
@@ -144,7 +147,7 @@ export const CAPABILITIES = [
       'QR and kiosk capture for shared terminals, plus CSV import.',
       'Regularisation, overtime and timesheets with approvals.',
     ],
-    accent: 'emerald',
+    accent: 'sage',
   },
   {
     key: 'hiring',
@@ -156,7 +159,7 @@ export const CAPABILITIES = [
       'Pipeline, interview rounds, scorecards and offers.',
       'Background checks, pre-onboarding and conversion to employee.',
     ],
-    accent: 'emerald',
+    accent: 'lilac',
   },
   {
     key: 'people',
@@ -168,7 +171,7 @@ export const CAPABILITIES = [
       'Documents with categories and expiry reminders.',
       'Profile change requests — requested, reviewed, then applied.',
     ],
-    accent: 'emerald',
+    accent: 'amber',
   },
   {
     key: 'performance',
@@ -180,7 +183,7 @@ export const CAPABILITIES = [
       'Self review, then team-lead and manager review.',
       'Final rating published with the history kept.',
     ],
-    accent: 'violet',
+    accent: 'lilac',
   },
   {
     key: 'work',
@@ -192,7 +195,7 @@ export const CAPABILITIES = [
       'Meetings, announcements, referrals and a support desk.',
       'Presence that corrects itself when a session dies.',
     ],
-    accent: 'violet',
+    accent: 'clay',
   },
 ];
 

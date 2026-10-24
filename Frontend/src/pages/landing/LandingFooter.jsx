@@ -70,7 +70,7 @@ const LandingFooter = () => (
 
         {FOOTER_COLUMNS.map((column) => (
           <nav key={column.title} aria-label={column.title}>
-            <h3 className="text-[10px] font-bold uppercase tracking-[0.16em] text-crewly-ink/80">
+            <h3 className="text-[10px] font-bold uppercase tracking-[0.16em] text-crewly-forest">
               {column.title}
             </h3>
             <ul className="mt-3 space-y-1.5">
@@ -85,9 +85,9 @@ const LandingFooter = () => (
       </div>
 
       {/* Support: one strip, one sentence, one link. */}
-      <div className="mt-6 flex flex-col gap-3 rounded-xl border border-crewly-ink/10 bg-white/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mt-6 flex flex-col gap-3 rounded-xl border border-crewly-lilac-deep/40 bg-crewly-lilac/25 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="flex items-center gap-2.5 text-[12.5px] leading-relaxed text-crewly-ink/55">
-          <LifeBuoy className="h-4 w-4 shrink-0 text-crewly-forest" aria-hidden="true" />
+          <LifeBuoy className="h-4 w-4 shrink-0 text-crewly-clay-deep" aria-hidden="true" />
           <span>
             <span className="font-semibold text-crewly-ink">{FOOTER_SUPPORT.title}:</span> {FOOTER_SUPPORT.copy}
           </span>

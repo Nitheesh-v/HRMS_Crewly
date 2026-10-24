@@ -13,6 +13,7 @@ import { ArrowRight, Check, Lock } from 'lucide-react';
 import { PRODUCT_MOMENT, SECTION_IDS } from '../landingData.js';
 import LandingIcon from '../LandingIcon.jsx';
 import { displayLg, eyebrow, ghostLink, sectionCopy } from '../landingStyles.js';
+import { tintAt } from '../landingTints.js';
 
 const lines = [
   { label: 'Gross earnings', value: '₹61,40,000', note: '138 employees' },
@@ -35,8 +36,8 @@ const PayrollReview = () => (
         <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-crewly-ink/50">Payroll run</p>
         <p className="mt-1 text-base font-bold text-crewly-ink">October 2026</p>
       </div>
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/25 bg-amber-400/10 px-2.5 py-1 text-[10px] font-semibold text-amber-300">
-        <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-crewly-amber/60 bg-crewly-amber-soft px-2.5 py-1 text-[10px] font-semibold text-crewly-amber-deep">
+        <span className="landing-breathe h-1.5 w-1.5 rounded-full bg-crewly-clay" />
         In review
       </span>
     </div>
@@ -47,9 +48,9 @@ const PayrollReview = () => (
           <span
             className={`h-1 rounded-full ${
               step.state === 'done'
-                ? 'bg-crewly-lilac/70'
+                ? 'bg-crewly-forest'
                 : step.state === 'current'
-                  ? 'bg-amber-400'
+                  ? 'bg-crewly-clay'
                   : 'bg-crewly-ink/10'
             }`}
           />
@@ -92,7 +93,7 @@ const PayrollReview = () => (
 const ProductMomentSection = () => (
   <section
     id={SECTION_IDS.product}
-    className="relative scroll-mt-24 overflow-hidden py-20 sm:py-24 lg:py-28"
+    className="relative scroll-mt-24 overflow-hidden border-y border-crewly-ink/[0.08] bg-crewly-sand py-20 sm:py-24 lg:py-28"
   >
     <div className="landing-glow-soft pointer-events-none absolute inset-0 -z-10" aria-hidden="true" />
 
@@ -107,14 +108,14 @@ const ProductMomentSection = () => (
             {PRODUCT_MOMENT.callouts.map((callout, index) => (
               <li
                 key={callout.title}
-                className="landing-scroll-in group flex gap-4 rounded-2xl border border-crewly-ink/10 bg-white/60 p-4 transition-[background-color,border-color] hover:border-crewly-ink/15 hover:bg-white/80"
+                className={`landing-scroll-in group flex gap-4 rounded-2xl border p-4 transition-[background-color,border-color] hover:bg-white/70 ${tintAt(index).surface}`}
               >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-crewly-forest/25 bg-crewly-forest/[0.08] text-crewly-forest">
+                <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${tintAt(index).chip}`}>
                   <LandingIcon name={callout.icon} className="h-4 w-4" />
                 </span>
                 <span className="min-w-0">
                   <span className="flex items-baseline gap-2">
-                    <span className="text-[10px] font-bold tabular-nums text-crewly-ink/40">0{index + 1}</span>
+                    <span className={`text-[10px] font-bold tabular-nums ${tintAt(index).ink}`}>0{index + 1}</span>
                     <span className="text-sm font-semibold text-crewly-ink">{callout.title}</span>
                   </span>
                   <span className="mt-1 block text-[13px] leading-relaxed text-crewly-ink/60">{callout.copy}</span>
@@ -131,13 +132,13 @@ const ProductMomentSection = () => (
 
         <div className="landing-scroll-in relative">
           <div
-            className="pointer-events-none absolute -inset-6 -z-10 rounded-[2.5rem] bg-[radial-gradient(60%_60%_at_60%_30%,rgba(139,92,246,0.16),transparent_70%)] blur-2xl"
+            className="pointer-events-none absolute -inset-6 -z-10 rounded-[2.5rem] bg-[radial-gradient(60%_60%_at_60%_30%,rgba(230,204,255,0.75),transparent_70%),radial-gradient(50%_50%_at_20%_90%,rgba(248,216,198,0.6),transparent_70%)] blur-2xl"
             aria-hidden="true"
           />
           <PayrollReview />
 
-          <div className="landing-glass mt-3 flex items-center gap-3 rounded-2xl p-3">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-crewly-forest/10 text-crewly-forest">
+          <div className="mt-3 flex items-center gap-3 rounded-2xl border border-crewly-sage-deep/25 bg-crewly-sage/60 p-3">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-crewly-sage-deep/25 bg-crewly-void text-crewly-sage-deep">
               <Check className="h-4 w-4" aria-hidden="true" />
             </span>
             <p className="text-[12px] leading-snug text-crewly-ink/75">
