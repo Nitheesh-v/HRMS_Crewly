@@ -34,8 +34,8 @@ const FooterLink = ({ link }) =>
   );
 
 const LandingFooter = () => (
-  <footer className="relative border-t border-white/[0.06] bg-[#050810]">
-    <div className="landing-hairline absolute inset-x-0 top-0 h-px" aria-hidden="true" />
+  <footer className="relative border-t border-white/[0.06] bg-crewly-void-soft">
+    <div className="landing-beam absolute inset-x-0 top-0 h-px opacity-60" aria-hidden="true" />
 
     <div className="mx-auto max-w-7xl px-5 pb-8 pt-14 sm:px-6 lg:px-8">
       <div className="grid gap-10 lg:grid-cols-[1.35fr_repeat(4,1fr)] lg:gap-8">

@@ -11,14 +11,13 @@
   --color-crewly-orange: #f0a35e;
   --color-crewly-red: #f85149;
 
-  /* Public home (marketing surface). These are the app's own colours, not a
-     separate brand: the night canvas, the emerald the product uses for "done",
-     and the violet of the logo mark as the one accent the product reserves for
-     AI. Keeping them here means the marketing page and the app cannot drift. */
-  --color-crewly-night: #070b16;
-  --color-crewly-night-soft: #0b1120;
-  --color-crewly-panel: #0e1526;
+  /* Public home — the cinematic surface. Same night the app paints, pushed to
+     near-black so a single emerald light source can carry the page. */
+  --color-crewly-void: #05060b;
+  --color-crewly-void-soft: #080a12;
+  --color-crewly-panel: #0b0e18;
   --color-crewly-mint: #34d399;
+  --color-crewly-mint-deep: #10b981;
   --color-crewly-violet: #8b5cf6;
 }
 
@@ -486,77 +485,93 @@ html:has(.landing-shell) {
   }
 }
 
-/* 12) Landing (public home) — Crewly's own surface.
-   The marketing page is the app's night canvas, not a light template: #070b16
-   with layered emerald and violet glows, hairline glass cards, and the
-   emerald-to-teal primary the product already uses for "done".
+/* 12) Public home — the cinematic layer.
+   One light source. The page is near-black, lit by a single emerald glow behind
+   the hero, with the logo's violet allowed in only for the assistant. Panels are
+   glass; the product is shown as a floating window rather than a picture of one.
 
-   Textures are static (no images, no requests). Motion is opt-in: the marquee
-   and the entrance animations only run when the visitor has not asked for
-   reduced motion, and rule 10 collapses transitions for everyone else. */
+   Everything here is static (no images, no requests). Motion is opt-in — the
+   marquee, the floats and the entrances only run when the visitor has not asked
+   for reduced motion, and rule 10 collapses transitions for everyone else. */
 .landing-shell {
-  background-color: var(--color-crewly-night);
+  background-color: var(--color-crewly-void);
   color: #e2e8f0;
   -webkit-font-smoothing: antialiased;
+  /* The glows and grids are `-z-10` children of the sections. Without a
+     stacking context on the shell they paint BEHIND its opaque background and
+     the whole page goes flat black — measured to 0 glow, not guessed. `isolate`
+     keeps them inside the page, above the canvas and below the content. */
+  isolation: isolate;
 }
 
-/* Faint graph paper, fading toward the middle of the section. */
+/* The light source: one broad emerald cone from the top, a violet rim on the
+   right, and a cool teal floor so the bottom of the page does not go dead. */
+.landing-glow {
+  background:
+    radial-gradient(52% 44% at 50% 8%, rgba(16, 185, 129, 0.42), transparent 72%),
+    radial-gradient(36% 34% at 84% 10%, rgba(139, 92, 246, 0.24), transparent 70%),
+    radial-gradient(60% 40% at 50% 108%, rgba(45, 212, 191, 0.12), transparent 70%);
+}
+
+/* A second, dimmer pool used behind mid-page bands so they are not flat black. */
+.landing-glow-soft {
+  background:
+    radial-gradient(42% 46% at 12% 20%, rgba(16, 185, 129, 0.14), transparent 72%),
+    radial-gradient(40% 42% at 92% 78%, rgba(139, 92, 246, 0.12), transparent 72%);
+}
+
+/* Fine graph paper, fading out before it reaches the headline. */
 .landing-grid {
   background-image:
-    linear-gradient(to right, rgba(148, 163, 184, 0.07) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(148, 163, 184, 0.07) 1px, transparent 1px);
-  background-size: 56px 56px;
+    linear-gradient(to right, rgba(148, 163, 184, 0.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(148, 163, 184, 0.055) 1px, transparent 1px);
+  background-size: 64px 64px;
 }
 
-/* The hero halo: emerald on one side, the logo's violet on the other. */
-.landing-aurora {
-  background:
-    radial-gradient(58% 55% at 12% 0%, rgba(16, 185, 129, 0.18), transparent 70%),
-    radial-gradient(55% 50% at 92% 6%, rgba(139, 92, 246, 0.16), transparent 70%),
-    radial-gradient(70% 60% at 50% 100%, rgba(45, 212, 191, 0.07), transparent 70%);
-}
-
-/* A glass card with a lit top edge — the house signature on this page. It reads
-   as a panel in the product, not a website box. */
-.landing-card {
-  background-color: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 18px 40px -28px rgba(2, 6, 23, 0.9);
-}
-
-/* The product mocks keep a screenshot feel: a crisp dark canvas, a lit top edge
-   and a deep shadow so they sit above the page. */
-.landing-preview {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0) 40%),
-    #0b1120;
+/* Glass: a dark pane with a lit top edge. Used for callouts, capability cards
+   and the sticky bar. */
+.landing-glass {
+  background-color: rgba(255, 255, 255, 0.038);
+  border: 1px solid rgba(255, 255, 255, 0.09);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 42px 80px -40px rgba(0, 0, 0, 0.95),
-    0 0 0 1px rgba(148, 163, 184, 0.14);
+    0 24px 60px -34px rgba(0, 0, 0, 0.95);
+  backdrop-filter: blur(14px);
 }
 
-/* Brand hairline: emerald into violet. Used between bands and under eyebrows. */
-.landing-hairline {
+/* The product window: near-black pane, hairline, an emerald rim light along the
+   top edge, and a deep drop so it floats above the glow. */
+.landing-window {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0) 26%),
+    #070912;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 0 1px rgba(16, 185, 129, 0.06),
+    0 60px 120px -50px rgba(0, 0, 0, 1),
+    0 0 90px -30px rgba(16, 185, 129, 0.25);
+}
+
+/* A hairline that runs emerald → transparent → violet. Section dividers and the
+   under-CTA rule. */
+.landing-beam {
   background: linear-gradient(
     90deg,
     transparent,
-    rgba(52, 211, 153, 0.55),
-    rgba(139, 92, 246, 0.45),
+    rgba(52, 211, 153, 0.6),
+    rgba(139, 92, 246, 0.5),
     transparent
   );
 }
 
 .landing-dots {
-  background-image: radial-gradient(rgba(148, 163, 184, 0.16) 1px, transparent 1px);
-  background-size: 22px 22px;
+  background-image: radial-gradient(rgba(148, 163, 184, 0.2) 1px, transparent 1px);
+  background-size: 20px 20px;
 }
 
-/* Logo sizing. The global `img { max-width:100%; height:auto }` reset above is
-   unlayered and outranks Tailwind's height utilities, so the mark is sized here,
-   once, for the header, the footer and the product mocks. */
+/* Logo mark sizing. The global `img { max-width:100%; height:auto }` reset above
+   is unlayered and outranks Tailwind's height utilities, so it is sized here. */
 .landing-mark {
   height: 1.75rem;
   width: 1.75rem;
@@ -567,7 +582,7 @@ html:has(.landing-shell) {
   @keyframes landing-rise {
     from {
       opacity: 0;
-      transform: translateY(18px);
+      transform: translateY(22px);
     }
     to {
       opacity: 1;
@@ -581,7 +596,7 @@ html:has(.landing-shell) {
       transform: translateY(0);
     }
     50% {
-      transform: translateY(-9px);
+      transform: translateY(-10px);
     }
   }
 
@@ -597,8 +612,17 @@ html:has(.landing-shell) {
     }
   }
 
-  /* Slow horizontal loop used by the "works everywhere" fact strip. The strip is
-     duplicated in markup, so the loop ends exactly where it started. */
+  /* The hero window drifts very slightly, so the glow behind it feels alive. */
+  @keyframes landing-drift {
+    0%,
+    100% {
+      transform: perspective(1600px) rotateX(6deg) rotateY(-3deg) translateY(0);
+    }
+    50% {
+      transform: perspective(1600px) rotateX(5deg) rotateY(-2deg) translateY(-8px);
+    }
+  }
+
   @keyframes landing-marquee {
     from {
       transform: translateX(0);
@@ -609,7 +633,7 @@ html:has(.landing-shell) {
   }
 
   .landing-rise {
-    animation: landing-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: landing-rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
   .landing-rise-1 {
     animation-delay: 0.08s;
@@ -618,19 +642,23 @@ html:has(.landing-shell) {
     animation-delay: 0.16s;
   }
   .landing-rise-3 {
-    animation-delay: 0.24s;
+    animation-delay: 0.26s;
   }
 
   .landing-float {
-    animation: landing-float 7s ease-in-out infinite;
+    animation: landing-float 8s ease-in-out infinite;
   }
 
   .landing-breathe {
     animation: landing-breathe 3.2s ease-in-out infinite;
   }
 
+  .landing-drift {
+    animation: landing-drift 14s ease-in-out infinite;
+  }
+
   .landing-marquee-track {
-    animation: landing-marquee 38s linear infinite;
+    animation: landing-marquee 42s linear infinite;
   }
 
   .landing-marquee:hover .landing-marquee-track {

@@ -326,3 +326,111 @@ that needs a real source, not a design change.
 
 **Not owner-accepted.** The render and interaction checks above are automated; the design
 judgement remains the owner's.
+
+---
+
+## H. THE CINEMATIC PASS — Uncle Rudy as the reference, Crewly as the identity (2026-10-24)
+
+The owner's third direction was a single line: **“https://www.unclerudy.app/ make like this”**.
+The reference is a one-page, near-black app site with one giant headline, glass panels, a
+floating product image and a repeated CTA. What was asked for was that *confidence*, not that
+site: the brief settled on **a full reimagining** (not a re-skin) in a **bolder but still honest
+voice** — “Bolder headlines, same honest facts”.
+
+Nothing was copied. Every claim on the page is still pinned to code, and every price, role,
+language count and module name still comes from the same source of truth as pass #2.
+
+### H1. What the reference does, and what was taken
+
+| The reference | What Crewly does instead |
+| --- | --- |
+| One oversized headline stating the product's promise and personality | One oversized headline stating the problem the product removes: *“The HRMS that stops arguing with itself.”* |
+| An eyebrow pill above it (“BUILT FOR iOS 27”) | An eyebrow pill with a live dot: **Built for Indian payroll** · INR billing · trial |
+| A single large feature image per proof point | A **live-rendered product window** (`ProductWindow.jsx`) that drifts on a perspective — no screenshot to go stale, no invented data beyond the mock |
+| Dense capability *list*, not nested cards | Six capability cards, then the honest inventory: all 20 modules as chips, grouped the way the sidebar groups them |
+| Repeated badge-style CTA after each band | One sticky glass bar that appears past the hero and stands down at the footer |
+| No pricing, no FAQ, no nav | Both kept — an HR/payroll buyer needs the trial terms and the plan table — but folded into two bands instead of five |
+| Saturated teal→blue gradient field | Near-black canvas with **one** emerald light source, violet only where the assistant lives |
+
+### H2. The seven bands
+
+`hero → the product moment → capabilities + inventory → the AI layer → trust (security + roles)
+→ pricing + FAQ → closing CTA`, then the footer. Pass #2's eleven bands (tabbed platform tour,
+workflow, roles, standalone FAQ, modules) were merged or deleted; their files were deleted too,
+so nothing can quietly re-render old classes.
+
+### H3. The visual system
+
+* **Tokens** (`style.css` `@theme`): `crewly-void #05060b`, `crewly-void-soft #080a12`,
+  `crewly-panel #0b0e18`, `crewly-mint #34d399`, `crewly-mint-deep #10b981`,
+  `crewly-violet #8b5cf6`. Emerald is the only action colour; violet is the assistant's.
+* **The cinematic layer** (`style.css` §12): `.landing-shell`, `.landing-glow`,
+  `.landing-glow-soft`, `.landing-grid`, `.landing-glass`, `.landing-window`, `.landing-beam`,
+  `.landing-dots`, `.landing-mark`. Retired and deleted: `.landing-aurora`, `.landing-card`,
+  `.landing-preview`, `.landing-hairline(s)`.
+* **Motion** is opt-in: `landing-rise` (entrances with 3 stagger steps), `landing-float`,
+  `landing-drift` (the hero window's perspective sway), `landing-breathe` (the live dot) and
+  `landing-marquee-track` (the fact strip, paused on hover) all live inside
+  `@media (prefers-reduced-motion: no-preference)`.
+* **Type**: one clamped display scale (`displayXl` / `displayLg` in `landingStyles.js`), so the
+  headline is 84px at 1440, 67.6px at 1024 and 41.6px at 390 without per-breakpoint sizes.
+* **Buttons** are still one shared emerald string; no section is allowed to invent its own.
+
+### H4. Six bugs only a browser found
+
+1. **The glow painted behind the canvas.** The `.landing-glow` / `.landing-grid` layers are
+   `-z-10` children of their sections; the sections are not stacking contexts, so they painted
+   *behind* `.landing-shell`'s opaque background and the page was flat black. Fixed with
+   `isolation: isolate` on `.landing-shell` — measured as 0 glow before, visible after.
+2. **A hard horizontal seam across the top of the glow.** The radial started exactly at the
+   section's top edge. The layer is now pulled up (`-top-48`) and its centre moved off-screen,
+   so only the falloff is visible.
+3. **Every module chip was 58px tall.** The chips' `<ul>` is a grid item, so it was stretched to
+   the row height, and `align-content: stretch` blew the single flex line up to fill it. Fixed
+   with `content-start items-start`; the chips are 26px again.
+4. **Floating glass cards sat on top of the numbers they were meant to frame.** They are now
+   anchored to the window's vertical extremes, and only render from `xl` where there is gutter
+   to float in.
+5. **The sticky bar parked on the footer**, covering the links the visitor came for. It now
+   stands down when the footer enters the viewport, and is `inert` whenever it is hidden.
+6. **The eyebrow pill became a three-line block at 390px.** The “INR billing · trial” note is a
+   desktop-only second thought.
+
+### H5. Test plan — still 31 pins, a new contract
+
+Kept unchanged: prices vs `platformPlans.js`; trial vs `TRIAL_DAYS` (the digits `14` may not be
+typed into markup); “2 months free” vs the arithmetic; “no credit card” vs the register form;
+roles vs `ROLE_LABELS`; language counts vs `chatLanguages.js`; 20 modules vs the sidebar; no
+fabricated social proof; no compliance badges; anchors vs rendered sections; links vs real
+routes; the route outside `PublicLayout`; no control animating `all`; reduced motion; a visible
+focus style on **every** `Link`/`a`/`button`.
+
+New or adapted: the **seven-band composition and its order**; the seven section files and the
+eight retired ones that must stay deleted; `bg-crewly-void` + the `--color-crewly-void` /
+`--color-crewly-mint` / `--color-crewly-violet` tokens; the cinematic class names exist in CSS
+and the retired ones appear nowhere; the hero renders `ProductWindow` with `landing-drift` and
+a hidden duplicate marquee row; the sticky bar is inert while hidden and points at the same
+destination as the hero CTA; roles are rendered **by the trust section**; the FAQ is a real
+disclosure inside pricing. The focus scanner now reads only the `className` attribute (an
+`href={…}` interpolation is data, not classes) and resolves ternaries of shared primitives.
+
+### H6. Evidence
+
+* `npm test` (Frontend) → **451 / 0 fail**; `landingPage.test.js` alone → 31 / 0.
+* `npx eslint src/pages/landing src/routes/AppRoutes.jsx test/landingPage.test.js` → clean.
+* `npm run build` → 1.35 s; `LandingPage` **68.18 kB / 16.98 kB gzip** (the page got *smaller*
+  than pass #2's 95.89 kB by dropping six sections), `index-*.js` unchanged at 433.72 kB.
+* Headless Chromium at **1440 / 1024 / 390**: `document.scrollWidth === window.innerWidth` at all
+  three; zero console or page errors; hero `h1` at 84.0 / 67.6 / 41.6px; the primary CTA's focus
+  ring measures `outline-width: 2px` in emerald; the mobile menu opens with 7 items, closes on
+  Escape; `#pricing` lands under the sticky header with the right offset; the sign-up bar is
+  `inert` at the footer; `landing-rise` / `landing-drift` compute their animations.
+
+### H7. Deliberately not carried over
+
+The reference's mascot, its cheeky voice, its gradient field, its “as seen on the App Store”
+badge — and, from pass #2, the tabbed platform tour, the workflow band, the standalone roles band
+and the standalone FAQ. Adding any of them back is a design decision, not a bug fix.
+
+**Still not owner-accepted on taste.** Everything above is measured; whether the page looks right
+to the owner is theirs to say.

@@ -15,40 +15,29 @@
 //
 // WHAT IS DELIBERATELY ABSENT
 //   Customers, logos, testimonials, usage counts, compliance badges. None of
-//   that exists in the repository, so none of it exists here. The page earns
-//   attention with what the product genuinely does — read the copy as a
-//   description of the code, not as a promise about the market.
+//   that exists in the repository, so none of it exists here. The page is loud
+//   about what the product genuinely does — read the copy as a description of
+//   the code, not as a promise about the market.
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Anchors used by the header nav, the footer and the page sections. One list,
 // so a nav item can never point at a section that does not exist.
 export const SECTION_IDS = {
-  platform: 'platform',
-  modules: 'modules',
+  product: 'product',
+  capabilities: 'capabilities',
   ai: 'ai',
-  workflow: 'workflow',
   roles: 'roles',
   security: 'security',
   pricing: 'pricing',
   faq: 'faq',
 };
 
-// The thin bar above the header. It announces something that is already live
-// (the assistant, its language list and its usage metering all ship today).
-export const ANNOUNCEMENT = {
-  badge: 'New',
-  text: 'Crewly AI answers HR questions in your team\u2019s own language — inside their permissions.',
-  link: { label: 'See how it works', href: `#${SECTION_IDS.ai}` },
-  dismissLabel: 'Dismiss announcement',
-};
-
 export const NAV_LINKS = [
-  { label: 'Platform', href: `#${SECTION_IDS.platform}`, opensPlatformMenu: true },
+  { label: 'Product', href: `#${SECTION_IDS.product}` },
+  { label: 'Capabilities', href: `#${SECTION_IDS.capabilities}` },
   { label: 'AI', href: `#${SECTION_IDS.ai}` },
-  { label: 'How it works', href: `#${SECTION_IDS.workflow}` },
   { label: 'Security', href: `#${SECTION_IDS.security}` },
   { label: 'Pricing', href: `#${SECTION_IDS.pricing}` },
-  { label: 'FAQ', href: `#${SECTION_IDS.faq}` },
 ];
 
 export const BRAND = {
@@ -58,21 +47,21 @@ export const BRAND = {
 };
 
 export const HERO = {
-  eyebrow: 'AI assistant and presence, built in',
-  titleLead: 'HR, payroll and attendance that finally',
-  titleAccent: 'agree with each other',
+  badge: 'Built for Indian payroll',
+  badgeNote: 'INR billing · 14-day trial',
+  titleLead: 'The HRMS that stops',
+  titleAccent: 'arguing with itself',
   copy:
-    'Crewly keeps the people record, the timesheet and the payslip on one data model — so payroll reconciles itself, approvals stop living in email, and every company stays a tenant of its own.',
-  primaryCta: { label: 'Start your free trial', to: '/register' },
-  secondaryCta: { label: 'See it in action', href: `#${SECTION_IDS.platform}` },
-  assurances: ['No credit card', 'Nothing to install', 'Read-only if you stop — nothing deleted'],
-  footnotes: ['Built for Indian payroll', 'INR billing', 'Multi-tenant by design'],
+    'Attendance, leave, timesheets and payslips read one employee record — so the month closes once, the numbers agree, and nobody chases an approval through email again.',
+  primaryCta: { label: 'Start free — no card', to: '/register' },
+  secondaryCta: { label: 'See it in action', href: `#${SECTION_IDS.product}` },
+  assurances: ['No card at signup', 'Live in minutes', 'Read-only if you stop — nothing deleted'],
 };
 
-// Facts the hero can stand behind: each one is a shipped behaviour, not a
-// capability we would like to have. Shown as a slow marquee under the fold.
+// Facts the page can stand behind. Each one is a shipped behaviour, not a
+// capability we would like to have. Looped under the hero.
 export const WORKPLACE_FACTS = [
-  { icon: 'monitor', label: 'Runs in the browser — no desktop install' },
+  { icon: 'monitor', label: 'Runs in the browser — no install' },
   { icon: 'qr', label: 'QR check-in from a phone' },
   { icon: 'kiosk', label: 'Shared kiosk tablet with a PIN' },
   { icon: 'upload', label: 'CSV attendance import' },
@@ -82,137 +71,98 @@ export const WORKPLACE_FACTS = [
   { icon: 'sparkles', label: 'AI answers inside your permissions' },
 ];
 
-// Honest capability chips. Each one is a fact about the codebase, not a boast.
-export const TRUST_CHIPS = [
-  { icon: 'shield', label: 'One tenant per company' },
-  { icon: 'lock', label: 'HttpOnly cookie sessions' },
-  { icon: 'key', label: 'Role-based access' },
-  { icon: 'scroll', label: 'Full audit trail' },
-  { icon: 'rupee', label: 'INR billing' },
-  { icon: 'calendar', label: '14-day trial, no card' },
-];
+// The product moment: three callouts pinned around the big dashboard.
+export const PRODUCT_MOMENT = {
+  eyebrow: 'The whole company, one screen',
+  title: 'Open it once. Know where the month stands.',
+  copy:
+    'Present, on leave, joining, payroll due — the same numbers the payroll run will read. No export, no reconciliation sheet, no “let me check with HR”.',
+  callouts: [
+    { icon: 'calendarCheck', title: 'Attendance you can defend', copy: 'Geo-fence, shift and work-mode aware, with a decision trail on every regularisation.' },
+    { icon: 'creditCard', title: 'Payroll you can review', copy: 'Inputs lock, the run computes PF, ESI, PT and TDS, a human approves, then it pays.' },
+    { icon: 'sparkles', title: 'AI that cites the record', copy: 'Ask about a balance or a payslip and the answer stays inside your permissions.' },
+  ],
+};
 
-// ── The platform, in six areas (the tabbed deep-dive) ──────────────────────
-// Every bullet describes behaviour that exists. `preview` names the product
-// mock rendered beside it by PlatformSection.jsx.
-export const PLATFORM_TABS = [
+// Six capability cards. Every bullet is a shipped screen, not a roadmap item.
+export const CAPABILITIES = [
   {
     key: 'payroll',
-    label: 'Payroll & statutory',
-    short: 'Payroll',
     icon: 'creditCard',
-    eyebrow: 'Payroll and compliance',
-    title: 'Run payroll accurately, every single cycle',
-    copy:
-      'Salary components build into structures, structures attach to people, and monthly inputs land on top. Payroll then runs once, is reviewed by a human, and only then is paid.',
+    name: 'Payroll & statutory',
+    line: 'The month closes with a review, not a spreadsheet.',
     points: [
-      'Salary components, structures and per-employee payroll profiles.',
-      'Monthly inputs for what changed — the run reads them, nobody re-types them.',
-      'An explicit review step before any payment is marked as made.',
-      'PF, ESI, professional tax and TDS computed in the run, with final settlement on exit.',
-      'Payslips generated from the same numbers that were paid.',
+      'Components → structures → per-employee profiles.',
+      'PF, ESI, professional tax and TDS computed in the run.',
+      'Final settlement and payslips from the numbers that were paid.',
     ],
-    footnote: 'Payslips and reports can carry your company branding.',
-    preview: 'payroll',
-  },
-  {
-    key: 'people',
-    label: 'Core HR & records',
-    short: 'People',
-    icon: 'users',
-    eyebrow: 'The employee record',
-    title: 'One record that every other module reads',
-    copy:
-      'Employee profiles, departments, reporting lines and documents live in one place. Change a reporting line and the org chart, the team views and the approval routing follow.',
-    points: [
-      'Profiles, departments, designations, reporting lines and an auto-built org chart.',
-      'Employee documents with categories and expiry reminders.',
-      'Sensitive profile edits move through a change request instead of a silent save.',
-      'Lifecycle from onboarding checklists through to resignation and exit.',
-      'Assets issued and returned, recorded against the person.',
-    ],
-    footnote: 'Every query is scoped to the company the record belongs to.',
-    preview: 'people',
-  },
-  {
-    key: 'hiring',
-    label: 'Hiring & onboarding',
-    short: 'Hiring',
-    icon: 'userPlus',
-    eyebrow: 'Recruitment and onboarding',
-    title: 'From a requisition to a productive teammate',
-    copy:
-      'Managers raise a requisition, HR approves it, and it becomes a public job page for that company. Applications then move through one pipeline until the candidate becomes an employee.',
-    points: [
-      'Requisitions with approval, then a per-company career site and job pages.',
-      'A candidate pipeline with interview rounds, feedback and scorecards.',
-      'Offers with branding, sent through a token-secured candidate portal.',
-      'Background verification as its own workflow, with vendor orders and a verifier workbench.',
-      'Pre-onboarding collects documents before day one; conversion creates the employee.',
-    ],
-    footnote: 'Candidates never get an employee session — the portals are token-scoped.',
-    preview: 'hiring',
+    accent: 'emerald',
   },
   {
     key: 'attendance',
-    label: 'Time & attendance',
-    short: 'Attendance',
     icon: 'calendarCheck',
-    eyebrow: 'Attendance and leave',
-    title: 'Attendance that survives real working conditions',
-    copy:
-      'Check-in follows the policy you configured, not a single hard-coded rule. Field teams, shifts, offices and work-from-home all land in the same month, ready for payroll.',
+    name: 'Time & attendance',
+    line: 'Attendance that survives real working conditions.',
     points: [
-      'Policy-driven check-in: geo-fence, location, work mode and shift aware.',
-      'QR and kiosk capture for people who share a terminal, plus CSV imports for history.',
-      'Regularisation, overtime and timesheet approvals with a decision trail.',
-      'Leave policies, balances and an approval trail the whole team can see.',
-      'Weekly hour targets and earned rest handled by the same rules engine.',
+      'Geo-fence, location, work mode and shift aware check-in.',
+      'QR and kiosk capture for shared terminals, plus CSV import.',
+      'Regularisation, overtime and timesheets with approvals.',
     ],
-    footnote: 'Attendance analytics read the same records payroll does.',
-    preview: 'attendance',
+    accent: 'emerald',
+  },
+  {
+    key: 'hiring',
+    icon: 'userPlus',
+    name: 'Hiring & onboarding',
+    line: 'From a requisition to a productive teammate.',
+    points: [
+      'Requisitions, approvals and a per-company career site.',
+      'Pipeline, interview rounds, scorecards and offers.',
+      'Background checks, pre-onboarding and conversion to employee.',
+    ],
+    accent: 'emerald',
+  },
+  {
+    key: 'people',
+    icon: 'users',
+    name: 'People & records',
+    line: 'One record every other module reads.',
+    points: [
+      'Profiles, departments, reporting lines and an auto-built org chart.',
+      'Documents with categories and expiry reminders.',
+      'Profile change requests — requested, reviewed, then applied.',
+    ],
+    accent: 'emerald',
   },
   {
     key: 'performance',
-    label: 'Performance & growth',
-    short: 'Performance',
     icon: 'barChart',
-    eyebrow: 'Goals and reviews',
-    title: 'Goals, self reviews and ratings in one cycle',
-    copy:
-      'An appraisal moves through goal setting, the work period, a self review, then lead and manager review, and ends with a published rating — with the history kept.',
+    name: 'Performance',
+    line: 'Goals, self reviews and ratings in one cycle.',
     points: [
-      'Goals set by the employee and approved inside the cycle.',
-      'Progress updated during the period, not reconstructed afterwards.',
-      'Self review followed by team lead and manager review.',
-      'Final rating published with the full history retained.',
-      'HR controls the cycle and can enrol anyone who was missed.',
+      'Goals set and approved inside the cycle.',
+      'Self review, then team-lead and manager review.',
+      'Final rating published with the history kept.',
     ],
-    footnote: 'The review board is scoped: a lead sees their team, HR sees the company.',
-    preview: 'performance',
+    accent: 'violet',
   },
   {
-    key: 'collaboration',
-    label: 'Projects, chat & meetings',
-    short: 'Collaboration',
+    key: 'work',
     icon: 'message',
-    eyebrow: 'The daily surfaces',
-    title: 'The parts people actually open every morning',
-    copy:
-      'Work does not stop at the HR record. Crewly carries projects and tasks, a chat hub with threads and reactions, meetings, announcements and referrals in the same workspace.',
+    name: 'Work together',
+    line: 'The parts people actually open every morning.',
     points: [
-      'Projects and tasks with owners, due dates and status.',
-      'Chat Hub with conversations, threads, mentions, reactions, attachments and moderation.',
-      'Presence that corrects itself when a session dies, so the team list is honest.',
-      'Meetings with recurring series, invites and cancellations that notify the room.',
-      'Announcements, employee referrals and a support desk inside each company.',
+      'Chat with threads, mentions, reactions and moderation.',
+      'Meetings, announcements, referrals and a support desk.',
+      'Presence that corrects itself when a session dies.',
     ],
-    footnote: 'Realtime runs over the same origin as the app — no third-party widget.',
-    preview: 'collaboration',
+    accent: 'violet',
   },
 ];
 
 // Grouped from the real module inventory (SidebarNav + permission registry).
+// The page shows six capabilities above and uses these as the honest "and the
+// rest of it" strip, so nothing is claimed that the product does not ship.
 export const MODULE_GROUPS = [
   {
     title: 'People',
@@ -272,29 +222,29 @@ export const MODULE_GROUPS = [
 // An unconfigured tenant offers five of them; an admin widens the set.
 export const AI_LAYER = {
   eyebrow: 'Crewly AI',
-  title: 'An assistant that answers from your records, not the internet',
+  title: 'It answers from your records. Not the internet.',
   copy:
-    'The assistant is configured per company: the provider, the languages it may speak and the usage limits are all tenant settings. It retrieves the HR context the asker is allowed to see, redacts personal data before anything leaves the platform, and meters every request.',
+    'The assistant is a tenant setting: the provider, the languages and the usage limits belong to your company. It reads only the HR context the asker may see, redacts personal data before anything leaves the platform, and meters every request.',
   languageCount: 14,
   defaultLanguageCount: 5,
   capabilities: [
     {
       icon: 'sparkles',
-      tag: 'AI responds',
+      tag: 'It responds',
       title: 'Ask about your own records',
       copy:
-        'Leave balance, attendance for the month, the last payslip, a policy question — answered from the same records the screens read, within the asker\u2019s permissions.',
+        'Leave balance, attendance for the month, the last payslip, a policy question — answered from the same records the screens read, inside the asker\u2019s permissions.',
     },
     {
       icon: 'languages',
-      tag: 'AI in your language',
+      tag: 'It speaks your language',
       title: 'Fourteen languages, five out of the box',
       copy:
         'English, Tamil, Tanglish, Hindi, Telugu, Kannada and more — including transliterated speech, because that is how teams actually type. A company admin picks the set.',
     },
     {
       icon: 'shieldCheck',
-      tag: 'AI with guardrails',
+      tag: 'It stays in bounds',
       title: 'Redacted context, metered usage',
       copy:
         'Personal data is redacted on the way out, answers are scoped to what the person may read, and every company sees its own AI usage without seeing anyone else\u2019s.',
@@ -311,47 +261,6 @@ export const AI_LAYER = {
     note: 'Illustrative conversation — no live company data is used on this page.',
   },
 };
-
-// Three alternating deep-dives. Every bullet describes behaviour that exists in
-// the code — nothing aspirational, nothing "coming soon".
-export const WORKFLOW_BLOCKS = [
-  {
-    key: 'hire',
-    eyebrow: 'Hire',
-    title: 'A requisition becomes a teammate, in one thread',
-    points: [
-      'Managers raise a requisition; HR approves it and it becomes a public job page for that company.',
-      'Applications move through a pipeline with interview rounds, feedback and offers attached to the candidate.',
-      'Background verification, if you use it, runs as its own workflow with vendor orders and a verifier workbench.',
-      'Pre-onboarding collects documents before day one, so the first week is work and not paperwork.',
-    ],
-    cta: { label: 'Start with a free trial', to: '/register' },
-  },
-  {
-    key: 'time',
-    eyebrow: 'Time',
-    title: 'Attendance feeds payroll without a re-typing step',
-    points: [
-      'Check-in follows the policy you configure — geo-fence, work mode, shift and location aware.',
-      'Regularisations, overtime and timesheets route to the right approver and keep a decision trail.',
-      'Monthly inputs and the payroll run read the same attendance truth, so disputes are settled by data.',
-      'Statutory deductions and final settlement are computed in the run, not bolted on afterwards.',
-    ],
-    cta: { label: 'See the modules', href: `#${SECTION_IDS.modules}` },
-  },
-  {
-    key: 'team',
-    eyebrow: 'Team',
-    title: 'Everyone sees only what they should',
-    points: [
-      'Presence marks a stale session offline automatically, so the team list is not a wall of ghosts.',
-      'Managers and team leads get a scoped view of their people; employees get their own records.',
-      'Sensitive profile fields move through a review workflow instead of being edited silently.',
-      'Nothing is broadcast company-wide unless the person has the permission to do it.',
-    ],
-    cta: { label: 'Read about security', href: `#${SECTION_IDS.security}` },
-  },
-];
 
 // The five shipped roles and what each one is for. Names are pinned by test
 // against ROLE_LABELS in Backend/src/utils/permissionRegistry.js.
@@ -468,7 +377,7 @@ export const PLANS = [
     monthly: 4999,
     yearly: 49990,
     highlights: ['Unlimited scale with usage limits set per tenant', 'Advanced RBAC and overrides', 'API access and exports', 'Priority support'],
-    cta: { label: 'Talk to us after signing up', to: '/register' },
+    cta: { label: 'Start free, then talk', to: '/register' },
   },
 ];
 
@@ -514,8 +423,8 @@ export const FOOTER_COLUMNS = [
   {
     title: 'Product',
     links: [
-      { label: 'Platform', href: `#${SECTION_IDS.platform}` },
-      { label: 'All modules', href: `#${SECTION_IDS.modules}` },
+      { label: 'The product', href: `#${SECTION_IDS.product}` },
+      { label: 'Capabilities', href: `#${SECTION_IDS.capabilities}` },
       { label: 'Crewly AI', href: `#${SECTION_IDS.ai}` },
       { label: 'Security', href: `#${SECTION_IDS.security}` },
       { label: 'Pricing', href: `#${SECTION_IDS.pricing}` },
@@ -525,11 +434,11 @@ export const FOOTER_COLUMNS = [
   {
     title: 'Modules',
     links: [
-      { label: 'Attendance & leave', href: `#${SECTION_IDS.modules}` },
-      { label: 'Payroll & statutory', href: `#${SECTION_IDS.modules}` },
-      { label: 'Recruitment & onboarding', href: `#${SECTION_IDS.modules}` },
-      { label: 'Chat, meetings & tasks', href: `#${SECTION_IDS.modules}` },
-      { label: 'Reports & analytics', href: `#${SECTION_IDS.modules}` },
+      { label: 'Attendance & leave', href: `#${SECTION_IDS.capabilities}` },
+      { label: 'Payroll & statutory', href: `#${SECTION_IDS.capabilities}` },
+      { label: 'Recruitment & onboarding', href: `#${SECTION_IDS.capabilities}` },
+      { label: 'Chat, meetings & tasks', href: `#${SECTION_IDS.capabilities}` },
+      { label: 'Reports & analytics', href: `#${SECTION_IDS.capabilities}` },
     ],
   },
   {
@@ -539,7 +448,7 @@ export const FOOTER_COLUMNS = [
       { label: 'HR managers', href: `#${SECTION_IDS.roles}` },
       { label: 'Managers & team leads', href: `#${SECTION_IDS.roles}` },
       { label: 'Employees', href: `#${SECTION_IDS.roles}` },
-      { label: 'How it works', href: `#${SECTION_IDS.workflow}` },
+      { label: 'How it works', href: `#${SECTION_IDS.product}` },
     ],
   },
   {
@@ -561,25 +470,31 @@ export const FOOTER_SUPPORT = {
 };
 
 // The footer's bottom bar. Legal pages do not exist yet, so they are stated as
-// plain text (the same honesty rule as above) instead of rendered as links that
-// go nowhere.
+// plain text (the same honesty rule as above) instead of rendered as links.
 export const LEGAL_NOTE = {
   label: 'Legal',
   text: 'Terms and Privacy pages are not published yet — this footer will not dress them up as links until they are.',
 };
 
+// The bar that follows the reader down the page. It is the same promise the
+// hero makes, repeated once it has scrolled out of sight — nothing new, no
+// countdown, no urgency it cannot back up.
+export const STICKY_CTA = {
+  label: 'Start free',
+  note: 'No card · 14-day trial',
+  href: '/register',
+};
+
 export default {
   BRAND,
   SECTION_IDS,
-  ANNOUNCEMENT,
   NAV_LINKS,
   HERO,
   WORKPLACE_FACTS,
-  TRUST_CHIPS,
-  PLATFORM_TABS,
+  PRODUCT_MOMENT,
+  CAPABILITIES,
   MODULE_GROUPS,
   AI_LAYER,
-  WORKFLOW_BLOCKS,
   ROLE_CARDS,
   SECURITY_POINTS,
   PLANS,
@@ -588,4 +503,5 @@ export default {
   FOOTER_COLUMNS,
   FOOTER_SUPPORT,
   LEGAL_NOTE,
+  STICKY_CTA,
 };

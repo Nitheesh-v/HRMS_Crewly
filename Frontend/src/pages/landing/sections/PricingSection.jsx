@@ -1,134 +1,208 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// PUBLIC HOME PAGE — PRICING (+ the questions the price raises)
+//
+// Four real plans, monthly or yearly. Nothing is derived by hand: the monthly and
+// yearly figures come from landingData, which the test suite compares against
+// Backend/src/utils/platformPlans.js, and "2 months free" is arithmetic on those
+// same numbers rather than a badge.
+//
+// The FAQ lives here because every one of its questions is a question about the
+// price (trial, what happens when it ends, what a plan includes) — a separate
+// marketing band would only add scroll distance.
+// ═══════════════════════════════════════════════════════════════════════════
+
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Check, Sparkles } from 'lucide-react';
-import { BRAND, PLANS, PRICING_NOTE, SECTION_IDS } from '../landingData.js';
-import { eyebrow, focusRing } from '../landingStyles.js';
+import { ArrowRight, Check, Minus, Plus } from 'lucide-react';
+import { BRAND, FAQS, PLANS, PRICING_NOTE, SECTION_IDS } from '../landingData.js';
+import { displayLg, eyebrow, focusRing, primaryCta, secondaryCta, sectionCopy } from '../landingStyles.js';
 
-// The prices rendered here are the platform catalogue's, and the test suite
-// compares them against Backend/src/utils/platformPlans.js — a price change that
-// is not mirrored here fails the build rather than shipping a wrong number.
 const inr = (value) => `₹${value.toLocaleString('en-IN')}`;
 
+// Rendered from the plan data: yearly is exactly ten months on every paid tier.
 const monthsFree = (plan) =>
   plan.monthly > 0 ? Math.round((plan.monthly * 12 - plan.yearly) / plan.monthly) : 0;
 
+const BillingToggle = ({ cycle, onChange }) => (
+  <div role="group" aria-label="Billing cycle" className="inline-flex w-fit items-center gap-1 self-start rounded-full border border-white/10 bg-white/[0.03] p-1">
+    {[
+      { id: 'monthly', label: 'Monthly' },
+      { id: 'yearly', label: 'Yearly' },
+    ].map((option) => (
+      <button
+        key={option.id}
+        type="button"
+        onClick={() => onChange(option.id)}
+        aria-pressed={cycle === option.id}
+        className={`rounded-full px-4 py-1.5 text-[12px] font-semibold transition-[color,background-color,box-shadow] ${focusRing} ${
+          cycle === option.id
+            ? 'bg-emerald-400 text-[#04231a] shadow-[0_0_20px_-6px_rgba(16,185,129,0.8)]'
+            : 'text-slate-400 hover:text-white'
+        }`}
+      >
+        {option.label}
+        {option.id === 'yearly' && (
+          <span className={`ml-1.5 text-[10px] font-bold ${cycle === 'yearly' ? 'text-[#04231a]/60' : 'text-emerald-400'}`}>
+            2 months free
+          </span>
+        )}
+      </button>
+    ))}
+  </div>
+);
+
+const PlanCard = ({ cycle, plan }) => {
+  const price = cycle === 'yearly' ? plan.yearly : plan.monthly;
+  const free = monthsFree(plan);
+
+  return (
+    <article
+      className={`relative flex flex-col rounded-3xl border p-5 ${
+        plan.featured
+          ? 'border-emerald-400/30 bg-[linear-gradient(180deg,rgba(16,185,129,0.10),rgba(16,185,129,0.02))] shadow-[0_30px_70px_-40px_rgba(16,185,129,0.6)]'
+          : 'border-white/[0.07] bg-white/[0.02]'
+      }`}
+    >
+      {plan.featured && (
+        <span className="absolute -top-2.5 left-5 rounded-full bg-emerald-400 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-[#04231a]">
+          Most teams start here
+        </span>
+      )}
+
+      <h3 className="text-[13px] font-semibold uppercase tracking-[0.14em] text-slate-400">{plan.name}</h3>
+      <p className="mt-1 text-[12px] leading-relaxed text-slate-500">{plan.tagline}</p>
+
+      <div className="mt-4 flex items-baseline gap-1">
+        <span className="text-[2rem] font-bold leading-none tracking-[-0.03em] text-white">
+          {price === 0 ? '₹0' : inr(price)}
+        </span>
+        <span className="text-[11px] text-slate-500">{cycle === 'yearly' && price > 0 ? '/year' : '/month'}</span>
+      </div>
+      <p className="mt-1 h-4 text-[10.5px] text-emerald-400/80">
+        {free > 0 && cycle === 'yearly' ? `${free} months free vs monthly` : ''}
+      </p>
+
+      <ul className="mt-5 flex-1 space-y-2 border-t border-white/[0.06] pt-4">
+        {plan.highlights.map((item) => (
+          <li key={item} className="flex items-start gap-2 text-[12px] leading-relaxed text-slate-400">
+            <Check className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${plan.featured ? 'text-emerald-400' : 'text-slate-600'}`} aria-hidden="true" />
+            {item}
+          </li>
+        ))}
+      </ul>
+
+      <Link
+        to={plan.cta.to}
+        className={`mt-5 justify-center ${plan.featured ? primaryCta : secondaryCta}`}
+      >
+        {plan.cta.label}
+      </Link>
+    </article>
+  );
+};
+
+const FaqList = () => {
+  const [open, setOpen] = useState(0);
+
+  return (
+    <div id={SECTION_IDS.faq} className="scroll-mt-24">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <h3 className="max-w-sm text-2xl font-bold tracking-[-0.025em] text-white sm:text-3xl">
+          The questions the price raises.
+        </h3>
+        <p className="max-w-sm text-[12.5px] leading-relaxed text-slate-500">
+          Straight answers about the trial, the tenant boundary and what a plan actually includes.
+        </p>
+      </div>
+
+      <div className="mt-6 divide-y divide-white/[0.06] overflow-hidden rounded-3xl border border-white/[0.07] bg-white/[0.015]">
+        {FAQS.map((faq, index) => {
+          const id = `faq-${index}`;
+          const openNow = open === index;
+
+          return (
+            <div key={faq.q}>
+              <h4>
+                <button
+                  type="button"
+                  id={`${id}-button`}
+                  onClick={() => setOpen(openNow ? -1 : index)}
+                  aria-expanded={openNow}
+                  aria-controls={`${id}-panel`}
+                  className={`flex w-full items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-white/[0.03] ${focusRing}`}
+                >
+                  <span className="flex-1 text-[13px] font-semibold text-slate-100 sm:text-sm">{faq.q}</span>
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/10 text-slate-400">
+                    {openNow ? (
+                      <Minus className="h-3 w-3" aria-hidden="true" />
+                    ) : (
+                      <Plus className="h-3 w-3" aria-hidden="true" />
+                    )}
+                  </span>
+                </button>
+              </h4>
+
+              <div
+                id={`${id}-panel`}
+                role="region"
+                aria-labelledby={`${id}-button`}
+                hidden={!openNow}
+                className="px-5 pb-5"
+              >
+                <p className="max-w-2xl text-[12.5px] leading-relaxed text-slate-500">{faq.a}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 const PricingSection = () => {
   const [cycle, setCycle] = useState('monthly');
-  const yearly = cycle === 'yearly';
 
   return (
     <section
       id={SECTION_IDS.pricing}
-      className="relative scroll-mt-28 overflow-hidden border-t border-white/[0.06] bg-crewly-night px-5 py-16 sm:px-6 lg:px-8 lg:py-24"
+      className="relative scroll-mt-24 overflow-hidden py-20 sm:py-24 lg:py-28"
     >
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-80 bg-[radial-gradient(ellipse_60%_100%_at_50%_0%,rgba(16,185,129,0.1),transparent)]"
-        aria-hidden="true"
-      />
+      <div className="landing-glow-soft pointer-events-none absolute inset-0 -z-10 opacity-50" aria-hidden="true" />
 
-      <div className="mx-auto max-w-7xl">
-        <div className="mx-auto max-w-2xl text-center">
-          <div className="flex items-center justify-center gap-3">
-            <span className="h-px w-8 bg-gradient-to-l from-emerald-400 to-transparent" aria-hidden="true" />
+      <div className="mx-auto max-w-7xl px-5 sm:px-6 lg:px-8">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl">
             <p className={eyebrow}>Pricing</p>
-            <span className="h-px w-8 bg-gradient-to-r from-emerald-400 to-transparent" aria-hidden="true" />
+            <h2 className={`mt-4 ${displayLg}`}>Priced per company. Not per surprise.</h2>
+            <p className={`mt-5 ${sectionCopy}`}>{PRICING_NOTE}</p>
           </div>
-          <h2 className="mt-3 text-balance text-3xl font-bold tracking-tight text-white sm:text-4xl">
-            Start free. Pay when the team grows into it.
-          </h2>
-          <p className="mt-4 text-base leading-relaxed text-slate-400">{PRICING_NOTE}</p>
+          <BillingToggle cycle={cycle} onChange={setCycle} />
         </div>
 
-        <div className="mt-8 flex justify-center">
-          <div role="group" aria-label="Billing period" className="inline-flex rounded-xl border border-white/10 bg-white/[0.03] p-1">
-            {[
-              { id: 'monthly', label: 'Monthly' },
-              { id: 'yearly', label: 'Yearly · 2 months free' },
-            ].map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                onClick={() => setCycle(option.id)}
-                aria-pressed={cycle === option.id}
-                className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${focusRing} ${
-                  cycle === option.id
-                    ? 'bg-emerald-500 text-[#04231a]'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+        <div className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {PLANS.map((plan) => (
+            <PlanCard key={plan.code} cycle={cycle} plan={plan} />
+          ))}
         </div>
 
-        <div className="mt-12 grid items-start gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {PLANS.map((plan) => {
-            const price = yearly ? plan.yearly : plan.monthly;
-            const free = monthsFree(plan);
-
-            return (
-              <article
-                key={plan.code}
-                className={`relative flex h-full flex-col rounded-3xl border p-6 transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-1 ${
-                  plan.featured
-                    ? 'border-emerald-400/40 bg-gradient-to-b from-emerald-500/[0.12] via-emerald-500/[0.03] to-transparent shadow-[0_0_60px_-24px_rgba(16,185,129,0.55)] lg:-my-2 lg:py-8'
-                    : 'border-white/10 bg-white/[0.02] hover:border-white/20'
-                }`}
-              >
-                {plan.featured && (
-                  <p className="absolute -top-3 left-6 inline-flex items-center gap-1.5 rounded-full bg-emerald-500 px-3 py-1 text-[11px] font-bold text-[#04231a] shadow-[0_8px_22px_-8px_rgba(16,185,129,0.9)]">
-                    <Sparkles className="h-3 w-3" aria-hidden="true" />
-                    Most popular
-                  </p>
-                )}
-
-                <h3 className="text-lg font-semibold text-white">{plan.name}</h3>
-                <p className="mt-1 min-h-[40px] text-sm leading-relaxed text-slate-400">{plan.tagline}</p>
-
-                <p className="mt-5 flex items-baseline gap-1.5">
-                  <span className="text-3xl font-bold tracking-tight text-white">{inr(price)}</span>
-                  <span className="text-sm text-slate-500">
-                    {price === 0 ? 'forever' : yearly ? '/ year' : '/ month'}
-                  </span>
-                </p>
-                <p className="mt-1 min-h-[18px] text-xs font-medium text-emerald-300">
-                  {yearly && free > 0 ? `${free} months free vs monthly` : ''}
-                </p>
-
-                <div className="landing-hairline my-5 h-px" aria-hidden="true" />
-
-                <ul className="flex-1 space-y-2.5">
-                  {plan.highlights.map((highlight) => (
-                    <li key={highlight} className="flex gap-2.5 text-sm text-slate-300">
-                      <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 ring-1 ring-emerald-400/20">
-                        <Check className="h-2.5 w-2.5 text-emerald-300" aria-hidden="true" />
-                      </span>
-                      <span>{highlight}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                <Link
-                  to={plan.cta.to}
-                  className={`mt-6 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-[color,background-color,border-color,box-shadow,transform] ${focusRing} ${
-                    plan.featured
-                      ? 'bg-emerald-500 text-[#04231a] shadow-[0_12px_28px_-16px_rgba(16,185,129,0.95)] hover:bg-emerald-400'
-                      : 'border border-white/15 text-slate-100 hover:border-white/30 hover:bg-white/[0.06]'
-                  }`}
-                >
-                  {plan.cta.label}
-                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                </Link>
-              </article>
-            );
-          })}
-        </div>
-
-        <p className="mt-8 text-center text-xs leading-relaxed text-slate-500">
-          All plans start with the same {BRAND.trialDays}-day trial. No card at signup, and no automatic
-          charge when the trial ends.
+        <p className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11.5px] text-slate-500">
+          <span className="inline-flex items-center gap-1.5">
+            <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
+            {BRAND.trialDays}-day trial · no card at signup
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
+            Read-only if you stop, never deleted
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <ArrowRight className="h-3.5 w-3.5 text-slate-600" aria-hidden="true" />
+            Prices in INR, billed to the company
+          </span>
         </p>
+
+        <div className="mt-16 border-t border-white/[0.06] pt-12">
+          <FaqList />
+        </div>
       </div>
     </section>
   );

@@ -10,15 +10,18 @@
 // So the checks here are mostly CHECKS AGAINST THE SOURCE OF TRUTH, not against
 // strings typed twice:
 //   · every price on the page  vs  Backend/src/utils/platformPlans.js
-//   · "14-day trial"           vs  TRIAL_DAYS in Backend/src/utils/constants.js
+//   · the trial length         vs  TRIAL_DAYS in Backend/src/utils/constants.js
 //   · "2 months free"          vs  the arithmetic of the plan data itself
 //   · the five roles           vs  ROLE_LABELS in permissionRegistry.js
 //   · the AI language counts   vs  chatLanguages.js
+//   · the module inventory     vs  the sidebar's own module list
 //   · every nav anchor         vs  a section id that is actually rendered
 //   · every link               vs  a route that exists in AppRoutes.jsx
 //
 // The rest pin the things a marketing page must never do: invent social proof,
-// claim certifications nobody audited, or forget that a keyboard exists.
+// claim certifications nobody audited, or forget that a keyboard exists — plus
+// the page's own identity, which has been re-lit twice and must not drift back
+// to the light SaaS palette the first draft used.
 // ═══════════════════════════════════════════════════════════════════════════
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -28,16 +31,17 @@ import { fileURLToPath } from 'node:url';
 
 import landing, {
   AI_LAYER,
-  ANNOUNCEMENT,
+  CAPABILITIES,
   FAQS,
   FOOTER_COLUMNS,
   HERO,
+  MODULE_GROUPS,
   NAV_LINKS,
   PLANS,
-  PLATFORM_TABS,
+  PRODUCT_MOMENT,
   ROLE_CARDS,
   SECTION_IDS,
-  WORKFLOW_BLOCKS,
+  STICKY_CTA,
 } from '../src/pages/landing/landingData.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -55,20 +59,32 @@ const LANDING_FILES = [
   'src/pages/landing/LandingHeader.jsx',
   'src/pages/landing/LandingFooter.jsx',
   'src/pages/landing/LandingIcon.jsx',
+  'src/pages/landing/ProductWindow.jsx',
+  'src/pages/landing/StickyCta.jsx',
+  'src/pages/landing/sections/HeroSection.jsx',
+  'src/pages/landing/sections/ProductMomentSection.jsx',
+  'src/pages/landing/sections/CapabilityStrip.jsx',
+  'src/pages/landing/sections/AiSection.jsx',
+  'src/pages/landing/sections/SecuritySection.jsx',
+  'src/pages/landing/sections/PricingSection.jsx',
+  'src/pages/landing/sections/CtaSection.jsx',
+];
+
+const SECTION_FILES = LANDING_FILES.filter((file) => file.includes('sections/'));
+
+// The pass-#2 deep-dive (six tabbed platform previews, a workflow band, a
+// separate roles band, its own FAQ band) was replaced by seven punchier bands.
+// These files must stay deleted — resurrecting one brings back the classes the
+// cinematic layer no longer defines.
+const RETIRED_FILES = [
   'src/pages/landing/DashboardPreview.jsx',
   'src/pages/landing/PlatformPreview.jsx',
   'src/pages/landing/landingTabs.js',
-  'src/pages/landing/sections/HeroSection.jsx',
-  'src/pages/landing/sections/CapabilityStrip.jsx',
   'src/pages/landing/sections/PlatformSection.jsx',
-  'src/pages/landing/sections/ModulesSection.jsx',
-  'src/pages/landing/sections/AiSection.jsx',
   'src/pages/landing/sections/WorkflowSection.jsx',
   'src/pages/landing/sections/RolesSection.jsx',
-  'src/pages/landing/sections/SecuritySection.jsx',
-  'src/pages/landing/sections/PricingSection.jsx',
   'src/pages/landing/sections/FaqSection.jsx',
-  'src/pages/landing/sections/CtaSection.jsx',
+  'src/pages/landing/sections/ModulesSection.jsx',
 ];
 
 const BACKEND_PLANS = path.join(root, '..', 'Backend', 'src', 'utils', 'platformPlans.js');
@@ -128,8 +144,7 @@ describe('Home page — structure', () => {
   test('the landing route is not nested inside PublicLayout', () => {
     // PublicLayout supplies its own header, main and footer for the auth
     // screens. Nesting the marketing page inside it rendered TWO headers and
-    // TWO footers on `/` — a dark app bar above the marketing header and a dark
-    // strip below the marketing footer. The route must be declared outside.
+    // TWO footers on `/`.
     const routes = code('src/routes/AppRoutes.jsx');
 
     const landingIndex = routes.indexOf('path="/"');
@@ -146,11 +161,39 @@ describe('Home page — structure', () => {
   test('every section the data advertises is actually rendered', () => {
     for (const key of Object.keys(SECTION_IDS)) {
       const id = SECTION_IDS[key];
-      const owner = LANDING_FILES.filter((file) => file.includes('sections/')).find((file) =>
-        code(file).includes(`id={SECTION_IDS.${key}}`),
-      );
+      const owner = SECTION_FILES.find((file) => code(file).includes(`id={SECTION_IDS.${key}}`));
 
       assert.ok(owner, `no section renders id={SECTION_IDS.${key}} (anchor #${id})`);
+    }
+  });
+
+  test('the page is seven bands, in the order the argument needs', () => {
+    const page = code('src/pages/landing/LandingPage.jsx');
+    const order = [
+      '<HeroSection />',
+      '<ProductMomentSection />',
+      '<CapabilityStrip />',
+      '<AiSection />',
+      '<SecuritySection />',
+      '<PricingSection />',
+      '<CtaSection />',
+    ];
+
+    let cursor = page.indexOf('<main id="main">');
+
+    assert.ok(cursor > -1);
+
+    for (const band of order) {
+      const at = page.indexOf(band, cursor);
+
+      assert.ok(at > cursor, `${band} is missing from the composition, or out of order`);
+      cursor = at;
+    }
+
+    assert.equal(SECTION_FILES.length, 7, `expected seven section files, found ${SECTION_FILES.length}`);
+
+    for (const retired of RETIRED_FILES) {
+      assert.equal(fs.existsSync(path.join(root, retired)), false, `${retired} was retired in the trim — delete it`);
     }
   });
 
@@ -159,11 +202,12 @@ describe('Home page — structure', () => {
     const shell = read('src/style.css');
 
     assert.ok(page.includes('landing-shell'), 'the shell class drives the page-scoped CSS');
-    assert.ok(page.includes('bg-crewly-night'), 'the canvas is the app night palette');
+    assert.ok(page.includes('bg-crewly-void'), 'the canvas is the near-black brand surface');
 
     // One brand, two accents — emerald for action, violet reserved for AI and
     // the logo. A third primary colour would mean the page had drifted into
-    // someone else's identity.
+    // someone else's identity (it did once: the first draft was a light,
+    // violet-and-white Keka imitation, which is the rejected answer).
     for (const file of LANDING_FILES) {
       const source = code(file);
 
@@ -172,29 +216,75 @@ describe('Home page — structure', () => {
       }
     }
 
-    assert.match(shell, /\.landing-shell\s*\{[\s\S]*?background-color:\s*var\(--color-crewly-night\)/, 'the shell is the night canvas in CSS too');
-    assert.match(shell, /--color-crewly-night:\s*#070b16/, 'the night token is declared once');
+    // The cinematic layer's own vocabulary. These are the classes the CSS
+    // defines; the retired pass-#2 classes must not come back, because nothing
+    // styles them any more.
+    assert.match(shell, /\.landing-shell\s*\{[\s\S]*?background-color:\s*var\(--color-crewly-void\)/, 'the shell is the void canvas in CSS too');
+    assert.match(shell, /--color-crewly-void:\s*#05060b/, 'the void token is declared once');
     assert.match(shell, /--color-crewly-mint:\s*#34d399/, 'the emerald accent comes from the token file');
+    assert.match(shell, /--color-crewly-violet:\s*#8b5cf6/, 'violet is a token, not an ad-hoc hex');
+
+    for (const cls of ['landing-glow', 'landing-glass', 'landing-window', 'landing-mark']) {
+      assert.match(shell, new RegExp(`\\.${cls}\\s*\\{`), `.${cls} is defined in the landing layer`);
+    }
+
+    const everywhere = [...LANDING_FILES, 'src/pages/landing/landingData.js']
+      .map((file) => code(file))
+      .join('\n');
+
+    for (const retired of ['landing-aurora', 'landing-card', 'landing-preview', 'landing-hairline']) {
+      assert.equal(shell.includes(`.${retired}`), false, `.${retired} is dead CSS — remove the last reference instead`);
+      assert.equal(everywhere.includes(retired), false, `${retired} is referenced by a component the CSS no longer styles`);
+    }
+  });
+
+  test('the hero is one light source and one floating product window', () => {
+    const hero = code('src/pages/landing/sections/HeroSection.jsx');
+
+    assert.ok(hero.includes('landing-glow'), 'the emerald glow sits behind the hero');
+    assert.ok(hero.includes('landing-grid'), 'the graph paper is part of the hero field');
+    assert.ok(hero.includes('<ProductWindow'), 'the product is shown as a window, not a screenshot');
+    assert.ok(hero.includes('landing-drift'), 'the window drifts on a perspective — the page’s signature move');
+
+    // The mock is decorative: a screen reader must never be read a fake table.
+    assert.ok(code('src/pages/landing/ProductWindow.jsx').includes('aria-hidden="true"'));
+    assert.ok(hero.includes('landing-breathe'), 'the live dot breathes');
+
+    // The marquee duplicates its list for a seamless loop; the copy is silent.
+    assert.match(hero, /aria-hidden=\{copy === 1 \? 'true' : undefined\}/, 'the duplicate marquee row is hidden from AT');
   });
 
   test('the primary action is emerald everywhere, from one shared class', () => {
     const styles = code('src/pages/landing/landingStyles.js');
-    const header = code('src/pages/landing/LandingHeader.jsx');
-    const hero = code('src/pages/landing/sections/HeroSection.jsx');
 
-    assert.match(styles, /export const primaryCta =[\s\S]*?bg-emerald-500/, 'primary = emerald');
+    assert.match(styles, /export const primaryCta =[\s\S]*?bg-emerald-400/, 'primary = emerald');
     assert.match(styles, /export const primaryCta =[\s\S]*?focus-visible:outline/, 'and it keeps its ring');
 
     // The sections import the shared class instead of retyping a button.
-    for (const file of ['src/pages/landing/LandingHeader.jsx', 'src/pages/landing/sections/HeroSection.jsx', 'src/pages/landing/sections/CtaSection.jsx', 'src/pages/landing/sections/PlatformSection.jsx', 'src/pages/landing/LandingFooter.jsx']) {
-      assert.ok(
-        code(file).includes('primaryCta'),
-        `${file} must use the shared primary CTA, not its own gradient`,
-      );
+    for (const file of [
+      'src/pages/landing/LandingHeader.jsx',
+      'src/pages/landing/LandingFooter.jsx',
+      'src/pages/landing/StickyCta.jsx',
+      'src/pages/landing/sections/HeroSection.jsx',
+      'src/pages/landing/sections/PricingSection.jsx',
+      'src/pages/landing/sections/CtaSection.jsx',
+    ]) {
+      assert.ok(code(file).includes('primaryCta'), `${file} must use the shared primary CTA, not its own gradient`);
     }
 
-    assert.ok(header.includes('bg-crewly-night'), 'the header sits on the same canvas');
-    assert.ok(hero.includes('landing-aurora'), 'the hero keeps the brand halo');
+    assert.ok(code('src/pages/landing/LandingHeader.jsx').includes('sticky top-0'), 'the header stays reachable while scrolling');
+  });
+
+  test('the sign-up bar follows the reader and cannot take focus while hidden', () => {
+    const bar = code('src/pages/landing/StickyCta.jsx');
+
+    assert.ok(bar.includes('STICKY_CTA'), 'the bar’s copy comes from the data');
+    assert.ok(bar.includes('inert={!shown}'), 'a hidden control must not be tabbable');
+    assert.ok(bar.includes('window.addEventListener'), 'it appears on scroll');
+    assert.ok(code('src/pages/landing/LandingPage.jsx').includes('<StickyCta />'));
+
+    // And it is the same action as the hero, not a second, louder one.
+    assert.equal(STICKY_CTA.href, HERO.primaryCta.to);
   });
 
   test('no control animates `all` (it freezes the focus ring)', () => {
@@ -204,7 +294,7 @@ describe('Home page — structure', () => {
     // measured, not theorised. Every control lists its properties instead.
     for (const file of LANDING_FILES) {
       assert.equal(
-        /(?<![-\w])(transition-all|transition)(?![-\w[\]])/.test(code(file)),
+        /(?<![-\w])(transition-all|transition)(?![- \w[\]])/.test(code(file)),
         false,
         `${file} animates every property; list color/background/border/shadow/transform instead`,
       );
@@ -247,6 +337,12 @@ describe('Home page — the claims match the product', () => {
         `${plan.name}: yearly is not exactly ten months`,
       );
     }
+
+    // The badge is rendered from that arithmetic, and only on the yearly cycle.
+    const pricing = code('src/pages/landing/sections/PricingSection.jsx');
+
+    assert.match(pricing, /const monthsFree = \(plan\) =>/, 'the saving is computed');
+    assert.match(pricing, /plan\.monthly \* 12 - plan\.yearly/, 'from the plan data itself');
   });
 
   test('the trial length matches TRIAL_DAYS', () => {
@@ -305,6 +401,13 @@ describe('Home page — the claims match the product', () => {
       labels.size,
       'a role exists in the backend but is missing from the page (or the reverse)',
     );
+
+    // Roles live inside the trust band now — that is the whole pass-#3 decision:
+    // "who can see this" is a security answer, not a persona page.
+    assert.ok(
+      code('src/pages/landing/sections/SecuritySection.jsx').includes('ROLE_CARDS'),
+      'the roles must be rendered by the trust section',
+    );
   });
 
   test('the AI language counts match the language list', () => {
@@ -336,9 +439,8 @@ describe('Home page — the claims match the product', () => {
   });
 
   test('the module inventory matches the app, not a wish list', () => {
-    const modules = landing.MODULE_GROUPS.flatMap((group) => group.items.map((item) => item.name));
+    const modules = MODULE_GROUPS.flatMap((group) => group.items.map((item) => item.name));
     const sidebar = read('src/layout/SidebarNav.jsx');
-    const platformTitles = PLATFORM_TABS.map((tab) => tab.label);
 
     // "Learning" existed on an older page and is not a module in this product.
     assert.equal(sidebar.includes('Learning'), false, 'the sidebar has no Learning module');
@@ -349,7 +451,17 @@ describe('Home page — the claims match the product', () => {
     }
 
     assert.equal(modules.length, 20, 'the module inventory changed — update the copy and this pin');
-    assert.equal(platformTitles.length, 6, 'the platform deep-dive covers six product areas');
+    assert.equal(new Set(modules).size, modules.length, 'a module is listed twice');
+
+    // The counted headline number is derived, never typed: 20 cannot drift.
+    const strip = code('src/pages/landing/sections/CapabilityStrip.jsx');
+
+    assert.ok(strip.includes('MODULE_GROUPS.reduce'), 'the module count is counted from the data');
+    assert.equal(CAPABILITIES.length, 6, 'the six capability areas are the page’s shape');
+    assert.ok(
+      CAPABILITIES.every((capability) => capability.points.length >= 3),
+      'each capability needs at least three shipped bullets',
+    );
   });
 
   test('no fabricated social proof, and no placeholder copy', () => {
@@ -375,17 +487,15 @@ describe('Home page — the claims match the product', () => {
 });
 
 describe('Home page — navigation integrity', () => {
-  test('every nav, announcement, hero and footer anchor points at a section that exists', () => {
+  test('every nav, hero and footer anchor points at a section that exists', () => {
     const ids = Object.values(SECTION_IDS);
     const anchors = [
       ...NAV_LINKS.map((link) => link.href),
-      ANNOUNCEMENT.link.href,
       HERO.secondaryCta.href,
       ...FOOTER_COLUMNS.flatMap((column) => column.links.filter((link) => link.href).map((link) => link.href)),
-      ...WORKFLOW_BLOCKS.map((block) => block.cta.href).filter(Boolean),
     ];
 
-    assert.ok(anchors.length >= 15, 'the anchors were collected');
+    assert.ok(anchors.length >= 15, `only ${anchors.length} anchors were collected`);
 
     for (const href of anchors) {
       assert.match(href, /^#/, `unexpected external href ${href}`);
@@ -393,6 +503,10 @@ describe('Home page — navigation integrity', () => {
     }
 
     assert.equal(new Set(ids).size, ids.length, 'section ids are unique');
+
+    // Five links in the pill, no mega-menu: the page is long and loud, the nav
+    // should not compete with it.
+    assert.equal(NAV_LINKS.length, 5, 'the header nav is five links');
   });
 
   test('every link resolves to a route that exists', () => {
@@ -403,8 +517,8 @@ describe('Home page — navigation integrity', () => {
       HERO.primaryCta.to,
       ...FOOTER_COLUMNS.flatMap((column) => column.links.filter((link) => link.to).map((link) => link.to)),
       ...PLANS.map((plan) => plan.cta.to),
-      ...WORKFLOW_BLOCKS.map((block) => block.cta.to).filter(Boolean),
       landing.FOOTER_SUPPORT.link.to,
+      STICKY_CTA.href,
     ];
 
     assert.ok(links.length >= 6, 'the links were collected');
@@ -417,15 +531,8 @@ describe('Home page — navigation integrity', () => {
     const footer = code('src/pages/landing/LandingFooter.jsx');
 
     assert.equal(/to="\/?(privacy|terms)"/.test(footer), false, 'those pages do not exist');
-    assert.ok(
-      footer.includes('LEGAL_NOTE'),
-      'the footer must say the legal pages are unpublished rather than link them',
-    );
-    assert.match(
-      landing.LEGAL_NOTE.text,
-      /not published/i,
-      'the legal note must be honest about the pages not existing',
-    );
+    assert.ok(footer.includes('LEGAL_NOTE'), 'the footer must say the legal pages are unpublished rather than link them');
+    assert.match(landing.LEGAL_NOTE.text, /not published/i, 'the legal note must be honest about the pages not existing');
   });
 
   test('in-page links inside components are declared in the data, not typed twice', () => {
@@ -447,60 +554,26 @@ describe('Home page — accessibility', () => {
 
     assert.ok(header.includes('aria-expanded={menuOpen}'), 'the trigger reports its state');
     assert.ok(header.includes('aria-controls="landing-mobile-menu"'), 'and names its panel');
+    assert.ok(header.includes('id="landing-mobile-menu"'), 'the panel it names exists');
     assert.ok(header.includes("aria-label={menuOpen ? 'Close menu' : 'Open menu'}"), 'and has an accessible name');
     assert.ok(header.includes("event.key === 'Escape'"), 'Escape closes it');
   });
 
-  test('the platform menu is a real disclosure too', () => {
-    const header = code('src/pages/landing/LandingHeader.jsx');
-
-    assert.ok(header.includes('aria-expanded={platformOpen}'), 'the Platform trigger reports its state');
-    assert.ok(header.includes('aria-controls="landing-platform-menu"'), 'and names its panel');
-    assert.ok(header.includes('id="landing-platform-menu"'), 'the panel it names exists');
-    assert.ok(header.includes('pointerdown'), 'it closes when you click outside it');
-  });
-
-  test('the platform tabs are a keyboard-operable tablist', () => {
-    const platform = code('src/pages/landing/sections/PlatformSection.jsx');
-
-    assert.ok(platform.includes('role="tablist"'), 'the tabs are grouped');
-    assert.ok(platform.includes('role="tab"'), 'each control is a tab');
-    assert.ok(platform.includes('role="tabpanel"'), 'the panel is a panel');
-    assert.ok(platform.includes('aria-selected={selected}'), 'selection is announced');
-    assert.ok(platform.includes('aria-controls={panelId(tab.key)}'), 'each tab names its panel');
-    assert.ok(platform.includes('aria-labelledby={tabId(active.key)}'), 'and the panel names its tab');
-    assert.ok(platform.includes('tabIndex={selected ? 0 : -1}'), 'only the active tab is in the tab order');
-
-    for (const key of ['ArrowRight', 'ArrowLeft', 'Home', 'End']) {
-      assert.ok(platform.includes(`'${key}'`), `${key} must move the selection`);
-    }
-  });
-
-  test('the FAQ is keyboard-operable and announced', () => {
-    const faq = code('src/pages/landing/sections/FaqSection.jsx');
-
-    assert.ok(faq.includes('aria-expanded={open}'));
-    assert.ok(faq.includes('aria-controls={panelId}'));
-    assert.ok(faq.includes('aria-labelledby={buttonId}'));
-    assert.ok(faq.includes('<button'), 'the trigger is a button, not a div');
-  });
-
   test('the pricing toggle and decorative visuals announce themselves correctly', () => {
     const pricing = code('src/pages/landing/sections/PricingSection.jsx');
-    const dashboard = code('src/pages/landing/DashboardPreview.jsx');
-    const platformPreview = code('src/pages/landing/PlatformPreview.jsx');
 
     assert.ok(pricing.includes('aria-pressed={cycle === option.id}'), 'the billing toggle is a toggle');
     assert.ok(pricing.includes('role="group"'), 'and its buttons are grouped');
-    assert.ok(dashboard.includes('aria-hidden="true"'), 'the mock dashboard is not read aloud');
-    assert.ok(platformPreview.includes('aria-hidden="true"'), 'nor are the tab previews');
+    assert.ok(code('src/pages/landing/ProductWindow.jsx').includes('aria-hidden="true"'), 'the mock window is not read aloud');
   });
 
-  test('the announcement bar can be dismissed and is labelled', () => {
-    const header = code('src/pages/landing/LandingHeader.jsx');
+  test('the FAQ is keyboard-operable and announced', () => {
+    const pricing = code('src/pages/landing/sections/PricingSection.jsx');
 
-    assert.ok(header.includes('aria-label={ANNOUNCEMENT.dismissLabel}'), 'the close control is named');
-    assert.ok(ANNOUNCEMENT.dismissLabel.length > 5);
+    assert.ok(pricing.includes('aria-expanded={openNow}'), 'the trigger reports its state');
+    assert.ok(pricing.includes('aria-controls={`${id}-panel`}'), 'and names its panel');
+    assert.ok(pricing.includes('aria-labelledby={`${id}-button`}'), 'and the panel names its trigger');
+    assert.ok(pricing.includes('<button'), 'the trigger is a button, not a div');
   });
 
   test('the motion preference is respected', () => {
@@ -512,6 +585,16 @@ describe('Home page — accessibility', () => {
       css,
       /prefers-reduced-motion: no-preference[\s\S]*?landing-marquee/,
       'the marquee only animates when motion is welcome',
+    );
+
+    // The entrance/floating animations must live inside that media query, or a
+    // visitor who asked for calm gets a drifting dashboard anyway.
+    const cinematic = css.slice(css.indexOf('.landing-shell'));
+
+    assert.equal(
+      /\.landing-rise\s*\{/.test(cinematic.slice(0, cinematic.indexOf('prefers-reduced-motion: no-preference'))),
+      false,
+      'the entrance animation is defined outside the reduced-motion guard',
     );
   });
 
@@ -550,9 +633,9 @@ describe('Home page — accessibility', () => {
 
     // A shared class string counts: `className={shared}` is resolved from the
     // file's own `const shared = '…'` OR from the shared design primitives the
-    // file imports, and `${shared}` inside a template literal is resolved the
-    // same way — so the pin stays strict instead of exempting every expression
-    // (which is how a real gap would hide).
+    // file imports, and `${shared}` — or a ternary between two of them — inside
+    // a template literal is resolved the same way. So the pin stays strict
+    // instead of exempting every expression, which is how a real gap would hide.
     const sharedClassNames = (source) => {
       const map = new Map();
 
@@ -592,8 +675,14 @@ describe('Home page — accessibility', () => {
       perFile.set(file, tags.length);
 
       for (const tag of tags) {
-        let resolved = tag;
-        const viaVariable = tag.match(/className=\{(\w+)\}/);
+        // Only the class list carries the ring; `href={`#${SECTION_IDS.x}`}`
+        // interpolates data, not classes, and would be a false positive here.
+        const classAt = tag.indexOf('className=');
+
+        assert.ok(classAt > -1, `${file}: an interactive element has no className → ${tag.slice(0, 80)}…`);
+
+        let resolved = tag.slice(classAt);
+        const viaVariable = resolved.match(/className=\{(\w+)\}/);
 
         if (viaVariable) {
           const literal = shared.get(viaVariable[1]);
@@ -603,18 +692,32 @@ describe('Home page — accessibility', () => {
             `${file}: className={${viaVariable[1]}} could not be resolved to a string literal`,
           );
 
-          resolved = `${tag} ${literal}`;
+          resolved = `${resolved} ${literal}`;
         }
 
-        for (const interpolation of resolved.matchAll(/\$\{(\w+)\}/g)) {
-          const literal = shared.get(interpolation[1]);
+        for (const interpolation of resolved.matchAll(/\$\{([^}]*)\}/g)) {
+          // The expression may be a bare name, or a ternary/concatenation that
+          // only names shared primitives — those resolve to real class strings.
+          const found = [...interpolation[1].matchAll(/\b([A-Za-z_$][\w$]*)\b/g)]
+            .map((match) => shared.get(match[1]))
+            .filter(Boolean);
+
+          if (found.length > 0) {
+            resolved = resolved.replace(interpolation[0], found.join(' '));
+            continue;
+          }
+
+          // A conditional built purely from string literals is inline markup,
+          // not a shared primitive: it cannot hide the ring, and the ring is
+          // asserted on the resolved tag below.
+          const literals = [...interpolation[1].matchAll(/'([^']*)'/g)].map((match) => match[1]);
 
           assert.ok(
-            literal,
-            `${file}: \${${interpolation[1]}} could not be resolved to a string literal`,
+            literals.length > 0,
+            `${file}: \${${interpolation[1]}} could not be resolved to a class string`,
           );
 
-          resolved = resolved.replace(interpolation[0], literal);
+          resolved = resolved.replace(interpolation[0], literals.join(' '));
         }
 
         assert.match(
@@ -627,11 +730,12 @@ describe('Home page — accessibility', () => {
 
     // Guards against the scan silently matching nothing: the controls live in
     // these files, so a zero here means the scanner broke, not the page.
-    assert.ok(scanned >= 30, `only ${scanned} controls were scanned — is the scanner broken?`);
-    assert.ok(perFile.get('src/pages/landing/LandingHeader.jsx') >= 8, 'the header controls were found');
+    assert.ok(scanned >= 25, `only ${scanned} controls were scanned — is the scanner broken?`);
+    assert.ok(perFile.get('src/pages/landing/LandingHeader.jsx') >= 5, 'the header controls were found');
     assert.ok(perFile.get('src/pages/landing/LandingFooter.jsx') >= 3, 'the footer controls were found');
-    // One `<button` renders six tabs (it sits inside a .map), plus the two CTAs.
-    assert.ok(perFile.get('src/pages/landing/sections/PlatformSection.jsx') >= 3, 'the tab controls were found');
+    // One `<Link` renders four plan CTAs, plus the billing toggle's `<button`
+    // and the FAQ's `<button` — three tags in the source.
+    assert.ok(perFile.get('src/pages/landing/sections/PricingSection.jsx') >= 3, 'the pricing controls were found');
   });
 });
 
@@ -651,18 +755,16 @@ describe('Home page — content sanity', () => {
   test('the security section promises only what the codebase can back', () => {
     const points = landing.SECURITY_POINTS.map((point) => `${point.title} ${point.copy}`).join(' ').toLowerCase();
     const section = code('src/pages/landing/sections/SecuritySection.jsx').toLowerCase();
+    const data = code('src/pages/landing/landingData.js').toLowerCase();
 
     for (const fabricable of ['ISO 27001', 'SOC 2', 'HIPAA', 'GDPR certified', 'bank-grade', 'military-grade']) {
-      assert.equal(
-        points.includes(fabricable.toLowerCase()),
-        false,
-        `"${fabricable}" is a claim with no evidence in this repo`,
-      );
-      assert.equal(
-        section.includes(fabricable.toLowerCase()),
-        false,
-        `"${fabricable}" appears in the rendered section — badges need an audit, not a design`,
-      );
+      for (const [label, haystack] of [['data', points], ['section', section], ['data file', data]]) {
+        assert.equal(
+          haystack.includes(fabricable.toLowerCase()),
+          false,
+          `"${fabricable}" is a claim with no evidence in this repo (found in ${label})`,
+        );
+      }
     }
 
     assert.ok(points.includes('tenant'), 'the tenancy promise is stated');
@@ -681,15 +783,23 @@ describe('Home page — content sanity', () => {
     // The demo conversation is labelled illustrative, so a screenshot of it is
     // never mistaken for a real company's data.
     assert.match(AI_LAYER.demo.note, /illustrative/i);
+
+    // Violet is the assistant's colour and the page's only other accent, so the
+    // AI band is the one place allowed to lead with it.
+    const ai = code('src/pages/landing/sections/AiSection.jsx');
+
+    assert.ok(ai.includes('violet-300'), 'the assistant band carries the violet');
+    assert.ok(!code('src/pages/landing/sections/PricingSection.jsx').includes('violet'), 'pricing does not borrow it');
   });
 
   test('the hero makes exactly the promises the product can keep', () => {
-    assert.ok(HERO.assurances.some((item) => /no credit card/i.test(item)));
+    assert.ok(HERO.assurances.some((item) => /no card/i.test(item)));
     assert.ok(HERO.assurances.some((item) => /nothing deleted|read-only/i.test(item)));
 
-    // The floating cards and the dashboard mock are decorative; the header is
-    // sticky so the CTA is always reachable.
-    assert.ok(code('src/pages/landing/LandingHeader.jsx').includes('sticky top-0'));
-    assert.ok(code('src/pages/landing/sections/HeroSection.jsx').includes('landing-float'));
+    // The headline takes a position; the copy underneath it explains, and the
+    // product moment is a real route in the page rather than a screenshot.
+    assert.ok(HERO.titleLead.length > 10);
+    assert.ok(PRODUCT_MOMENT.callouts.length >= 3, 'the product moment has three beats');
+    assert.ok(code('src/pages/landing/sections/ProductMomentSection.jsx').includes('id={SECTION_IDS.product}'));
   });
 });
