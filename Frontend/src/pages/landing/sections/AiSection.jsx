@@ -18,33 +18,33 @@ import { displayLg, ghostLink, sectionCopy } from '../landingStyles.js';
 const ChatDemo = () => (
   <div aria-hidden="true" className="landing-glass relative overflow-hidden rounded-[24px] p-4 sm:p-5">
     <div
-      className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-violet-500/20 blur-3xl"
+      className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-crewly-lilac/60 blur-3xl"
       aria-hidden="true"
     />
 
     <div className="relative flex items-center gap-2.5">
-      <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-violet-400/30 bg-violet-500/15 text-violet-300">
+      <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-crewly-ink/25 bg-crewly-lilac text-crewly-forest">
         <Sparkles className="h-4 w-4" />
       </span>
       <span>
-        <span className="block text-[12px] font-semibold text-white">{AI_LAYER.demo.title}</span>
-        <span className="block text-[10px] text-slate-500">{AI_LAYER.demo.subtitle}</span>
+        <span className="block text-[12px] font-semibold text-crewly-ink">{AI_LAYER.demo.title}</span>
+        <span className="block text-[10px] text-crewly-ink/50">{AI_LAYER.demo.subtitle}</span>
       </span>
-      <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[9px] font-medium text-slate-400">
-        <span className="h-1 w-1 rounded-full bg-violet-400" />
+      <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-crewly-ink/10 bg-white/80 px-2 py-0.5 text-[9px] font-medium text-crewly-ink/60">
+        <span className="h-1 w-1 rounded-full bg-crewly-lilac-deep" />
         guarded
       </span>
     </div>
 
     <div className="relative mt-5 space-y-2.5">
-      <div className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md border border-white/10 bg-white/[0.06] px-3.5 py-2.5">
-        <p className="text-[12px] leading-relaxed text-slate-200">{AI_LAYER.demo.question}</p>
+      <div className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md border border-crewly-ink/10 bg-crewly-ink/[0.06] px-3.5 py-2.5">
+        <p className="text-[12px] leading-relaxed text-crewly-ink/85">{AI_LAYER.demo.question}</p>
       </div>
 
-      <div className="w-fit max-w-[92%] rounded-2xl rounded-bl-md border border-violet-400/20 bg-violet-500/[0.09] px-3.5 py-2.5">
-        <p className="text-[12px] leading-relaxed text-violet-50">{AI_LAYER.demo.answer}</p>
-        <p className="mt-2 flex items-center gap-1.5 border-t border-violet-300/15 pt-2 text-[9px] text-violet-300/70">
-          <span className="h-1 w-1 rounded-full bg-violet-400" />
+      <div className="w-fit max-w-[92%] rounded-2xl rounded-bl-md border border-crewly-ink/20 bg-crewly-lilac/60 px-3.5 py-2.5">
+        <p className="text-[12px] leading-relaxed text-crewly-forest">{AI_LAYER.demo.answer}</p>
+        <p className="mt-2 flex items-center gap-1.5 border-t border-crewly-ink/15 pt-2 text-[9px] text-crewly-forest/70">
+          <span className="h-1 w-1 rounded-full bg-crewly-lilac-deep" />
           {AI_LAYER.demo.citation}
         </p>
       </div>
@@ -53,7 +53,7 @@ const ChatDemo = () => (
         {AI_LAYER.demo.chips.map((chip) => (
           <span
             key={chip}
-            className="rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[10px] font-medium text-slate-400"
+            className="rounded-full border border-crewly-ink/[0.08] bg-crewly-ink/[0.03] px-2.5 py-1 text-[10px] font-medium text-crewly-ink/60"
           >
             {chip}
           </span>
@@ -61,7 +61,7 @@ const ChatDemo = () => (
       </div>
     </div>
 
-    <p className="relative mt-4 border-t border-white/[0.06] pt-3 text-[10px] text-slate-600">
+    <p className="relative mt-4 border-t border-crewly-ink/[0.06] pt-3 text-[10px] text-crewly-ink/40">
       {AI_LAYER.demo.note}
     </p>
   </div>
@@ -81,7 +81,7 @@ const AiSection = () => (
     <div className="mx-auto max-w-7xl px-5 sm:px-6 lg:px-8">
       <div className="grid items-center gap-12 lg:grid-cols-[1fr_0.92fr] lg:gap-16">
         <div className="landing-scroll-in">
-          <p className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-300">
+          <p className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-crewly-forest">
             <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
             {AI_LAYER.eyebrow}
           </p>
@@ -92,30 +92,30 @@ const AiSection = () => (
             {AI_LAYER.capabilities.map((capability) => (
               <div
                 key={capability.title}
-                className="landing-scroll-in flex gap-3.5 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 transition-[background-color,border-color] hover:border-violet-400/20 hover:bg-violet-500/[0.04]"
+                className="landing-scroll-in flex gap-3.5 rounded-2xl border border-crewly-ink/10 bg-white/60 p-4 transition-[background-color,border-color] hover:border-crewly-ink/20 hover:bg-crewly-lilac/30"
               >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-400/20 bg-violet-500/[0.08] text-violet-300">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-crewly-ink/20 bg-crewly-lilac/60 text-crewly-forest">
                   <LandingIcon name={capability.icon} className="h-4 w-4" />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-300/70">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-crewly-forest/70">
                     {capability.tag}
                   </p>
-                  <h3 className="mt-1 text-sm font-semibold text-white">{capability.title}</h3>
-                  <p className="mt-1 text-[12.5px] leading-relaxed text-slate-400">{capability.copy}</p>
+                  <h3 className="mt-1 text-sm font-semibold text-crewly-ink">{capability.title}</h3>
+                  <p className="mt-1 text-[12.5px] leading-relaxed text-crewly-ink/60">{capability.copy}</p>
                 </div>
               </div>
             ))}
           </div>
 
-          <p className="mt-6 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-medium text-slate-500">
-            <span className="rounded-full border border-emerald-400/20 bg-emerald-500/[0.07] px-2.5 py-1 text-emerald-300">
+          <p className="mt-6 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-medium text-crewly-ink/50">
+            <span className="rounded-full border border-crewly-forest/25 bg-crewly-forest/[0.09] px-2.5 py-1 text-crewly-forest">
               {AI_LAYER.languageCount} languages
             </span>
-            <span className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1">
+            <span className="rounded-full border border-crewly-ink/10 bg-crewly-ink/[0.03] px-2.5 py-1">
               {AI_LAYER.defaultLanguageCount} on by default
             </span>
-            <span className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1">
+            <span className="rounded-full border border-crewly-ink/10 bg-crewly-ink/[0.03] px-2.5 py-1">
               Per-tenant provider and limits
             </span>
           </p>

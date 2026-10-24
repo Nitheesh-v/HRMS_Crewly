@@ -49,13 +49,25 @@ export const BRAND = {
 export const HERO = {
   badge: 'Built for Indian payroll',
   badgeNote: 'INR billing · 14-day trial',
-  titleLead: 'The HRMS that stops',
-  titleAccent: 'arguing with itself',
+  titleLead: 'Don\u2019t chase HR,',
+  titleAccent: 'just close the month.',
   copy:
     'Attendance, leave, timesheets and payslips read one employee record — so the month closes once, the numbers agree, and nobody chases an approval through email again.',
   primaryCta: { label: 'Start free — no card', to: '/register' },
   secondaryCta: { label: 'See it in action', href: `#${SECTION_IDS.product}` },
+  availability: 'Runs in the browser · no install · 14-day trial',
   assurances: ['No card at signup', 'Live in minutes', 'Read-only if you stop — nothing deleted'],
+};
+
+// The two transcript ribbons that wrap the fold. The reference streams a raw
+// voice transcript next to its cleaned-up version; the Crewly version streams
+// the mess an HR desk usually receives next to the record it ends up with.
+export const HERO_RIBBONS = {
+  raw:
+    'hey is Ravi\u2019s leave approved?? the payroll sheet says 9 days but HR said 11 and the register was updated twice \u2014 can someone check before Friday…',
+  clean:
+    'Leave approved · attendance reconciled · payroll ready for review · payslips sent',
+  chips: ['Spreadsheet removed', 'One employee record'],
 };
 
 // The wordmark used as the page's texture: letters the size of a wall, cropped
@@ -381,7 +393,7 @@ export const PLANS = [
     monthly: 999,
     yearly: 9990,
     highlights: ['Up to 25 employees', 'Payroll and payslips', 'Documents and projects', 'Email support'],
-    cta: { label: 'Start free, upgrade later', to: '/register' },
+    cta: { label: 'Start free', to: '/register' },
     featured: false,
   },
   {
@@ -391,7 +403,7 @@ export const PLANS = [
     monthly: 2499,
     yearly: 24990,
     highlights: ['Up to 100 employees', 'Recruitment and interviews', 'Performance cycles', 'Reports and analytics'],
-    cta: { label: 'Start free, upgrade later', to: '/register' },
+    cta: { label: 'Start free', to: '/register' },
     featured: true,
   },
   {
@@ -401,7 +413,7 @@ export const PLANS = [
     monthly: 4999,
     yearly: 49990,
     highlights: ['Unlimited scale with usage limits set per tenant', 'Advanced RBAC and overrides', 'API access and exports', 'Priority support'],
-    cta: { label: 'Start free, then talk', to: '/register' },
+    cta: { label: 'Start free', to: '/register' },
   },
 ];
 
@@ -521,6 +533,7 @@ export default {
   SECTION_IDS,
   NAV_LINKS,
   HERO,
+  HERO_RIBBONS,
   HERO_WATERMARK,
   HERO_STICKERS,
   HERO_NOTIFICATIONS,

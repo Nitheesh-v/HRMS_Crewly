@@ -24,7 +24,7 @@ const monthsFree = (plan) =>
   plan.monthly > 0 ? Math.round((plan.monthly * 12 - plan.yearly) / plan.monthly) : 0;
 
 const BillingToggle = ({ cycle, onChange }) => (
-  <div role="group" aria-label="Billing cycle" className="inline-flex w-fit items-center gap-1 self-start rounded-full border border-white/10 bg-white/[0.03] p-1">
+  <div role="group" aria-label="Billing cycle" className="inline-flex w-fit items-center gap-1 self-start rounded-full border border-crewly-ink/10 bg-crewly-ink/[0.03] p-1">
     {[
       { id: 'monthly', label: 'Monthly' },
       { id: 'yearly', label: 'Yearly' },
@@ -36,13 +36,13 @@ const BillingToggle = ({ cycle, onChange }) => (
         aria-pressed={cycle === option.id}
         className={`rounded-full px-4 py-1.5 text-[12px] font-semibold transition-[color,background-color,box-shadow] ${focusRing} ${
           cycle === option.id
-            ? 'bg-emerald-400 text-[#04231a] shadow-[0_0_20px_-6px_rgba(16,185,129,0.8)]'
-            : 'text-slate-400 hover:text-white'
+            ? 'bg-crewly-lilac text-crewly-ink shadow-[0_0_20px_-6px_rgba(16,185,129,0.8)]'
+            : 'text-crewly-ink/60 hover:text-crewly-ink'
         }`}
       >
         {option.label}
         {option.id === 'yearly' && (
-          <span className={`ml-1.5 text-[10px] font-bold ${cycle === 'yearly' ? 'text-[#04231a]/60' : 'text-emerald-400'}`}>
+          <span className={`ml-1.5 text-[10px] font-bold ${cycle === 'yearly' ? 'text-crewly-ink/60' : 'text-crewly-forest'}`}>
             2 months free
           </span>
         )}
@@ -59,33 +59,33 @@ const PlanCard = ({ cycle, plan }) => {
     <article
       className={`landing-scroll-in relative flex flex-col rounded-3xl border p-5 ${
         plan.featured
-          ? 'border-emerald-400/30 bg-[linear-gradient(180deg,rgba(16,185,129,0.10),rgba(16,185,129,0.02))] shadow-[0_30px_70px_-40px_rgba(16,185,129,0.6)]'
-          : 'border-white/[0.07] bg-white/[0.02]'
+          ? 'border-crewly-ink/45 bg-[linear-gradient(180deg,rgba(230,204,255,0.55),rgba(230,204,255,0.16))] shadow-[0_20px_44px_-34px_rgba(20,17,14,0.55)]'
+          : 'border-crewly-ink/10 bg-white/60'
       }`}
     >
       {plan.featured && (
-        <span className="absolute -top-2.5 left-5 rounded-full bg-emerald-400 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-[#04231a]">
-          Most teams start here
+        <span className="absolute -top-2.5 left-5 rounded-full bg-crewly-lilac px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-crewly-ink">
+          Includes hiring &amp; performance
         </span>
       )}
 
-      <h3 className="text-[13px] font-semibold uppercase tracking-[0.14em] text-slate-400">{plan.name}</h3>
-      <p className="mt-1 text-[12px] leading-relaxed text-slate-500">{plan.tagline}</p>
+      <h3 className="text-[13px] font-semibold uppercase tracking-[0.14em] text-crewly-ink/60">{plan.name}</h3>
+      <p className="mt-1 text-[12px] leading-relaxed text-crewly-ink/50">{plan.tagline}</p>
 
       <div className="mt-4 flex items-baseline gap-1">
-        <span className="text-[2rem] font-bold leading-none tracking-[-0.03em] text-white">
+        <span className="text-[2rem] font-bold leading-none tracking-[-0.03em] text-crewly-ink">
           {price === 0 ? '₹0' : inr(price)}
         </span>
-        <span className="text-[11px] text-slate-500">{cycle === 'yearly' && price > 0 ? '/year' : '/month'}</span>
+        <span className="text-[11px] text-crewly-ink/50">{cycle === 'yearly' && price > 0 ? '/year' : '/month'}</span>
       </div>
-      <p className="mt-1 h-4 text-[10.5px] text-emerald-400/80">
+      <p className="mt-1 h-4 text-[10.5px] text-crewly-forest/80">
         {free > 0 && cycle === 'yearly' ? `${free} months free vs monthly` : ''}
       </p>
 
-      <ul className="mt-5 flex-1 space-y-2 border-t border-white/[0.06] pt-4">
+      <ul className="mt-5 flex-1 space-y-2 border-t border-crewly-ink/[0.06] pt-4">
         {plan.highlights.map((item) => (
-          <li key={item} className="flex items-start gap-2 text-[12px] leading-relaxed text-slate-400">
-            <Check className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${plan.featured ? 'text-emerald-400' : 'text-slate-600'}`} aria-hidden="true" />
+          <li key={item} className="flex items-start gap-2 text-[12px] leading-relaxed text-crewly-ink/60">
+            <Check className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${plan.featured ? 'text-crewly-forest' : 'text-crewly-ink/40'}`} aria-hidden="true" />
             {item}
           </li>
         ))}
@@ -107,15 +107,15 @@ const FaqList = () => {
   return (
     <div id={SECTION_IDS.faq} className="landing-scroll-in scroll-mt-24">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <h3 className="max-w-sm text-2xl font-bold tracking-[-0.025em] text-white sm:text-3xl">
+        <h3 className="max-w-sm text-2xl font-bold tracking-[-0.025em] text-crewly-ink sm:text-3xl">
           The questions the price raises.
         </h3>
-        <p className="max-w-sm text-[12.5px] leading-relaxed text-slate-500">
+        <p className="max-w-sm text-[12.5px] leading-relaxed text-crewly-ink/50">
           Straight answers about the trial, the tenant boundary and what a plan actually includes.
         </p>
       </div>
 
-      <div className="mt-6 divide-y divide-white/[0.06] overflow-hidden rounded-3xl border border-white/[0.07] bg-white/[0.015]">
+      <div className="mt-6 divide-y divide-white/[0.06] overflow-hidden rounded-3xl border border-crewly-ink/10 bg-crewly-ink/[0.015]">
         {FAQS.map((faq, index) => {
           const id = `faq-${index}`;
           const openNow = open === index;
@@ -129,10 +129,10 @@ const FaqList = () => {
                   onClick={() => setOpen(openNow ? -1 : index)}
                   aria-expanded={openNow}
                   aria-controls={`${id}-panel`}
-                  className={`flex w-full items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-white/[0.03] ${focusRing}`}
+                  className={`flex w-full items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-crewly-ink/[0.03] ${focusRing}`}
                 >
-                  <span className="flex-1 text-[13px] font-semibold text-slate-100 sm:text-sm">{faq.q}</span>
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/10 text-slate-400">
+                  <span className="flex-1 text-[13px] font-semibold text-crewly-ink sm:text-sm">{faq.q}</span>
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-crewly-ink/10 text-crewly-ink/60">
                     {openNow ? (
                       <Minus className="h-3 w-3" aria-hidden="true" />
                     ) : (
@@ -149,7 +149,7 @@ const FaqList = () => {
                 hidden={!openNow}
                 className="px-5 pb-5"
               >
-                <p className="max-w-2xl text-[12.5px] leading-relaxed text-slate-500">{faq.a}</p>
+                <p className="max-w-2xl text-[12.5px] leading-relaxed text-crewly-ink/50">{faq.a}</p>
               </div>
             </div>
           );
@@ -185,22 +185,22 @@ const PricingSection = () => {
           ))}
         </div>
 
-        <p className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11.5px] text-slate-500">
+        <p className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11.5px] text-crewly-ink/50">
           <span className="inline-flex items-center gap-1.5">
-            <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
+            <Check className="h-3.5 w-3.5 text-crewly-forest" aria-hidden="true" />
             {BRAND.trialDays}-day trial · no card at signup
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
+            <Check className="h-3.5 w-3.5 text-crewly-forest" aria-hidden="true" />
             Read-only if you stop, never deleted
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <ArrowRight className="h-3.5 w-3.5 text-slate-600" aria-hidden="true" />
+            <ArrowRight className="h-3.5 w-3.5 text-crewly-ink/40" aria-hidden="true" />
             Prices in INR, billed to the company
           </span>
         </p>
 
-        <div className="mt-16 border-t border-white/[0.06] pt-12">
+        <div className="mt-16 border-t border-crewly-ink/[0.06] pt-12">
           <FaqList />
         </div>
       </div>

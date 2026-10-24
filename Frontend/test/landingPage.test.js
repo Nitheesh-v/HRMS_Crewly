@@ -205,29 +205,49 @@ describe('Home page — structure', () => {
     const shell = read('src/style.css');
 
     assert.ok(page.includes('landing-shell'), 'the shell class drives the page-scoped CSS');
-    assert.ok(page.includes('bg-crewly-void'), 'the canvas is the near-black brand surface');
+    assert.ok(page.includes('bg-crewly-void'), 'the canvas is the warm paper surface');
 
-    // One brand, two accents — emerald for action, violet reserved for AI and
-    // the logo. A third primary colour would mean the page had drifted into
-    // someone else's identity (it did once: the first draft was a light,
-    // violet-and-white Keka imitation, which is the rejected answer).
-    for (const file of LANDING_FILES) {
-      const source = code(file);
+    // One paper, one ink, one action colour. Emerald and violet are gone: the
+    // page is cream with a lilac action and forest-green labels, which is the
+    // reference's palette, and any stray emerald means a section kept an old
+    // primitive.
+    // ProductWindow is the exception, and deliberately so: it is a drawing of the
+    // APP, which ships a dark theme with emerald and violet accents. Showing the
+    // product in the product's own colours is the honest thing to do — re-skinning
+    // the mock cream would be a picture of a product that does not exist.
+    const paperFiles = LANDING_FILES.filter((file) => !file.includes('ProductWindow'));
 
-      for (const foreign of ['bg-[#0b1120] text-crewly-ink', 'from-violet-700 to-[#4c1d95]', 'text-crewly-ink']) {
-        assert.equal(source.includes(foreign), false, `${file} still carries the retired light theme (${foreign})`);
-      }
+    for (const retired of ['emerald-', 'violet-', 'bg-crewly-night', 'text-slate-']) {
+      assert.equal(
+        paperFiles.filter((file) => code(file).includes(retired)).join(', '),
+        '',
+        `a landing file still carries the retired night palette (${retired})`,
+      );
     }
+
+    assert.ok(code('src/pages/landing/ProductWindow.jsx').includes('emerald-'), 'the app mock keeps the app palette');
+
+    assert.match(
+      code('src/pages/landing/landingStyles.js'),
+      /export const displayXl =\s*\n?\s*'landing-serif/,
+      'the display type is the editorial serif, from the shared scale',
+    );
 
     // The cinematic layer's own vocabulary. These are the classes the CSS
     // defines; the retired pass-#2 classes must not come back, because nothing
     // styles them any more.
-    assert.match(shell, /\.landing-shell\s*\{[\s\S]*?background-color:\s*var\(--color-crewly-void\)/, 'the shell is the void canvas in CSS too');
-    assert.match(shell, /--color-crewly-void:\s*#000000/, 'the canvas is pure black, as the reference is');
-    assert.match(shell, /--color-crewly-mint:\s*#34d399/, 'the emerald accent comes from the token file');
-    assert.match(shell, /--color-crewly-violet:\s*#8b5cf6/, 'violet is a token, not an ad-hoc hex');
+    assert.match(shell, /\.landing-shell\s*\{[\s\S]*?background-color:\s*var\(--color-crewly-void\)/, 'the shell is the paper canvas in CSS too');
+    assert.match(shell, /--color-crewly-void:\s*#fcfaec/, 'the canvas is warm cream');
+    assert.match(shell, /--color-crewly-ink:\s*#14110e/, 'the ink is a near-black brown, not pure black');
+    assert.match(shell, /--color-crewly-lilac:\s*#e6ccff/, 'the action colour is lilac');
+    assert.match(shell, /--color-crewly-forest:\s*#0b3b2e/, 'the accent is forest green');
+    // The app's own tokens (crewly-green, crewly-bg …) are untouched: the
+    // landing page is a light surface, the product it advertises is not.
+    assert.match(shell, /--color-crewly-green:\s*#3fb950/, 'the app palette is untouched');
+    assert.match(shell, /--color-crewly-bg:\s*#0d1117/, 'the app still ships its night theme');
+    assert.match(shell, /--color-crewly-lilac-deep:\s*#c9a6f0/, 'the hover lilac is a token too, not an ad-hoc hex');
 
-    for (const cls of ['landing-glow', 'landing-glass', 'landing-window', 'landing-mark', 'landing-wordmark', 'landing-sticker']) {
+    for (const cls of ['landing-glow', 'landing-glass', 'landing-window', 'landing-mark', 'landing-wordmark', 'landing-sticker', 'landing-serif']) {
       assert.match(shell, new RegExp(`\\.${cls}\\s*\\{`), `.${cls} is defined in the landing layer`);
     }
 
@@ -255,6 +275,33 @@ describe('Home page — structure', () => {
 
     // The marquee duplicates its list for a seamless loop; the copy is silent.
     assert.match(hero, /aria-hidden=\{copy === 1 \? 'true' : undefined\}/, 'the duplicate marquee row is hidden from AT');
+  });
+
+  test('the hero streams two transcripts, and the waveform is decoration', () => {
+    const hero = code('src/pages/landing/sections/HeroSection.jsx');
+    const { HERO_RIBBONS } = landing;
+
+    // The reference's signature move: a raw transcript beside its cleaned-up
+    // version. Crewly's equivalent is the mess an HR desk receives beside the
+    // record it ends up with — a truer demo for this product than a voice demo.
+    assert.ok(HERO_RIBBONS.raw.length > 60, 'the raw ribbon has real mess in it');
+    assert.ok(HERO_RIBBONS.clean.length > 30, 'the clean ribbon states the outcome');
+    assert.ok(hero.includes('<textPath'), 'the ribbons are text on a path');
+    assert.ok(hero.includes('landing-ribbon-raw'), 'one grey, loose, italic');
+    assert.ok(hero.includes('landing-ribbon-clean'), 'one ink, tight');
+
+    // The waveform pill is a drawing of "listening", never data.
+    assert.match(hero, /const Waveform = \(\) => \([\s\S]*?aria-hidden="true"/, 'the waveform is aria-hidden');
+    assert.ok(hero.includes('landing-wave-bar'), 'and its bars animate');
+
+    // Availability is a separate, quieter line under the action, as in the
+    // reference — and it reads from the data, not from markup.
+    assert.ok(hero.includes('HERO.availability'));
+
+    // Both the ribbons and the wave are inside the reduced-motion guard.
+    const css = read('src/style.css');
+
+    assert.match(css, /landing-wave[\s\S]*?prefers-reduced-motion/, 'the waveform keyframes live with the rest');
   });
 
   test('the name is the page’s texture, and the stickers are honest', () => {
@@ -291,10 +338,12 @@ describe('Home page — structure', () => {
     }
   });
 
-  test('the primary action is emerald everywhere, from one shared class', () => {
+  test('the primary action is one lilac pill, from one shared class', () => {
     const styles = code('src/pages/landing/landingStyles.js');
 
-    assert.match(styles, /export const primaryCta =[\s\S]*?bg-emerald-400/, 'primary = emerald');
+    assert.match(styles, /export const primaryCta =[\s\S]*?bg-crewly-lilac/, 'primary = lilac');
+    assert.match(styles, /export const primaryCta =[\s\S]*?border-crewly-ink/, 'with an ink outline');
+    assert.match(styles, /export const primaryCta =[\s\S]*?shadow-\[0_3px_0/, 'and a hard offset shadow, like a sticker');
     assert.match(styles, /export const primaryCta =[\s\S]*?focus-visible:outline/, 'and it keeps its ring');
 
     // The sections import the shared class instead of retyping a button.
@@ -575,9 +624,12 @@ describe('Home page — navigation integrity', () => {
   test('in-page links inside components are declared in the data, not typed twice', () => {
     for (const file of LANDING_FILES) {
       for (const match of code(file).matchAll(/href="#([\w-]+)"/g)) {
-        // `#main` is the skip link's target — the landmark, not a marketing section.
+        // `#main` is the skip link's target — the landmark, not a marketing
+        // section. `#crewly-*` are SVG `<textPath>` targets inside the hero
+        // ribbons: they name a shape to write along, not a destination.
         const target = match[1];
-        const allowed = target === 'main' || Object.values(SECTION_IDS).includes(target);
+        const allowed =
+          target === 'main' || target.startsWith('crewly-') || Object.values(SECTION_IDS).includes(target);
 
         assert.ok(allowed, `${file}: href="#${target}" is neither a SECTION_IDS value nor the #main landmark`);
       }
@@ -864,12 +916,13 @@ describe('Home page — content sanity', () => {
     // never mistaken for a real company's data.
     assert.match(AI_LAYER.demo.note, /illustrative/i);
 
-    // Violet is the assistant's colour and the page's only other accent, so the
-    // AI band is the one place allowed to lead with it.
+    // The assistant band leads with the lilac fill, and pricing does not borrow
+    // it — one accent, one meaning.
     const ai = code('src/pages/landing/sections/AiSection.jsx');
 
-    assert.ok(ai.includes('violet-300'), 'the assistant band carries the violet');
-    assert.ok(!code('src/pages/landing/sections/PricingSection.jsx').includes('violet'), 'pricing does not borrow it');
+    assert.ok(ai.includes('crewly-lilac'), 'the assistant band carries the lilac');
+    assert.equal(ai.includes('emerald'), false, 'and no emerald survived the re-skin');
+    assert.equal(code('src/pages/landing/sections/PricingSection.jsx').includes('crewly-lilac/60'), false, 'pricing does not borrow the assistant fill');
   });
 
   test('the hero makes exactly the promises the product can keep', () => {

@@ -52,10 +52,10 @@ const StickyCta = () => {
         shown ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-6 opacity-0'
       }`}
     >
-      <div className="mx-auto flex max-w-3xl items-center gap-3 rounded-full border border-white/12 bg-crewly-void/90 py-2 pl-4 pr-2 shadow-[0_24px_60px_-24px_rgba(0,0,0,0.95)] backdrop-blur-xl sm:pl-5">
-        <p className="min-w-0 flex-1 truncate text-[12px] font-medium text-slate-400 sm:text-[13px]">
-          <span className="font-semibold text-white">{BRAND.name}</span>
-          <span className="mx-1.5 text-slate-700">·</span>
+      <div className="mx-auto flex max-w-3xl items-center gap-3 rounded-full border border-crewly-ink/12 bg-crewly-void/90 py-2 pl-4 pr-2 shadow-[0_24px_60px_-24px_rgba(0,0,0,0.95)] backdrop-blur-xl sm:pl-5">
+        <p className="min-w-0 flex-1 truncate text-[12px] font-medium text-crewly-ink/60 sm:text-[13px]">
+          <span className="font-semibold text-crewly-ink">{BRAND.name}</span>
+          <span className="mx-1.5 text-crewly-ink/25">·</span>
           <span className="hidden sm:inline">{STICKY_CTA.note}</span>
           <span className="sm:hidden">{BRAND.trialDays}-day trial</span>
         </p>
@@ -69,7 +69,7 @@ const StickyCta = () => {
           type="button"
           onClick={() => setDismissed(true)}
           aria-label="Dismiss the sign-up bar"
-          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-white/[0.06] hover:text-slate-200 ${focusRing}`}
+          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-crewly-ink/50 transition-colors hover:bg-crewly-ink/[0.06] hover:text-crewly-ink/85 ${focusRing}`}
         >
           <X className="h-3.5 w-3.5" aria-hidden="true" />
         </button>

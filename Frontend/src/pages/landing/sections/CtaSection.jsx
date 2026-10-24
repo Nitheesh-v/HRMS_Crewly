@@ -29,7 +29,7 @@ const CtaSection = () => (
         Close the month once. Then get on with the work.
       </h2>
 
-      <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-slate-400">
+      <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-crewly-ink/60">
         Create a company, invite the team, and let attendance, leave and payroll read the same record
         from day one.
       </p>
@@ -44,17 +44,17 @@ const CtaSection = () => (
         </Link>
       </div>
 
-      <p className="mt-6 inline-flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[11.5px] font-medium text-slate-500">
+      <p className="mt-6 inline-flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[11.5px] font-medium text-crewly-ink/50">
         <span className="inline-flex items-center gap-1.5">
-          <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
+          <Check className="h-3.5 w-3.5 text-crewly-forest" aria-hidden="true" />
           {BRAND.trialDays}-day trial
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
+          <Check className="h-3.5 w-3.5 text-crewly-forest" aria-hidden="true" />
           No card at signup
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
+          <Check className="h-3.5 w-3.5 text-crewly-forest" aria-hidden="true" />
           Cancel into read-only, nothing deleted
         </span>
       </p>

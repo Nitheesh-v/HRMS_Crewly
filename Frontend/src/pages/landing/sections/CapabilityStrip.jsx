@@ -42,8 +42,8 @@ const numbers = [
 ];
 
 const accentClasses = {
-  emerald: 'border-emerald-400/15 bg-emerald-500/[0.05] text-emerald-300',
-  violet: 'border-violet-400/20 bg-violet-500/[0.07] text-violet-300',
+  emerald: 'border-crewly-forest/20 bg-crewly-forest/[0.07] text-crewly-forest',
+  violet: 'border-crewly-ink/20 bg-crewly-lilac/60 text-crewly-forest',
 };
 
 const CapabilityStrip = () => (
@@ -67,13 +67,13 @@ const CapabilityStrip = () => (
       <div className="mt-12 grid gap-3 sm:grid-cols-3">
         {numbers.map((number) => (
           <div key={number.label} className="landing-glass landing-scroll-in rounded-2xl p-5">
-            <p className="text-[2.75rem] font-bold leading-none tracking-[-0.04em] text-white">
+            <p className="text-[2.75rem] font-bold leading-none tracking-[-0.04em] text-crewly-ink">
               {number.value}
             </p>
-            <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-300">
+            <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-crewly-forest">
               {number.label}
             </p>
-            <p className="mt-3 text-[13px] leading-relaxed text-slate-500">{number.copy}</p>
+            <p className="mt-3 text-[13px] leading-relaxed text-crewly-ink/50">{number.copy}</p>
           </div>
         ))}
       </div>
@@ -83,19 +83,19 @@ const CapabilityStrip = () => (
         {CAPABILITIES.map((capability) => (
           <article
             key={capability.key}
-            className="landing-scroll-in group relative flex flex-col rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5 transition-[background-color,border-color,transform] hover:-translate-y-0.5 hover:border-white/15 hover:bg-white/[0.04]"
+            className="landing-scroll-in group relative flex flex-col rounded-2xl border border-crewly-ink/10 bg-white/60 p-5 transition-[background-color,border-color,transform] hover:-translate-y-0.5 hover:border-crewly-ink/15 hover:bg-white/80"
           >
             <span className={`inline-flex h-9 w-9 items-center justify-center rounded-xl border ${accentClasses[capability.accent]}`}>
               <LandingIcon name={capability.icon} className="h-4 w-4" />
             </span>
-            <h3 className="mt-4 text-[15px] font-semibold text-white">{capability.name}</h3>
-            <p className="mt-1.5 text-[13px] leading-relaxed text-slate-400">{capability.line}</p>
-            <ul className="mt-auto space-y-1.5 border-t border-white/[0.06] pt-4">
+            <h3 className="mt-4 text-[15px] font-semibold text-crewly-ink">{capability.name}</h3>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-crewly-ink/60">{capability.line}</p>
+            <ul className="mt-auto space-y-1.5 border-t border-crewly-ink/[0.06] pt-4">
               {capability.points.map((point) => (
-                <li key={point} className="flex gap-2 text-[12px] leading-relaxed text-slate-500">
+                <li key={point} className="flex gap-2 text-[12px] leading-relaxed text-crewly-ink/50">
                   <span
                     className={`mt-1.5 h-1 w-1 shrink-0 rounded-full ${
-                      capability.accent === 'violet' ? 'bg-violet-400' : 'bg-emerald-400'
+                      capability.accent === 'violet' ? 'bg-crewly-lilac-deep' : 'bg-crewly-lilac'
                     }`}
                     aria-hidden="true"
                   />
@@ -108,15 +108,15 @@ const CapabilityStrip = () => (
       </div>
 
       {/* The inventory, in full */}
-      <div id={SECTION_IDS.modules} className="landing-scroll-in mt-4 scroll-mt-24 overflow-hidden rounded-3xl border border-white/[0.07] bg-white/[0.015]">
-        <div className="flex flex-col gap-3 border-b border-white/[0.06] p-5 sm:flex-row sm:items-end sm:justify-between sm:p-6">
+      <div id={SECTION_IDS.modules} className="landing-scroll-in mt-4 scroll-mt-24 overflow-hidden rounded-3xl border border-crewly-ink/10 bg-crewly-ink/[0.015]">
+        <div className="flex flex-col gap-3 border-b border-crewly-ink/[0.06] p-5 sm:flex-row sm:items-end sm:justify-between sm:p-6">
           <div>
             <p className={eyebrow}>The full inventory</p>
-            <h3 className="mt-2 text-xl font-bold tracking-[-0.02em] text-white">
+            <h3 className="mt-2 text-xl font-bold tracking-[-0.02em] text-crewly-ink">
               {moduleCount} modules, grouped the way the sidebar groups them.
             </h3>
           </div>
-          <p className="max-w-sm text-[13px] leading-relaxed text-slate-500">
+          <p className="max-w-sm text-[13px] leading-relaxed text-crewly-ink/50">
             Names match the product's own navigation. If it is not in this list, we have not shipped it.
           </p>
         </div>
@@ -125,8 +125,8 @@ const CapabilityStrip = () => (
           {MODULE_GROUPS.map((group) => (
             <div key={group.title} className="grid gap-3 p-5 sm:grid-cols-[13rem_1fr] sm:gap-6 sm:p-6">
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white">{group.title}</p>
-                <p className="mt-1.5 text-[11px] leading-relaxed text-slate-600">{group.blurb}</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-crewly-ink">{group.title}</p>
+                <p className="mt-1.5 text-[11px] leading-relaxed text-crewly-ink/40">{group.blurb}</p>
               </div>
 
               <ul className="flex flex-wrap content-start items-start gap-1.5">
@@ -134,9 +134,9 @@ const CapabilityStrip = () => (
                   <li
                     key={item.name}
                     title={item.copy}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[11px] font-medium text-slate-300 transition-colors hover:border-emerald-400/25 hover:text-white"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-crewly-ink/[0.08] bg-crewly-ink/[0.03] px-2.5 py-1 text-[11px] font-medium text-crewly-ink/75 transition-colors hover:border-crewly-forest/30 hover:text-crewly-ink"
                   >
-                    <LandingIcon name={item.icon} className="h-3 w-3 text-slate-500" />
+                    <LandingIcon name={item.icon} className="h-3 w-3 text-crewly-ink/50" />
                     {item.name}
                   </li>
                 ))}

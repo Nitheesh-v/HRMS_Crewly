@@ -562,3 +562,69 @@ pointer inside the window the transform reads
 
 **Still not owner-accepted on taste** — this is the part that is most a matter of taste, and the
 timings are the easiest thing to change: the numbers all live in `style.css` §13.
+
+---
+
+## K. THE PAPER PASS — the reference changed to wisprflow.ai (2026-10-24)
+
+The owner sent a fourth reference: `https://wisprflow.ai/`. It is the opposite of the previous
+one in every dimension that matters — **warm cream paper instead of black**, an **editorial serif**
+instead of a geometric sans, **hand-drawn energy** instead of a product-lit void. So this is not a
+re-skin of pass J: the palette, the type system and the hero's signature move were all replaced.
+
+### K1. What the reference actually does (from two live screenshots)
+
+| The reference | Crewly now |
+| --- | --- |
+| Cream `#FCFAEC` canvas, near-black ink, warm shadows | Same paper and ink; the app's own night tokens are untouched, because the product is unchanged |
+| A thin **forest-green strip** at the very top carrying one headline | A forest strip carrying a shipped fact: *“PF, ESI, professional tax and TDS are computed in the run.”* |
+| A **floating white pill** nav with an ink-outlined lilac button | Same: white/60 pill, ink hairline, lilac CTA with a hard offset shadow |
+| One **serif headline** where the first clause is greyed and the second is black italic | `Don't chase HR, *just close the month.*` — same construction, same two-tone |
+| A **lilac pill** CTA, then one quiet line of availability under it | Same, and the line is `HERO.availability`, kept separate from the assurances |
+| **Transcript ribbons** curving across the fold, raw beside cleaned-up, with a waveform pill where they cross | Two SVG `<textPath>` ribbons — the mess an HR desk receives (`…the payroll sheet says 9 days but HR said 11…`) beside the record it ends up with — and a 12-bar waveform pill between them |
+| Small hand-placed chips | `.landing-sticker` badges, now paper-white with ink outlines |
+
+New tokens: `crewly-ink #14110e`, `crewly-forest #0b3b2e`, `crewly-lilac #e6ccff`,
+`crewly-lilac-deep #c9a6f0`; `crewly-void` is now `#fcfaec`. New primitives: `.landing-serif`,
+`.landing-ribbon-raw`, `.landing-ribbon-clean`, `.landing-wave-bar`.
+
+### K2. Two decisions worth recording
+
+1. **No webfont.** The reference's serif is a licensed typeface and the sandbox cannot reach
+   `fonts.googleapis.com` (verified: the request fails, and the page logged a network error while
+   it was linked). The page therefore ships a **system editorial stack** — Iowan Old Style →
+   Palatino → Georgia — and renders identically to its intent on macOS, Windows and Linux. A
+   linked font would have meant a flash of fallback at best and a console error at worst.
+2. **The product mock stays dark.** Every other pixel is paper, but `ProductWindow` is a drawing of
+   the app, which ships a night theme. Re-skinning it cream would be a picture of a product that
+   does not exist. The test now asserts exactly that: every landing file is paper *except* the
+   mock, and the mock keeps the app's emerald/violet.
+
+### K3. Bugs this pass produced, and the fixes
+
+1. **Two stickers landed on the flowing text** at 1024px, where the hero has no gutter. Stickers are
+   now `xl`-only, and the two ribbon chips are pinned to the ribbon block's own corners.
+2. **`href="#crewly-ribbon-raw"` tripped the anchor pin.** It is an SVG `<textPath>` target, not a
+   destination; the scanner now allows `crewly-*` ids.
+3. **A too-long headline made four short lines** at 1440. The clamp's `vw` term was reduced
+   (7.4 → 6.4) and the headline's measure widened to `max-w-5xl`; it is two lines again at 84px.
+4. **The pricing badge became a lie.** “Most teams start here” is a popularity claim with no source
+   in this repository; it now reads “Includes hiring & performance”, which is what the plan
+   actually contains. The featured card's border and wash also stopped being emerald.
+
+### K4. Evidence
+
+* `npm test` (Frontend) → **454 / 0 fail**; `landingPage.test.js` → 34 pins (a ribbon/waveform pin
+  was added, and the surface pin now asserts paper + ink + lilac + forest tokens, the serif scale,
+  and that no emerald/violet/slate survives outside the app mock).
+* `npx eslint src/pages/landing src/routes/AppRoutes.jsx test/landingPage.test.js` → clean.
+* `npm run build` → 1.35 s; `LandingPage` **75.46 kB / 18.76 kB gzip**; `index-*` unchanged.
+* Computed in Chromium: `h1` is 84px in **Iowan Old Style** at weight 400 (no synthetic bold);
+  `landing-glow-breathe`, `landing-wobble`, `landing-pop, landing-float`, `landing-ribbon-drift`,
+  `landing-wave` (bars reading scaleY 0.90 / 0.98 / 1.00, i.e. actually out of phase) and
+  `landing-marquee` all run; under `prefers-reduced-motion: reduce` every one is `none` and the
+  reveals are `opacity: 1`.
+* 1440 / 1024 / 390: `scrollWidth === innerWidth` at all three, zero console errors.
+
+**Still not owner-accepted on taste.** The palette and the type are the owner's call; everything
+above is measured.
