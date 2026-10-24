@@ -44,6 +44,12 @@
   --color-crewly-sage: #c3ddc6;
   --color-crewly-sage-deep: #2c6b4f;
   --color-crewly-forest-deep: #07281f;
+
+  /* Auth screens. The public page is paper; signing in is the moment the lights
+     go down. This charcoal is warm (a brown-black, not a blue-black) so it sits
+     next to the cream and the clay without looking like a different product. */
+  --color-crewly-coal: #232120;
+  --color-crewly-coal-soft: #2b2825;
 }
 
 /* ---- Base responsive resets ---- */
@@ -91,14 +97,18 @@ canvas {
    base scale is the intended look, but it would silently clamp a marketing
    `text-5xl` headline down to 1.875rem. The landing surface sets its own
    display scale with utilities, so it opts out here rather than fighting the
-   cascade from every heading. */
-h1:not(.landing-shell h1) {
+   cascade from every heading.
+
+   The auth screens opt out for the same reason: their headline is a serif
+   display line (`auth-display`), and the 1.875rem cap turned a 38px statement
+   into a 30px one. */
+h1:not(.landing-shell h1):not(.auth-shell h1) {
   @apply text-xl sm:text-2xl lg:text-3xl;
 }
-h2:not(.landing-shell h2) {
+h2:not(.landing-shell h2):not(.auth-shell h2) {
   @apply text-lg sm:text-xl lg:text-2xl;
 }
-h3:not(.landing-shell h3) {
+h3:not(.landing-shell h3):not(.auth-shell h3) {
   @apply text-base sm:text-lg;
 }
 
@@ -138,21 +148,43 @@ h3:not(.landing-shell h3) {
 }
 
 /* ---- Auth screens ----------------------------------------------------
-   These class names are referenced by LoginPage, RegisterCompanyPage,
-   ForgotPasswordPage, ResetPasswordPage and ResetPasswordPage's success card,
-   but were never defined anywhere: every auth input and primary button fell
-   back to browser defaults on a dark canvas. Defined ONCE, here, so the five
-   screens share one look. Plain CSS (not @apply) so the focus ring, invalid
-   state and placeholder colour stay under our control. */
+   Shared by login, register, forgot-password and reset-password.
+
+   The look is the public page after dark: warm charcoal, cream type, one serif
+   display face, and clay (the page's warm accent) for every link. Inputs are
+   near-black wells with a cream hairline rather than white boxes; the primary
+   action is cream on charcoal, which is the one high-contrast object on screen.
+
+   Plain CSS, not @apply: the focus ring, the invalid state and Chrome's
+   autofill paint all need to be controlled precisely. */
+.auth-shell {
+  /* Native controls (checkbox, autofill menu, scrollbars) follow the OS theme
+     by default; on charcoal an unchecked checkbox painted as a white square. */
+  color-scheme: dark;
+  background-color: var(--color-crewly-coal);
+  background-image:
+    radial-gradient(46rem 30rem at 8% -10%, rgba(217, 104, 63, 0.1), transparent 62%),
+    radial-gradient(40rem 28rem at 102% 4%, rgba(230, 204, 255, 0.09), transparent 60%);
+  color: var(--color-crewly-void);
+}
+
+/* The display face. Same system editorial serif as the marketing page, so the
+   two surfaces read as one product. */
+.auth-display {
+  font-family: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, 'Times New Roman', serif;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+}
+
 .auth-input {
   width: 100%;
-  border-radius: 0.75rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background-color: rgba(255, 255, 255, 0.04);
-  padding: 0.7rem 1rem;
+  border-radius: 0.625rem;
+  border: 1px solid rgba(252, 250, 236, 0.16);
+  background-color: rgba(252, 250, 236, 0.035);
+  padding: 0.7rem 0.95rem;
   font-size: 0.875rem;
   line-height: 1.5;
-  color: #fff;
+  color: var(--color-crewly-void);
   outline: none;
   transition:
     border-color 150ms ease,
@@ -160,33 +192,33 @@ h3:not(.landing-shell h3) {
     box-shadow 150ms ease;
 }
 .auth-input::placeholder {
-  color: #64748b;
+  color: rgba(252, 250, 236, 0.34);
 }
 .auth-input:hover:not(:focus) {
-  border-color: rgba(255, 255, 255, 0.18);
+  border-color: rgba(252, 250, 236, 0.3);
 }
 .auth-input:focus {
-  border-color: rgba(52, 211, 153, 0.7);
-  background-color: rgba(255, 255, 255, 0.06);
-  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.14);
+  border-color: rgba(230, 204, 255, 0.75);
+  background-color: rgba(252, 250, 236, 0.06);
+  box-shadow: 0 0 0 3px rgba(230, 204, 255, 0.16);
 }
 .auth-input[aria-invalid='true'] {
-  border-color: rgba(244, 63, 94, 0.6);
+  border-color: rgba(224, 122, 95, 0.75);
 }
 .auth-input[aria-invalid='true']:focus {
-  box-shadow: 0 0 0 4px rgba(244, 63, 94, 0.14);
+  box-shadow: 0 0 0 3px rgba(224, 122, 95, 0.18);
 }
 .auth-input:disabled {
   cursor: not-allowed;
-  opacity: 0.6;
+  opacity: 0.55;
 }
-/* Chrome's autofill paint is light-blue by default — keep it on-palette */
+/* Chrome paints autofill light-blue; keep it on the charcoal. */
 .auth-input:-webkit-autofill,
 .auth-input:-webkit-autofill:hover,
 .auth-input:-webkit-autofill:focus {
-  -webkit-text-fill-color: #fff;
-  -webkit-box-shadow: 0 0 0 1000px #101a2e inset;
-  caret-color: #fff;
+  -webkit-text-fill-color: var(--color-crewly-void);
+  -webkit-box-shadow: 0 0 0 1000px #2b2825 inset;
+  caret-color: var(--color-crewly-void);
 }
 
 .auth-primary {
@@ -195,12 +227,12 @@ h3:not(.landing-shell h3) {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  border-radius: 0.75rem;
-  background-color: #10b981;
-  padding: 0.7rem 1.25rem;
+  border-radius: 0.625rem;
+  background-color: var(--color-crewly-void);
+  padding: 0.75rem 1.25rem;
   font-size: 0.875rem;
   font-weight: 600;
-  color: #04170d;
+  color: var(--color-crewly-ink);
   outline: none;
   transition:
     background-color 150ms ease,
@@ -208,17 +240,20 @@ h3:not(.landing-shell h3) {
     box-shadow 150ms ease;
 }
 .auth-primary:hover:not(:disabled) {
-  background-color: #34d399;
+  background-color: #fffdf4;
+  box-shadow: 0 6px 18px -12px rgba(0, 0, 0, 0.9);
 }
 .auth-primary:active:not(:disabled) {
   transform: scale(0.99);
 }
 .auth-primary:focus-visible {
-  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.35);
+  box-shadow: 0 0 0 3px rgba(230, 204, 255, 0.55);
 }
 .auth-primary:disabled {
   cursor: not-allowed;
-  opacity: 0.5;
+  background-color: rgba(252, 250, 236, 0.14);
+  color: rgba(252, 250, 236, 0.45);
+  box-shadow: none;
 }
 
 .auth-secondary {
@@ -227,31 +262,71 @@ h3:not(.landing-shell h3) {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  border-radius: 0.75rem;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  padding: 0.65rem 1.25rem;
+  border-radius: 0.625rem;
+  border: 1px solid rgba(252, 250, 236, 0.18);
+  background-color: transparent;
+  padding: 0.7rem 1.25rem;
   font-size: 0.875rem;
   font-weight: 500;
-  color: #e2e8f0;
+  color: var(--color-crewly-void);
   outline: none;
   transition:
     border-color 150ms ease,
     background-color 150ms ease;
 }
 .auth-secondary:hover {
-  border-color: rgba(255, 255, 255, 0.28);
-  background-color: rgba(255, 255, 255, 0.04);
+  border-color: rgba(252, 250, 236, 0.4);
+  background-color: rgba(252, 250, 236, 0.05);
 }
 .auth-secondary:focus-visible {
-  box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.25);
+  box-shadow: 0 0 0 3px rgba(230, 204, 255, 0.4);
 }
 
-/* The centered variant's canvas: two soft emerald blooms over navy. */
+/* The clay link colour: the reference's one warm accent, and the only warm
+   thing on a screen that is otherwise charcoal and cream. */
+.auth-link {
+  color: #e8a487;
+  text-underline-offset: 3px;
+  transition: color 150ms ease;
+}
+.auth-link:hover {
+  color: #f6c3ac;
+  text-decoration: underline;
+}
+.auth-link:focus-visible {
+  outline: 2px solid #e8a487;
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* The centered variant (forgot / reset password). */
 .auth-wave-bg {
-  background-color: #0b1120;
+  background-color: var(--color-crewly-coal);
   background-image:
-    radial-gradient(60rem 40rem at 15% -10%, rgba(16, 185, 129, 0.16), transparent 60%),
-    radial-gradient(50rem 34rem at 110% 10%, rgba(59, 130, 246, 0.14), transparent 55%);
+    radial-gradient(48rem 32rem at 12% -8%, rgba(217, 104, 63, 0.12), transparent 60%),
+    radial-gradient(42rem 30rem at 104% 6%, rgba(230, 204, 255, 0.1), transparent 58%);
+}
+
+/* The illustration on the auth screens drifts, the way the marketing page's
+   product window does. Motion is opt-in and never the only thing on screen. */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes auth-float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+
+  .auth-float {
+    animation: auth-float 7s ease-in-out infinite;
+  }
+
+  .auth-float-slow {
+    animation: auth-float 9.5s ease-in-out 0.6s infinite;
+  }
 }
 
 /* ---- Chat helpers ---- */

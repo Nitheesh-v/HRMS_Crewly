@@ -36,17 +36,17 @@ const ForgotPasswordPage = () => {
 
   return (
     <AuthLayout variant="centered">
-      <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-8 backdrop-blur-sm sm:p-10">
-        <h1 className="text-center text-2xl font-bold text-white">
+      <div className="rounded-2xl border border-crewly-void/10 bg-crewly-void/[0.03] p-8 sm:p-10">
+        <h1 className="auth-display text-center text-[32px] leading-tight text-crewly-void">
           Reset your password
         </h1>
-        <p className="mt-2 text-center text-sm leading-relaxed text-slate-400">
+        <p className="mt-2 text-center text-[13px] leading-relaxed text-crewly-void/55">
           Enter your company code and email address and we’ll send you
           password reset instructions.
         </p>
 
         {message && (
-          <div className="mt-6 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
+          <div className="mt-6 rounded-lg border border-crewly-sage/40 bg-crewly-sage/10 px-4 py-3 text-[13px] text-[#c9e6cf]">
             {message}
           </div>
         )}
@@ -54,8 +54,8 @@ const ForgotPasswordPage = () => {
 
         <form onSubmit={submit} className="mt-7 space-y-4" noValidate>
           <div>
-            <label htmlFor="companyCode" className="mb-1.5 block text-sm font-medium text-slate-300">
-              Company Code <span className="text-rose-400">*</span>
+            <label htmlFor="companyCode" className="mb-1.5 block text-[12px] font-medium text-crewly-void/60">
+              Company Code <span className="text-[#e08a6e]">*</span>
             </label>
             <input
               id="companyCode"
@@ -68,8 +68,8 @@ const ForgotPasswordPage = () => {
           </div>
 
           <div>
-            <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-slate-300">
-              Registered Email <span className="text-rose-400">*</span>
+            <label htmlFor="email" className="mb-1.5 block text-[12px] font-medium text-crewly-void/60">
+              Registered Email <span className="text-[#e08a6e]">*</span>
             </label>
             <input
               id="email"
@@ -95,7 +95,7 @@ const ForgotPasswordPage = () => {
           </button>
         </form>
 
-        <p className="mt-5 text-center text-xs text-slate-500">
+        <p className="mt-5 text-center text-[11.5px] text-crewly-void/35">
           Reset links expire 30 minutes after they are issued.
         </p>
       </div>

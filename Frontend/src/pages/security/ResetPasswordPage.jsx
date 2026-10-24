@@ -12,7 +12,7 @@ const Check = ({ ok }) => (
     viewBox="0 0 24 24"
     fill="none"
     strokeWidth="2.4"
-    className={ok ? "text-emerald-400" : "text-rose-400"}
+    className={ok ? "text-emerald-400" : "text-[#e08a6e]"}
     aria-hidden="true"
   >
     {ok ? (
@@ -38,10 +38,10 @@ const SuccessState = ({ isSetup, onBack }) => (
         </svg>
       </span>
     </div>
-    <h1 className="mt-8 text-2xl font-bold text-white">
+    <h1 className="mt-8 auth-display text-[32px] leading-tight text-crewly-void">
       {isSetup ? "Your account is ready" : "You successfully changed your password"}
     </h1>
-    <p className="mt-3 max-w-xs text-sm leading-relaxed text-slate-400">
+    <p className="mt-3 max-w-xs text-[13px] leading-relaxed text-crewly-void/55">
       Always remember the password for your account at Crewly!
     </p>
     <button type="button" onClick={onBack} className="auth-primary mt-8">
@@ -129,11 +129,11 @@ const ResetPasswordPage = () => {
 
   return (
     <AuthLayout variant="centered">
-      <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-8 backdrop-blur-sm sm:p-10">
-        <h1 className="text-center text-2xl font-bold text-white">
+      <div className="rounded-2xl border border-crewly-void/10 bg-crewly-void/[0.03] p-8 backdrop-blur-sm sm:p-10">
+        <h1 className="text-center auth-display text-[32px] leading-tight text-crewly-void">
           {isSetup ? "Set up your Crewly account" : "Update your password"}
         </h1>
-        <p className="mt-2 text-center text-sm leading-relaxed text-slate-400">
+        <p className="mt-2 text-center text-[13px] leading-relaxed text-crewly-void/55">
           Set your new password with a minimum of 10 characters including
           uppercase, lowercase, a number and a special character.
         </p>
@@ -141,8 +141,8 @@ const ResetPasswordPage = () => {
 
         <form onSubmit={submit} className="mt-7 space-y-4" noValidate>
           <div>
-            <label htmlFor="newPassword" className="mb-1.5 block text-sm font-medium text-slate-300">
-              New Password <span className="text-rose-400">*</span>
+            <label htmlFor="newPassword" className="mb-1.5 block text-sm font-medium text-crewly-void/65">
+              New Password <span className="text-[#e08a6e]">*</span>
             </label>
             <PasswordField
               id="newPassword"
@@ -156,7 +156,7 @@ const ResetPasswordPage = () => {
             />
             <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5">
               {rules.map((rule) => (
-                <li key={rule.label} className={`flex items-center gap-1.5 text-xs ${rule.ok ? "text-emerald-400" : "text-rose-400"}`}>
+                <li key={rule.label} className={`flex items-center gap-1.5 text-xs ${rule.ok ? "text-emerald-400" : "text-[#e08a6e]"}`}>
                   <Check ok={rule.ok} />
                   {rule.label}
                 </li>
@@ -165,8 +165,8 @@ const ResetPasswordPage = () => {
           </div>
 
           <div>
-            <label htmlFor="confirmPassword" className="mb-1.5 block text-sm font-medium text-slate-300">
-              Confirmation New Password <span className="text-rose-400">*</span>
+            <label htmlFor="confirmPassword" className="mb-1.5 block text-sm font-medium text-crewly-void/65">
+              Confirmation New Password <span className="text-[#e08a6e]">*</span>
             </label>
             <PasswordField
               id="confirmPassword"
@@ -178,7 +178,7 @@ const ResetPasswordPage = () => {
               required={false}
             />
             {mismatch && (
-              <p className="mt-2 text-xs text-rose-400">Passwords do not match yet.</p>
+              <p className="mt-2 text-xs text-[#e08a6e]">Passwords do not match yet.</p>
             )}
           </div>
 

@@ -7,6 +7,10 @@ import { getDashboardPath } from '../../utils/roles.js';
 import AuthLayout from '../../layout/AuthLayout.jsx';
 import PasswordField from '../../components/auth/PasswordField.jsx';
 import { notify } from '../../utils/notify.js';
+import { BRAND } from '../landing/landingData.js';
+
+const labelClass = 'mb-1.5 block text-[12px] font-medium tracking-[0.01em] text-crewly-void/60';
+const errorClass = 'mt-1.5 text-[11.5px] text-[#f0a184]';
 
 const RegisterCompanyPage = () => {
   const { login } = useAuth();
@@ -74,19 +78,21 @@ const RegisterCompanyPage = () => {
   };
 
   return (
-    <AuthLayout variant="split" visualSide="right">
-      <div className="mx-auto w-full max-w-sm">
-        <h1 className="text-2xl font-bold tracking-tight text-white sm:text-[28px]">
-          Set up your workspace
+    <AuthLayout>
+      <div className="w-full max-w-[400px]">
+        <h1 className="auth-display text-[38px] leading-[1.04] text-crewly-void sm:text-[44px]">
+          Create your workspace
         </h1>
-        <p className="mt-1.5 text-sm text-slate-400">
-          Free for 14 days. Your Company Admin account is created automatically.
+        <p className="mt-3 text-[13.5px] text-crewly-void/55">
+          Already have an account?{' '}
+          <Link to="/login" className="auth-link font-medium">
+            Log in
+          </Link>
         </p>
 
-
-        <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate aria-busy={loading}>
+        <form onSubmit={onSubmit} className="mt-8 space-y-3.5" noValidate aria-busy={loading}>
           <div>
-            <label htmlFor="companyName" className="mb-1.5 block text-sm font-medium text-slate-200">
+            <label htmlFor="companyName" className={labelClass}>
               Company name
             </label>
             <input
@@ -103,14 +109,14 @@ const RegisterCompanyPage = () => {
               required
             />
             {fieldErrors.companyName && (
-              <p id="companyName-error" className="mt-1.5 text-xs text-rose-300">
+              <p id="companyName-error" className={errorClass}>
                 {fieldErrors.companyName}
               </p>
             )}
           </div>
 
           <div>
-            <label htmlFor="adminName" className="mb-1.5 block text-sm font-medium text-slate-200">
+            <label htmlFor="adminName" className={labelClass}>
               Your name
             </label>
             <input
@@ -126,14 +132,14 @@ const RegisterCompanyPage = () => {
               required
             />
             {fieldErrors.adminName && (
-              <p id="adminName-error" className="mt-1.5 text-xs text-rose-300">
+              <p id="adminName-error" className={errorClass}>
                 {fieldErrors.adminName}
               </p>
             )}
           </div>
 
           <div>
-            <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-slate-200">
+            <label htmlFor="email" className={labelClass}>
               Work email
             </label>
             <input
@@ -147,18 +153,22 @@ const RegisterCompanyPage = () => {
               autoComplete="email"
               inputMode="email"
               aria-invalid={fieldErrors.email ? 'true' : undefined}
-              aria-describedby={fieldErrors.email ? 'email-error' : undefined}
+              aria-describedby={fieldErrors.email ? 'email-error' : 'email-hint'}
               required
             />
-            {fieldErrors.email && (
-              <p id="email-error" className="mt-1.5 text-xs text-rose-300">
+            {fieldErrors.email ? (
+              <p id="email-error" className={errorClass}>
                 {fieldErrors.email}
+              </p>
+            ) : (
+              <p id="email-hint" className="mt-1.5 text-[11.5px] text-crewly-void/35">
+                This becomes the Company Admin login for the workspace.
               </p>
             )}
           </div>
 
           <div>
-            <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-slate-200">
+            <label htmlFor="password" className={labelClass}>
               Password
             </label>
             <PasswordField
@@ -174,7 +184,7 @@ const RegisterCompanyPage = () => {
               describedBy={fieldErrors.password ? 'password-error' : undefined}
             />
             {fieldErrors.password ? (
-              <p id="password-error" className="mt-1.5 text-xs text-rose-300">
+              <p id="password-error" className={errorClass}>
                 {fieldErrors.password}
               </p>
             ) : (
@@ -182,8 +192,8 @@ const RegisterCompanyPage = () => {
               // checklist before the first keystroke is noise, not help.
               form.password.length > 0 && (
                 <p
-                  className={`mt-1.5 flex items-center gap-1.5 text-xs ${
-                    longEnough ? 'text-emerald-300' : 'text-slate-500'
+                  className={`mt-1.5 flex items-center gap-1.5 text-[11.5px] ${
+                    longEnough ? 'text-[#b9e3c6]' : 'text-crewly-void/35'
                   }`}
                 >
                   <Check className="h-3.5 w-3.5" aria-hidden="true" />
@@ -194,7 +204,7 @@ const RegisterCompanyPage = () => {
           </div>
 
           <div>
-            <label htmlFor="confirmPassword" className="mb-1.5 block text-sm font-medium text-slate-200">
+            <label htmlFor="confirmPassword" className={labelClass}>
               Confirm password
             </label>
             <PasswordField
@@ -209,13 +219,13 @@ const RegisterCompanyPage = () => {
               describedBy={fieldErrors.confirmPassword ? 'confirmPassword-error' : undefined}
             />
             {fieldErrors.confirmPassword && (
-              <p id="confirmPassword-error" className="mt-1.5 text-xs text-rose-300">
+              <p id="confirmPassword-error" className={errorClass}>
                 {fieldErrors.confirmPassword}
               </p>
             )}
           </div>
 
-          <button type="submit" disabled={loading || !canSubmit} className="auth-primary">
+          <button type="submit" disabled={loading || !canSubmit} className="auth-primary mt-1">
             {loading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -226,18 +236,13 @@ const RegisterCompanyPage = () => {
             )}
           </button>
 
-          <p className="text-center text-xs leading-relaxed text-slate-500">
-            By creating an account you agree to the Terms &amp; Conditions and the
-            Privacy Policy.
+          {/* The old copy said you agree to Terms and a Privacy Policy that this
+              product has not published. The honest version is what the trial
+              actually is. */}
+          <p className="text-[11.5px] leading-relaxed text-crewly-void/35">
+            {BRAND.trialDays}-day trial · no card at signup · cancel into read-only, nothing deleted
           </p>
         </form>
-
-        <p className="mt-6 text-center text-sm text-slate-400">
-          Already have an account?{' '}
-          <Link to="/login" className="font-medium text-emerald-400 hover:underline">
-            Sign in
-          </Link>
-        </p>
       </div>
     </AuthLayout>
   );

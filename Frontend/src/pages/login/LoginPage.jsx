@@ -38,6 +38,12 @@ const noticeFor = (searchParams) => {
   return "";
 };
 
+// The label style shared by every field on this screen: small, quiet, above the
+// input (the reference drops labels entirely and relies on placeholders, which
+// leaves a screen reader with nothing once the field has a value).
+const labelClass = "mb-1.5 block text-[12px] font-medium tracking-[0.01em] text-crewly-void/60";
+const errorClass = "mt-1.5 text-[11.5px] text-[#f0a184]";
+
 const LoginPage = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -119,26 +125,21 @@ const LoginPage = () => {
   };
 
   return (
-    <AuthLayout
-      headline="Amazing Platform!"
-      quote="The human resource platform helped streamline our hiring process and saved us a significant amount of time and effort."
-      quoteAuthor="Katie Waters"
-      quoteRole="Head Resource Management · Fintech Company"
-      activeDot={0}
-    >
-      <div className="mx-auto w-full max-w-sm">
-        <h1 className="text-2xl font-bold tracking-tight text-white sm:text-[28px]">
+    <AuthLayout>
+      <div className="w-full max-w-[400px]">
+        <h1 className="auth-display text-[38px] leading-[1.04] text-crewly-void sm:text-[44px]">
           Welcome back
         </h1>
-        <p className="mt-1.5 text-sm text-slate-400">
-          Sign in with your company code to continue to your workspace.
+        <p className="mt-3 text-[13.5px] text-crewly-void/55">
+          New to Crewly?{" "}
+          <Link to="/register" className="auth-link font-medium">
+            Create an account
+          </Link>
         </p>
 
-
-
-        <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate aria-busy={loading}>
+        <form onSubmit={onSubmit} className="mt-8 space-y-4" noValidate aria-busy={loading}>
           <div>
-            <label htmlFor="companyCode" className="mb-1.5 block text-sm font-medium text-slate-200">
+            <label htmlFor="companyCode" className={labelClass}>
               Company code
             </label>
             <input
@@ -155,18 +156,18 @@ const LoginPage = () => {
               required
             />
             {fieldErrors.companyCode ? (
-              <p id="companyCode-error" className="mt-1.5 text-xs text-rose-300">
+              <p id="companyCode-error" className={errorClass}>
                 {fieldErrors.companyCode}
               </p>
             ) : (
-              <p id="companyCode-hint" className="mt-1.5 text-xs text-slate-500">
+              <p id="companyCode-hint" className="mt-1.5 text-[11.5px] text-crewly-void/35">
                 Sent to you at registration. Super Admins use CREWLY.
               </p>
             )}
           </div>
 
           <div>
-            <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-slate-200">
+            <label htmlFor="email" className={labelClass}>
               Email address
             </label>
             <input
@@ -185,20 +186,20 @@ const LoginPage = () => {
               required
             />
             {fieldErrors.email && (
-              <p id="email-error" className="mt-1.5 text-xs text-rose-300">
+              <p id="email-error" className={errorClass}>
                 {fieldErrors.email}
               </p>
             )}
           </div>
 
           <div>
-            <div className="mb-1.5 flex items-baseline justify-between">
-              <label htmlFor="password" className="block text-sm font-medium text-slate-200">
+            <div className="mb-1.5 flex items-baseline justify-between gap-3">
+              <label htmlFor="password" className={`${labelClass} mb-0`}>
                 Password
               </label>
               <Link
                 to="/forgot-password"
-                className="text-xs font-medium text-slate-400 underline-offset-2 hover:text-emerald-300 hover:underline"
+                className="auth-link text-[11.5px] font-medium"
               >
                 Forgot password?
               </Link>
@@ -213,23 +214,23 @@ const LoginPage = () => {
               describedBy={fieldErrors.password ? "password-error" : undefined}
             />
             {fieldErrors.password && (
-              <p id="password-error" className="mt-1.5 text-xs text-rose-300">
+              <p id="password-error" className={errorClass}>
                 {fieldErrors.password}
               </p>
             )}
           </div>
 
-          <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-slate-300 select-none">
+          <label className="flex w-fit cursor-pointer items-center gap-2.5 text-[12.5px] text-crewly-void/60 select-none">
             <input
               type="checkbox"
               checked={remember}
               onChange={(e) => setRemember(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-600 bg-slate-800 accent-emerald-500"
+              className="h-4 w-4 cursor-pointer rounded-[4px] accent-crewly-lilac"
             />
             Keep me signed in on this device
           </label>
 
-          <button type="submit" disabled={loading || !canSubmit} className="auth-primary">
+          <button type="submit" disabled={loading || !canSubmit} className="auth-primary mt-2">
             {loading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -241,19 +242,9 @@ const LoginPage = () => {
           </button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-slate-400">
-          New to Crewly?{" "}
-          <Link to="/register" className="font-medium text-emerald-400 hover:underline">
-            Create an account
-          </Link>
-        </p>
-
-        <p className="mt-3 text-center text-xs text-slate-500">
+        <p className="mt-7 text-[11.5px] text-crewly-void/35">
           SaaS provider?{" "}
-          <Link
-            to="/super-admin/login"
-            className="text-slate-400 underline-offset-2 hover:text-slate-300 hover:underline"
-          >
+          <Link to="/super-admin/login" className="auth-link">
             Super Admin portal
           </Link>
         </p>

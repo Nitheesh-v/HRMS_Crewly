@@ -74,20 +74,20 @@ const PasswordField = ({
           aria-label={visible ? "Hide password" : "Show password"}
           aria-pressed={visible}
           tabIndex={-1}
-          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-500 transition-colors hover:text-slate-200 focus-visible:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/40"
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-crewly-void/40 transition-colors hover:text-crewly-void focus-visible:text-crewly-void focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-crewly-lilac/50"
         >
           <EyeIcon off={visible} />
         </button>
       </div>
 
       {capsLock && (
-        <p className="mt-1.5 text-[11px] text-amber-300/90" role="status">
+        <p className="mt-1.5 text-[11px] text-[#f2cd8a]" role="status">
           Caps Lock is on.
         </p>
       )}
 
       {maxLength && value?.length >= maxLength - 20 && (
-        <p className="mt-1.5 text-right text-[11px] text-slate-500">
+        <p className="mt-1.5 text-right text-[11px] text-crewly-void/35">
           {value.length}/{maxLength}
         </p>
       )}

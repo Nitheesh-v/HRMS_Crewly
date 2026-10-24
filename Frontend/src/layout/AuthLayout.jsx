@@ -1,194 +1,94 @@
 import { Link } from "react-router-dom";
-import heroImage from "../assets/login-hero.jpg";
+import AuthArt from "../components/auth/AuthArt.jsx";
 
 // ═══════════════════════════════════════════════════════════════════════════
-// AuthLayout — the shared shell for Crewly's authentication screens.
+// AuthLayout — the shared shell for Crewly's four authentication screens.
 //
-//   variant="split"   — marketing visual on one side, form on the other
-//   variant="centered" — centered card column on a patterned dark canvas
+//   variant="split"    (default) — form on one side, hand-drawn scene on the other
+//   variant="centered" — one narrow column, for reset / forgot-password
 //
-// Presentation only: pages keep every piece of their own logic.
+// The look is the public home page after dark: warm charcoal, cream type, one
+// editorial serif for the display line, and clay for links. The scene on the
+// right is inline SVG (no image request, no webfont) and is decorative.
+//
+// Two things this layout deliberately does NOT have:
+//   · a testimonial. The old split panel carried a quoted customer with a name
+//     and a job title, and no such customer exists in this repository.
+//   · a "Continue with Google" button. The reference has one; there is no OAuth
+//     provider behind this product, so the slot would be a button that cannot
+//     work. The form is the only way in, and it says so.
+//
+// Presentation only: the pages keep every piece of their own logic.
 // ═══════════════════════════════════════════════════════════════════════════
 
 const Logo = () => (
-  <Link to="/login" className="flex items-center gap-2.5">
-    <img src="/logo-crewly.png" alt="" className="h-7 w-7 object-contain" />
-    <span className="text-lg font-semibold tracking-tight text-white">
-      Crewly
-    </span>
+  <Link
+    to="/"
+    aria-label="Crewly home"
+    className="group inline-flex w-fit items-center gap-2.5 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-crewly-lilac"
+  >
+    <img src="/logo-crewly-mark.png" alt="" className="h-7 w-7 object-contain" />
+    <span className="auth-display text-[22px] leading-none text-crewly-void">Crewly</span>
   </Link>
 );
 
+// Legal pages do not exist in this product, so they are stated, not linked —
+// the same rule the marketing footer follows.
 const Footer = () => (
-  <p className="text-center text-xs text-slate-500">
-    © {new Date().getFullYear()} Crewly · All rights reserved
-    <span className="mx-2 text-slate-700">|</span>
-    <span className="cursor-default text-slate-500">Terms &amp; Conditions</span>
-    <span className="mx-1.5"></span>
-    <span className="cursor-default text-slate-500">Privacy Policy</span>
+  <p className="text-[11px] leading-relaxed text-crewly-void/35">
+    © {new Date().getFullYear()} Crewly · Terms and Privacy are not published yet — they will be
+    linked here when they are.
   </p>
 );
 
-const Dots = ({ active = 0, total = 3 }) => (
-  <div className="flex gap-2">
-    {Array.from({ length: total }).map((_, i) => (
-      <span
-        key={i}
-        className={`h-1 w-8 rounded-full ${i === active ? "bg-white" : "bg-white/25"}`}
-      />
-    ))}
-  </div>
-);
-
-// CSS mini-dashboard for the signup panel — no screenshot asset, pure markup.
-const DashboardVisual = () => (
-  <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0e1526]/90 p-4 shadow-2xl backdrop-blur">
-    <div className="flex items-center justify-between">
-      <p className="text-sm font-semibold text-white">Hi, Priya 👋</p>
-      <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-[10px] font-medium text-emerald-300">
-        HR report
-      </span>
-    </div>
-    <div className="mt-3 grid grid-cols-2 gap-2.5">
-      {[
-        { label: "Total Employees", value: "3,540", delta: "+28.5%", up: true },
-        { label: "Job Applicants", value: "1,150", delta: "+14.0%", up: true },
-        { label: "New Employees", value: "500", delta: "+15.1%", up: true },
-        { label: "Resigned", value: "93", delta: "+25.5%", up: false },
-      ].map((stat) => (
-        <div key={stat.label} className="rounded-xl bg-white/[0.04] p-3">
-          <p className="text-lg font-bold text-white">{stat.value}</p>
-          <p className="text-[10px] text-slate-400">{stat.label}</p>
-          <span
-            className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[9px] font-semibold ${
-              stat.up
-                ? "bg-emerald-500/15 text-emerald-300"
-                : "bg-rose-500/15 text-rose-300"
-            }`}
-          >
-            {stat.delta}
-          </span>
-        </div>
-      ))}
-    </div>
-    <div className="mt-2.5 rounded-xl bg-white/[0.04] p-3">
-      <p className="text-[10px] font-medium text-slate-400">Attendance today</p>
-      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-        <div className="h-full w-[86%] rounded-full bg-gradient-to-r from-emerald-500 to-emerald-300" />
-      </div>
-      <p className="mt-1.5 text-[10px] text-emerald-300">86% checked in</p>
-    </div>
-  </div>
-);
-
-const AuthLayout = ({
-  variant = "split",
-  visualSide = "left",
-  headline,
-  quote,
-  quoteAuthor,
-  quoteRole,
-  activeDot = 0,
-  children,
-}) => {
-  const photoPanel = (
-    <div className="relative hidden min-h-screen flex-col justify-between overflow-hidden lg:flex lg:w-[46%]">
-      <img
-        src={heroImage}
-        alt=""
-        className="absolute inset-0 h-full w-full object-cover"
-      />
-      <div className="absolute inset-0 bg-gradient-to-t from-[#0b1120] via-[#0b1120]/55 to-[#0b1120]/35" />
-      <div className="relative p-10">
+const Split = ({ visualSide, children }) => (
+  <div className="auth-shell min-h-screen">
+    <div className="mx-auto flex min-h-screen w-full max-w-[1480px] flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.02fr)]">
+      <div
+        className={`flex min-h-screen flex-col px-6 pb-6 pt-7 sm:px-10 lg:px-14 lg:pt-9 ${
+          visualSide === "left" ? "lg:order-2" : ""
+        }`}
+      >
         <Logo />
-      </div>
-      <div className="relative p-10">
-        <h2 className="max-w-md text-4xl font-bold leading-tight text-white">
-          {headline}
-        </h2>
-        <p className="mt-4 max-w-md text-sm leading-relaxed text-slate-200/90">
-          “{quote}”
-        </p>
-        <div className="mt-8 flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/20 text-sm font-bold text-emerald-300">
-            {(quoteAuthor || "C")[0]}
-          </span>
-          <div>
-            <p className="text-sm font-semibold text-white">{quoteAuthor}</p>
-            <p className="text-xs text-slate-300">{quoteRole}</p>
-          </div>
-        </div>
-        <div className="mt-8">
-          <Dots active={activeDot} />
-        </div>
-      </div>
-    </div>
-  );
 
-  const greenPanel = (
-    <div className="relative hidden min-h-screen flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-700 lg:flex lg:w-[46%]">
-      <div className="absolute -left-24 -top-24 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
-      <div className="absolute -bottom-32 -right-16 h-96 w-96 rounded-full bg-black/10 blur-3xl" />
-      <div className="relative mb-8 max-w-sm text-center">
-        <h2 className="text-3xl font-bold leading-tight text-white">
-          Let’s empower your employees today.
-        </h2>
-        <p className="mt-2 text-sm text-emerald-50/90">
-          Onboarding, attendance, payroll and hiring — one workspace.
-        </p>
-      </div>
-      <div className="relative">
-        <DashboardVisual />
-      </div>
-    </div>
-  );
+        <main className="flex flex-1 items-center py-10 lg:py-12">
+          <div className="mx-auto w-full max-w-[420px] lg:mx-0">{children}</div>
+        </main>
 
-  if (variant === "centered") {
-    return (
-      <div className="auth-wave-bg flex min-h-screen flex-col bg-[#0b1120]">
-        <div className="flex flex-1 flex-col items-center justify-center px-4 py-12">
-          <div className="mb-8 flex flex-col items-center">
-            <Logo />
-          </div>
-          <div className="w-full max-w-md">{children}</div>
-        </div>
-        <div className="px-4 pb-6">
-          <Footer />
-        </div>
-      </div>
-    );
-  }
-
-  const visual = visualSide === "right" ? greenPanel : photoPanel;
-  const formSide = (
-    <div className="flex min-h-screen flex-1 flex-col">
-      <div className="p-6 lg:hidden">
-        <Logo />
-      </div>
-      <div className="flex flex-1 items-center justify-center px-6 py-10">
-        <div className="w-full max-w-md">{children}</div>
-      </div>
-      <div className="px-6 pb-6">
         <Footer />
       </div>
-    </div>
-  );
 
-  return (
-    <div className="flex min-h-screen bg-[#0b1120] text-slate-200">
-      {visualSide === "right" ? (
-        <>
-          {formSide}
-          {visual}
-        </>
-      ) : (
-        <>
-          {visual}
-          {formSide}
-        </>
-      )}
+      <div
+        className={`relative hidden items-center justify-center border-crewly-void/10 px-6 lg:flex lg:border-l ${
+          visualSide === "left" ? "lg:order-1" : ""
+        }`}
+        aria-hidden="true"
+      >
+        <div className="auth-float-slow w-full max-w-[600px]">
+          <AuthArt />
+        </div>
+      </div>
     </div>
-  );
-};
+  </div>
+);
+
+const Centered = ({ children }) => (
+  <div className="auth-wave-bg flex min-h-screen flex-col">
+    <div className="px-6 pb-4 pt-7 sm:px-10">
+      <Logo />
+    </div>
+
+    <div className="flex flex-1 items-center justify-center px-4 py-8">
+      <div className="w-full max-w-md">{children}</div>
+    </div>
+
+    <div className="px-6 pb-6 sm:px-10">
+      <Footer />
+    </div>
+  </div>
+);
+
+const AuthLayout = ({ variant = "split", visualSide = "right", children }) =>
+  variant === "centered" ? <Centered>{children}</Centered> : <Split visualSide={visualSide}>{children}</Split>;
 
 export default AuthLayout;
