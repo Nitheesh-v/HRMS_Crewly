@@ -10,6 +10,7 @@ import statutoryService from '../../services/statutoryService.js';
 import usePermission from '../../hooks/usePermission.js';
 import fnfService from '../../services/fnfService.js';
 import { notify } from '../../utils/notify.js';
+import { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Phase 29.9 — Employee Salary Portal (§14 / §15 / §16)
@@ -333,13 +334,16 @@ const MyPayslipsPortalPage = () => {
           </thead>
           <tbody>
             {visible.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-3 py-10 text-center text-crewly-dim">
-                  {rows.length === 0
-                    ? 'No payslips yet — they appear here once your salary for the month has been paid.'
-                    : 'No payslip matches these filters.'}
-                </td>
-              </tr>
+              <TableEmpty
+                colSpan={6}
+                illustration={rows.length === 0 ? 'payslip' : 'search'}
+                title={rows.length === 0 ? 'No payslips yet' : 'No payslip matches these filters'}
+                description={
+                  rows.length === 0
+                    ? 'Payslips appear here once your salary for the month has been paid. Each one opens as a breakdown you can download.'
+                    : 'Nothing in this month or status range. Widen the filters to see the rest of the year.'
+                }
+              />
             ) : (
               visible.map((row) => (
                 <tr key={row._id} className="border-t border-white/5 hover:bg-white/5">

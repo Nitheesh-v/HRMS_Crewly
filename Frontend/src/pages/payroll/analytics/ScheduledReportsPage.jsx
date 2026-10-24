@@ -283,7 +283,7 @@ const ScheduledReportsPage = () => {
       <SectionCard className="mt-4" title="Schedules" subtitle="§20 — every standing instruction in this company">
         {loading ? (
           <p className="text-sm text-crewly-dim">Loading schedules…</p>
-        ) : schedules.length ? (
+        ) : (
           <DataTable
             headers={[
               { key: 'name', label: 'Schedule', strong: true, render: (row) => (
@@ -349,10 +349,10 @@ const ScheduledReportsPage = () => {
               },
             ]}
             rows={schedules}
-            empty="No scheduled reports yet"
+            empty="A schedule emails a saved report to its recipients on your chosen cadence. Create one above to start."
+            emptyTitle="No scheduled reports yet"
+            emptyIllustration="bell"
           />
-        ) : (
-          <p className="text-sm text-crewly-dim">No scheduled reports yet — create one above.</p>
         )}
         {schedules.some((row) => row.lastRunStatus === 'FAILED') ? (
           <div className="mt-3">

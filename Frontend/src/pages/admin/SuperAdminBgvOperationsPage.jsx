@@ -9,6 +9,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import superAdminService from '../../services/superAdminService.js';
+import { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 const CHECK_TYPES = ['IDENTITY', 'ADDRESS', 'EDUCATION', 'EMPLOYMENT', 'REFERENCE'];
 
@@ -176,11 +177,12 @@ const SuperAdminBgvOperationsPage = () => {
                 </td>
               </tr>
             ) : visible.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="px-4 py-10 text-center text-slate-500">
-                  No submitted checks match this filter yet.
-                </td>
-              </tr>
+              <TableEmpty
+                colSpan={8}
+                illustration="search"
+                title="No submitted checks match this filter"
+                description="Nothing in this status or check type. Clear the filters to see every check waiting on operations."
+              />
             ) : (
               visible.map((row) => {
                 const key = `${row.orderId}-${row.checkType}`;

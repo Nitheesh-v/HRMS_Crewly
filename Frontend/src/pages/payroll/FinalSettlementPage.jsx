@@ -24,6 +24,7 @@ import exitService from '../../services/exitService.js';
 import userService from '../../services/userService.js';
 import fnfService, { saveBlob } from '../../services/fnfService.js';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Phase 29.11 — Payroll → Final Settlement (§19 / §25)
@@ -727,7 +728,12 @@ const FinalSettlementPage = () => {
                 </table>
               </div>
             ) : (
-              <p className="text-sm text-crewly-dim">No settlements yet for this month.</p>
+              <EmptyState
+                illustration="wallet"
+                title="No settlements this month"
+                description="Final settlements start from an approved resignation. Nothing has been raised for this month yet."
+                size="sm"
+              />
             )}
           </div>
         </div>
@@ -1307,11 +1313,12 @@ const FinalSettlementPage = () => {
             </div>
           </div>
         ) : (
-          <div className="card space-y-2">
-            <h2 className="text-lg font-semibold">No settlement selected</h2>
-            <p className="text-sm text-crewly-dim">
-              Open a settlement from the Settlements tab, or create one from an approved resignation.
-            </p>
+          <div className="card">
+            <EmptyState
+              illustration="box"
+              title="No settlement selected"
+              description="Open one from the Settlements tab, or start a settlement from an approved resignation to work out the final dues."
+            />
           </div>
         )
       ) : null}
@@ -1358,7 +1365,12 @@ const FinalSettlementPage = () => {
               </table>
             </div>
           ) : (
-            <p className="text-sm text-crewly-dim">No exports yet. Use Export XLSX to build one.</p>
+            <EmptyState
+              illustration="documents"
+              title="No exports yet"
+              description="Use Export XLSX to build one — large exports are prepared in the background and land here with a download link."
+              size="sm"
+            />
           )}
         </div>
       ) : null}

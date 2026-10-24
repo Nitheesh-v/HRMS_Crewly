@@ -13,6 +13,7 @@ import { Link, useParams } from 'react-router-dom';
 import PreOnboardingStatusBadge from '../../components/recruitment/PreOnboardingStatusBadge.jsx';
 import usePermission from '../../hooks/usePermission.js';
 import preOnboardingService from '../../services/preOnboardingService.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const dateLabel = (value) =>
   value
@@ -343,7 +344,12 @@ const PreOnboardingDetailPage = () => {
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-slate-500">No history yet.</p>
+                <EmptyState
+                  illustration="tasks"
+                  title="No history yet"
+                  description="Reminders, document nudges and status changes append here as the candidate moves through onboarding."
+                  size="sm"
+                />
               )}
             </div>
           </section>

@@ -13,6 +13,7 @@ import {
 import usePermission from '../../hooks/usePermission.js';
 import attendanceRegularizationService from '../../services/attendanceRegularizationService.js';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 // Phase 31.5 — Attendance Regularization & Exception Center (one
 // surface, two permission-gated tabs). CORRECTION requests fix
@@ -562,9 +563,12 @@ const AttendanceRegularizationPage = () => {
           )}
 
           {requests.length === 0 ? (
-            <p className="text-sm text-crewly-dim">
-              No requests yet. Wrong punch yesterday? File a correction before the policy window closes.
-            </p>
+            <EmptyState
+              illustration="calendar"
+              title="No correction requests yet"
+              description="Missed a punch or logged the wrong hours? File a correction here before the policy window closes — approvals and rejections are listed too."
+              size="sm"
+            />
           ) : (
             <div className="space-y-3">{requests.map((row) => renderCard(row))}</div>
           )}

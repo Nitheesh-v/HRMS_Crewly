@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Download, ReceiptText } from 'lucide-react';
 import payrollService from '../../services/payrollService.js';
 import Modal from '../../components/Modal.jsx';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const money = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 const monthLabel = (m) => new Date(`${m}-01T00:00:00`).toLocaleString('en-IN', { month: 'long', year: 'numeric' });
@@ -42,7 +43,13 @@ const MyPayslipsPage = () => {
         ))}
       </div>
       {rows.length === 0 && !error && (
-        <div className="card py-10 text-center text-crewly-dim">No payslips yet — they appear after HR runs payroll.</div>
+        <div className="card">
+          <EmptyState
+            illustration="payslip"
+            title="No payslips yet"
+            description="Payslips appear here after HR runs payroll and the month is paid. You will be able to view and download each one."
+          />
+        </div>
       )}
 
       {/* BREAKDOWN MODAL */}

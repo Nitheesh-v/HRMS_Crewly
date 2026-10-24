@@ -3,6 +3,7 @@ import { AlertTriangle, FileText, Palmtree } from 'lucide-react';
 import leaveService from '../../services/leaveService.js';
 import Modal from '../../components/Modal.jsx';
 import { notify } from '../../utils/notify.js';
+import { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 const STATUS_STYLE = {
   PENDING: 'bg-crewly-orange/15 text-crewly-orange',
@@ -120,7 +121,12 @@ const LeavesPage = () => {
                 </tr>
               ))}
               {data.leaves.length === 0 && (
-                <tr><td colSpan={6} className="px-5 py-8 text-center text-crewly-dim">No leave requests yet.</td></tr>
+                <TableEmpty
+                  colSpan={6}
+                  illustration="calendar"
+                  title="No leave requests yet"
+                  description="Apply for leave and it appears here with its approval trail — who saw it, and when."
+                />
               )}
             </tbody>
           </table>

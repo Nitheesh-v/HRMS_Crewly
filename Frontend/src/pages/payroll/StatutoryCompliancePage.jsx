@@ -21,6 +21,8 @@ import {
 import usePermission from '../../hooks/usePermission.js';
 import statutoryService, { saveBlob } from '../../services/statutoryService.js';
 import { notify } from '../../utils/notify.js';
+import { TableEmpty } from '../../components/common/EmptyState.jsx';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Phase 29.10 — Payroll → Statutory Compliance (§5 / §25)
@@ -529,11 +531,12 @@ const StatutoryCompliancePage = () => {
                 </thead>
                 <tbody>
                   {(history.rows || []).length === 0 && (
-                    <tr>
-                      <td colSpan={10} className="py-6 text-center text-sm text-crewly-dim">
-                        No payroll months recorded for this financial year yet.
-                      </td>
-                    </tr>
+                    <TableEmpty
+                      colSpan={10}
+                      illustration="chart"
+                      title="No payroll months recorded yet"
+                      description="This financial year has no completed payroll. Once a month is paid, its PF, ESI, PT and TDS totals are recorded here."
+                    />
                   )}
                   {(history.rows || []).map((row) => (
                     <tr key={row.month} className="border-t border-white/5">
@@ -1016,9 +1019,12 @@ const CalendarTab = ({ calendar, busy, onToggle }) => {
         />
 
         {rows.length === 0 && (
-          <p className="py-4 text-center text-sm text-crewly-dim">
-            No compliance deadlines to show. Generate the month&apos;s reports first.
-          </p>
+          <EmptyState
+            illustration="calendar"
+            title="No compliance deadlines to show"
+            description="Deadlines appear once the month's PF, ESI and TDS reports are generated. Generate them above and the filing calendar fills in."
+            size="sm"
+          />
         )}
       </section>
     </div>
@@ -1041,11 +1047,12 @@ const DataTable = ({ headers = [], rows = [] }) => (
       </thead>
       <tbody>
         {(rows || []).length === 0 && (
-          <tr>
-            <td colSpan={headers.length} className="py-6 text-center text-sm text-crewly-dim">
-              Nothing to show for this period.
-            </td>
-          </tr>
+          <TableEmpty
+            colSpan={headers.length}
+            illustration="documents"
+            title="Nothing to show for this period"
+            description="No challan or filing data exists for this month and section. Pick another period above."
+          />
         )}
         {(rows || []).map((row, rowIndex) => (
           <tr key={rowIndex} className="border-t border-white/5">

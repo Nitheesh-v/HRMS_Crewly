@@ -17,6 +17,7 @@ import Modal from '../../components/Modal.jsx';
 import usePermission from '../../hooks/usePermission.js';
 import payrollPaymentService from '../../services/payrollPaymentService.js';
 import { notify } from '../../utils/notify.js';
+import { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 // ─────────────────────────────────────────────────────────────
 // Phase 29.8 — Salary Payment (bank transfer file preparation)
@@ -356,15 +357,17 @@ const SalaryPaymentPage = () => {
                 </td>
               </tr>
             ) : monthBatches.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="px-3 py-10 text-center text-crewly-dim">
-                  No payment batch for {formatMonth(month)} yet. Approve the payroll in{' '}
-                  <Link className="text-indigo-300 hover:underline" to="/app/payroll/review">
-                    Review Payroll
-                  </Link>{' '}
-                  first, then create a batch.
-                </td>
-              </tr>
+              <TableEmpty
+                colSpan={8}
+                illustration="wallet"
+                title={`No payment batch for ${formatMonth(month)} yet`}
+                description="Approve the month in Review Payroll first, then create a batch here. Each batch keeps its own bank-file status and totals."
+                action={
+                  <Link className="btn-ghost px-4 py-2 text-sm" to="/app/payroll/review">
+                    Go to Review Payroll
+                  </Link>
+                }
+              />
             ) : (
               monthBatches.map((batch) => (
                 <tr key={batch._id} className="border-t border-white/5 hover:bg-white/5">
@@ -788,11 +791,12 @@ const BatchDetail = ({
                 </thead>
                 <tbody>
                   {payments.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="px-3 py-8 text-center text-crewly-dim">
-                        No payments in this batch.
-                      </td>
-                    </tr>
+                    <TableEmpty
+                      colSpan={8}
+                      illustration="wallet"
+                      title="No payments in this batch"
+                      description="Add employees to this batch and their net pay, bank details and transfer status are listed here before you generate the file."
+                    />
                   ) : (
                     visiblePayments.map((row) => (
                       <tr key={row._id} className="border-t border-white/5">
@@ -1006,11 +1010,12 @@ const BatchDetail = ({
                 </thead>
                 <tbody>
                   {(data.files || []).length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="px-3 py-8 text-center text-crewly-dim">
-                        No file generated yet.
-                      </td>
-                    </tr>
+                    <TableEmpty
+                      colSpan={6}
+                      illustration="documents"
+                      title="No file generated yet"
+                      description="Build the bank or payment file for this batch and it appears here with its format, who generated it and a download link."
+                    />
                   ) : (
                     visibleFiles.map((file) => (
                       <tr key={file._id} className="border-t border-white/5">
@@ -1076,11 +1081,12 @@ const BatchDetail = ({
                   ) : (auditRows || []).filter((row) =>
                       matches(row.action, row.actorName, row.actorRole, row.from, row.to, row.reason),
                     ).length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-3 py-8 text-center text-crewly-dim">
-                        Nothing recorded for this batch yet.
-                      </td>
-                    </tr>
+                    <TableEmpty
+                      colSpan={5}
+                      illustration="tasks"
+                      title="Nothing recorded for this batch yet"
+                      description="Approvals, file generation and status changes append here with their actor, time and reason."
+                    />
                   ) : (
                     (auditRows || [])
                       .filter((row) =>

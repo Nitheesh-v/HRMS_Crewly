@@ -15,12 +15,12 @@ import {
   Search,
   Timer,
   UserCheck,
-  UserX,
   Users,
 } from 'lucide-react';
 import usePermission from '../../hooks/usePermission.js';
 import attendanceService from '../../services/attendanceService.js';
 import departmentService from '../../services/departmentService.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 // Phase 31.9 — Who's Working: the live team attendance board.
 // ATTENDANCE PRESENCE ONLY: every state here comes from punch
@@ -584,10 +584,12 @@ const AttendanceTeamPage = () => {
       )}
 
       {board && board.rows.length === 0 && !loading && (
-        <div className="card flex flex-col items-center gap-2 p-10 text-center">
-          <UserX aria-hidden="true" className="h-8 w-8 text-crewly-dim" strokeWidth={1.6} />
-          <p className="font-medium">Nobody matches this view</p>
-          <p className="text-sm text-crewly-dim">Try clearing the search or filters.</p>
+        <div className="card">
+          <EmptyState
+            illustration="search"
+            title="Nobody matches this view"
+            description="No one in your reporting line fits the search and filters you have set. Clear them to see the full team."
+          />
         </div>
       )}
 

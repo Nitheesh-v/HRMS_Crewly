@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { Link } from "react-router-dom";
 import superAdminService from "../../services/superAdminService.js";
 import { notify } from '../../utils/notify.js';
+import { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 const inp =
   "rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-orange-500";
@@ -319,11 +320,12 @@ const SuperAdminCompaniesPage = () => {
               ))}
 
               {!result.rows.length && (
-                <tr>
-                  <td colSpan="12" className="p-8 text-center text-slate-500">
-                    No companies match these filters.
-                  </td>
-                </tr>
+                <TableEmpty
+                  colSpan={12}
+                  illustration="search"
+                  title="No companies match these filters"
+                  description="Nothing in this plan, status or search. Clear them to list every company on the platform."
+                />
               )}
             </tbody>
           </table>

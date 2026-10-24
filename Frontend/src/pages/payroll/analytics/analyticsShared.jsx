@@ -5,7 +5,6 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
-  Inbox,
   Loader2,
   RefreshCcw,
   ShieldAlert,
@@ -16,6 +15,7 @@ import payrollAnalyticsService, { saveBlob } from '../../../services/payrollAnal
 
 import { PERIOD_PRESETS, monthLabel } from './analyticsShared.js';
 import { notify } from '../../../utils/notify.js';
+import EmptyStateArt from '../../../components/common/EmptyState.jsx';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Phase 29.12 — the components the ten analytics pages share.
@@ -66,11 +66,15 @@ export const SectionCard = ({ title, subtitle, actions = null, children, classNa
   </section>
 );
 
-export const EmptyState = ({ message = 'Nothing to report for this month', icon: Icon = Inbox }) => (
-  <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
-    <Icon size={26} className="text-crewly-dim" />
-    <p className="text-sm text-crewly-dim">{message}</p>
-  </div>
+// Every payroll report and every DataTable funnels through here, so one
+// illustration covers a dozen screens. `icon` is still accepted (older call
+// sites pass one) and simply ignored now that the scene does the drawing.
+export const EmptyState = ({
+  message = 'Nothing to report for this month',
+  title = 'Nothing to report yet',
+  illustration = 'chart',
+}) => (
+  <EmptyStateArt illustration={illustration} title={title} description={message} size="sm" />
 );
 
 export const Banner = ({ type = 'info', text, onClose = null }) => {
@@ -92,8 +96,17 @@ export const Banner = ({ type = 'info', text, onClose = null }) => {
   );
 };
 
-export const DataTable = ({ headers = [], rows = [], empty = 'Nothing to report for this month', footer = null }) => {
-  if (!rows.length) return <EmptyState message={empty} />;
+export const DataTable = ({
+  headers = [],
+  rows = [],
+  empty = 'Nothing to report for this month',
+  emptyTitle = 'Nothing to report yet',
+  emptyIllustration = 'chart',
+  footer = null,
+}) => {
+  if (!rows.length) {
+    return <EmptyState message={empty} title={emptyTitle} illustration={emptyIllustration} />;
+  }
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">

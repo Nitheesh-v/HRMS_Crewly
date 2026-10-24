@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import superAdminService from '../../services/superAdminService.js';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 // Phase 30.10 — internal BGV QA review + final report release.
 // QA approves or returns verifier findings; it NEVER hires/rejects — those
@@ -129,7 +130,12 @@ const SuperAdminBgvQaPage = () => {
         {rows === null ? (
           <p className="text-xs text-crewly-dim">Loading…</p>
         ) : rows.length === 0 ? (
-          <p className="text-xs text-crewly-dim">No verifier-submitted work matches these filters.</p>
+          <EmptyState
+            illustration="search"
+            title="No verifier work matches these filters"
+            description="Nothing has been submitted for this verifier, check type or status. Clear the filters to see the whole quality queue."
+            size="sm"
+          />
         ) : (
           <table className="w-full text-left text-xs">
             <thead>

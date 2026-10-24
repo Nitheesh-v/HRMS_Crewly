@@ -12,6 +12,7 @@ import {
 import usePermission from '../../hooks/usePermission.js';
 import attendanceOvertimeService from '../../services/attendanceOvertimeService.js';
 import { notify } from '../../utils/notify.js';
+import { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 // Phase 31.8 — Overtime / Comp-Off (one surface, two
 // permission-gated tabs). Recorded extra time becomes eligible
@@ -468,7 +469,12 @@ const AttendanceOvertimePage = () => {
                     </tr>
                   ))}
                   {requests.length === 0 && (
-                    <tr><td colSpan={6} className="px-5 py-8 text-center text-crewly-dim">No requests yet.</td></tr>
+                    <TableEmpty
+                      colSpan={6}
+                      illustration="tasks"
+                      title="No overtime requests yet"
+                      description="Worked past the shift? File overtime and it appears here with its approval state."
+                    />
                   )}
                 </tbody>
               </table>

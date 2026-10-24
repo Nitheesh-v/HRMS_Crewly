@@ -3,6 +3,7 @@ import {
   useState,
 } from "react";
 import securityService from "../../services/securityService.js";
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const initialFilters = {
   search: "",
@@ -456,12 +457,13 @@ const AuditLogsPage = () => {
             </tbody>
           </table>
 
-          {!busy &&
-            !logs.length && (
-              <p className="p-8 text-center text-sm text-crewly-dim">
-                No audit records match these filters.
-              </p>
-            )}
+          {!busy && !logs.length && (
+            <EmptyState
+              illustration="search"
+              title="No audit records match these filters"
+              description="Nothing in this actor, action or date range. Widen the dates to see the full trail — every entry is append-only."
+            />
+          )}
         </div>
 
         <div className="flex items-center justify-between border-t border-crewly-border px-5 py-3">

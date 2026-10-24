@@ -11,6 +11,7 @@ import {
   saveGoals, updateProgress, submitSelfReview, submitReview, getHistory, enrollMissing,
 } from '../../services/perfService.js';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const inp = 'w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500';
 const btn = 'rounded-lg px-3 py-1.5 text-xs font-bold transition disabled:opacity-50';
@@ -193,11 +194,19 @@ export default function PerformancePage() {
       </div>
 
       {!cycle ? (
-        <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-8 text-center text-sm text-slate-400">
-          No performance cycle yet.{isHR ? ' Start one below.' : ' HR will start one soon.'}
-          {isHR && (
-            <div className="mt-3"><button onClick={() => setShowNewCycle(true)} className={primary}>＋ Start a cycle</button></div>
-          )}
+        <div className="rounded-xl border border-crewly-border bg-crewly-card">
+          <EmptyState
+            illustration="chart"
+            title="No performance cycle yet"
+            description={
+              isHR
+                ? 'A cycle carries goals, self reviews and ratings for everyone in one window. Start one to open it.'
+                : 'HR will open a review cycle soon. Your goals and self review will appear here when they do.'
+            }
+            action={isHR ? (
+              <button onClick={() => setShowNewCycle(true)} className={primary}>＋ Start a cycle</button>
+            ) : null}
+          />
         </div>
       ) : (
         <>

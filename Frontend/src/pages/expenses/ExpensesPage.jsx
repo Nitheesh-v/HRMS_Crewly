@@ -9,6 +9,7 @@ import {
   managerDecide, financeDecide, markReimbursed, cancelExpense, getAllExpenses, downloadReceipt,
 } from '../../services/expenseService.js';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const inp = 'w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500';
 const btn = 'rounded-lg px-3 py-1.5 text-xs font-bold transition disabled:opacity-50';
@@ -217,7 +218,12 @@ export default function ExpensesPage() {
       <section className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">
         <h2 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-300"><ReceiptText className="h-4 w-4" />My expenses ({mine.length})</h2>
         {mine.length === 0 ? (
-          <p className="text-xs text-slate-500">Nothing submitted yet.</p>
+          <EmptyState
+            illustration="wallet"
+            title="No claims submitted yet"
+            description="File a claim for travel, food or anything the company reimburses. Its approval trail shows here."
+            size="sm"
+          />
         ) : (
           <div className="space-y-2">
             {mine.map((e) => (

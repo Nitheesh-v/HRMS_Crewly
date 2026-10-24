@@ -26,6 +26,7 @@ import Modal from '../../components/Modal.jsx';
 import usePermission from '../../hooks/usePermission.js';
 import payrollReviewService from '../../services/payrollReviewService.js';
 import { notify } from '../../utils/notify.js';
+import EmptyState, { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 // ─────────────────────────────────────────────────────────────
 // Phase 29.7 — Review & Approve Payroll
@@ -753,15 +754,17 @@ const ReviewPayrollPage = () => {
                     </td>
                   </tr>
                 ) : visible.length === 0 ? (
-                  <tr>
-                    <td colSpan={10} className="px-3 py-10 text-center text-crewly-dim">
-                      No payroll results for {formatMonth(month)} yet. Calculate the month in{' '}
-                      <Link className="text-indigo-300 hover:underline" to="/app/payroll/run">
-                        Run Payroll
-                      </Link>{' '}
-                      first.
-                    </td>
-                  </tr>
+                  <TableEmpty
+                    colSpan={10}
+                    illustration="chart"
+                    title={`No payroll results for ${formatMonth(month)} yet`}
+                    description="Calculate the month in Run Payroll first — every employee's gross, deductions and review flags then show up here."
+                    action={
+                      <Link className="btn-ghost px-4 py-2 text-sm" to="/app/payroll/run">
+                        Go to Run Payroll
+                      </Link>
+                    }
+                  />
                 ) : (
                   visible.map((row) => {
                     const errors = row.reviewErrors || [];
@@ -953,11 +956,12 @@ const ReviewPayrollPage = () => {
               </thead>
               <tbody>
                 {differences.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-3 py-8 text-center text-crewly-dim">
-                      No recalculation differences yet. This month has one snapshot version.
-                    </td>
-                  </tr>
+                  <TableEmpty
+                    colSpan={7}
+                    illustration="tasks"
+                    title="No recalculation differences"
+                    description="This month has a single snapshot version. Recalculate after a salary change and the component-by-component differences appear here."
+                  />
                 ) : (
                   differences.map((row) => (
                     <tr key={`${row.employeeId}-${row.component}`} className="border-t border-white/5">
@@ -1001,7 +1005,12 @@ const ReviewPayrollPage = () => {
 
           <div className="space-y-2">
             {(review?.remarks || []).length === 0 ? (
-              <p className="text-sm text-crewly-dim">No remarks yet.</p>
+              <EmptyState
+                illustration="chat"
+                title="No remarks yet"
+                description="Notes you add during review are kept with their author, role and time — nothing is edited or deleted."
+                size="sm"
+              />
             ) : (
               (review?.remarks || []).map((entry, index) => (
                 <div key={`${entry.createdAt}-${index}`} className="rounded-lg bg-white/5 p-3 text-sm">

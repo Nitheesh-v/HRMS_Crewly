@@ -6,6 +6,7 @@ import usePermission from "../../hooks/usePermission.js";
 import Can from "../../components/Can.jsx";
 import { Save, ShieldCheck, X } from "lucide-react";
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const panel = "rounded-xl border border-slate-700 bg-slate-900 p-4";
 
@@ -840,9 +841,12 @@ const RolesPermissionsPage = () => {
             </div>
 
             {templates.length === 0 && (
-              <p className="mt-3 text-xs text-slate-400">
-                No templates available on your current subscription plan.
-              </p>
+              <EmptyState
+                illustration="shield"
+                title="No templates on this plan"
+                description="Role templates ship with higher plans. Build this role from the checklist on the right, or start from an existing role."
+                size="sm"
+              />
             )}
           </div>
         </div>

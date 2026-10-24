@@ -5,6 +5,7 @@ import departmentService from '../../services/departmentService.js';
 import TimesheetMonthView from '../../components/attendance/TimesheetMonthView.jsx';
 import AttendanceFinalizationPanel from '../../components/attendance/AttendanceFinalizationPanel.jsx';
 import usePermission from '../../hooks/usePermission.js';
+import { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 // Phase 31.10 — Team Timesheets: the scoped monthly summary table
 // for managers, team leads and HR, with per-employee drill-down and
@@ -254,11 +255,12 @@ const AttendanceTeamTimesheetsPage = () => {
                 </tr>
               ))}
               {rows.length === 0 && (
-                <tr>
-                  <td colSpan={10} className="py-6 text-center text-crewly-dim">
-                    Nobody in scope matches these filters.
-                  </td>
-                </tr>
+                <TableEmpty
+                  colSpan={10}
+                  illustration="calendar"
+                  title="Nobody in scope matches these filters"
+                  description="Widen the date range or clear the team filter — timesheets appear once people have logged work in the period."
+                />
               )}
             </tbody>
           </table>

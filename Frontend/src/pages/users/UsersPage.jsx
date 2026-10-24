@@ -6,6 +6,7 @@ import useAuth from '../../hooks/useAuth';
 import permissionService from '../../services/permissionService.js';
 import { ROLES, CREATION_RIGHTS, ROLE_STYLES, roleLabel } from '../../utils/roles';
 import { notify } from '../../utils/notify.js';
+import { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 
 
@@ -255,7 +256,12 @@ export default function UsersPage() {
             {loading ? (
               <tr><td className="p-4 text-crewly-dim" colSpan={6}>Loading…</td></tr>
             ) : users.length === 0 ? (
-              <tr><td className="p-4 text-crewly-dim" colSpan={6}>No users found.</td></tr>
+              <TableEmpty
+                colSpan={6}
+                illustration="team"
+                title="No people found"
+                description="Nobody matches this search or role filter. Clear them to list everyone in the company, or invite someone new."
+              />
             ) : users.map((u) => (
               <tr key={u._id} className="border-b border-crewly-border/50">
                 <td className="p-3">

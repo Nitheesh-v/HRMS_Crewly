@@ -12,6 +12,7 @@ import {
   ShieldX,
 } from "lucide-react";
 import { notify } from '../../utils/notify.js';
+import { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 const money = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 const fmtDate = (d) =>
@@ -367,14 +368,12 @@ export default function BillingPage() {
           </thead>
           <tbody>
             {payments.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={6}
-                  className="px-4 py-8 text-center text-crewly-dim"
-                >
-                  No payments yet
-                </td>
-              </tr>
+              <TableEmpty
+                colSpan={6}
+                illustration="wallet"
+                title="No payments yet"
+                description="Every successful charge, its plan, duration and gateway reference is listed here after your first payment."
+              />
             ) : (
               payments.map((p) => (
                 <tr

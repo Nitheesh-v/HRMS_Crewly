@@ -10,6 +10,7 @@ import {
   setStage, promoteUser, transferUser, getDepartments,
 } from '../../services/lifecycleService.js';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const inp = 'w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500';
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
@@ -234,13 +235,26 @@ export default function LifecyclePage() {
                 </span>
               </button>
             ))}
-            {filtered.length === 0 && <p className="px-2 py-6 text-center text-xs text-slate-500">No records</p>}
+            {filtered.length === 0 && (
+              <EmptyState
+                illustration="team"
+                title="No records"
+                description="Nobody matches this search. Clear it to list everyone in the lifecycle view."
+                size="sm"
+              />
+            )}
           </div>
         </aside>
 
         <section>
           {!journey ? (
-            <p className="rounded-xl border border-slate-700 bg-slate-800/40 p-10 text-center text-sm text-slate-400">Pick an employee to open their journey</p>
+            <div className="rounded-xl border border-crewly-border bg-crewly-card">
+              <EmptyState
+                illustration="calendar"
+                title="Pick an employee"
+                description="Choose someone on the left to see their journey — onboarding, confirmation, role changes and exit dates in one timeline."
+              />
+            </div>
           ) : (
             <JourneyCard
               journey={journey}

@@ -8,6 +8,8 @@ import {
 import { Check, CreditCard, X } from 'lucide-react';
 import useAuth from '../../hooks/useAuth.jsx';
 import subscriptionService from '../../services/subscriptionService.js';
+import { TableEmpty } from '../../components/common/EmptyState.jsx';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const panel =
   'rounded-xl border border-slate-700 bg-slate-900 p-4';
@@ -733,14 +735,12 @@ const SubscriptionPage = () => {
               )}
 
               {!invoices.length && (
-                <tr>
-                  <td
-                    colSpan="5"
-                    className="py-8 text-center text-slate-500"
-                  >
-                    No invoices yet.
-                  </td>
-                </tr>
+                <TableEmpty
+                  colSpan={5}
+                  illustration="documents"
+                  title="No invoices yet"
+                  description="Tax invoices are raised with each payment and stay downloadable here for your records."
+                />
               )}
             </tbody>
           </table>
@@ -791,10 +791,12 @@ const SubscriptionPage = () => {
           )}
 
           {!history.length && (
-            <p className="text-sm text-slate-500">
-              No subscription history
-              yet.
-            </p>
+            <EmptyState
+              illustration="chart"
+              title="No subscription history yet"
+              description="Each plan change, upgrade and renewal is recorded here with the dates it applied from and to."
+              size="sm"
+            />
           )}
         </div>
       </section>

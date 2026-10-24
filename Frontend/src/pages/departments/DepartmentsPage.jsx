@@ -5,6 +5,7 @@ import Modal from '../../components/Modal.jsx';
 import useAuth from '../../hooks/useAuth.jsx';
 import { ROLES } from '../../utils/roles.js';
 import { notify } from '../../utils/notify.js';
+import { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 const emptyForm = { name: '', description: '' };
 
@@ -112,7 +113,12 @@ const DepartmentsPage = () => {
               </tr>
             ))}
             {departments.length === 0 && (
-              <tr><td colSpan={5} className="px-5 py-8 text-center text-crewly-dim">No departments yet — create your first one above.</td></tr>
+              <TableEmpty
+                colSpan={5}
+                illustration="team"
+                title="No departments yet"
+                description="Departments group people for approvals, reporting and payroll. Create the first one above."
+              />
             )}
           </tbody>
         </table>

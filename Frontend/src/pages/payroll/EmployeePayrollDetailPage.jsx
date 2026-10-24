@@ -7,6 +7,7 @@ import employeePayrollService from '../../services/employeePayrollService.js';
 import salaryStructureService from '../../services/salaryStructureService.js';
 import statutoryService from '../../services/statutoryService.js';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 // ── display mirrors of the backend rules (the server always decides) ────────
 
@@ -597,16 +598,17 @@ const EmployeePayrollDetailPage = () => {
     return (
       <div className="space-y-5">
         <h1 className="text-2xl font-bold">Payroll Profile</h1>
-        <div className="card space-y-3">
-          <h2 className="text-lg font-semibold">No payroll profile yet</h2>
-          <p className="text-sm text-crewly-dim">
-            Create one to capture salary, bank, statutory and tax details for this employee.
-          </p>
-          {canManage && (
-            <button type="button" className="btn-primary" onClick={openEdit}>
-              Create Payroll Profile
-            </button>
-          )}
+        <div className="card">
+          <EmptyState
+            illustration="payslip"
+            title="No payroll profile yet"
+            description="A payroll profile holds this employee's salary structure, bank account, statutory numbers and tax regime. Create it once and every run uses it."
+            action={canManage ? (
+              <button type="button" className="btn-primary" onClick={openEdit}>
+                Create Payroll Profile
+              </button>
+            ) : null}
+          />
         </div>
         {profileFormModal}
       </div>
@@ -843,9 +845,14 @@ const EmployeePayrollDetailPage = () => {
                 ))}
               </dl>
             ) : (
-              <p className="mt-2 text-xs text-crewly-dim">
-                No paid payroll for this employee in this month yet.
-              </p>
+              <div className="mt-2">
+                <EmptyState
+                  illustration="wallet"
+                  title="Nothing paid for this month"
+                  description="This employee has no paid payroll in the selected month. Their breakdown appears here after the month is paid."
+                  size="sm"
+                />
+              </div>
             )}
           </div>
         )}

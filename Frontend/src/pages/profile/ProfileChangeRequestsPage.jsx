@@ -15,6 +15,7 @@ import { Check, ClipboardCheck, Loader2, RefreshCw, X } from 'lucide-react';
 import profileService from '../../services/profileService';
 import Modal from '../../components/Modal.jsx';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const STATUS_STYLE = {
   pending: 'bg-amber-400/15 text-amber-200',
@@ -188,8 +189,13 @@ const ProfileChangeRequestsPage = () => {
             </div>
           ))}
           {pending.length === 0 && !loading && (
-            <div className="card py-10 text-center text-crewly-dim">
-              No pending requests — the queue is clear.
+            <div className="card">
+              <EmptyState
+                illustration="shield"
+                title="Queue is clear"
+                description="No profile change is waiting on you. Requests from your team land here with the old and new value side by side."
+                size="sm"
+              />
             </div>
           )}
         </div>
@@ -212,7 +218,14 @@ const ProfileChangeRequestsPage = () => {
             </div>
           ))}
           {history.length === 0 && !loading && (
-            <div className="card py-10 text-center text-crewly-dim">Nothing decided yet.</div>
+            <div className="card">
+              <EmptyState
+                illustration="documents"
+                title="Nothing decided yet"
+                description="Every accepted or rejected profile change lands here with who decided it, when, and the note they left."
+                size="sm"
+              />
+            </div>
           )}
         </div>
       )}

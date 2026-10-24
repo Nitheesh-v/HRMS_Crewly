@@ -9,7 +9,6 @@ import {
   CalendarDays,
   Check,
   CircleDollarSign,
-  ClipboardCheck,
   Clock3,
   Eye,
   History,
@@ -28,6 +27,7 @@ import {
 import usePermission from '../../hooks/usePermission.js';
 import requisitionService from '../../services/requisitionService.js';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const DECISIONS = {
   APPROVED: {
@@ -508,12 +508,12 @@ const RequisitionApprovalsPage = () => {
           Loading HR approval queue…
         </div>
       ) : queue.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-700 bg-slate-900/60 p-12 text-center">
-          <ClipboardCheck className="mx-auto h-10 w-10 text-emerald-400/70" />
-          <h2 className="mt-3 font-semibold text-slate-200">Approval queue is clear</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            No pending requisitions match the current filters.
-          </p>
+        <div className="rounded-xl border border-crewly-border bg-crewly-card">
+          <EmptyState
+            illustration="shield"
+            title="Approval queue is clear"
+            description="No requisition is waiting on a decision. Anything raised by hiring managers appears here for approval."
+          />
         </div>
       ) : (
         <section className="grid gap-4 xl:grid-cols-2">

@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import superAdminService from '../../services/superAdminService.js';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 // Phase 30.11 — internal BGV operations dashboard (platform-only).
 // Everything shown is DERIVED server-side from the authoritative Phase
@@ -426,7 +427,14 @@ const SuperAdminBgvOpsDashboardPage = () => {
               <Loader2 className="h-4 w-4 animate-spin" /> Loading workload…
             </div>
           ) : workload.verifiers?.length === 0 ? (
-            <div className="card p-6 text-center text-sm text-crewly-muted">No verifiers yet.</div>
+            <div className="card">
+              <EmptyState
+                illustration="team"
+                title="No verifiers to balance yet"
+                description="Add verifiers before work can be spread across them. Once they exist, each one's open checks and capacity show up here."
+                size="sm"
+              />
+            </div>
           ) : (
             <div className="card overflow-x-auto p-0">
               <table className="w-full text-left text-xs">

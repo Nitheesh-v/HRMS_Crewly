@@ -21,6 +21,7 @@ import usePermission from '../../hooks/usePermission.js';
 import attendancePolicyService from '../../services/attendancePolicyService.js';
 import attendanceLocationService from '../../services/attendanceLocationService.js';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const DEFAULT_FORM = {
   name: 'Attendance Policy',
@@ -1088,7 +1089,12 @@ const AttendancePolicyPage = () => {
               </div>
             ))}
             {locations.length === 0 && (
-              <p className="text-sm text-crewly-dim">No locations yet.</p>
+              <EmptyState
+                illustration="box"
+                title="No office locations yet"
+                description="Add a location to give it its own geofence, shift window and weekly offs. Punches from it then map to the right policy."
+                size="sm"
+              />
             )}
           </div>
           {canManageLocations && (

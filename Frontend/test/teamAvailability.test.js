@@ -308,7 +308,9 @@ test('teamAvailability — sidebar item lives in the same teamMenu group as "Who
 });
 
 test('teamAvailability — page renders empty table copy when no items', () => {
-  assert.ok(PAGE_FILE.includes('No teammates match these filters.'));
+  // The copy now lives in the shared <EmptyState> (title without the full
+  // stop) — the sentence a reader sees is unchanged.
+  assert.ok(PAGE_FILE.includes('No teammates match these filters'));
   // 37.4 — admins see a People page link + Refresh button so the
   // "no teammates in your scope yet" branch is actionable, not a dead end.
   assert.ok(

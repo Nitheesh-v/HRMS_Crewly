@@ -38,6 +38,7 @@ import {
 
 import PresenceIndicator from '../../components/presence/PresenceIndicator.jsx';
 import { fetchTeamAvailability } from '../../redux/slices/presenceSlice.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const PRESENCE_FILTER_VALUES = ['available', 'busy', 'dnd', 'unknown', 'on_leave', 'outside_working_hours'];
 const LOCATION_FILTER_VALUES = ['office', 'wfh', 'remote'];
@@ -418,73 +419,72 @@ const TeamAvailabilityPage = () => {
                         />
                         Loading teammates…
                       </div>
-                    ) : summary.total === 0 ? (
-                      <div className="space-y-3 text-sm">
-                        <p className="font-medium text-crewly-text">
-                          No teammates in your scope yet.
-                        </p>
-                        <p className="text-crewly-dim">
-                          {actorIsAdmin
-                            ? 'When teammates join your company and are marked ACTIVE, they will appear here. You can invite them from the People page.'
-                            : 'When you join a department, your colleagues will appear here.'}
-                        </p>
-                        <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
-                          {actorIsAdmin ? (
-                            <Link
-                              to="/app/users"
-                              className="btn-ghost px-3 py-1.5 text-xs"
-                            >
-                              <UserPlus
-                                aria-hidden="true"
-                                className="h-3.5 w-3.5"
-                                strokeWidth={2}
-                              />
-                              Open People page
-                            </Link>
-                          ) : null}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSearch('');
-                              setPresenceFilter('');
-                              setWorkLocationFilter('');
-                              setPage(1);
-                              dispatch(fetchTeamAvailability({ limit: DEFAULT_LIMIT, page: 1 }));
-                            }}
-                            className="btn-ghost px-3 py-1.5 text-xs"
-                          >
-                            <RefreshCw
-                              aria-hidden="true"
-                              className="h-3.5 w-3.5"
-                              strokeWidth={2}
-                            />
-                            Refresh
-                          </button>
-                        </div>
-                      </div>
                     ) : (
-                      <div className="space-y-2 text-sm">
-                        <p className="font-medium text-crewly-text">
-                          No teammates match these filters.
-                        </p>
-                        <p className="text-crewly-dim">
-                          {summary.total} teammate
-                          {summary.total === 1 ? ' is' : 's are'} in your scope — try a different
-                          search or clear the filter chips above.
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSearch('');
-                            setPresenceFilter('');
-                            setWorkLocationFilter('');
-                            setPage(1);
-                          }}
-                          className="btn-ghost mt-1 px-3 py-1.5 text-xs"
-                        >
-                          Clear filters
-                        </button>
-                      </div>
+                      <EmptyState
+                        illustration={summary.total === 0 ? 'team' : 'search'}
+                        title={
+                          summary.total === 0
+                            ? 'No teammates in your scope yet'
+                            : 'No teammates match these filters'
+                        }
+                        description={
+                          summary.total === 0
+                            ? actorIsAdmin
+                              ? 'When teammates join your company and are marked ACTIVE, they appear here. Invite them from the People page.'
+                              : 'When you join a department, your colleagues appear here with their presence.'
+                            : `${summary.total} teammate${summary.total === 1 ? ' is' : 's are'} in your scope — try a different search or clear the filter chips above.`
+                        }
+                        action={
+                          <div className="flex flex-wrap items-center justify-center gap-2">
+                            {summary.total === 0 ? (
+                              <>
+                                {actorIsAdmin ? (
+                                  <Link to="/app/users" className="btn-ghost px-3 py-1.5 text-xs">
+                                    <UserPlus
+                                      aria-hidden="true"
+                                      className="h-3.5 w-3.5"
+                                      strokeWidth={2}
+                                    />
+                                    Open People page
+                                  </Link>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSearch('');
+                                    setPresenceFilter('');
+                                    setWorkLocationFilter('');
+                                    setPage(1);
+                                    dispatch(fetchTeamAvailability({ limit: DEFAULT_LIMIT, page: 1 }));
+                                  }}
+                                  className="btn-ghost px-3 py-1.5 text-xs"
+                                >
+                                  <RefreshCw
+                                    aria-hidden="true"
+                                    className="h-3.5 w-3.5"
+                                    strokeWidth={2}
+                                  />
+                                  Refresh
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSearch('');
+                                  setPresenceFilter('');
+                                  setWorkLocationFilter('');
+                                  setPage(1);
+                                }}
+                                className="btn-ghost px-3 py-1.5 text-xs"
+                              >
+                                Clear filters
+                              </button>
+                            )}
+                          </div>
+                        }
+                        size="sm"
+                      />
                     )}
                   </td>
                 </tr>

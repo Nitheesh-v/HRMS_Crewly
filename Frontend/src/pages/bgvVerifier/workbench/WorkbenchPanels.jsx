@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import bgvVerifierAuthService from '../../../services/bgvVerifierAuthService.js';
 import { CONCLUSION_COPY, METHOD_FIELDS, METHOD_LABELS, OUTCOME_LABELS, severityLabel } from './fieldDefinitions.js';
+import EmptyState from '../../../components/common/EmptyState.jsx';
 
 // Phase 30.8 — verifier workbench panels. Structured per-method forms
 // (never one giant free-text box); the activity timeline is append-only;
@@ -200,7 +201,12 @@ export const ActivityTimeline = ({ workbench, onDownloadEvidence, downloading })
       Append-only attempt history with attached evidence downloads (audited).
     </p>
     {workbench.activities.length === 0 ? (
-      <p className="text-xs text-crewly-dim">No activities recorded yet. Attempts append — history is never overwritten.</p>
+      <EmptyState
+        illustration="tasks"
+        title="No activity recorded yet"
+        description="Each attempt you log appends to this timeline with its evidence. Nothing is ever overwritten."
+        size="sm"
+      />
     ) : (
       <ol className="space-y-3">
         {workbench.activities.map((activity) => (

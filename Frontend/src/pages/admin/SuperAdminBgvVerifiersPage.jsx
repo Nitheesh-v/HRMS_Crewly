@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import superAdminService from '../../services/superAdminService.js';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const SPECIALIZATIONS = ['IDENTITY', 'ADDRESS', 'EDUCATION', 'EMPLOYMENT', 'REFERENCE'];
 
@@ -102,10 +103,12 @@ const SuperAdminBgvVerifiersPage = () => {
           <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading verifiers…
         </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-10 text-center">
-          <ShieldCheck className="mx-auto h-8 w-8 text-slate-600" />
-          <p className="mt-3 text-sm text-slate-400">No BGV verifiers yet.</p>
-          <p className="mt-1 text-xs text-slate-600">Invite your first verifier to start building the internal verification team.</p>
+        <div className="rounded-xl border border-crewly-border bg-crewly-card">
+          <EmptyState
+            illustration="shield"
+            title="No BGV verifiers yet"
+            description="Invite your first verifier to build the internal verification team. Each one holds the check types you grant them."
+          />
         </div>
       ) : (
         <div className="space-y-3">

@@ -8,7 +8,6 @@ import {
   CalendarDays,
   CheckCircle2,
   CircleDollarSign,
-  ClipboardCheck,
   Clock3,
   Columns3,
   Eye,
@@ -27,6 +26,7 @@ import usePermission from '../../hooks/usePermission.js';
 import requisitionService from '../../services/requisitionService.js';
 import { ROLES } from '../../utils/roles.js';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const STATUS_COLUMNS = [
   { key: 'DRAFT', label: 'Draft', accent: 'bg-slate-400' },
@@ -609,12 +609,16 @@ const RequisitionsPage = () => {
           Loading requisitions…
         </div>
       ) : requisitions.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-700 bg-slate-900/60 p-12 text-center">
-          <ClipboardCheck className="mx-auto h-9 w-9 text-slate-600" />
-          <h2 className="mt-3 font-semibold text-slate-200">No requisitions found</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            {canCreate ? 'Create a draft to start a traceable hiring request.' : 'No permitted requisitions are available.'}
-          </p>
+        <div className="rounded-xl border border-crewly-border bg-crewly-card">
+          <EmptyState
+            illustration="hiring"
+            title="No requisitions found"
+            description={
+              canCreate
+                ? 'A requisition is the traceable request to hire — headcount, budget and approvals in one place. Create a draft to start one.'
+                : 'No requisitions are available to you yet. HR will raise one when a role opens up.'
+            }
+          />
         </div>
       ) : view === 'KANBAN' ? (
         <section className="flex gap-4 overflow-x-auto pb-3">

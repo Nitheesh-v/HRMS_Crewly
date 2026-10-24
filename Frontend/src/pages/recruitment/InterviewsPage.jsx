@@ -18,6 +18,7 @@ import InterviewFeedbackModal from '../../components/recruitment/InterviewFeedba
 import usePermission from '../../hooks/usePermission.js';
 import interviewService from '../../services/interviewService.js';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const DEFAULT_ROUNDS = [
   { key: 'TECHNICAL_1', name: 'Technical Round 1' },
@@ -473,11 +474,11 @@ export const InterviewWorkspace = ({ assignmentOnly = false }) => {
             )}
           </>
         ) : (
-          <div className="p-10 text-center">
-            <CalendarClock className="mx-auto h-9 w-9 text-slate-700" />
-            <h2 className="mt-3 font-semibold text-slate-200">No interviews found</h2>
-            <p className="mt-1 text-sm text-slate-500">Adjust filters or schedule from an eligible candidate record.</p>
-          </div>
+          <EmptyState
+            illustration="calendar"
+            title="No interviews found"
+            description="Nothing falls in this date range or status. Adjust the filters, or schedule an interview from an eligible candidate."
+          />
         )}
       </section>
 

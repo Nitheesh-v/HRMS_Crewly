@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, Check } from 'lucide-react';
 import systemService from '../../services/systemService';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const errMsg = (err, fb) => err?.response?.data?.message || err?.data?.message || err?.message || fb;
 
@@ -51,7 +52,15 @@ const NotificationsPage = () => {
 
       <div className="mt-5 space-y-2">
         {loading && <p className="text-crewly-dim">Loading…</p>}
-        {!loading && list.length === 0 && <div className="card text-center text-crewly-dim">No notifications yet.</div>}
+        {!loading && list.length === 0 && (
+          <div className="card">
+            <EmptyState
+              illustration="bell"
+              title="Nothing to catch up on"
+              description="Approvals, payroll runs, mentions and reminders all arrive here. This list stays empty until something needs you."
+            />
+          </div>
+        )}
         {list.map((n) => (
           <button
             key={n._id}

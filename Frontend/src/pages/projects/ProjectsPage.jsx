@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import api from '../../services/api';
 import { listProjects, createProject, arr } from '../../services/workService.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const CREATE_ROLES = ['COMPANY_ADMIN', 'HR_MANAGER'];
 
@@ -184,9 +185,21 @@ export default function ProjectsPage() {
       {msg && <div className="mb-3 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300">{msg}</div>}
       {loading && <p className="text-sm text-slate-500">Loading projects…</p>}
       {!loading && projects.length === 0 && (
-        <div className="rounded-2xl border border-dashed border-slate-700 p-10 text-center text-slate-400">
-          <p className="flex justify-center text-slate-600"><FolderOpen className="h-8 w-8" /></p>
-          <p className="mt-2 text-sm">No projects in your scope yet{canCreate ? ' — create the first one!' : '.'}</p>
+        <div className="rounded-2xl border border-crewly-border bg-crewly-card">
+          <EmptyState
+            illustration="tasks"
+            title="No projects in your scope yet"
+            description={
+              canCreate
+                ? 'A project groups tasks, a manager and its team under one budget and timeline. Create the first one to get started.'
+                : 'Projects you are added to appear here with their status, progress and due date. A manager will add you when one starts.'
+            }
+            action={canCreate ? (
+              <button type="button" onClick={() => setShowCreate(true)} className="btn-primary px-4 py-2 text-sm">
+                + New project
+              </button>
+            ) : null}
+          />
         </div>
       )}
 

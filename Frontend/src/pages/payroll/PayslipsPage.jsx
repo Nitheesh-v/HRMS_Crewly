@@ -21,6 +21,7 @@ import usePermission from '../../hooks/usePermission.js';
 import PayslipDocument, { downloadPayslipFile } from './PayslipDocument.jsx';
 import payslipService, { saveBlob } from '../../services/payslipService.js';
 import { notify } from '../../utils/notify.js';
+import EmptyState, { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Phase 29.9 — Payroll → Payslips (§27)
@@ -433,10 +434,12 @@ const PayslipsPage = () => {
             </table>
           </div>
         ) : (
-          <p className="text-xs text-crewly-dim">
-            No archive yet. Large companies build the ZIP in the background, so the download appears
-            here when it is ready (§18).
-          </p>
+          <EmptyState
+            illustration="box"
+            title="No archive built yet"
+            description="A ZIP of the month's payslips is built in the background for large companies, and the download appears here when it is ready."
+            size="sm"
+          />
         )}
       </div>
 
@@ -512,13 +515,20 @@ const PayslipsPage = () => {
                 </td>
               </tr>
             ) : visible.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-3 py-10 text-center text-crewly-dim">
-                  {rows.length === 0
-                    ? `No payslips for ${formatMonthInput(month)} yet. Generate them once the salary has been paid.`
-                    : 'No payslip matches these filters.'}
-                </td>
-              </tr>
+              <TableEmpty
+                colSpan={7}
+                illustration={rows.length === 0 ? 'payslip' : 'search'}
+                title={
+                  rows.length === 0
+                    ? `No payslips for ${formatMonthInput(month)} yet`
+                    : 'No payslip matches these filters'
+                }
+                description={
+                  rows.length === 0
+                    ? 'Payslips are generated once the salary for the month has been paid. Run the month in Payroll and they appear here for every employee.'
+                    : 'Nothing in this department or search. Clear the filters to see the full month.'
+                }
+              />
             ) : (
               visible.map((row) => (
                 <tr key={row._id} className="border-t border-white/5 hover:bg-white/5">

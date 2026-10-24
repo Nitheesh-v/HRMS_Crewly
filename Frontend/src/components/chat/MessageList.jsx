@@ -7,10 +7,11 @@
 // history...", and a jump-to-latest control that appears only when the reader
 // has scrolled away from the newest message.
 import { useLayoutEffect, useRef, useState } from 'react';
-import { ArrowDown, MessageSquarePlus } from 'lucide-react';
+import { ArrowDown } from 'lucide-react';
 
 import MessageBubble from './MessageBubble.jsx';
 import { dayKey, dayLabel, shouldGroup } from '../../utils/chatFormat.js';
+import EmptyState from '../common/EmptyState.jsx';
 
 const Skeleton = () => (
   <div className="animate-pulse space-y-3 py-2" aria-hidden="true">
@@ -152,16 +153,17 @@ const MessageList = ({
         )}
 
         {isEmpty && (
-          <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-crewly-border bg-crewly-card text-crewly-dim">
-              <MessageSquarePlus className="h-5 w-5" />
-            </span>
-            <p className="text-sm font-semibold text-crewly-text">No messages yet</p>
-            <p className="max-w-[16rem] text-xs text-crewly-dim">
-              {locked
-                ? 'This conversation is disabled, so new messages are paused.'
-                : 'Send the first message to start the conversation.'}
-            </p>
+          <div className="flex h-full flex-col items-center justify-center">
+            <EmptyState
+              illustration="chat"
+              title="No messages yet"
+              description={
+                locked
+                  ? 'This conversation is disabled, so new messages are paused.'
+                  : 'Send the first message to start the conversation. Everything stays inside your company.'
+              }
+              size="sm"
+            />
           </div>
         )}
 

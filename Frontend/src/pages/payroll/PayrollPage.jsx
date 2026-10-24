@@ -3,6 +3,7 @@ import { Banknote, CheckCircle2, ReceiptText, Settings } from 'lucide-react';
 import payrollService from '../../services/payrollService.js';
 import userService from '../../services/userService.js';
 import Modal from '../../components/Modal.jsx';
+import { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 const money = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 const emptyStruct = { basic: '', hra: '', allowances: '', pfPercent: 12, professionalTax: 0 };
@@ -148,8 +149,13 @@ const PayrollPage = () => {
                   </tr>
                 ))}
               {(payroll.rows || []).length === 0 && (
-                  <tr><td colSpan={8} className="px-5 py-8 text-center text-crewly-dim">No payroll for {month} yet — click Generate.</td></tr>
-                )}
+                <TableEmpty
+                  colSpan={8}
+                  illustration="wallet"
+                  title={`No payroll for ${month} yet`}
+                  description="Nothing has been calculated for this month. Generate the run and every active employee appears here with their gross, deductions and net."
+                />
+              )}
               </tbody>
             </table>
           </div>

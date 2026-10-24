@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, ArrowUpRight, ClipboardList, Inbox, Loader2, LogOut, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, ClipboardList, Loader2, LogOut, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import bgvVerifierAuthService from '../../services/bgvVerifierAuthService.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 // Phase 30.7 — "My Verification Work". Only checks CURRENTLY assigned to
 // the authenticated verifier appear (identity comes from the session; the
@@ -78,12 +79,12 @@ const BgvVerifierWorkPage = () => {
         ) : null}
 
         {rows && rows.length === 0 ? (
-          <div className="card text-center">
-            <Inbox className="mx-auto h-8 w-8 text-crewly-dim" />
-            <p className="mt-3 text-sm font-semibold text-crewly-text">No assigned checks yet</p>
-            <p className="mt-1 text-xs text-crewly-dim">
-              Checks assigned to you by the Crewly BGV operations team will appear here.
-            </p>
+          <div className="card">
+            <EmptyState
+              illustration="shield"
+              title="No assigned checks yet"
+              description="Checks the Crewly BGV operations team assigns to you appear here, one card per candidate and check type."
+            />
           </div>
         ) : null}
 

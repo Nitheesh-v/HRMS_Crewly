@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import usePermission from '../../hooks/usePermission.js';
 import bgvService from '../../services/bgvService.js';
+import EmptyState from '../common/EmptyState.jsx';
 
 // Loads Razorpay checkout.js ONLY when the real gateway is used — same
 // pattern as the billing page (no keys => TEST MODE simulator).
@@ -550,13 +551,12 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus, onOrderState = null })
 
   if (services.length === 0) {
     return (
-      <section className="rounded-2xl border border-slate-700/60 bg-slate-900/40 p-5">
-        <p className="flex items-start gap-2 text-sm text-amber-300">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          No BGV services are active and configured yet. A Super Admin must
-          configure and activate services (Super Admin → BGV Services) before
-          checks can be purchased.
-        </p>
+      <section className="rounded-2xl border border-crewly-border bg-crewly-card">
+        <EmptyState
+          illustration="shield"
+          title="No BGV services configured"
+          description="A Super Admin has to configure and activate services under Super Admin → BGV Services before any check can be purchased."
+        />
       </section>
     );
   }

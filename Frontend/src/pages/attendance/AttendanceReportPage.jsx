@@ -4,6 +4,7 @@ import attendanceService from '../../services/attendanceService.js';
 import departmentService from '../../services/departmentService.js';
 import { ROLE_STYLES, roleLabel } from '../../utils/roles.js';
 import { notify } from '../../utils/notify.js';
+import { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 const fmtTime = (d) => (d ? new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—');
 const todayStr = () => new Date().toLocaleDateString('en-CA');
@@ -208,7 +209,12 @@ const AttendanceReportPage = () => {
                   </tr>
                 ))}
                 {report?.rows.length === 0 && (
-                  <tr><td colSpan={7} className="px-5 py-8 text-center text-crewly-dim">No team members found.</td></tr>
+                  <TableEmpty
+                    colSpan={7}
+                    illustration="search"
+                    title="No team members found"
+                    description="Nothing matches this report's filters. Clear the department or search box to bring people back."
+                  />
                 )}
               </tbody>
             </table>

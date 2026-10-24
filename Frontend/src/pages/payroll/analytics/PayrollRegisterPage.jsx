@@ -329,7 +329,7 @@ const PayrollRegisterPage = () => {
             >
               {filesLoading ? (
                 <p className="text-sm text-crewly-dim">Loading…</p>
-              ) : files.length ? (
+              ) : (
                 <DataTable
                   headers={[
                     { key: 'filename', label: 'File', strong: true },
@@ -365,10 +365,10 @@ const PayrollRegisterPage = () => {
                     },
                   ]}
                   rows={files}
-                  empty="No exports yet — use Export to create one"
+                  empty="No exports yet — use Export above to build one. Large registers are generated in the background and stay downloadable here."
+                  emptyTitle="No exports yet"
+                  emptyIllustration="documents"
                 />
-              ) : (
-                <p className="text-sm text-crewly-dim">No exports yet — use Export to create one.</p>
               )}
             </SectionCard>
           ) : null}

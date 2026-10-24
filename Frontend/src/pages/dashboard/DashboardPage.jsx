@@ -24,6 +24,7 @@ import useAuth from "../../hooks/useAuth";
 import { notify } from '../../utils/notify.js';
 import PresenceIndicator from "../../components/presence/PresenceIndicator.jsx";
 import { fetchTeamAvailability } from "../../redux/slices/presenceSlice.js";
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 // 37.4 — work-location chip for the dashboard My Team tile.
 // Reads the presence slice's `team.items` (loaded by the team page)
@@ -543,9 +544,12 @@ const DashboardPage = () => {
               ))}
             </ul>
           ) : (
-            <p className="mt-6 text-center text-sm text-crewly-dim">
-              No meetings scheduled — enjoy the focus time
-            </p>
+            <EmptyState
+              illustration="calendar"
+              title="No meetings scheduled"
+              description="Nothing on your calendar for the next few days. Meetings you are invited to show up here with their time."
+              size="sm"
+            />
           )}
         </Panel>
 
@@ -578,9 +582,12 @@ const DashboardPage = () => {
               </span>
             </div>
           ) : (
-            <p className="mt-6 text-center text-sm text-crewly-dim">
-              No payslip yet — payroll runs monthly
-            </p>
+            <EmptyState
+              illustration="payslip"
+              title="No payslip yet"
+              description="Payroll runs once a month. Your latest payslip and its net pay appear here after the run is approved."
+              size="sm"
+            />
           )}
         </Panel>
 

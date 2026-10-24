@@ -18,6 +18,7 @@ import { Link } from 'react-router-dom';
 import usePermission from '../../hooks/usePermission.js';
 import recruitmentAnalyticsService from '../../services/recruitmentAnalyticsService.js';
 import { notify } from '../../utils/notify.js';
+import { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 const formatNumber = (value) =>
   Number.isFinite(Number(value)) ? Number(value).toLocaleString('en-IN') : '0';
@@ -683,11 +684,12 @@ const RecruitmentDashboardPage = () => {
                       </tr>
                     ))
                   ) : (
-                    <tr>
-                      <td colSpan="7" className="px-4 py-10 text-center text-slate-500">
-                        No jobs match the current filters.
-                      </td>
-                    </tr>
+                    <TableEmpty
+                      colSpan={7}
+                      illustration="hiring"
+                      title="No jobs match the current filters"
+                      description="Nothing in this status or search. Clear the filters to see every open and closed position."
+                    />
                   )}
                 </tbody>
               </table>

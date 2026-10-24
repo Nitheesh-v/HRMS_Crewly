@@ -5,6 +5,7 @@ import { supportService } from '../../services/selfService';
 import useAuth from '../../hooks/useAuth';
 import Modal from '../../components/Modal';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 
 const HR_SIDE = ['COMPANY_ADMIN', 'HR_MANAGER'];
@@ -89,7 +90,19 @@ const SupportPage = () => {
 
       <div className="mt-4 space-y-2">
         {loading && <p className="text-crewly-dim">Loading…</p>}
-        {!loading && tickets.length === 0 && <div className="card text-center text-crewly-dim">No tickets here. Need help? Raise one!</div>}
+        {!loading && tickets.length === 0 && (
+          <div className="card">
+            <EmptyState
+              illustration="chat"
+              title="No tickets here"
+              description={
+                view === 'all'
+                  ? 'Nobody in the company has raised a request yet. Every ticket and its reply thread will be listed here.'
+                  : 'You have not raised a request yet. Ask about payroll, leave or documents and the reply thread stays here.'
+              }
+            />
+          </div>
+        )}
         {tickets.map((t) => (
           <button key={t._id} onClick={() => { setActive(t); setReply(''); }} className="card flex w-full items-center gap-4 py-3 text-left transition hover:border-crewly-green/40">
             <div className="min-w-0 flex-1">

@@ -22,6 +22,7 @@ import usePermission from '../../hooks/usePermission.js';
 import departmentService from '../../services/departmentService.js';
 import monthlyInputService, { downloadImportTemplate } from '../../services/monthlyInputService.js';
 import { notify } from '../../utils/notify.js';
+import EmptyState, { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 // ─────────────────────────────────────────────────────────────
 // Phase 29.5 — Monthly Payroll Inputs
@@ -505,12 +506,12 @@ const MonthlyInputsPage = () => {
                 </td>
               </tr>
             ) : visible.length === 0 ? (
-              <tr>
-                <td colSpan={11} className="px-3 py-10 text-center text-crewly-dim">
-                  No employee inputs for {formatMonth(month)}. Import attendance and leave to build
-                  the month.
-                </td>
-              </tr>
+              <TableEmpty
+                colSpan={11}
+                illustration="calendar"
+                title={`No employee inputs for ${formatMonth(month)}`}
+                description="Import attendance and leave to build the month. Every employee's payable days, LOP and variable pay then appear here for review."
+              />
             ) : (
               visible.map((row) => (
                 <tr key={row._id} className="border-t border-white/5 hover:bg-white/5">
@@ -857,9 +858,12 @@ const EmployeeDrawer = ({ employeeId, month, entryTypes, locked, canManage, onCl
               <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-crewly-dim">
                 Variable pay, reimbursements &amp; deductions
               </h3>
-              <p className="rounded-lg bg-white/5 p-3 text-sm text-crewly-dim">
-                No variable entries for {formatMonth(month)}.
-              </p>
+              <EmptyState
+                illustration="wallet"
+                title={`No variable entries for ${formatMonth(month)}`}
+                description="Bonuses, incentives, reimbursements and ad-hoc deductions you add for the month are grouped here with their subtotals."
+                size="sm"
+              />
             </section>
           ) : (
             grouped.map((group) => (

@@ -13,6 +13,7 @@ import {
 import usePermission from '../../hooks/usePermission.js';
 import attendanceWorkModeService from '../../services/attendanceWorkModeService.js';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 // Phase 31.4 — Work Mode Requests (one surface, two permission-gated
 // tabs). Requests authorize a later CLOCK_IN under a non-office mode;
@@ -373,7 +374,14 @@ const AttendanceWorkModePage = () => {
                 )}
               </div>
             ))}
-            {requests.length === 0 && <p className="text-sm text-crewly-dim">No requests yet.</p>}
+            {requests.length === 0 && (
+              <EmptyState
+                illustration="calendar"
+                title="No work-mode requests"
+                description="Requesting office, hybrid or remote? Requests and their decisions are listed here."
+                size="sm"
+              />
+            )}
           </div>
 
           {requests.some((row) => row.status === 'REJECTED' && row.reviewReason) && (

@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import useAuth from '../../hooks/useAuth.jsx';
 import adminService from '../../services/adminService';
 import { notify } from '../../utils/notify.js';
+import { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 const money = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 const errMsg = (err, fallback) =>
@@ -185,11 +186,12 @@ const SuperAdminDashboard = () => {
                   </thead>
                   <tbody>
                     {companies.length === 0 && (
-                      <tr>
-                        <td colSpan="7" className="px-5 py-8 text-center text-crewly-dim">
-                          No customer companies yet.
-                        </td>
-                      </tr>
+                      <TableEmpty
+                        colSpan={7}
+                        illustration="team"
+                        title="No customer companies yet"
+                        description="Every company that signs up appears here with its plan, headcount and subscription status."
+                      />
                     )}
                     {companies.map((c) => (
                       <tr key={c.id} className="border-b border-crewly-border/60 last:border-0">

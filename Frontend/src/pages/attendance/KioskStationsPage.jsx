@@ -11,6 +11,7 @@ import attendanceCaptureService from '../../services/attendanceCaptureService.js
 import attendanceLocationService from '../../services/attendanceLocationService.js';
 import usePermission from '../../hooks/usePermission.js';
 import { notify } from '../../utils/notify.js';
+import { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 // Phase 31.14 — kiosk station management (HR/admin). Stations are
 // trusted shared devices: the secret is shown ONCE at create /
@@ -244,7 +245,12 @@ const KioskStationsPage = () => {
               <tr><td colSpan={5} className="px-4 py-6 text-center text-crewly-dim">Loading…</td></tr>
             )}
             {!loading && stations.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-6 text-center text-crewly-dim">No stations yet.</td></tr>
+              <TableEmpty
+                colSpan={5}
+                illustration="box"
+                title="No kiosk stations yet"
+                description="A station is a shared tablet or phone at a site. Add one above, then punch in from it with a PIN."
+              />
             )}
             {stations.map((station) => (
               <tr key={station.id} className="border-t border-crewly-line">

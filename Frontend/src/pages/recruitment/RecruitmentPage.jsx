@@ -32,6 +32,7 @@ import {
   POSITIVE_PIPELINE_STAGES,
 } from './pipelineStages.js';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const STAGE_DOTS = [
   'bg-slate-400',
@@ -579,7 +580,14 @@ const RecruitmentPage = () => {
       {loading ? (
         <div className="card p-4 text-crewly-dim">Loading jobs…</div>
       ) : jobs.length === 0 ? (
-        <div className="card p-8 text-center text-crewly-dim">No jobs yet — click <b>+ Post Job</b> to open your first position</div>
+        <div className="card">
+          <EmptyState
+            illustration="hiring"
+            title="No jobs posted yet"
+            description="Post your first position to start receiving applications. Each job keeps its pipeline, stages and hiring team."
+            size="sm"
+          />
+        </div>
       ) : (
         <div className="flex flex-wrap gap-2">
           {jobs.map((j) => (

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Clock, History, Link2, Pencil, Repeat, Trash2, User, Users, X, XCircle } from 'lucide-react';
+import { CalendarDays, Clock, Link2, Pencil, Repeat, Trash2, User, Users, X, XCircle } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import api from '../../services/api';
 import {
@@ -8,6 +8,7 @@ import {
 import { arr } from '../../services/workService.js';
 import { notify } from '../../utils/notify.js';
 import { parseMeetingLink } from '../../utils/meetingLink.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const CREATE_ROLES = ['COMPANY_ADMIN', 'MANAGER', 'TEAM_LEAD'];
 const DAY_MS = 86400000;
@@ -481,9 +482,16 @@ export default function MeetingsPage() {
             );
           })}
           {(view === 'agenda' ? meetings : history).length === 0 && (
-            <div className="rounded-2xl border border-dashed border-slate-700 p-10 text-center text-slate-400">
-              <p className="flex justify-center text-slate-600">{view === 'agenda' ? <CalendarDays className="h-8 w-8" /> : <History className="h-8 w-8" />}</p>
-              <p className="mt-2 text-sm">{view === 'agenda' ? 'Nothing upcoming in the next 30 days.' : 'No past or cancelled meetings yet.'}</p>
+            <div className="rounded-2xl border border-crewly-border bg-crewly-card">
+              <EmptyState
+                illustration="calendar"
+                title={view === 'agenda' ? 'Nothing scheduled in the next 30 days' : 'No past meetings yet'}
+                description={
+                  view === 'agenda'
+                    ? 'Meetings you schedule — with a join link, an agenda and attendees — show up here, newest first.'
+                    : 'Once a meeting happens or is cancelled, it moves into this history.'
+                }
+              />
             </div>
           )}
         </div>

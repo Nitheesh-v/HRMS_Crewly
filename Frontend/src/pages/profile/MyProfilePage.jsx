@@ -22,6 +22,7 @@ import {
 import profileService from '../../services/profileService';
 import Modal from '../../components/Modal.jsx';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 // ── The fields an employee may ask to change (UI copy only — the server
 //    validates the value AND the allowlist in services/profile/
@@ -418,9 +419,12 @@ const MyProfilePage = () => {
             </h3>
 
             {requests.length === 0 ? (
-              <p className="text-sm text-crewly-dim">
-                Nothing requested. Use “Request change” next to a field HR manages.
-              </p>
+              <EmptyState
+                illustration="documents"
+                title="Nothing requested yet"
+                description="Use “Request change” next to a field HR manages — bank account, address, emergency contact — and its approval status appears here."
+                size="sm"
+              />
             ) : (
               <div className="space-y-3">
                 {requests.map((row) => (

@@ -9,7 +9,6 @@ import {
   MapPin,
   Search,
   Send,
-  UserRoundSearch,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Modal from '../../components/Modal.jsx';
@@ -23,6 +22,7 @@ import {
   POSITIVE_PIPELINE_STAGES,
 } from './pipelineStages.js';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const EMPTY_FILTERS = {
   search: '',
@@ -348,10 +348,12 @@ const CandidateInboxPage = () => {
           {[1, 2, 3].map((item) => <div key={item} className="h-28 animate-pulse rounded-2xl bg-slate-900" />)}
         </div>
       ) : candidates.length === 0 ? (
-        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-10 text-center">
-          <UserRoundSearch className="mx-auto h-9 w-9 text-slate-600" />
-          <h2 className="mt-3 font-semibold text-slate-200">No candidates found</h2>
-          <p className="mt-1 text-sm text-slate-500">Try clearing filters or wait for a new application.</p>
+        <div className="rounded-2xl border border-crewly-border bg-crewly-card">
+          <EmptyState
+            illustration="search"
+            title="No candidates found"
+            description="Nothing matches these filters. Clear them to see everyone who has applied, or wait for a new application to arrive."
+          />
         </div>
       ) : (
         <div className="space-y-3">

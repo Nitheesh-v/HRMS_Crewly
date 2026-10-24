@@ -3,6 +3,7 @@ import { Check, CheckCircle2, FileText, X } from 'lucide-react';
 import leaveService from '../../services/leaveService.js';
 import Modal from '../../components/Modal.jsx';
 import { ROLE_STYLES, roleLabel } from '../../utils/roles.js';
+import EmptyState, { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 const STATUS_STYLE = {
   APPROVED: 'bg-crewly-green/15 text-crewly-green',
@@ -84,7 +85,16 @@ const LeaveApprovalsPage = () => {
               </div>
             </div>
           ))}
-          {pending.length === 0 && <div className="card py-10 text-center text-crewly-dim">No pending requests — queue is clear.</div>}
+          {pending.length === 0 && (
+            <div className="card">
+              <EmptyState
+                illustration="shield"
+                title="Queue is clear"
+                description="No leave request is waiting on you. Anything your team files lands here for approval or rejection."
+                size="sm"
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -117,7 +127,12 @@ const LeaveApprovalsPage = () => {
                 </tr>
               ))}
               {history.length === 0 && (
-                <tr><td colSpan={6} className="px-5 py-8 text-center text-crewly-dim">Nothing decided yet.</td></tr>
+                <TableEmpty
+                  colSpan={6}
+                  illustration="calendar"
+                  title="Nothing decided yet"
+                  description="Once you approve or reject leave, the decision, your note and who decided are kept here."
+                />
               )}
             </tbody>
           </table>

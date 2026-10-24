@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import authService from "../../services/authService.js";
 import useAuth from "../../hooks/useAuth.jsx";
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const formatDate = (value) =>
   value
@@ -388,9 +389,12 @@ const ActiveSessionsPage = () => {
             ))}
 
             {!data.loginHistory.length && (
-              <p className="text-sm text-crewly-dim">
-                No recent login activity.
-              </p>
+              <EmptyState
+                illustration="shield"
+                title="No recent login activity"
+                description="Successful and failed sign-ins are logged here with their device, IP and time."
+                size="sm"
+              />
             )}
           </div>
         </section>

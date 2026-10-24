@@ -18,6 +18,7 @@ import Modal from '../../components/Modal.jsx';
 import usePermission from '../../hooks/usePermission.js';
 import payrollRunService from '../../services/payrollRunService.js';
 import { notify } from '../../utils/notify.js';
+import { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 // ─────────────────────────────────────────────────────────────
 // Phase 29.6 — Run Payroll (the calculation workspace)
@@ -435,12 +436,12 @@ const RunPayrollPage = () => {
                 </td>
               </tr>
             ) : visible.length === 0 ? (
-              <tr>
-                <td colSpan={10} className="px-3 py-10 text-center text-crewly-dim">
-                  No payroll results for {formatMonth(month)} yet. Run payroll to calculate the
-                  month.
-                </td>
-              </tr>
+              <TableEmpty
+                colSpan={10}
+                illustration="wallet"
+                title={`No payroll results for ${formatMonth(month)} yet`}
+                description="Run payroll to calculate the month — each employee lands here with their gross, deductions, net and any blocking error."
+              />
             ) : (
               visible.map((row) => (
                 <tr key={row._id} className="border-t border-white/5 hover:bg-white/5">

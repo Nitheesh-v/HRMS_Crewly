@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, Download, Loader2, MailQuestion, Send, XCircle } from 'lucide-react';
 import bgvVerifierAuthService from '../../../services/bgvVerifierAuthService.js';
+import EmptyState from '../../../components/common/EmptyState.jsx';
 
 // Phase 30.9 — additional information requests (verifier side).
 // Categories mirror the backend allowlist; the backend re-validates.
@@ -191,7 +192,14 @@ const InfoRequestPanel = ({ orderId, checkType, workbench, onChanged, onError })
           ))}
         </ul>
       ) : (
-        <p className="mb-4 text-xs text-crewly-dim">No information requests for this check yet.</p>
+        <div className="mb-4">
+          <EmptyState
+            illustration="chat"
+            title="No information requests yet"
+            description="Ask the candidate for a clearer document here. Each request, its reply and its cancellation is kept on the check."
+            size="sm"
+          />
+        </div>
       )}
 
       {!workbench?.locked ? (

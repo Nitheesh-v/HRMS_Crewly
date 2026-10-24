@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, FolderOpen, ListTodo, Send, Sparkles, User } from 'lucide-react';
+import { AlertTriangle, FolderOpen, ListTodo, Send, User } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { listTasks, arr } from '../../services/workService.js';
 import TaskDetailModal, { STATUS_META, PRIORITY_META } from '../../components/TaskDetailModal.jsx';
 import CreateTaskModal from '../../components/CreateTaskModal.jsx';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const ASSIGN_ROLES = ['COMPANY_ADMIN', 'HR_MANAGER', 'MANAGER', 'TEAM_LEAD'];
 
@@ -98,9 +99,12 @@ export default function TasksPage() {
       )}
       {loading && <p className="text-sm text-slate-500">Loading tasks…</p>}
       {!loading && tasks.length === 0 && (
-        <div className="rounded-2xl border border-dashed border-slate-700 p-10 text-center text-slate-400">
-          <p className="flex justify-center text-slate-600"><Sparkles className="h-8 w-8" /></p>
-          <p className="mt-2 text-sm">No tasks here.</p>
+        <div className="rounded-2xl border border-crewly-border bg-crewly-card">
+          <EmptyState
+            illustration="tasks"
+            title="No tasks here"
+            description="Nothing matches this view. Tasks you create or are assigned appear here with their status, due date and project."
+          />
         </div>
       )}
 

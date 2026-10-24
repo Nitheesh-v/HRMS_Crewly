@@ -7,6 +7,7 @@ import {
   Link,
 } from "react-router-dom";
 import securityService from "../../services/securityService.js";
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const formatDate = (value) => {
   if (!value) return "—";
@@ -490,11 +491,13 @@ const SecurityDashboardPage = () => {
                   },
                 )}
 
-                {!data.eventTypes
-                  .length && (
-                  <p className="text-sm text-crewly-dim">
-                    No security events.
-                  </p>
+                {!data.eventTypes.length && (
+                  <EmptyState
+                    illustration="chart"
+                    title="No security events"
+                    description="No event was recorded in this period, so there is nothing to chart."
+                    size="sm"
+                  />
                 )}
               </div>
             </section>
@@ -633,11 +636,12 @@ const SecurityDashboardPage = () => {
                 </tbody>
               </table>
 
-              {!data.recentEvents
-                .length && (
-                <p className="p-8 text-center text-sm text-crewly-dim">
-                  No recent security events.
-                </p>
+              {!data.recentEvents.length && (
+                <EmptyState
+                  illustration="shield"
+                  title="No recent security events"
+                  description="Failed sign-ins, permission changes and suspicious sessions are listed here as they happen."
+                />
               )}
             </div>
           </section>

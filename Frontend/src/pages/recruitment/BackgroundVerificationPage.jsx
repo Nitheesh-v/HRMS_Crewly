@@ -5,6 +5,7 @@ import { RefreshCw, ShieldCheck } from 'lucide-react';
 import usePermission from '../../hooks/usePermission.js';
 import bgvService from '../../services/bgvService.js';
 import { notify } from '../../utils/notify.js';
+import { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 const StatusPill = ({ status }) => (
   <span className="rounded-full border border-slate-700 bg-slate-800 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-300">
@@ -154,11 +155,12 @@ const BackgroundVerificationPage = () => {
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
-                <tr>
-                  <td colSpan="6" className="px-4 py-10 text-center text-slate-500">
-                    No background verification cases yet. Start from a candidate detail page.
-                  </td>
-                </tr>
+                <TableEmpty
+                  colSpan={6}
+                  illustration="shield"
+                  title="No verification cases yet"
+                  description="Cases start from a candidate's detail page, once policy requires a check. Each one keeps its status, verifier and evidence here."
+                />
               ) : (
                 rows.map((row) => (
                   <tr key={row.id} className="border-t border-slate-800/80">

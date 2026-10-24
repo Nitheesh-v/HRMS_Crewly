@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { Link } from "react-router-dom";
 import superAdminService from "../../services/superAdminService.js";
 import { notify } from '../../utils/notify.js';
+import { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 const panel = "rounded-xl border border-slate-800 bg-slate-900 p-4";
 
@@ -270,11 +271,12 @@ const SuperAdminCommercePage = ({ mode }) => {
                 ))}
 
                 {!data.rows.length && (
-                  <tr>
-                    <td colSpan="8" className="p-8 text-center text-slate-500">
-                      No subscriptions found.
-                    </td>
-                  </tr>
+                  <TableEmpty
+                    colSpan={8}
+                    illustration="wallet"
+                    title="No subscriptions found"
+                    description="No company matches these filters. Every active, trialing and expired plan is listed here."
+                  />
                 )}
               </tbody>
             </table>
@@ -444,14 +446,12 @@ const SuperAdminCommercePage = ({ mode }) => {
                   ))}
 
                   {!data.invoices?.length && (
-                    <tr>
-                      <td
-                        colSpan="6"
-                        className="p-6 text-center text-slate-500"
-                      >
-                        No invoices yet.
-                      </td>
-                    </tr>
+                    <TableEmpty
+                      colSpan={6}
+                      illustration="documents"
+                      title="No invoices yet"
+                      description="Invoices are raised as companies are billed. Each one keeps its amount, tax and payment status here."
+                    />
                   )}
                 </tbody>
               </table>

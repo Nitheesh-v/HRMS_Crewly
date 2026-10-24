@@ -10,6 +10,7 @@ import {
   uploadMyDocument, fulfillDocRequest, downloadDocument,
 } from '../../services/docsService.js';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const FALLBACK_CATS = [
   { value: 'AADHAAR_ID', label: 'Aadhaar / ID' },
@@ -187,9 +188,13 @@ export default function MyDocumentsPage() {
 
       {/* Files by category */}
       {byCat.length === 0 ? (
-        <p className="rounded-xl border border-slate-700 bg-slate-800/40 p-8 text-center text-sm text-slate-400">
-          No documents yet — upload above, and anything HR adds for you appears here.
-        </p>
+        <div className="rounded-xl border border-crewly-border bg-crewly-card">
+          <EmptyState
+            illustration="documents"
+            title="No documents yet"
+            description="Upload a file above, and anything HR issues to you — letters, payslips, policies — appears here by category."
+          />
+        </div>
       ) : (
         byCat.map((g) => (
           <section key={g.value} className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">

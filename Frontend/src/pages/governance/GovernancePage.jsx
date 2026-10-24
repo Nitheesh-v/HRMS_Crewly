@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Check, ScrollText, ShieldCheck } from 'lucide-react';
 import systemService from '../../services/systemService';
 import { ROLES, roleLabel } from '../../utils/roles';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const ROLE_COLS = [ROLES.COMPANY_ADMIN, ROLES.HR_MANAGER, ROLES.MANAGER, ROLES.TEAM_LEAD, ROLES.EMPLOYEE];
 const fmtDT = (d) => new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -93,7 +94,16 @@ export default function GovernancePage() {
                 {loading ? (
                   <tr><td colSpan={5} className="px-4 py-8 text-center text-crewly-dim">Loading…</td></tr>
                 ) : logs.length === 0 ? (
-                  <tr><td colSpan={5} className="px-4 py-8 text-center text-crewly-dim">No activity yet — do something (create a user, run payroll) and come back!</td></tr>
+                  <tr>
+                    <td colSpan={5} className="px-4">
+                      <EmptyState
+                        illustration="shield"
+                        title="No activity recorded yet"
+                        description="Every approval, payroll action, permission change and admin edit is written here with the person who did it and the time."
+                        size="sm"
+                      />
+                    </td>
+                  </tr>
                 ) : logs.map((l) => (
                   <tr key={l._id} className="border-b border-crewly-border/50 last:border-0">
                     <td className="px-4 py-3 text-xs text-crewly-dim whitespace-nowrap">{fmtDT(l.createdAt)}</td>

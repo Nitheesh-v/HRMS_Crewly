@@ -10,6 +10,7 @@ import {
   getEmployees, getEmployeeCabinet, getDocCategories,
   hrUploadDocument, createDocRequest, cancelDocRequest, deleteDocument, downloadDocument } from '../../services/docsService.js';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const FALLBACK_CATS = [
   { value: 'AADHAAR_ID', label: 'Aadhaar / ID' },
@@ -209,14 +210,25 @@ export default function EmployeeFilesPage() {
                 </span>
               </button>
             ))}
-            {filtered.length === 0 && <p className="px-2 py-6 text-center text-xs text-slate-500">No employees found</p>}
+            {filtered.length === 0 && (
+              <EmptyState
+                illustration="search"
+                title="No employees found"
+                description="Nothing matches that search. Clear it to list everyone in your company."
+                size="sm"
+              />
+            )}
           </div>
         </aside>
 
         {/* cabinet */}
         <section className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">
           {!cabinet.employee ? (
-            <p className="p-10 text-center text-sm text-slate-400">Pick an employee to open their file cabinet</p>
+            <EmptyState
+              illustration="documents"
+              title="Pick an employee"
+              description="Choose someone on the left to open their file cabinet — contracts, IDs, certificates and anything HR has requested."
+            />
           ) : (
             <>
               <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -231,7 +243,14 @@ export default function EmployeeFilesPage() {
               {/* documents */}
               <h3 className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-400"><FolderOpen className="h-3.5 w-3.5" />Documents ({cabinet.documents.length})</h3>
               {cabinet.documents.length === 0 ? (
-                <p className="mb-4 rounded-lg border border-dashed border-slate-600 p-4 text-center text-xs text-slate-500">Nothing on file yet — upload or request one above.</p>
+                <div className="mb-4">
+                  <EmptyState
+                    illustration="documents"
+                    title="Nothing on file yet"
+                    description="Upload a document or request one from the employee — it lands in this cabinet by category."
+                    size="sm"
+                  />
+                </div>
               ) : (
                 <div className="mb-4 divide-y divide-slate-700/60">
                   {cabinet.documents.map((d) => (
@@ -258,7 +277,12 @@ export default function EmployeeFilesPage() {
               {/* requests */}
               <h3 className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-400"><Inbox className="h-3.5 w-3.5" />Requests ({cabinet.requests.length})</h3>
               {cabinet.requests.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-slate-600 p-4 text-center text-xs text-slate-500">No requests yet.</p>
+                <EmptyState
+                  illustration="inbox"
+                  title="No requests yet"
+                  description="Ask for a missing document and the request is tracked here until the employee uploads it."
+                  size="sm"
+                />
               ) : (
                 <div className="space-y-2">
                   {cabinet.requests.map((r) => (

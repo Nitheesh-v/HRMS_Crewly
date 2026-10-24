@@ -3,6 +3,7 @@ import { AlarmClock, Building2, CalendarDays, Coffee, Lock, MapPin, Pencil, Shuf
 import { useSelector } from 'react-redux';
 import scheduleService from '../../services/scheduleService';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const inp = 'w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500';
 const primary = 'rounded-lg bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-50';
@@ -79,7 +80,14 @@ export default function SchedulesPage() {
             </div>
           </div>
         ))}
-        {!schedules.length && <p className="text-sm text-slate-500">No schedules yet — create “General Office 09:00–18:00”, a 6-day support schedule, etc.</p>}
+        {!schedules.length && (
+          <EmptyState
+            illustration="calendar"
+            title="No schedules yet"
+            description="A schedule sets the working days, hours and grace period one group of people follows — a general office 09:00–18:00, or a six-day support rota."
+            size="sm"
+          />
+        )}
       </div>
 
       {modal && (

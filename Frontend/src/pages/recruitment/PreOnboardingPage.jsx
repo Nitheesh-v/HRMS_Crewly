@@ -12,6 +12,7 @@ import PreOnboardingStatusBadge from '../../components/recruitment/PreOnboarding
 import usePermission from '../../hooks/usePermission.js';
 import preOnboardingService from '../../services/preOnboardingService.js';
 import { notify } from '../../utils/notify.js';
+import { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 const dateLabel = (value) =>
   value
@@ -186,11 +187,12 @@ const PreOnboardingPage = () => {
                   </td>
                 </tr>
               ) : cases.length === 0 ? (
-                <tr>
-                  <td colSpan="6" className="px-4 py-10 text-center text-slate-500">
-                    No pre-onboarding cases yet. Start from an offer-accepted candidate.
-                  </td>
-                </tr>
+                <TableEmpty
+                  colSpan={6}
+                  illustration="documents"
+                  title="No pre-onboarding cases yet"
+                  description="A case opens when an offer is accepted. Documents, joining date and the candidate's portal progress are tracked here."
+                />
               ) : (
                 cases.map((item) => (
                   <tr

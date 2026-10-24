@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 import { UserPlus, Briefcase } from "lucide-react";
 
 import referralService from "../../services/referralService";
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const humaniseStage = (stage = "") =>
   String(stage)
@@ -29,8 +30,11 @@ const employmentTypeLabel = (value = "") =>
 const workModeLabel = (value = "") =>
   String(value).replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 
-const EmptyState = ({ children }) => (
-  <div className="card text-center text-crewly-dim">{children}</div>
+const EmptyPanel = ({ illustration, title, description, children = null }) => (
+  <div className="card">
+    <EmptyState illustration={illustration} title={title} description={description} size="sm" />
+    {children ? <p className="mt-4 text-center text-xs text-crewly-dim">{children}</p> : null}
+  </div>
 );
 
 const ReferralsPage = () => {
@@ -163,7 +167,11 @@ const ReferralsPage = () => {
       {!loading && tab === "openings" && (
         <div className="space-y-3">
           {openings.length === 0 && (
-            <EmptyState>No open roles right now — check back soon.</EmptyState>
+            <EmptyPanel
+              illustration="hiring"
+              title="No open roles right now"
+              description="When recruitment publishes a requisition, it appears here and you can refer someone you know."
+            />
           )}
           {openings.map((job) => (
             <article key={job._id || job.jobCode} className="card">
@@ -216,10 +224,11 @@ const ReferralsPage = () => {
       {!loading && tab === "mine" && (
         <div className="space-y-3">
           {mine.length === 0 && (
-            <EmptyState>
-              You haven&apos;t referred anyone yet. Pick an open role and refer a
-              candidate — you&apos;ll see their stage here.
-            </EmptyState>
+            <EmptyPanel
+              illustration="team"
+              title="You haven't referred anyone yet"
+              description="Pick an open role and refer a candidate — their name, the role and the stage they reach all show up here."
+            />
           )}
           {mine.map((referral) => (
             <article key={referral._id} className="card flex flex-wrap items-center justify-between gap-3">

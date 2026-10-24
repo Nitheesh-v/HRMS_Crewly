@@ -5,6 +5,7 @@ import { announcementService } from '../../services/selfService.js';
 import useAuth from '../../hooks/useAuth';
 import Modal from '../../components/Modal.jsx';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 
 const POSTERS = ['COMPANY_ADMIN', 'HR_MANAGER'];
@@ -64,7 +65,24 @@ const AnnouncementsPage = () => {
 
       <div className="mt-5 space-y-3">
         {loading && <p className="text-crewly-dim">Loading…</p>}
-        {!loading && list.length === 0 && <div className="card text-center text-crewly-dim">No announcements yet{canPost ? ' — post the first one!' : '.'}</div>}
+        {!loading && list.length === 0 && (
+          <div className="card">
+            <EmptyState
+              illustration="bell"
+              title="No announcements yet"
+              description={
+                canPost
+                  ? 'Post the first one — everyone in the workspace sees it here, and pinned posts stay on top.'
+                  : 'When your HR team posts news, it lands here.'
+              }
+              action={canPost ? (
+                <button type="button" className="btn-primary text-sm" onClick={() => setOpen(true)}>
+                  Post an announcement
+                </button>
+              ) : null}
+            />
+          </div>
+        )}
         {list.map((a) => (
           <article key={a._id} className={`card ${a.pinned ? 'border-crewly-orange/50' : ''}`}>
             <div className="flex items-start justify-between gap-3">

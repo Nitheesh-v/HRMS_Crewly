@@ -2,9 +2,10 @@
 // UI pass: a filter box (a list you cannot search is a list you scroll), a
 // real empty state, and skeletons instead of the words "Loading conversations".
 import { useMemo, useState } from 'react';
-import { Plus, Search, SearchX } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 
 import ConversationRow from './ConversationRow.jsx';
+import EmptyState from '../common/EmptyState.jsx';
 
 const RowSkeleton = () => (
   <div className="animate-pulse space-y-2 p-1" aria-hidden="true">
@@ -94,27 +95,28 @@ const ConversationList = ({
         )}
 
         {status === 'ready' && conversations.length === 0 && (
-          <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-crewly-border bg-crewly-card text-crewly-dim">
-              <Plus className="h-5 w-5" />
-            </span>
-            <p className="text-sm font-semibold text-crewly-text">No conversations yet</p>
-            <p className="text-xs text-crewly-dim">
-              Start a direct message or a group to get going.
-            </p>
-            <button type="button" className="btn-primary mt-1 px-3.5 py-2 text-xs" onClick={onNew}>
-              Start a conversation
-            </button>
-          </div>
+          <EmptyState
+            illustration="chat"
+            title="No conversations yet"
+            description="Start a direct message or a group to get going."
+            action={
+              <button type="button" className="btn-primary px-3.5 py-2 text-xs" onClick={onNew}>
+                Start a conversation
+              </button>
+            }
+            size="sm"
+            className="px-4 py-8"
+          />
         )}
 
         {status === 'ready' && conversations.length > 0 && visible.length === 0 && (
-          <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
-            <SearchX className="h-5 w-5 text-crewly-dim" aria-hidden="true" />
-            <p className="text-xs text-crewly-dim">
-              Nothing matches “{query.trim()}”.
-            </p>
-          </div>
+          <EmptyState
+            illustration="search"
+            title="Nothing matches that search"
+            description={`No conversation matches “${query.trim()}”.`}
+            size="sm"
+            className="px-4 py-8"
+          />
         )}
 
         {visible.map((conversation) => (

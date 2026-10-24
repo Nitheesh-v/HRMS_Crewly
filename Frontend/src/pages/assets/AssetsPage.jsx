@@ -7,6 +7,7 @@ import { useSelector } from 'react-redux';
 import { getMyAssets, getAllAssets, createAsset, assignAsset, returnAsset, deleteAsset } from '../../services/assetService.js';
 import { getEmployees } from '../../services/docsService.js';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const inp = 'w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500';
 const btn = 'rounded-lg px-3 py-1.5 text-xs font-bold transition disabled:opacity-50';
@@ -147,7 +148,12 @@ export default function AssetsPage() {
           <section className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">
             <h2 className="mb-3 flex items-center gap-1.5 text-sm font-bold uppercase tracking-wide text-slate-300"><Package className="h-4 w-4" />Inventory ({inventory.length})</h2>
             {inventory.length === 0 ? (
-              <p className="text-xs text-slate-500">No assets yet — add the first one above.</p>
+              <EmptyState
+                illustration="box"
+                title="No assets issued yet"
+                description="Laptops, phones, keys, ID cards — record what leaves the store and who holds it."
+                size="sm"
+              />
             ) : (
               <div className="space-y-2">
                 {inventory.map((a) => (

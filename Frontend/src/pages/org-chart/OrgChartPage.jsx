@@ -10,6 +10,7 @@ import { Building2, ChevronDown, ChevronRight, Lock, Network } from 'lucide-reac
 import api from '../../services/api';
 import useAuth from '../../hooks/useAuth';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 
 
@@ -132,8 +133,12 @@ const OrgChartPage = () => {
       {loading && <p className="text-crewly-dim">Loading structure…</p>}
 
       {!loading && roots.length === 0 && (
-        <div className="card text-center text-crewly-dim">
-          No people to show yet — assign departments & managers in User Management.
+        <div className="card">
+          <EmptyState
+            illustration="team"
+            title="No reporting lines yet"
+            description="The chart draws itself from each person's manager and department. Set those in User Management and the structure appears here."
+          />
         </div>
       )}
 

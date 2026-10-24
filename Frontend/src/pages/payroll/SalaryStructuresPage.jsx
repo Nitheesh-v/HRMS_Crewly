@@ -5,6 +5,7 @@ import Modal from '../../components/Modal.jsx';
 import usePermission from '../../hooks/usePermission.js';
 import salaryStructureService from '../../services/salaryStructureService.js';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 // ── display mirrors of the backend rules (the server always decides) ────────
 
@@ -406,18 +407,16 @@ const SalaryStructuresPage = () => {
         {loading ? (
           <p className="text-sm text-crewly-dim">Loading salary structures…</p>
         ) : structures.length === 0 ? (
-          <div className="space-y-3 py-6 text-center">
-            <h2 className="text-lg font-semibold">No Salary Structures Yet</h2>
-            <p className="mx-auto max-w-xl text-sm text-crewly-dim">
-              Structures are built from the salary components of this company. Create the components
-              first, then assemble them here — for example Basic + HRA + Special Allowance − PF.
-            </p>
-            {canManage && (
+          <EmptyState
+            illustration="payslip"
+            title="No salary structures yet"
+            description="A structure assembles this company's salary components — say Basic + HRA + Special Allowance − PF. Create the components first, then build the structure here."
+            action={canManage ? (
               <button type="button" className="btn-primary" onClick={openCreate}>
                 Create Salary Structure
               </button>
-            )}
-          </div>
+            ) : null}
+          />
         ) : (
           <>
             <div className="overflow-x-auto">
@@ -533,9 +532,13 @@ const SalaryStructuresPage = () => {
       </div>
 
       {components.length === 0 && !loading && (
-        <div className="card text-sm text-crewly-dim">
-          No active salary components in this company yet. Create and activate components first — a
-          structure can only use components that are active here.
+        <div className="card">
+          <EmptyState
+            illustration="tasks"
+            title="No active salary components yet"
+            description="A structure can only use components that are active. Create the earning and deduction components first, then come back here."
+            size="sm"
+          />
         </div>
       )}
 
@@ -648,9 +651,12 @@ const SalaryStructuresPage = () => {
                 </div>
 
                 {form.items.length === 0 ? (
-                  <p className="text-xs text-crewly-dim">
-                    No components added yet. Add at least one earning component.
-                  </p>
+                  <EmptyState
+                    illustration="tasks"
+                    title="No components added yet"
+                    description="Pick at least one earning component above — deductions are added the same way."
+                    size="sm"
+                  />
                 ) : (
                   <div className="space-y-2">
                     {form.items.map((item, index) => {

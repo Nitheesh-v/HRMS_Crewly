@@ -9,6 +9,7 @@ import {
 import attendanceCaptureService from '../../services/attendanceCaptureService.js';
 import usePermission from '../../hooks/usePermission.js';
 import { notify } from '../../utils/notify.js';
+import { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 // Phase 31.14 — CSV attendance import (HR/admin).
 // UPLOAD → PARSE → PREVIEW → VALIDATE → CONFIRM → IMPORT. Preview
@@ -440,7 +441,14 @@ const AttendanceImportPage = () => {
             <RefreshCw className="h-3.5 w-3.5" /> Refresh
           </button>
         </div>
-        {history.length === 0 && <div className="px-4 py-6 text-center text-sm text-crewly-dim">No imports yet.</div>}
+        {history.length === 0 && (
+          <TableEmpty
+            colSpan={6}
+            illustration="documents"
+            title="No imports yet"
+            description="Upload a biometric or device export above — each file you bring in is listed here with its row count and outcome."
+          />
+        )}
         {history.map((batch) => (
           <button
             key={batch.id}

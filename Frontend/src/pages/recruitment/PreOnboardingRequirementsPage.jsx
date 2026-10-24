@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import usePermission from '../../hooks/usePermission.js';
 import preOnboardingService from '../../services/preOnboardingService.js';
 import { notify } from '../../utils/notify.js';
+import { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 const CATEGORIES = [
   'IDENTITY',
@@ -240,11 +241,12 @@ const PreOnboardingRequirementsPage = () => {
                     </td>
                   </tr>
                 ) : rows.length === 0 ? (
-                  <tr>
-                    <td colSpan="5" className="px-4 py-10 text-center text-slate-500">
-                      No requirements configured.
-                    </td>
-                  </tr>
+                  <TableEmpty
+                    colSpan={5}
+                    illustration="documents"
+                    title="No requirements configured"
+                    description="Requirements are the documents and checks every joiner must complete. Add one above and candidates are asked for it in the portal."
+                  />
                 ) : (
                   rows.map((row) => (
                     <tr key={row.id} className="border-t border-slate-800/80">

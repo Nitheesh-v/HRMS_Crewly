@@ -5,6 +5,7 @@ import Modal from '../../components/Modal.jsx';
 import usePermission from '../../hooks/usePermission.js';
 import salaryComponentService from '../../services/salaryComponentService.js';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 // ── domain mirrors of the backend rules (display only; the server decides) ──
 
@@ -391,18 +392,16 @@ const SalaryComponentsPage = () => {
           <p className="text-sm text-crewly-dim">Loading salary components…</p>
         ) : components.length === 0 ? (
           /* §52 — empty state */
-          <div className="space-y-3 py-6 text-center">
-            <h2 className="text-lg font-semibold">No Salary Components Yet</h2>
-            <p className="mx-auto max-w-xl text-sm text-crewly-dim">
-              Create salary components such as Basic, HRA, allowances, bonuses, deductions, and
-              employer contributions before building salary structures.
-            </p>
-            {canManage && (
+          <EmptyState
+            illustration="tasks"
+            title="No salary components yet"
+            description="Components are the building blocks — Basic, HRA, allowances, bonuses, deductions and employer contributions. Create them before assembling a salary structure."
+            action={canManage ? (
               <button type="button" className="btn-primary" onClick={openCreate}>
                 Create Salary Component
               </button>
-            )}
-          </div>
+            ) : null}
+          />
         ) : (
           <>
             <div className="overflow-x-auto">

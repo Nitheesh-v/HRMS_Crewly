@@ -3,6 +3,7 @@ import { Building2, CalendarClock, Circle, MapPin, PartyPopper, Pencil, Plus, Re
 import { useSelector } from 'react-redux';
 import scheduleService from '../../services/scheduleService';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const inp = 'w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500';
 const primary = 'rounded-lg bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-50';
@@ -198,7 +199,16 @@ export default function HolidaysPage() {
             </div>
           )}
           {loading && <p className="text-sm text-slate-400">Loading…</p>}
-          {!loading && holidays.length === 0 && <p className="text-sm text-slate-500">No holidays found for this filter.</p>}
+          {!loading && holidays.length === 0 && (
+            <div className="rounded-xl border border-crewly-border bg-crewly-card">
+              <EmptyState
+                illustration="calendar"
+                title="No holidays found for this filter"
+                description="Nothing is marked in this view for the year. Switch the filter or pick another year to see the published list."
+                size="sm"
+              />
+            </div>
+          )}
           {(view === 'year' ? MONTHS : [null]).map((mlabel, mi) => {
             const rows = view === 'year' ? holidays.filter((h) => parseInt(h.date.slice(5, 7), 10) === mi + 1) : holidays;
             if (view === 'year' && !rows.length) return null;

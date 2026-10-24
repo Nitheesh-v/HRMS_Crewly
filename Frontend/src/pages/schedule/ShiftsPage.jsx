@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 import scheduleService from '../../services/scheduleService';
 import { getEmployees } from '../../services/docsService';
 import { notify } from '../../utils/notify.js';
+import EmptyState from '../../components/common/EmptyState.jsx';
 
 const inp = 'w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500';
 const primary = 'rounded-lg bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-50';
@@ -115,7 +116,12 @@ export default function ShiftsPage() {
             )}
           </div>
         ) : (
-          <p className="text-sm text-slate-500">No shift assigned yet. Default work hours apply.</p>
+          <EmptyState
+            illustration="calendar"
+            title="No shift assigned yet"
+            description="You are on the default work hours. Once a shift is assigned to you or your department, its timings and allowances show up here."
+            size="sm"
+          />
         )}
         {(mine?.history || []).length > 0 && (
           <div className="mt-4">
@@ -163,7 +169,14 @@ export default function ShiftsPage() {
                 </div>
               </div>
             ))}
-            {!shifts.length && <p className="text-sm text-slate-500">No shifts yet — create General, Morning, Night…</p>}
+            {!shifts.length && (
+              <EmptyState
+                illustration="calendar"
+                title="No shifts yet"
+                description="Create the shifts your teams actually work — General, Morning, Night — then assign them to people or departments."
+                size="sm"
+              />
+            )}
           </div>
 
           {/* history viewer */}

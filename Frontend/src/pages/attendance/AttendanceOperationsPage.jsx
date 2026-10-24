@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import {
   AlertTriangle,
   Building2,
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -21,6 +20,7 @@ import attendanceService from '../../services/attendanceService.js';
 import departmentService from '../../services/departmentService.js';
 import usePermission from '../../hooks/usePermission.js';
 import TimesheetMonthView from '../../components/attendance/TimesheetMonthView.jsx';
+import { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 // Phase 31.12 — HR Attendance Operations dashboard. READ-ONLY
 // command center over 31.9 presence facts: today's expected
@@ -438,7 +438,12 @@ const AttendanceOperationsPage = () => {
                     </tr>
                   ))}
                   {(dash[groupTab] || []).length === 0 && (
-                    <tr><td colSpan={9} className="py-6 text-center text-crewly-dim">No groups in this view.</td></tr>
+                    <TableEmpty
+                      colSpan={9}
+                      illustration="team"
+                      title="No groups in this view"
+                      description="Attendance groups are built from departments and locations. Add one and its people show up here."
+                    />
                   )}
                 </tbody>
               </table>
@@ -462,7 +467,12 @@ const AttendanceOperationsPage = () => {
                     </tr>
                   ))}
                   {(dash.locations || []).length === 0 && (
-                    <tr><td colSpan={4} className="py-6 text-center text-crewly-dim">No office check-ins in this view.</td></tr>
+                    <TableEmpty
+                      colSpan={4}
+                      illustration="box"
+                      title="No office check-ins in this view"
+                      description="Nobody has punched in from an office location for this date. Kiosk and mobile punches both count."
+                    />
                   )}
                 </tbody>
               </table>
@@ -528,11 +538,12 @@ const AttendanceOperationsPage = () => {
                 ))}
                 {attention.items.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="py-6 text-center text-crewly-dim">
-                      <span className="inline-flex items-center gap-2">
-                        <CheckCircle2 size={16} className="text-crewly-green" />
-                        Nothing needs attention in this view.
-                      </span>
+                    <td colSpan={8} className="py-0">
+                      <TableEmpty
+                        illustration="shield"
+                        title="Nothing needs attention"
+                        description="No missed punches, late arrivals or unapproved exceptions for this view."
+                      />
                     </td>
                   </tr>
                 )}
