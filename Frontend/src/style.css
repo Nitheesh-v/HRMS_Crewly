@@ -221,7 +221,7 @@ h3:not(.landing-shell h3):not(.auth-shell h3):not(.card-title) {
     @apply rounded-xl border border-crewly-border bg-crewly-card p-4 sm:p-5 lg:p-6;
   }
   .badge {
-    @apply inline-block rounded-full px-2.5 py-1 sm:px-3 text-[11px] sm:text-xs font-semibold;
+    @apply inline-block whitespace-nowrap rounded-full px-2.5 py-1 sm:px-3 text-[11px] sm:text-xs font-semibold;
   }
 
   /* Responsive table wrapper - use .table-wrap around any table */
