@@ -1243,16 +1243,22 @@ export default function PerformancePage() {
             </div>
 
             {/* footer */}
-            <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-crewly-border bg-crewly-inset/40 p-4">
-              <button type="button" onClick={() => setShowNewCycle(false)} className="btn-ghost px-3 py-2 text-sm">
+            {/* On a phone the sheet is tall enough that the footer is the only
+                thing in reach: primary first, the two quieter exits under it. */}
+            <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-crewly-border bg-crewly-inset/40 p-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+              <button
+                type="button"
+                onClick={() => setShowNewCycle(false)}
+                className="btn-ghost w-full px-3 py-2 text-sm sm:w-auto"
+              >
                 Cancel
               </button>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                 <button
                   type="button"
                   onClick={() => doCreateCycle({ draft: true })}
                   disabled={busy || !cycleForm.name.trim()}
-                  className="btn-ghost px-3 py-2 text-sm disabled:opacity-50"
+                  className="btn-ghost w-full px-3 py-2 text-sm disabled:opacity-50 sm:w-auto"
                   title="Keep the settings without enrolling or notifying anyone"
                 >
                   Save as draft
@@ -1261,7 +1267,7 @@ export default function PerformancePage() {
                   type="button"
                   onClick={() => doCreateCycle({ draft: false })}
                   disabled={busy || !cycleForm.name.trim()}
-                  className="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50"
+                  className="btn-primary inline-flex w-full items-center justify-center gap-2 px-4 py-2 text-sm disabled:opacity-50 sm:w-auto"
                 >
                   <Target className="h-4 w-4" />
                   {busy
