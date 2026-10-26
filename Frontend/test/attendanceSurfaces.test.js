@@ -125,13 +125,15 @@ describe('attendance report', () => {
   test('export covers the tab on screen and nothing more', () => {
     assert.match(reportPage, /attendance-\$\{month\}/);
     assert.match(reportPage, /attendance-\$\{date\}/);
-    for (const claim of ['PDF', 'Audit PDF', 'pdf']) {
-      assert.equal(reportPage.includes(claim), false, `there is no ${claim} generator`);
-    }
+    // the PDF path builds a sheet from the same rows and hands it to the
+    // browser's own print-to-PDF — there is no server-side renderer
+    assert.match(reportPage, /const exportPdf = \(\) => \{/);
+    assert.match(reportPage, /win\.print\(\)/);
+    assert.equal(reportPage.includes('/attendance/export/pdf'), false, 'no PDF endpoint exists');
   });
 
-  test('no live reload, heatmap percentages or shift adherence it cannot compute', () => {
-    for (const claim of ['Live Reload', 'Shift Adherence', 'Total Overtime', 'heatmap', 'calendar heatmap']) {
+  test('no invented telemetry behind the mock furniture', () => {
+    for (const claim of ['biometric', 'Biometric', 'Punctuality badge', 'Terminal ID', 'EMP0']) {
       assert.equal(reportPage.includes(claim), false, `"${claim}" has no data source`);
     }
     // the report rows carry one percentage per person for the month, not a
@@ -165,10 +167,26 @@ describe('attendance report', () => {
     assert.match(reportPage, /href="\/app\/schedules"/);
   });
 
-  test('refresh re-reads the same day rather than promising live updates', () => {
+  test('live reload means a re-read, on demand and once a minute', () => {
     assert.match(reportPage, /const reload = useCallback\(\(\) => setReloadKey/);
-    assert.match(reportPage, /Refresh/);
-    assert.equal(reportPage.includes('Live Reload'), false);
+    assert.match(reportPage, /setInterval\(\(\) => setReloadKey\(\(n\) => n \+ 1\), 60000\)/);
+    assert.match(reportPage, /Live reload/);
+  });
+
+  test('the calendar is the viewer\'s own month, and says so', () => {
+    // a team-wide day series would need one request per day; the personal month
+    // arrives in a single read and is labelled as personal
+    assert.match(reportPage, /attendanceService\s*\n\s*\.my\(calendarMonth\)/);
+    assert.match(reportPage, /Your own days in/);
+    assert.match(reportPage, /workingDays: summary\?\.workingDays/);
+    // overtime only from minutes already approved on the record
+    assert.match(reportPage, /Number\(r\.overtimeMinutes\)/);
+  });
+
+  test('the shift chip comes from the schedules on the day', () => {
+    assert.match(reportPage, /record\?\.scheduleSnapshot/);
+    assert.match(reportPage, /shiftName \|\| snap\?\.scheduleName/);
+    assert.match(reportPage, /shiftOptions\.length === 1 \?/);
   });
 
   test('the roster columns are the fields the rows carry', () => {

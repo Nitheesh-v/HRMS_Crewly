@@ -7,11 +7,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  FileDown,
   Coffee,
   Download,
   Info,
   RefreshCw,
   Search,
+  Hourglass,
   Timer,
   TrendingUp,
   UserX,
@@ -76,7 +78,7 @@ const toneFor = (key = '') => {
 };
 
 /* A counted number with its caption — the tile the rest of the app uses. */
-const Tile = ({ icon: Icon, label, value, sub, tone = 'dim', valueTone = '', className = '' }) => {
+const Tile = ({ icon: Icon, label, value, sub, tone = 'dim', valueTone = '', className = '', pulse = false }) => {
   const tones = {
     green: 'bg-crewly-green/12 text-crewly-green',
     orange: 'bg-crewly-orange/12 text-crewly-orange',
@@ -90,8 +92,13 @@ const Tile = ({ icon: Icon, label, value, sub, tone = 'dim', valueTone = '', cla
   };
   return (
     <div className={`flex items-center gap-3 bg-crewly-card p-3.5 ${className}`}>
-      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tones[tone] || tones.dim}`}>
+      <span className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tones[tone] || tones.dim}`}>
         <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
+        {pulse ? (
+          <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-current">
+            <span className="absolute inset-0 animate-ping rounded-full bg-current opacity-60" />
+          </span>
+        ) : null}
       </span>
       <div className="min-w-0">
         <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-crewly-dim">{label}</p>
@@ -140,6 +147,8 @@ const AttendanceReportPage = () => {
   const [monthRows, setMonthRows] = useState({ month: null, rows: null });
   const [loadedAt, setLoadedAt] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [shift, setShift] = useState('');
+  const [mine, setMine] = useState({ month: null, data: null });
   const [reloadKey, setReloadKey] = useState(0);
 
   const reload = useCallback(() => setReloadKey((n) => n + 1), []);
@@ -186,6 +195,21 @@ const AttendanceReportPage = () => {
     };
   }, [tab, dayMonth, reloadKey]);
 
+  /* The calendar needs a day-by-day series, which only a personal month
+     returns in one read. It is the viewer's own record and is labelled so —
+     the matrix above stays the team's. */
+  const calendarMonth = tab === 'today' ? dayMonth : month;
+  useEffect(() => {
+    let alive = true;
+    attendanceService
+      .my(calendarMonth)
+      .then((data) => alive && setMine({ month: calendarMonth, data }))
+      .catch(() => alive && setMine({ month: calendarMonth, data: null }));
+    return () => {
+      alive = false;
+    };
+  }, [calendarMonth, reloadKey]);
+
   useEffect(() => {
     if (tab !== 'monthly') return;
     let alive = true;
@@ -208,6 +232,18 @@ const AttendanceReportPage = () => {
     };
   }, [tab, month, department, reloadKey]);
 
+  const shiftOptions = useMemo(() => {
+    const map = new Map();
+    (todayData?.rows || []).forEach(({ record }) => {
+      const snap = record?.scheduleSnapshot;
+      const name = snap?.shiftName || snap?.scheduleName;
+      if (!name) return;
+      const window = snap?.startTime && snap?.endTime ? `${snap.startTime}–${snap.endTime}` : '';
+      map.set(name, window ? `${name} (${window})` : name);
+    });
+    return [...map.entries()].map(([value, label]) => ({ value, label }));
+  }, [todayData]);
+
   const departmentName = useMemo(
     () => departments.find((d) => String(d._id) === String(department))?.name || '',
     [departments, department],
@@ -223,13 +259,18 @@ const AttendanceReportPage = () => {
   const todayRows = useMemo(() => {
     const rows = todayData?.rows || [];
     const needle = query.trim().toLowerCase();
-    return rows.filter(({ user }) => {
+    return rows.filter(({ user, record }) => {
       if (departmentName && user.department?.name !== departmentName) return false;
+      if (shift) {
+        const snap = record?.scheduleSnapshot;
+        const name = snap?.shiftName || snap?.scheduleName;
+        if (name !== shift) return false;
+      }
       if (!needle) return true;
       const haystack = `${user.name} ${user.department?.name || ''} ${user.email || ''} ${roleLabel(user.role)}`.toLowerCase();
       return haystack.includes(needle);
     });
-  }, [todayData, query, departmentName]);
+  }, [todayData, query, departmentName, shift]);
 
   const monthlyRows = useMemo(() => {
     const rows = report?.rows || [];
@@ -248,6 +289,12 @@ const AttendanceReportPage = () => {
   const pagedRows = rowsOnScreen.slice((safePage - 1) * pageSize, safePage * pageSize);
   const firstShown = rowsOnScreen.length ? (safePage - 1) * pageSize + 1 : 0;
   const lastShown = Math.min(safePage * pageSize, rowsOnScreen.length);
+
+  useEffect(() => {
+    if (tab !== 'today') return undefined;
+    const id = setInterval(() => setReloadKey((n) => n + 1), 60000);
+    return () => clearInterval(id);
+  }, [tab]);
 
   /* a new filter starts a new list, so the page counter cannot outlive it */
   const filterKey = `${tab}|${date}|${month}|${department}|${query}|${pageSize}`;
@@ -279,41 +326,58 @@ const AttendanceReportPage = () => {
     };
   }, [monthlyRows]);
 
-  const monthSourceRows = useMemo(
-    () => (tab === 'today' ? monthRows.rows || [] : monthlyRows),
-    [tab, monthRows, monthlyRows],
-  );
-  const monthSourceLabel = tab === 'today' ? `${monthLabel(dayMonth)} so far` : monthLabel(month);
+  const personal = mine.month === calendarMonth ? mine.data : null;
+  const personalSummary = personal?.summary || null;
 
-  const departmentBreakdown = useMemo(() => {
-    const groups = new Map();
-    monthSourceRows.forEach((row) => {
-      const name = row.user?.department?.name || 'No department';
-      const acc = groups.get(name) || { name, present: 0, working: 0, people: 0 };
-      acc.present += Number(row.present) || 0;
-      acc.working += Number(row.workingDays) || 0;
-      acc.people += 1;
-      groups.set(name, acc);
-    });
-    return [...groups.values()]
-      .map((g) => ({ ...g, pct: g.working ? Math.round((g.present / g.working) * 100) : 0 }))
-      .sort((a, b) => b.pct - a.pct);
-  }, [monthSourceRows]);
+  const calendarCells = useMemo(() => {
+    const [year, mon] = String(calendarMonth || '').split('-').map(Number);
+    if (!year || !mon) return [];
+    const records = new Map((personal?.records || []).map((r) => [r.date, r]));
+    const days = new Date(Date.UTC(year, mon, 0)).getUTCDate();
+    const pad = (new Date(Date.UTC(year, mon - 1, 1)).getUTCDay() + 6) % 7; /* Monday first */
+    const cells = Array.from({ length: pad }, () => null);
+    const today = todayStr();
+    for (let day = 1; day <= days; day += 1) {
+      const date = `${calendarMonth}-${String(day).padStart(2, '0')}`;
+      const record = records.get(date) || null;
+      let tone = 'bg-crewly-inset text-crewly-dim';
+      let value = '';
+      if (record) {
+        if (record.derived === 'LEAVE') {
+          tone = 'bg-crewly-orange/12 text-crewly-orange';
+          value = 'Leave';
+        } else {
+          const hours = record.workMinutes ? `${(record.workMinutes / 60).toFixed(1)}h` : '';
+          if (record.status === 'LATE') tone = 'bg-crewly-orange/15 text-crewly-orange';
+          else if (record.status === 'HALF_DAY') tone = 'bg-crewly-accent/15 text-crewly-orange';
+          else tone = 'bg-crewly-green/12 text-crewly-green';
+          value = hours;
+        }
+      }
+      cells.push({ day, date, value, tone, isToday: date === today });
+    }
+    return cells;
+  }, [calendarMonth, personal]);
 
-  const monthMetrics = useMemo(() => {
-    const rows = monthSourceRows;
-    const present = rows.reduce((acc, r) => acc + (Number(r.present) || 0), 0);
-    const minutes = rows.reduce((acc, r) => acc + (Number(r.totalMinutes) || 0), 0);
+  const personalMetrics = useMemo(() => {
+    const summary = personalSummary;
+    const records = (personal?.records || []).filter((r) => r.derived !== 'LEAVE');
+    const present = records.length || summary?.present || 0;
+    const late = summary?.late ?? records.filter((r) => r.status === 'LATE').length;
+    const minutes = records.reduce((acc, r) => acc + (Number(r.workMinutes) || 0), 0);
+    const overtime = records.reduce((acc, r) => acc + (Number(r.overtimeMinutes) || 0), 0);
     return {
+      workingDays: summary?.workingDays ?? 0,
+      present,
       avgDay: present ? (minutes / 60 / present).toFixed(1) : null,
-      totalHours: minutes ? (minutes / 60).toFixed(1) : '0',
-      fullScore: rows.filter((r) => Number(r.attendancePct) >= 100).length,
-      below: rows.filter((r) => Number(r.attendancePct) < 75).length,
-      people: rows.length,
+      punctuality: present ? Math.round(((present - late) / present) * 100) : null,
+      adherence: summary?.workingDays ? Math.round((present / summary.workingDays) * 100) : null,
+      overtimeHours: overtime ? (overtime / 60).toFixed(1) : '0',
     };
-  }, [monthSourceRows]);
+  }, [personal, personalSummary]);
 
   const c = todayData?.counts;
+  const shiftInProgress = Boolean(c && c.punchedIn > 0);
 
   const exportCSV = () => {
     const cell = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
@@ -367,12 +431,64 @@ const AttendanceReportPage = () => {
     URL.revokeObjectURL(url);
   };
 
+  /* A real document rather than a button that pretends: the sheet is built
+     from the rows on screen and handed to the browser's own print-to-PDF. */
+  const exportPdf = () => {
+    const rows = tab === 'today' ? todayRows : monthlyRows;
+    if (!rows.length) return;
+    const title = tab === 'today' ? `Attendance audit · ${longDate(date)}` : `Attendance audit · ${monthLabel(month)}`;
+    const head =
+      tab === 'today'
+        ? ['Employee', 'Department', 'Punch in', 'Punch out', 'Breaks / OT', 'Hours', 'Status', 'Month score']
+        : ['Employee', 'Department', 'Present', 'Late', 'Half', 'Absent', 'Hours', 'Score'];
+    const body = rows
+      .map((row) => {
+        if (tab === 'monthly') {
+          return `<tr><td>${row.user.name}</td><td>${row.user.department?.name || '—'}</td><td>${row.present}</td><td>${row.late}</td><td>${row.halfDay}</td><td>${row.absent}</td><td>${(row.totalMinutes / 60).toFixed(1)}h</td><td>${row.attendancePct}%</td></tr>`;
+        }
+        const rec = row.record;
+        const breaks = [
+          rec?.breakMinutes ? `${rec.breakMinutes}m break` : '',
+          rec?.overtimeMinutes ? `${rec.overtimeMinutes}m OT` : '',
+        ].filter(Boolean).join(' · ') || '—';
+        const score = scoreById[String(row.user._id)];
+        return `<tr><td>${row.user.name}</td><td>${row.user.department?.name || '—'}</td><td>${fmtTime(rec?.punchIn)}</td><td>${fmtTime(rec?.punchOut)}</td><td>${breaks}</td><td>${rec?.workMinutes ? (rec.workMinutes / 60).toFixed(1) + 'h' : '—'}</td><td>${rec?.status || (rec ? 'DONE' : 'NOT PUNCHED')}</td><td>${score ? score.attendancePct + '%' : '—'}</td></tr>`;
+      })
+      .join('');
+    const counts = tab === 'today' && c
+      ? `On duty ${c.punchedIn} · Done ${c.punchedOut} · Late ${c.late} · Absent ${c.absent} · Headcount ${c.total}`
+      : `People ${totals.people} · Present ${totals.present} · Late ${totals.late} · Absent ${totals.absent} · Avg score ${totals.avgPct ?? 0}%`;
+    const sheet = `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>
+      <style>
+        body{font-family:ui-sans-serif,system-ui,sans-serif;color:#22302a;margin:32px;}
+        h1{font-size:18px;margin:0 0 4px;} p.sub{margin:0 0 16px;color:#55624a;font-size:12px;}
+        table{width:100%;border-collapse:collapse;font-size:11px;}
+        th{text-align:left;text-transform:uppercase;letter-spacing:.06em;font-size:9px;color:#55624a;border-bottom:1px solid #dcd6b8;padding:6px 8px;}
+        td{padding:6px 8px;border-bottom:1px solid #eceae0;}
+        footer{margin-top:16px;font-size:10px;color:#55624a;}
+      </style></head><body>
+      <h1>${title}</h1>
+      <p class="sub">${counts} · ${rows.length} rows · generated ${new Date().toLocaleString()}</p>
+      <table><thead><tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>
+      <footer>Crewly · attendance figures are read from the punch record for this period.</footer>
+      </body></html>`;
+    const win = window.open('', '_blank');
+    if (!win) {
+      notify.error('The browser blocked the print window — allow pop-ups for this site.');
+      return;
+    }
+    win.document.write(sheet);
+    win.document.close();
+    win.focus();
+    win.print();
+  };
+
   const canExport = rowsOnScreen.length > 0;
 
   const tiles =
     tab === 'today'
       ? [
-          { icon: BadgeCheck, label: 'On duty', value: c ? c.punchedIn : '—', sub: 'Present', tone: 'green', valueTone: 'green' },
+          { icon: BadgeCheck, label: 'On duty', value: c ? c.punchedIn : '—', sub: 'Present', tone: 'green', valueTone: 'green', pulse: Boolean(c?.punchedIn) },
           { icon: CheckCircle2, label: 'Done shifts', value: c ? c.punchedOut : '—', sub: 'Shift ended', tone: 'dim' },
           { icon: Clock, label: 'Late in', value: c ? c.late : '—', sub: 'Shift start missed', tone: 'orange', valueTone: 'orange' },
           { icon: UserX, label: 'Absent / unpunched', value: c ? c.absent : '—', sub: 'Action req.', tone: 'red', valueTone: 'red' },
@@ -407,7 +523,7 @@ const AttendanceReportPage = () => {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex shrink-0 flex-wrap items-center gap-2.5 lg:flex-nowrap">
           <div className="flex rounded-xl border border-crewly-border bg-crewly-inset p-1" role="tablist" aria-label="Report period">
             {[
               ['today', "Today's status", CalendarDays],
@@ -438,6 +554,15 @@ const AttendanceReportPage = () => {
             title={tab === 'today' ? `Download ${date} as CSV` : `Download ${monthLabel(month)} as CSV`}
           >
             <Download className="h-4 w-4" aria-hidden="true" /> Export CSV
+          </button>
+          <button
+            type="button"
+            onClick={exportPdf}
+            disabled={!canExport}
+            className="btn-primary inline-flex items-center gap-2 whitespace-nowrap px-3.5 py-2 text-xs font-bold disabled:opacity-50"
+            title="Open a printable audit sheet for this period"
+          >
+            <FileDown className="h-4 w-4" aria-hidden="true" /> PDF audit
           </button>
         </div>
       </div>
@@ -526,6 +651,33 @@ const AttendanceReportPage = () => {
                 </span>
               ) : null}
             </label>
+
+            {tab === 'today' && shiftOptions.length === 1 ? (
+              /* one shift on the day: name it rather than offer a filter with
+                 a single meaningful choice */
+              <span className="flex items-center gap-2 rounded-lg bg-crewly-inset px-3 py-2 text-xs font-semibold">
+                <Clock className="h-4 w-4 shrink-0 text-crewly-dim" aria-hidden="true" />
+                {shiftOptions[0].label}
+              </span>
+            ) : null}
+            {tab === 'today' && shiftOptions.length > 1 ? (
+              <label className="flex items-center gap-2 rounded-lg bg-crewly-inset px-3 py-2 text-xs">
+                <Clock className="h-4 w-4 shrink-0 text-crewly-dim" aria-hidden="true" />
+                <span className="sr-only">Shift</span>
+                <select
+                  className="max-w-[220px] bg-transparent font-semibold outline-none"
+                  value={shift}
+                  onChange={(e) => setShift(e.target.value)}
+                >
+                  <option value="">All shifts</option>
+                  {shiftOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
           </div>
 
           <div className="flex items-center gap-3 text-[11px] text-crewly-dim">
@@ -541,14 +693,14 @@ const AttendanceReportPage = () => {
               title="Read the same day again"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`} aria-hidden="true" />
-              Refresh
+              Live reload
             </button>
           </div>
         </div>
       </div>
 
       {/* ── roster matrix ──────────────────────────────────────────────── */}
-      <section className="card overflow-hidden p-0">
+      <section id="roster-matrix" className="card overflow-hidden p-0">
         <div className="flex flex-col gap-2 border-b border-crewly-border bg-crewly-inset/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-2.5">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-crewly-accent/15 text-crewly-orange">
@@ -560,6 +712,17 @@ const AttendanceReportPage = () => {
             <span className="rounded-full bg-crewly-inset px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-crewly-dim">
               {tab === 'today' ? chipDate(date) : monthLabel(month)}
             </span>
+            {tab === 'today' && todayData ? (
+              <span
+                className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                  shiftInProgress
+                    ? 'bg-crewly-green/15 text-crewly-green'
+                    : 'bg-crewly-inset-strong text-crewly-dim'
+                }`}
+              >
+                {shiftInProgress ? 'Shift in progress' : 'No open session'}
+              </span>
+            ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-crewly-dim">
             <span className="inline-flex items-center gap-1.5">
@@ -588,7 +751,7 @@ const AttendanceReportPage = () => {
                     <th className="whitespace-nowrap px-3 py-2.5 font-semibold">Work hours</th>
                     <th className="whitespace-nowrap px-3 py-2.5 font-semibold">Live status</th>
                     <th className="min-w-[124px] whitespace-nowrap px-3 py-2.5 font-semibold">Month score</th>
-                    <th className="whitespace-nowrap px-4 py-2.5 text-right font-semibold">Action</th>
+                    <th className="whitespace-nowrap px-4 py-2.5 text-right font-semibold">Actions</th>
                   </>
                 ) : (
                   <>
@@ -598,7 +761,7 @@ const AttendanceReportPage = () => {
                     <th className="whitespace-nowrap px-3 py-2.5 text-right font-semibold">Absent</th>
                     <th className="whitespace-nowrap px-3 py-2.5 text-right font-semibold">Hours</th>
                     <th className="min-w-[124px] whitespace-nowrap px-3 py-2.5 font-semibold">Month score</th>
-                    <th className="whitespace-nowrap px-4 py-2.5 text-right font-semibold">Action</th>
+                    <th className="whitespace-nowrap px-4 py-2.5 text-right font-semibold">Actions</th>
                   </>
                 )}
               </tr>
@@ -711,7 +874,7 @@ const AttendanceReportPage = () => {
                       <td className="whitespace-nowrap px-3 py-3">
                         {score ? (
                           <div title={`${score.present} of ${score.workingDays} days present in ${monthLabel(dayMonth)}`}>
-                            <ScoreBar pct={score.attendancePct} days={score.present} workingDays={score.workingDays} />
+                            <ScoreBar pct={score.attendancePct} days={score.present} />
                           </div>
                         ) : (
                           <span className="text-[11px] text-crewly-dim">—</span>
@@ -882,55 +1045,64 @@ const AttendanceReportPage = () => {
 
       {/* ── reading below the matrix ───────────────────────────────────── */}
       <div className="grid items-start gap-4 lg:grid-cols-3">
-        <section className="card lg:col-span-2">
+        <section id="calendar" className="card lg:col-span-2">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-crewly-dim">
                 Attendance distribution
               </p>
-              <h2 className="card-title text-base font-bold">Presence by department · {monthSourceLabel}</h2>
+              <h2 className="card-title text-base font-bold">{monthLabel(calendarMonth)} calendar</h2>
             </div>
-            <span className="rounded-full bg-crewly-inset px-2.5 py-1 text-[11px] font-semibold text-crewly-dim">
-              {monthMetrics.people} {monthMetrics.people === 1 ? 'person' : 'people'}
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-crewly-green/12 px-2.5 py-1 text-[11px] font-bold text-crewly-green">
+                {personalMetrics.workingDays} working days
+              </span>
+              {personalMetrics.punctuality !== null ? (
+                <span className="rounded-full bg-crewly-accent/15 px-2.5 py-1 text-[11px] font-bold text-crewly-orange">
+                  {personalMetrics.punctuality}% punctuality
+                </span>
+              ) : null}
+            </div>
           </div>
 
-          {departmentBreakdown.length ? (
-            <div className="mt-4 space-y-3">
-              {departmentBreakdown.map((group) => (
-                <div key={group.name}>
-                  <div className="flex items-baseline justify-between gap-2 text-xs">
-                    <span className="font-semibold">{group.name}</span>
-                    <span className="text-[11px] text-crewly-dim">
-                      {group.present} of {group.working} days ·{' '}
-                      <span className="font-bold text-crewly-text">{group.pct}%</span>
-                    </span>
-                  </div>
-                  <span className="mt-1 block h-2 overflow-hidden rounded-full bg-crewly-inset-strong">
-                    <span
-                      className={`block h-full rounded-full ${
-                        group.pct >= 80 ? 'bg-crewly-green' : group.pct >= 60 ? 'bg-crewly-orange' : 'bg-crewly-red'
-                      }`}
-                      style={{ width: `${group.pct}%` }}
-                    />
-                  </span>
-                </div>
+          <div className="mt-3 rounded-xl bg-crewly-inset/50 p-3">
+            <div className="mb-1.5 grid grid-cols-7 gap-1.5 text-center text-[9px] font-bold uppercase tracking-wide text-crewly-dim">
+              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
+                <span key={day}>{day}</span>
               ))}
             </div>
-          ) : (
-            <p className="mt-4 rounded-lg border border-dashed border-crewly-border px-3 py-6 text-center text-xs text-crewly-dim">
-              No department totals yet — they appear once the month has punches.
-            </p>
-          )}
+            <div className="grid grid-cols-7 gap-1.5">
+              {calendarCells.map((cell, index) =>
+                cell ? (
+                  <div
+                    key={cell.date}
+                    className={`rounded-lg px-1 py-2 text-center ${cell.tone} ${
+                      cell.isToday ? 'ring-2 ring-crewly-accent' : ''
+                    }`}
+                    title={`${cell.day} ${monthLabel(calendarMonth)}${cell.value ? ` · ${cell.value}` : ' · no punch'}`}
+                  >
+                    <span className="block text-[11px] font-bold leading-tight">{cell.day}</span>
+                    <span className="block text-[9px] font-semibold leading-tight">
+                      {cell.isToday ? 'Today' : cell.value || ''}
+                    </span>
+                  </div>
+                ) : (
+                  <div key={`pad-${index}`} aria-hidden="true" />
+                ),
+              )}
+            </div>
+          </div>
 
-          <div className="mt-5 grid gap-px overflow-hidden rounded-xl border border-crewly-border bg-crewly-border sm:grid-cols-3">
+          <div className="mt-3 grid gap-px overflow-hidden rounded-xl border border-crewly-border bg-crewly-border sm:grid-cols-3">
             <div className="flex items-center gap-2.5 bg-crewly-card p-3">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-crewly-green/12 text-crewly-green">
                 <Timer className="h-4 w-4" aria-hidden="true" />
               </span>
               <div>
                 <p className="text-[10px] text-crewly-dim">Avg daily hours</p>
-                <p className="text-sm font-bold">{monthMetrics.avgDay ? `${monthMetrics.avgDay}h` : '—'}</p>
+                <p className="text-sm font-bold">
+                  {personalMetrics.avgDay ? `${personalMetrics.avgDay}h / day` : '—'}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-2.5 bg-crewly-card p-3">
@@ -938,23 +1110,25 @@ const AttendanceReportPage = () => {
                 <BadgeCheck className="h-4 w-4" aria-hidden="true" />
               </span>
               <div>
-                <p className="text-[10px] text-crewly-dim">Full attendance</p>
-                <p className="text-sm font-bold">{monthMetrics.fullScore} {monthMetrics.fullScore === 1 ? 'person' : 'people'}</p>
+                <p className="text-[10px] text-crewly-dim">Shift adherence</p>
+                <p className="text-sm font-bold">
+                  {personalMetrics.adherence !== null ? `${personalMetrics.adherence}% of days` : '—'}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-2.5 bg-crewly-card p-3">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-crewly-red/12 text-crewly-red">
-                <UserX className="h-4 w-4" aria-hidden="true" />
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-crewly-inset-strong text-crewly-dim">
+                <Hourglass className="h-4 w-4" aria-hidden="true" />
               </span>
               <div>
-                <p className="text-[10px] text-crewly-dim">Below 75%</p>
-                <p className="text-sm font-bold">{monthMetrics.below} {monthMetrics.below === 1 ? 'person' : 'people'}</p>
+                <p className="text-[10px] text-crewly-dim">Approved overtime</p>
+                <p className="text-sm font-bold">{personalMetrics.overtimeHours}h logged</p>
               </div>
             </div>
           </div>
           <p className="mt-2 text-[11px] text-crewly-dim">
-            {monthMetrics.totalHours}h recorded in {monthSourceLabel}. Days are counted from each
-            person’s own roster, so a mid-month joiner is scored on the days they were expected.
+            Your own days in {monthLabel(calendarMonth)} — the matrix above is the team’s. Each cell
+            is the hours recorded that day; overtime counts only minutes already approved.
           </p>
         </section>
 
@@ -968,19 +1142,69 @@ const AttendanceReportPage = () => {
             </div>
             <Info className="h-4 w-4 shrink-0 text-crewly-dim" aria-hidden="true" />
           </div>
+
+          <div className="mt-3 space-y-2.5">
+            <a
+              href="#roster-matrix"
+              className="group relative block overflow-hidden rounded-lg border border-crewly-border bg-crewly-inset"
+            >
+              <svg viewBox="0 0 280 72" className="h-20 w-full" role="img" aria-label="Roster matrix preview">
+                <rect width="280" height="72" fill="currentColor" className="text-crewly-inset" />
+                {[0, 1, 2, 3].map((row) => (
+                  <g key={row} transform={`translate(10, ${12 + row * 15})`}>
+                    <rect width="7" height="7" rx="3.5" className="fill-crewly-green/40" />
+                    <rect x="13" width="52" height="5" rx="2.5" className="fill-crewly-dim/40" />
+                    <rect x="76" width="34" height="5" rx="2.5" className="fill-crewly-dim/25" />
+                    <rect x="122" width="20" height="5" rx="2.5" className="fill-crewly-green/50" />
+                    <rect x="158" width="28" height="5" rx="2.5" className="fill-crewly-dim/25" />
+                    <rect x="206" width="52" height="5" rx="2.5" className="fill-crewly-dim/20" />
+                  </g>
+                ))}
+              </svg>
+              <span className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-crewly-text/80 px-2 py-1 text-[10px] font-semibold text-crewly-card">
+                <span>Roster matrix</span>
+                <span className="opacity-80">Jump to table</span>
+              </span>
+            </a>
+
+            <a
+              href="#calendar"
+              className="group relative block overflow-hidden rounded-lg border border-crewly-border bg-crewly-inset"
+            >
+              <svg viewBox="0 0 280 72" className="h-20 w-full" role="img" aria-label="Calendar preview">
+                <rect width="280" height="72" fill="currentColor" className="text-crewly-inset" />
+                {Array.from({ length: 21 }, (_, i) => (
+                  <rect
+                    key={i}
+                    x={10 + (i % 7) * 38}
+                    y={12 + Math.floor(i / 7) * 20}
+                    width="30"
+                    height="14"
+                    rx="3"
+                    className={i % 6 === 5 ? 'fill-crewly-dim/15' : 'fill-crewly-green/30'}
+                  />
+                ))}
+              </svg>
+              <span className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-crewly-text/80 px-2 py-1 text-[10px] font-semibold text-crewly-card">
+                <span>Calendar</span>
+                <span className="opacity-80">Jump to month</span>
+              </span>
+            </a>
+          </div>
+
           <ul className="mt-3 space-y-2 text-[11px] leading-relaxed text-crewly-dim">
             <li>· Every figure is read from the punch record for the chosen day or month.</li>
             <li>· Present, late and half day are the verdict stored on that record, judged against the shift in force.</li>
             <li>· Approved corrections replace the punch; the recorded time stays one hover away.</li>
             <li>· The month score is a person’s present days over their own working days.</li>
-            <li>· Absent days are working days with no punch — a holiday or weekly off never counts.</li>
           </ul>
+
           <a
             href="/app/schedules"
             className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-crewly-inset px-3 py-2 text-xs font-bold text-crewly-text transition hover:bg-crewly-inset-strong"
           >
             <CalendarRange className="h-4 w-4" aria-hidden="true" />
-            Review shifts &amp; schedules
+            Shift &amp; schedule settings
           </a>
         </section>
       </div>
