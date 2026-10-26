@@ -1,14 +1,30 @@
 // ============================================================
-// Employee Files (HR/Admin) — Phase 14 file cabinet
-// pick employee → upload (category + expiry) · view/download/delete
-// · request a document · track request status
+// Employee Files — the HR cabinet.
+//
+// One employee at a time: pick someone on the left, and the right-hand side is
+// their whole cabinet — header, standard checkpoints, documents on file, and the
+// requests HR is waiting on. The four tiles describe *that cabinet*, because
+// that is the only scope this page can honestly count: the company list endpoint
+// carries no document counts, so a company-wide "48 files" would be invented.
+//
+// The reference layout asked for a storage quota, a ZIP export, an "edit record"
+// action, an automatic reminder and a completion percentage. None of those exist
+// in this API, so none of them are here; the checkpoints are labelled as a
+// standard set, not as a compliance score.
+//
+// Phase 14 · Phase 32.8 (private bytes) · Phase 35.1 (toasts)
 // ============================================================
-import React, { useEffect, useRef, useState } from 'react';
-import { Download, Eye, Files, FolderOpen, Hourglass, Inbox, Lock, Paperclip, Trash2, Upload } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  Check, ChevronRight, Download, FileText, FolderOpen, Hourglass, Inbox, Lock,
+  Paperclip, ShieldCheck, Trash2, Upload, Users,
+} from 'lucide-react';
 import { useSelector } from 'react-redux';
+import Modal from '../../components/Modal.jsx';
 import {
   getEmployees, getEmployeeCabinet, getDocCategories,
-  hrUploadDocument, createDocRequest, cancelDocRequest, deleteDocument, downloadDocument } from '../../services/docsService.js';
+  hrUploadDocument, createDocRequest, cancelDocRequest, deleteDocument, downloadDocument,
+} from '../../services/docsService.js';
 import { notify } from '../../utils/notify.js';
 import EmptyState from '../../components/common/EmptyState.jsx';
 
@@ -23,33 +39,48 @@ const FALLBACK_CATS = [
   { value: 'OTHER', label: 'Other Document' },
 ];
 
-const inp = 'w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500';
+// The API returns the department name as the designation for many people, which
+// would print as "Human Resource · Human Resource". Keep the first of a repeat.
+const uniqueParts = (parts) => parts.filter((part, i) => part && parts.indexOf(part) === i);
+
+// The four documents an HR cabinet is normally expected to hold. This is a
+// checklist, not a compliance rule: nothing in the API marks a document as
+// mandatory, so the page never scores the cabinet against it.
+const STANDARD_CHECKS = ['OFFER_LETTER', 'AADHAAR_ID', 'SALARY_DOCUMENT', 'CONTRACT'];
+
+const fmtSize = (n) => {
+  if (!n) return '—';
+  if (n >= 1048576) return `${(n / 1048576).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(n / 1024))} KB`;
+};
+const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
+const bytesOf = (docs) => docs.reduce((sum, d) => sum + (Number(d.size) || 0), 0);
+const daysTo = (d) => (d ? Math.ceil((new Date(d) - Date.now()) / 86400000) : null);
+
 const chip = (txt, cls) => (
   <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${cls}`}>{txt}</span>
 );
-const fmtSize = (n) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round((n || 0) / 1024))} KB`);
-const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
 
 const REQ_CHIP = {
-  PENDING: 'bg-amber-400/15 text-amber-300',
-  FULFILLED: 'bg-emerald-400/15 text-emerald-300',
-  CANCELLED: 'bg-slate-500/20 text-slate-400',
+  PENDING: 'bg-crewly-accent/20 text-crewly-text',
+  FULFILLED: 'bg-crewly-green/15 text-crewly-green',
+  CANCELLED: 'bg-crewly-inset-strong text-crewly-dim',
 };
+
+const initials = (name = '') => name.split(' ').filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase() || '—';
 
 const ExpiryBadge = ({ expiryDate }) => {
   if (!expiryDate) return null;
-  const days = Math.ceil((new Date(expiryDate) - Date.now()) / 86400000);
-  if (days < 0) return chip(`Expired`, 'bg-red-400/15 text-red-300');
-  if (days <= 30) return chip(<><Hourglass className="mr-1 inline h-3 w-3" />{days}d left</>, 'bg-amber-400/15 text-amber-300');
-  return chip(`Exp ${fmtDate(expiryDate)}`, 'bg-slate-500/20 text-slate-400');
+  const days = daysTo(expiryDate);
+  if (days < 0) return chip('Expired', 'bg-crewly-red/15 text-crewly-red');
+  if (days <= 30) return chip(<><Hourglass className="mr-1 inline h-3 w-3" />{days}d left</>, 'bg-crewly-orange/15 text-crewly-orange');
+  return chip(`Exp ${fmtDate(expiryDate)}`, 'bg-crewly-inset-strong text-crewly-dim');
 };
 
 // Phase 32.8 — documents are PRIVATE: bytes flow through the gated
 // GET /documents/:id/file endpoint with the caller's authentication.
 const download = async (d) => {
   try {
-    // 35.1 — this blob failure has a better sentence than the raw status code,
-    // so it raises its own toast instead of the generic one.
     const res = await downloadDocument(d._id, { skipErrorToast: true });
     const blob = res?.data ?? res;
     const a = document.createElement('a');
@@ -62,6 +93,17 @@ const download = async (d) => {
   }
 };
 
+const Tile = ({ icon: Icon, label, value, sub }) => (
+  <div className="flex items-start gap-3 p-4 sm:p-5">
+    <div className="min-w-0 flex-1">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-crewly-dim">{label}</p>
+      <p className="mt-1.5 text-xl font-bold leading-tight sm:text-2xl">{value}</p>
+      {sub ? <p className="mt-1 text-xs leading-snug text-crewly-dim">{sub}</p> : null}
+    </div>
+    <Icon className="mt-0.5 h-4 w-4 shrink-0 text-crewly-dim" aria-hidden="true" />
+  </div>
+);
+
 const EmptyCabinet = { employee: null, documents: [], requests: [] };
 
 export default function EmployeeFilesPage() {
@@ -70,6 +112,7 @@ export default function EmployeeFilesPage() {
 
   const [employees, setEmployees] = useState([]);
   const [search, setSearch] = useState('');
+  const [dept, setDept] = useState('ALL');
   const [cats, setCats] = useState(FALLBACK_CATS);
   const [cabinet, setCabinet] = useState(EmptyCabinet);
   const [busy, setBusy] = useState(false);
@@ -81,7 +124,6 @@ export default function EmployeeFilesPage() {
   const fileRef = useRef(null);
 
   const labelOf = (v) => cats.find((c) => c.value === v)?.label || v || 'Other';
-  /* 35.1 — feedback is a toast now; the signature is unchanged. */
   const flash = (ok, text) => {
     const body = typeof text === 'string' && text ? text : '';
 
@@ -110,6 +152,9 @@ export default function EmployeeFilesPage() {
   };
 
   const empId = cabinet.employee?._id;
+  const docs = cabinet.documents || [];
+  const requests = cabinet.requests || [];
+  const pending = requests.filter((r) => r.status === 'PENDING');
 
   const doUpload = async () => {
     const file = fileRef.current?.files?.[0];
@@ -173,181 +218,415 @@ export default function EmployeeFilesPage() {
 
   if (!allowed) {
     return (
-      <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-8 text-center text-sm text-slate-300">
-        <Lock className="mr-1 inline h-4 w-4" />Only HR or the company admin can open employee files.
+      <div className="card flex items-center gap-2 p-8 text-sm text-crewly-dim">
+        <Lock className="h-4 w-4" />Only HR or the company admin can open employee files.
       </div>
     );
   }
 
-  const filtered = employees.filter((e) =>
-    `${e.name} ${e.email} ${e.designation || ''}`.toLowerCase().includes(search.toLowerCase())
-  );
+  const deptName = (e) => e.department?.name || 'Unassigned';
+  const deptTabs = Object.entries(
+    employees.reduce((acc, e) => {
+      const key = deptName(e);
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {}),
+  ).sort((a, b) => b[1] - a[1]);
+
+  const filtered = employees
+    .filter((e) => dept === 'ALL' || deptName(e) === dept)
+    .filter((e) => `${e.name} ${e.email} ${e.designation || ''} ${deptName(e)}`.toLowerCase().includes(search.toLowerCase()));
+
+  const covered = STANDARD_CHECKS.filter((c) => docs.some((d) => (d.category || 'OTHER') === c)).length;
+  const expiring = docs.filter((d) => {
+    const days = daysTo(d.expiryDate);
+    return days !== null && days <= 30;
+  }).length;
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-100"><Files className="h-6 w-6 text-indigo-400" />Employee Files</h1>
-        <span className="text-sm text-slate-400">{employees.length} employees</span>
+      {/* ── header ─────────────────────────────────────────────────────── */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-crewly-green/15 text-crewly-green">
+            <FolderOpen className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold sm:text-2xl">Employee Files</h1>
+            <p className="mt-1 max-w-xl text-sm leading-relaxed text-crewly-dim">
+              One cabinet per person: the documents HR holds, the requests still waiting on
+              the employee, and what is due to expire.
+            </p>
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
+          <button
+            type="button"
+            className="btn-ghost w-full justify-center gap-2 text-sm sm:w-auto"
+            onClick={() => setShowRequest(true)}
+            disabled={!empId}
+            title={empId ? 'Ask this employee for a document' : 'Pick an employee first'}
+          >
+            <Inbox className="h-4 w-4" />Request document
+          </button>
+          <button
+            type="button"
+            className="btn-primary w-full justify-center gap-2 text-sm sm:w-auto"
+            onClick={() => setShowUpload(true)}
+            disabled={!empId}
+            title={empId ? 'Upload into this cabinet' : 'Pick an employee first'}
+          >
+            <Upload className="h-4 w-4" />Upload document
+          </button>
+        </div>
       </div>
 
+      {/* ── tiles: this cabinet, not the company ───────────────────────── */}
+      <div className="card grid grid-cols-2 gap-px overflow-hidden border-crewly-border bg-crewly-border p-0 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="bg-crewly-card">
+          <Tile
+            icon={FileText}
+            label="Files on file"
+            value={empId ? docs.length : '—'}
+            sub={empId ? `${fmtSize(bytesOf(docs))} in this cabinet` : 'Pick an employee'}
+          />
+        </div>
+        <div className="bg-crewly-card">
+          <Tile
+            icon={Hourglass}
+            label="Expiring soon"
+            value={empId ? expiring : '—'}
+            sub={expiring ? 'Within 30 days, or already expired' : empId ? 'Nothing expiring' : 'Pick an employee'}
+          />
+        </div>
+        <div className="bg-crewly-card">
+          <Tile
+            icon={ShieldCheck}
+            label="Checkpoints covered"
+            value={empId ? `${covered} / ${STANDARD_CHECKS.length}` : '—'}
+            sub="The standard four, as a checklist"
+          />
+        </div>
+        <div className="bg-crewly-card">
+          <Tile
+            icon={Inbox}
+            label="Pending requests"
+            value={empId ? pending.length : '—'}
+            sub={pending.length ? `Waiting on ${cabinet.employee?.name || 'the employee'}` : empId ? 'Nothing outstanding' : 'Pick an employee'}
+          />
+        </div>
+      </div>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[300px,1fr]">
-        {/* employee picker */}
-        <aside className="rounded-xl border border-slate-700 bg-slate-800/60 p-3">
-          <input className={`${inp} mb-3`} placeholder="Search employees…" value={search} onChange={(e) => setSearch(e.target.value)} />
-          <div className="max-h-[60vh] space-y-1 overflow-y-auto">
-            {filtered.map((e) => (
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[330px_1fr]">
+        {/* ── picker ───────────────────────────────────────────────────── */}
+        <aside className="card h-fit p-3">
+          <div className="relative mb-2">
+            <Users className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-crewly-dim" />
+            <input
+              className="input pl-9"
+              placeholder="Search employees…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Search employees"
+            />
+          </div>
+
+          <div className="-mx-1 mb-2 flex items-center gap-1 overflow-x-auto px-1 pb-1">
+            <button
+              type="button"
+              onClick={() => setDept('ALL')}
+              aria-pressed={dept === 'ALL'}
+              className={`shrink-0 rounded-lg px-2.5 py-1 text-xs transition ${
+                dept === 'ALL' ? 'bg-crewly-selected font-semibold text-crewly-selected-text' : 'text-crewly-dim hover:bg-crewly-inset'
+              }`}
+            >
+              All ({employees.length})
+            </button>
+            {deptTabs.map(([name, count]) => (
               <button
-                key={e._id}
-                onClick={() => openCabinet(e)}
-                className={`block w-full rounded-lg px-3 py-2 text-left text-sm transition ${
-                  empId === e._id ? 'bg-indigo-600 font-bold text-white' : 'text-slate-200 hover:bg-slate-700/60'
+                key={name}
+                type="button"
+                onClick={() => setDept(name)}
+                aria-pressed={dept === name}
+                className={`shrink-0 rounded-lg px-2.5 py-1 text-xs transition ${
+                  dept === name ? 'bg-crewly-selected font-semibold text-crewly-selected-text' : 'text-crewly-dim hover:bg-crewly-inset'
                 }`}
               >
-                <span className="block truncate font-semibold">{e.name}</span>
-                <span className={`block truncate text-xs ${empId === e._id ? 'text-indigo-200' : 'text-slate-400'}`}>
-                  {e.designation || e.role}
-                </span>
+                {name} ({count})
               </button>
             ))}
+          </div>
+
+          <div className="max-h-[58vh] space-y-1 overflow-y-auto">
+            {filtered.map((e) => {
+              const active = empId === e._id;
+              return (
+                <button
+                  key={e._id}
+                  type="button"
+                  onClick={() => openCabinet(e)}
+                  className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition ${
+                    active ? 'bg-crewly-selected' : 'hover:bg-crewly-inset'
+                  }`}
+                >
+                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${
+                    active ? 'bg-crewly-card text-crewly-selected-text' : 'bg-crewly-inset text-crewly-dim'
+                  }`}>
+                    {initials(e.name)}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className={`block truncate text-sm font-semibold ${active ? 'text-crewly-selected-text' : ''}`}>{e.name}</span>
+                    <span className={`block truncate text-xs ${active ? 'text-crewly-selected-text/80' : 'text-crewly-dim'}`}>
+                      {e.designation || e.role} · {deptName(e)}
+                    </span>
+                  </span>
+                  <ChevronRight className={`h-4 w-4 shrink-0 ${active ? 'text-crewly-selected-text' : 'text-crewly-dim'}`} />
+                </button>
+              );
+            })}
             {filtered.length === 0 && (
               <EmptyState
                 illustration="search"
                 title="No employees found"
-                description="Nothing matches that search. Clear it to list everyone in your company."
+                description="Nothing matches that search or department. Clear them to list everyone in your company."
                 size="sm"
               />
             )}
           </div>
         </aside>
 
-        {/* cabinet */}
-        <section className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">
+        {/* ── cabinet ──────────────────────────────────────────────────── */}
+        <section className="space-y-4">
           {!cabinet.employee ? (
-            <EmptyState
-              illustration="documents"
-              title="Pick an employee"
-              description="Choose someone on the left to open their file cabinet — contracts, IDs, certificates and anything HR has requested."
-            />
+            <div className="card">
+              <EmptyState
+                illustration="documents"
+                title="Pick an employee"
+                description="Choose someone on the left to open their file cabinet — contracts, IDs, certificates and anything HR has requested."
+              />
+            </div>
           ) : (
             <>
-              <div className="mb-4 flex flex-wrap items-center gap-3">
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-lg font-bold text-slate-100">{cabinet.employee.name}</h2>
-                  <p className="text-xs text-slate-400">{cabinet.employee.designation || cabinet.employee.role} · {cabinet.employee.email}</p>
+              <div className="card">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-crewly-green/15 text-base font-bold text-crewly-green">
+                    {initials(cabinet.employee.name)}
+                  </span>
+                  <div className="min-w-[12rem] flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-lg font-bold">{cabinet.employee.name}</h2>
+                      <span className="badge bg-crewly-inset-strong text-crewly-dim">
+                        {cabinet.employee.role?.replaceAll('_', ' ')}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-xs text-crewly-dim">
+                      {uniqueParts([cabinet.employee.designation, deptName(cabinet.employee), cabinet.employee.email]).join(' · ')}
+                    </p>
+                    {cabinet.employee.employeeCode ? (
+                      <p className="mt-0.5 text-[11px] uppercase tracking-wide text-crewly-dim">ID {cabinet.employee.employeeCode}</p>
+                    ) : null}
+                  </div>
+                  <button type="button" className="btn-ghost gap-1.5 px-3 py-1.5 text-xs" onClick={() => setShowRequest(true)}>
+                    <Inbox className="h-3.5 w-3.5" />Request
+                  </button>
+                  <button type="button" className="btn-primary gap-1.5 px-3 py-1.5 text-xs" onClick={() => setShowUpload(true)}>
+                    <Upload className="h-3.5 w-3.5" />Upload
+                  </button>
                 </div>
-                <button onClick={() => setShowUpload(true)} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-500"><Upload className="mr-1 inline h-3.5 w-3.5" />Upload document</button>
-                <button onClick={() => setShowRequest(true)} className="rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-300 hover:bg-amber-500/20"><Inbox className="mr-1 inline h-3.5 w-3.5" />Request document</button>
+              </div>
+
+              {/* checkpoints */}
+              <div className="card">
+                <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                  <h3 className="text-sm font-bold">Standard document checkpoints</h3>
+                  <p className="text-xs text-crewly-dim">A checklist, not a compliance score</p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {STANDARD_CHECKS.map((code) => {
+                    const onFile = docs.some((d) => (d.category || 'OTHER') === code);
+                    return (
+                      <div key={code} className="flex items-center gap-2.5 rounded-lg border border-crewly-border bg-crewly-inset/50 px-3 py-2">
+                        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
+                          onFile ? 'bg-crewly-green/15 text-crewly-green' : 'bg-crewly-inset-strong text-crewly-dim'
+                        }`}>
+                          {onFile ? <Check className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-sm">{labelOf(code)}</span>
+                        {onFile ? (
+                          <span className="text-[11px] font-semibold text-crewly-green">On file</span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="text-[11px] font-semibold text-crewly-orange hover:underline"
+                            onClick={() => { setForm((f) => ({ ...f, category: code })); setShowUpload(true); }}
+                          >
+                            Upload
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* documents */}
-              <h3 className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-400"><FolderOpen className="h-3.5 w-3.5" />Documents ({cabinet.documents.length})</h3>
-              {cabinet.documents.length === 0 ? (
-                <div className="mb-4">
+              <div className="card p-0">
+                <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4">
+                  <h3 className="flex items-center gap-2 text-sm font-bold">
+                    <Paperclip className="h-4 w-4 text-crewly-dim" />
+                    Documents on file
+                    <span className="text-crewly-dim">({docs.length})</span>
+                  </h3>
+                  <button type="button" className="text-xs font-semibold text-crewly-orange hover:underline" onClick={() => setShowUpload(true)}>
+                    + Add file directly
+                  </button>
+                </div>
+                {docs.length === 0 ? (
                   <EmptyState
                     illustration="documents"
                     title="Nothing on file yet"
-                    description="Upload a document or request one from the employee — it lands in this cabinet by category."
+                    description="Upload a document or ask the employee for one — it lands here by category, with its expiry date."
                     size="sm"
                   />
-                </div>
-              ) : (
-                <div className="mb-4 divide-y divide-slate-700/60">
-                  {cabinet.documents.map((d) => (
-                    <div key={d._id} className="flex flex-wrap items-center gap-3 py-2.5">
-                      <span className="text-slate-400"><Paperclip className="h-4 w-4" /></span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-slate-100">{d.name}</p>
-                        <p className="text-xs text-slate-400">
-                          {fmtSize(d.size)} · {fmtDate(d.createdAt)}
-                          {d.uploadedBy?.name ? ` · by ${d.uploadedBy.name}` : ' · self-uploaded'}
-                          {d.note ? ` · ${d.note}` : ''}
-                        </p>
+                ) : (
+                  <div className="mt-2 divide-y divide-crewly-border/60">
+                    {docs.map((d) => (
+                      <div key={d._id} className="flex items-start gap-3 px-4 py-3">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-crewly-inset text-crewly-dim">
+                          <FileText className="h-4 w-4" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold" title={d.name}>{d.name}</p>
+                          <p className="truncate text-xs text-crewly-dim">
+                            {labelOf(d.category || 'OTHER')} · {fmtSize(d.size)} · {fmtDate(d.createdAt)}
+                            {d.uploadedBy?.name ? ` · by ${d.uploadedBy.name}` : ' · self-uploaded'}
+                            {d.note ? ` · ${d.note}` : ''}
+                          </p>
+                          {d.expiryDate ? <div className="mt-1"><ExpiryBadge expiryDate={d.expiryDate} /></div> : null}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <button type="button" onClick={() => download(d)} className="btn-ghost px-2 py-1" title={`Download ${d.name}`}>
+                            <Download className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => doDelete(d)}
+                            className="inline-flex items-center rounded-lg border border-crewly-red/40 px-2 py-1 text-crewly-red transition hover:bg-crewly-red/10"
+                            title={`Delete ${d.name}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
-                      {chip(labelOf(d.category || 'OTHER'), 'bg-indigo-400/15 text-indigo-300')}
-                      <ExpiryBadge expiryDate={d.expiryDate} />
-                      <button onClick={() => download(d)} className="rounded-lg border border-slate-600 px-2.5 py-1 text-[11px] font-bold text-slate-200 hover:bg-slate-700" title="View"><Eye className="h-3 w-3" /></button>
-                      <button onClick={() => download(d)} className="rounded-lg border border-slate-600 px-2.5 py-1 text-[11px] font-bold text-slate-200 hover:bg-slate-700" title="Download"><Download className="h-3 w-3" /></button>
-                      <button onClick={() => doDelete(d)} className="rounded-lg border border-red-500/40 px-2.5 py-1 text-[11px] font-bold text-red-300 hover:bg-red-500/10" title="Delete"><Trash2 className="h-3 w-3" /></button>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {/* requests */}
-              <h3 className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-400"><Inbox className="h-3.5 w-3.5" />Requests ({cabinet.requests.length})</h3>
-              {cabinet.requests.length === 0 ? (
-                <EmptyState
-                  illustration="inbox"
-                  title="No requests yet"
-                  description="Ask for a missing document and the request is tracked here until the employee uploads it."
-                  size="sm"
-                />
-              ) : (
-                <div className="space-y-2">
-                  {cabinet.requests.map((r) => (
-                    <div key={r._id} className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-700 bg-slate-900/40 px-3 py-2 text-sm">
-                      <span className="flex-1 text-slate-200">
-                        {labelOf(r.category)}
-                        {r.note ? <span className="text-slate-500"> — "{r.note}"</span> : null}
-                        {r.dueDate ? <span className="text-slate-500"> · due {fmtDate(r.dueDate)}</span> : null}
-                      </span>
-                      {chip(r.status, REQ_CHIP[r.status])}
-                      <span className="text-xs text-slate-500">{fmtDate(r.createdAt)}</span>
-                      {r.status === 'PENDING' && (
-                        <button onClick={() => doCancel(r)} className="rounded-lg border border-slate-600 px-2.5 py-1 text-[11px] font-bold text-slate-300 hover:bg-slate-700">Withdraw</button>
-                      )}
-                    </div>
-                  ))}
+              <div className="card p-0">
+                <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4">
+                  <h3 className="flex items-center gap-2 text-sm font-bold">
+                    <Inbox className="h-4 w-4 text-crewly-dim" />
+                    Requests
+                    <span className="text-crewly-dim">({requests.length})</span>
+                  </h3>
+                  <button type="button" className="text-xs font-semibold text-crewly-orange hover:underline" onClick={() => setShowRequest(true)}>
+                    + New request
+                  </button>
                 </div>
-              )}
+                {requests.length === 0 ? (
+                  <EmptyState
+                    illustration="inbox"
+                    title="No requests yet"
+                    description="Ask for a missing document and it is tracked here until the employee uploads it."
+                    size="sm"
+                  />
+                ) : (
+                  <div className="mt-2 divide-y divide-crewly-border/60">
+                    {requests.map((r) => (
+                      <div key={r._id} className="flex flex-wrap items-center gap-2 px-4 py-2.5">
+                        <div className="min-w-[10rem] flex-1">
+                          <p className="text-sm font-semibold">{labelOf(r.category)}</p>
+                          <p className="text-xs text-crewly-dim">
+                            {r.note ? `“${r.note}”` : 'No note'}
+                            {r.dueDate ? ` · due ${fmtDate(r.dueDate)}` : ''}
+                            {` · raised ${fmtDate(r.createdAt)}`}
+                          </p>
+                        </div>
+                        {chip(r.status, REQ_CHIP[r.status] || REQ_CHIP.CANCELLED)}
+                        {r.status === 'PENDING' && (
+                          <button type="button" onClick={() => doCancel(r)} className="btn-ghost px-2.5 py-1 text-[11px]">
+                            Withdraw
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </>
           )}
         </section>
       </div>
 
-      {/* upload modal */}
       {showUpload && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowUpload(false)}>
-          <div className="w-full max-w-md space-y-3 rounded-xl border border-slate-600 bg-slate-800 p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="flex items-center gap-2 text-base font-bold text-slate-100"><Upload className="h-4 w-4" />Upload for {cabinet.employee?.name}</h3>
-            <select className={inp} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-              {cats.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </select>
-            <input className={inp} placeholder="Document name (optional — defaults to file name)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        <Modal title={`Upload for ${cabinet.employee?.name || 'employee'}`} onClose={() => setShowUpload(false)}>
+          <div className="space-y-3">
             <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-400">Expiry date (optional)</label>
-              <input type="date" className={inp} value={form.expiryDate} onChange={(e) => setForm({ ...form, expiryDate: e.target.value })} />
+              <label className="label" htmlFor="ef-category">Category</label>
+              <select id="ef-category" className="input" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+                {cats.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
             </div>
-            <input className={inp} placeholder="Note (optional)" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
-            <input ref={fileRef} type="file" className="w-full text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-700 file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-slate-100 hover:file:bg-slate-600" />
+            <div>
+              <label className="label" htmlFor="ef-name">Document name (optional)</label>
+              <input id="ef-name" className="input" placeholder="Defaults to the file name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            </div>
+            <div>
+              <label className="label" htmlFor="ef-expiry">Expiry date (optional)</label>
+              <input id="ef-expiry" type="date" className="input" value={form.expiryDate} onChange={(e) => setForm({ ...form, expiryDate: e.target.value })} />
+            </div>
+            <div>
+              <label className="label" htmlFor="ef-note">Note (optional)</label>
+              <input id="ef-note" className="input" placeholder="Shows in the employee's notification" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
+            </div>
+            <input ref={fileRef} type="file" className="w-full text-sm text-crewly-dim file:mr-3 file:rounded-lg file:border-0 file:bg-crewly-inset-strong file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-crewly-text" />
             <div className="flex justify-end gap-2 pt-1">
-              <button onClick={() => setShowUpload(false)} className="rounded-lg border border-slate-600 px-4 py-2 text-sm font-bold text-slate-300 hover:bg-slate-700">Cancel</button>
-              <button onClick={doUpload} disabled={busy} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-500 disabled:opacity-50">{busy ? 'Uploading…' : 'Upload'}</button>
+              <button type="button" onClick={() => setShowUpload(false)} className="btn-ghost text-sm">Cancel</button>
+              <button type="button" onClick={doUpload} disabled={busy} className="btn-primary text-sm">
+                {busy ? 'Uploading…' : 'Upload'}
+              </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
-      {/* request modal */}
       {showRequest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowRequest(false)}>
-          <div className="w-full max-w-md space-y-3 rounded-xl border border-slate-600 bg-slate-800 p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="flex items-center gap-2 text-base font-bold text-slate-100"><Inbox className="h-4 w-4" />Request from {cabinet.employee?.name}</h3>
-            <select className={inp} value={reqForm.category} onChange={(e) => setReqForm({ ...reqForm, category: e.target.value })}>
-              {cats.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </select>
-            <input className={inp} placeholder="Note (optional — e.g. 'please upload the back side too')" value={reqForm.note} onChange={(e) => setReqForm({ ...reqForm, note: e.target.value })} />
+        <Modal title={`Request from ${cabinet.employee?.name || 'employee'}`} onClose={() => setShowRequest(false)}>
+          <div className="space-y-3">
             <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-400">Due date (optional)</label>
-              <input type="date" className={inp} value={reqForm.dueDate} onChange={(e) => setReqForm({ ...reqForm, dueDate: e.target.value })} />
+              <label className="label" htmlFor="ef-req-cat">Document</label>
+              <select id="ef-req-cat" className="input" value={reqForm.category} onChange={(e) => setReqForm({ ...reqForm, category: e.target.value })}>
+                {cats.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="ef-req-note">Note (optional)</label>
+              <input id="ef-req-note" className="input" placeholder="e.g. please upload the back side too" value={reqForm.note} onChange={(e) => setReqForm({ ...reqForm, note: e.target.value })} />
+            </div>
+            <div>
+              <label className="label" htmlFor="ef-req-due">Due date (optional)</label>
+              <input id="ef-req-due" type="date" className="input" value={reqForm.dueDate} onChange={(e) => setReqForm({ ...reqForm, dueDate: e.target.value })} />
             </div>
             <div className="flex justify-end gap-2 pt-1">
-              <button onClick={() => setShowRequest(false)} className="rounded-lg border border-slate-600 px-4 py-2 text-sm font-bold text-slate-300 hover:bg-slate-700">Cancel</button>
-              <button onClick={doRequest} disabled={busy} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-bold text-white hover:bg-amber-500 disabled:opacity-50">{busy ? 'Sending…' : 'Send request'}</button>
+              <button type="button" onClick={() => setShowRequest(false)} className="btn-ghost text-sm">Cancel</button>
+              <button type="button" onClick={doRequest} disabled={busy} className="btn-primary text-sm">
+                {busy ? 'Sending…' : 'Send request'}
+              </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

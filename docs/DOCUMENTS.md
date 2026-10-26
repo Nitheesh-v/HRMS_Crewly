@@ -73,3 +73,46 @@ that the page contains no `indigo`/`slate`/`blue` classes from the old palette.
 - `.grid.grid-cols-2` without a breakpoint twin is collapsed to one column on
   phones. The tiles are 2×2 there, so the grid carries `sm:grid-cols-2` on
   purpose even though the base class is already `grid-cols-2`.
+
+## The HR cabinet — `/app/employee-files`
+
+Same shape, one employee at a time: pick on the left, and the right side is that
+person's cabinet (header, checkpoints, documents, requests).
+
+The four tiles describe **the open cabinet**, not the company, because the
+company list endpoint returns no document counts — a company-wide "48 files"
+would be invented. With nobody picked, each tile reads `—` and says "Pick an
+employee".
+
+`STANDARD_CHECKS` (offer letter, Aadhaar/ID, salary document, contract) is a
+checklist with an "On file" / "Upload" state per row. It is not a score: nothing
+in the API marks a document mandatory.
+
+Deliberately absent from the reference layout: storage quota, ZIP export, "edit
+record", automatic reminder nudges and a completion percentage. None has an
+endpoint. Upload / request / withdraw / delete / download are the real actions and
+all still hit the same services.
+
+## The lifecycle console — `/app/lifecycle`
+
+`EmployeeLifecycle` is a census, not a forecast:
+
+- four tiles read `GET /lifecycle/overview` (`counts`, `total`,
+  `probationEnding`) and fall back to counting `GET /lifecycle/company` if the
+  overview call fails;
+- **Due soon** is the same 30-day window the overview endpoint uses for its
+  probation radar; it covers probation end dates and notice-period end dates;
+- **Stage rules** documents the transition graph that
+  `Backend/src/controllers/lifecycleController.js` enforces — it is displayed,
+  never enforced client-side;
+- **Export matrix** writes a CSV of what is currently filtered, client-side.
+
+The employee view (`My Journey`) is unchanged in behaviour: one journey, a
+stepper and the event timeline.
+
+## Tests
+
+`Frontend/test/documentsPage.test.js` (employee cabinet) and
+`Frontend/test/cabinetPages.test.js` (HR cabinet + lifecycle console) pin the
+endpoints, the derived counts, the honesty rules and the absence of the old
+indigo/slate palette.
