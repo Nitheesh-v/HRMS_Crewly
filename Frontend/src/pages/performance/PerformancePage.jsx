@@ -4,28 +4,83 @@
 // Seniors: team review board · HR: cycle controls
 // ============================================================
 import React, { useEffect, useMemo, useState } from 'react';
-import { Briefcase, Check, ClipboardList, FileText, History, Hourglass, Lock, Plus, Save, Scale, SkipForward, Star, Target, Trash2, User, UserPlus, Users } from 'lucide-react';
+import { Briefcase, Check, ClipboardList, FileText, History, Hourglass, Lock, Plus, Save, Scale, SkipForward, Star, Target, Trash2, User, UserPlus, Users, X } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import {
-  getCycles, getMyAppraisal, getTeamBoard, createCycle, transitionCycle,
+  getCycles, getCycleCohort, getMyAppraisal, getTeamBoard, createCycle, transitionCycle,
   saveGoals, updateProgress, submitSelfReview, submitReview, getHistory, enrollMissing,
 } from '../../services/perfService.js';
 import { notify } from '../../utils/notify.js';
 import EmptyState from '../../components/common/EmptyState.jsx';
 
-const inp = 'w-full rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500';
+const inp = 'input';
 const btn = 'rounded-lg px-3 py-1.5 text-xs font-bold transition disabled:opacity-50';
-const primary = `${btn} bg-indigo-600 text-white hover:bg-indigo-500`;
+const primary = `${btn} bg-crewly-accent text-crewly-accent-ink hover:opacity-90`;
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
 
 const PHASES = ['GOAL_SETTING', 'ACTIVE', 'SELF_REVIEW', 'REVIEW', 'CLOSED'];
 const PHASE_LABEL = { GOAL_SETTING: 'Set goals', ACTIVE: 'Work period', SELF_REVIEW: 'Self review', REVIEW: 'TL + Manager review', CLOSED: 'Final rating published' };
 const STATUS_CHIP = {
   GOALS: 'bg-slate-500/20 text-slate-300', IN_PROGRESS: 'bg-sky-400/15 text-sky-300',
-  SELF_SUBMITTED: 'bg-amber-400/15 text-amber-300', TL_DONE: 'bg-indigo-400/15 text-indigo-300',
+  SELF_SUBMITTED: 'bg-amber-400/15 text-amber-300', TL_DONE: 'bg-crewly-green/15 text-crewly-green',
   MGR_DONE: 'bg-purple-400/15 text-purple-300', CLOSED: 'bg-emerald-400/15 text-emerald-300',
 };
 const chip = (txt, cls) => <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${cls}`}>{txt}</span>;
+
+/* The three rounds the API can store. The copy is what each one actually
+   collects in this product — no scoring promise is made that the weights
+   below do not already implement (Self 20 · TL 30 · Manager 50). */
+const METHODOLOGIES = [
+  {
+    id: 'STANDARD',
+    label: 'Standard annual',
+    detail: 'Self review + direct manager rating.',
+  },
+  {
+    id: 'THREE_SIXTY',
+    label: '360° comprehensive',
+    detail: 'The same round, with peer input collected alongside it.',
+  },
+  {
+    id: 'OKR',
+    label: 'Goal check-in',
+    detail: 'Goals and KPI progress only — no rating round.',
+  },
+];
+const METHOD_LABEL = Object.fromEntries(METHODOLOGIES.map((m) => [m.id, m.label]));
+
+/* One radio card. A real radio input is kept (visually hidden) so the group is
+   keyboard-navigable with the arrow keys; the card is the label. */
+const MethodCard = ({ option, checked, onSelect }) => (
+  <label
+    className={`flex min-h-[84px] cursor-pointer items-start gap-2.5 rounded-xl border p-3 text-left transition ${
+      checked
+        ? 'border-crewly-green bg-crewly-green/[0.08]'
+        : 'border-crewly-border bg-crewly-card hover:bg-crewly-inset'
+    }`}
+  >
+    <input
+      type="radio"
+      name="cycle-methodology"
+      value={option.id}
+      checked={checked}
+      onChange={() => onSelect(option.id)}
+      className="sr-only"
+    />
+    <span
+      aria-hidden="true"
+      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+        checked ? 'border-crewly-green' : 'border-crewly-dim'
+      }`}
+    >
+      {checked ? <span className="h-2 w-2 rounded-full bg-crewly-green" /> : null}
+    </span>
+    <span className="min-w-0">
+      <span className="block text-sm font-semibold">{option.label}</span>
+      <span className="mt-0.5 block text-[11px] leading-snug text-crewly-dim">{option.detail}</span>
+    </span>
+  </label>
+);
 
 const Stars = ({ value, onChange, size = 'h-6 w-6', className = '' }) => (
   <span className={`inline-flex gap-1 ${className}`}>
@@ -47,8 +102,15 @@ const PhaseStepper = ({ status }) => {
     <div className="flex flex-wrap items-center gap-2">
       {PHASES.map((p, i) => (
         <React.Fragment key={p}>
-          {i > 0 && <span className={`h-px w-5 ${i <= idx ? 'bg-indigo-400' : 'bg-slate-600'}`} />}
-          {chip(PHASE_LABEL[p], i === idx ? 'bg-indigo-500/25 text-indigo-200 ring-1 ring-indigo-400/50' : i < idx ? 'bg-emerald-400/10 text-emerald-300' : 'bg-slate-700/40 text-slate-500')}
+          {i > 0 && <span className={`h-px w-5 ${i <= idx ? 'bg-crewly-green' : 'bg-crewly-border'}`} />}
+          {chip(
+            PHASE_LABEL[p],
+            i === idx
+              ? 'bg-crewly-selected text-crewly-selected-text ring-1 ring-crewly-green/40'
+              : i < idx
+                ? 'bg-crewly-green/10 text-crewly-green'
+                : 'bg-slate-700/40 text-slate-500',
+          )}
         </React.Fragment>
       ))}
     </div>
@@ -68,7 +130,19 @@ export default function PerformancePage() {
   const [selfForm, setSelfForm] = useState({ summary: '', rating: 0 });
   const [reviewTarget, setReviewTarget] = useState(null); // appraisal being reviewed
   const [reviewForm, setReviewForm] = useState({ rating: 0, feedback: '' });
-  const [cycleForm, setCycleForm] = useState({ name: '', startDate: '', endDate: '' });
+  const [cycleForm, setCycleForm] = useState({
+    name: '',
+    startDate: '',
+    endDate: '',
+    methodology: 'STANDARD',
+    selfReviewDueAt: '',
+    managerReviewDueAt: '',
+    calibrationDueAt: '',
+    excludeProbation: false,
+    notifyParticipants: true,
+  });
+  const [cohort, setCohort] = useState(null);
+  const [cohortBusy, setCohortBusy] = useState(false);
   const [showNewCycle, setShowNewCycle] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -124,13 +198,41 @@ export default function PerformancePage() {
   const goalsEditable = ['GOAL_SETTING', 'ACTIVE'].includes(phase);
 
   /* ── actions ── */
+  const openCycleModal = async () => {
+    setShowNewCycle(true);
+    if (!isHR) return;
+    setCohortBusy(true);
+    try { setCohort(await getCycleCohort()); }
+    catch { setCohort(null); }
+    finally { setCohortBusy(false); }
+  };
+
+  /* The number on the button is the number of people the API said it would
+     enroll — minus the ones the toggle leaves out. Nothing is estimated. */
+  const cohortIncluded = cohort
+    ? Math.max(0, cohort.total - (cycleForm.excludeProbation ? cohort.onProbation : 0))
+    : null;
+
   const doCreateCycle = async () => {
-    if (!cycleForm.name.trim()) return flash(false, 'Cycle name needed');
+    if (!cycleForm.name.trim()) return flash(false, 'Name the cycle first — e.g. "H2 2026"');
+    if (cycleForm.startDate && cycleForm.endDate && cycleForm.endDate < cycleForm.startDate) {
+      return flash(false, 'The cycle cannot end before it starts');
+    }
     setBusy(true);
     try {
       await createCycle(cycleForm);
-      setShowNewCycle(false); setCycleForm({ name: '', startDate: '', endDate: '' });
-      flash(true, 'Cycle started — everyone got notified');
+      setShowNewCycle(false);
+      setCycleForm({
+        name: '', startDate: '', endDate: '', methodology: 'STANDARD',
+        selfReviewDueAt: '', managerReviewDueAt: '', calibrationDueAt: '',
+        excludeProbation: false, notifyParticipants: true,
+      });
+      flash(
+        true,
+        cycleForm.notifyParticipants
+          ? 'Cycle started — everyone in the cohort was notified'
+          : 'Cycle started — notifications kept off',
+      );
       await loadAll();
     } catch (e) { flash(false, e?.response?.data?.message || 'Failed'); }
     finally { setBusy(false); }
@@ -189,8 +291,18 @@ export default function PerformancePage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-bold text-slate-100"><Target className="mr-2 inline h-6 w-6 text-indigo-400" />Performance</h1>
-        {cycle && <span className="text-sm text-slate-400">{cycle.name} {cycle.startDate ? `· ${fmtDate(cycle.startDate)} → ${fmtDate(cycle.endDate)}` : ''}</span>}
+        <h1 className="text-2xl font-bold text-slate-100"><Target className="mr-2 inline h-6 w-6 text-crewly-green" />Performance</h1>
+        {cycle && (
+          <span className="flex flex-wrap items-center gap-2 text-sm text-slate-400">
+            {cycle.name}
+            {cycle.startDate ? <span>· {fmtDate(cycle.startDate)} → {fmtDate(cycle.endDate)}</span> : null}
+            {cycle.methodology ? (
+              <span className="rounded-full bg-crewly-inset px-2 py-0.5 text-[11px] font-semibold text-crewly-dim">
+                {METHOD_LABEL[cycle.methodology] || cycle.methodology}
+              </span>
+            ) : null}
+          </span>
+        )}
       </div>
 
       {!cycle ? (
@@ -204,7 +316,7 @@ export default function PerformancePage() {
                 : 'HR will open a review cycle soon. Your goals and self review will appear here when they do.'
             }
             action={isHR ? (
-              <button onClick={() => setShowNewCycle(true)} className={primary}>＋ Start a cycle</button>
+              <button onClick={openCycleModal} className={primary}>＋ Start a cycle</button>
             ) : null}
           />
         </div>
@@ -219,7 +331,7 @@ export default function PerformancePage() {
                   <SkipForward className="mr-1 inline h-4 w-4" />Move to: {PHASE_LABEL[PHASES[PHASES.indexOf(phase) + 1]]}
                 </button>
               )}
-              {isHR && <button onClick={() => setShowNewCycle(true)} className={`${btn} border border-slate-600 text-slate-300 hover:bg-slate-700`}><Plus className="mr-1 inline h-3.5 w-3.5" />New cycle</button>}
+              {isHR && <button onClick={openCycleModal} className={`${btn} border border-slate-600 text-slate-300 hover:bg-slate-700`}><Plus className="mr-1 inline h-3.5 w-3.5" />New cycle</button>}
               {isHR && <button onClick={async () => { await enrollMissing(cycle._id); flash(true, 'New joiners enrolled'); }} className={`${btn} border border-slate-600 text-slate-300 hover:bg-slate-700`}><UserPlus className="mr-1 inline h-3.5 w-3.5" />Enroll joiners</button>}
             </div>
           </section>
@@ -261,8 +373,8 @@ export default function PerformancePage() {
                           onChange={(e) => setGoal(i, { progress: Number(e.target.value) })}
                           onMouseUp={() => g._id && doProgress(g._id, goalsDraft[i].progress)}
                           onTouchEnd={() => g._id && doProgress(g._id, goalsDraft[i].progress)}
-                          className="flex-1 accent-indigo-500" />
-                        <span className="w-10 text-right text-xs font-bold text-indigo-300">{g.progress || 0}%</span>
+                          className="flex-1 accent-[var(--color-crewly-green)]" />
+                        <span className="w-10 text-right text-xs font-bold text-crewly-green">{g.progress || 0}%</span>
                       </div>
                     )}
                   </div>
@@ -287,7 +399,7 @@ export default function PerformancePage() {
                       <div className="flex items-center gap-3">
                         <span className="text-xs text-slate-400">Rate your cycle:</span>
                         <Stars value={selfForm.rating} onChange={(r) => setSelfForm({ ...selfForm, rating: r })} />
-                        <button disabled={busy} onClick={doSelfReview} className="ml-auto rounded-lg bg-amber-600 px-4 py-2 text-xs font-bold text-white hover:bg-amber-500 disabled:opacity-50">Submit self review</button>
+                        <button disabled={busy} onClick={doSelfReview} className="ml-auto rounded-lg bg-crewly-accent px-4 py-2 text-xs font-bold text-crewly-accent-ink hover:opacity-90 disabled:opacity-50">Submit self review</button>
                       </div>
                     </>
                   ) : (
@@ -377,17 +489,194 @@ export default function PerformancePage() {
 
       {/* new cycle modal */}
       {showNewCycle && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowNewCycle(false)}>
-          <div className="w-full max-w-md space-y-3 rounded-xl border border-slate-600 bg-slate-800 p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-base font-bold text-slate-100"><Target className="mr-1.5 inline h-4 w-4" />Start performance cycle</h3>
-            <input className={inp} placeholder='Name — e.g. "H2 2026"' value={cycleForm.name} onChange={(e) => setCycleForm({ ...cycleForm, name: e.target.value })} />
-            <div className="grid grid-cols-2 gap-2">
-              <div><label className="mb-1 block text-xs text-slate-400">Start</label><input type="date" className={inp} value={cycleForm.startDate} onChange={(e) => setCycleForm({ ...cycleForm, startDate: e.target.value })} /></div>
-              <div><label className="mb-1 block text-xs text-slate-400">End</label><input type="date" className={inp} value={cycleForm.endDate} onChange={(e) => setCycleForm({ ...cycleForm, endDate: e.target.value })} /></div>
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+          onClick={() => setShowNewCycle(false)}
+          role="presentation"
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Start a performance cycle"
+            className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl border border-crewly-border bg-crewly-card shadow-2xl sm:max-h-[88vh] sm:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* header */}
+            <div className="flex items-start justify-between gap-3 border-b border-crewly-border bg-crewly-inset/50 p-5">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-crewly-accent/15 text-crewly-orange">
+                  <Target className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-base font-bold sm:text-lg">Start performance cycle</h3>
+                    {cycleForm.name.trim() ? (
+                      <span className="rounded-full bg-crewly-green/15 px-2 py-0.5 text-[11px] font-semibold text-crewly-green">
+                        {cycleForm.name.trim()}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-crewly-dim">
+                    Opens one appraisal window: goals, self reviews, manager ratings — and enrols the
+                    people you choose below.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowNewCycle(false)}
+                className="rounded-lg p-1 text-crewly-dim hover:text-crewly-text"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
-            <div className="flex justify-end gap-2 pt-1">
-              <button onClick={() => setShowNewCycle(false)} className={`${btn} border border-slate-600 text-slate-300 hover:bg-slate-700`}>Cancel</button>
-              <button onClick={doCreateCycle} disabled={busy} className={primary}>{busy ? 'Starting…' : 'Start + notify everyone'}</button>
+
+            <div className="space-y-5 p-5">
+              {/* name */}
+              <div>
+                <label className="label" htmlFor="cycle-name">Cycle name</label>
+                <input
+                  id="cycle-name"
+                  className="input"
+                  placeholder="H2 2026 Annual Performance Review"
+                  value={cycleForm.name}
+                  onChange={(e) => setCycleForm({ ...cycleForm, name: e.target.value })}
+                />
+              </div>
+
+              {/* methodology */}
+              <fieldset>
+                <legend className="label">Review methodology</legend>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {METHODOLOGIES.map((option) => (
+                    <MethodCard
+                      key={option.id}
+                      option={option}
+                      checked={cycleForm.methodology === option.id}
+                      onSelect={(id) => setCycleForm({ ...cycleForm, methodology: id })}
+                    />
+                  ))}
+                </div>
+              </fieldset>
+
+              {/* dates */}
+              <div>
+                <p className="label">Review milestones &amp; deadlines</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-[11px] text-crewly-dim" htmlFor="cycle-start">Start date</label>
+                    <input id="cycle-start" type="date" className="input" value={cycleForm.startDate}
+                      onChange={(e) => setCycleForm({ ...cycleForm, startDate: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] text-crewly-dim" htmlFor="cycle-end">Cycle ends</label>
+                    <input id="cycle-end" type="date" className="input" value={cycleForm.endDate}
+                      onChange={(e) => setCycleForm({ ...cycleForm, endDate: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] text-crewly-dim" htmlFor="cycle-self">Self-review deadline</label>
+                    <input id="cycle-self" type="date" className="input" value={cycleForm.selfReviewDueAt}
+                      onChange={(e) => setCycleForm({ ...cycleForm, selfReviewDueAt: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] text-crewly-dim" htmlFor="cycle-mgr">Manager rating deadline</label>
+                    <input id="cycle-mgr" type="date" className="input" value={cycleForm.managerReviewDueAt}
+                      onChange={(e) => setCycleForm({ ...cycleForm, managerReviewDueAt: e.target.value })} />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="mb-1 block text-[11px] text-crewly-dim" htmlFor="cycle-cal">Calibration &amp; close</label>
+                    <input id="cycle-cal" type="date" className="input" value={cycleForm.calibrationDueAt}
+                      onChange={(e) => setCycleForm({ ...cycleForm, calibrationDueAt: e.target.value })} />
+                  </div>
+                </div>
+                {cycleForm.startDate && cycleForm.selfReviewDueAt && cycleForm.selfReviewDueAt < cycleForm.startDate ? (
+                  <p className="mt-2 text-[11px] text-crewly-orange">
+                    The self-review deadline falls before the cycle starts — double-check the dates.
+                  </p>
+                ) : null}
+                <p className="mt-2 text-[11px] text-crewly-dim">
+                  Deadlines are stored with the cycle so they can be read back later. Moving the phase is still
+                  a deliberate step on the performance page; nothing advances on its own.
+                </p>
+              </div>
+
+              {/* cohort */}
+              <div className="rounded-xl border border-crewly-border bg-crewly-inset/40 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="flex items-center gap-1.5 text-xs font-semibold">
+                      <Users className="h-3.5 w-3.5 text-crewly-dim" />Participant cohort
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-crewly-dim">Every active employee in your company.</p>
+                  </div>
+                  <span className="rounded-full bg-crewly-card px-2.5 py-0.5 text-[11px] font-semibold">
+                    {cohortBusy ? 'Counting…' : cohortIncluded === null ? '—' : `${cohortIncluded} to enrol`}
+                  </span>
+                </div>
+
+                {cohort?.byDepartment?.length ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {cohort.byDepartment.slice(0, 6).map((dept) => (
+                      <span key={dept.name} className="rounded-full bg-crewly-card px-2 py-0.5 text-[11px] text-crewly-dim">
+                        {dept.name} <span className="font-semibold text-crewly-text">{dept.count}</span>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+
+                <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-lg border border-crewly-border bg-crewly-card p-2.5">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 accent-[var(--color-crewly-green)]"
+                    checked={cycleForm.excludeProbation}
+                    onChange={(e) => setCycleForm({ ...cycleForm, excludeProbation: e.target.checked })}
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-xs font-semibold">Leave out people still on probation</span>
+                    <span className="mt-0.5 block text-[11px] leading-snug text-crewly-dim">
+                      {cohort
+                        ? `${cohort.onProbation} of ${cohort.total} are inside their first ${cohort.probationWindowDays} days — they would be skipped.`
+                        : `Anyone inside their first 90 days is skipped.`}
+                    </span>
+                  </span>
+                </label>
+
+                <label className="mt-2 flex cursor-pointer items-start gap-3 rounded-lg border border-crewly-border bg-crewly-card p-2.5">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 accent-[var(--color-crewly-green)]"
+                    checked={cycleForm.notifyParticipants}
+                    onChange={(e) => setCycleForm({ ...cycleForm, notifyParticipants: e.target.checked })}
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-xs font-semibold">Notify everyone who is enrolled</span>
+                    <span className="mt-0.5 block text-[11px] leading-snug text-crewly-dim">
+                      They get one message telling them to set their goals. Turn it off to launch quietly.
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            {/* footer */}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-crewly-border bg-crewly-inset/40 p-4">
+              <button type="button" onClick={() => setShowNewCycle(false)} className="btn-ghost px-3 py-2 text-sm">
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={doCreateCycle}
+                disabled={busy || !cycleForm.name.trim()}
+                className="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50"
+              >
+                <Target className="h-4 w-4" />
+                {busy
+                  ? 'Starting…'
+                  : cohortIncluded === null
+                    ? 'Start cycle'
+                    : `Start cycle · ${cohortIncluded} ${cohortIncluded === 1 ? 'person' : 'people'}`}
+              </button>
             </div>
           </div>
         </div>

@@ -488,6 +488,21 @@ router.post(
 );
 
 router.get(
+  '/perf/cohort',
+
+  requirePermission(
+    'PERFORMANCE_CREATE'
+  ),
+
+  requireFeature(
+    'performance'
+  ),
+
+  perfController
+    .cycleCohort
+);
+
+router.get(
   '/perf/cycles',
 
   requireAnyPermission([

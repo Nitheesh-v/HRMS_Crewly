@@ -7,6 +7,7 @@
 import * as CycleNS from '../models/PerformanceCycle.js';
 import * as AppraisalNS from '../models/Appraisal.js';
 import * as UserNS from '../models/User.js';
+import * as LifecycleNS from '../models/EmployeeLifecycle.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { getSubtreeIds } from '../utils/orgHelpers.js';
 import { notifySmart } from '../utils/notifyPref.js';
@@ -15,6 +16,7 @@ const pickModel = (ns) => (typeof ns.default === 'function' ? ns.default : ns.de
 const PerformanceCycle = pickModel(CycleNS);
 const Appraisal = pickModel(AppraisalNS);
 const User = pickModel(UserNS);
+const EmployeeLifecycle = pickModel(LifecycleNS);
 
 const ok = (res, status, data, message) =>
   res.status(status).json({ statusCode: status, success: true, data, message });
@@ -25,6 +27,7 @@ const HR_ROLES = ['COMPANY_ADMIN', 'HR_MANAGER'];
 const SENIORS = ['COMPANY_ADMIN', 'HR_MANAGER', 'MANAGER', 'TEAM_LEAD'];
 const isHR = (req) => HR_ROLES.includes(req.user.role);
 const PHASES = ['GOAL_SETTING', 'ACTIVE', 'SELF_REVIEW', 'REVIEW', 'CLOSED'];
+const CYCLE_METHODOLOGIES = ['STANDARD', 'THREE_SIXTY', 'OKR'];
 const RATING_WEIGHTS = [['selfReview', 0.2], ['tlReview', 0.3], ['mgrReview', 0.5]];
 
 const notifyPerf = async (userId, payload) => {
@@ -40,12 +43,35 @@ const loadCycle = async (req, id) => {
   return cycle;
 };
 
+/* Probation is two facts in this product, and both are real: the lifecycle
+   record says the stage, and — when a company has not opened the lifecycle
+   page yet — a date of joining inside the first 90 days says the same thing.
+   A cohort that only honoured the first would silently include everyone at a
+   company that never set a stage. */
+const PROBATION_DAYS = 90;
+const probationIds = async (companyId) => {
+  const [stageRows, joined] = await Promise.all([
+    EmployeeLifecycle.find({ companyId, stage: 'PROBATION' }).select('user').lean(),
+    User.find({ companyId, status: 'ACTIVE', dateOfJoining: { $ne: null } })
+      .select('_id dateOfJoining')
+      .lean(),
+  ]);
+  const ids = new Set((stageRows || []).map((row) => String(row.user)));
+  const cutoff = Date.now() - PROBATION_DAYS * 24 * 60 * 60 * 1000;
+  for (const user of joined || []) {
+    const joinedAt = new Date(user.dateOfJoining).getTime();
+    if (Number.isFinite(joinedAt) && joinedAt > cutoff) ids.add(String(user._id));
+  }
+  return ids;
+};
+
 // enroll every ACTIVE company user in a cycle (idempotent)
-const enrollAll = async (companyId, cycleId) => {
+const enrollAll = async (companyId, cycleId, options = {}) => {
+  const skip = options.skip instanceof Set ? options.skip : new Set();
   const users = await User.find({ companyId, status: 'ACTIVE' }).select('_id').lean();
   const have = await Appraisal.find({ companyId, cycle: cycleId }).select('user').lean();
   const set = new Set(have.map((a) => String(a.user)));
-  const missing = users.filter((u) => !set.has(String(u._id)));
+  const missing = users.filter((u) => !set.has(String(u._id)) && !skip.has(String(u._id)));
   if (missing.length) {
     await Appraisal.insertMany(
       missing.map((u) => ({ companyId, cycle: cycleId, user: u._id })),
@@ -68,37 +94,107 @@ const serializeForOwner = (app, cycle) => {
   return { ...a, tlReview: flag(a.tlReview), mgrReview: flag(a.mgrReview), finalRating: null };
 };
 
+/* ── GET /perf/cohort — who a new round would enroll (HR only) ──
+   The create screen shows a head-count before anything is written, so the
+   number on the button is the number of people it will actually enroll. */
+export const cycleCohort = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin see the participant cohort');
+
+  // DB Logic - DB logics
+  const [active, probation] = await Promise.all([
+    User.find({ companyId: req.companyId, status: 'ACTIVE' }).select('_id').lean(),
+    probationIds(req.companyId),
+  ]);
+  const onProbation = (active || []).filter((u) => probation.has(String(u._id)));
+  const departments = await User.find({ companyId: req.companyId, status: 'ACTIVE' })
+    .populate('department', 'name')
+    .select('department')
+    .lean();
+  const byDepartment = {};
+  for (const row of departments || []) {
+    const name = row.department?.name || 'No department';
+    byDepartment[name] = (byDepartment[name] || 0) + 1;
+  }
+
+  // Data to frontend - response to frontend
+  ok(res, 200, {
+    total: (active || []).length,
+    onProbation: onProbation.length,
+    byDepartment: Object.entries(byDepartment)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count),
+    probationWindowDays: PROBATION_DAYS,
+  }, 'Cohort');
+});
+
 /* ── POST /perf/cycles — HR starts a cycle ── */
 export const createCycle = asyncHandler(async (req, res) => {
   // Data from frontend - requests from frontend
   if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin can start a performance cycle');
-  const { name, startDate = '', endDate = '' } = req.body;
+  const {
+    name,
+    startDate = '',
+    endDate = '',
+    methodology = 'STANDARD',
+    selfReviewDueAt = '',
+    managerReviewDueAt = '',
+    calibrationDueAt = '',
+    excludeProbation = false,
+    notifyParticipants = true,
+  } = req.body;
   if (!name?.trim()) return fail(res, 400, 'Cycle name is required (e.g. "H2 2026")');
 
+  /* Every date arrives as a plain 'YYYY-MM-DD' string, the same shape the
+     model stores. Anything else is rejected rather than half-saved — a
+     milestone that parses as Invalid Date on the client is worse than a
+     clear "that date is not a date". */
+  const dateFields = { startDate, endDate, selfReviewDueAt, managerReviewDueAt, calibrationDueAt };
+  for (const [field, value] of Object.entries(dateFields)) {
+    if (value && !/^\d{4}-\d{2}-\d{2}$/.test(String(value))) {
+      return fail(res, 400, `${field} must be a date (YYYY-MM-DD)`);
+    }
+  }
+  const methodologyValue = CYCLE_METHODOLOGIES.includes(methodology) ? methodology : 'STANDARD';
+  const skipProbation = excludeProbation === true;
+  const shouldNotify = notifyParticipants !== false;
+
   // DB Logic - DB logics
+  const skip = skipProbation ? await probationIds(req.companyId) : new Set();
   const cycle = await PerformanceCycle.create({
     companyId: req.companyId,
     name: name.trim(),
     startDate,
     endDate,
+    methodology: methodologyValue,
+    selfReviewDueAt,
+    managerReviewDueAt,
+    calibrationDueAt,
+    excludeProbation: skipProbation,
+    notifyParticipants: shouldNotify,
     createdBy: req.user._id,
   });
-  await enrollAll(req.companyId, cycle._id);
+  await enrollAll(req.companyId, cycle._id, { skip });
 
-  // 🔔 fan-out — every teammate gets the call to set goals
-  User.find({ companyId: req.companyId, status: 'ACTIVE', _id: { $ne: req.user._id } })
-    .select('_id')
-    .lean()
-    .then((users) =>
-      users.forEach((u) =>
-        notifyPerf(u._id, {
+  // 🔔 fan-out — every teammate gets the call to set goals (unless the admin
+  // turned the notifications off, or left them out of the cohort)
+  if (shouldNotify) {
+    const cohort = await Appraisal.find({ companyId: req.companyId, cycle: cycle._id })
+      .select('user')
+      .lean();
+    const recipients = (cohort || [])
+      .map((row) => String(row.user))
+      .filter((id) => id !== String(req.user._id));
+    Promise.all(
+      recipients.map((id) =>
+        notifyPerf(id, {
           title: '🎯 New performance cycle',
           message: `"${cycle.name}" has started — set your goals & KPIs now`,
           link: '/app/performance',
         })
       )
-    )
-    .catch(() => {});
+    ).catch(() => {});
+  }
 
   // Data to frontend - response to frontend
   ok(res, 201, cycle, 'Cycle created — everyone enrolled 🎯');

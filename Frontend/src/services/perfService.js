@@ -12,6 +12,9 @@ const arr = (x) => {
 };
 
 export const getCycles = async () => unwrap(await api.get('/perf/cycles'));
+/* Who a new round would enroll, so the create screen can show the number
+   before anything is written. HR-only on the server. */
+export const getCycleCohort = async () => unwrap(await api.get('/perf/cohort'));
 export const createCycle = (payload) => api.post('/perf/cycles', payload);
 export const transitionCycle = (id, to) => api.patch(`/perf/cycles/${id}/status`, { to });
 export const enrollMissing = (id) => api.post(`/perf/cycles/${id}/enroll`);

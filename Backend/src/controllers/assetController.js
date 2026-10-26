@@ -19,6 +19,7 @@ const fail = (res, status, message) =>
 const HR_ROLES = ['COMPANY_ADMIN', 'HR_MANAGER'];
 const isHR = (req) => HR_ROLES.includes(req.user.role);
 const CATS = ['LAPTOP', 'MONITOR', 'KEYBOARD', 'MOUSE', 'MOBILE', 'ID_CARD', 'OTHER'];
+const STATUSES = ['AVAILABLE', 'ASSIGNED'];
 
 const notifyAsset = async (userId, payload) => {
   try {
@@ -50,7 +51,15 @@ export const listAssets = asyncHandler(async (req, res) => {
   // Data from frontend - requests from frontend
   if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin view inventory');
   const filter = { companyId: req.companyId };
-  if (req.query.status && CATS && req.query.status !== 'ALL') filter.status = req.query.status;
+  /* The old guard tested the *category* list, so `?status=WHATEVER` reached
+     Mongo as a filter and simply matched nothing — a correct-looking empty
+     page instead of a rejected parameter. Statuses are validated on their own
+     enum now. */
+  const status = String(req.query.status || '').toUpperCase();
+  if (status && status !== 'ALL') {
+    if (!STATUSES.includes(status)) return fail(res, 400, 'Unknown asset status');
+    filter.status = status;
+  }
   // DB Logic - DB logics
   const rows = await Asset.find(filter)
     .populate('currentHolder', 'name email role designation')
