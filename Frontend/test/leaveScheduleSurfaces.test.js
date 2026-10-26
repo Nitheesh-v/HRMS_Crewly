@@ -26,11 +26,13 @@ const SCHEDULES = 'src/pages/schedule/SchedulesPage.jsx';
 const HOLIDAYS = 'src/pages/schedule/HolidaysPage.jsx';
 const LEAVES = 'src/pages/leaves/LeavesPage.jsx';
 const APPROVALS = 'src/pages/leaves/LeaveApprovalsPage.jsx';
+const SHIFTS = 'src/pages/schedule/ShiftsPage.jsx';
 
 const schedules = read(SCHEDULES);
 const holidays = read(HOLIDAYS);
 const leaves = read(LEAVES);
 const approvals = read(APPROVALS);
+const shifts = read(SHIFTS);
 
 const has = (source, needle, label) =>
   assert.ok(source.includes(needle), `${label}: expected to find ${JSON.stringify(needle)}`);
@@ -45,10 +47,10 @@ describe('work schedules — the mock, with numbers that exist', () => {
   test('four summary tiles, each with its status pill', () => {
     has(schedules, 'Active patterns', 'tile 1');
     has(schedules, 'Live config', 'pill 1');
-    has(schedules, 'Largest assignment', 'tile 2');
-    has(schedules, 'Late grace allowance', 'tile 3');
+    has(schedules, 'Default assignment', 'tile 2');
+    has(schedules, 'Grace allowance', 'tile 3');
     has(schedules, 'Standardized', 'pill 3');
-    has(schedules, 'Compliance', 'tile 4');
+    has(schedules, 'Compliance status', 'tile 4');
   });
 
   test('bucket tab row with counts and the default tier line', () => {
@@ -56,12 +58,13 @@ describe('work schedules — the mock, with numbers that exist', () => {
     has(schedules, 'Core daytime', 'bucket');
     has(schedules, 'Crosses midnight', 'bucket');
     has(schedules, 'Part week', 'bucket');
-    has(schedules, 'Default tier:', 'default tier');
+    has(schedules, 'Default tier', 'default tier');
+    has(schedules, 'Automatic enrolment', 'enrolment');
   });
 
   test('each schedule card keeps the work window, weekday strip and actions', () => {
     has(schedules, 'Work window', 'inset');
-    has(schedules, 'net / day', 'net hours');
+    has(schedules, 'Per day', 'net hours');
     has(schedules, 'Active working days', 'weekday strip');
     has(schedules, 'Off', 'dimmed weekday');
     has(schedules, 'Edit policy', 'card action');
@@ -69,10 +72,10 @@ describe('work schedules — the mock, with numbers that exist', () => {
   });
 
   test('the coverage card is arithmetic over real schedules, not a roster feed', () => {
-    has(schedules, 'Daily capacity &amp; floor coverage', 'coverage card');
+    has(schedules, 'Daily capacity &amp; floor coverage profile', 'coverage card');
     has(schedules, "const inside = wraps ? hour >= start || hour < end : hour >= start && hour < end;", 'hour overlap maths');
     has(schedules, 'Highest simultaneous occupancy'.replace('Highest simultaneous occupancy', 'Peak overlap'), 'peak callout');
-    has(schedules, 'Grace and break logic', 'policy card');
+    has(schedules, 'Automated grace logic', 'policy card');
   });
 
   test('non-HR readers get the gate instead of the register', () => {
@@ -183,6 +186,37 @@ describe('my leaves — balances, pace, draft, trail', () => {
   });
 });
 
+describe('shifts & rosters — the catalog the engine reads', () => {
+  test('hero, my window and the engine card are all present', () => {
+    has(shifts, 'Shifts &amp; rosters', 'title');
+    has(shifts, 'Roster engine', 'eyebrow');
+    has(shifts, 'My assigned shift', 'my shift');
+    has(shifts, 'Scheduled slot', 'slot');
+    has(shifts, 'Roster assignment engine', 'engine card');
+    has(shifts, 'Cross-midnight safe', 'midnight rule');
+  });
+
+  test('the catalog keeps its type tabs and specification table', () => {
+    has(shifts, 'Company shift catalog', 'catalog');
+    has(shifts, 'Shift specifications &amp; attendance rules', 'spec table');
+    has(shifts, 'Grace in / out', 'grace column');
+    has(shifts, 'Break deduction', 'break column');
+    has(shifts, 'Assignment history', 'history');
+  });
+
+  test('my window is arithmetic on the assigned shift, not a live punch', () => {
+    has(shifts, 'Meal break', 'break marker');
+    has(shifts, 'Shift end', 'end marker');
+    assert.ok(!shifts.includes('Math.random'), 'no invented progress');
+  });
+
+  test('the people picker is a Crewly control, not a native option list', () => {
+    assert.ok(!/\bslate-\d{2,3}\b/.test(shifts), 'no leftover dark-slate classes');
+    has(shifts, 'pickerMatches', 'searchable picker');
+    has(shifts, 'Search a person by name or email', 'picker input');
+  });
+});
+
 describe('the rebuild stays on Crewly tokens', () => {
   test('no raw hex colours in any of the four pages', () => {
     for (const [file, source] of [
@@ -190,6 +224,7 @@ describe('the rebuild stays on Crewly tokens', () => {
       [HOLIDAYS, holidays],
       [LEAVES, leaves],
       [APPROVALS, approvals],
+      [SHIFTS, shifts],
     ]) {
       assert.ok(!/#[0-9a-fA-F]{6}\b/.test(source), `${file} must not hard-code a hex colour`);
     }

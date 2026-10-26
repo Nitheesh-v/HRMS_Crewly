@@ -4,7 +4,6 @@ import {
   ArrowRight,
   CalendarDays,
   Check,
-  ChevronDown,
   Clock,
   Coffee,
   Copy,
@@ -13,6 +12,7 @@ import {
   Plus,
   Search,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   Trash2,
   UserPlus,
@@ -193,8 +193,8 @@ const SchedulesPage = () => {
     return [
       { key: 'ALL', label: 'All schedules', count: schedules.length },
       { key: 'DAY', label: 'Core daytime', count: count('DAY') },
-      { key: 'OVERNIGHT', label: 'Crosses midnight', count: count('OVERNIGHT') },
-      { key: 'PART_WEEK', label: 'Part week', count: count('PART_WEEK') },
+      { key: 'OVERNIGHT', label: 'Rotational / 24-7', count: count('OVERNIGHT') },
+      { key: 'PART_WEEK', label: 'Flexible & remote', count: count('PART_WEEK') },
     ];
   }, [schedules]);
 
@@ -252,6 +252,35 @@ const SchedulesPage = () => {
 
   const fmtHour = (h) => `${String(h).padStart(2, '0')}:00`;
 
+  /* "Configure enterprise limits" opens the pattern that sets the default. */
+  const editThisFallback = () => {
+    const target = defaultSchedule;
+    if (!target) {
+      setModal({ mode: 'create', form: { ...emptyForm, departments: [] } });
+      return;
+    }
+    setModal({
+      mode: 'edit',
+      id: target.id,
+      form: {
+        name: target.name,
+        workingDays: target.workingDays || [],
+        startTime: target.startTime,
+        endTime: target.endTime,
+        breakMinutes: target.breakMinutes,
+        graceMinutes: target.graceMinutes,
+        minWorkingHours: target.minWorkingHours,
+        halfDayHours: target.halfDayHours,
+        overtimeEligible: target.overtimeEligible,
+        lateGrace: target.lateRule?.graceMinutes ?? target.graceMinutes ?? 10,
+        maxLatePerMonth: target.lateRule?.maxLatePerMonth ?? 3,
+        earlyGrace: target.earlyCheckoutRule?.graceMinutes ?? 10,
+        branch: target.branch || '',
+        departments: (target.departments || []).map((d) => String(d.id)),
+      },
+    });
+  };
+
   const coveragePath = (close) => {
     const max = Math.max(1, ...coverage.map((c) => c.staff));
     const points = coverage.map((p, i) => ({
@@ -287,29 +316,31 @@ const SchedulesPage = () => {
   return (
     <div className="space-y-5">
       {/* ── title ──────────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-        <div className="min-w-0">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-crewly-dim">
+      <div className="flex items-end">
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-crewly-dim">
             Operational cadence
-            <span className="mx-2 text-crewly-border">•</span>
-            {active.length} {active.length === 1 ? 'pattern' : 'patterns'} in force
+            <span className="mx-1.5 text-crewly-border">•</span>
+            <span className="text-crewly-green">
+              {active.length} {active.length === 1 ? 'pattern' : 'patterns'} in force
+            </span>
           </p>
-          <h1 className="mt-1 text-2xl font-bold sm:text-[28px]">Work schedules</h1>
-          <p className="mt-1 max-w-2xl text-sm text-crewly-dim">
+          <h1 className="mt-1 text-[26px] font-bold leading-tight sm:text-[34px]">Work schedules</h1>
+          <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-crewly-dim">
             Reusable working-day patterns — the hours, breaks and grace each group follows, and who
             is on each one.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="relative block min-w-[200px] flex-1 sm:flex-none">
+        <div className="ml-4 flex shrink-0 flex-wrap items-center justify-end gap-2">
+          <label className="relative block w-[210px]">
             <Search
               className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-crewly-dim"
               aria-hidden="true"
             />
             <input
-              className="input w-full pl-8 sm:w-56"
-              placeholder="Filter schedules"
+              className="input w-full py-2 pl-8 text-xs"
+              placeholder="Filter schedules…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               aria-label="Filter schedules"
@@ -320,9 +351,8 @@ const SchedulesPage = () => {
             className="btn-ghost inline-flex items-center gap-2 whitespace-nowrap px-3 py-2 text-xs font-bold"
             onClick={() => document.getElementById('schedule-list')?.scrollIntoView({ behavior: 'smooth' })}
           >
-            <ChevronDown className="h-4 w-4" aria-hidden="true" />
-            {buckets.filter((b) => b.key === bucket)[0]?.label || 'All'}
-            <span className="rounded-full bg-crewly-inset-strong px-1.5 text-[10px]">{visible.length}</span>
+            <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+            Filter ({visible.length})
           </button>
           <button
             type="button"
@@ -340,51 +370,71 @@ const SchedulesPage = () => {
           <span className="absolute right-3 top-3 rounded-full bg-crewly-green/12 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-crewly-green">
             Live config
           </span>
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-crewly-green/12 text-crewly-green">
-            <CalendarDays className="h-[18px] w-[18px]" aria-hidden="true" />
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-crewly-green/12 text-crewly-green">
+            <CalendarDays className="h-4 w-4" aria-hidden="true" />
           </span>
           <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-crewly-dim">
             Active patterns
           </p>
-          <p className="mt-0.5 flex items-baseline gap-2">
-            <span className="text-2xl font-bold">{active.length}</span>
+          <p className="mt-0.5 flex items-baseline gap-1.5">
+            <span className="text-[28px] font-bold leading-none">{active.length}</span>
             <span className="text-[11px] font-semibold text-crewly-green">Established</span>
           </p>
           <p className="mt-1 truncate text-[11px] text-crewly-dim">
             {active.map((s) => s.name).join(', ') || 'None yet'}
           </p>
+          <span className="mt-3 block h-[3px] overflow-hidden rounded-full bg-crewly-inset-strong">
+            <span
+              className="block h-full rounded-full bg-crewly-green"
+              style={{ width: `${schedules.length ? (active.length / schedules.length) * 100 : 0}%` }}
+            />
+          </span>
         </div>
 
         <div className="card relative p-4">
           <span className="absolute right-3 top-3 rounded-full bg-crewly-accent/15 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-crewly-orange">
             {staffTotal ? `${Math.round(((defaultSchedule ? staffOf(defaultSchedule) : 0) / staffTotal) * 100)}% staff` : 'No staff'}
           </span>
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-crewly-accent/15 text-crewly-orange">
-            <Users className="h-[18px] w-[18px]" aria-hidden="true" />
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-crewly-accent/15 text-crewly-orange">
+            <Users className="h-4 w-4" aria-hidden="true" />
           </span>
           <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-crewly-dim">
-            Largest assignment
+            Default assignment
           </p>
-          <p className="mt-0.5 truncate text-lg font-bold leading-tight">
+          <p className="mt-0.5 truncate text-[17px] font-bold leading-tight">
             {defaultSchedule?.name || '—'}
           </p>
           <p className="mt-1 text-[11px] text-crewly-dim">
             {defaultSchedule ? `${staffOf(defaultSchedule)} people on this pattern` : 'Nothing assigned yet'}
           </p>
+          <span className="mt-3 block h-[3px] overflow-hidden rounded-full bg-crewly-inset-strong">
+            <span
+              className="block h-full rounded-full bg-crewly-accent"
+              style={{
+                width: `${staffTotal && defaultSchedule ? (staffOf(defaultSchedule) / staffTotal) * 100 : 0}%`,
+              }}
+            />
+          </span>
         </div>
 
         <div className="card relative p-4">
           <span className="absolute right-3 top-3 rounded-full bg-crewly-inset-strong px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-crewly-dim">
             {graceValues.length && new Set(graceValues).size === 1 ? 'Standardized' : 'Per pattern'}
           </span>
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-crewly-inset-strong text-crewly-dim">
-            <AlarmClock className="h-[18px] w-[18px]" aria-hidden="true" />
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-crewly-inset-strong text-crewly-dim">
+            <AlarmClock className="h-4 w-4" aria-hidden="true" />
           </span>
           <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-crewly-dim">
-            Late grace allowance
+            Grace allowance
           </p>
-          <p className="mt-0.5 text-2xl font-bold">{graceRange}</p>
-          <p className="mt-1 text-[11px] text-crewly-dim">Before a punch counts as late</p>
+          <p className="mt-0.5 text-[28px] font-bold leading-none">{graceRange}</p>
+          <p className="mt-1 text-[11px] text-crewly-dim">Automated tolerance window</p>
+          <span className="mt-3 block h-[3px] overflow-hidden rounded-full bg-crewly-inset-strong">
+            <span
+              className="block h-full rounded-full bg-crewly-dim"
+              style={{ width: `${Math.min(100, ((Math.max(0, ...graceValues) || 0) / 30) * 100)}%` }}
+            />
+          </span>
         </div>
 
         <div className="card relative p-4">
@@ -392,46 +442,52 @@ const SchedulesPage = () => {
             <span className="h-1.5 w-1.5 rounded-full bg-crewly-green" aria-hidden="true" />
             {active.length === schedules.length ? 'Nominal' : 'Review'}
           </span>
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-crewly-green/12 text-crewly-green">
-            <ShieldCheck className="h-[18px] w-[18px]" aria-hidden="true" />
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-crewly-green/12 text-crewly-green">
+            <ShieldCheck className="h-4 w-4" aria-hidden="true" />
           </span>
           <p className="mt-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-crewly-dim">
-            Compliance
+            Compliance status
           </p>
-          <p className="mt-0.5 flex items-baseline gap-2">
-            <span className="text-2xl font-bold">
+          <p className="mt-0.5 flex items-baseline gap-1.5">
+            <span className="text-[28px] font-bold leading-none">
               {schedules.length ? Math.round((active.length / schedules.length) * 100) : 0}%
             </span>
-            <span className="text-[11px] font-semibold text-crewly-green">Active</span>
+            <span className="text-[11px] font-semibold text-crewly-green">Adhered</span>
           </p>
           <p className="mt-1 text-[11px] text-crewly-dim">
             {active.length} of {schedules.length} patterns carry a roster
           </p>
+          <span className="mt-3 block h-[3px] overflow-hidden rounded-full bg-crewly-inset-strong">
+            <span
+              className="block h-full rounded-full bg-crewly-green"
+              style={{ width: `${schedules.length ? (active.length / schedules.length) * 100 : 0}%` }}
+            />
+          </span>
         </div>
       </div>
 
       {/* ── buckets ────────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-wrap gap-2">
+      <div className="flex flex-col gap-2 rounded-xl border border-crewly-border bg-crewly-card px-2.5 py-2 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap gap-1.5">
           {buckets.map((b) => (
             <button
               key={b.key}
               type="button"
               onClick={() => setBucket(b.key)}
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                 bucket === b.key
-                  ? 'bg-crewly-inset-strong text-crewly-text'
-                  : 'border border-crewly-border text-crewly-dim hover:text-crewly-text'
+                  ? 'bg-crewly-inset-strong font-bold text-crewly-text'
+                  : 'text-crewly-dim hover:text-crewly-text'
               }`}
             >
               {b.label} ({b.count})
             </button>
           ))}
         </div>
-        <p className="flex items-center gap-2 text-[11px] text-crewly-dim">
-          Default tier:
-          <span className="rounded-full bg-crewly-green/12 px-2.5 py-1 font-bold text-crewly-green">
-            {defaultSchedule ? defaultSchedule.name : 'None assigned'}
+        <p className="flex flex-wrap items-center gap-2 px-2 text-[10px] font-bold uppercase tracking-[0.1em] text-crewly-dim">
+          Default tier
+          <span className="rounded-full bg-crewly-green/12 px-2.5 py-1 normal-case tracking-normal text-crewly-green">
+            {defaultSchedule ? `Automatic enrolment · ${defaultSchedule.name}` : 'Automatic enrolment'}
           </span>
         </p>
       </div>
@@ -442,11 +498,38 @@ const SchedulesPage = () => {
           const net = netMinutes(s);
           const days = s.workingDays || [];
           const staff = s.employees || [];
-          const category = CATEGORY[categoryOf(s)];
+          const isDefault = defaultSchedule?.id === s.id;
+          const overnight = categoryOf(s) === 'OVERNIGHT';
+          const editThis = () =>
+            setModal({
+              mode: 'edit',
+              id: s.id,
+              form: {
+                name: s.name,
+                workingDays: s.workingDays || [],
+                startTime: s.startTime,
+                endTime: s.endTime,
+                breakMinutes: s.breakMinutes,
+                graceMinutes: s.graceMinutes,
+                minWorkingHours: s.minWorkingHours,
+                halfDayHours: s.halfDayHours,
+                overtimeEligible: s.overtimeEligible,
+                lateGrace: s.lateRule?.graceMinutes ?? s.graceMinutes ?? 10,
+                maxLatePerMonth: s.lateRule?.maxLatePerMonth ?? 3,
+                earlyGrace: s.earlyCheckoutRule?.graceMinutes ?? 10,
+                branch: s.branch || '',
+                departments: (s.departments || []).map((d) => String(d.id)),
+              },
+            });
           return (
-            <section key={s.id} className={`card flex flex-col p-0 ${s.isActive ? '' : 'opacity-70'}`}>
-              <div className="flex items-start justify-between gap-2 border-b border-crewly-border px-4 pb-3 pt-3.5">
-                <div className="min-w-0">
+            <section
+              key={s.id}
+              className={`card flex flex-col p-0 ${isDefault ? 'border-t-2 border-t-crewly-accent' : ''} ${
+                s.isActive ? '' : 'opacity-70'
+              }`}
+            >
+              <div className="px-4 pb-2 pt-3.5">
+                <div className="flex items-start justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-crewly-inset px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
                       <span
@@ -455,94 +538,82 @@ const SchedulesPage = () => {
                       />
                       {s.isActive ? 'Active' : 'Inactive'}
                     </span>
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${category.tone}`}>
-                      {category.label}
-                    </span>
-                    {s.overtimeEligible ? (
-                      <span className="rounded-full bg-crewly-inset-strong px-2 py-0.5 text-[10px] font-bold text-crewly-dim">
-                        OT eligible
+                    {isDefault ? (
+                      <span className="rounded-full bg-crewly-accent/15 px-2 py-0.5 text-[10px] font-bold text-crewly-orange">
+                        Primary
                       </span>
                     ) : null}
+                    <span className="rounded-full border border-crewly-border px-2 py-0.5 text-[10px] font-semibold text-crewly-dim">
+                      {(s.departments || [])[0]?.name || CATEGORY[categoryOf(s)].label}
+                    </span>
                   </div>
-                  <h2 className="mt-2 line-clamp-2 text-lg font-bold leading-tight">{s.name}</h2>
-                  <p className="mt-0.5 text-[11px] text-crewly-dim">
-                    {(s.departments || []).map((d) => d.name).join(' · ') || 'No department assigned'}
-                    {s.branch ? ` · ${s.branch}` : ''}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setModal({
-                        mode: 'edit',
-                        id: s.id,
-                        form: {
-                          name: s.name,
-                          workingDays: s.workingDays || [],
-                          startTime: s.startTime,
-                          endTime: s.endTime,
-                          breakMinutes: s.breakMinutes,
-                          graceMinutes: s.graceMinutes,
-                          minWorkingHours: s.minWorkingHours,
-                          halfDayHours: s.halfDayHours,
-                          overtimeEligible: s.overtimeEligible,
-                          lateGrace: s.lateRule?.graceMinutes ?? s.graceMinutes ?? 10,
-                          maxLatePerMonth: s.lateRule?.maxLatePerMonth ?? 3,
-                          earlyGrace: s.earlyCheckoutRule?.graceMinutes ?? 10,
-                          branch: s.branch || '',
-                          departments: (s.departments || []).map((d) => String(d.id)),
-                        },
-                      })
-                    }
-                    className="rounded-lg p-1.5 text-crewly-dim transition hover:bg-crewly-inset hover:text-crewly-text"
-                    aria-label={`Edit ${s.name}`}
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                  {s.isActive ? (
+                  <div className="flex shrink-0 items-center gap-0.5">
                     <button
                       type="button"
-                      onClick={() => deactivate(s)}
-                      className="rounded-lg p-1.5 text-crewly-dim transition hover:bg-crewly-red/12 hover:text-crewly-red"
-                      aria-label={`Deactivate ${s.name}`}
+                      onClick={editThis}
+                      className="rounded-lg p-1.5 text-crewly-dim transition hover:bg-crewly-inset hover:text-crewly-text"
+                      aria-label={`Edit ${s.name}`}
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Pencil className="h-3.5 w-3.5" />
                     </button>
-                  ) : null}
+                    {s.isActive ? (
+                      <button
+                        type="button"
+                        onClick={() => deactivate(s)}
+                        className="rounded-lg p-1.5 text-crewly-dim transition hover:bg-crewly-red/12 hover:text-crewly-red"
+                        aria-label={`Deactivate ${s.name}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
+
+                <h2 className="mt-2 text-xl font-bold leading-tight">{s.name}</h2>
+                <p className="mt-0.5 text-[11px] leading-snug text-crewly-dim">
+                  {(s.departments || []).map((d) => d.name).join(' · ') ||
+                    'Not attached to a department yet'}
+                  {s.branch ? ` · ${s.branch}` : ''}
+                </p>
               </div>
 
-              <div className="flex flex-1 flex-col px-4 pb-4 pt-3">
-                <div className="rounded-xl bg-crewly-inset/60 p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
+              <div className="flex flex-1 flex-col px-4">
+                <div className="rounded-xl bg-crewly-inset/70 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
                       <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-crewly-dim">
                         Work window
                       </p>
                       <div className="mt-1 flex items-center gap-1.5">
-                        <Clock className="h-3.5 w-3.5 text-crewly-orange" aria-hidden="true" />
-                        <span className="text-sm font-bold tabular-nums">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-crewly-card">
+                          <Clock className="h-3 w-3 text-crewly-orange" aria-hidden="true" />
+                        </span>
+                        <span className="text-[15px] font-bold tabular-nums">
                           {s.startTime} <span className="text-crewly-dim">→</span> {s.endTime}
                         </span>
                       </div>
+                      {overnight ? (
+                        <p className="mt-1 pl-7 text-[10px] font-semibold text-crewly-orange">
+                          Crosses midnight — ends next day
+                        </p>
+                      ) : null}
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-crewly-green">
+                    <div className="shrink-0 rounded-lg bg-crewly-card px-2 py-1 text-right">
+                      <p className="text-[10px] font-bold leading-none">
                         {net ? `${(net / 60).toFixed(1)}h` : '—'}
+                        <span className="ml-0.5 font-semibold text-crewly-dim">Net</span>
                       </p>
-                      <p className="text-[10px] text-crewly-dim">net / day</p>
+                      <p className="mt-0.5 text-[9px] leading-none text-crewly-dim">Per day</p>
                     </div>
                   </div>
-                  <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-crewly-dim">
+                  <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-crewly-dim">
                     <span className="inline-flex items-center gap-1">
-                      <Coffee className="h-3 w-3" aria-hidden="true" /> Break {s.breakMinutes || 0} min
+                      <Coffee className="h-3 w-3" aria-hidden="true" /> Meal break:{' '}
+                      <span className="font-bold text-crewly-text">{s.breakMinutes || 0} min</span>
                     </span>
                     <span className="inline-flex items-center gap-1">
-                      <AlarmClock className="h-3 w-3" aria-hidden="true" /> Grace {graceOf(s)} min
-                    </span>
-                    <span className="inline-flex items-center gap-1">
-                      <Clock className="h-3 w-3" aria-hidden="true" /> Early-out {earlyOf(s)} min
+                      <AlarmClock className="h-3 w-3" aria-hidden="true" /> Grace window:{' '}
+                      <span className="font-bold text-crewly-text">{graceOf(s)} min</span>
                     </span>
                   </div>
                 </div>
@@ -552,9 +623,9 @@ const SchedulesPage = () => {
                     <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-crewly-dim">
                       Active working days
                     </p>
-                    <p className="text-[10px] text-crewly-dim">
+                    <p className="text-[10px] font-semibold text-crewly-dim">
                       {days.length} {days.length === 1 ? 'day' : 'days'} /{' '}
-                      {((net * days.length) / 60).toFixed(1)}h week
+                      {((net * days.length) / 60).toFixed(1)}h wk
                     </p>
                   </div>
                   <div className="mt-1.5 flex gap-1">
@@ -566,7 +637,7 @@ const SchedulesPage = () => {
                           className={`flex-1 rounded-md px-0.5 py-1 text-center text-[9px] font-bold uppercase ${
                             on
                               ? 'bg-crewly-green/15 text-crewly-green'
-                              : 'bg-crewly-inset-strong text-crewly-dim/60 line-through'
+                              : 'bg-crewly-inset-strong text-crewly-dim/50 line-through'
                           }`}
                         >
                           {on ? day.slice(0, 3) : 'Off'}
@@ -576,8 +647,12 @@ const SchedulesPage = () => {
                   </div>
                 </div>
 
-                <div className="mt-3 flex items-center gap-2.5">
-                  <div className="flex -space-x-2">
+                <button
+                  type="button"
+                  onClick={() => openAssign(s)}
+                  className="mt-3 flex w-full items-center gap-2.5 rounded-lg py-1 text-left transition hover:bg-crewly-inset/60"
+                >
+                  <span className="flex -space-x-2">
                     {staff.slice(0, 3).map((person) => (
                       <span
                         key={person.id || person._id || person.name}
@@ -592,53 +667,33 @@ const SchedulesPage = () => {
                         +{staff.length - 3}
                       </span>
                     ) : null}
-                  </div>
-                  <p className="min-w-0 text-[11px] leading-tight">
-                    <span className="font-semibold">
-                      {staff.length} {staff.length === 1 ? 'person' : 'people'}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[11px] font-bold leading-tight">
+                      {staff.length} Direct {staff.length === 1 ? 'Staff' : 'Staff'}
                     </span>
-                    <span className="block truncate text-crewly-dim">
-                      {(s.departments || []).map((d) => d.name).join(', ') || 'Direct assignment'}
+                    <span className="block truncate text-[10px] leading-tight text-crewly-dim">
+                      {(s.departments || []).map((d) => d.name).join(', ') || 'No department attached'}
                     </span>
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => openAssign(s)}
-                    className="ml-auto inline-flex items-center gap-1 rounded-lg border border-crewly-border px-2 py-1 text-[11px] font-semibold transition hover:bg-crewly-inset"
-                  >
-                    <UserPlus className="h-3.5 w-3.5" aria-hidden="true" /> Assign
-                  </button>
-                </div>
+                  </span>
+                  <ArrowRight className="h-4 w-4 shrink-0 text-crewly-dim" aria-hidden="true" />
+                </button>
               </div>
 
-              <div className="flex items-center gap-2 border-t border-crewly-border bg-crewly-inset/30 px-4 py-2.5">
+              <div className="mt-2 flex items-center gap-2 border-t border-crewly-border px-3 py-2.5">
                 <button
                   type="button"
-                  onClick={() =>
-                    setModal({
-                      mode: 'edit',
-                      id: s.id,
-                      form: {
-                        name: s.name,
-                        workingDays: s.workingDays || [],
-                        startTime: s.startTime,
-                        endTime: s.endTime,
-                        breakMinutes: s.breakMinutes,
-                        graceMinutes: s.graceMinutes,
-                        minWorkingHours: s.minWorkingHours,
-                        halfDayHours: s.halfDayHours,
-                        overtimeEligible: s.overtimeEligible,
-                        lateGrace: s.lateRule?.graceMinutes ?? s.graceMinutes ?? 10,
-                        maxLatePerMonth: s.lateRule?.maxLatePerMonth ?? 3,
-                        earlyGrace: s.earlyCheckoutRule?.graceMinutes ?? 10,
-                        branch: s.branch || '',
-                        departments: (s.departments || []).map((d) => String(d.id)),
-                      },
-                    })
-                  }
+                  onClick={editThis}
                   className="btn-ghost inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-bold"
                 >
                   <Pencil className="h-3.5 w-3.5" aria-hidden="true" /> Edit policy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openAssign(s)}
+                  className="btn-ghost inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-bold"
+                >
+                  <UserPlus className="h-3.5 w-3.5" aria-hidden="true" /> Assign
                 </button>
                 <button
                   type="button"
@@ -650,8 +705,9 @@ const SchedulesPage = () => {
                       .then(() => notify.success('Pattern copied to the clipboard.'))
                       .catch(() => notify.error('This browser did not allow the clipboard copy.'));
                   }}
-                  className="btn-ghost ml-auto inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-bold"
+                  className="btn-ghost ml-auto inline-flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-bold"
                   title="Copy this pattern"
+                  aria-label={`Copy ${s.name}`}
                 >
                   <Copy className="h-3.5 w-3.5" aria-hidden="true" />
                 </button>
@@ -679,14 +735,19 @@ const SchedulesPage = () => {
       </div>
 
       {/* ── coverage and policy ────────────────────────────────────────── */}
-      <div className="grid items-start gap-4 xl:grid-cols-3">
+      <div className="grid items-stretch gap-4 xl:grid-cols-3">
         <section className="card xl:col-span-2">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-crewly-dim">
-            Operational overlap
-          </p>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="card-title text-base font-bold">Daily capacity &amp; floor coverage</h2>
-            <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold text-crewly-dim">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-crewly-dim">
+                Operational overlap
+              </p>
+              <h2 className="card-title text-base font-bold">Daily capacity &amp; floor coverage profile</h2>
+              <p className="mt-0.5 text-[11px] text-crewly-dim">
+                People the active patterns put on the floor in each hour, 06:00–22:00.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2.5 text-[10px] font-semibold text-crewly-dim">
               {active.map((s) => (
                 <span key={s.id} className="inline-flex items-center gap-1.5">
                   <span
@@ -704,12 +765,9 @@ const SchedulesPage = () => {
               ))}
             </div>
           </div>
-          <p className="mt-0.5 text-[11px] text-crewly-dim">
-            People the active patterns put on the floor in each hour, 06:00–22:00.
-          </p>
 
-          <div className="mt-3">
-            <svg viewBox="0 0 640 150" className="h-40 w-full" role="img" aria-label="Staff on the floor by hour">
+          <div className="relative mt-3">
+            <svg viewBox="0 0 640 150" className="h-44 w-full" role="img" aria-label="Staff on the floor by hour">
               {[0, 1, 2].map((i) => (
                 <line
                   key={i}
@@ -722,11 +780,7 @@ const SchedulesPage = () => {
                   strokeDasharray="3 5"
                 />
               ))}
-              <path
-                d={coveragePath(true)}
-                className="fill-crewly-green/10"
-                stroke="none"
-              />
+              <path d={coveragePath(true)} className="fill-crewly-green/10" stroke="none" />
               <path
                 d={coveragePath(false)}
                 fill="none"
@@ -735,21 +789,28 @@ const SchedulesPage = () => {
                 strokeLinejoin="round"
                 strokeLinecap="round"
               />
-              {peakHours.map((p) => {
-                const index = coverage.findIndex((c) => c.hour === p.hour);
-                const max = Math.max(1, ...coverage.map((c) => c.staff));
-                return (
-                  <circle
-                    key={p.hour}
-                    cx={(index / (coverage.length - 1)) * 640}
-                    cy={130 - (p.staff / max) * 110}
-                    r="4"
-                    className="fill-crewly-orange"
-                  />
-                );
-              })}
+              {peak.staff ? (
+                <circle
+                  cx={(coverage.findIndex((c) => c.hour === peakHours[0].hour) / (coverage.length - 1)) * 640}
+                  cy={130 - (peak.staff / Math.max(1, peak.staff)) * 110}
+                  r="4.5"
+                  className="fill-crewly-orange"
+                />
+              ) : null}
             </svg>
-            <div className="flex justify-between text-[9px] font-semibold text-crewly-dim">
+            {peak.staff ? (
+              <span
+                className="pointer-events-none absolute top-3 rounded-full bg-crewly-card px-2 py-0.5 text-[9px] font-bold text-crewly-orange shadow-sm"
+                style={{
+                  left: `calc(${
+                    (coverage.findIndex((c) => c.hour === peakHours[0].hour) / (coverage.length - 1)) * 100
+                  }% - 60px)`,
+                }}
+              >
+                Peak overlap: {peak.staff} on duty
+              </span>
+            ) : null}
+            <div className="mt-1 flex justify-between text-[9px] font-semibold text-crewly-dim">
               {coverage
                 .filter((_, i) => i % 3 === 0)
                 .map((p) => (
@@ -758,43 +819,45 @@ const SchedulesPage = () => {
             </div>
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-crewly-inset/60 px-3 py-2 text-[11px]">
-            <span>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-crewly-border pt-2.5 text-[11px]">
+            <span className="text-crewly-dim">
               {peak.staff ? (
                 <>
-                  Peak overlap{' '}
-                  <span className="font-bold text-crewly-text">{peak.staff} people</span> ·{' '}
-                  {fmtHour(peakHours[0].hour)}–{fmtHour(peakHours[peakHours.length - 1].hour + 1)}
+                  Highest simultaneous occupancy spans{' '}
+                  <span className="font-bold text-crewly-text">
+                    {fmtHour(peakHours[0].hour)} → {fmtHour(peakHours[peakHours.length - 1].hour + 1)}
+                  </span>{' '}
+                  daily.
                 </>
               ) : (
                 'No one is assigned to an active pattern yet, so there is no coverage to plot.'
               )}
             </span>
-            <a className="inline-flex items-center gap-1 font-semibold text-crewly-green" href="/app/attendance/team">
-              Detailed roster <ArrowRight className="h-3 w-3" aria-hidden="true" />
+            <a className="inline-flex items-center gap-1 font-bold text-crewly-green" href="/app/attendance/team">
+              Detailed roster matrix <ArrowRight className="h-3 w-3" aria-hidden="true" />
             </a>
           </div>
         </section>
 
-        <section className="card">
+        <section className="card flex flex-col">
           <div className="flex items-start justify-between gap-2">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-crewly-dim">
                 Policy guidelines
               </p>
-              <h2 className="card-title text-base font-bold">Grace and break logic</h2>
+              <h2 className="card-title text-base font-bold">Automated grace logic</h2>
             </div>
             <Sparkles className="h-4 w-4 shrink-0 text-crewly-dim" aria-hidden="true" />
           </div>
 
           <p className="mt-2 text-[11px] leading-relaxed text-crewly-dim">
-            A punch inside the grace window is on time. Past it, the record is marked late and the
-            minutes are kept — the schedule in force at that moment decides the window.
+            Grace tolerance is checked against the punch itself. A check-in inside the allowance is
+            on time; past it the record is marked late and the minutes stay on the record.
           </p>
 
           <div className="mt-3 space-y-2">
             <div className="flex items-center justify-between gap-2 rounded-lg bg-crewly-inset/60 px-3 py-2">
-              <span className="text-[11px] text-crewly-dim">Late check-in grace</span>
+              <span className="text-[11px] text-crewly-dim">Late check-in grace limit</span>
               <span className="rounded-md bg-crewly-card px-2 py-0.5 text-[11px] font-bold">{graceRange}</span>
             </div>
             <div className="flex items-center justify-between gap-2 rounded-lg bg-crewly-inset/60 px-3 py-2">
@@ -804,9 +867,7 @@ const SchedulesPage = () => {
             <div className="flex items-center justify-between gap-2 rounded-lg bg-crewly-inset/60 px-3 py-2">
               <span className="text-[11px] text-crewly-dim">Half-day threshold</span>
               <span className="rounded-md bg-crewly-card px-2 py-0.5 text-[11px] font-bold">
-                {active.length
-                  ? `${Math.min(...active.map((s) => Number(s.halfDayHours) || 0))}h`
-                  : '—'}
+                {active.length ? `${Math.min(...active.map((s) => Number(s.halfDayHours) || 0))}h` : '—'}
               </span>
             </div>
             <div className="flex items-center justify-between gap-2 rounded-lg bg-crewly-inset/60 px-3 py-2">
@@ -826,11 +887,11 @@ const SchedulesPage = () => {
 
           <button
             type="button"
-            onClick={() => setModal({ mode: 'create', form: { ...emptyForm, departments: [] } })}
-            className="btn-primary mt-4 inline-flex w-full items-center justify-center gap-2 px-3 py-2 text-xs font-bold"
+            onClick={editThisFallback}
+            className="btn-primary mt-auto inline-flex w-full items-center justify-center gap-2 px-3 py-2 text-xs font-bold"
           >
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            New schedule
+            <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+            Configure enterprise limits
           </button>
         </section>
       </div>
