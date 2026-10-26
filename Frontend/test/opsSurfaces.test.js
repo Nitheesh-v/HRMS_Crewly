@@ -190,6 +190,14 @@ describe('performance page', () => {
     assert.match(perf, /min-h-0 flex-1 space-y-5 overflow-y-auto p-5/);
   });
 
+  test('a draft cycle is HR\'s, not everybody\'s', () => {
+    // GET /perf/cycles answers every role with drafts included. An employee
+    // must not see one as "the latest cycle", nor be told to start one.
+    assert.match(perf, /const drafts = isHR \? \(cyclesBox\.cycles \|\| \[\]\)\.filter\(\(c\) => c\.isDraft\) : \[\]/);
+    assert.match(perf, /const list = isHR \? \(cyclesBox\.cycles \|\| \[\]\) : startedCycles/);
+    assert.match(perf, /const startedCycles = useMemo\(\)?[\s\S]{0,120}filter\(\(c\) => !c\.isDraft\)/);
+  });
+
   test('the review dialog is built like the rest of the page', () => {
     // It used to be a slate panel that only happened to invert with the theme.
     assert.equal(perf.includes('bg-slate-800'), false);

@@ -246,10 +246,19 @@ export default function PerformancePage() {
   const [showNewCycle, setShowNewCycle] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  /* `GET /perf/cycles` answers every role with the company's cycles, drafts
+     included. A draft is HR's scratchpad — it has no cohort and nobody is
+     enrolled — so anyone else falling back to "the latest cycle" must not be
+     shown one as if it were running. */
+  const startedCycles = useMemo(
+    () => (cyclesBox.cycles || []).filter((c) => !c.isDraft),
+    [cyclesBox],
+  );
+
   const current = useMemo(() => {
-    const list = cyclesBox.cycles || [];
+    const list = isHR ? (cyclesBox.cycles || []) : startedCycles;
     return list.find((c) => c._id === cyclesBox.currentId) || list[0] || null;
-  }, [cyclesBox]);
+  }, [cyclesBox, isHR, startedCycles]);
 
   /* 35.1 — feedback is a toast now; the signature is unchanged. */
   /* 35.1 — feedback is a toast now; the signature is unchanged. */
@@ -298,7 +307,7 @@ export default function PerformancePage() {
   useEffect(() => { loadAll(); }, []);
 
   const cycle = mine?.cycle || current;
-  const drafts = (cyclesBox.cycles || []).filter((c) => c.isDraft);
+  const drafts = isHR ? (cyclesBox.cycles || []).filter((c) => c.isDraft) : [];
   const app = mine?.appraisal;
   const phase = cycle?.status;
   const goalsEditable = ['GOAL_SETTING', 'ACTIVE'].includes(phase);
@@ -478,7 +487,7 @@ export default function PerformancePage() {
         {
           icon: History,
           label: 'Cycles run',
-          value: (cyclesBox.cycles || []).length,
+          value: startedCycles.length,
           sub: closedCycles ? `${closedCycles} closed with a rating` : 'None closed yet',
         },
       ]
