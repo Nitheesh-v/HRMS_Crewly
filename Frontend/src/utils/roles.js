@@ -34,13 +34,17 @@ export const CREATION_RIGHTS = {
   [ROLES.EMPLOYEE]: [],
 };
 
+// One tone per role, all cut from the app palette: gold, olive, clay, pale
+// lime and sage. Blue and purple chips were the last cold colours in the app,
+// and next to the cream/sage surfaces they read as a second product. Each chip
+// is a tint with a legible ink on it in both themes (see docs/THEME.md).
 export const ROLE_STYLES = {
-  [ROLES.SUPER_ADMIN]: 'bg-crewly-orange/15 text-crewly-orange',
+  [ROLES.SUPER_ADMIN]: 'bg-crewly-orange/20 text-crewly-orange',
   [ROLES.COMPANY_ADMIN]: 'bg-crewly-green/15 text-crewly-green',
-  [ROLES.HR_MANAGER]: 'bg-blue-400/15 text-blue-300',
-  [ROLES.MANAGER]: 'bg-purple-400/15 text-purple-300',
-  [ROLES.TEAM_LEAD]: 'bg-yellow-400/15 text-yellow-300',
-  [ROLES.EMPLOYEE]: 'bg-white/10 text-crewly-dim',
+  [ROLES.HR_MANAGER]: 'bg-crewly-accent/20 text-crewly-text',
+  [ROLES.MANAGER]: 'bg-crewly-selected text-crewly-selected-text',
+  [ROLES.TEAM_LEAD]: 'bg-crewly-orange/15 text-crewly-orange',
+  [ROLES.EMPLOYEE]: 'bg-crewly-inset-strong text-crewly-dim',
 };
 
 export const roleLabel = (role) => role?.replace('_', ' ') || '';

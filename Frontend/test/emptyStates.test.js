@@ -115,7 +115,7 @@ describe('empty-state art', () => {
   });
 
   test('the palette stays inside the app theme', () => {
-    for (const colour of ['#3fb950', '#58a6ff', '#a371f7', '#f0a35e']) {
+    for (const colour of ['#7d9a55', '#8e9162', '#a8bba3', '#db9558']) {
       assert.ok(art.includes(colour), `scene palette must include ${colour}`);
     }
     // The ink is a theme token now (`--art-ink-rgb`): the scenes have to read on

@@ -37,8 +37,8 @@ const token = (name) => {
   return match ? match[1].trim() : null;
 };
 
-/** Only the solid colours participate in the contrast/warmth checks; the insets
- *  and hairlines are translucent brown, which is warm by construction. */
+/** Only the solid colours participate in the contrast/tint checks; the insets
+ *  and hairlines are translucent sage, which is tinted by construction. */
 const hexToken = (name) => {
   const value = token(name);
   return value && value.startsWith('#') ? value : null;
@@ -127,24 +127,36 @@ describe('light palette — warm paper, from tokens', () => {
     }
   });
 
-  test('it is brown, not grey', () => {
-    // Warm means red > green > blue in every neutral step. A neutral ramp would
-    // have r == g == b, which is exactly the template look this replaces.
-    const warm = (hex) => {
-      const value = hex.replace('#', '');
-      const [r, g, b] = [0, 2, 4].map((i) => parseInt(value.slice(i, i + 2), 16));
-      return r > g && g > b;
+  test('it is tinted, not grey', () => {
+    // Every neutral carries colour: cream and sage lean yellow-green (the blue
+    // channel is the lowest), ink leans pine (green highest). A neutral ramp
+    // would have r == g == b, which is exactly the template look this replaces.
+    const rgb = (hex) => [0, 2, 4].map((i) => parseInt(hex.replace('#', '').slice(i, i + 2), 16));
+    const cream = (hex) => {
+      const [r, g, b] = rgb(hex);
+      return r > b && g > b;
+    };
+    const pine = (hex) => {
+      const [r, g, b] = rgb(hex);
+      return g > r && g > b;
     };
 
-    for (const name of ['bg', 'card', 'border', 'text', 'dim']) {
-      assert.ok(warm(hexToken(name)), `--color-crewly-${name} (${hexToken(name)}) leans warm`);
+    for (const name of ['bg', 'card', 'border']) {
+      assert.ok(cream(hexToken(name)), `--color-crewly-${name} (${hexToken(name)}) is a warm cream`);
+    }
+    for (const name of ['text', 'dim', 'green']) {
+      assert.ok(pine(hexToken(name)), `--color-crewly-${name} (${hexToken(name)}) is a green-black ink`);
     }
 
-    // The translucent surfaces are brown too: red channel highest, blue lowest.
+    // The translucent surfaces are olive washes, not grey: blue stays lowest.
     const channels = token('inset').match(/[\d.]+/g).slice(0, 3).map(Number);
-    assert.ok(channels[0] > channels[1] && channels[1] > channels[2], `inset (${token('inset')}) is a warm brown`);
-    assert.equal(hexToken('bg'), '#f6efe4', 'the canvas is paper, not white');
-    assert.equal(hexToken('card'), '#fffbf4', 'cards are the same paper, a shade lighter');
+    assert.ok(channels[1] > channels[0] && channels[1] > channels[2], `inset (${token('inset')}) is a sage wash`);
+    // The owner's palette, verbatim: nothing here is #ffffff.
+    assert.equal(hexToken('bg'), '#f5f2e1', 'the canvas is cream, not white');
+    assert.equal(hexToken('card'), '#fcf9ea', 'cards are the named cream, a shade lighter');
+    assert.equal(hexToken('sidebar'), '#ebefd9', 'the rail is a sage tint, not the card');
+    assert.equal(hexToken('selected'), '#f2f7a0', 'the selected option is the named pale lime');
+    assert.equal(hexToken('accent'), '#db9558', 'action is the named clay');
   });
 
   test('the slate ramp is inverted and stays warm', () => {
@@ -195,7 +207,13 @@ describe('light palette — warm paper, from tokens', () => {
 
     // The same accents are also button *fills* with light type on top.
     assert.ok(contrast(hexToken('green'), bg) >= 4.5, 'a green button still carries light type');
-    assert.ok(contrast(hexToken('accent'), '#ffffff') >= 4.5, 'the clay action button carries white type');
+    // Clay is a mid-tone: white type on it is 2.5:1, so the action button
+    // carries dark pine type from its own token.
+    assert.ok(contrast(token('accent-ink'), hexToken('accent')) >= 4.5, 'the clay action button carries pine type');
+    assert.ok(contrast('#ffffff', hexToken('accent')) < 4.5, 'white never goes back on the clay fill');
+    // The selected row is a fill with ink on it, not a coloured text token.
+    assert.ok(contrast(token('selected-text'), hexToken('selected')) >= 4.5, 'the selected row is readable');
+    assert.ok(contrast(token('text'), hexToken('sidebar')) >= 4.5, 'labels on the sage rail are readable');
   });
 
   test('status hues flip far enough to read on paper', () => {
@@ -233,7 +251,7 @@ describe('light palette — warm paper, from tokens', () => {
             `${family}-${step} must darken sharply (${darkL}% -> ${lightL}%), or 300-level badges vanish on paper`,
           );
         } else if (value.startsWith('#')) {
-          const ratio = contrast(value, '#f6efe4');
+          const ratio = contrast(value, '#f5f2e1');
           assert.ok(
             ratio >= (step === 400 ? 3 : 4.5),
             `${family}-${step} (${value}) is ${ratio.toFixed(2)}:1 on paper`,
@@ -265,7 +283,11 @@ describe('light palette — warm paper, from tokens', () => {
   });
 
   test('the SVG primitives read their colours from the theme', () => {
-    assert.match(read('src/components/charts/DonutChart.jsx'), /stroke="var\(--chart-track\)"/);
+    // `var()` is not valid in an SVG presentation attribute, so a token colour
+    // has to travel through `style` — hence `stroke: 'var(--chart-track)'`
+    // rather than stroke="var(--chart-track)".
+    assert.match(read('src/components/charts/DonutChart.jsx'), /stroke: 'var\(--chart-track\)'/);
+    assert.match(read('src/components/charts/DonutChart.jsx'), /stroke: segment\.color/);
     assert.match(read('src/components/charts/RingGauge.jsx'), /trackColor = 'var\(--chart-track\)'/);
     assert.match(read('src/components/charts/StackedBar.jsx'), /bg-crewly-inset/);
     assert.match(read('src/components/common/EmptyIllustration.jsx'), /rgba\(var\(--art-ink-rgb\)/);

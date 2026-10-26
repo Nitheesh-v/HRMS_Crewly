@@ -4,7 +4,9 @@
 // not expose avatars. Initials plus a deterministic tint give every sender a
 // stable identity that costs nothing and leaks nothing.
 
-const TINTS = ["#4493f8", "#a371f7", "#3fb950", "#d29922", "#db61a2", "#39c5cf", "#f0883e"];
+// Initials tiles: one tint per person, drawn from the app palette (olive,
+// gold, clay, sage) so a chat list reads as Crewly rather than as a rainbow.
+const TINTS = ["#7d9a55", "#a8bba3", "#b2bd7e", "#cbb95e", "#db9558", "#97a87a", "#c98f7a"];
 
 const initialsOf = (name) => {
   const parts = String(name || "").trim().split(/\s+/).filter(Boolean);

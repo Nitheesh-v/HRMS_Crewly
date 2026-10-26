@@ -218,10 +218,10 @@ const DashboardPage = () => {
   // reports them separately) and `absent` is "working day elapsed with no
   // record", so the four slices add up to the working days of the month.
   const attendanceSegments = [
-    { label: 'Present', value: a.present || 0, color: '#3fb950' },
-    { label: 'Late', value: a.late || 0, color: '#f0a35e' },
-    { label: 'Half day', value: a.halfDay || 0, color: '#58a6ff' },
-    { label: 'Absent', value: a.absent || 0, color: '#f85149' },
+    { label: 'Present', value: a.present || 0, color: 'var(--chart-present)' },
+    { label: 'Late', value: a.late || 0, color: 'var(--chart-late)' },
+    { label: 'Half day', value: a.halfDay || 0, color: 'var(--chart-half)' },
+    { label: 'Absent', value: a.absent || 0, color: 'var(--chart-absent)' },
   ].filter((segment) => segment.value > 0);
   const attendanceTotal = attendanceSegments.reduce((sum, segment) => sum + segment.value, 0);
   const attendancePct = attendanceTotal
@@ -230,7 +230,14 @@ const DashboardPage = () => {
 
   // Leave bars keep a colour per leave type so the eye can follow one quota
   // across months; the four tones are the app's own chart palette.
-  const LEAVE_COLORS = ['#a371f7', '#58a6ff', '#3fb950', '#f0a35e', '#f778ba', '#39c5cf'];
+  const LEAVE_COLORS = [
+    'var(--chart-series-1)',
+    'var(--chart-series-2)',
+    'var(--chart-series-3)',
+    'var(--chart-series-4)',
+    'var(--chart-series-5)',
+    'var(--chart-series-6)',
+  ];
   const leaveRows = balances
     .filter((balance) => (balance.total || 0) > 0)
     .map((balance, index) => ({
@@ -245,10 +252,10 @@ const DashboardPage = () => {
   // Bar chart units are people: each member row already carries today's status
   // (or null when they have not marked), so the four bars are a real headcount.
   const teamStatusBars = [
-    { label: 'Present', value: 0, color: '#3fb950' },
-    { label: 'Late', value: 0, color: '#f0a35e' },
-    { label: 'Half day', value: 0, color: '#58a6ff' },
-    { label: 'Not marked', value: 0, color: 'rgba(139,148,158,0.55)' },
+    { label: 'Present', value: 0, color: 'var(--chart-present)' },
+    { label: 'Late', value: 0, color: 'var(--chart-late)' },
+    { label: 'Half day', value: 0, color: 'var(--chart-half)' },
+    { label: 'Not marked', value: 0, color: 'var(--chart-muted)' },
   ];
   (team?.members || []).forEach((member) => {
     const status = String(member.today || '').toUpperCase();
@@ -262,8 +269,8 @@ const DashboardPage = () => {
   const teamAbsent = team?.today?.absent || 0;
   const teamTotal = Math.max(0, Number(team?.memberCount) || 0);
   const teamSegments = [
-    { label: 'Present', value: teamPresent, color: '#3fb950' },
-    { label: 'Not marked', value: teamAbsent, color: 'rgba(139,148,158,0.45)' },
+    { label: 'Present', value: teamPresent, color: 'var(--chart-present)' },
+    { label: 'Not marked', value: teamAbsent, color: 'var(--chart-muted)' },
   ].filter((segment) => segment.value > 0);
   const hasTeamChart = Boolean(isSenior && team && teamTotal > 0);
 
@@ -338,7 +345,7 @@ const DashboardPage = () => {
                     max={goal}
                     size={104}
                     thickness={9}
-                    color={weekTarget.qualified ? "#3fb950" : "#58a6ff"}
+                    color={weekTarget.qualified ? "var(--chart-present)" : "var(--chart-half)"}
                     centerValue={`${pct}%`}
                     centerLabel="of the week"
                     className="shrink-0"
@@ -355,8 +362,8 @@ const DashboardPage = () => {
                     <StackedBar
                       height={6}
                       parts={[
-                        { label: "Achieved", value: done, color: weekTarget.qualified ? "#3fb950" : "#58a6ff" },
-                        { label: "Still to go", value: Math.max(0, goal - done), color: "rgba(139,148,158,0.28)" },
+                        { label: "Achieved", value: done, color: weekTarget.qualified ? "var(--chart-present)" : "var(--chart-half)" },
+                        { label: "Still to go", value: Math.max(0, goal - done), color: "var(--chart-muted-soft)" },
                       ]}
                     />
                     <p className="mt-1.5 text-[11px] leading-snug text-crewly-dim">

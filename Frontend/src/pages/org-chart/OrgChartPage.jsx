@@ -42,10 +42,10 @@ const FULL_ORG_ROLES = ['COMPANY_ADMIN', 'HR_MANAGER'];
 // from here, so a MANAGER looks the same everywhere on the page.
 const ROLE_BADGE = {
   COMPANY_ADMIN: 'bg-crewly-green/15 text-crewly-green',
-  HR_MANAGER: 'bg-blue-500/15 text-blue-400',
-  MANAGER: 'bg-purple-500/15 text-purple-400',
+  HR_MANAGER: 'bg-crewly-accent/20 text-crewly-text',
+  MANAGER: 'bg-crewly-selected text-crewly-selected-text',
   TEAM_LEAD: 'bg-crewly-orange/15 text-crewly-orange',
-  EMPLOYEE: 'bg-gray-500/15 text-gray-400',
+  EMPLOYEE: 'bg-crewly-inset-strong text-crewly-dim',
 };
 
 const ROLE_LABEL = {
@@ -465,7 +465,7 @@ const OrgChartPage = () => {
             <div className="flex flex-wrap items-center gap-2">
               <StatPill tone="bg-crewly-green" value={stats.people} label="Total Members" />
               <StatPill tone="bg-crewly-orange" value={stats.departments} label="Departments" />
-              <StatPill tone="bg-blue-400" value={stats.direct} label="Direct Reports" />
+              <StatPill tone="bg-crewly-accent" value={stats.direct} label="Direct Reports" />
             </div>
           )}
         </div>
@@ -484,7 +484,7 @@ const OrgChartPage = () => {
                   aria-pressed={tab === id}
                   className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition sm:px-3 ${
                     tab === id
-                      ? 'bg-crewly-card text-crewly-text shadow-sm'
+                      ? 'bg-crewly-selected font-semibold text-crewly-selected-text shadow-sm'
                       : 'text-crewly-dim hover:text-crewly-text'
                   }`}
                 >

@@ -9,10 +9,19 @@ const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct'
 const mLabel = (m) => MONTH_SHORT[Number(m.slice(5)) - 1];
 const moneyK = (v) => (v >= 100000 ? `₹${(v / 100000).toFixed(1)}L` : v >= 1000 ? `₹${Math.round(v / 1000)}k` : `₹${v}`);
 
-const ROLE_COLORS = ['#3fb950', '#58a6ff', '#bc8cff', '#f0a35e', '#8b949e', '#f85149'];
+// Chart series follow the theme (see --chart-series-* in style.css), so the
+// same bars read olive and clay on paper and on pine.
+const ROLE_COLORS = [
+  'var(--chart-series-1)',
+  'var(--chart-series-2)',
+  'var(--chart-series-3)',
+  'var(--chart-series-4)',
+  'var(--chart-series-5)',
+  'var(--chart-series-6)',
+];
 
 // tiny CSS bar chart — no dependency, respects dark theme
-const BarChart = ({ title, data, formatY = (v) => v, color = '#3fb950', labelKey = 'month', valueKey = 'value', sub }) => {
+const BarChart = ({ title, data, formatY = (v) => v, color = 'var(--chart-series-1)', labelKey = 'month', valueKey = 'value', sub }) => {
   const max = Math.max(1, ...data.map((d) => d[valueKey]));
   return (
     <div className="card p-5">
@@ -119,13 +128,13 @@ export default function AnalyticsPage() {
         {/* payroll trend */}
         <BarChart title="Payroll Trend (net pay)" sub="last 6 months"
           data={payrollTrend.map((p) => ({ ...p, value: p.netPay }))}
-          formatY={moneyK} color="#3fb950" />
+          formatY={moneyK} color="var(--chart-series-1)" />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-1">
         <BarChart title="Leave Requests Trend" sub="last 6 months"
           data={leaveTrend.map((l) => ({ ...l, value: l.count }))}
-          formatY={(v) => `${v} req`} color="#58a6ff" />
+          formatY={(v) => `${v} req`} color="var(--chart-series-2)" />
       </div>
     </div>
   );

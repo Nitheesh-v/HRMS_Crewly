@@ -311,22 +311,22 @@ const groupMenu = (items = []) => {
 const itemClass = ({ isActive }) =>
   `flex items-center gap-2.5 rounded-lg py-2 pl-8 pr-3 text-[13px] transition ${
     isActive
-      ? "bg-crewly-green/10 text-crewly-green"
-      : "text-crewly-dim hover:bg-crewly-bg hover:text-crewly-text"
+      ? "bg-crewly-selected font-semibold text-crewly-selected-text"
+      : "text-crewly-dim hover:bg-crewly-inset hover:text-crewly-text"
   }`;
 
 const singleClass = ({ isActive }) =>
   `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
     isActive
-      ? "bg-crewly-green/10 text-crewly-green"
-      : "text-crewly-dim hover:bg-crewly-bg hover:text-crewly-text"
+      ? "bg-crewly-selected font-semibold text-crewly-selected-text"
+      : "text-crewly-dim hover:bg-crewly-inset hover:text-crewly-text"
   }`;
 
 const headerClass = (active) =>
   `flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
     active
-      ? "text-crewly-text"
-      : "text-crewly-dim hover:bg-crewly-bg hover:text-crewly-text"
+      ? "bg-crewly-inset text-crewly-text"
+      : "text-crewly-dim hover:bg-crewly-inset hover:text-crewly-text"
   }`;
 
 const Sidebar = ({ menu = [], mobile = false, onClose }) => {
@@ -421,7 +421,7 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
             handleNav();
             dispatch(openAssistantPanel());
           }}
-          className="flex h-10 w-full items-center justify-center rounded-lg text-crewly-dim transition hover:bg-crewly-bg hover:text-crewly-text"
+          className="flex h-10 w-full items-center justify-center rounded-lg text-crewly-dim transition hover:bg-crewly-inset hover:text-crewly-text"
         >
           <Bot aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={1.8} />
         </button>
@@ -436,7 +436,7 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
           handleNav();
           dispatch(openAssistantPanel());
         }}
-        className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-crewly-dim transition hover:bg-crewly-bg hover:text-crewly-text"
+        className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-crewly-dim transition hover:bg-crewly-inset hover:text-crewly-text"
       >
         <Bot aria-hidden="true" className="h-[17px] w-[17px] shrink-0" strokeWidth={1.8} />
         <span className="min-w-0 flex-1 truncate text-left">HR Assistant</span>
@@ -541,7 +541,7 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
             className={`flex h-10 w-full items-center justify-center rounded-lg transition ${
               activeGroupId === group.id
                 ? "bg-crewly-green/10 text-crewly-green"
-                : "text-crewly-dim hover:bg-crewly-bg hover:text-crewly-text"
+                : "text-crewly-dim hover:bg-crewly-inset hover:text-crewly-text"
             }`}
           >
             <Icon aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={1.8} />
@@ -554,7 +554,7 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
   // Mobile drawer variant: full height, overlay-style, always expanded
   if (mobile) {
     return (
-      <aside className="flex h-dvh w-full flex-col border-r border-crewly-border bg-crewly-card py-4 px-3 overflow-hidden">
+      <aside className="flex h-dvh w-full flex-col border-r border-crewly-border bg-crewly-sidebar py-4 px-3 overflow-hidden">
         <div className="flex items-center justify-between gap-2 px-1">
           <div className="flex items-center gap-1.5">
             <img src="/logo-crewly.png" alt="Crewly" className="h-8 w-auto crewly-logo" />
@@ -563,7 +563,7 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-2 text-crewly-dim hover:bg-crewly-bg hover:text-crewly-text"
+            className="rounded-lg p-2 text-crewly-dim hover:bg-crewly-inset hover:text-crewly-text"
             aria-label="Close menu"
           >
             <X className="h-5 w-5" />
@@ -671,7 +671,7 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
   // Desktop variant (responsive: collapsed on lg, full on xl, but keep logic)
   return (
     <aside
-      className={`sticky top-0 hidden h-screen shrink-0 flex-col border-r border-crewly-border bg-crewly-card py-5 transition-[width] duration-150 lg:flex ${
+      className={`sticky top-0 hidden h-screen shrink-0 flex-col border-r border-crewly-border bg-crewly-sidebar py-5 transition-[width] duration-150 lg:flex ${
         collapsed ? "w-16 px-2" : "w-60 xl:w-64 px-3"
       }`}
     >
@@ -696,7 +696,7 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
               type="button"
               onClick={() => setCollapsed(true)}
               title="Collapse sidebar"
-              className="rounded p-1 text-crewly-dim hover:bg-crewly-bg hover:text-crewly-text"
+              className="rounded p-1 text-crewly-dim hover:bg-crewly-inset hover:text-crewly-text"
             >
               <ChevronsLeft aria-hidden="true" className="h-4 w-4" />
             </button>
@@ -709,7 +709,7 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
           type="button"
           onClick={() => setCollapsed(false)}
           title="Search pages"
-          className="mt-4 flex h-9 w-full items-center justify-center rounded-lg text-crewly-dim hover:bg-crewly-bg hover:text-crewly-text"
+          className="mt-4 flex h-9 w-full items-center justify-center rounded-lg text-crewly-dim hover:bg-crewly-inset hover:text-crewly-text"
         >
           <Search aria-hidden="true" className="h-4 w-4" />
         </button>
@@ -820,7 +820,7 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
             type="button"
             onClick={() => setCollapsed(false)}
             title="Expand sidebar"
-            className="mx-auto rounded p-1 hover:bg-crewly-bg hover:text-crewly-text"
+            className="mx-auto rounded p-1 hover:bg-crewly-inset hover:text-crewly-text"
           >
             <ChevronsRight aria-hidden="true" className="h-4 w-4" />
           </button>

@@ -41,7 +41,7 @@ export const SplitRow = ({
   label,
   used = 0,
   total = 0,
-  colors = ['#58a6ff', 'rgba(88,166,255,0.22)'],
+  colors = ['var(--chart-half)', 'var(--chart-muted-soft)'],
   unit = 'days',
 }) => {
   const usedValue = Math.max(0, Number(used) || 0);

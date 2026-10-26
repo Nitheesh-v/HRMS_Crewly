@@ -42,7 +42,7 @@ const DonutChart = ({
           cx={center}
           cy={center}
           r={radius}
-          stroke="var(--chart-track)"
+          style={{ stroke: 'var(--chart-track)' }}
           strokeWidth={thickness}
         />
         {total > 0 &&
@@ -60,12 +60,11 @@ const DonutChart = ({
               <circle
                 key={segment.label || index}
                 className="chart-segment"
-                style={{ animationDelay: `${index * 90}ms` }}
                 cx={center}
                 cy={center}
                 r={radius}
                 pathLength={100}
-                stroke={segment.color}
+                style={{ animationDelay: `${index * 90}ms`, stroke: segment.color }}
                 strokeWidth={thickness}
                 strokeLinecap="butt"
                 strokeDasharray={`${arc} ${100 - arc}`}

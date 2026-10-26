@@ -15,22 +15,25 @@
 // low alpha so they read as paper cut-outs, not as alerts.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const GREEN = '#3fb950';
-const BLUE = '#58a6ff';
-const PURPLE = '#a371f7';
-const ORANGE = '#f0a35e';
-const PINK = '#f778ba';
-const TEAL = '#39c5cf';
-const YELLOW = '#e3b341';
+// The scenes keep their own mid-tone palette rather than the theme's tokens:
+// these hexes are picked to sit at the midpoint of both surfaces (cream paper
+// and pine card), and they are drawn with a low-alpha wash, so one set works in
+// both themes — which also keeps them valid inside SVG presentation attributes,
+// where `var()` is not reliable.
+const GREEN = '#7d9a55';
+const BLUE = '#8e9162';
+const PURPLE = '#a8bba3';
+const ORANGE = '#db9558';
+const PINK = '#c98f7a';
+const TEAL = '#97a87a';
+const YELLOW = '#cbb95e';
 
-// Ink and paper are theme tokens, not literals: the same scene has to read on a
-// near-black card and on cream paper. Everything else here keeps its mid-tone
-// accent hexes because those are the illustration's own colours, and they are
-// legible on both surfaces.
-const ink = (alpha = 0.55) => `rgba(var(--art-ink-rgb), ${alpha})`;
-const dim = (alpha = 0.35) => `rgba(var(--art-dim-rgb), ${alpha})`;
 const wash = (hex, alpha = 0.18) => `${hex}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`;
 
+// Ink and paper *are* theme tokens: a dashed line has to be legible on a pine
+// card and on cream paper.
+const ink = (alpha = 0.55) => `rgba(var(--art-ink-rgb), ${alpha})`;
+const dim = (alpha = 0.35) => `rgba(var(--art-dim-rgb), ${alpha})`;
 // The plate every scene sits on: two tinted discs, a dashed orbit, a floor
 // shadow and a halo that breathes. `tone` is the scene's own colour, `alt` the
 // second voice — that pairing is what makes these read as illustrations rather

@@ -10,7 +10,7 @@ const RingGauge = ({
   max = 100,
   size = 116,
   thickness = 10,
-  color = '#3fb950',
+  color = 'var(--chart-present)',
   trackColor = 'var(--chart-track)',
   centerValue,
   centerLabel,
@@ -35,14 +35,20 @@ const RingGauge = ({
           aria-hidden="true"
           fill="none"
         >
-          <circle cx={center} cy={center} r={radius} stroke={trackColor} strokeWidth={thickness} />
+          <circle
+            cx={center}
+            cy={center}
+            r={radius}
+            style={{ stroke: trackColor }}
+            strokeWidth={thickness}
+          />
           <circle
             className="chart-ring"
             cx={center}
             cy={center}
             r={radius}
             pathLength={100}
-            stroke={color}
+            style={{ stroke: color }}
             strokeWidth={thickness}
             strokeLinecap="round"
             strokeDasharray={`${Math.max(pct, 1)} ${100 - Math.max(pct, 1)}`}

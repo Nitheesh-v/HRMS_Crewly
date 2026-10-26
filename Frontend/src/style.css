@@ -2,20 +2,37 @@
 
 /* ---- Crewly brand theme (use as: bg-crewly-bg, text-crewly-green, border-crewly-border, ...) ---- */
 @theme {
-  --color-crewly-bg: #0d1117;
-  --color-crewly-card: #161b22;
-  --color-crewly-border: #30363d;
-  --color-crewly-text: #e6edf3;
-  --color-crewly-dim: #8b949e;
-  --color-crewly-green: #3fb950;
-  --color-crewly-orange: #f0a35e;
-  --color-crewly-red: #f85149;
+  /* ---- The app's night palette: pine, olive and clay.
+     Not the blue-black GitHub slab the first build borrowed — a green-black
+     forest. Depth comes from pine (sidebar → bg → card), health from olive,
+     patience from the pale gold, action from clay. The sidebar is the deepest
+     surface so the content reads as lit from the page, not from the rail. */
+  --color-crewly-bg: #1a2b27;
+  --color-crewly-card: #21332c;
+  --color-crewly-sidebar: #152420;
+  --color-crewly-border: #33483e;
+  --color-crewly-text: #edefd9;
+  --color-crewly-dim: #a7b291;
+  --color-crewly-green: #b2bd7e;
+  --color-crewly-orange: #d9d28b;
+  --color-crewly-red: #e08a6e;
+
+  /* The selected row — one nav entry, one tab, one chip. On paper it is the
+     pale lime highlight; at night it is olive at low alpha with gold type. */
+  --color-crewly-selected: rgba(178, 189, 126, 0.16);
+  --color-crewly-selected-text: #d9d28b;
 
   /* The action accent used by the kiosk and attendance punch buttons. Five of
      them already asked for `bg-crewly-accent` — the token simply never existed,
-     so they rendered as text with no button under them. It is the landing page's
-     clay, deepened enough to carry white type in both themes. */
-  --color-crewly-accent: #c2562f;
+     so they rendered as text with no button under them. It is the same clay the
+     light theme uses, deepened for the night surfaces.
+
+     `accent-ink` is the label that goes *on* it. Clay is a mid-tone: white type
+     on #db9558 measures 2.5:1 and fails, so the button carries dark pine type
+     in both themes — its own token rather than a `text-white` at every call
+     site. */
+  --color-crewly-accent: #c97f42;
+  --color-crewly-accent-ink: #17251f;
 
   /* Surfaces *inside* a card: progress tracks, quote blocks, skeleton bars,
      quiet chips. The dark theme builds all of them out of white at a low alpha,
@@ -28,6 +45,23 @@
   --color-crewly-inset-heavy: rgba(255, 255, 255, 0.2);
   --color-crewly-hairline: rgba(255, 255, 255, 0.05);
   --color-crewly-hairline-strong: rgba(255, 255, 255, 0.1);
+
+  /* The slate ramp, re-cut in the app's greens. The product uses slate
+     utilities for type, borders and dividers far more than it uses the brand
+     tokens, so the ramp is part of the palette, not a Tailwind default:
+     blue-grey next to pine reads as two unrelated products. Lightness is
+     unchanged from Tailwind's; only the hue is. */
+  --color-slate-950: #16241f;
+  --color-slate-900: #1a2b27;
+  --color-slate-800: #21332c;
+  --color-slate-700: #2c4239;
+  --color-slate-600: #3b5247;
+  --color-slate-500: #8b9a86;
+  --color-slate-400: #a9b6a0;
+  --color-slate-300: #c2cbab;
+  --color-slate-200: #dbe0c6;
+  --color-slate-100: #edefd9;
+  --color-slate-50: #f8f9ef;
 
   /* Public home — warm paper, ink, lilac and forest.
      Cream canvas, near-black ink, a lilac action and a deep green that carries
@@ -73,10 +107,32 @@
 /* Not utilities — these are read by inline SVG attributes (chart tracks, the
    illustrations' ink) and by the theme block further down. */
 :root {
-  --chart-track: rgba(230, 237, 243, 0.075);
-  --art-ink-rgb: 230, 237, 243;
-  --art-dim-rgb: 139, 148, 158;
-  --art-plate: #161b22;
+  --chart-track: rgba(237, 239, 217, 0.1);
+  /* Chart and illustration colours are palette tokens, not call-site hexes:
+     they are read from SVG attributes and inline styles, so they cannot be
+     Tailwind utilities. Night = olive, gold and clay on pine. */
+  --chart-present: #b2bd7e;
+  --chart-late: #d9d28b;
+  --chart-half: #8e9162;
+  --chart-absent: #e08a6e;
+  --chart-muted: rgba(142, 145, 98, 0.55);
+  --chart-muted-soft: rgba(142, 145, 98, 0.28);
+  --chart-series-1: #b2bd7e;
+  --chart-series-2: #d9d28b;
+  --chart-series-3: #8e9162;
+  --chart-series-4: #c97f42;
+  --chart-series-5: #a8bba3;
+  --chart-series-6: #97a87a;
+  --art-green: #b2bd7e;
+  --art-blue: #8e9162;
+  --art-purple: #a8bba3;
+  --art-orange: #d9d28b;
+  --art-pink: #c98f7a;
+  --art-teal: #97a87a;
+  --art-yellow: #d9d28b;
+  --art-ink-rgb: 237, 239, 217;
+  --art-dim-rgb: 167, 178, 145;
+  --art-plate: #21332c;
   --toast-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
 }
 
@@ -142,8 +198,10 @@ h3:not(.landing-shell h3):not(.auth-shell h3) {
 
 /* ---- Reusable building blocks (fully responsive) ---- */
 @layer components {
+  /* One action per screen, and it is clay — the palette's warmest token. Clay
+     is a mid-tone, so the label comes from `accent-ink` (pine), not white. */
   .btn-primary {
-    @apply inline-flex items-center justify-center rounded-lg bg-crewly-green px-4 py-2 sm:px-5 sm:py-2.5 text-sm sm:text-[15px] font-semibold text-crewly-bg transition hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center rounded-lg bg-crewly-accent px-4 py-2 sm:px-5 sm:py-2.5 text-sm sm:text-[15px] font-semibold text-crewly-accent-ink transition hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-ghost {
     @apply inline-flex items-center justify-center rounded-lg border border-crewly-border px-4 py-2 sm:px-5 sm:py-2.5 text-sm sm:text-[15px] text-crewly-text transition hover:border-crewly-green hover:bg-crewly-bg active:scale-[0.98];
@@ -1046,17 +1104,19 @@ html:has(.landing-shell) {
   }
 }
 
-/* 12b) App light theme — "warm paper".
+/* 12b) App light theme — "cream, sage and clay".
    The app was designed dark: near-black panels, white at low alpha for the soft
    surfaces, slate for everything the brand tokens do not cover. This block turns
-   that same component tree into a brown paper one, from the tokens the utilities
+   that same component tree into a cream one, from the tokens the utilities
    already read — no component has to know which theme it is in.
 
-   Why brown and not grey: the public home is cream, the auth screens are a warm
-   charcoal. A neutral white app would look like a third product wedged between
-   them. Paper (#f6efe4) with cocoa ink (#2b211a) and the brand's clay/green
-   accents keeps the same warm family, so switching the toggle feels like
-   changing the light in the room, not changing the app.
+   Why cream and not white: the public home is warm paper and the auth screens
+   are a warm charcoal; a white app would look like a third product wedged
+   between them, and a page of #ffffff cards is the template look the owner
+   rejected. Three surfaces carry the palette: cream canvas (#f5f2e1), a lighter
+   cream card (#fcf9ea), and a sage-tinted rail (#ebefd9), with pale lime
+   (#f2f7a0) marking where you are and clay (#db9558) for the one action on the
+   screen. Ink is pine (#22302a) — never black.
 
    The lever is one attribute: `data-theme="light"` on <html>. index.html writes
    it before the first paint (localStorage), so a light-mode reload never flashes
@@ -1072,37 +1132,53 @@ html:has(.landing-shell) {
 html[data-theme='light'] {
   color-scheme: light;
 
-  --color-crewly-bg: #f6efe4;
-  --color-crewly-card: #fffbf4;
-  --color-crewly-border: #e4d6c1;
-  --color-crewly-text: #2b211a;
-  --color-crewly-dim: #6f5b49;
-  /* The accents are darkened to the point where they still work as *text* on
-     paper and still carry cream type as a button fill — both directions clear
-     4.5:1 (green 5.0:1, orange 4.8:1, red 5.2:1 against #f6efe4). The dark
-     theme's neon versions would be legible but shouty here. */
-  --color-crewly-green: #2b7345;
-  --color-crewly-orange: #955c14;
-  --color-crewly-red: #b23a2c;
-  --color-crewly-accent: #a8481f;
+  /* ── Cream, sage and clay ────────────────────────────────────────────────
+     The light theme is not the dark theme with the lights on, and not a white
+     page with grey chrome. Three surfaces, three tints:
 
-  --color-crewly-inset: rgba(74, 52, 34, 0.05);
-  --color-crewly-inset-strong: rgba(74, 52, 34, 0.09);
-  --color-crewly-inset-heavy: rgba(74, 52, 34, 0.16);
-  --color-crewly-hairline: rgba(74, 52, 34, 0.07);
-  --color-crewly-hairline-strong: rgba(74, 52, 34, 0.12);
+       canvas   #f5f2e1  cream, the page
+       card     #fcf9ea  the same cream, a shade lighter  (their FCF9EA)
+       sidebar  #ebefd9  sage-tinted rail                 (97A87A / A8BBA3)
+       selected #f2f7a0  pale lime — where you are        (their F2F7A0)
 
-  --color-slate-950: #fdf9f2;
-  --color-slate-900: #f7f0e5;
-  --color-slate-800: #eee4d6;
-  --color-slate-700: #decfba;
-  --color-slate-600: #c6b198;
-  --color-slate-500: #7d6751;
-  --color-slate-400: #6b5642;
-  --color-slate-300: #55432f;
-  --color-slate-200: #3d2f22;
-  --color-slate-100: #2b211a;
-  --color-slate-50: #241b14;
+     Ink is a deep pine, not black; the action colour is clay (DB9558) and the
+     status colours are olive greens. Nothing here is #ffffff: a page that is
+     pure white next to this brand reads as a spreadsheet. */
+  --color-crewly-bg: #f5f2e1;
+  --color-crewly-card: #fcf9ea;
+  --color-crewly-sidebar: #ebefd9;
+  --color-crewly-border: #dcd6b8;
+  --color-crewly-text: #22302a;
+  --color-crewly-dim: #55624a;
+  --color-crewly-green: #5e7440;
+  --color-crewly-orange: #9a6224;
+  --color-crewly-red: #b04a34;
+  --color-crewly-accent: #db9558;
+  --color-crewly-accent-ink: #22302a;
+  --color-crewly-selected: #f2f7a0;
+  --color-crewly-selected-text: #22302a;
+
+  /* Inset surfaces are a wash of the same olive the rail is built from, so a
+     progress track reads as part of the sage family rather than as grey. */
+  --color-crewly-inset: rgba(90, 106, 69, 0.07);
+  --color-crewly-inset-strong: rgba(90, 106, 69, 0.12);
+  --color-crewly-inset-heavy: rgba(90, 106, 69, 0.2);
+  --color-crewly-hairline: rgba(90, 106, 69, 0.1);
+  --color-crewly-hairline-strong: rgba(90, 106, 69, 0.16);
+
+  /* The slate ramp inverted into the cream/sage family: 950 the lightest paper,
+     50 the deepest ink. Every step used as text clears 4.5:1 on the canvas. */
+  --color-slate-950: #fcf9ea;
+  --color-slate-900: #f5f2e1;
+  --color-slate-800: #ece7d2;
+  --color-slate-700: #dcd6b8;
+  --color-slate-600: #c9c4a6;
+  --color-slate-500: #62704f;
+  --color-slate-400: #5f6d52;
+  --color-slate-300: #4d5c43;
+  --color-slate-200: #3a4632;
+  --color-slate-100: #2a362a;
+  --color-slate-50: #22302a;
 
   /* A handful of "no status" badges are built from Tailwind's grey ramp rather
      than the brand tokens. Only the two steps used as *text* need the same
@@ -1164,11 +1240,30 @@ html[data-theme='light'] {
   --color-yellow-300: #a16207;
   --color-yellow-400: #ca8a04;
 
-  --chart-track: rgba(43, 33, 26, 0.1);
-  --toast-shadow: 0 10px 28px rgba(74, 52, 34, 0.16);
-  --art-ink-rgb: 43, 33, 26;
-  --art-dim-rgb: 111, 91, 73;
-  --art-plate: #fffbf4;
+  --chart-track: rgba(90, 106, 69, 0.14);
+  --chart-present: #6e8a4b;
+  --chart-late: #b87c2a;
+  --chart-half: #97a87a;
+  --chart-absent: #b45f43;
+  --chart-muted: rgba(90, 106, 69, 0.35);
+  --chart-muted-soft: rgba(90, 106, 69, 0.18);
+  --chart-series-1: #5e7440;
+  --chart-series-2: #9a6224;
+  --chart-series-3: #6b7f4a;
+  --chart-series-4: #a8763a;
+  --chart-series-5: #7d8f6e;
+  --chart-series-6: #b04a34;
+  --art-green: #7d9a55;
+  --art-blue: #8e9a72;
+  --art-purple: #a8bba3;
+  --art-orange: #db9558;
+  --art-pink: #c98f7a;
+  --art-teal: #97a87a;
+  --art-yellow: #cbb95e;
+  --toast-shadow: 0 10px 28px rgba(52, 66, 44, 0.18);
+  --art-ink-rgb: 34, 48, 42;
+  --art-dim-rgb: 85, 98, 74;
+  --art-plate: #fcf9ea;
 }
 
 /* Three surfaces are exempt. The public home owns its cream/ink palette, the
@@ -1176,31 +1271,35 @@ html[data-theme='light'] {
    dark-only tool. They set the dark values back for their own subtree, so the
    toggle can never recolour them. */
 html[data-theme='light'] :is(.landing-shell, .auth-shell, .theme-fixed-dark) {
-  --color-crewly-bg: #0d1117;
-  --color-crewly-card: #161b22;
-  --color-crewly-border: #30363d;
-  --color-crewly-text: #e6edf3;
-  --color-crewly-dim: #8b949e;
-  --color-crewly-green: #3fb950;
-  --color-crewly-orange: #f0a35e;
-  --color-crewly-red: #f85149;
-  --color-crewly-accent: #c2562f;
+  --color-crewly-bg: #1a2b27;
+  --color-crewly-card: #21332c;
+  --color-crewly-sidebar: #152420;
+  --color-crewly-border: #33483e;
+  --color-crewly-text: #edefd9;
+  --color-crewly-dim: #a7b291;
+  --color-crewly-green: #b2bd7e;
+  --color-crewly-orange: #d9d28b;
+  --color-crewly-red: #e08a6e;
+  --color-crewly-accent: #c97f42;
+  --color-crewly-accent-ink: #17251f;
+  --color-crewly-selected: rgba(178, 189, 126, 0.16);
+  --color-crewly-selected-text: #d9d28b;
   --color-crewly-inset: rgba(255, 255, 255, 0.05);
   --color-crewly-inset-strong: rgba(255, 255, 255, 0.1);
   --color-crewly-inset-heavy: rgba(255, 255, 255, 0.2);
   --color-crewly-hairline: rgba(255, 255, 255, 0.05);
   --color-crewly-hairline-strong: rgba(255, 255, 255, 0.1);
-  --color-slate-950: #020618;
-  --color-slate-900: #0f172a;
-  --color-slate-800: #1d293d;
-  --color-slate-700: #314158;
-  --color-slate-600: #45556c;
-  --color-slate-500: #62748e;
-  --color-slate-400: #94a3b8;
-  --color-slate-300: #cbd5e1;
-  --color-slate-200: #e2e8f0;
-  --color-slate-100: #f1f5f9;
-  --color-slate-50: #f8fafc;
+  --color-slate-950: #16241f;
+  --color-slate-900: #1a2b27;
+  --color-slate-800: #21332c;
+  --color-slate-700: #2c4239;
+  --color-slate-600: #3b5247;
+  --color-slate-500: #8b9a86;
+  --color-slate-400: #a9b6a0;
+  --color-slate-300: #c2cbab;
+  --color-slate-200: #dbe0c6;
+  --color-slate-100: #edefd9;
+  --color-slate-50: #f8f9ef;
   --color-gray-400: #99a1af;
   --color-gray-500: #6a7282;
   --color-amber-100: oklch(96.2% .059 95.617);
@@ -1246,10 +1345,29 @@ html[data-theme='light'] :is(.landing-shell, .auth-shell, .theme-fixed-dark) {
   --color-violet-400: oklch(70.2% .183 293.541);
   --color-yellow-300: oklch(90.5% .182 98.111);
   --color-yellow-400: oklch(85.2% .199 91.936);
-  --chart-track: rgba(230, 237, 243, 0.075);
-  --art-ink-rgb: 230, 237, 243;
-  --art-dim-rgb: 139, 148, 158;
-  --art-plate: #161b22;
+  --chart-track: rgba(237, 239, 217, 0.1);
+  --chart-present: #b2bd7e;
+  --chart-late: #d9d28b;
+  --chart-half: #8e9162;
+  --chart-absent: #e08a6e;
+  --chart-muted: rgba(142, 145, 98, 0.55);
+  --chart-muted-soft: rgba(142, 145, 98, 0.28);
+  --chart-series-1: #b2bd7e;
+  --chart-series-2: #d9d28b;
+  --chart-series-3: #8e9162;
+  --chart-series-4: #c97f42;
+  --chart-series-5: #a8bba3;
+  --chart-series-6: #97a87a;
+  --art-green: #b2bd7e;
+  --art-blue: #8e9162;
+  --art-purple: #a8bba3;
+  --art-orange: #d9d28b;
+  --art-pink: #c98f7a;
+  --art-teal: #97a87a;
+  --art-yellow: #d9d28b;
+  --art-ink-rgb: 237, 239, 217;
+  --art-dim-rgb: 167, 178, 145;
+  --art-plate: #21332c;
   --toast-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
 }
 

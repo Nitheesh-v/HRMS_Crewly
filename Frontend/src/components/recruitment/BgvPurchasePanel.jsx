@@ -309,7 +309,7 @@ const BgvPurchasePanel = ({ candidateRef, decisionStatus, onOrderState = null })
         currency: checkout.currency || 'INR',
         name: 'Crewly HRMS',
         description: `BGV checks · ${order.orderCode}`,
-        theme: { color: '#3fb950' },
+        theme: { color: '#22302a' },
         handler: (response) => {
           verify({
             razorpay_payment_id: response.razorpay_payment_id,

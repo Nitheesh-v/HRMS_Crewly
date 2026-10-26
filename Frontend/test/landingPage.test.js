@@ -243,8 +243,8 @@ describe('Home page — structure', () => {
     assert.match(shell, /--color-crewly-forest:\s*#0b3b2e/, 'the accent is forest green');
     // The app's own tokens (crewly-green, crewly-bg …) are untouched: the
     // landing page is a light surface, the product it advertises is not.
-    assert.match(shell, /--color-crewly-green:\s*#3fb950/, 'the app palette is untouched');
-    assert.match(shell, /--color-crewly-bg:\s*#0d1117/, 'the app still ships its night theme');
+    assert.match(shell, /--color-crewly-green:\s*#b2bd7e/, 'the app palette is untouched');
+    assert.match(shell, /--color-crewly-bg:\s*#1a2b27/, 'the app still ships its night theme');
     assert.match(shell, /--color-crewly-lilac-deep:\s*#c9a6f0/, 'the hover lilac is a token too, not an ad-hoc hex');
 
     for (const cls of ['landing-glow', 'landing-glass', 'landing-window', 'landing-mark', 'landing-wordmark', 'landing-sticker', 'landing-serif']) {

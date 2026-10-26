@@ -143,7 +143,7 @@ export default function BillingPage() {
         name: "Crewly HRMS",
         description: `${plan} plan · ${months} month(s)`,
         prefill: { email: me?.email, name: me?.name },
-        theme: { color: "#3fb950" },
+        theme: { color: "#22302a" },
         handler: async (resp) => {
           try {
             await doVerify({
