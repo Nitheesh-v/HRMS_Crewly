@@ -343,6 +343,21 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
 
   const { buckets, other, groupOfPath } = useMemo(() => groupMenu(menu), [menu]);
 
+  /*
+   * A nav entry that is also the parent of another entry ("/app/leaves" and
+   * "/app/leaves/approvals") must match exactly, or both light up at once.
+   * Everything else keeps prefix matching so a detail route — a single
+   * request, one employee — still shows its section as active.
+   */
+  const exactOnly = useMemo(() => {
+    const paths = menu.map((item) => item.to).filter(Boolean);
+    return new Set(
+      paths.filter((to) => paths.some((otherPath) => otherPath !== to && otherPath.startsWith(`${to}/`))),
+    );
+  }, [menu]);
+
+  const navEnd = (item) => item.end || exactOnly.has(item.to);
+
   const activeGroupId = useMemo(() => {
     if (groupOfPath.has(location.pathname)) {
       return groupOfPath.get(location.pathname);
@@ -467,7 +482,7 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
     }
 
     return (
-      <NavLink key={key} to={item.to} end={item.end} className={itemClass} onClick={handleNav}>
+      <NavLink key={key} to={item.to} end={navEnd(item)} className={itemClass} onClick={handleNav}>
         <Icon aria-hidden="true" className="h-4 w-4 shrink-0" strokeWidth={1.8} />
         <span className="min-w-0 flex-1 truncate">{label}</span>
       </NavLink>
@@ -487,7 +502,7 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
       const Icon = getNavIcon(only);
 
       return (
-        <NavLink key={group.id} to={only.to} end={only.end} className={singleClass} onClick={handleNav}>
+        <NavLink key={group.id} to={only.to} end={navEnd(only)} className={singleClass} onClick={handleNav}>
           <Icon aria-hidden="true" className="h-[17px] w-[17px] shrink-0" strokeWidth={1.8} />
           <span className="min-w-0 flex-1 truncate">{cleanNavLabel(only.label)}</span>
         </NavLink>
@@ -611,7 +626,7 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
                     );
                   }
                   return (
-                    <NavLink key={key} to={item.to} end={item.end} className={singleClass} onClick={handleNav}>
+                    <NavLink key={key} to={item.to} end={navEnd(item)} className={singleClass} onClick={handleNav}>
                       <Icon aria-hidden="true" className="h-4 w-4 shrink-0" strokeWidth={1.8} />
                       <span className="min-w-0 flex-1 truncate">{label}</span>
                     </NavLink>
@@ -761,7 +776,7 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
                 }
 
                 return (
-                  <NavLink key={key} to={item.to} end={item.end} className={singleClass} onClick={handleNav}>
+                  <NavLink key={key} to={item.to} end={navEnd(item)} className={singleClass} onClick={handleNav}>
                     <Icon aria-hidden="true" className="h-4 w-4 shrink-0" strokeWidth={1.8} />
                     <span className="min-w-0 flex-1 truncate">{label}</span>
                   </NavLink>
