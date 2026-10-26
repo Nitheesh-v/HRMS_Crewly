@@ -23,11 +23,25 @@ const root = path.join(here, '..');
 const page = fs.readFileSync(path.join(root, 'src/pages/documents/MyDocumentsPage.jsx'), 'utf8');
 
 describe('documents cabinet', () => {
-  test('one load, three endpoints — the same ones the page always used', () => {
-    assert.match(page, /Promise\.all\(\[getMyDocuments\(\), getMyDocRequests\(\), getDocCategories\(\)\]\)/);
+  test('one load, four endpoints — including the employee\'s own asks to HR', () => {
+    assert.match(
+      page,
+      /Promise\.all\(\[\s*getMyDocuments\(\), getMyDocRequests\(\), getDocCategories\(\), getMyHrDocRequests\(\),/,
+    );
     assert.match(page, /await uploadMyDocument\(fd\)/);
     assert.match(page, /await fulfillDocRequest\(request\._id, fd\)/);
     assert.match(page, /downloadDocument\(d\._id, \{ skipErrorToast: true \}\)/);
+  });
+
+  test('the employee can ask HR for a document (the option that was missing)', () => {
+    // Header action, modal, POST and the list of what was asked.
+    assert.match(page, />\s*Request from HR\s*</);
+    assert.match(page, /await createHrDocRequest\(\{/);
+    assert.match(page, /await cancelHrDocRequest\(request\._id\)/);
+    assert.match(page, /Request a document from HR/, 'the modal has its own title');
+    assert.match(page, /Requested from HR/, 'and the asks are listed back');
+    // Withdraw is offered only while it is still pending.
+    assert.match(page, /r\.status === 'PENDING' && \(\s*<button type="button" onClick=\{\(\) => withdrawAsk\(r\)\}/);
   });
 
   test('the header says what the cabinet is, and offers the two real actions', () => {
@@ -38,9 +52,12 @@ describe('documents cabinet', () => {
 
   test('nothing on the page invents a capability', () => {
     // Each of these appears in the reference mock; none of them is true here.
-    for (const claim of ['5 GB', 'AES-256', 'e-signature', 'sign contracts', 'Request HR Document']) {
+    for (const claim of ['5 GB', 'AES-256', 'e-signature', 'sign contracts']) {
       assert.equal(page.includes(claim), false, `"${claim}" is not a feature of this app`);
     }
+    // The employee→HR request is a real endpoint now, so it is allowed — but
+    // it must go through `createHrDocRequest`, never a fabricated POST.
+    assert.equal(page.includes("post('/documents/requests'"), false);
     // The one privacy statement the page may make is the one the API enforces.
     assert.match(page, /authenticated endpoint/);
   });

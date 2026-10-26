@@ -23,6 +23,7 @@
     "config:check": "node scripts/config-check.js",
     "db:check": "node scripts/db-check.js",
     "test:db": "node --test test/mongoConnectionDiagnostics.test.js",
+    "test:doc-requests": "node --test test/documentRequestsDirection.test.js",
     "ops:load-check": "node scripts/ops-load-check.js",
     "load:api": "node scripts/load/api-load.js",
     "load:realtime": "node scripts/load/realtime-load.js",

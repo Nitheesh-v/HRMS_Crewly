@@ -70,36 +70,85 @@ const StageBadge = ({ stage }) => {
   );
 };
 
+// Short labels under the icons — the full stage name is in the tooltip, but a
+// track nobody can read is just decoration.
+const STEP_SHORT = {
+  ONBOARDING: 'Onboard',
+  PROBATION: 'Probation',
+  CONFIRMED: 'Confirmed',
+  NOTICE_PERIOD: 'Notice',
+  EXITED: 'Exit',
+  ALUMNI: 'Alumni',
+};
+
 const Stepper = ({ stage }) => {
   const idx = STEPPER.indexOf(stage);
   // A single track that scrolls on a phone rather than wrapping into a ragged
   // second line with one icon on it.
   return (
-    <div className="-mx-1 flex w-fit max-w-full items-center gap-1 overflow-x-auto px-1 pb-1">
+    <div className="-mx-1 flex w-fit max-w-full items-start gap-1 overflow-x-auto px-1 pb-1">
       {STEPPER.map((s, i) => {
         const m = STAGE_META[s];
         const done = idx >= 0 && i < idx;
         const current = i === idx;
         return (
-          <div key={s} className="flex shrink-0 items-center gap-1">
-            {i > 0 && <span className={`h-px w-3 sm:w-4 ${done || current ? 'bg-crewly-green' : 'bg-crewly-border'}`} />}
-            <span
-              title={m.label}
-              className={`flex h-9 w-9 items-center justify-center rounded-full border ${
-                current
-                  ? 'border-crewly-green bg-crewly-selected text-crewly-selected-text ring-2 ring-crewly-green/30'
-                  : done
-                    ? 'border-crewly-green/50 bg-crewly-green/10 text-crewly-green'
-                    : 'border-crewly-border bg-crewly-inset text-crewly-dim opacity-60'
-              }`}
-            >
-              {done ? <Check className="h-4 w-4" /> : <m.Icon className="h-4 w-4" />}
-            </span>
+          <div key={s} className="flex shrink-0 items-start gap-1">
+            {i > 0 && (
+              <span className={`mt-[18px] h-px w-3 sm:w-4 ${done || current ? 'bg-crewly-green' : 'bg-crewly-border'}`} />
+            )}
+            <div className="flex w-14 flex-col items-center gap-1.5">
+              <span
+                title={m.label}
+                className={`flex h-9 w-9 items-center justify-center rounded-full border ${
+                  current
+                    ? 'border-crewly-green bg-crewly-selected text-crewly-selected-text ring-2 ring-crewly-green/30'
+                    : done
+                      ? 'border-crewly-green/50 bg-crewly-green/10 text-crewly-green'
+                      : 'border-crewly-border bg-crewly-inset text-crewly-dim opacity-60'
+                }`}
+              >
+                {done ? <Check className="h-4 w-4" /> : <m.Icon className="h-4 w-4" />}
+              </span>
+              <span
+                className={`text-center text-[10px] leading-tight ${
+                  current ? 'font-semibold text-crewly-text' : 'text-crewly-dim'
+                }`}
+              >
+                {STEP_SHORT[s]}
+              </span>
+            </div>
           </div>
         );
       })}
     </div>
   );
+};
+
+// One sentence about where this person is, built only from dates the API
+// returned. No milestone is promised that the record does not contain.
+const stageNarrative = (journey) => {
+  const left = daysTo;
+  if (!journey) return '';
+  const stage = journey.stage;
+  if (stage === 'PROBATION' && journey.probationEndsOn) {
+    const d = left(journey.probationEndsOn);
+    return d === null
+      ? ''
+      : d >= 0
+        ? `On probation until ${fmtDate(journey.probationEndsOn)} — ${d} day${d === 1 ? '' : 's'} to review.`
+        : `Probation ended ${fmtDate(journey.probationEndsOn)} — confirmation is overdue.`;
+  }
+  if (stage === 'CONFIRMED' && journey.confirmedOn) {
+    return `Confirmed on ${fmtDate(journey.confirmedOn)}${journey.joinedOn ? `, after joining on ${fmtDate(journey.joinedOn)}` : ''}.`;
+  }
+  if (stage === 'NOTICE_PERIOD' && journey.noticeEndsOn) {
+    const d = left(journey.noticeEndsOn);
+    return d === null ? '' : `Notice period ends ${fmtDate(journey.noticeEndsOn)} — ${Math.max(0, d)} day${d === 1 ? '' : 's'} left.`;
+  }
+  if (stage === 'EXITED' && journey.exitedOn) return `Left the company on ${fmtDate(journey.exitedOn)}.`;
+  if (stage === 'ALUMNI' && journey.alumniSince) return `Alumni since ${fmtDate(journey.alumniSince)}.`;
+  if (stage === 'ONBOARDING' && journey.joinedOn) return `Joined ${fmtDate(journey.joinedOn)} — onboarding in progress.`;
+  return '';
 };
 
 const Timeline = ({ events = [] }) => (
@@ -119,6 +168,22 @@ const Timeline = ({ events = [] }) => (
     })}
   </div>
 );
+
+// "Review in 4 days" / "Notice ends in 6 days" — the one clock that matters for
+// the stages that have one. Nothing is shown for stages that do not.
+const timingOf = (record) => {
+  if (!record) return '';
+  if (record.stage === 'PROBATION' && record.probationEndsOn) {
+    const d = daysTo(record.probationEndsOn);
+    if (d === null) return '';
+    return d >= 0 ? `Review in ${d}d` : `Overdue ${Math.abs(d)}d`;
+  }
+  if (record.stage === 'NOTICE_PERIOD' && record.noticeEndsOn) {
+    const d = daysTo(record.noticeEndsOn);
+    return d === null ? '' : `Notice ends in ${Math.max(0, d)}d`;
+  }
+  return '';
+};
 
 const JourneyCard = ({ journey, actionsSlot }) => {
   if (!journey) return null;
@@ -160,8 +225,19 @@ const JourneyCard = ({ journey, actionsSlot }) => {
         </div>
 
         <div className="mt-4 rounded-xl bg-crewly-inset/60 p-3">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-crewly-dim">Current journey track</p>
+          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-crewly-dim">Current journey track</p>
+            <p className="text-[11px] font-semibold text-crewly-dim">
+              Stage {STEPPER.indexOf(journey.stage) + 1} of {STEPPER.length}
+            </p>
+          </div>
           <Stepper stage={journey.stage} />
+          {stageNarrative(journey) ? (
+            <p className="mt-2 flex items-start gap-2 text-xs leading-relaxed text-crewly-dim">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              {stageNarrative(journey)}
+            </p>
+          ) : null}
         </div>
 
         {meta.length > 0 && (
@@ -379,7 +455,14 @@ export default function LifecyclePage() {
             <Dna className="h-5 w-5" />
           </span>
           <div className="min-w-0">
-            <h1 className="text-xl font-bold sm:text-2xl">Employee Lifecycle</h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-xl font-bold sm:text-2xl">Employee Lifecycle</h1>
+              {total > 0 ? (
+                <span className="rounded-full bg-crewly-green/15 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-crewly-green">
+                  {total} active track{total === 1 ? '' : 's'}
+                </span>
+              ) : null}
+            </div>
             <p className="mt-1 max-w-xl text-sm leading-relaxed text-crewly-dim">
               Every active track — who is onboarding, who is on probation, who is confirmed, and who is
               on their way out. Stage changes notify the employee.
@@ -502,7 +585,19 @@ export default function LifecyclePage() {
                     <span className={`block truncate text-xs ${active ? 'text-crewly-selected-text/80' : 'text-crewly-dim'}`}>
                       {r.user?.designation || r.user?.role} · {r.user?.department?.name || 'Unassigned'}
                     </span>
-                    <span className="mt-1 block"><StageBadge stage={r.stage} /></span>
+                    <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <StageBadge stage={r.stage} />
+                      {r.user?.employeeCode ? (
+                        <span className={`text-[10px] uppercase tracking-wide ${active ? 'text-crewly-selected-text/70' : 'text-crewly-dim'}`}>
+                          {r.user.employeeCode}
+                        </span>
+                      ) : null}
+                      {timingOf(r) ? (
+                        <span className={`text-[10px] font-semibold ${active ? 'text-crewly-selected-text/80' : 'text-crewly-orange'}`}>
+                          {timingOf(r)}
+                        </span>
+                      ) : null}
+                    </span>
                   </span>
                   <ChevronRight className={`h-4 w-4 shrink-0 ${active ? 'text-crewly-selected-text' : 'text-crewly-dim'}`} />
                 </button>

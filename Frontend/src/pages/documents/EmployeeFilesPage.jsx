@@ -24,6 +24,7 @@ import Modal from '../../components/Modal.jsx';
 import {
   getEmployees, getEmployeeCabinet, getDocCategories,
   hrUploadDocument, createDocRequest, cancelDocRequest, deleteDocument, downloadDocument,
+  fulfillHrDocRequest, cancelHrDocRequest,
 } from '../../services/docsService.js';
 import { notify } from '../../utils/notify.js';
 import EmptyState from '../../components/common/EmptyState.jsx';
@@ -154,7 +155,14 @@ export default function EmployeeFilesPage() {
   const empId = cabinet.employee?._id;
   const docs = cabinet.documents || [];
   const requests = cabinet.requests || [];
-  const pending = requests.filter((r) => r.status === 'PENDING');
+  // Two directions in one array: HR asking the employee for a file, and the
+  // employee asking HR to issue one. Split them, or the same list would show
+  // "waiting on the employee" for a request that is waiting on HR.
+  const fromEmployee = requests.filter((r) => r.direction === 'TO_HR');
+  const toEmployee = requests.filter((r) => r.direction !== 'TO_HR');
+  const pendingFromEmployee = fromEmployee.filter((r) => r.status === 'PENDING');
+  const pendingToEmployee = toEmployee.filter((r) => r.status === 'PENDING');
+  const pending = [...pendingFromEmployee, ...pendingToEmployee];
 
   const doUpload = async () => {
     const file = fileRef.current?.files?.[0];
@@ -203,6 +211,34 @@ export default function EmployeeFilesPage() {
       await openCabinet(cabinet.employee);
     } catch (e) {
       flash(false, e?.response?.data?.message || 'Delete failed');
+    }
+  };
+
+  // HR provides what the employee asked for: the file lands in THEIR cabinet,
+  // and the request closes in the same call.
+  const doProvide = async (request, chosen) => {
+    if (!chosen) return;
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append('document', chosen);
+      fd.append('name', chosen.name);
+      await fulfillHrDocRequest(request._id, fd);
+      flash(true, 'Document provided — the employee has been notified');
+      await openCabinet(cabinet.employee);
+    } catch (e) {
+      flash(false, e?.response?.data?.message || 'Could not attach the document');
+    } finally { setBusy(false); }
+  };
+
+  const doDecline = async (request) => {
+    if (!window.confirm(`Decline the request for ${labelOf(request.category)}?`)) return;
+    try {
+      await cancelHrDocRequest(request._id);
+      flash(true, 'Request declined');
+      await openCabinet(cabinet.employee);
+    } catch (e) {
+      flash(false, e?.response?.data?.message || 'Could not decline the request');
     }
   };
 
@@ -312,7 +348,11 @@ export default function EmployeeFilesPage() {
             icon={Inbox}
             label="Pending requests"
             value={empId ? pending.length : '—'}
-            sub={pending.length ? `Waiting on ${cabinet.employee?.name || 'the employee'}` : empId ? 'Nothing outstanding' : 'Pick an employee'}
+            sub={!pending.length
+              ? (empId ? 'Nothing outstanding' : 'Pick an employee')
+              : pendingFromEmployee.length
+                ? `${pendingFromEmployee.length} waiting on you`
+                : `Waiting on ${cabinet.employee?.name || 'the employee'}`}
           />
         </div>
       </div>
@@ -523,19 +563,69 @@ export default function EmployeeFilesPage() {
                 )}
               </div>
 
-              {/* requests */}
+              {/* the employee asked HR for something — this is the HR inbox */}
+              {fromEmployee.length > 0 && (
+                <div className="card p-0 border-crewly-accent/40">
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4">
+                    <h3 className="flex items-center gap-2 text-sm font-bold">
+                      <Inbox className="h-4 w-4 text-crewly-orange" />
+                      Requested by {cabinet.employee.name.split(' ')[0]}
+                      <span className="text-crewly-dim">({fromEmployee.length})</span>
+                    </h3>
+                    <span className="text-xs text-crewly-dim">
+                      {pendingFromEmployee.length ? 'Attach the file to close it' : 'Nothing waiting on you'}
+                    </span>
+                  </div>
+                  <div className="mt-2 divide-y divide-crewly-border/60">
+                    {fromEmployee.map((r) => (
+                      <div key={r._id} className="flex flex-wrap items-center gap-2 px-4 py-2.5">
+                        <div className="min-w-[12rem] flex-1">
+                          <p className="text-sm font-semibold">{labelOf(r.category)}</p>
+                          <p className="text-xs text-crewly-dim">
+                            {r.note ? `“${r.note}”` : 'No note'}
+                            {r.dueDate ? ` · needed by ${fmtDate(r.dueDate)}` : ''}
+                            {` · asked ${fmtDate(r.createdAt)}`}
+                          </p>
+                        </div>
+                        {chip(r.status, REQ_CHIP[r.status] || REQ_CHIP.CANCELLED)}
+                        {r.status === 'PENDING' && (
+                          <>
+                            <label
+                              htmlFor={`provide-${r._id}`}
+                              className={`cursor-pointer rounded-lg bg-crewly-accent px-2.5 py-1 text-[11px] font-bold text-crewly-accent-ink ${busy ? 'pointer-events-none opacity-50' : ''}`}
+                            >
+                              <Upload className="mr-1 inline h-3 w-3" />Provide
+                            </label>
+                            <input
+                              id={`provide-${r._id}`}
+                              type="file"
+                              className="hidden"
+                              onChange={(e) => doProvide(r, e.target.files?.[0])}
+                            />
+                            <button type="button" onClick={() => doDecline(r)} className="btn-ghost px-2.5 py-1 text-[11px]">
+                              Decline
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* requests HR raised with the employee */}
               <div className="card p-0">
                 <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4">
                   <h3 className="flex items-center gap-2 text-sm font-bold">
                     <Inbox className="h-4 w-4 text-crewly-dim" />
-                    Requests
-                    <span className="text-crewly-dim">({requests.length})</span>
+                    Asked of {cabinet.employee.name.split(' ')[0]}
+                    <span className="text-crewly-dim">({toEmployee.length})</span>
                   </h3>
                   <button type="button" className="text-xs font-semibold text-crewly-orange hover:underline" onClick={() => setShowRequest(true)}>
                     + New request
                   </button>
                 </div>
-                {requests.length === 0 ? (
+                {toEmployee.length === 0 ? (
                   <EmptyState
                     illustration="inbox"
                     title="No requests yet"
@@ -544,7 +634,7 @@ export default function EmployeeFilesPage() {
                   />
                 ) : (
                   <div className="mt-2 divide-y divide-crewly-border/60">
-                    {requests.map((r) => (
+                    {toEmployee.map((r) => (
                       <div key={r._id} className="flex flex-wrap items-center gap-2 px-4 py-2.5">
                         <div className="min-w-[10rem] flex-1">
                           <p className="text-sm font-semibold">{labelOf(r.category)}</p>

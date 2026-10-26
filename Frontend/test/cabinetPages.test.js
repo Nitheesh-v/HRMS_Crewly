@@ -28,9 +28,22 @@ describe('employee files cabinet', () => {
       'cancelDocRequest(req._id)',
       'deleteDocument(doc._id)',
       'downloadDocument(d._id, { skipErrorToast: true })',
+      'fulfillHrDocRequest(request._id, fd)',
+      'cancelHrDocRequest(request._id)',
     ]) {
       assert.ok(files.includes(call), `missing ${call}`);
     }
+  });
+
+  test('an employee\'s request to HR is an HR inbox, not the employee\'s', () => {
+    // One cabinet payload carries both directions; they are split by
+    // `direction` so a request waiting on HR never says "waiting on employee".
+    assert.match(files, /requests\.filter\(\(r\) => r\.direction === 'TO_HR'\)/);
+    assert.match(files, /requests\.filter\(\(r\) => r\.direction !== 'TO_HR'\)/);
+    assert.match(files, /Requested by \{cabinet\.employee\.name\.split\(' '\)\[0\]\}/);
+    assert.match(files, /Asked of \{cabinet\.employee\.name\.split\(' '\)\[0\]\}/);
+    assert.match(files, /Provide/, 'HR can attach the file that closes it');
+    assert.match(files, /Decline/);
   });
 
   test('the tiles describe the open cabinet, because nothing else is countable', () => {
@@ -73,6 +86,18 @@ describe('employee lifecycle console', () => {
     assert.match(lifecycle, /getOverview\(\)\.then\(setOverview\)/);
     assert.match(lifecycle, /const countOf = \(stage\) => counts\[stage\] \?\? list\.filter\(\(r\) => r\.stage === stage\)\.length/);
     assert.match(lifecycle, /\{ value: countOf\('ONBOARDING'\)|value=\{countOf\('ONBOARDING'\)\}/);
+  });
+
+  test('the journey shows its labels, its position and one honest sentence', () => {
+    assert.match(lifecycle, /const STEP_SHORT = \{/);
+    assert.match(lifecycle, /Stage \{STEPPER\.indexOf\(journey\.stage\) \+ 1\} of \{STEPPER\.length\}/);
+    // The narrative is built from dates that exist, never from a promised one.
+    assert.match(lifecycle, /const stageNarrative = \(journey\) => \{/);
+    assert.match(lifecycle, /On probation until \$\{fmtDate\(journey\.probationEndsOn\)\}/);
+    assert.match(lifecycle, /Notice period ends \$\{fmtDate\(journey\.noticeEndsOn\)\}/);
+    // And the list carries the clock that matters for the stage.
+    assert.match(lifecycle, /const timingOf = \(record\) => \{/);
+    assert.match(lifecycle, /Review in \$\{d\}d/);
   });
 
   test('"due soon" is thirty days, the same window the API uses', () => {

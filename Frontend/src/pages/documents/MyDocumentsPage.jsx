@@ -17,12 +17,13 @@ import { useEffect, useState } from 'react';
 import {
   CloudUpload, Download, FileImage, FileSpreadsheet, FileText, FolderOpen,
   HardDrive, History, Hourglass, Inbox, LayoutGrid, List, PenLine, Search,
-  Upload, X,
+  Send, Upload, X,
 } from 'lucide-react';
 import Modal from '../../components/Modal.jsx';
 import {
-  getMyDocuments, getMyDocRequests, getDocCategories,
+  getMyDocuments, getMyDocRequests, getDocCategories, getMyHrDocRequests,
   uploadMyDocument, fulfillDocRequest, downloadDocument,
+  createHrDocRequest, cancelHrDocRequest,
 } from '../../services/docsService.js';
 import { notify } from '../../utils/notify.js';
 import EmptyState from '../../components/common/EmptyState.jsx';
@@ -121,6 +122,11 @@ const download = async (d) => {
 export default function MyDocumentsPage() {
   const [docs, setDocs] = useState([]);
   const [requests, setRequests] = useState([]);
+  // The employee's own asks to HR ("please issue my experience letter").
+  const [askHr, setAskHr] = useState([]);
+  const [askOpen, setAskOpen] = useState(false);
+  const [askForm, setAskForm] = useState({ category: 'EXPERIENCE_LETTER', note: '', neededBy: '' });
+  const [askBusy, setAskBusy] = useState(false);
   const [cats, setCats] = useState(FALLBACK_CATS);
   const [busy, setBusy] = useState(false);
   const [cat, setCat] = useState('OTHER');
@@ -141,9 +147,12 @@ export default function MyDocumentsPage() {
 
   const load = async () => {
     try {
-      const [d, r, c] = await Promise.all([getMyDocuments(), getMyDocRequests(), getDocCategories()]);
+      const [d, r, c, mine] = await Promise.all([
+        getMyDocuments(), getMyDocRequests(), getDocCategories(), getMyHrDocRequests(),
+      ]);
       setDocs(d);
       setRequests(r);
+      setAskHr(mine);
       if (c.length) setCats(c);
     } catch {
       notify.error('Could not load documents — refresh to retry.');
@@ -183,6 +192,34 @@ export default function MyDocumentsPage() {
     } catch (e) {
       flash(false, e?.response?.data?.message || 'Upload failed');
     } finally { setBusy(false); }
+  };
+
+  /* ── the other direction: ask HR to issue something ──────────────────── */
+  const askHrForDocument = async () => {
+    setAskBusy(true);
+    try {
+      await createHrDocRequest({
+        category: askForm.category,
+        note: askForm.note.trim(),
+        dueDate: askForm.neededBy || null,
+      });
+      setAskOpen(false);
+      setAskForm({ category: 'EXPERIENCE_LETTER', note: '', neededBy: '' });
+      flash(true, 'Request sent to HR');
+      await load();
+    } catch (e) {
+      flash(false, e?.response?.data?.message || 'Could not send the request');
+    } finally { setAskBusy(false); }
+  };
+
+  const withdrawAsk = async (request) => {
+    try {
+      await cancelHrDocRequest(request._id);
+      flash(true, 'Request withdrawn');
+      await load();
+    } catch (e) {
+      flash(false, e?.response?.data?.message || 'Could not withdraw the request');
+    }
   };
 
   const doFulfill = async (request, chosen) => {
@@ -262,10 +299,14 @@ export default function MyDocumentsPage() {
           </div>
         </div>
         <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
+          <button type="button" className="btn-ghost w-full justify-center gap-2 text-sm sm:w-auto" onClick={() => setAskOpen(true)}>
+            <Send className="h-4 w-4" />
+            Request from HR
+          </button>
           <button type="button" className="btn-ghost w-full justify-center gap-2 text-sm sm:w-auto" onClick={() => setHistoryOpen(true)}>
             <History className="h-4 w-4" />
             Request history
-            {requests.length ? <span className="text-crewly-dim">({requests.length})</span> : null}
+            {requests.length + askHr.length ? <span className="text-crewly-dim">({requests.length + askHr.length})</span> : null}
           </button>
           <button
             type="button"
@@ -355,6 +396,47 @@ export default function MyDocumentsPage() {
                   className="hidden"
                   onChange={(e) => doFulfill(r, e.target.files?.[0])}
                 />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── what I asked HR for ─────────────────────────────────────────── */}
+      {askHr.length > 0 && (
+        <section className="card p-0">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4">
+            <h2 className="flex items-center gap-2 text-sm font-bold">
+              <Send className="h-4 w-4 text-crewly-dim" />
+              Requested from HR
+              <span className="font-normal text-crewly-dim">({askHr.length})</span>
+            </h2>
+            <button type="button" className="text-xs font-semibold text-crewly-orange hover:underline" onClick={() => setAskOpen(true)}>
+              + New request
+            </button>
+          </div>
+          <div className="mt-2 divide-y divide-crewly-border/60">
+            {askHr.map((r) => (
+              <div key={r._id} className="flex flex-wrap items-center gap-2 px-4 py-2.5">
+                <div className="min-w-[12rem] flex-1">
+                  <p className="text-sm font-semibold">{labelOf(r.category)}</p>
+                  <p className="text-xs text-crewly-dim">
+                    {r.note ? `“${r.note}” · ` : ''}
+                    {r.dueDate ? `needed by ${fmtDate(r.dueDate)} · ` : ''}
+                    asked {fmtDate(r.createdAt)}
+                  </p>
+                </div>
+                {chip(r.status, REQ_CHIP[r.status] || REQ_CHIP.CANCELLED)}
+                {r.status === 'FULFILLED' && r.document?.name ? (
+                  <span className="max-w-[12rem] truncate text-xs text-crewly-dim" title={r.document.name}>
+                    {r.document.name}
+                  </span>
+                ) : null}
+                {r.status === 'PENDING' && (
+                  <button type="button" onClick={() => withdrawAsk(r)} className="btn-ghost px-2.5 py-1 text-[11px]">
+                    Withdraw
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -625,29 +707,91 @@ export default function MyDocumentsPage() {
         </div>
       )}
 
+      {askOpen && (
+        <Modal title="Request a document from HR" onClose={() => setAskOpen(false)}>
+          <div className="space-y-3">
+            <p className="text-sm text-crewly-dim">
+              Ask HR to issue a letter or certificate. They upload it straight into your cabinet, and
+              this request closes when they do.
+            </p>
+            <div>
+              <label className="label" htmlFor="ask-category">What do you need?</label>
+              <select
+                id="ask-category"
+                className="input"
+                value={askForm.category}
+                onChange={(e) => setAskForm({ ...askForm, category: e.target.value })}
+              >
+                {cats.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="ask-note">Note for HR (optional)</label>
+              <textarea
+                id="ask-note"
+                className="input min-h-[70px]"
+                placeholder="e.g. for a bank loan application, addressed to HDFC"
+                value={askForm.note}
+                onChange={(e) => setAskForm({ ...askForm, note: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="ask-due">Needed by (optional)</label>
+              <input
+                id="ask-due"
+                type="date"
+                className="input"
+                value={askForm.neededBy}
+                onChange={(e) => setAskForm({ ...askForm, neededBy: e.target.value })}
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" className="btn-ghost text-sm" onClick={() => setAskOpen(false)}>Cancel</button>
+              <button type="button" className="btn-primary gap-2 text-sm" onClick={askHrForDocument} disabled={askBusy}>
+                <Send className="h-4 w-4" />{askBusy ? 'Sending…' : 'Send request'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {historyOpen && (
         <Modal title="Document requests" onClose={() => setHistoryOpen(false)}>
-          {requests.length === 0 ? (
+          {requests.length + askHr.length === 0 ? (
             <p className="text-sm text-crewly-dim">
-              HR has not asked you for anything yet. When they do, the request appears here and in the
-              action panel, with its due date.
+              No requests yet. HR can ask you for a file, and you can ask HR to issue a letter or
+              certificate — both show up here with their dates.
             </p>
           ) : (
             <ul className="divide-y divide-crewly-border/60">
-              {[...pending, ...history].map((r) => (
-                <li key={r._id} className="flex flex-wrap items-center gap-2 py-2.5">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold">{labelOf(r.category)}</p>
-                    <p className="text-xs text-crewly-dim">
-                      by {r.requestedBy?.name || 'HR'}
-                      {r.note ? ` — “${r.note}”` : ''}
-                      {r.dueDate ? ` · due ${fmtDate(r.dueDate)}` : ''}
-                    </p>
-                  </div>
-                  {chip(r.status, REQ_CHIP[r.status] || REQ_CHIP.CANCELLED)}
-                  <span className="text-xs text-crewly-dim">{fmtDate(r.fulfilledAt || r.updatedAt || r.createdAt)}</span>
-                </li>
-              ))}
+              {[
+                // Incoming (HR → me) and outgoing (me → HR) in one chronology,
+                // each labelled with which way it points.
+                ...[...pending, ...history].map((r) => ({ ...r, _dir: 'FROM_HR' })),
+                ...askHr.map((r) => ({ ...r, _dir: 'TO_HR' })),
+              ]
+                .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+                .map((r) => (
+                  <li key={`${r._dir}-${r._id}`} className="flex flex-wrap items-center gap-2 py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <p className="flex flex-wrap items-center gap-1.5 text-sm font-semibold">
+                        {labelOf(r.category)}
+                        <span className="rounded-full bg-crewly-inset-strong px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-crewly-dim">
+                          {r._dir === 'FROM_HR' ? 'from HR' : 'to HR'}
+                        </span>
+                      </p>
+                      <p className="text-xs text-crewly-dim">
+                        {r._dir === 'FROM_HR'
+                          ? `by ${r.requestedBy?.name || 'HR'}`
+                          : 'you asked HR'}
+                        {r.note ? ` — “${r.note}”` : ''}
+                        {r.dueDate ? ` · ${r._dir === 'FROM_HR' ? 'due' : 'needed by'} ${fmtDate(r.dueDate)}` : ''}
+                      </p>
+                    </div>
+                    {chip(r.status, REQ_CHIP[r.status] || REQ_CHIP.CANCELLED)}
+                    <span className="text-xs text-crewly-dim">{fmtDate(r.fulfilledAt || r.updatedAt || r.createdAt)}</span>
+                  </li>
+                ))}
             </ul>
           )}
         </Modal>

@@ -206,8 +206,16 @@ export const createDocRequest = asyncHandler(async (req, res) => {
 
 /* ── GET /documents/requests/my — employee's request inbox ── */
 export const myDocRequests = asyncHandler(async (req, res) => {
+  // Only `HR asked me` requests. The employee's own asks to HR live on
+  // /documents/requests/hr/my — mixing the two would put "you asked for an
+  // experience letter" under a heading that says HR is waiting on you.
+  // `$ne` keeps rows written before `direction` existed in their old meaning.
   // DB Logic - DB logics
-  const requests = await DocumentRequest.find({ companyId: req.companyId, user: req.user._id })
+  const requests = await DocumentRequest.find({
+    companyId: req.companyId,
+    user: req.user._id,
+    direction: { $ne: 'TO_HR' },
+  })
     .populate('requestedBy', 'name role')
     .sort('-createdAt')
     .lean();
@@ -221,7 +229,9 @@ export const listDocRequests = asyncHandler(async (req, res) => {
   // Data from frontend - requests from frontend
   if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin can view document requests');
 
-  const filter = { companyId: req.companyId };
+  // HR's own outbox (requests they raised with employees), not the employee's
+  // asks to HR — those have their own inbox on /documents/requests/hr.
+  const filter = { companyId: req.companyId, direction: { $ne: 'TO_HR' } };
   if (req.query.userId) filter.user = req.query.userId;
   if (req.query.status && DOC_REQUEST_FILTER.includes(req.query.status)) filter.status = req.query.status;
 
@@ -297,6 +307,175 @@ export const cancelDocRequest = asyncHandler(async (req, res) => {
     message: `The ${labelOf(request.category)} request from HR was withdrawn`,
     link: '/app/documents',
   });
+
+  // Data to frontend - response to frontend
+  ok(res, 200, request, 'Request cancelled');
+});
+/* ══════════════════════════════════════════════════════════════════════════
+ * REQUESTS TO HR — the other direction.
+ *
+ * An employee can ask HR to *issue* something (an experience letter, a salary
+ * certificate, a NOC). The row lands in DocumentRequest with direction TO_HR:
+ * `user` is the requester, `requestedBy` is the requester too, and HR closes it
+ * by uploading the document into that person's cabinet.
+ *
+ * Kept separate from the HR→employee endpoints above on purpose: the two flows
+ * answer different people, and a shared handler would have to guess which side
+ * of the request the caller is on.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+const HR_INBOX_LINK = '/app/employee-files';
+
+/* ── POST /documents/requests/hr — employee asks HR for a document ── */
+export const createHrDocRequest = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  const { category = 'OTHER', note = '', dueDate = null } = req.body || {};
+  const want = DOC_CATEGORIES.includes(category) ? category : 'OTHER';
+
+  // DB Logic - DB logics
+  const request = await DocumentRequest.create({
+    companyId: req.companyId,
+    user: req.user._id,
+    category: want,
+    note: String(note || '').trim().slice(0, 500),
+    dueDate: safeDate(dueDate),
+    direction: 'TO_HR',
+    requestedBy: req.user._id,
+  });
+
+  // HR needs to know, or the request just sits there.
+  const hr = await User.find({ companyId: req.companyId, role: { $in: HR_ROLES } })
+    .select('_id')
+    .lean();
+  await Promise.all(hr.map((person) => notifyDoc(person._id, {
+    title: '📨 Document requested by an employee',
+    message: `${req.user.name} asked for their ${labelOf(want)}${note ? ` — "${String(note).slice(0, 120)}"` : ''}`,
+    link: HR_INBOX_LINK,
+  })));
+
+  // Data to frontend - response to frontend
+  ok(res, 201, request, 'Request sent to HR');
+});
+
+/* ── GET /documents/requests/hr/my — employee: my own requests to HR ── */
+export const myHrDocRequests = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
+  const requests = await DocumentRequest.find({
+    companyId: req.companyId,
+    user: req.user._id,
+    direction: 'TO_HR',
+  })
+    .populate('document', 'name category createdAt')
+    .sort('-createdAt')
+    .lean();
+
+  // Data to frontend - response to frontend
+  ok(res, 200, requests, 'My requests to HR');
+});
+
+/* ── GET /documents/requests/hr — HR: the inbox from employees ── */
+export const listHrDocRequests = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin can see these requests');
+
+  // DB Logic - DB logics
+  const filter = { companyId: req.companyId, direction: 'TO_HR' };
+  if (['PENDING', 'FULFILLED', 'CANCELLED'].includes(req.query.status)) filter.status = req.query.status;
+
+  const requests = await DocumentRequest.find(filter)
+    .populate('user', 'name email role designation employeeCode')
+    .sort('-createdAt')
+    .limit(200)
+    .lean();
+
+  // Data to frontend - response to frontend
+  ok(res, 200, requests, 'Requests from employees');
+});
+
+/* ── POST /documents/requests/hr/:id/fulfil — HR uploads the document ── */
+export const fulfilHrDocRequest = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin can provide a requested document');
+
+  // DB Logic - DB logics
+  const request = await DocumentRequest.findOne({
+    _id: req.params.id,
+    companyId: req.companyId,
+    direction: 'TO_HR',
+  });
+  if (!request) return fail(res, 404, 'Request not found');
+  if (request.status !== 'PENDING') return fail(res, 409, `This request is already ${request.status.toLowerCase()}`);
+
+  const file = getFile(req);
+  if (!file) return fail(res, 400, 'No file received by the server');
+
+  const { url, publicId, storageProvider, storageKey } = await uploadBuffer(req.companyId, file);
+
+  // The document belongs to the employee who asked for it, in their cabinet —
+  // with HR recorded as the uploader, which is what the cabinet shows.
+  const doc = await Document.create({
+    companyId: req.companyId,
+    user: request.user,
+    name: req.body.name?.trim?.() || file.originalname,
+    category: request.category,
+    fileUrl: url,
+    publicId,
+    storageProvider,
+    storageKey,
+    mimeType: file.mimetype,
+    size: file.size,
+    uploadedBy: req.user._id,
+  });
+
+  request.status = 'FULFILLED';
+  request.fulfilledAt = new Date();
+  request.document = doc._id;
+  await request.save();
+
+  notifyDoc(request.user, {
+    title: '📄 Your requested document is ready',
+    message: `${req.user.name} added ${doc.name} (${labelOf(request.category)}) to your cabinet`,
+    link: '/app/documents',
+  });
+
+  // Data to frontend - response to frontend
+  ok(res, 200, { request, document: doc }, 'Document provided — request fulfilled');
+});
+
+/* ── PATCH /documents/requests/hr/:id/cancel — withdraw, or decline ── */
+export const cancelHrDocRequest = asyncHandler(async (req, res) => {
+  // DB Logic - DB logics
+  const request = await DocumentRequest.findOne({
+    _id: req.params.id,
+    companyId: req.companyId,
+    direction: 'TO_HR',
+  });
+  if (!request) return fail(res, 404, 'Request not found');
+
+  // The employee may withdraw their own; HR may decline anyone's.
+  const mine = String(request.user) === String(req.user._id);
+  if (!mine && !isHR(req)) return fail(res, 403, 'You can only withdraw your own request');
+  if (request.status !== 'PENDING') return fail(res, 409, 'Only pending requests can be cancelled');
+
+  request.status = 'CANCELLED';
+  await request.save();
+
+  // Tell the other side: HR withdrew? tell the employee. Employee withdrew?
+  // tell HR, so nobody keeps working on a file nobody wants.
+  if (mine) {
+    const hr = await User.find({ companyId: req.companyId, role: { $in: HR_ROLES } }).select('_id').lean();
+    await Promise.all(hr.map((person) => notifyDoc(person._id, {
+      title: '📥 Request withdrawn',
+      message: `${req.user.name} withdrew their request for ${labelOf(request.category)}`,
+      link: HR_INBOX_LINK,
+    })));
+  } else {
+    notifyDoc(request.user, {
+      title: '📥 Your request was declined',
+      message: `HR declined the request for ${labelOf(request.category)}`,
+      link: '/app/documents',
+    });
+  }
 
   // Data to frontend - response to frontend
   ok(res, 200, request, 'Request cancelled');

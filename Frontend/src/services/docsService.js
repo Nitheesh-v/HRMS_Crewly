@@ -34,6 +34,16 @@ export const deleteDocument = (id) => api.delete(`/documents/${id}`);
 export const getMyDocRequests = async () => arr(await api.get('/documents/requests/my'));
 export const fulfillDocRequest = (id, formData) => postForm(`/documents/requests/${id}/fulfill`, formData);
 
+/* ── employee asks HR (the other direction) ──────────────────────────────
+ * An employee can request a letter or certificate; HR uploads it into their
+ * cabinet and the request closes. Separate endpoints rather than a flag on
+ * the ones above, because each side has its own permission gate. */
+export const createHrDocRequest = (payload) => api.post('/documents/requests/hr', payload);
+export const getMyHrDocRequests = async () => arr(await api.get('/documents/requests/hr/my'));
+export const getEmployeeDocRequestInbox = async (params) => arr(await api.get('/documents/requests/hr', { params }));
+export const fulfillHrDocRequest = (id, formData) => postForm(`/documents/requests/hr/${id}/fulfil`, formData);
+export const cancelHrDocRequest = (id) => api.patch(`/documents/requests/hr/${id}/cancel`);
+
 /* ── HR / Admin: cabinet + requests ── */
 export const getEmployees = async () => {
   try {

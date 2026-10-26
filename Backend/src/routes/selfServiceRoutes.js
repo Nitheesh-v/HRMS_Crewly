@@ -297,6 +297,93 @@ router.patch(
 );
 
 // ============================================================
+// 📨 DOCUMENTS — EMPLOYEE ASKS HR
+// The other direction: an employee requests a letter or
+// certificate, HR uploads it into their cabinet. `direction`
+// on the row keeps the two inboxes apart.
+// ============================================================
+
+// Employee asks HR to issue a document.
+router.post(
+  '/documents/requests/hr',
+  checkWriteAccess,
+
+  requireAnyPermission([
+    'DOCUMENT_READ_SELF',
+    'DOCUMENT_READ',
+  ]),
+
+  requireFeature(
+    'documents'
+  ),
+
+  employeeDocsController
+    .createHrDocRequest
+);
+
+// Employee: the requests they have raised.
+router.get(
+  '/documents/requests/hr/my',
+
+  requireAnyPermission([
+    'DOCUMENT_READ',
+    'DOCUMENT_READ_SELF',
+  ]),
+
+  employeeDocsController
+    .myHrDocRequests
+);
+
+// HR: the inbox of employee requests.
+router.get(
+  '/documents/requests/hr',
+
+  requirePermission(
+    'DOCUMENT_READ'
+  ),
+
+  employeeDocsController
+    .listHrDocRequests
+);
+
+// HR provides the document the employee asked for.
+router.post(
+  '/documents/requests/hr/:id/fulfil',
+  checkWriteAccess,
+
+  requirePermission(
+    'DOCUMENT_CREATE'
+  ),
+
+  requireFeature(
+    'documents'
+  ),
+
+  checkUsageLimit(
+    'fileUploadsMonthly'
+  ),
+
+  anyDocUpload,
+
+  employeeDocsController
+    .fulfilHrDocRequest
+);
+
+// Either side can close it: the employee withdraws, HR declines.
+router.patch(
+  '/documents/requests/hr/:id/cancel',
+  checkWriteAccess,
+
+  requireAnyPermission([
+    'DOCUMENT_READ',
+    'DOCUMENT_READ_SELF',
+  ]),
+
+  employeeDocsController
+    .cancelHrDocRequest
+);
+
+// ============================================================
 // 🧬 EMPLOYEE LIFECYCLE
 // ============================================================
 
