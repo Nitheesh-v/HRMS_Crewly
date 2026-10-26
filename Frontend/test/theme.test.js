@@ -154,7 +154,10 @@ describe('light palette — warm paper, from tokens', () => {
     // The owner's palette, verbatim: nothing here is #ffffff.
     assert.equal(hexToken('bg'), '#f5f2e1', 'the canvas is cream, not white');
     assert.equal(hexToken('card'), '#fcf9ea', 'cards are the named cream, a shade lighter');
-    assert.equal(hexToken('sidebar'), '#ebefd9', 'the rail is a sage tint, not the card');
+    // The rail is the owner's pine (#2a322b) — dark against the cream page in
+    // both themes, so navigation reads as the fixed spine. It is a dark
+    // surface with cream type, never white and never the card colour.
+    assert.equal(hexToken('sidebar'), '#2a322b', 'the rail is pine, not the card');
     assert.equal(hexToken('selected'), '#f2f7a0', 'the selected option is the named pale lime');
     assert.equal(hexToken('accent'), '#db9558', 'action is the named clay');
   });
@@ -213,7 +216,17 @@ describe('light palette — warm paper, from tokens', () => {
     assert.ok(contrast('#ffffff', hexToken('accent')) < 4.5, 'white never goes back on the clay fill');
     // The selected row is a fill with ink on it, not a coloured text token.
     assert.ok(contrast(token('selected-text'), hexToken('selected')) >= 4.5, 'the selected row is readable');
-    assert.ok(contrast(token('text'), hexToken('sidebar')) >= 4.5, 'labels on the sage rail are readable');
+    // Type inside the rail is not the page's ink: the rail re-tokenises
+    // text/dim for a dark surface, so contrast is measured against those.
+    const rail = css.slice(css.indexOf("html[data-theme='light'] .crewly-rail {"), css.indexOf('}', css.indexOf("html[data-theme='light'] .crewly-rail {")));
+    const railToken = (name) => {
+      const match = rail.match(new RegExp(`--color-crewly-${name}:\\s*(#[0-9a-fA-F]{6})`));
+      return match ? match[1] : null;
+    };
+    assert.ok(railToken('text'), 'the rail sets its own type colour');
+    assert.ok(contrast(railToken('text'), hexToken('sidebar')) >= 4.5, 'labels on the pine rail are readable');
+    assert.ok(contrast(railToken('dim'), hexToken('sidebar')) >= 4.5, 'the rail\'s secondary labels are readable');
+    assert.ok(contrast(railToken('selected-text'), railToken('selected')) >= 4.5, 'the selected row is readable on the rail');
   });
 
   test('status hues flip far enough to read on paper', () => {

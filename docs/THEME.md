@@ -6,14 +6,15 @@ owner's palette, used as named: nothing is `#ffffff` and nothing is black.
 | Theme | Canvas | Card | Sidebar | Selected | Action | Ink |
 | --- | --- | --- | --- | --- | --- | --- |
 | `dark` (default) | `#1a2b27` | `#21332c` | `#152420` | olive at 16% | `#c97f42` clay | `#edefd9` |
-| `light` | `#f5f2e1` | `#fcf9ea` | `#ebefd9` | `#f2f7a0` | `#db9558` clay | `#22302a` |
+| `light` | `#f5f2e1` | `#fcf9ea` | `#2a322b` | `#f2f7a0` in content, `#db9558` on the rail | `#db9558` clay | `#22302a` |
 
 The light theme is built from the six colours the owner asked for:
 
 | Named | Where it goes | Why |
 | --- | --- | --- |
 | `#FCF9EA` | cards, header, modals, input wells | the lightest surface; never `#ffffff` |
-| `#F2F7A0` | the selected nav row, the active tab, the MANAGER chip | "where you are", one lime highlight |
+| `#F2F7A0` | the active tab, the selected option, the MANAGER chip | "where you are" on paper — the rail's own selected row is clay (below) |
+| `#2a322b` | the rail, in both themes | the reference's pine: navigation is the fixed spine, the page is the lit surface |
 | `#97A87A` / `#A8BBA3` | sage fills, chart halves, illustration accents | 2.3:1 and 1.8:1 on cream, so **fills only** |
 | `#DB9558` | the one primary action per screen | 2.4:1 on cream and 2.5:1 against white type: fills only, with pine type on top |
 | `#1a2b27` `#8E9162` `#B2BD7E` `#D9D28B` | night surfaces, dim text, olive type, gold type | 7.4:1 and 9.5:1 on pine; `#8E9162` is 4.5:1 — dim text only |
@@ -59,10 +60,23 @@ Use the tokens. `bg-crewly-bg|card|sidebar`, `text-crewly-text|dim`,
 `bg-crewly-accent` + `text-crewly-accent-ink`,
 `text-crewly-green|orange|red` — every one of them changes with the theme.
 
-The rail is its own surface (`bg-crewly-sidebar`), one step away from the canvas
-in both themes: sage on cream, deep pine at night. Selection is the lime
-highlight, not a tint of the action colour, so "where you are" and "what to do"
-never look alike.
+The rail is its own surface (`bg-crewly-sidebar`) and it is **dark in both
+themes** — `#152420` at night, `#2a322b` against the cream page, the owner's own
+value from the reference. A pale rail on a pale page reads as one undivided
+sheet; keeping the rail pine gives the product its spine back, and the content
+the room to be cream.
+
+Selection on the rail is the clay fill (`#db9558`) with dark ink on it, exactly
+as the reference shows it. Inside the content, selection stays the `#f2f7a0`
+lime, so "where you are" and "what to do" never look alike.
+
+The rail cannot use the page's ink or field colours, so `.crewly-rail`
+(`SidebarNav.jsx`, both the desktop aside and the mobile drawer) re-declares the
+tokens for its own subtree: text, dim, border, the inset washes, the status
+greens, and `slate-400` for the HRMS wordmark. The logo PNG is screened instead
+of multiplied there, and the search field is a lifted dark surface rather than a
+cream well punched through the pine. Nested panels inside the rail inherit those
+values, which is what you want — nothing inside it should be paper.
 
 Anything that draws in SVG attributes reads CSS variables instead:
 `--chart-present|late|half|absent|muted|series-1…6`, `--art-green|blue|purple|

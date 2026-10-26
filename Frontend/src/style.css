@@ -1187,7 +1187,7 @@ html[data-theme='light'] {
 
        canvas   #f5f2e1  cream, the page
        card     #fcf9ea  the same cream, a shade lighter  (their FCF9EA)
-       sidebar  #ebefd9  sage-tinted rail                 (97A87A / A8BBA3)
+       sidebar  #2a322b  pine rail, dark in both themes
        selected #f2f7a0  pale lime — where you are        (their F2F7A0)
 
      Ink is a deep pine, not black; the action colour is clay (DB9558) and the
@@ -1195,7 +1195,7 @@ html[data-theme='light'] {
      pure white next to this brand reads as a spreadsheet. */
   --color-crewly-bg: #f5f2e1;
   --color-crewly-card: #fcf9ea;
-  --color-crewly-sidebar: #ebefd9;
+  --color-crewly-sidebar: #2a322b;
   --color-crewly-border: #dcd6b8;
   --color-crewly-text: #22302a;
   --color-crewly-dim: #55624a;
@@ -1319,6 +1319,56 @@ html[data-theme='light'] {
    auth screens own their charcoal, and the provider console is an internal
    dark-only tool. They set the dark values back for their own subtree, so the
    toggle can never recolour them. */
+/* ── The rail ────────────────────────────────────────────────────────────────
+   In light mode the page is cream and the rail is pine. That is not the mock's
+   white-on-lavender scheme copied across — it is the dark theme's rail, one
+   step warmer (the owner's own #2a322b from the reference), left standing
+   against paper so the navigation reads as the fixed spine of the product and
+   the content reads as lit. The selected row is their clay (#db9558) with dark
+   ink on it, exactly as the reference shows; everything inside the rail is
+   re-tokenised so the cream page tokens never leak into a dark surface. */
+html[data-theme='light'] .crewly-rail {
+  --color-crewly-bg: #333b33;
+  --color-crewly-card: #3d443d;
+  --color-crewly-text: #f1f3e4;
+  --color-crewly-dim: #b3bda6;
+  --color-crewly-border: #3d443d;
+  --color-crewly-green: #cbd88f;
+  --color-crewly-orange: #e8c17a;
+  --color-crewly-red: #e79b80;
+  --color-crewly-selected: #db9558;
+  --color-crewly-selected-text: #22190f;
+  --color-crewly-inset: rgba(255, 255, 255, 0.07);
+  --color-crewly-inset-strong: rgba(255, 255, 255, 0.12);
+  --color-crewly-inset-heavy: rgba(255, 255, 255, 0.2);
+  --color-crewly-hairline: rgba(255, 255, 255, 0.08);
+  --color-crewly-hairline-strong: rgba(255, 255, 255, 0.14);
+  /* The HRMS wordmark beside the logo uses slate-400; the light ramp's step is
+     a dark olive that would vanish here. */
+  --color-slate-400: #a9b39c;
+}
+
+/* The wordmark PNG is screened onto dark chrome, multiplied onto paper. The
+   rail is dark in both themes now, so it screens there regardless. */
+html[data-theme='light'] .crewly-rail .crewly-logo {
+  mix-blend-mode: screen;
+}
+
+/* A cream field inside the pine rail would look like a hole punched through
+   it. The rail's search box is a lifted dark surface instead. */
+html[data-theme='light'] .crewly-rail .input {
+  background-color: rgba(255, 255, 255, 0.06);
+  border-color: #3d443d;
+  color: #f1f3e4;
+}
+html[data-theme='light'] .crewly-rail .input::placeholder {
+  color: #9faa92;
+}
+html[data-theme='light'] .crewly-rail .input:focus {
+  border-color: #cbd88f;
+  --tw-ring-color: rgba(203, 216, 143, 0.25);
+}
+
 html[data-theme='light'] :is(.landing-shell, .auth-shell, .theme-fixed-dark) {
   --color-crewly-bg: #1a2b27;
   --color-crewly-card: #21332c;

@@ -540,7 +540,7 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
             }}
             className={`flex h-10 w-full items-center justify-center rounded-lg transition ${
               activeGroupId === group.id
-                ? "bg-crewly-green/10 text-crewly-green"
+                ? "bg-crewly-selected text-crewly-selected-text"
                 : "text-crewly-dim hover:bg-crewly-inset hover:text-crewly-text"
             }`}
           >
@@ -554,7 +554,7 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
   // Mobile drawer variant: full height, overlay-style, always expanded
   if (mobile) {
     return (
-      <aside className="flex h-dvh w-full flex-col border-r border-crewly-border bg-crewly-sidebar py-4 px-3 overflow-hidden">
+      <aside className="crewly-rail flex h-dvh w-full flex-col border-r border-crewly-border bg-crewly-sidebar py-4 px-3 overflow-hidden">
         <div className="flex items-center justify-between gap-2 px-1">
           <div className="flex items-center gap-1.5">
             <img src="/logo-crewly.png" alt="Crewly" className="h-8 w-auto crewly-logo" />
@@ -671,7 +671,7 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
   // Desktop variant (responsive: collapsed on lg, full on xl, but keep logic)
   return (
     <aside
-      className={`sticky top-0 hidden h-screen shrink-0 flex-col border-r border-crewly-border bg-crewly-sidebar py-5 transition-[width] duration-150 lg:flex ${
+      className={`crewly-rail sticky top-0 hidden h-screen shrink-0 flex-col border-r border-crewly-border bg-crewly-sidebar py-5 transition-[width] duration-150 lg:flex ${
         collapsed ? "w-16 px-2" : "w-60 xl:w-64 px-3"
       }`}
     >
