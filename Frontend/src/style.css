@@ -186,13 +186,18 @@ canvas {
    The auth screens opt out for the same reason: their headline is a serif
    display line (`auth-display`), and the 1.875rem cap turned a 38px statement
    into a 30px one. */
-h1:not(.landing-shell h1):not(.auth-shell h1) {
+/* A third opt-out: `.card-title`. A card's section heading is a label, not a
+   page title — "Goals & KPIs", "Team board", "Documents on file". Those are
+   written at text-sm on purpose, and this rule was silently promoting every
+   one of them to 24px, which is what made the rebuilt pages look like a
+   stack of page headers. Marking the heading opts it back out. */
+h1:not(.landing-shell h1):not(.auth-shell h1):not(.card-title) {
   @apply text-xl sm:text-2xl lg:text-3xl;
 }
-h2:not(.landing-shell h2):not(.auth-shell h2) {
+h2:not(.landing-shell h2):not(.auth-shell h2):not(.card-title) {
   @apply text-lg sm:text-xl lg:text-2xl;
 }
-h3:not(.landing-shell h3):not(.auth-shell h3) {
+h3:not(.landing-shell h3):not(.auth-shell h3):not(.card-title) {
   @apply text-base sm:text-lg;
 }
 
@@ -577,6 +582,50 @@ h3:not(.landing-shell h3):not(.auth-shell h3) {
     margin-left: 0.75rem;
     margin-right: 0.75rem;
   }
+}
+
+/* 3b) Goal progress slider. A native range input is the right control — it
+   is keyboard operable and needs no drag maths — but its default chrome is a
+   blue-grey line that reads as "unfinished form". This restyles the track and
+   thumb in the app's own green, and the filled portion is drawn by an inline
+   gradient from the component, so the bar shows the saved progress even
+   before it is touched. */
+.goal-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 0.375rem;
+  border-radius: 9999px;
+  background-color: var(--color-crewly-inset-strong);
+  background-repeat: no-repeat;
+  outline-offset: 6px;
+  cursor: pointer;
+}
+.goal-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 0.875rem;
+  width: 0.875rem;
+  border-radius: 9999px;
+  background: var(--color-crewly-green);
+  border: 2px solid var(--color-crewly-card);
+  box-shadow: 0 0 0 1px var(--color-crewly-green);
+}
+.goal-range::-moz-range-thumb {
+  height: 0.875rem;
+  width: 0.875rem;
+  border-radius: 9999px;
+  background: var(--color-crewly-green);
+  border: 2px solid var(--color-crewly-card);
+  box-shadow: 0 0 0 1px var(--color-crewly-green);
+}
+.goal-range::-moz-range-track {
+  height: 0.375rem;
+  border-radius: 9999px;
+  background: transparent;
+}
+.goal-range:disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 
 /* 4) Fluid container padding */

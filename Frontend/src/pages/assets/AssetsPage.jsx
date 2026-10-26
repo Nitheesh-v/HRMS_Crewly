@@ -105,7 +105,7 @@ const Modal = ({ title, onClose, children, width = 'max-w-lg' }) => (
       onClick={(e) => e.stopPropagation()}
     >
       <div className="mb-4 flex items-start gap-3">
-        <h3 className="min-w-0 flex-1 text-base font-bold">{title}</h3>
+        <h3 className="card-title min-w-0 flex-1 text-base font-bold">{title}</h3>
         <button type="button" onClick={onClose} className="shrink-0 rounded-lg p-1 text-crewly-dim hover:text-crewly-text" aria-label="Close">
           <X className="h-4 w-4" />
         </button>
@@ -368,7 +368,7 @@ export default function AssetsPage() {
       {/* ── in my hands ────────────────────────────────────────────────── */}
       <section className="card">
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="flex items-center gap-2 text-sm font-bold">
+          <h2 className="card-title flex items-center gap-2 text-sm font-bold">
             <Backpack className="h-4 w-4 text-crewly-dim" />In my hands
             <span className="rounded-full bg-crewly-inset px-2 py-0.5 text-[11px] font-semibold text-crewly-dim">{mine.length}</span>
           </h2>
@@ -416,7 +416,7 @@ export default function AssetsPage() {
           {/* ── add & assign ───────────────────────────────────────────── */}
           <section className="card">
             <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="flex items-center gap-2 text-sm font-bold">
+              <h2 className="card-title flex items-center gap-2 text-sm font-bold">
                 <Plus className="h-4 w-4 text-crewly-green" />Add &amp; assign equipment
               </h2>
               <p className="text-[11px] text-crewly-dim">Log a device into the register, optionally straight to a person.</p>
@@ -493,7 +493,7 @@ export default function AssetsPage() {
           <section className="card p-0">
             <div className="flex flex-wrap items-start justify-between gap-3 p-4 pb-0 sm:p-5 sm:pb-0">
               <div>
-                <h2 className="flex items-center gap-2 text-sm font-bold">
+                <h2 className="card-title flex items-center gap-2 text-sm font-bold">
                   <Package className="h-4 w-4 text-crewly-dim" />Company inventory &amp; hardware pool
                   <span className="rounded-full bg-crewly-inset px-2 py-0.5 text-[11px] font-semibold text-crewly-dim">{inventory.length}</span>
                 </h2>

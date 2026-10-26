@@ -478,7 +478,7 @@ export default function EmployeeFilesPage() {
               {/* checkpoints */}
               <div className="card">
                 <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                  <h3 className="text-sm font-bold">Standard document checkpoints</h3>
+                  <h3 className="card-title text-sm font-bold">Standard document checkpoints</h3>
                   <p className="text-xs text-crewly-dim">A checklist, not a compliance score</p>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
@@ -512,7 +512,7 @@ export default function EmployeeFilesPage() {
               {/* documents */}
               <div className="card p-0">
                 <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4">
-                  <h3 className="flex items-center gap-2 text-sm font-bold">
+                  <h3 className="card-title flex items-center gap-2 text-sm font-bold">
                     <Paperclip className="h-4 w-4 text-crewly-dim" />
                     Documents on file
                     <span className="text-crewly-dim">({docs.length})</span>
@@ -567,7 +567,7 @@ export default function EmployeeFilesPage() {
               {fromEmployee.length > 0 && (
                 <div className="card p-0 border-crewly-accent/40">
                   <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4">
-                    <h3 className="flex items-center gap-2 text-sm font-bold">
+                    <h3 className="card-title flex items-center gap-2 text-sm font-bold">
                       <Inbox className="h-4 w-4 text-crewly-orange" />
                       Requested by {cabinet.employee.name.split(' ')[0]}
                       <span className="text-crewly-dim">({fromEmployee.length})</span>
@@ -616,7 +616,7 @@ export default function EmployeeFilesPage() {
               {/* requests HR raised with the employee */}
               <div className="card p-0">
                 <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4">
-                  <h3 className="flex items-center gap-2 text-sm font-bold">
+                  <h3 className="card-title flex items-center gap-2 text-sm font-bold">
                     <Inbox className="h-4 w-4 text-crewly-dim" />
                     Asked of {cabinet.employee.name.split(' ')[0]}
                     <span className="text-crewly-dim">({toEmployee.length})</span>

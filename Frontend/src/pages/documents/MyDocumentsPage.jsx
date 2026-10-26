@@ -365,7 +365,7 @@ export default function MyDocumentsPage() {
       {/* ── requested by HR ────────────────────────────────────────────── */}
       {pending.length > 0 && (
         <section className="card border-crewly-accent/40 bg-crewly-accent/10">
-          <h2 className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-bold">
+          <h2 className="card-title mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-bold">
             <Inbox className="h-4 w-4 shrink-0 text-crewly-orange" />
             <span className="whitespace-nowrap">Requested by HR</span>
             <span className="font-normal text-crewly-dim">— upload these to close the request</span>
@@ -406,7 +406,7 @@ export default function MyDocumentsPage() {
       {askHr.length > 0 && (
         <section className="card p-0">
           <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4">
-            <h2 className="flex items-center gap-2 text-sm font-bold">
+            <h2 className="card-title flex items-center gap-2 text-sm font-bold">
               <Send className="h-4 w-4 text-crewly-dim" />
               Requested from HR
               <span className="font-normal text-crewly-dim">({askHr.length})</span>
@@ -449,7 +449,7 @@ export default function MyDocumentsPage() {
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <FileText className="h-4 w-4 text-crewly-dim" />
-              <h2 className="text-sm font-bold">Upload documents</h2>
+              <h2 className="card-title text-sm font-bold">Upload documents</h2>
               <span className="rounded-full bg-crewly-inset px-2 py-0.5 text-[11px] font-semibold text-crewly-dim">
                 Private · signed-in only
               </span>

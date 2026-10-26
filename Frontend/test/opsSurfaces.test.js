@@ -132,6 +132,65 @@ describe('profile change queue', () => {
   });
 });
 
+describe('performance page', () => {
+  const styles = read('src/style.css');
+
+  test('the page is built from the sections the mock shows', () => {
+    for (const heading of ['My appraisal', 'Team board', 'Performance history', 'Cycle phases', 'Draft cycles']) {
+      assert.ok(perf.includes(heading), `the page lost its "${heading}" block`);
+    }
+    // The track is a real ordered list of the five stored phases, with a check
+    // for the ones behind us — not a decorative image.
+    assert.match(perf, /const PhaseStepper = \(\{ status \}\) => \{/);
+    assert.match(perf, /<ol className="flex w-full items-start justify-between/);
+    assert.match(perf, /Phase \{PHASES\.indexOf\(phase\) \+ 1\} of \{PHASES\.length\}/);
+  });
+
+  test('every number on the page is counted, and falls back to a dash', () => {
+    for (const counted of ['selfReviewsIn', 'awaitingMe', 'weightTotal', 'goalsSet', 'avgProgress']) {
+      assert.ok(perf.includes(`const ${counted} =`), `${counted} is no longer derived`);
+    }
+    assert.match(perf, /const weightTotal = [\s\S]{0,160}reduce\(/);
+    assert.match(perf, /const selfReviewsIn = [\s\S]{0,120}filter\(/);
+    // A tile with nothing to report shows an em dash, never a zero dressed up.
+    assert.ok(perf.includes("'—'"), 'the dash fallback is gone');
+  });
+
+  test('the four tiles change with the role, they are not one fixed row', () => {
+    assert.match(perf, /isHR\s*\n?\s*\? \[/);
+    assert.ok(perf.includes('Participants'));
+    assert.ok(perf.includes('Self reviews in'));
+    assert.ok(perf.includes('Waiting on you'));
+    assert.ok(perf.includes('My goals'));
+  });
+
+  test('goal progress is a labelled range control, not a colour alone', () => {
+    assert.match(perf, /type="range"/);
+    assert.match(perf, /aria-label=\{`Goal \$\{i \+ 1\} progress/);
+    assert.match(perf, /className="goal-range flex-1"/);
+    // The slider is styled by the app, not left as browser chrome.
+    assert.match(styles, /\.goal-range::-webkit-slider-thumb/);
+  });
+
+  test('card headings stay section labels', () => {
+    // The base heading scale would promote every card title to 24px, which is
+    // what made the first rebuild read as a stack of page headers.
+    assert.match(styles, /h2:not\(\.landing-shell h2\):not\(\.auth-shell h2\):not\(\.card-title\)/);
+    assert.match(perf, /<h2 className="card-title[^"]*text-sm font-bold/);
+  });
+
+  test('the mock furniture this API cannot back is still absent', () => {
+    for (const fake of ['9-box', 'Nine-box', 'Skill matrix', 'HiGoal', 'Calibration matrix', 'Attrition risk']) {
+      assert.equal(perf.includes(fake), false, `"${fake}" has no data behind it`);
+    }
+  });
+
+  test('the dialog keeps its footer on screen while the body scrolls', () => {
+    assert.match(perf, /flex max-h-\[92vh\] w-full max-w-2xl flex-col overflow-hidden/);
+    assert.match(perf, /min-h-0 flex-1 space-y-5 overflow-y-auto p-5/);
+  });
+});
+
 describe('performance cycle dialog', () => {
   test('sends only what the API now stores', () => {
     for (const field of [

@@ -255,7 +255,7 @@ const JourneyCard = ({ journey, actionsSlot }) => {
       {actionsSlot}
 
       <div className="card">
-        <h3 className="mb-3 flex items-center gap-2 text-sm font-bold">
+        <h3 className="card-title mb-3 flex items-center gap-2 text-sm font-bold">
           <History className="h-4 w-4 text-crewly-dim" />Timeline
         </h3>
         {journey.events?.length ? (

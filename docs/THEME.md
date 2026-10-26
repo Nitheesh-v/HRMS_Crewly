@@ -128,6 +128,27 @@ console.
 One more exception lives in `PayslipDocument.jsx`: a payslip is a white document
 in every theme, so its greys are literal values, not theme tokens.
 
+## Card headings are labels, not page titles
+
+`style.css` gives bare `h1`/`h2`/`h3` a responsive display scale. That scale is
+right for a page title and wrong for a card header: "Goals & KPIs", "Team
+board", "Documents on file" are written at `text-sm` on purpose, and the base
+rule was promoting each one to 24px — the whole page then read as a stack of
+page headers, with nothing left louder than anything else.
+
+The fix is an opt-out rather than a new scale: mark the heading `card-title`
+and the base rule skips it.
+
+```jsx
+<h2 className="card-title flex items-center gap-2 text-sm font-bold">
+  <Users className="h-4 w-4" />Team board
+</h2>
+```
+
+The selector is `h2:not(.landing-shell h2):not(.auth-shell h2):not(.card-title)`,
+so a card inside a shell still behaves. Only the page's own `<h1>` keeps the
+display size.
+
 ## Motion
 
 The switch is instant — no cross-fade, no transition on `body`. A theme flip is
