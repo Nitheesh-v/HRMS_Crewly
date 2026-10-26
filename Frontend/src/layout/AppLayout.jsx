@@ -5,6 +5,7 @@ import usePermission from "../hooks/usePermission.js";
 import { ROLES } from "../utils/roles.js";
 import NotificationBell from "../components/NotificationBell";
 import ThemeToggle from "../components/common/ThemeToggle.jsx";
+import PageBreadcrumb from "../components/common/PageBreadcrumb.jsx";
 import SubscriptionStatusBanner from "../components/SubscriptionStatusBanner.jsx";
 import { Power, Menu, X } from "lucide-react";
 import SidebarNav from "./SidebarNav.jsx";
@@ -616,36 +617,38 @@ const AppLayout = () => {
               {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
 
-            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-              {user?.avatarUrl ? (
-                <img
-                  src={user.avatarUrl}
-                  alt=""
-                  className="h-8 w-8 sm:h-9 sm:w-9 rounded-full object-cover ring-2 ring-crewly-border shrink-0"
-                />
-              ) : (
-                <div className="flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-full bg-crewly-green/15 text-xs sm:text-sm font-bold text-crewly-green">
-                  {user?.name?.[0]?.toUpperCase() || "?"}
-                </div>
-              )}
-              <div className="min-w-0">
-                <span className="block truncate text-xs sm:text-sm text-crewly-dim">
-                  <span className="font-medium text-crewly-text">{user?.name}</span>
-                </span>
-                <span className="badge mt-0.5 hidden bg-crewly-green/15 text-crewly-green sm:inline-block">
-                  {user?.role?.replace("_", " ")}
-                </span>
-                <span className="block text-[11px] text-crewly-green sm:hidden">
-                  {user?.role?.replace("_", " ")}
-                </span>
-              </div>
-            </div>
+            {/* Where am I — derived from the nav the sidebar already renders. */}
+            <PageBreadcrumb menu={menu} />
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-3 lg:gap-4">
             <PresenceMenu />
             <ThemeToggle />
             <NotificationBell />
+
+            {/* Who am I. The avatar stays on phones; the name and role chip
+                need the width the header does not have there. */}
+            <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
+              {user?.avatarUrl ? (
+                <img
+                  src={user.avatarUrl}
+                  alt=""
+                  className="h-8 w-8 shrink-0 rounded-full object-cover ring-2 ring-crewly-border sm:h-9 sm:w-9"
+                />
+              ) : (
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-crewly-green/15 text-xs font-bold text-crewly-green sm:h-9 sm:w-9 sm:text-sm">
+                  {user?.name?.[0]?.toUpperCase() || "?"}
+                </div>
+              )}
+              <div className="hidden min-w-0 sm:block">
+                <span className="block truncate text-sm font-semibold leading-tight text-crewly-text">
+                  {user?.name}
+                </span>
+                <span className="badge mt-0.5 bg-crewly-green/15 text-crewly-green">
+                  {user?.role?.replace("_", " ")}
+                </span>
+              </div>
+            </div>
             <button
               onClick={handleLogout}
               disabled={loggingOut}
