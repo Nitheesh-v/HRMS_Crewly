@@ -100,20 +100,26 @@ describe('attendance report', () => {
     for (const field of ['c.punchedIn', 'c.punchedOut', 'c.late', 'c.absent', 'c.total']) {
       assert.ok(reportPage.includes(field), `the ribbon no longer shows ${field}`);
     }
-    assert.match(reportPage, /label: 'On duty'[\s\S]*label: 'Done shifts'[\s\S]*label: 'Late in'[\s\S]*label: 'Absent'[\s\S]*label: 'Headcount'/);
+    assert.match(
+      reportPage,
+      /label: 'On duty'[\s\S]*label: 'Done shifts'[\s\S]*label: 'Late in'[\s\S]*label: 'Absent \/ unpunched'[\s\S]*label: 'Total headcount'/,
+    );
   });
 
   test('the month ribbon adds up the rows it was given', () => {
     assert.match(reportPage, /rows\.reduce\(\(acc, row\) => acc \+ \(Number\(pick\(row\)\) \|\| 0\), 0\)/);
-    assert.match(reportPage, /avgPerPresentDay/);
-    // the score shown under a bar is the person's own percentage
-    assert.match(reportPage, /\{r\.attendancePct\}%/);
+    assert.match(reportPage, /workingDays: rows\.reduce/);
+    // the score shown under a bar is the person's own percentage, with the days
+    // that produced it
+    assert.match(reportPage, /<ScoreBar pct=\{r\.attendancePct\} days=\{r\.present\} workingDays=\{r\.workingDays\} \/>/);
   });
 
   test('filters narrow the loaded rows and the count agrees with the table', () => {
     assert.match(reportPage, /const needle = query\.trim\(\)\.toLowerCase\(\)/);
     assert.match(reportPage, /departmentName/);
-    assert.match(reportPage, /Showing \{shown\} of \{total\}/);
+    assert.match(reportPage, /Showing <span[^>]*>\{rowsOnScreen\.length\}<\/span> of \{totalRows\}/);
+    // paging slices the same filtered list the footer counts
+    assert.match(reportPage, /rowsOnScreen\.slice\(\(safePage - 1\) \* pageSize, safePage \* pageSize\)/);
   });
 
   test('export covers the tab on screen and nothing more', () => {
@@ -132,6 +138,37 @@ describe('attendance report', () => {
     // figure for every day of it — a calendar grid would have to invent them
     assert.equal(reportPage.includes('perDay'), false, 'no per-day percentage source exists');
     assert.equal(/days\.map\(/.test(reportPage), false, 'there is no day grid to draw');
+  });
+
+  test('the day matrix borrows the month score instead of inventing one', () => {
+    // the day endpoint has no month score, so the monthly report is read for
+    // the same month and the column stays empty until it answers
+    assert.match(reportPage, /\.report\(dayMonth, ''\)/);
+    assert.match(reportPage, /const scoreById = useMemo/);
+    assert.match(reportPage, /score \? \(/);
+  });
+
+  test('hours are compared with the shift that was in force', () => {
+    assert.match(reportPage, /record\?\.scheduleSnapshot\?\.scheduledMinutes/);
+    assert.match(reportPage, /no shift on record/);
+    assert.equal(reportPage.includes('of 8.0h shift'), false, 'the shift length is never hard-coded');
+  });
+
+  test('breaks and approved overtime come off the record', () => {
+    assert.match(reportPage, /record\?\.breakMinutes/);
+    assert.match(reportPage, /record\?\.overtimeMinutes/);
+  });
+
+  test('no invented employee number, and the audit card links somewhere real', () => {
+    assert.equal(reportPage.includes('EMP0'), false, 'the user document carries no employee code');
+    assert.match(reportPage, /user\.designation/);
+    assert.match(reportPage, /href="\/app\/schedules"/);
+  });
+
+  test('refresh re-reads the same day rather than promising live updates', () => {
+    assert.match(reportPage, /const reload = useCallback\(\(\) => setReloadKey/);
+    assert.match(reportPage, /Refresh/);
+    assert.equal(reportPage.includes('Live Reload'), false);
   });
 
   test('the roster columns are the fields the rows carry', () => {
