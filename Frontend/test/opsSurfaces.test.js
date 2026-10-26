@@ -189,6 +189,18 @@ describe('performance page', () => {
     assert.match(perf, /flex max-h-\[92vh\] w-full max-w-2xl flex-col overflow-hidden/);
     assert.match(perf, /min-h-0 flex-1 space-y-5 overflow-y-auto p-5/);
   });
+
+  test('the review dialog is built like the rest of the page', () => {
+    // It used to be a slate panel that only happened to invert with the theme.
+    assert.equal(perf.includes('bg-slate-800'), false);
+    assert.equal(perf.includes('text-slate-100'), false);
+    assert.ok(perf.includes('aria-label={`Review ${reviewTarget.user?.name'), 'the dialog has no accessible name');
+    // A rating-less save would write a zero the employee reads as a score.
+    assert.match(perf, /disabled=\{busy \|\| !reviewForm\.rating\}/);
+    // "No self review" is only true when there is no record at all.
+    assert.match(perf, /Submitted without a written summary\./);
+    assert.match(perf, /No self review was submitted\./);
+  });
 });
 
 describe('performance cycle dialog', () => {

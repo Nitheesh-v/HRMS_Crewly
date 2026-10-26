@@ -14,8 +14,6 @@ import { notify } from '../../utils/notify.js';
 import EmptyState from '../../components/common/EmptyState.jsx';
 
 const inp = 'input';
-const btn = 'rounded-lg px-3 py-1.5 text-xs font-bold transition disabled:opacity-50';
-const primary = `${btn} bg-crewly-accent text-crewly-accent-ink hover:opacity-90`;
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
 
 const PHASES = ['GOAL_SETTING', 'ACTIVE', 'SELF_REVIEW', 'REVIEW', 'CLOSED'];
@@ -533,13 +531,19 @@ export default function PerformancePage() {
               ? `Submitted ${fmtDate(app.selfReview.submittedAt)}`
               : phase === 'SELF_REVIEW'
                 ? 'Write it before the deadline'
-                : 'Opens after the work period',
+                : ['REVIEW', 'CLOSED'].includes(phase)
+                  ? 'Was not submitted'
+                  : 'Opens after the work period',
           },
           {
             icon: Star,
             label: 'Final rating',
             value: app?.finalRating != null ? `${app.finalRating}` : '—',
-            sub: app?.finalRating != null ? 'Out of 5, published' : 'Published when the cycle closes',
+            sub: app?.finalRating != null
+              ? 'Out of 5, published'
+              : phase === 'CLOSED'
+                ? 'No rating was published for this round'
+                : 'Published when the cycle closes',
           },
         ];
 
@@ -722,8 +726,11 @@ export default function PerformancePage() {
                 <h2 className="card-title flex items-center gap-2 text-sm font-bold">
                   <ClipboardList className="h-4 w-4 text-crewly-dim" />My appraisal
                 </h2>
-                <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${STATUS_CHIP[app.status] || 'bg-crewly-inset text-crewly-dim'}`}>
-                  {(app.status || 'GOALS').replaceAll('_', ' ')}
+                <span
+                  className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${STATUS_CHIP[app.status] || 'bg-crewly-inset text-crewly-dim'}`}
+                  title="Where your appraisal record stands — separate from the cycle phase"
+                >
+                  Appraisal · {(app.status || 'GOALS').replaceAll('_', ' ').toLowerCase()}
                 </span>
                 {phase === 'CLOSED' && app.finalRating != null ? (
                   <span className="ml-auto flex items-center gap-2">
@@ -1262,28 +1269,128 @@ export default function PerformancePage() {
 
       {/* review modal */}
       {reviewTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setReviewTarget(null)}>
-          <div className="w-full max-w-md space-y-3 rounded-xl border border-slate-600 bg-slate-800 p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="card-title text-base font-bold text-slate-100">
-              <Scale className="mr-1 inline h-4 w-4" />Review — {reviewTarget.user?.name} <span className="text-xs font-normal text-slate-400">({me?.role === 'TEAM_LEAD' ? 'Team Lead review' : 'Manager review'})</span>
-            </h3>
-            <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-slate-700 bg-slate-900/40 p-2">
-              {(reviewTarget.goals || []).map((g, i) => (
-                <p key={i} className="text-xs text-slate-300">• {g.title} <span className="text-slate-500">{g.kpi ? `— ${g.kpi} · ` : ''}{g.progress || 0}%</span></p>
-              ))}
-              {(!reviewTarget.goals || !reviewTarget.goals.length) && <p className="text-xs text-slate-500">No goals recorded.</p>}
-              {reviewTarget.selfReview?.summary && (
-                <p className="border-t border-slate-700 pt-1 text-xs text-slate-400"><FileText className="mr-1 inline h-3 w-3" />Self: "{reviewTarget.selfReview.summary}" <Stars value={reviewTarget.selfReview.rating || 0} size="h-3 w-3" /></p>
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+          onClick={() => setReviewTarget(null)}
+          role="presentation"
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Review ${reviewTarget.user?.name || 'this employee'}`}
+            className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-crewly-border bg-crewly-card shadow-2xl sm:max-h-[88vh] sm:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex shrink-0 items-start gap-3 border-b border-crewly-border bg-crewly-inset/50 p-5">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-crewly-accent/15 text-crewly-orange">
+                <Scale className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <h3 className="text-base font-bold sm:text-lg">
+                  {reviewTarget.user?.name || 'Employee'}
+                </h3>
+                <p className="mt-1 text-xs leading-relaxed text-crewly-dim">
+                  {me?.role === 'TEAM_LEAD' ? 'Team Lead review' : 'Manager review'} ·
+                  {' '}the rating and this note are shown to the employee once the cycle closes.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReviewTarget(null)}
+                className="ml-auto shrink-0 rounded-lg p-1 text-crewly-dim hover:text-crewly-text"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-crewly-dim">
+                  What they set out to do
+                </p>
+                <ul className="mt-2 space-y-2">
+                  {(reviewTarget.goals || []).map((g, i) => (
+                    <li key={i} className="rounded-lg border border-crewly-border bg-crewly-inset/40 px-3 py-2">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <p className="min-w-0 text-sm font-semibold">{g.title || 'Untitled goal'}</p>
+                        <span className="shrink-0 text-xs font-bold text-crewly-green">{g.progress || 0}%</span>
+                      </div>
+                      <p className="mt-0.5 text-[11px] text-crewly-dim">
+                        {g.kpi || 'No KPI recorded'}
+                        {g.weight ? ` · ${g.weight}% weight` : ''}
+                      </p>
+                      <ProgressBar value={g.progress} className="mt-1.5" />
+                    </li>
+                  ))}
+                  {(!reviewTarget.goals || !reviewTarget.goals.length) && (
+                    <li className="rounded-lg border border-dashed border-crewly-border px-3 py-3 text-center text-xs text-crewly-dim">
+                      No goals were recorded on this cycle.
+                    </li>
+                  )}
+                </ul>
+              </div>
+
+              {reviewTarget.selfReview?.submittedAt || reviewTarget.selfReview?.summary ? (
+                <div className="rounded-lg border border-crewly-border bg-crewly-inset/40 px-3 py-2">
+                  <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-crewly-dim">
+                    <FileText className="h-3 w-3" />Their self review
+                  </p>
+                  {reviewTarget.selfReview.summary ? (
+                    <p className="mt-1 text-xs leading-relaxed">“{reviewTarget.selfReview.summary}”</p>
+                  ) : (
+                    <p className="mt-1 text-xs text-crewly-dim">
+                      Submitted without a written summary.
+                    </p>
+                  )}
+                  {reviewTarget.selfReview.rating ? (
+                    <Stars value={reviewTarget.selfReview.rating} size="h-3 w-3" className="mt-1" />
+                  ) : null}
+                </div>
+              ) : (
+                <p className="rounded-lg border border-dashed border-crewly-border px-3 py-2 text-xs text-crewly-dim">
+                  No self review was submitted.
+                </p>
               )}
+
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-crewly-dim">Your rating</p>
+                <div className="mt-1 flex items-center gap-3">
+                  <Stars value={reviewForm.rating} onChange={(r) => setReviewForm({ ...reviewForm, rating: r })} />
+                  <span className="text-xs text-crewly-dim">
+                    {reviewForm.rating ? `${reviewForm.rating} of 5` : 'Pick 1 to 5'}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="label" htmlFor="review-feedback">Feedback</label>
+                <textarea
+                  id="review-feedback"
+                  className={`${inp} min-h-[96px]`}
+                  placeholder="What went well, what to change next round…"
+                  value={reviewForm.feedback}
+                  onChange={(e) => setReviewForm({ ...reviewForm, feedback: e.target.value })}
+                />
+                <p className="mt-1 text-[11px] text-crewly-dim">
+                  Shown to the employee when the cycle closes — not before.
+                </p>
+              </div>
             </div>
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-slate-400">Your rating:</span>
-              <Stars value={reviewForm.rating} onChange={(r) => setReviewForm({ ...reviewForm, rating: r })} />
-            </div>
-            <textarea className={`${inp} min-h-[80px]`} placeholder="Feedback for the employee (visible after the cycle closes)…" value={reviewForm.feedback} onChange={(e) => setReviewForm({ ...reviewForm, feedback: e.target.value })} />
-            <div className="flex justify-end gap-2 pt-1">
-              <button onClick={() => setReviewTarget(null)} className={`${btn} border border-slate-600 text-slate-300 hover:bg-slate-700`}>Cancel</button>
-              <button onClick={doReview} disabled={busy} className={primary}>{busy ? 'Saving…' : 'Submit review'}</button>
+
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-crewly-border bg-crewly-inset/40 p-4">
+              <button type="button" onClick={() => setReviewTarget(null)} className="btn-ghost px-3 py-2 text-sm">
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={doReview}
+                disabled={busy || !reviewForm.rating}
+                className="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50"
+              >
+                <Check className="h-4 w-4" />
+                {busy ? 'Saving…' : 'Submit review'}
+              </button>
             </div>
           </div>
         </div>
