@@ -48,7 +48,7 @@ describe('work schedules — the mock, with numbers that exist', () => {
     has(schedules, 'Active patterns', 'tile 1');
     has(schedules, 'Live config', 'pill 1');
     has(schedules, 'Default assignment', 'tile 2');
-    has(schedules, 'Grace allowance', 'tile 3');
+    has(schedules, 'Avg grace allowance', 'tile 3');
     has(schedules, 'Standardized', 'pill 3');
     has(schedules, 'Compliance status', 'tile 4');
   });
@@ -56,15 +56,15 @@ describe('work schedules — the mock, with numbers that exist', () => {
   test('bucket tab row with counts and the default tier line', () => {
     has(schedules, 'All schedules', 'bucket');
     has(schedules, 'Core daytime', 'bucket');
-    has(schedules, 'Crosses midnight', 'bucket');
-    has(schedules, 'Part week', 'bucket');
+    has(schedules, 'Rotational / 24-7', 'bucket');
+    has(schedules, 'Flexible & remote', 'bucket');
     has(schedules, 'Default tier', 'default tier');
     has(schedules, 'Automatic enrolment', 'enrolment');
   });
 
   test('each schedule card keeps the work window, weekday strip and actions', () => {
     has(schedules, 'Work window', 'inset');
-    has(schedules, 'Per day', 'net hours');
+    has(schedules, 'Net / Day', 'net hours');
     has(schedules, 'Active working days', 'weekday strip');
     has(schedules, 'Off', 'dimmed weekday');
     has(schedules, 'Edit policy', 'card action');
@@ -129,7 +129,7 @@ describe('holiday calendar — month, year, list', () => {
     has(holidays, 'Filter tags', 'tag row');
     has(holidays, "'Month'", 'month view');
     has(holidays, "'Year'", 'year view');
-    has(holidays, "'List'", 'list view');
+    has(holidays, "'List view'", 'list view');
     has(holidays, 'Add holiday', 'create');
     has(holidays, 'Today', 'today jump');
   });
@@ -137,12 +137,12 @@ describe('holiday calendar — month, year, list', () => {
   test('the month grid labels every empty cell honestly', () => {
     has(holidays, 'Regular shift', 'working day');
     has(holidays, 'Weekend', 'weekend');
-    has(holidays, 'Compliance note:', 'statutory note');
+    has(holidays, 'Statutory note:', 'statutory note');
   });
 
   test('the rail carries entitlement and the claim path the API backs', () => {
     has(holidays, 'My entitlement', 'entitlement');
-    has(holidays, 'Optional holidays', 'optional bucket');
+    has(holidays, 'Floating leave', 'optional bucket');
     has(holidays, 'Claim this holiday', 'pick');
     has(holidays, 'scheduleService.pick', 'pick endpoint');
     has(holidays, 'scheduleService.unpick', 'unpick endpoint');
@@ -205,8 +205,8 @@ describe('shifts & rosters — the catalog the engine reads', () => {
   });
 
   test('my window is arithmetic on the assigned shift, not a live punch', () => {
-    has(shifts, 'Meal break', 'break marker');
-    has(shifts, 'Shift end', 'end marker');
+    has(shifts, 'meal break', 'break marker');
+    has(shifts, 'shift end', 'end marker');
     assert.ok(!shifts.includes('Math.random'), 'no invented progress');
   });
 
@@ -244,10 +244,19 @@ describe('the rebuild stays on Crewly tokens', () => {
     }
   });
 
-  test('every surface uses the shared card / inset tokens', () => {
+  test('the Stitch surfaces sit on the st- token family, not ad-hoc colours', () => {
     for (const [file, source] of [
       [SCHEDULES, schedules],
       [HOLIDAYS, holidays],
+      [SHIFTS, shifts],
+    ]) {
+      assert.ok(source.includes('st-surface'), `${file} must declare the st- surface wrapper`);
+      assert.ok(/text-st-on\b/.test(source), `${file} must use st- text tokens`);
+    }
+  });
+
+  test('the two untouched request surfaces stay on the shared card / inset tokens', () => {
+    for (const [file, source] of [
       [LEAVES, leaves],
       [APPROVALS, approvals],
     ]) {
