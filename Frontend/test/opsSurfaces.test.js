@@ -61,7 +61,15 @@ describe('assets register', () => {
     assert.match(assets, /const GROUPS = \[/);
     assert.match(assets, /statusFilter !== 'ALL' && a\.status !== statusFilter/);
     assert.match(assets, /const PER_PAGE = 8;/);
+    // Table and cards are the same rows read two ways; the mock has both.
+    assert.match(assets, /const \[view, setView\] = useState\('TABLE'\)/);
     assert.match(assets, /Showing \{visible\.length\} of \{filtered\.length\}/);
+  });
+
+  test('a stock item can be assigned from the header, not only from its row', () => {
+    assert.match(assets, /const doAssignFromPool = async \(\) => \{/);
+    assert.match(assets, /await assignAsset\(poolForm\.assetId, \{ userId: poolForm\.userId/);
+    assert.match(assets, /Assign asset\s*<\/button>/);
   });
 
   test('export is a CSV of the rows on screen, not a ZIP', () => {
@@ -107,6 +115,13 @@ describe('profile change queue', () => {
     assert.equal(changes.includes('SLA'), false);
   });
 
+  test('the queue-status bar reports, it does not simulate', () => {
+    assert.match(changes, /Queue status: \$\{pending\.length\} pending review/);
+    assert.match(changes, /Queue status: all caught up/);
+    // The mock's "Simulate Empty State" button has nothing behind it.
+    assert.equal(changes.includes('Simulate'), false);
+  });
+
   test('rejecting still requires a reason', () => {
     assert.match(changes, /disabled=\{saving \|\| \(deciding\.action === 'reject' && note\.trim\(\)\.length === 0\)\}/);
     assert.match(changes, /'Reason \(required\)'/);
@@ -129,9 +144,10 @@ describe('performance cycle dialog', () => {
     ]) {
       assert.ok(perf.includes(field), `the dialog never sends ${field}`);
     }
-    assert.match(perf, /await createCycle\(cycleForm\)/);
-    // No drafts and no automations exist server-side.
-    assert.equal(perf.includes('Save as Draft'), false);
+    assert.match(perf, /await createCycle\(\{ \.\.\.cycleForm, saveAsDraft: draft \}\)/);
+    // A draft is backed by the server now; a Slack reminder still is not.
+    assert.match(perf, /Save as draft/);
+    assert.match(perf, /startCycle\(draft\._id/);
     assert.equal(perf.includes('Slack'), false);
   });
 

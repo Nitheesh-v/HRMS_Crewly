@@ -454,6 +454,42 @@ const ProfileChangeRequestsPage = () => {
         </div>
       )}
 
+      {/* Queue status — the mock's footer bar, carrying only what is true:
+          how many are left, how old the oldest is, and a way to re-read the
+          queue. There is no "simulate empty state" here; the empty state is
+          what you get when the list is empty. */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-crewly-border bg-crewly-inset/40 p-4">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-crewly-card text-crewly-dim">
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold">
+              {loading
+                ? 'Reading the queue…'
+                : pending.length
+                  ? `Queue status: ${pending.length} pending review${pending.length === 1 ? '' : 's'} remaining`
+                  : 'Queue status: all caught up'}
+            </p>
+            <p className="mt-0.5 text-[11px] leading-snug text-crewly-dim">
+              {loading
+                ? 'Decisions are recorded the moment they are made.'
+                : pending.length
+                  ? `Oldest raised ${oldestPending ? ago(oldestPending) : '—'}. Approving writes the approved value, rejecting leaves the record untouched.`
+                  : 'Nothing is waiting on you. New proposals from your team land here with the old and new value side by side.'}
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={reload}
+          disabled={loading}
+          className="btn-ghost inline-flex items-center gap-2 px-3 py-2 text-sm disabled:opacity-60"
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Refresh
+        </button>
+      </div>
+
       {deciding ? (
         <Modal
           title={`${deciding.action === 'approve' ? 'Approve' : 'Reject'} — ${deciding.request.employeeName || 'Employee'}`}

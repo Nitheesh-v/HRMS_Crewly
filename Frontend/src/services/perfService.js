@@ -17,6 +17,8 @@ export const getCycles = async () => unwrap(await api.get('/perf/cycles'));
 export const getCycleCohort = async () => unwrap(await api.get('/perf/cohort'));
 export const createCycle = (payload) => api.post('/perf/cycles', payload);
 export const transitionCycle = (id, to) => api.patch(`/perf/cycles/${id}/status`, { to });
+/* Open a saved draft: this is the moment it enrolls anybody. */
+export const startCycle = (id, payload = {}) => api.post(`/perf/cycles/${id}/start`, payload);
 export const enrollMissing = (id) => api.post(`/perf/cycles/${id}/enroll`);
 export const getMyAppraisal = async (cycleId) => unwrap(await api.get(`/perf/cycles/${cycleId}/my`));
 export const getTeamBoard = async (cycleId) => unwrap(await api.get(`/perf/cycles/${cycleId}/team`));

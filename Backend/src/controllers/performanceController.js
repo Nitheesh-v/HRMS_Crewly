@@ -81,9 +81,12 @@ const enrollAll = async (companyId, cycleId, options = {}) => {
 };
 
 const currentOrLatestCycle = async (companyId) => {
-  const open = await PerformanceCycle.findOne({ companyId, status: { $ne: 'CLOSED' } }).sort('-createdAt');
+  // A draft is not a round anybody can work on yet — it never becomes "the"
+  // cycle, or an abandoned draft would take over the whole page.
+  const open = await PerformanceCycle.findOne({ companyId, isDraft: { $ne: true }, status: { $ne: 'CLOSED' } })
+    .sort('-createdAt');
   if (open) return open;
-  return PerformanceCycle.findOne({ companyId }).sort('-createdAt');
+  return PerformanceCycle.findOne({ companyId, isDraft: { $ne: true } }).sort('-createdAt');
 };
 
 // employee sees review bodies ONLY after the cycle closes (before: just flags)
@@ -142,6 +145,7 @@ export const createCycle = asyncHandler(async (req, res) => {
     calibrationDueAt = '',
     excludeProbation = false,
     notifyParticipants = true,
+    saveAsDraft = false,
   } = req.body;
   if (!name?.trim()) return fail(res, 400, 'Cycle name is required (e.g. "H2 2026")');
 
@@ -157,7 +161,9 @@ export const createCycle = asyncHandler(async (req, res) => {
   }
   const methodologyValue = CYCLE_METHODOLOGIES.includes(methodology) ? methodology : 'STANDARD';
   const skipProbation = excludeProbation === true;
-  const shouldNotify = notifyParticipants !== false;
+  const isDraft = saveAsDraft === true;
+  /* A draft notifies nobody, so "notify" is meaningless until it starts. */
+  const shouldNotify = notifyParticipants !== false && !isDraft;
 
   // DB Logic - DB logics
   const skip = skipProbation ? await probationIds(req.companyId) : new Set();
@@ -172,9 +178,12 @@ export const createCycle = asyncHandler(async (req, res) => {
     calibrationDueAt,
     excludeProbation: skipProbation,
     notifyParticipants: shouldNotify,
+    isDraft,
     createdBy: req.user._id,
   });
-  await enrollAll(req.companyId, cycle._id, { skip });
+  /* A draft enrolls nobody. Enrollment and notification both happen when HR
+     starts it, which is the only moment the cohort is real. */
+  if (!isDraft) await enrollAll(req.companyId, cycle._id, { skip });
 
   // 🔔 fan-out — every teammate gets the call to set goals (unless the admin
   // turned the notifications off, or left them out of the cohort)
@@ -197,7 +206,54 @@ export const createCycle = asyncHandler(async (req, res) => {
   }
 
   // Data to frontend - response to frontend
-  ok(res, 201, cycle, 'Cycle created — everyone enrolled 🎯');
+  ok(
+    res,
+    201,
+    cycle,
+    isDraft ? 'Draft saved — nobody was enrolled or notified' : 'Cycle created — everyone enrolled 🎯',
+  );
+});
+
+/* ── POST /perf/cycles/:id/start — open a saved draft ──
+   The draft's own cohort rules apply (exclude-probation was decided when it
+   was written), so starting a draft can never pull in more people than the
+   dialog said it would. */
+export const startCycle = asyncHandler(async (req, res) => {
+  // Data from frontend - requests from frontend
+  if (!isHR(req)) return fail(res, 403, 'Only HR or the company admin can start a cycle');
+  if (req.body?.notifyParticipants !== undefined && typeof req.body.notifyParticipants !== 'boolean') {
+    return fail(res, 400, 'notifyParticipants must be true or false');
+  }
+
+  // DB Logic - DB logics
+  const cycle = await loadCycle(req);
+  if (!cycle) return fail(res, 404, 'Cycle not found');
+  if (!cycle.isDraft) return fail(res, 409, 'This cycle is already running');
+
+  const skip = cycle.excludeProbation ? await probationIds(req.companyId) : new Set();
+  cycle.isDraft = false;
+  if (req.body?.notifyParticipants === false) cycle.notifyParticipants = false;
+  await cycle.save();
+  await enrollAll(req.companyId, cycle._id, { skip });
+
+  if (cycle.notifyParticipants) {
+    const cohort = await Appraisal.find({ companyId: req.companyId, cycle: cycle._id }).select('user').lean();
+    Promise.all(
+      (cohort || [])
+        .map((row) => String(row.user))
+        .filter((id) => id !== String(req.user._id))
+        .map((id) =>
+          notifyPerf(id, {
+            title: '🎯 New performance cycle',
+            message: `"${cycle.name}" has started — set your goals & KPIs now`,
+            link: '/app/performance',
+          })
+        )
+    ).catch(() => {});
+  }
+
+  // Data to frontend - response to frontend
+  ok(res, 200, cycle, cycle.notifyParticipants ? 'Cycle started — the cohort was notified' : 'Cycle started quietly');
 });
 
 /* ── GET /perf/cycles — everyone ── */
@@ -271,7 +327,12 @@ export const enrollMissing = asyncHandler(async (req, res) => {
   // DB Logic - DB logics
   const cycle = await loadCycle(req);
   if (!cycle) return fail(res, 404, 'Cycle not found');
-  await enrollAll(req.companyId, cycle._id);
+  // Enrolling a draft would open it by the back door — start it instead.
+  if (cycle.isDraft) return fail(res, 409, 'This cycle is still a draft — start it first');
+  // Re-enrolment has to respect the cohort rule the round was created with,
+  // or "leave out probation" would only hold until the next joiner arrives.
+  const skip = cycle.excludeProbation ? await probationIds(req.companyId) : new Set();
+  await enrollAll(req.companyId, cycle._id, { skip });
   // Data to frontend - response to frontend
   ok(res, 200, { ok: true }, 'Everyone enrolled');
 });

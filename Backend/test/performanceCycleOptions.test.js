@@ -38,6 +38,13 @@ describe('the cycle model', () => {
     assert.match(model, /excludeProbation: \{ type: Boolean, default: false \}/);
     assert.match(model, /notifyParticipants: \{ type: Boolean, default: true \}/);
   });
+
+  test('a draft is a flag, not a sixth phase', () => {
+    // The phase machine stays exactly as it was: a draft is a round that has
+    // not been opened, not a stage inside one.
+    assert.match(model, /CYCLE_PHASES = \['GOAL_SETTING', 'ACTIVE', 'SELF_REVIEW', 'REVIEW', 'CLOSED'\]/);
+    assert.match(model, /isDraft: \{ type: Boolean, default: false, index: true \}/);
+  });
 });
 
 describe('creating a cycle', () => {
@@ -59,6 +66,45 @@ describe('creating a cycle', () => {
     assert.match(controller, /if \(shouldNotify\) \{/);
     assert.match(controller, /Appraisal\.find\(\{ companyId: req\.companyId, cycle: cycle\._id \}\)/);
     assert.match(controller, /\.filter\(\(id\) => id !== String\(req\.user\._id\)\)/);
+  });
+});
+
+describe('drafts', () => {
+  test('saving a draft enrolls nobody and notifies nobody', () => {
+    assert.match(controller, /saveAsDraft = false,/);
+    assert.match(controller, /const isDraft = saveAsDraft === true;/);
+    assert.match(controller, /const shouldNotify = notifyParticipants !== false && !isDraft;/);
+    assert.match(controller, /if \(!isDraft\) await enrollAll\(req\.companyId, cycle\._id, \{ skip \}\);/);
+    assert.match(controller, /Draft saved — nobody was enrolled or notified/);
+  });
+
+  test('a draft is never the current cycle', () => {
+    assert.match(controller, /isDraft: \{ \$ne: true \}, status: \{ \$ne: 'CLOSED' \}/);
+  });
+
+  test('starting a draft is the moment it enrolls, under its own cohort rule', () => {
+    const start = controller.indexOf('export const startCycle');
+    const body = controller.slice(start, start + 2000);
+    assert.match(body, /if \(!cycle\.isDraft\) return fail\(res, 409, 'This cycle is already running'\)/);
+    assert.match(body, /const skip = cycle\.excludeProbation \? await probationIds/);
+    assert.match(body, /cycle\.isDraft = false;/);
+    assert.match(body, /await enrollAll\(req\.companyId, cycle\._id, \{ skip \}\)/);
+    assert.match(body, /if \(cycle\.notifyParticipants\) \{/);
+  });
+
+  test('enrolling a draft by hand is refused, and re-enrol keeps the cohort rule', () => {
+    const start = controller.indexOf('export const enrollMissing');
+    const body = controller.slice(start, start + 900);
+    assert.match(body, /if \(cycle\.isDraft\) return fail\(res, 409/);
+    assert.match(body, /const skip = cycle\.excludeProbation \?/);
+  });
+
+  test('the start route is HR-gated like creation', () => {
+    const at = routes.indexOf("'/perf/cycles/:id/start'");
+    assert.ok(at > -1, 'the route exists');
+    const after = routes.slice(at, at + 320);
+    assert.match(after, /requirePermission\(\s*'PERFORMANCE_CREATE'/);
+    assert.match(after, /startCycle/);
   });
 });
 

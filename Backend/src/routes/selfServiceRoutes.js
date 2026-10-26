@@ -518,6 +518,22 @@ router.get(
     .listCycles
 );
 
+router.post(
+  '/perf/cycles/:id/start',
+  checkWriteAccess,
+
+  requirePermission(
+    'PERFORMANCE_CREATE'
+  ),
+
+  requireFeature(
+    'performance'
+  ),
+
+  perfController
+    .startCycle
+);
+
 router.patch(
   '/perf/cycles/:id/status',
   checkWriteAccess,

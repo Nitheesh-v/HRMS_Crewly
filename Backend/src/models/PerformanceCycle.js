@@ -31,6 +31,11 @@ const performanceCycleSchema = new mongoose.Schema(
        the admin deliberately left out. */
     excludeProbation: { type: Boolean, default: false },
     notifyParticipants: { type: Boolean, default: true },
+
+    /* A draft is a round HR has written down but not opened. It enrolls
+       nobody, notifies nobody, and is never the "current" cycle — so a draft
+       cannot accidentally become the round everyone is asked to work on. */
+    isDraft: { type: Boolean, default: false, index: true },
   },
   { timestamps: true }
 );

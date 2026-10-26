@@ -4,11 +4,11 @@
 // Seniors: team review board · HR: cycle controls
 // ============================================================
 import React, { useEffect, useMemo, useState } from 'react';
-import { Briefcase, Check, ClipboardList, FileText, History, Hourglass, Lock, Plus, Save, Scale, SkipForward, Star, Target, Trash2, User, UserPlus, Users, X } from 'lucide-react';
+import { Briefcase, Check, CheckCircle2, Circle, ClipboardList, FileText, History, Hourglass, Lock, Pencil, Plus, Save, Scale, SkipForward, Star, Target, Trash2, User, UserPlus, Users, X } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import {
   getCycles, getCycleCohort, getMyAppraisal, getTeamBoard, createCycle, transitionCycle,
-  saveGoals, updateProgress, submitSelfReview, submitReview, getHistory, enrollMissing,
+  saveGoals, updateProgress, submitSelfReview, submitReview, getHistory, enrollMissing, startCycle,
 } from '../../services/perfService.js';
 import { notify } from '../../utils/notify.js';
 import EmptyState from '../../components/common/EmptyState.jsx';
@@ -49,11 +49,13 @@ const METHODOLOGIES = [
 ];
 const METHOD_LABEL = Object.fromEntries(METHODOLOGIES.map((m) => [m.id, m.label]));
 
-/* One radio card. A real radio input is kept (visually hidden) so the group is
-   keyboard-navigable with the arrow keys; the card is the label. */
+/* One radio card, selected the way the owner's mock shows it: the tick sits
+   in the card's top-right corner, not in a column down the left. The radio
+   input stays real (visually hidden) so the group is still arrow-key
+   navigable and screen readers announce a radio group. */
 const MethodCard = ({ option, checked, onSelect }) => (
   <label
-    className={`flex min-h-[84px] cursor-pointer items-start gap-2.5 rounded-xl border p-3 text-left transition ${
+    className={`relative flex min-h-[84px] cursor-pointer flex-col rounded-xl border p-3 pr-9 text-left transition ${
       checked
         ? 'border-crewly-green bg-crewly-green/[0.08]'
         : 'border-crewly-border bg-crewly-card hover:bg-crewly-inset'
@@ -69,17 +71,43 @@ const MethodCard = ({ option, checked, onSelect }) => (
     />
     <span
       aria-hidden="true"
-      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
-        checked ? 'border-crewly-green' : 'border-crewly-dim'
+      className={`absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full ${
+        checked ? 'text-crewly-green' : 'text-crewly-dim'
       }`}
     >
-      {checked ? <span className="h-2 w-2 rounded-full bg-crewly-green" /> : null}
+      {checked ? <CheckCircle2 className="h-5 w-5" /> : <Circle className="h-4 w-4" />}
     </span>
-    <span className="min-w-0">
-      <span className="block text-sm font-semibold">{option.label}</span>
-      <span className="mt-0.5 block text-[11px] leading-snug text-crewly-dim">{option.detail}</span>
-    </span>
+    <span className="block text-sm font-semibold">{option.label}</span>
+    <span className="mt-0.5 block text-[11px] leading-snug text-crewly-dim">{option.detail}</span>
   </label>
+);
+
+/* A switch, not a checkbox: the mock uses one, and "on/off for the whole
+   round" reads as a setting rather than as one item in a list. */
+const Switch = ({ id, checked, onChange, label, description }) => (
+  <div className="flex items-start justify-between gap-3 py-2">
+    <div className="min-w-0">
+      <label htmlFor={id} className="block cursor-pointer text-xs font-semibold">{label}</label>
+      {description ? <p className="mt-0.5 text-[11px] leading-snug text-crewly-dim">{description}</p> : null}
+    </div>
+    <button
+      type="button"
+      id={id}
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition ${
+        checked ? 'bg-crewly-green' : 'bg-crewly-inset-heavy'
+      }`}
+    >
+      <span
+        className={`absolute top-0.5 h-4 w-4 rounded-full transition-all ${
+          checked ? 'left-[18px] bg-crewly-card' : 'left-0.5 bg-crewly-card'
+        }`}
+      />
+    </button>
+  </div>
 );
 
 const Stars = ({ value, onChange, size = 'h-6 w-6', className = '' }) => (
@@ -193,6 +221,7 @@ export default function PerformancePage() {
   useEffect(() => { loadAll(); }, []);
 
   const cycle = mine?.cycle || current;
+  const drafts = (cyclesBox.cycles || []).filter((c) => c.isDraft);
   const app = mine?.appraisal;
   const phase = cycle?.status;
   const goalsEditable = ['GOAL_SETTING', 'ACTIVE'].includes(phase);
@@ -213,14 +242,14 @@ export default function PerformancePage() {
     ? Math.max(0, cohort.total - (cycleForm.excludeProbation ? cohort.onProbation : 0))
     : null;
 
-  const doCreateCycle = async () => {
+  const doCreateCycle = async ({ draft = false } = {}) => {
     if (!cycleForm.name.trim()) return flash(false, 'Name the cycle first — e.g. "H2 2026"');
     if (cycleForm.startDate && cycleForm.endDate && cycleForm.endDate < cycleForm.startDate) {
       return flash(false, 'The cycle cannot end before it starts');
     }
     setBusy(true);
     try {
-      await createCycle(cycleForm);
+      await createCycle({ ...cycleForm, saveAsDraft: draft });
       setShowNewCycle(false);
       setCycleForm({
         name: '', startDate: '', endDate: '', methodology: 'STANDARD',
@@ -229,9 +258,11 @@ export default function PerformancePage() {
       });
       flash(
         true,
-        cycleForm.notifyParticipants
-          ? 'Cycle started — everyone in the cohort was notified'
-          : 'Cycle started — notifications kept off',
+        draft
+          ? 'Draft saved — nobody was enrolled or notified'
+          : cycleForm.notifyParticipants
+            ? 'Cycle started — everyone in the cohort was notified'
+            : 'Cycle started — notifications kept off',
       );
       await loadAll();
     } catch (e) { flash(false, e?.response?.data?.message || 'Failed'); }
@@ -245,6 +276,23 @@ export default function PerformancePage() {
       flash(true, `Phase → ${PHASE_LABEL[PHASES[PHASES.indexOf(phase) + 1]]}`);
       await loadAll();
     } catch (e) { flash(false, e?.response?.data?.message || 'Failed'); }
+    finally { setBusy(false); }
+  };
+
+  /* Starting a draft is the only moment it enrolls anybody, so the label on
+     the button says exactly that and the result is reported back in words. */
+  const doStartDraft = async (draft) => {
+    setBusy(true);
+    try {
+      await startCycle(draft._id, { notifyParticipants: draft.notifyParticipants !== false });
+      flash(
+        true,
+        draft.notifyParticipants === false
+          ? 'Cycle started — notifications kept off'
+          : 'Cycle started — the cohort was notified',
+      );
+      await loadAll();
+    } catch (e) { flash(false, e?.response?.data?.message || 'Could not start the draft'); }
     finally { setBusy(false); }
   };
 
@@ -304,6 +352,45 @@ export default function PerformancePage() {
           </span>
         )}
       </div>
+
+      {/* Drafts. A saved draft is real work that has not been opened yet —
+          it sits here, with the one action that can open it. */}
+      {drafts.length ? (
+        <section className="rounded-xl border border-dashed border-crewly-border bg-crewly-inset/40 p-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="flex items-center gap-2 text-sm font-bold">
+              <FileText className="h-4 w-4 text-crewly-dim" />Draft cycles
+              <span className="rounded-full bg-crewly-card px-2 py-0.5 text-[11px] font-semibold text-crewly-dim">{drafts.length}</span>
+            </h2>
+            <p className="text-[11px] text-crewly-dim">Nothing is enrolled and nobody is notified until you start one.</p>
+          </div>
+          <ul className="mt-3 space-y-2">
+            {drafts.map((draft) => (
+              <li key={draft._id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-crewly-border bg-crewly-card px-3 py-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold">{draft.name}</p>
+                  <p className="truncate text-[11px] text-crewly-dim">
+                    {METHOD_LABEL[draft.methodology] || 'Standard annual'}
+                    {draft.startDate ? ` · starts ${fmtDate(draft.startDate)}` : ''}
+                    {` · ${draft.excludeProbation ? 'probation excluded' : 'everyone included'}`}
+                    {draft.notifyParticipants === false ? ' · launches quietly' : ''}
+                  </p>
+                </div>
+                {isHR ? (
+                  <button
+                    type="button"
+                    onClick={() => doStartDraft(draft)}
+                    disabled={busy}
+                    className="btn-primary px-3 py-1.5 text-xs disabled:opacity-50"
+                  >
+                    Start now
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {!cycle ? (
         <div className="rounded-xl border border-crewly-border bg-crewly-card">
@@ -502,7 +589,7 @@ export default function PerformancePage() {
             onClick={(e) => e.stopPropagation()}
           >
             {/* header */}
-            <div className="flex items-start justify-between gap-3 border-b border-crewly-border bg-crewly-inset/50 p-5">
+            <div className="flex items-start gap-3 border-b border-crewly-border bg-crewly-inset/50 p-5">
               <div className="flex min-w-0 items-start gap-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-crewly-accent/15 text-crewly-orange">
                   <Target className="h-5 w-5" />
@@ -525,7 +612,7 @@ export default function PerformancePage() {
               <button
                 type="button"
                 onClick={() => setShowNewCycle(false)}
-                className="rounded-lg p-1 text-crewly-dim hover:text-crewly-text"
+                className="ml-auto shrink-0 rounded-lg p-1 text-crewly-dim hover:text-crewly-text"
                 aria-label="Close"
               >
                 <X className="h-4 w-4" />
@@ -536,13 +623,16 @@ export default function PerformancePage() {
               {/* name */}
               <div>
                 <label className="label" htmlFor="cycle-name">Cycle name</label>
-                <input
-                  id="cycle-name"
-                  className="input"
-                  placeholder="H2 2026 Annual Performance Review"
-                  value={cycleForm.name}
-                  onChange={(e) => setCycleForm({ ...cycleForm, name: e.target.value })}
-                />
+                <div className="relative">
+                  <input
+                    id="cycle-name"
+                    className="input pr-10"
+                    placeholder="H2 2026 Annual Performance Review"
+                    value={cycleForm.name}
+                    onChange={(e) => setCycleForm({ ...cycleForm, name: e.target.value })}
+                  />
+                  <Pencil className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-crewly-dim" aria-hidden="true" />
+                </div>
               </div>
 
               {/* methodology */}
@@ -602,60 +692,75 @@ export default function PerformancePage() {
               </div>
 
               {/* cohort */}
-              <div className="rounded-xl border border-crewly-border bg-crewly-inset/40 p-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="flex items-center gap-1.5 text-xs font-semibold">
-                      <Users className="h-3.5 w-3.5 text-crewly-dim" />Participant cohort
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-crewly-dim">Every active employee in your company.</p>
-                  </div>
-                  <span className="rounded-full bg-crewly-card px-2.5 py-0.5 text-[11px] font-semibold">
-                    {cohortBusy ? 'Counting…' : cohortIncluded === null ? '—' : `${cohortIncluded} to enrol`}
-                  </span>
+              <div>
+                <p className="label">Participant cohort</p>
+                {/*
+                  The mock shows a department dropdown here. This API enrolls
+                  every active employee, full stop — so the field is a read-out
+                  of who that is rather than a picker that would silently do
+                  nothing. It still looks like the field it is standing in for.
+                */}
+                <div className="rounded-lg border border-crewly-border bg-crewly-bg px-3 py-2">
+                  <p className="truncate text-sm">
+                    All active employees
+                    {cohort?.byDepartment?.length ? (
+                      <span className="text-crewly-dim">
+                        {' '}({cohort.byDepartment.slice(0, 3).map((d) => d.name).join(', ')}
+                        {cohort.byDepartment.length > 3 ? ', …' : ''})
+                      </span>
+                    ) : null}
+                  </p>
                 </div>
-
                 {cohort?.byDepartment?.length ? (
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {cohort.byDepartment.slice(0, 6).map((dept) => (
-                      <span key={dept.name} className="rounded-full bg-crewly-card px-2 py-0.5 text-[11px] text-crewly-dim">
+                      <span key={dept.name} className="rounded-full bg-crewly-inset px-2 py-0.5 text-[11px] text-crewly-dim">
                         {dept.name} <span className="font-semibold text-crewly-text">{dept.count}</span>
                       </span>
                     ))}
                   </div>
                 ) : null}
 
-                <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-lg border border-crewly-border bg-crewly-card p-2.5">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5 h-4 w-4 accent-[var(--color-crewly-green)]"
+                <div className="mt-1 divide-y divide-crewly-border">
+                  <Switch
+                    id="cycle-exclude-probation"
                     checked={cycleForm.excludeProbation}
-                    onChange={(e) => setCycleForm({ ...cycleForm, excludeProbation: e.target.checked })}
+                    onChange={(next) => setCycleForm({ ...cycleForm, excludeProbation: next })}
+                    label="Exclude employees currently on probation"
+                    description={
+                      cohort
+                        ? `${cohort.onProbation} of ${cohort.total} are inside their first ${cohort.probationWindowDays} days.`
+                        : 'Anyone inside their first 90 days is skipped.'
+                    }
                   />
-                  <span className="min-w-0">
-                    <span className="block text-xs font-semibold">Leave out people still on probation</span>
-                    <span className="mt-0.5 block text-[11px] leading-snug text-crewly-dim">
-                      {cohort
-                        ? `${cohort.onProbation} of ${cohort.total} are inside their first ${cohort.probationWindowDays} days — they would be skipped.`
-                        : `Anyone inside their first 90 days is skipped.`}
-                    </span>
-                  </span>
-                </label>
+                </div>
+              </div>
 
-                <label className="mt-2 flex cursor-pointer items-start gap-3 rounded-lg border border-crewly-border bg-crewly-card p-2.5">
+              {/* automations — exactly one thing happens, and it says so */}
+              <div className="rounded-xl border border-crewly-border bg-crewly-inset/40 p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-crewly-dim">
+                  Automations
+                </p>
+                <div className="mt-1 flex items-start gap-2.5">
                   <input
+                    id="cycle-notify"
                     type="checkbox"
-                    className="mt-0.5 h-4 w-4 accent-[var(--color-crewly-green)]"
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-crewly-green)]"
                     checked={cycleForm.notifyParticipants}
                     onChange={(e) => setCycleForm({ ...cycleForm, notifyParticipants: e.target.checked })}
                   />
-                  <span className="min-w-0">
-                    <span className="block text-xs font-semibold">Notify everyone who is enrolled</span>
-                    <span className="mt-0.5 block text-[11px] leading-snug text-crewly-dim">
-                      They get one message telling them to set their goals. Turn it off to launch quietly.
+                  <label htmlFor="cycle-notify" className="cursor-pointer text-xs leading-relaxed">
+                    Send a launch notification to everyone enrolled
+                    <span className="mt-0.5 block text-[11px] text-crewly-dim">
+                      One message each, telling them to set their goals. Nothing else is sent, and a draft
+                      notifies nobody.
                     </span>
-                  </span>
-                </label>
+                  </label>
+                </div>
+                <p className="mt-2 border-t border-crewly-border pt-2 text-[11px] text-crewly-dim">
+                  Colleagues are enrolled when you press start — {cohortBusy ? 'counting…' : cohortIncluded === null ? '—' : cohortIncluded}
+                  {' '}of the {cohort?.total ?? '—'} active employees.
+                </p>
               </div>
             </div>
 
@@ -664,19 +769,30 @@ export default function PerformancePage() {
               <button type="button" onClick={() => setShowNewCycle(false)} className="btn-ghost px-3 py-2 text-sm">
                 Cancel
               </button>
-              <button
-                type="button"
-                onClick={doCreateCycle}
-                disabled={busy || !cycleForm.name.trim()}
-                className="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50"
-              >
-                <Target className="h-4 w-4" />
-                {busy
-                  ? 'Starting…'
-                  : cohortIncluded === null
-                    ? 'Start cycle'
-                    : `Start cycle · ${cohortIncluded} ${cohortIncluded === 1 ? 'person' : 'people'}`}
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => doCreateCycle({ draft: true })}
+                  disabled={busy || !cycleForm.name.trim()}
+                  className="btn-ghost px-3 py-2 text-sm disabled:opacity-50"
+                  title="Keep the settings without enrolling or notifying anyone"
+                >
+                  Save as draft
+                </button>
+                <button
+                  type="button"
+                  onClick={() => doCreateCycle({ draft: false })}
+                  disabled={busy || !cycleForm.name.trim()}
+                  className="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50"
+                >
+                  <Target className="h-4 w-4" />
+                  {busy
+                    ? 'Starting…'
+                    : cycleForm.notifyParticipants
+                      ? `Start & notify${cohortIncluded === null ? '' : ` ${cohortIncluded}`}`
+                      : 'Start quietly'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

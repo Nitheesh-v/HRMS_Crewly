@@ -12,8 +12,9 @@
 // ============================================================
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Backpack, Boxes, CheckCircle2, Download, IdCard, Keyboard, Laptop, Monitor,
-  Mouse, Package, Plus, Search, Send, Smartphone, Trash2, Undo2, UserPlus, Users, X,
+  Backpack, Boxes, CheckCircle2, Download, IdCard, Keyboard, Laptop, LayoutGrid,
+  List, Monitor, Mouse, Package, Plus, Search, Send, Smartphone, Trash2, Undo2,
+  UserPlus, Users, X,
 } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { getMyAssets, getAllAssets, createAsset, assignAsset, returnAsset, deleteAsset } from '../../services/assetService.js';
@@ -103,9 +104,9 @@ const Modal = ({ title, onClose, children, width = 'max-w-lg' }) => (
       className={`w-full ${width} rounded-t-2xl border border-crewly-border bg-crewly-card p-5 shadow-xl sm:rounded-2xl`}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <h3 className="text-base font-bold">{title}</h3>
-        <button type="button" onClick={onClose} className="rounded-lg p-1 text-crewly-dim hover:text-crewly-text" aria-label="Close">
+      <div className="mb-4 flex items-start gap-3">
+        <h3 className="min-w-0 flex-1 text-base font-bold">{title}</h3>
+        <button type="button" onClick={onClose} className="shrink-0 rounded-lg p-1 text-crewly-dim hover:text-crewly-text" aria-label="Close">
           <X className="h-4 w-4" />
         </button>
       </div>
@@ -124,11 +125,14 @@ export default function AssetsPage() {
   const [form, setForm] = useState({ name: '', category: 'LAPTOP', serialNumber: '', note: '', assignTo: '' });
   const [assignTarget, setAssignTarget] = useState(null);
   const [assignForm, setAssignForm] = useState({ userId: '', note: '' });
+  const [poolPicker, setPoolPicker] = useState(false);
+  const [poolForm, setPoolForm] = useState({ assetId: '', userId: '', note: '' });
   const [returnTarget, setReturnTarget] = useState(null);
   const [returnNote, setReturnNote] = useState('');
   const [search, setSearch] = useState('');
   const [group, setGroup] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [view, setView] = useState('TABLE');
   const [page, setPage] = useState(1);
   const [busy, setBusy] = useState(false);
 
@@ -220,6 +224,25 @@ export default function AssetsPage() {
     }
   };
 
+  /* The header action: pick something already in stock, pick a person, done.
+     Same endpoint as the row action, so nothing new is trusted. */
+  const doAssignFromPool = async () => {
+    if (!poolForm.assetId) return flash(false, 'Pick an asset from the register');
+    if (!poolForm.userId) return flash(false, 'Pick an employee');
+    setBusy(true);
+    try {
+      await assignAsset(poolForm.assetId, { userId: poolForm.userId, note: poolForm.note.trim() });
+      setPoolPicker(false);
+      setPoolForm({ assetId: '', userId: '', note: '' });
+      flash(true, 'Assigned — the employee has been notified');
+      await load();
+    } catch (e) {
+      flash(false, e?.response?.data?.message || 'Could not assign the asset');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const doReturn = async () => {
     if (!returnTarget) return;
     setBusy(true);
@@ -298,7 +321,16 @@ export default function AssetsPage() {
         {isHR ? (
           <div className="flex w-full flex-wrap gap-2 sm:w-auto">
             <button type="button" onClick={exportInventory} disabled={!inventory.length} className="btn-ghost inline-flex flex-1 items-center justify-center gap-2 px-3 py-2 text-sm disabled:opacity-50 sm:flex-none">
-              <Download className="h-4 w-4" />Export register
+              <Download className="h-4 w-4" />Export inventory
+            </button>
+            <button
+              type="button"
+              onClick={() => { setAssignTarget(null); setPoolPicker(true); setPoolForm({ assetId: '', userId: '', note: '' }); }}
+              disabled={!available.length || !employees.length}
+              className="btn-primary inline-flex flex-1 items-center justify-center gap-2 px-3 py-2 text-sm disabled:opacity-50 sm:flex-none"
+              title={available.length ? 'Assign something already in stock' : 'Nothing is in stock to assign'}
+            >
+              <UserPlus className="h-4 w-4" />Assign asset
             </button>
           </div>
         ) : null}
@@ -490,6 +522,27 @@ export default function AssetsPage() {
                 <option value="AVAILABLE">In stock</option>
                 <option value="ASSIGNED">In use</option>
               </select>
+              {/* Table or cards — the same rows, read two ways. */}
+              <div className="flex items-center rounded-lg border border-crewly-border p-0.5" role="group" aria-label="Register layout">
+                {[
+                  ['TABLE', 'Table', List],
+                  ['CARDS', 'Cards', LayoutGrid],
+                ].map(([id, label, Icon]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setView(id)}
+                    aria-pressed={view === id}
+                    aria-label={`${label} view`}
+                    className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition ${
+                      view === id ? 'bg-crewly-selected text-crewly-selected-text' : 'text-crewly-dim hover:text-crewly-text'
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">{label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="-mx-1 mt-2 flex items-center gap-1 overflow-x-auto px-4 pb-1 sm:px-5">
@@ -528,11 +581,67 @@ export default function AssetsPage() {
               </div>
             ) : (
               <>
+                {view === 'CARDS' ? (
+                  <ul className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+                    {visible.map((asset) => (
+                      <li key={asset._id} className="rounded-xl border border-crewly-border bg-crewly-inset/40 p-3">
+                        <div className="flex items-start gap-2.5">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-crewly-card text-crewly-dim">
+                            <CatIcon cat={asset.category} className="h-4 w-4" />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="line-clamp-2 pr-14 text-sm font-semibold leading-tight">{asset.name}</p>
+                            <p className="truncate text-[11px] text-crewly-dim">
+                              {CATS[asset.category] || 'Other'} · {asset.serialNumber || 'no serial'}
+                            </p>
+                          </div>
+                          <StatusChip status={asset.status} />
+                        </div>
+                        <p className="mt-2 truncate text-xs">
+                          {asset.status === 'ASSIGNED'
+                            ? `${asset.currentHolder?.name || 'Holder not recorded'} · since ${fmtDate(holderSince(asset))}`
+                            : 'On the shelf'}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {asset.status === 'ASSIGNED' ? (
+                            <button
+                              type="button"
+                              onClick={() => { setReturnTarget(asset); setReturnNote(''); }}
+                              className="btn-ghost inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs"
+                            >
+                              <Undo2 className="h-3.5 w-3.5" />Return
+                            </button>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => { setAssignTarget(asset); setAssignForm({ userId: '', note: '' }); }}
+                                className="btn-primary inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs"
+                              >
+                                <UserPlus className="h-3.5 w-3.5" />Assign
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => doDelete(asset)}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-crewly-red/40 px-2 py-1.5 text-xs font-semibold text-crewly-red hover:bg-crewly-red/10"
+                                title="Delete from the register"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <>
                 {/* column headings — desktop only, the rows keep their labels below */}
-                <div className="hidden grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)_auto] gap-3 border-b border-crewly-border px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-crewly-dim sm:grid sm:px-5">
+                <div className="hidden grid-cols-[minmax(0,2fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,1.3fr)_minmax(0,0.9fr)_auto] gap-3 border-b border-crewly-border px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-crewly-dim sm:grid sm:px-5">
                   <span>Hardware</span>
                   <span>Category</span>
-                  <span>With</span>
+                  <span>Serial / tag</span>
+                  <span>Current assignee</span>
                   <span>Status</span>
                   <span className="text-right">Actions</span>
                 </div>
@@ -540,7 +649,7 @@ export default function AssetsPage() {
                   {visible.map((asset) => (
                     <li
                       key={asset._id}
-                      className="grid grid-cols-1 gap-2 px-4 py-3 sm:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)_auto] sm:items-center sm:gap-3 sm:px-5"
+                      className="grid grid-cols-1 gap-2 px-4 py-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,1.3fr)_minmax(0,0.9fr)_auto] sm:items-center sm:gap-3 sm:px-5"
                     >
                       <div className="flex min-w-0 items-start gap-3">
                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-crewly-inset text-crewly-dim">
@@ -549,12 +658,14 @@ export default function AssetsPage() {
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold">{asset.name}</p>
                           <p className="truncate text-[11px] text-crewly-dim">
-                            {asset.serialNumber ? `S/N ${asset.serialNumber}` : 'No serial recorded'}
-                            {asset.note ? ` · ${asset.note}` : ''}
+                            {asset.note || 'No note on the register'}
                           </p>
                         </div>
                       </div>
                       <p className="text-xs text-crewly-dim sm:text-sm sm:text-crewly-text">{CATS[asset.category] || 'Other'}</p>
+                      <p className="truncate font-mono text-[11px] text-crewly-dim sm:text-xs">
+                        {asset.serialNumber || '—'}
+                      </p>
                       <div className="min-w-0 text-xs sm:text-sm">
                         {asset.status === 'ASSIGNED' ? (
                           <>
@@ -598,6 +709,8 @@ export default function AssetsPage() {
                     </li>
                   ))}
                 </ul>
+                  </>
+                )}
                 <div className="flex flex-wrap items-center justify-between gap-2 border-t border-crewly-border px-4 py-3 text-xs text-crewly-dim sm:px-5">
                   <p>
                     Showing {visible.length} of {filtered.length}
@@ -635,6 +748,67 @@ export default function AssetsPage() {
             )}
           </section>
         </>
+      ) : null}
+
+      {/* ── assign from stock ──────────────────────────────────────────── */}
+      {poolPicker ? (
+        <Modal title="Assign an asset" onClose={() => setPoolPicker(false)}>
+          <div className="space-y-3">
+            <div>
+              <label className="label" htmlFor="pool-asset">Asset in stock</label>
+              <select
+                id="pool-asset"
+                className="input"
+                value={poolForm.assetId}
+                onChange={(e) => setPoolForm({ ...poolForm, assetId: e.target.value })}
+              >
+                <option value="">Pick from the shelf…</option>
+                {available.map((asset) => (
+                  <option key={asset._id} value={asset._id}>
+                    {asset.name}{asset.serialNumber ? ` · ${asset.serialNumber}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="pool-user">Employee</label>
+              <select
+                id="pool-user"
+                className="input"
+                value={poolForm.userId}
+                onChange={(e) => setPoolForm({ ...poolForm, userId: e.target.value })}
+              >
+                <option value="">Pick an employee…</option>
+                {employees.map((emp) => (
+                  <option key={emp._id} value={emp._id}>
+                    {emp.name}{emp.employeeCode ? ` · ${emp.employeeCode}` : ''}{emp.designation ? ` · ${emp.designation}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="pool-note">Note (optional)</label>
+              <input
+                id="pool-note"
+                className="input"
+                placeholder="Charger included, handle with care…"
+                value={poolForm.note}
+                onChange={(e) => setPoolForm({ ...poolForm, note: e.target.value })}
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" onClick={() => setPoolPicker(false)} className="btn-ghost px-3 py-2 text-sm">Cancel</button>
+              <button
+                type="button"
+                onClick={doAssignFromPool}
+                disabled={busy || !poolForm.assetId || !poolForm.userId}
+                className="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50"
+              >
+                <Send className="h-4 w-4" />{busy ? 'Assigning…' : 'Assign'}
+              </button>
+            </div>
+          </div>
+        </Modal>
       ) : null}
 
       {/* ── assign modal ───────────────────────────────────────────────── */}
