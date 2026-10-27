@@ -11,20 +11,42 @@ Read alongside `docs/THEME.md` (the Crewly palette) and the PRD, §4.
 
 ## 1. Where it applies
 
-A page opts in with one wrapper:
+The scope is declared once, on `AppLayout`'s root, so the **whole authenticated
+product** is inside it:
 
 ```jsx
-<div className="st-surface min-h-screen">
+<div className="st-surface flex min-h-screen bg-crewly-bg">
 ```
+
+That is the whole point: `st-surface` repaints the *Crewly token names* onto the
+`st-` family, so a page written against `bg-crewly-card` / `text-crewly-dim` /
+`border-crewly-border` renders in Warm Organic without a line of markup changing.
+Ninety screens came along that way. The five hand-fitted ones additionally read
+the `st-` names directly, because the mocks ask for shapes the shared classes do
+not have. Outside `AppLayout` — the public home, the auth shells, the provider
+console, the kiosk and careers routes — the old palettes still apply.
+
+## 1a. Day and night are the same design
+
+`dark` is the unmarked default (`utils/theme.js`), so the night values are keyed
+`html:not([data-theme='light']) .st-surface`. Same token list, same roles, the
+lights off: a pine canvas one step deeper than the rail, cards lifted rather than
+sunk, copper for the action, olive for health. Both sets are pinned for contrast
+in `test/theme.test.js` — the day pairs and the night pairs are measured, not
+asserted by eye.
+
+**Before this change** the five fitted pages were mint in every theme, which is
+what put a bright page inside a dark rail at night. They now follow the theme
+they are in, like everything else.
 
 The class does four things: switches the font family to `--font-st` (Plus Jakarta
 Sans), turns on `tabular-nums` so figures do not shimmy between renders, paints
 `--color-st-surface`, and sets the heading tracking. It does not touch the shell —
 the sidebar, header and page padding stay exactly as they are.
 
-Opted in today: `pages/schedule/{SchedulesPage,ShiftsPage,HolidaysPage}.jsx` and
-`pages/leaves/LeavesPage.jsx`. `LeaveApprovalsPage.jsx` has no mock yet and is
-still on the Crewly tokens.
+Hand-fitted (read `st-` directly): `pages/schedule/{SchedulesPage,ShiftsPage,HolidaysPage}.jsx`
+and `pages/leaves/LeavesPage.jsx`. `LeaveApprovalsPage.jsx` has no mock, so it
+keeps its own blocks and inherits the palette through the scope like the rest.
 
 ---
 

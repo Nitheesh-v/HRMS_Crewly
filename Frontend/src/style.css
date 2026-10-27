@@ -170,6 +170,19 @@
   --color-st-chrome: #222823;
   --color-st-ink: #1c1f1b;
 
+  /* The rail and the "pressed-in" surfaces. Same job as the crewly-inset
+     family, but stated in st- so a page never has to know which palette it is
+     drawing on. Values are the sage wash the mocks use for tracks. */
+  --color-st-rail: #222823;
+  --color-st-border: #d4dcd2;
+  --color-st-selected: #f2f7a0;
+  --color-st-selected-text: #1c1f1b;
+  --color-st-inset: rgba(84, 100, 60, 0.06);
+  --color-st-inset-strong: rgba(84, 100, 60, 0.11);
+  --color-st-inset-heavy: rgba(84, 100, 60, 0.18);
+  --color-st-hairline: rgba(84, 100, 60, 0.1);
+  --color-st-hairline-strong: rgba(84, 100, 60, 0.16);
+
   --font-st: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system,
     'Segoe UI', Roboto, sans-serif;
 }
@@ -1696,6 +1709,40 @@ html[data-theme='light'] .crewly-logo {
    design asks for (tabular numerals on every figure), so the five pages read
    as one designed product without changing the rest of the shell. */
 .st-surface {
+  /* ── one name, two palettes ──────────────────────────────────────────────
+     This class is the Warm Organic scope. It does two things:
+
+       1. it repaints the Crewly token *names* onto the st- family, so every
+          page written against `bg-crewly-card` / `text-crewly-dim` /
+          `border-crewly-border` renders in the Warm Organic set without a
+          single line of markup changing — that is how the ninety screens we
+          did not hand-fit came along for free;
+       2. it reads the st- values, never hard-coded hex, which is why the same
+          page is Warm Organic by day and Warm Organic at night (the night
+          values live in the `:not([data-theme='light'])` block below).
+
+     AppLayout's root carries the class, so the whole authenticated product is
+     inside it. The rail re-tokenises itself, and the public home, the auth
+     shells and the provider console set their own values back. */
+  --color-crewly-bg: var(--color-st-surface);
+  --color-crewly-card: var(--color-st-lowest);
+  --color-crewly-sidebar: var(--color-st-rail);
+  --color-crewly-border: var(--color-st-border);
+  --color-crewly-text: var(--color-st-on);
+  --color-crewly-dim: var(--color-st-on-variant);
+  --color-crewly-green: var(--color-st-secondary);
+  --color-crewly-orange: var(--color-st-primary);
+  --color-crewly-red: var(--color-st-error);
+  --color-crewly-accent: var(--color-st-primary-container);
+  --color-crewly-accent-ink: var(--color-st-on-primary-container);
+  --color-crewly-selected: var(--color-st-selected);
+  --color-crewly-selected-text: var(--color-st-selected-text);
+  --color-crewly-inset: var(--color-st-inset);
+  --color-crewly-inset-strong: var(--color-st-inset-strong);
+  --color-crewly-inset-heavy: var(--color-st-inset-heavy);
+  --color-crewly-hairline: var(--color-st-hairline);
+  --color-crewly-hairline-strong: var(--color-st-hairline-strong);
+
   font-family: var(--font-st);
   font-feature-settings: 'tnum' on, 'lnum' on;
   background-color: var(--color-st-surface);
@@ -1718,4 +1765,87 @@ html[data-theme='light'] .crewly-logo {
 .st-surface ::selection {
   background: var(--color-st-tertiary-fixed);
   color: var(--color-st-on-tertiary-fixed);
+}
+
+/* ── The st- family at night ────────────────────────────────────────────────
+   `dark` is the unmarked default (see utils/theme.js), so the night values are
+   keyed to "anything that is not light". They are the same Warm Organic design
+   after dark: a pine canvas a shade deeper than the rail, cards lifted one
+   step, copper for the action, olive for health, sage for quiet type. Nothing
+   here is a second design — it is the same token list with the lights off, so
+   a page that reads st-on never has to ask which theme it is in. */
+html:not([data-theme='light']) .st-surface {
+  --color-st-surface: #16211c;
+  --color-st-surface-dim: #0f1815;
+  --color-st-surface-bright: #1e2d26;
+  --color-st-lowest: #1e2d26;
+  --color-st-low: #1b2922;
+  --color-st-container: #22332b;
+  --color-st-high: #293b32;
+  --color-st-highest: #31443a;
+  --color-st-variant: #31443a;
+  --color-st-on: #edefd9;
+  --color-st-on-variant: #a7b291;
+  --color-st-inverse: #e6efdc;
+  --color-st-inverse-on: #16211c;
+  --color-st-outline: #7f8f76;
+  --color-st-outline-variant: #3a4c40;
+
+  --color-st-primary: #e9b07a;
+  --color-st-on-primary: #2e1500;
+  --color-st-primary-container: #db9558;
+  --color-st-on-primary-container: #2e1500;
+  --color-st-secondary: #b2bd7e;
+  --color-st-on-secondary: #1a2410;
+  --color-st-secondary-container: #3b4a2b;
+  --color-st-on-secondary-container: #d7e9b7;
+  --color-st-tertiary: #d3d97f;
+  --color-st-on-tertiary: #22240a;
+  --color-st-tertiary-container: #4a4d1c;
+  --color-st-error: #e79b80;
+  --color-st-error-container: #5c2018;
+  --color-st-on-error-container: #ffdad6;
+
+  --color-st-rail: #222823;
+  --color-st-border: #33483e;
+  --color-st-selected: #f2f7a0;
+  --color-st-selected-text: #1c1f1b;
+  --color-st-inset: rgba(255, 255, 255, 0.05);
+  --color-st-inset-strong: rgba(255, 255, 255, 0.1);
+  --color-st-inset-heavy: rgba(255, 255, 255, 0.2);
+  --color-st-hairline: rgba(255, 255, 255, 0.06);
+  --color-st-hairline-strong: rgba(255, 255, 255, 0.12);
+}
+
+/* The rail is pine in both themes, so its search field cannot be a page field.
+   Mirrors the light-theme rule so the scope behaves the same way at night. */
+.st-surface .crewly-rail .input {
+  background-color: rgba(255, 255, 255, 0.07);
+  border-color: #3d443d;
+  color: #f1f3e4;
+}
+.st-surface .crewly-rail .input::placeholder {
+  color: #9faa92;
+}
+.st-surface .crewly-rail .input:focus {
+  border-color: #cbd88f;
+  --tw-ring-color: rgba(203, 216, 143, 0.25);
+}
+.st-surface .crewly-rail .crewly-logo {
+  mix-blend-mode: screen;
+}
+
+/* The active nav row is copper in the mock and in PRD §4.1, in both themes —
+   the chartreuse highlight belongs to in-content selection, not to the rail. */
+.st-surface .crewly-rail {
+  --color-crewly-selected: #db9558;
+  --color-crewly-selected-text: #22190f;
+  --color-crewly-text: #f1f3e4;
+  --color-crewly-dim: #b3bda6;
+  --color-crewly-border: #3d443d;
+  --color-crewly-green: #cbd88f;
+  --color-crewly-orange: #e8c17a;
+  --color-crewly-red: #e79b80;
+  --color-crewly-bg: #333b33;
+  --color-crewly-card: #3d443d;
 }

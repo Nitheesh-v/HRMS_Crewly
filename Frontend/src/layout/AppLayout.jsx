@@ -581,7 +581,12 @@ const AppLayout = () => {
   ];
 
   return (
-    <div className="flex min-h-screen bg-crewly-bg">
+    // `st-surface` is the Warm Organic scope (style.css) — it repaints the
+    // crewly-* token names onto the st- family for everything inside, so every
+    // screen reads as the same designed product as the Stitch exports without
+    // being hand-fitted. The rail re-tokenises itself; landing, auth and the
+    // provider console sit outside this layout and keep their own palettes.
+    <div className="st-surface flex min-h-screen bg-crewly-bg">
       {/* Desktop sidebar — hidden on mobile */}
       <div className="hidden lg:block">
         <SidebarNav menu={menu} />

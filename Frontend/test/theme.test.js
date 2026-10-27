@@ -346,3 +346,110 @@ describe('palette ownership', () => {
     assert.deepEqual(offenders, [], 'use bg-crewly-inset / border-crewly-hairline instead');
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THE WARM ORGANIC SCOPE — how the ninety unfitted screens came along.
+//
+// The five Stitch-exported screens are hand-built on the st- tokens. The rest
+// of the authenticated product is not, and re-fitting ninety pages by hand is
+// how a palette forks. Instead `st-surface` repaints the crewly-* token *names*
+// onto the st- family, so `bg-crewly-card` resolves to the mock's card without
+// the markup changing. These pins hold that mechanism in place:
+//
+//   1. the scope exists and maps every semantic name;
+//   2. the night values are stated, so dark stays a real theme instead of
+//      turning into a light page with a dark rail;
+//   3. AppLayout's root is inside the scope, so it is the whole product;
+//   4. the rail answers to PRD §4.1 (copper row) in both themes.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('the Warm Organic scope', () => {
+  const scopeAt = css.indexOf('\n.st-surface {');
+  const scope = scopeAt > -1 ? css.slice(scopeAt, css.indexOf('\n}', scopeAt)) : '';
+  const nightAt = css.indexOf("html:not([data-theme='light']) .st-surface {");
+  const night = nightAt > -1 ? css.slice(nightAt, css.indexOf('\n}', nightAt)) : '';
+  const mapped = (name) => {
+    const m = scope.match(new RegExp(`--color-crewly-${name}:\\s*([^;]+);`));
+    return m ? m[1].trim() : null;
+  };
+  const nightToken = (name) => {
+    const m = night.match(new RegExp(`--color-st-${name}:\\s*([^;]+);`));
+    return m ? m[1].trim() : null;
+  };
+
+  test('every semantic crewly name is repainted onto an st- token', () => {
+    assert.equal(mapped('bg'), 'var(--color-st-surface)', 'the canvas');
+    assert.equal(mapped('card'), 'var(--color-st-lowest)', 'cards and tables');
+    assert.equal(mapped('sidebar'), 'var(--color-st-rail)', 'the rail');
+    assert.equal(mapped('text'), 'var(--color-st-on)', 'body ink');
+    assert.equal(mapped('dim'), 'var(--color-st-on-variant)', 'secondary ink');
+    assert.equal(mapped('green'), 'var(--color-st-secondary)', 'healthy states');
+    assert.equal(mapped('accent'), 'var(--color-st-primary-container)', 'the action');
+    assert.equal(mapped('red'), 'var(--color-st-error)', 'declined / mandated');
+    for (const name of ['border', 'orange', 'accent-ink', 'selected', 'selected-text',
+      'inset', 'inset-strong', 'inset-heavy', 'hairline', 'hairline-strong']) {
+      assert.ok(mapped(name), `--color-crewly-${name} must be mapped, not left on the old palette`);
+    }
+  });
+
+  test('night is a stated palette, not the day palette with a dark rail', () => {
+    assert.ok(nightAt > -1, 'there is a night block for the scope');
+    for (const tokenName of ['surface', 'lowest', 'on', 'on-variant', 'primary', 'secondary', 'error', 'rail']) {
+      assert.ok(nightToken(tokenName), `--color-st-${tokenName} needs a night value`);
+    }
+    assert.ok(
+      luminance(nightToken('surface')) < luminance(nightToken('lowest')),
+      'at night the card is lifted off the canvas, not sunk into it',
+    );
+    assert.ok(
+      contrast(nightToken('on'), nightToken('surface')) >= 4.5,
+      'body ink clears 4.5:1 on the night canvas',
+    );
+    assert.ok(
+      contrast(nightToken('on-variant'), nightToken('surface')) >= 4.5,
+      'secondary ink clears 4.5:1 on the night canvas',
+    );
+    assert.ok(
+      contrast(nightToken('on'), nightToken('lowest')) >= 4.5,
+      'body ink on a night card',
+    );
+  });
+
+  test('the whole authenticated product is inside the scope', () => {
+    assert.match(
+      appLayout,
+      /className="st-surface flex min-h-screen/,
+      'AppLayout carries the scope, so no page has to opt in one at a time',
+    );
+  });
+
+  test('the day palette is readable, measured from the tokens', () => {
+    const tokenOf = (name) => {
+      const m = css.match(new RegExp(`--color-st-${name}:\\s*#([0-9a-fA-F]{6});`));
+      return m ? `#${m[1]}` : null;
+    };
+    const pairs = [
+      ['on', 'surface'], ['on-variant', 'surface'], ['on-variant', 'lowest'],
+      ['secondary', 'lowest'], ['primary', 'lowest'], ['error', 'lowest'],
+      ['selected-text', 'selected'],
+    ];
+    for (const [fg, bg] of pairs) {
+      const [a, b] = [tokenOf(fg), tokenOf(bg)];
+      assert.ok(a && b, `--color-st-${fg} / --color-st-${bg} must both exist`);
+      assert.ok(
+        contrast(a, b) >= 4.5,
+        `${fg} on ${bg} is ${contrast(a, b).toFixed(2)}:1, below 4.5:1`,
+      );
+    }
+  });
+
+  test('the rail answers to PRD §4.1 in both themes', () => {
+    const railAt = css.indexOf('.st-surface .crewly-rail {');
+    const rail = railAt > -1 ? css.slice(railAt, css.indexOf('\n}', railAt)) : '';
+    assert.match(rail, /--color-crewly-selected: #db9558;/, 'the active row is copper');
+    assert.match(rail, /--color-crewly-selected-text: #22190f;/, 'dark ink sits on the copper');
+    assert.ok(
+      contrast('#f1f3e4', '#222823') >= 4.5,
+      'rail labels clear 4.5:1 on the pine rail',
+    );
+  });
+});

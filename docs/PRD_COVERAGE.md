@@ -40,10 +40,13 @@ palette, needs the re-fit. **Data**: what the page can actually read today.
 | Compliance / biometric policy | `/app/attendance/policy` | `attendance/AttendancePolicyPage.jsx` | — | crewly | Policy editor exists. |
 | Kiosk security | `/app/attendance/kiosks` | `attendance/KioskStationsPage.jsx` | — | crewly | Station secrets + PIN path exist. |
 
-**No PRD screen is missing.** All twelve routes resolve. The gap is not coverage,
-it is the shell: nine of the twelve still render on the Crewly palette, and the
-per-screen blocks the PRD names (KPI cards, diff view, readiness gauge) are only
-built where a mock specified them.
+**No PRD screen is missing.** All twelve routes resolve, and since `AppLayout`
+carries the `st-surface` scope every one of them renders in the Warm Organic
+palette (see `docs/STITCH_SURFACES.md`). The remaining gap is *block-level*: the
+per-screen pieces the PRD names — the user-directory KPI cards, the profile
+side-by-side diff, the employee-files readiness gauge, the "In My Hands" asset
+passport — are only hand-built where a Stitch mock specified them. The nine
+unfitted screens keep their existing blocks and inherit the palette.
 
 ---
 
