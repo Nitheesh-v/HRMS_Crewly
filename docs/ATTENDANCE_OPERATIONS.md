@@ -90,11 +90,38 @@ attention → ethical footer.
 Presence-only guarantees kept: no coordinates, no reasons, no payroll figures,
 no activity inference, no productivity score.
 
+### An unclosed session is never "working now"
+
+`derivePresence` reports a forgotten clock-out as `presence: WORKING` **plus**
+`exceptions: ['STALE_OPEN_SESSION']`, so the board was printing a pulsing
+WORKING chip and a timer that had been running for weeks. The page now decides
+staleness once, in `isStaleOpen(row)`: the API flag, or an open session older
+than 20 hours. A stale row renders
+
+- chip `Session open · needs closing` in the error container, no pulse dot;
+- `Opened 12 Sep 09:14` (a full stamp, because it is not today) instead of a clock time;
+- `Unclosed 3d 4h` in error text instead of a timer and a progress bar;
+- the callout *"Still open from an earlier day — this is not live presence."*
+  with a link to `/app/attendance/regularizations`;
+- no late chip (the lateness is meaningless once the day is gone).
+
+The same rule feeds the counters: a stale row is taken out of *Working now* /
+*On break* (and out of the modality split) and counted in *Action required*, and
+the counter row is recomputed from the rows whenever the page holds the whole
+scope — on a paginated view the server's summary is used minus that page's
+stale rows. Stale rows also sort to the top of *Operational attention* with the
+sentence `Session still open from 12 Sep 09:14`.
+
+Rows with no punch say `Not started` rather than `0m / 8h00m`, and the late chip
+reads `N m past start` — minutes since the rostered start, which is what the API
+returns, not a lateness verdict. Live durations re-render every 15 s from the
+server's clock-in time; the 45 s board poll still owns the data.
+
 ---
 
 ## Verification
 
-- `npm test` 648/648 — including a new `test/attendanceOperations.test.js` (19
+- `npm test` 650/650 — including `test/attendanceOperations.test.js` (21
   pins) that holds the mock's blocks *and* the unconfigured-state substitutions.
 - `npm run build` ✓ 1.39s.
 - `npx eslint src` 105 errors / 16 warnings — identical to the pre-change

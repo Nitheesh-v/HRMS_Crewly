@@ -37,6 +37,7 @@ import EmptyState from '../../components/common/EmptyState.jsx';
 // client-side from authoritative server timestamps.
 
 const REFRESH_MS = 45000;
+const TICK_MS = 15000;
 
 const PRESENCE_LABEL = {
   WORKING: 'Working',
@@ -125,6 +126,41 @@ const initialsOf = (name = '') =>
     .map((part) => part.charAt(0).toUpperCase())
     .join('') || '?';
 
+/* A forgotten clock-out is still an open session, so the API can report the row
+   as WORKING with a clock-in from weeks ago (and flags it STALE_OPEN_SESSION).
+   Rendering that as a live timer prints "912h 55m" — a true number that reads as
+   a lie. These three helpers decide, once, what the card is allowed to claim. */
+const STALE_AFTER_MINUTES = 20 * 60;
+
+const isStaleOpen = (row) => {
+  if (Array.isArray(row.exceptions) && row.exceptions.includes('STALE_OPEN_SESSION')) return true;
+  if (row.presence !== 'WORKING' && row.presence !== 'ON_BREAK') return false;
+  return liveMinutes(row.clockInAt) > STALE_AFTER_MINUTES;
+};
+
+const openSinceMinutes = (fromIso) => liveMinutes(fromIso);
+
+const fmtSince = (minutes) => {
+  if (!minutes) return 'just now';
+  if (minutes < 60) return `${minutes}m`;
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  if (days) return `${days}d ${hours}h`;
+  return `${hours}h ${String(minutes % 60).padStart(2, '0')}m`;
+};
+
+const fmtStamp = (value) => {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '—';
+  return parsed.toLocaleString([], {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
 const windowMinutes = (schedule) => {
   if (!schedule?.startTime || !schedule?.endTime) return null;
   const toMin = (hhmm) => {
@@ -159,19 +195,28 @@ const KpiTile = ({ icon: Icon, label, value, hint, tone, bar }) => (
   </div>
 );
 
+const STALE_TONE = {
+  chip: 'bg-st-error-container text-st-on-error-container',
+  bar: 'bg-st-error',
+};
+
 const PersonCard = ({ row, expanded, onToggle }) => {
-  const presenceLabel = PRESENCE_LABEL[row.presence] || row.presence;
-  const tone = toneOf(row.presence);
+  const stale = isStaleOpen(row);
+  const presenceLabel = stale
+    ? 'Session open · needs closing'
+    : PRESENCE_LABEL[row.presence] || row.presence;
+  const tone = stale ? STALE_TONE : toneOf(row.presence);
   const ModeIcon = MODE_ICON[row.workMode] || null;
   const target = windowMinutes(row.schedule);
-  const worked =
-    row.presence === 'WORKING'
-      ? liveMinutes(row.clockInAt)
-      : row.presence === 'ON_BREAK'
-        ? liveMinutes(row.clockInAt)
-        : Number(row.workedMinutes) || 0;
-  const progress = target ? Math.min(100, (worked / target) * 100) : 0;
-  const isLive = row.presence === 'WORKING' || row.presence === 'ON_BREAK';
+  /* Live rows tick from the punch; completed rows report the server's own
+     worked minutes; everyone else has no elapsed time to show. A stale session
+     is never rendered as a running clock. */
+  const isLive = !stale && (row.presence === 'WORKING' || row.presence === 'ON_BREAK');
+  const isDone = row.presence === 'COMPLETED';
+  const openFor = openSinceMinutes(row.clockInAt);
+  const worked = isLive ? openFor : isDone ? Number(row.workedMinutes) || 0 : null;
+  const progress = target && worked != null ? Math.min(100, (worked / target) * 100) : 0;
+  const hasTimer = isLive || isDone;
 
   return (
     <article
@@ -217,17 +262,22 @@ const PersonCard = ({ row, expanded, onToggle }) => {
             {MODE_LABEL[row.workMode] || row.workMode}
           </span>
         ) : null}
-        {row.late?.isLate ? (
-          <span className="rounded-full bg-st-error-container px-2 py-0.5 text-[9px] font-bold text-st-on-error-container">
-            {row.late.lateMinutes}m late
+        {row.late?.isLate && !stale ? (
+          <span
+            className="rounded-full bg-st-error-container px-2 py-0.5 text-[9px] font-bold text-st-on-error-container"
+            title="Minutes since the rostered start, from the shift window — not a lateness verdict"
+          >
+            {row.late.lateMinutes}m past start
           </span>
         ) : null}
       </div>
 
       <dl className="space-y-1 text-[11px]">
         <div className="flex items-center justify-between gap-2">
-          <dt className="text-st-on-variant">Clock-in</dt>
-          <dd className="font-semibold text-st-on">{fmtClock(row.clockInAt)}</dd>
+          <dt className="text-st-on-variant">{stale ? 'Opened' : 'Clock-in'}</dt>
+          <dd className="font-semibold text-st-on">
+            {stale ? fmtStamp(row.clockInAt) : fmtClock(row.clockInAt)}
+          </dd>
         </div>
         <div className="flex items-center justify-between gap-2">
           <dt className="text-st-on-variant">Shift</dt>
@@ -238,21 +288,43 @@ const PersonCard = ({ row, expanded, onToggle }) => {
           </dd>
         </div>
         <div className="flex items-center justify-between gap-2">
-          <dt className="text-st-on-variant">{row.presence === 'ON_BREAK' ? 'Break' : 'Elapsed'}</dt>
-          <dd className="font-semibold text-st-on">
-            {row.presence === 'ON_BREAK'
-              ? fmtSpan(liveMinutes(row.breakStartedAt))
-              : row.presence === 'COMPLETED'
-                ? fmtSpan(row.workedMinutes)
-                : fmtSpan(worked)}
-            {target ? <span className="font-normal text-st-on-variant"> / {fmtSpan(target)}</span> : null}
+          <dt className="text-st-on-variant">
+            {stale ? 'Unclosed' : row.presence === 'ON_BREAK' ? 'Break' : 'Elapsed'}
+          </dt>
+          <dd className={`font-semibold ${stale ? 'text-st-error' : 'text-st-on'}`}>
+            {stale ? (
+              fmtSince(openFor)
+            ) : row.presence === 'ON_BREAK' ? (
+              fmtSpan(liveMinutes(row.breakStartedAt))
+            ) : hasTimer ? (
+              <>
+                {fmtSpan(worked)}
+                {target ? <span className="font-normal text-st-on-variant"> / {fmtSpan(target)}</span> : null}
+              </>
+            ) : (
+              <span className="font-normal text-st-on-variant">Not started</span>
+            )}
           </dd>
         </div>
       </dl>
 
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-st-high">
-        <div className={`h-full rounded-full ${tone.bar}`} style={{ width: `${progress}%` }} />
+        <div className={`h-full rounded-full ${tone.bar}`} style={{ width: `${hasTimer ? progress : 0}%` }} />
       </div>
+
+      {stale ? (
+        <div className="rounded-lg bg-st-error-container/60 px-2.5 py-1.5">
+          <p className="text-[10px] font-semibold leading-snug text-st-on-error-container">
+            Still open from an earlier day — this is not live presence.
+          </p>
+          <Link
+            to="/app/attendance/regularizations"
+            className="mt-0.5 inline-flex items-center gap-0.5 text-[10px] font-bold text-st-on-error-container hover:underline"
+          >
+            Resolve the session <ChevronRight className="h-2.5 w-2.5" aria-hidden="true" />
+          </Link>
+        </div>
+      ) : null}
 
       <div className="flex items-center justify-between gap-2 text-[10px] text-st-on-variant">
         <span className="inline-flex min-w-0 items-center gap-1">
@@ -361,6 +433,8 @@ const AttendanceTeamPage = () => {
   const [pageSize, setPageSize] = useState(25);
   const [expanded, setExpanded] = useState({});
   const [lastRefreshed, setLastRefreshed] = useState(null);
+  // Display-only clock for the elapsed timers; the server still owns time.
+  const [, bumpClock] = useState(0);
   const requestSeq = useRef(0);
 
   const load = useCallback(
@@ -413,6 +487,11 @@ const AttendanceTeamPage = () => {
   }, [canView, load]);
 
   useEffect(() => {
+    const timer = setInterval(() => bumpClock((value) => value + 1), TICK_MS);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     if (!canView) return undefined;
     const poll = () => {
       if (!document.hidden) load({ silent: true });
@@ -437,9 +516,66 @@ const AttendanceTeamPage = () => {
 
   const toggleExpanded = (id) => setExpanded((current) => ({ ...current, [id]: !current[id] }));
 
-  const counts = board?.counts || {};
-  const modes = counts.modes || {};
   const rows = useMemo(() => board?.rows || [], [board]);
+
+  /* When the board returned every row in scope, the counters are recomputed
+     here so an unclosed session from three weeks ago cannot be counted as
+     "working now". On a paginated view we cannot see the whole set, so the
+     server's own summary stands. */
+  const fullSet = Boolean(board) && rows.length === board.total;
+  const counts = useMemo(() => {
+    const serverCounts = board?.counts || {};
+    if (!fullSet) {
+      /* A paginated view cannot be recounted from scratch, but any unclosed
+         session on this page was also counted as "working" in the summary —
+         take it back out so the tile does not claim a live body. */
+      const staleWorking = rows.filter(
+        (row) => isStaleOpen(row) && (row.presence === 'WORKING' || row.presence === 'ON_BREAK'),
+      );
+      if (!staleWorking.length) return serverCounts;
+      const next = { ...serverCounts, modes: { ...(serverCounts.modes || {}) } };
+      for (const row of staleWorking) {
+        if (row.presence === 'WORKING') next.working = Math.max(0, (next.working || 0) - 1);
+        else next.onBreak = Math.max(0, (next.onBreak || 0) - 1);
+        const mode = row.workMode || 'NONE';
+        if (next.modes[mode]) next.modes[mode] = Math.max(0, next.modes[mode] - 1);
+      }
+      return next;
+    }
+    const next = {
+      total: 0,
+      working: 0,
+      onBreak: 0,
+      completed: 0,
+      notIn: 0,
+      lateNotIn: 0,
+      onLeave: 0,
+      exceptions: 0,
+      modes: {},
+    };
+    for (const row of rows) {
+      const stale = isStaleOpen(row);
+      next.total += 1;
+      if (stale) {
+        next.exceptions += 1;
+        continue;
+      }
+      if (row.presence === 'WORKING') next.working += 1;
+      else if (row.presence === 'ON_BREAK') next.onBreak += 1;
+      else if (row.presence === 'COMPLETED') next.completed += 1;
+      else if (row.presence === 'LATE_NOT_IN') next.lateNotIn += 1;
+      else if (row.presence === 'ON_LEAVE') next.onLeave += 1;
+      else if (row.presence === 'NOT_IN') next.notIn += 1;
+      if ((row.exceptions?.length || 0) > 0 || row.needsReview) next.exceptions += 1;
+      if (row.presence === 'WORKING' || row.presence === 'ON_BREAK') {
+        const mode = row.workMode || 'NONE';
+        next.modes[mode] = (next.modes[mode] || 0) + 1;
+      }
+    }
+    return next;
+  }, [board, fullSet, rows]);
+
+  const modes = counts.modes || {};
 
   /* Modality split over the people actually on the clock — a share of a real
      count, so an empty board reads 0% rather than dividing by zero. */
@@ -447,9 +583,13 @@ const AttendanceTeamPage = () => {
   const shareOf = (n) => (onSite ? Math.round(((n || 0) / onSite) * 100) : 0);
 
   const attention = useMemo(
-    () => rows.filter((row) => (row.exceptions?.length || 0) > 0 || row.needsReview),
+    () =>
+      rows
+        .filter((row) => (row.exceptions?.length || 0) > 0 || row.needsReview || isStaleOpen(row))
+        .sort((a, b) => Number(isStaleOpen(b)) - Number(isStaleOpen(a))),
     [rows],
   );
+  const staleCount = useMemo(() => rows.filter(isStaleOpen).length, [rows]);
 
   if (permissionsLoading) {
     return <div className="st-surface p-6 text-sm text-st-on-variant">Loading…</div>;
@@ -670,7 +810,7 @@ const AttendanceTeamPage = () => {
               <Filter className="h-3 w-3" aria-hidden="true" /> Work mode
             </span>
             {[
-              ['', 'All locations', onSite],
+              ['', 'All locations', board?.total ?? 0],
               ['OFFICE', 'In office', modes.OFFICE || 0],
               ['WFH', 'Remote / WFH', modes.WFH || 0],
               ['FIELD', 'Field / client site', (modes.FIELD || 0) + (modes.CLIENT_SITE || 0)],
@@ -809,6 +949,9 @@ const AttendanceTeamPage = () => {
             <p className="mt-3 text-[10px] leading-relaxed text-st-on-variant">
               Counts only the people currently on the clock — people on leave or not yet in have no
               modality to report.
+              {staleCount
+                ? ` ${staleCount} of them ${staleCount === 1 ? 'is an unclosed session' : 'are unclosed sessions'} from an earlier day, so the real figure is lower until they are corrected.`
+                : ''}
             </p>
           </div>
 
@@ -857,7 +1000,9 @@ const AttendanceTeamPage = () => {
                   <p className="text-[11px] font-bold text-st-on">{row.user.name}</p>
                   <p className="text-[10px] text-st-on-variant">
                     {(row.exceptions || []).map((code) => EXCEPTION_LABEL[code] || code).join(' · ') ||
-                      'Needs review'}
+                      (isStaleOpen(row)
+                        ? `Session still open from ${fmtStamp(row.clockInAt)}`
+                        : 'Needs review')}
                   </p>
                   <Link
                     to="/app/attendance/regularizations"

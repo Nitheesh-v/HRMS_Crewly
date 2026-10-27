@@ -195,6 +195,23 @@ describe("who's working today", () => {
     has(team, '/app/attendance/regularizations', 'resolve path is real');
   });
 
+  test('an unclosed session is never rendered as a live clock', () => {
+    has(team, 'const isStaleOpen = (row)', 'one place decides');
+    has(team, "row.exceptions.includes('STALE_OPEN_SESSION')", 'the API flag is honoured');
+    has(team, 'const STALE_AFTER_MINUTES = 20 * 60', 'and a 20h guard catches unflagged ones');
+    has(team, 'Session open · needs closing', 'the chip stops claiming "working"');
+    has(team, 'Still open from an earlier day', 'the card says so in words');
+    has(team, 'fmtSince(openFor)', 'aged sessions report an age, not a timer');
+    has(team, 'Not started', 'no elapsed time before a punch exists');
+    has(team, 'm past start', 'late minutes are described as time, not a verdict');
+    assert.ok(!/Elapsed[^\n]*\.toFixed\(2\)/.test(team), 'no invented precision');
+  });
+
+  test('live durations advance without waiting for the 45s poll', () => {
+    has(team, 'const TICK_MS = 15000', 'a display-only clock');
+    has(team, 'bumpClock((value) => value + 1)', 'it re-renders the timers');
+  });
+
   test('the board stays a presence board', () => {
     has(team, 'Presence, not surveillance.', 'ethical footer');
     assert.ok(!/latitude|longitude|geolocation|navigator\.geolocation/.test(team), 'never shows coordinates');
