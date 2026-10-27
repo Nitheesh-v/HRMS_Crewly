@@ -173,7 +173,8 @@ describe('my leaves — balances, pace, draft, trail', () => {
 
   test('the quick-apply draft explains the scope limit instead of faking it', () => {
     has(leaves, 'Start a request', 'draft card');
-    has(leaves, "'First half'", 'scope chip');
+    has(leaves, 'First half', 'scope chip');
+    has(leaves, 'Second half', 'scope chip');
     has(leaves, 'Requests are counted in whole working days', 'stated limit');
     has(leaves, 'aria-disabled="true"', 'half-day chips are not actionable');
   });
@@ -249,15 +250,15 @@ describe('the rebuild stays on Crewly tokens', () => {
       [SCHEDULES, schedules],
       [HOLIDAYS, holidays],
       [SHIFTS, shifts],
+      [LEAVES, leaves],
     ]) {
       assert.ok(source.includes('st-surface'), `${file} must declare the st- surface wrapper`);
       assert.ok(/text-st-on\b/.test(source), `${file} must use st- text tokens`);
     }
   });
 
-  test('the two untouched request surfaces stay on the shared card / inset tokens', () => {
+  test('the approval console stays on the shared card / inset tokens', () => {
     for (const [file, source] of [
-      [LEAVES, leaves],
       [APPROVALS, approvals],
     ]) {
       assert.ok(source.includes('card'), `${file} must use the card token`);

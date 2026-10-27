@@ -159,6 +159,17 @@
   --color-st-on-tertiary-fixed: #1b1d00;
   --color-st-on-tertiary-fixed-variant: #464a03;
 
+  /* PRD §4.1 roles that the Stitch YAML block did not name. Same family, same
+     page scope — the canvas, cards and rail above are byte-identical to what
+     the mocks render (#f3fcf1 canvas, #ffffff cards, #2a322b rail), so these
+     only fill the gaps the PRD calls out by name. */
+  --color-st-sage: #97a87a;
+  --color-st-sage-dim: #a8bba3;
+  --color-st-alert: #f2f7a0;
+  --color-st-on-alert: #1c1f1b;
+  --color-st-chrome: #222823;
+  --color-st-ink: #1c1f1b;
+
   --font-st: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system,
     'Segoe UI', Roboto, sans-serif;
 }
