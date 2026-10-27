@@ -97,6 +97,8 @@ and every other order is an explicit sort, never a ranking.
 | 8 KPI tiles | `summary.dayCounts`, `workedMinutes`, `lateDays`, `approvedOtMinutes`, `exceptionDays` | real |
 | legend + `95.4% Expected Hours Met` | worked minutes ÷ the scheduled minutes of elapsed days, named in the tooltip | arithmetic over `day.schedule` |
 | calendar grid (hours, in-time, dots, flags, today ring) | `days[]` — `bucket`, `actual`, `workMode`, `exceptions` | real |
+| expected-hours denominator | `schedule.scheduledMinutes` from the backend, wall-clock parsing only as a fallback | the resolved window outranks a string split |
+| empty month | one illustrated empty state instead of an empty grid beside an empty rail | nothing to select, so nothing pretends otherwise |
 | day drawer → right rail | the selected day's breakdown, punch timeline, break, late/early, correction state, OT | better than the mock's modal: the calendar stays visible |
 | `Gross Tracked 9h07m / Unpaid Lunch −0h45m / Net 8h22m` | worked minutes, breaks recorded, corrected days, worked holidays | the payload does not split gross/net; relabelled rather than guessed |
 | `Request Regularization/Correction`, `Add Note/Compensatory Proof` | link to regularizations; link to overtime & comp-off | real workflows |

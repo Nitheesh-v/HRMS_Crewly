@@ -87,6 +87,9 @@ const toMinutes = (value) => {
 
 const scheduleMinutes = (schedule) => {
   if (!schedule) return null;
+  // The backend already resolved the window; only fall back to the
+  // wall-clock strings when it did not send the number.
+  if (Number(schedule.scheduledMinutes) > 0) return Number(schedule.scheduledMinutes);
   const start = toMinutes(schedule.startTime);
   const end = toMinutes(schedule.endTime);
   if (start === null || end === null) return null;
@@ -409,6 +412,13 @@ const AttendanceTimesheetPage = () => {
               />
             </div>
 
+            {days.length === 0 ? (
+            <EmptyState
+              illustration="calendar"
+              title="No calendar for this month"
+              description="Nothing was resolved for this period — no roster, punches, leave or holidays. Pick another month or ask HR to publish the roster."
+            />
+            ) : (
             <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_22rem]">
               {/* ── calendar column ─────────────────────────────────── */}
               <div className="flex min-w-0 flex-col gap-4">
@@ -674,13 +684,7 @@ const AttendanceTimesheetPage = () => {
               </div>
             </div>
 
-            {days.length === 0 ? (
-              <EmptyState
-                illustration="calendar"
-                title="No calendar for this month"
-                description="Nothing was resolved for this period — no roster, punches, leave or holidays. Pick another month or ask HR to publish the roster."
-              />
-            ) : null}
+            )}
 
             <p className="flex items-start gap-2 rounded-xl bg-st-low px-4 py-3 text-[11px] leading-relaxed text-st-on-variant">
               <Download className="mt-0.5 h-3.5 w-3.5 shrink-0 text-st-outline" aria-hidden="true" />
