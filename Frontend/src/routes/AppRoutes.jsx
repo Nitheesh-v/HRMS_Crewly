@@ -31,6 +31,7 @@ import RequireAuth from "./RequireAuth.jsx";
 import RequireVerifierAuth from "./RequireVerifierAuth.jsx";
 import RequirePermission from "./RequirePermission.jsx";
 import RequireRole from "./RequireRole.jsx";
+import PayrollSection from "../components/payroll/PayrollSection.jsx";
 
 const LandingPage = lazy(() => import("../pages/landing/LandingPage.jsx"));
 const LoginPage = lazy(() => import("../pages/login/LoginPage.jsx"));
@@ -117,7 +118,6 @@ const ScheduledReportsPage = lazy(() => import("../pages/payroll/analytics/Sched
 const FinalSettlementPage = lazy(() => import("../pages/payroll/FinalSettlementPage.jsx"));
 const MyFinalSettlementPage = lazy(() => import("../pages/payroll/MyFinalSettlementPage.jsx"));
 const EmployeePayrollDetailPage = lazy(() => import("../pages/payroll/EmployeePayrollDetailPage.jsx"));
-const MyPayslipsPage = lazy(() => import("../pages/payroll/MyPayslipsPage.jsx"));
 
 const RecruitmentPage = lazy(() => import("../pages/recruitment/RecruitmentPage.jsx"));
 const RecruitmentDashboardPage = lazy(() => import("../pages/recruitment/RecruitmentDashboardPage.jsx"));
@@ -218,6 +218,12 @@ const HR = [
 const COMPANY_ADMIN = [
   "COMPANY_ADMIN",
 ];
+
+
+/* Payroll pages share one in-page tab strip (see config/payrollNav.js): the
+   sidebar lists three areas, the strip lists the pages inside them. Defined
+   here so every payroll route is framed the same way. */
+const inPayroll = (page) => <PayrollSection>{page}</PayrollSection>;
 
 const AppRoutes = () => (
   <Suspense fallback={<div className="p-6 text-crewly-dim">Loading…</div>}>
@@ -707,7 +713,7 @@ const AppRoutes = () => (
         path="payroll"
         element={
           <RequireRole roles={HR}>
-            <PayrollPage />
+            {inPayroll(<PayrollPage />)}
           </RequireRole>
         }
       />
@@ -717,56 +723,57 @@ const AppRoutes = () => (
           role: the page shows its own permission message and the backend
           enforces the same rule. A role-name gate here would lock out every
           delegated payroll role the company creates. */}
-      <Route path="payroll/setup" element={<PayrollSetupPage />} />
+      <Route path="payroll/setup" element={inPayroll(<PayrollSetupPage />)} />
       {/* Phase 29.2 — Salary Components (permission-gated inside the page) */}
-      <Route path="payroll/components" element={<SalaryComponentsPage />} />
-      <Route path="payroll/structures" element={<SalaryStructuresPage />} />
+      <Route path="payroll/components" element={inPayroll(<SalaryComponentsPage />)} />
+      <Route path="payroll/structures" element={inPayroll(<SalaryStructuresPage />)} />
       {/* Phase 29.5 — Monthly Payroll Inputs (permission-gated inside the page) */}
-      <Route path="payroll/inputs" element={<MonthlyInputsPage />} />
+      <Route path="payroll/inputs" element={inPayroll(<MonthlyInputsPage />)} />
       {/* Phase 29.6 — Payroll Calculation Engine (permission-gated inside the page) */}
-      <Route path="payroll/run" element={<RunPayrollPage />} />
+      <Route path="payroll/run" element={inPayroll(<RunPayrollPage />)} />
       {/* Phase 29.7 — Payroll Review & Approval (permission-gated inside the page) */}
-      <Route path="payroll/review" element={<ReviewPayrollPage />} />
+      <Route path="payroll/review" element={inPayroll(<ReviewPayrollPage />)} />
       {/* Phase 29.8 — Salary Payment: prepare the bank transfer file. */}
-      <Route path="payroll/salary-payment" element={<SalaryPaymentPage />} />
+      <Route path="payroll/salary-payment" element={inPayroll(<SalaryPaymentPage />)} />
       {/* Phase 29.9 — Payslips: admin workspace + employee salary portal. */}
-      <Route path="payroll/payslips" element={<PayslipsPage />} />
-      <Route path="payroll/my-payslips" element={<MyPayslipsPortalPage />} />
-      <Route path="payroll/statutory" element={<StatutoryCompliancePage />} />
+      <Route path="payroll/payslips" element={inPayroll(<PayslipsPage />)} />
+      <Route path="payroll/my-payslips" element={inPayroll(<MyPayslipsPortalPage />)} />
+      <Route path="payroll/statutory" element={inPayroll(<StatutoryCompliancePage />)} />
       {/* Phase 29.11 — Final Settlement (F&F): HR/Finance workspace + employee portal. */}
-      <Route path="payroll/final-settlement" element={<FinalSettlementPage />} />
-      <Route path="payroll/my-final-settlement" element={<MyFinalSettlementPage />} />
+      <Route path="payroll/final-settlement" element={inPayroll(<FinalSettlementPage />)} />
+      <Route path="payroll/my-final-settlement" element={inPayroll(<MyFinalSettlementPage />)} />
       {/* Phase 29.12 — Payroll Analytics & Reports. Each page gates itself
           on the payroll report permissions (§4 / §25); the CTC block is
           additionally gated on PAYROLL_ANALYTICS_FINANCIAL (§16). */}
-      <Route path="payroll/analytics" element={<ExecutiveDashboardPage />} />
-      <Route path="payroll/analytics/overview" element={<PayrollOverviewPage />} />
-      <Route path="payroll/analytics/department" element={<DepartmentAnalyticsPage />} />
-      <Route path="payroll/analytics/salary-distribution" element={<SalaryDistributionPage />} />
-      <Route path="payroll/analytics/trends" element={<PayrollTrendsPage />} />
-      <Route path="payroll/analytics/bonus" element={<BonusReportPage />} />
-      <Route path="payroll/analytics/overtime" element={<OvertimeReportPage />} />
-      <Route path="payroll/analytics/statutory" element={<StatutorySummaryPage />} />
+      <Route path="payroll/analytics" element={inPayroll(<ExecutiveDashboardPage />)} />
+      <Route path="payroll/analytics/overview" element={inPayroll(<PayrollOverviewPage />)} />
+      <Route path="payroll/analytics/department" element={inPayroll(<DepartmentAnalyticsPage />)} />
+      <Route path="payroll/analytics/salary-distribution" element={inPayroll(<SalaryDistributionPage />)} />
+      <Route path="payroll/analytics/trends" element={inPayroll(<PayrollTrendsPage />)} />
+      <Route path="payroll/analytics/bonus" element={inPayroll(<BonusReportPage />)} />
+      <Route path="payroll/analytics/overtime" element={inPayroll(<OvertimeReportPage />)} />
+      <Route path="payroll/analytics/statutory" element={inPayroll(<StatutorySummaryPage />)} />
       {/* 29.13 — the six reports added in this phase (§11, §12, §13, §18, §20,
           §21) and the employee salary history (§23). */}
-      <Route path="payroll/analytics/earnings" element={<EarningsReportPage />} />
-      <Route path="payroll/analytics/deductions" element={<DeductionsReportPage />} />
-      <Route path="payroll/analytics/employer" element={<EmployerContributionPage />} />
-      <Route path="payroll/analytics/reimbursement" element={<ReimbursementReportPage />} />
-      <Route path="payroll/analytics/fnf" element={<FnfAnalyticsPage />} />
-      <Route path="payroll/analytics/variance" element={<PayrollVariancePage />} />
-      <Route path="payroll/analytics/salary-history/:employeeId" element={<SalaryHistoryPage />} />
-      <Route path="payroll/analytics/register" element={<PayrollRegisterPage />} />
-      <Route path="payroll/analytics/scheduled" element={<ScheduledReportsPage />} />
+      <Route path="payroll/analytics/earnings" element={inPayroll(<EarningsReportPage />)} />
+      <Route path="payroll/analytics/deductions" element={inPayroll(<DeductionsReportPage />)} />
+      <Route path="payroll/analytics/employer" element={inPayroll(<EmployerContributionPage />)} />
+      <Route path="payroll/analytics/reimbursement" element={inPayroll(<ReimbursementReportPage />)} />
+      <Route path="payroll/analytics/fnf" element={inPayroll(<FnfAnalyticsPage />)} />
+      <Route path="payroll/analytics/variance" element={inPayroll(<PayrollVariancePage />)} />
+      <Route path="payroll/analytics/salary-history/:employeeId" element={inPayroll(<SalaryHistoryPage />)} />
+      <Route path="payroll/analytics/register" element={inPayroll(<PayrollRegisterPage />)} />
+      <Route path="payroll/analytics/scheduled" element={inPayroll(<ScheduledReportsPage />)} />
       {/* Employee referrals — every authenticated employee of the tenant. */}
       <Route path="referrals" element={<ReferralsPage />} />
-      <Route path="payroll/employees" element={<EmployeePayrollPage />} />
-      <Route path="payroll/employees/:employeeId" element={<EmployeePayrollDetailPage />} />
+      <Route path="payroll/employees" element={inPayroll(<EmployeePayrollPage />)} />
+      <Route path="payroll/employees/:employeeId" element={inPayroll(<EmployeePayrollDetailPage />)} />
 
-      <Route
-        path="payslips"
-        element={<MyPayslipsPage />}
-      />
+      {/* The old standalone "My Payslips" surface is the same idea as the
+          Payslips › My payslips tab, so it now points there rather than
+          offering a second, thinner copy of the same list. Old links and
+          bookmarks keep working. */}
+      <Route path="payslips" element={<Navigate to="/app/payroll/my-payslips" replace />} />
 
       {/* Company and subscription */}
       <Route

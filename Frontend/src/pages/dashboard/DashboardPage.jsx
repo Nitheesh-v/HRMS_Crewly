@@ -777,7 +777,7 @@ const DashboardPage = () => {
           title="Latest Payslip"
           action={
             <Link
-              to="/app/payslips"
+              to="/app/payroll/my-payslips"
               className="text-xs text-crewly-green hover:underline"
             >
               My Payslips →

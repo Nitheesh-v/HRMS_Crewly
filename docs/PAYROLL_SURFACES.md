@@ -85,3 +85,74 @@ narrower real fact.
 `npx eslint src` → 117 problems (103 errors, 14 warnings), below the
 121-problem baseline. No browser is available in this environment, so the
 surfaces were verified by lint, build and source pins — not pixel comparison.
+
+---
+
+# Payroll navigation — three areas, one tab strip each
+
+Payroll had seventeen routes and fifteen sidebar rows. That is not a section of
+an HR product; it is a second product stacked under one word, and it pushed
+every other module below the fold. The owner asked for the Settings screen's
+pattern instead: a few entries in the rail, and the pages inside an area
+presented as a horizontal tab strip at the top of the page.
+
+## What the rail shows now
+
+| row | lands on | tabs inside |
+| --- | --- | --- |
+| **Payroll** | `/app/payroll` | Payroll center · Monthly inputs · Run payroll · Review & approval · Salary payment · Analytics & reports |
+| **Salary architecture** | `/app/payroll/components` | Components & rules · Structures · Statutory & compliance · Company setup |
+| **Payslips** | `/app/payroll/payslips` | Payslip workspace · Final settlement · My payslips *(you)* · My settlement *(you)* |
+
+Four rows instead of sixteen (the group header plus three areas), and the rail
+no longer scrolls to reach Recruitment.
+
+## One definition, two readers
+
+`src/config/payrollNav.js` is the only place a payroll destination is named.
+`layout/AppLayout.jsx` derives the sidebar rows from it; `components/payroll/
+PayrollSectionTabs.jsx` derives the strip from it. A page therefore cannot be
+reachable one way and invisible the other.
+
+Every tab carries the permission array its old sidebar row carried, verbatim —
+`SALARY_COMPONENT_READ|MANAGE|ACTIVATE` for Components & rules, and so on — so
+the move changed the shape of navigation and nothing about who may go where. An
+area appears in the rail only if the person holds at least one permission for
+at least one of its tabs; a tab they cannot open is not drawn. The strip stays
+hidden until permissions have loaded, so nobody sees the layout reflow.
+
+The strip is wrapped around every payroll route in `AppRoutes.jsx`
+(`inPayroll(...)`), which is also why a new payroll page cannot ship without a
+way to reach it: the route file and the config are pinned together by
+`test/payrollNavigation.test.js`.
+
+## Consequences worth naming
+
+- **The breadcrumb had to learn a new source.** It used to take the page name
+  from the sidebar entry that owned the path. Those entries are gone, so
+  `utils/breadcrumb.js` now reads `PAYROLL_PAGE_TITLES` — the same words the
+  tabs use. Detail views that are not tabs (an employee's payroll record, each
+  `/app/payroll/analytics/*` sub-report) are named there explicitly rather than
+  falling back to "Payroll".
+- **Detail views keep their parent tab lit** (Payroll variance lights Analytics
+  & reports; an employee record lights Payroll center). The stripe is a
+  position indicator, not a route table.
+- **Self-service tabs are marked `you`.** "My payslips" and "My settlement" sit
+  in the same strip as company-wide payslips because they belong to the same
+  question. The marker is what stops them reading as a company-wide view.
+- **The old `/app/payslips` door now forwards.** The role menus carried a
+  "My Payslips" row to a thinner standalone list; the Payslips area's *My
+  payslips* tab is the same idea with the real portal behind it. Keeping both
+  would have put two payslip doors in one sidebar, so `/app/payslips` redirects
+  to `/app/payroll/my-payslips` (bookmarks and the dashboard link keep
+  working) and the duplicate page is gone. Payroll paths are also removed from
+  the role menus — a second "Payroll" row beside the three area rows is exactly
+  the duplication this change set out to remove.
+- **No backend, schema or permission changed.** Frontend only.
+
+## Verification
+
+`npm test` → 701 passing (9 new pins in `test/payrollNavigation.test.js`),
+`npm run build` green, `npx eslint src` → 117 problems (103 errors, 14
+warnings) — exactly the pre-change baseline. No browser is available here, so
+this is verified by lint, build and source pins, not by screenshot.
