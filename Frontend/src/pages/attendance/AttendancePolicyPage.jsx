@@ -1,20 +1,30 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  AlarmClock,
   AlertTriangle,
+  ArrowRight,
   Bell,
-  BellOff,
-  Briefcase,
+  BellRing,
+  Building2,
+  CalendarClock,
   CheckCircle2,
-  ChevronDown,
+  Clock,
   Coffee,
   Crosshair,
+  Gauge,
+  History,
   Hourglass,
-  Loader2,
+  Info,
   MapPin,
-  MoonStar,
+  Pencil,
+  Plus,
+  Power,
   Save,
+  Scale,
   ShieldCheck,
+  Sparkles,
+  Timer,
+  Users,
+  Wifi,
   Target,
 } from 'lucide-react';
 import usePermission from '../../hooks/usePermission.js';
@@ -235,46 +245,20 @@ const formatMinutes = (value) => {
   return `${hours}h ${String(minutes).padStart(2, '0')}m`;
 };
 
-const NumberField = ({ label, value, onChange, hint, disabled, min = 0, max = 1440 }) => (
-  <div>
-    <label className="label">{label}</label>
-    <input
-      type="number"
-      className="input w-full"
-      value={value}
-      min={min}
-      max={max}
-      disabled={disabled}
-      onChange={(event) => onChange(event.target.value)}
-    />
-    {hint && <p className="mt-1 text-xs text-crewly-dim">{hint}</p>}
-  </div>
-);
-
 const Toggle = ({ label, checked, onChange, disabled, hint }) => (
-  <label className="flex cursor-pointer items-start gap-3">
+  <label className="flex cursor-pointer items-start gap-2.5">
     <input
       type="checkbox"
-      className="mt-1 h-4 w-4 accent-emerald-500"
+      className="mt-0.5 h-4 w-4 accent-st-secondary"
       checked={Boolean(checked)}
       disabled={disabled}
       onChange={(event) => onChange(event.target.checked)}
     />
     <span>
-      <span className="text-sm font-medium">{label}</span>
-      {hint && <span className="block text-xs text-crewly-dim">{hint}</span>}
+      <span className="block text-xs font-semibold text-st-on">{label}</span>
+      {hint && <span className="block text-[11px] leading-snug text-st-on-variant">{hint}</span>}
     </span>
   </label>
-);
-
-const Section = ({ icon: Icon, title, children }) => (
-  <section className="card space-y-4 p-5">
-    <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-crewly-dim">
-      <Icon size={16} />
-      {title}
-    </h2>
-    {children}
-  </section>
 );
 
 const AttendancePolicyPage = () => {
@@ -533,17 +517,89 @@ const AttendancePolicyPage = () => {
     }
   };
 
+
+  // The rule groups the mock tabs across. Each one is a real group of fields on
+  // the policy document — the tab scrolls to it and the rail reports which are
+  // configured, rather than inventing a completeness figure.
+  const GROUPS = [
+    { id: 'core', label: 'Core hours & grace', Icon: Clock },
+    { id: 'breaks', label: 'Break & meals', Icon: Coffee },
+    { id: 'missing', label: 'Missing punch & regularization', Icon: CalendarClock },
+    { id: 'overtime', label: 'Overtime & comp-off', Icon: Timer },
+    { id: 'geofence', label: 'Geofence & locations', Icon: Crosshair },
+    { id: 'audit', label: 'Audit & notifications', Icon: Bell },
+  ];
+
+  const fmtDateTime = (value) => {
+    if (!value) return null;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleString([], {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const activeLocations = locations.filter((row) => row.isActive);
+  const policyStatus = policy?.status || 'DRAFT';
+  const isLive = policyStatus === 'ACTIVE';
+  const publishedAt = fmtDateTime(policy?.activatedAt || (isLive ? policy?.updatedAt : null));
+
+  /* How much of the rule set has been decided, out of the toggles and numbers
+     this policy actually owns. A ratio over real fields — not a score someone
+     made up. */
+  const checks = [
+    form.thresholds.fullDayMinutes > 0,
+    form.thresholds.halfDayMinutes > 0,
+    form.grace.lateInMinutes >= 0,
+    form.grace.earlyOutMinutes >= 0,
+    form.breaks.enabled,
+    form.missingPunch.regularizationWindowDays > 0,
+    form.overtime.trackingEnabled,
+    form.overtime.minimumExtraMinutes > 0,
+    form.overtime.compOffMinutesPerDay > 0,
+    form.weeklyTarget.enabled,
+    activeLocations.length > 0,
+    form.locationEnforcement !== 'DISABLED',
+    Object.values(form.notifications).some((n) => n.enabled),
+  ];
+  const configured = checks.filter(Boolean).length;
+  const completeness = Math.round((configured / checks.length) * 100);
+
+  const enforcementLabel =
+    form.locationEnforcement === 'ENFORCED'
+      ? 'Strict — punches need a verified location'
+      : form.locationEnforcement === 'WARN'
+        ? 'Warn only — mismatched punches are flagged'
+        : 'Off — location is recorded, never required';
+
+  const jumpTo = (id) => {
+    const el = document.getElementById(`policy-${id}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const rulePill = (n) => (
+    <span className="shrink-0 rounded-full bg-st-secondary-container/70 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-st-on-secondary-container">
+      Rule group {String(n).padStart(2, '0')}
+    </span>
+  );
+
   if (permissionsLoading || loading) {
-    return <p className="text-crewly-dim">Loading attendance policy…</p>;
+    return <p className="st-surface p-6 text-sm text-st-on-variant">Reading attendance policy…</p>;
   }
 
   if (!canRead) {
     return (
-      <div className="card p-6">
-        <h1 className="text-xl font-bold">Attendance Policy</h1>
-        <p className="mt-2 text-crewly-dim">
-          You do not have permission to view the company attendance policy.
-        </p>
+      <div className="st-surface min-h-screen">
+        <div className="rounded-xl bg-st-lowest p-6 shadow-sm">
+          <h1 className="text-xl font-bold text-st-on">Attendance policy</h1>
+          <p className="mt-2 text-sm text-st-on-variant">
+            You do not have permission to view the company attendance policy.
+          </p>
+        </div>
       </div>
     );
   }
@@ -551,782 +607,1128 @@ const AttendancePolicyPage = () => {
   const readOnly = !canManage;
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-crewly-dim">Time &amp; Leave</p>
-          <h1 className="text-2xl font-black">Attendance Policy</h1>
-          <p className="text-sm text-crewly-dim">
-            Company rules for how attendance is evaluated. Punch In / Punch Out keeps
-            working as today.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {policy && (
-            <span className="badge">
-              {policy.status}
-              {policy.version > 0 ? ` · v${policy.version}` : ''}
-            </span>
-          )}
-          {!policy && <span className="badge">Not configured</span>}
-        </div>
-      </div>
-
-      {message && (
-        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-emerald-200">
-          {message}
-        </div>
-      )}
-
-
-      <Section icon={Briefcase} title="General">
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <label className="label">Policy name</label>
-            <input
-              className="input w-full"
-              value={form.name}
-              disabled={readOnly}
-              maxLength={80}
-              onChange={(event) => setForm((previous) => ({ ...previous, name: event.target.value }))}
-            />
-          </div>
-          <div>
-            <label className="label">Timezone (IANA)</label>
-            <input
-              className="input w-full"
-              value={form.timezone}
-              disabled={readOnly}
-              placeholder="Asia/Kolkata"
-              onChange={(event) =>
-                setForm((previous) => ({ ...previous, timezone: event.target.value }))
-              }
-            />
-            <p className="mt-1 text-xs text-crewly-dim">
-              Business-day boundaries are evaluated in this zone.
-            </p>
-          </div>
-        </div>
-        <div>
-          <label className="label">Description</label>
-          <textarea
-            className="input w-full"
-            rows={2}
-            value={form.description}
-            disabled={readOnly}
-            maxLength={500}
-            onChange={(event) =>
-              setForm((previous) => ({ ...previous, description: event.target.value }))
-            }
-          />
-        </div>
-      </Section>
-
-      <Section icon={Hourglass} title="Working hours">
-        <div className="grid gap-4 md:grid-cols-2">
-          <NumberField
-            label="Full-day minimum (minutes)"
-            value={form.thresholds.fullDayMinutes}
-            disabled={readOnly}
-            hint={`Worked ${formatMinutes(form.thresholds.fullDayMinutes)} or more counts as a full day.`}
-            onChange={(value) => setSection('thresholds', 'fullDayMinutes', value)}
-          />
-          <NumberField
-            label="Half-day minimum (minutes)"
-            value={form.thresholds.halfDayMinutes}
-            disabled={readOnly}
-            hint={`At least ${formatMinutes(form.thresholds.halfDayMinutes)} counts as a half day. Must stay below the full-day minimum.`}
-            onChange={(value) => setSection('thresholds', 'halfDayMinutes', value)}
-          />
-        </div>
-      </Section>
-
-      <Section icon={AlarmClock} title="Grace period">
-        <div className="grid gap-4 md:grid-cols-2">
-          <NumberField
-            label="Late arrival grace (minutes)"
-            value={form.grace.lateInMinutes}
-            disabled={readOnly}
-            max={120}
-            onChange={(value) => setSection('grace', 'lateInMinutes', value)}
-          />
-          <NumberField
-            label="Early departure grace (minutes)"
-            value={form.grace.earlyOutMinutes}
-            disabled={readOnly}
-            max={120}
-            onChange={(value) => setSection('grace', 'earlyOutMinutes', value)}
-          />
-        </div>
-      </Section>
-
-      <Section icon={Coffee} title="Break rules">
-        <div className="space-y-3">
-          <Toggle
-            label="Breaks enabled"
-            checked={form.breaks.enabled}
-            disabled={readOnly}
-            hint="Break punching arrives in a later phase; this only configures the rule."
-            onChange={(value) => setSection('breaks', 'enabled', value)}
-          />
-          <Toggle
-            label="Break time counts as worked time"
-            checked={form.breaks.includeInWorkedTime}
-            disabled={readOnly || !form.breaks.enabled}
-            onChange={(value) => setSection('breaks', 'includeInWorkedTime', value)}
-          />
-          <div className="max-w-xs">
-            <NumberField
-              label="Daily counted-break cap (minutes, empty = uncapped)"
-              value={form.breaks.dailyLimitMinutes}
-              disabled={readOnly || !form.breaks.enabled || !form.breaks.includeInWorkedTime}
-              onChange={(value) => setSection('breaks', 'dailyLimitMinutes', value)}
-            />
-          </div>
-        </div>
-      </Section>
-
-      <Section icon={BellOff} title="Missing punch">
-        <p className="text-sm text-crewly-dim">
-          Incomplete days stay visible as exceptions — the system never invents a
-          punch or a silent checkout.
-        </p>
-        <div className="space-y-3">
-          <Toggle
-            label="Keep incomplete days unresolved until reviewed"
-            checked={form.missingPunch.keepUnresolved}
-            disabled={readOnly}
-            onChange={(value) => setSection('missingPunch', 'keepUnresolved', value)}
-          />
-          <Toggle
-            label="Allow regularization requests (later phase)"
-            checked={form.missingPunch.allowRegularization}
-            disabled={readOnly}
-            onChange={(value) => setSection('missingPunch', 'allowRegularization', value)}
-          />
-          <div className="max-w-xs">
-            <NumberField
-              label="Regularization window (days)"
-              value={form.missingPunch.regularizationWindowDays}
-              disabled={readOnly}
-              max={31}
-              onChange={(value) => setSection('missingPunch', 'regularizationWindowDays', value)}
-            />
-          </div>
-        </div>
-      </Section>
-
-      <Section icon={Bell} title="Notifications (reminders only, never actions)">
-        <p className="text-sm text-crewly-dim">
-          Reminders nudge employees and reviewers — they never punch, resolve,
-          or finalize anything. Each type is off until you enable it. Employees
-          can mute attendance reminders in Notify Settings.
-        </p>
-        <div className="space-y-3">
-          <Toggle
-            label="Shift-start reminder"
-            checked={form.notifications.shiftStart.enabled}
-            disabled={readOnly}
-            hint="Nudges the employee shortly before a scheduled shift starts."
-            onChange={(value) => setNotification('shiftStart', 'enabled', value)}
-          />
-          <div className="max-w-xs">
-            <NumberField
-              label="Minutes before shift start (0–180)"
-              value={form.notifications.shiftStart.minutesBefore}
-              disabled={readOnly || !form.notifications.shiftStart.enabled}
-              max={180}
-              onChange={(value) => setNotification('shiftStart', 'minutesBefore', value)}
-            />
-          </div>
-          <Toggle
-            label="Missing clock-in reminder"
-            checked={form.notifications.missingClockIn.enabled}
-            disabled={readOnly}
-            hint="Sent only while the employee still has not clocked in."
-            onChange={(value) => setNotification('missingClockIn', 'enabled', value)}
-          />
-          <div className="max-w-xs">
-            <NumberField
-              label="Minutes after shift start (0–720)"
-              value={form.notifications.missingClockIn.minutesAfter}
-              disabled={readOnly || !form.notifications.missingClockIn.enabled}
-              max={720}
-              onChange={(value) => setNotification('missingClockIn', 'minutesAfter', value)}
-            />
-          </div>
-          <Toggle
-            label="Missing clock-out reminder"
-            checked={form.notifications.missingClockOut.enabled}
-            disabled={readOnly}
-            hint="Sent only while the day is still open (clocked in, not out)."
-            onChange={(value) => setNotification('missingClockOut', 'enabled', value)}
-          />
-          <div className="max-w-xs">
-            <NumberField
-              label="Minutes after shift end (0–720)"
-              value={form.notifications.missingClockOut.minutesAfter}
-              disabled={readOnly || !form.notifications.missingClockOut.enabled}
-              max={720}
-              onChange={(value) => setNotification('missingClockOut', 'minutesAfter', value)}
-            />
-          </div>
-          <Toggle
-            label="Incomplete-break reminder"
-            checked={form.notifications.incompleteBreak.enabled}
-            disabled={readOnly}
-            hint="Sent only while the break is still open past the threshold."
-            onChange={(value) => setNotification('incompleteBreak', 'enabled', value)}
-          />
-          <div className="max-w-xs">
-            <NumberField
-              label="Minutes after break start (15–720)"
-              value={form.notifications.incompleteBreak.minutesAfter}
-              disabled={readOnly || !form.notifications.incompleteBreak.enabled}
-              min={15}
-              max={720}
-              onChange={(value) => setNotification('incompleteBreak', 'minutesAfter', value)}
-            />
-          </div>
-        </div>
-      </Section>
-
-      <Section icon={MoonStar} title="Overtime (time only, never money)">
-        <div className="space-y-3">
-          <Toggle
-            label="Track overtime minutes"
-            checked={form.overtime.trackingEnabled}
-            disabled={readOnly}
-            hint="Eligibility in minutes. Salary math stays in Payroll."
-            onChange={(value) => setSection('overtime', 'trackingEnabled', value)}
-          />
-          <div className="max-w-xs">
-            <NumberField
-              label="Minimum extra minutes before OT is eligible"
-              value={form.overtime.minimumExtraMinutes}
-              disabled={readOnly || !form.overtime.trackingEnabled}
-              onChange={(value) => setSection('overtime', 'minimumExtraMinutes', value)}
-            />
-          </div>
-          <Toggle
-            label="OT requires approval"
-            checked={form.overtime.approvalRequired}
-            disabled={readOnly || !form.overtime.trackingEnabled}
-            onChange={(value) => setSection('overtime', 'approvalRequired', value)}
-          />
-          <Toggle
-            label="Weekend work is OT-eligible"
-            checked={form.overtime.weekendEligible}
-            disabled={readOnly || !form.overtime.trackingEnabled}
-            onChange={(value) => setSection('overtime', 'weekendEligible', value)}
-          />
-          <Toggle
-            label="Holiday work is OT-eligible"
-            checked={form.overtime.holidayEligible}
-            disabled={readOnly || !form.overtime.trackingEnabled}
-            onChange={(value) => setSection('overtime', 'holidayEligible', value)}
-          />
-          {/* Phase 31.8 — one benefit disposition per approved block. */}
-          <div className="max-w-xs">
-            <label className="label">Normal extra hours become</label>
-            <select
-              className="input w-full"
-              value={form.overtime.normalDayBenefit}
-              disabled={readOnly || !form.overtime.trackingEnabled}
-              onChange={(event) => setSection('overtime', 'normalDayBenefit', event.target.value)}
-            >
-              <option value="OVERTIME">Overtime (payable minutes)</option>
-              <option value="NONE">Nothing</option>
-            </select>
-          </div>
-          <div className="max-w-xs">
-            <label className="label">Weekly-off work becomes</label>
-            <select
-              className="input w-full"
-              value={form.overtime.weeklyOffBenefit}
-              disabled={readOnly || !form.overtime.trackingEnabled || !form.overtime.weekendEligible}
-              onChange={(event) => setSection('overtime', 'weeklyOffBenefit', event.target.value)}
-            >
-              <option value="NONE">Nothing</option>
-              <option value="OVERTIME">Overtime (payable minutes)</option>
-              <option value="COMP_OFF">Comp-off (leave days)</option>
-            </select>
-            <p className="mt-1 text-xs text-crewly-dim">Needs “Weekend work is OT-eligible” above.</p>
-          </div>
-          <div className="max-w-xs">
-            <label className="label">Holiday work becomes</label>
-            <select
-              className="input w-full"
-              value={form.overtime.holidayBenefit}
-              disabled={readOnly || !form.overtime.trackingEnabled || !form.overtime.holidayEligible}
-              onChange={(event) => setSection('overtime', 'holidayBenefit', event.target.value)}
-            >
-              <option value="NONE">Nothing</option>
-              <option value="OVERTIME">Overtime (payable minutes)</option>
-              <option value="COMP_OFF">Comp-off (leave days)</option>
-            </select>
-            <p className="mt-1 text-xs text-crewly-dim">Needs “Holiday work is OT-eligible” above.</p>
-          </div>
-          <div className="max-w-xs">
-            <NumberField
-              label="Comp-off minutes that earn one leave day"
-              value={form.overtime.compOffMinutesPerDay}
-              min={1}
-              disabled={readOnly || !form.overtime.trackingEnabled}
-              onChange={(value) => setSection('overtime', 'compOffMinutesPerDay', value)}
-            />
-          </div>
-        </div>
-      </Section>
-
-      <Section icon={Target} title="Weekly hours target (flexi week)">
-        <div className="space-y-3">
-          <Toggle
-            label="Enable weekly hours target"
-            checked={form.weeklyTarget.enabled}
-            disabled={readOnly}
-            hint="Employees who finish their weekly hours goal early get the remaining working days as paid earned rest — never absent, never LOP, no leave deducted."
-            onChange={(value) => setSection('weeklyTarget', 'enabled', value)}
-          />
-          <div className="max-w-xs">
-            <NumberField
-              label="Weekly hours goal (hours)"
-              value={form.weeklyTarget.targetHours}
-              disabled={readOnly || !form.weeklyTarget.enabled}
-              min={1}
-              onChange={(value) => setSection('weeklyTarget', 'targetHours', value)}
-            />
-          </div>
-          <div className="max-w-xs">
-            <label className="label">After the goal is met</label>
-            <select
-              className="input w-full"
-              value={form.weeklyTarget.restDayMode}
-              disabled={readOnly || !form.weeklyTarget.enabled}
-              onChange={(event) => setSection('weeklyTarget', 'restDayMode', event.target.value)}
-            >
-              <option value="AUTO_MARK">Auto-mark remaining days as earned rest</option>
-              <option value="SUGGEST_ONLY">Only suggest (no auto-marking)</option>
-            </select>
-            <p className="mt-1 text-xs text-crewly-dim">
-              Earned rest applies only to days with no punches and no approved leave; the week runs Monday→Sunday and hours never carry over.
-            </p>
-          </div>
-          <Toggle
-            label="Count approved overtime toward the goal"
-            checked={form.weeklyTarget.includeApprovedOvertime}
-            disabled={readOnly || !form.weeklyTarget.enabled}
-            hint="Off by default — regular worked hours only. Punching in on an earned-rest day simply makes it a normal worked day."
-            onChange={(value) => setSection('weeklyTarget', 'includeApprovedOvertime', value)}
-          />
-        </div>
-      </Section>
-
-      <Section icon={Briefcase} title="Weekend & holiday work">
-        <div className="space-y-3">
-          <Toggle
-            label="Accept punches on weekly offs"
-            checked={form.weekendHoliday.allowWorkOnWeeklyOff}
-            disabled={readOnly}
-            hint="Which days are offs/holidays is still decided by Work Schedule and Holidays."
-            onChange={(value) => setSection('weekendHoliday', 'allowWorkOnWeeklyOff', value)}
-          />
-          <Toggle
-            label="Accept punches on holidays"
-            checked={form.weekendHoliday.allowWorkOnHoliday}
-            disabled={readOnly}
-            onChange={(value) => setSection('weekendHoliday', 'allowWorkOnHoliday', value)}
-          />
-        </div>
-      </Section>
-
-      <Section icon={MapPin} title="Work modes & location">
-        <div className="grid gap-3 md:grid-cols-2">
-          <Toggle
-            label="Office"
-            checked={form.workModes.office}
-            disabled
-            hint="Office stays available."
-            onChange={() => {}}
-          />
-          <Toggle
-            label="Work from home"
-            checked={form.workModes.wfh}
-            disabled={readOnly}
-            hint="Approval workflows arrive in a later phase."
-            onChange={(value) => setSection('workModes', 'wfh', value)}
-          />
-          <Toggle
-            label="Field"
-            checked={form.workModes.field}
-            disabled={readOnly}
-            onChange={(value) => setSection('workModes', 'field', value)}
-          />
-          <Toggle
-            label="Client site"
-            checked={form.workModes.clientSite}
-            disabled={readOnly}
-            onChange={(value) => setSection('workModes', 'clientSite', value)}
-          />
-          <Toggle
-            label="Business travel"
-            checked={form.workModes.businessTravel}
-            disabled={readOnly}
-            onChange={(value) => setSection('workModes', 'businessTravel', value)}
-          />
-        </div>
-        <div className="max-w-xs space-y-2">
-          <p className="label">Approval required to clock in</p>
-          <Toggle
-            label="WFH needs approval"
-            checked={form.workModeApproval.wfh}
-            disabled={readOnly}
-            onChange={(value) => setSection('workModeApproval', 'wfh', value)}
-          />
-          <Toggle
-            label="Field needs approval"
-            checked={form.workModeApproval.field}
-            disabled={readOnly}
-            onChange={(value) => setSection('workModeApproval', 'field', value)}
-          />
-          <Toggle
-            label="Client site needs approval"
-            checked={form.workModeApproval.clientSite}
-            disabled={readOnly}
-            onChange={(value) => setSection('workModeApproval', 'clientSite', value)}
-          />
-          <Toggle
-            label="Business travel needs approval"
-            checked={form.workModeApproval.businessTravel}
-            disabled={readOnly}
-            onChange={(value) => setSection('workModeApproval', 'businessTravel', value)}
-          />
-          <p className="text-xs text-crewly-dim">
-            When on, clock-in under the mode needs an APPROVED work-mode
-            request covering the day. OFFICE never needs a request.
-          </p>
-        </div>
-        <div className="max-w-xs">
-          <label className="label">Location enforcement</label>
-          <select
-            className="input w-full"
-            value={form.locationEnforcement}
-            disabled={readOnly}
-            onChange={(event) =>
-              setForm((previous) => ({ ...previous, locationEnforcement: event.target.value }))
-            }
-          >
-            <option value="DISABLED">Disabled</option>
-            <option value="OPTIONAL">Optional</option>
-            <option value="REQUIRED">Required</option>
-          </select>
-          <p className="mt-1 text-xs text-crewly-dim">
-            Applies to OFFICE clock-ins; offices are configured below. This page only requests your location when you explicitly click “Use Current Location” — never on load.
-          </p>
-        </div>
-      </Section>
-
-      {(canReadLocations || canManageLocations) && (
-        <Section icon={MapPin} title="Office locations">
-          <p className="text-xs text-crewly-dim">
-            Company premises an OFFICE clock-in can be verified against.
-            Coordinates describe offices — employee positions are checked once
-            per clock-in and never stored. Deactivate instead of deleting:
-            history stays interpretable.
-          </p>
-          {form.locationEnforcement === 'REQUIRED' &&
-            locations.filter((row) => row.isActive).length === 0 && (
-              <p className="text-sm text-crewly-orange">
-                Enforcement is REQUIRED but no location is active — OFFICE
-                clock-ins will be refused until one exists.
-              </p>
-            )}
-          {locError && <p className="text-sm text-crewly-red">{locError}</p>}
-          <div className="space-y-2">
-            {locations.map((row) => (
-              <div
-                key={row.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-crewly-border px-3 py-2 text-sm"
-              >
-                <span>
-                  {row.name}
-                  {row.code ? ` · ${row.code}` : ''} · {row.radiusMeters}m
-                  {!row.isActive && <span className="badge ml-2">Inactive</span>}
+    <div className="st-surface min-h-screen">
+      <div className="flex flex-col gap-6">
+        {/* ── hero ─────────────────────────────────────────────────────── */}
+        <section className="rounded-xl bg-st-lowest p-6 shadow-sm md:p-7">
+          <div className="flex flex-col justify-between gap-6 xl:flex-row xl:items-start">
+            <div className="max-w-3xl space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-st-secondary-container px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-st-on-secondary-container">
+                  Workforce governance
                 </span>
-                {canManageLocations && (
-                  <span className="flex gap-2">
-                    <button
-                      type="button"
-                      className="btn-ghost px-3 py-1 text-sm"
-                      disabled={locBusy}
-                      onClick={() => {
-                        setLocForm({
-                          id: row.id,
-                          name: row.name,
-                          code: row.code || '',
-                          displayAddress: row.displayAddress || '',
-                          latitude: row.latitude,
-                          longitude: row.longitude,
-                          radiusMeters: row.radiusMeters,
-                          isActive: row.isActive,
-                        });
-                        setLocGeo({ status: 'idle', message: '', accuracy: null });
-                        setLocError('');
-                      }}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-ghost px-3 py-1 text-sm"
-                      disabled={locBusy}
-                      onClick={() => toggleLocationActive(row)}
-                    >
-                      {row.isActive ? 'Deactivate' : 'Activate'}
-                    </button>
-                  </span>
-                )}
+                <span className="text-[11px] font-medium text-st-on-variant">
+                  v{policy?.configVersion ?? 1} · {isLive ? 'Active production' : 'Draft'}
+                </span>
+                <span className="rounded-full bg-st-high px-2.5 py-0.5 text-[11px] font-semibold text-st-on">
+                  {policy?.name || 'Default org policy'}
+                </span>
               </div>
-            ))}
-            {locations.length === 0 && (
-              <EmptyState
-                illustration="box"
-                title="No office locations yet"
-                description="Add a location to give it its own geofence, shift window and weekly offs. Punches from it then map to the right policy."
-                size="sm"
-              />
-            )}
+              <h1 className="text-3xl font-bold tracking-tight text-st-on lg:text-4xl">
+                Enterprise attendance policy
+              </h1>
+              <p className="max-w-2xl text-sm leading-relaxed text-st-on-variant">
+                Thresholds, grace brackets, break ceilings, comp-off accrual and location rules. The
+                engine evaluates every punch against this one document.
+              </p>
+            </div>
+
+            <div className="flex w-full max-w-md shrink-0 flex-col gap-2 rounded-xl bg-st-low p-4">
+              <div className="flex items-start gap-2 text-xs">
+                <Clock className="mt-0.5 h-4 w-4 shrink-0 text-st-secondary" aria-hidden="true" />
+                <span className="text-st-on-variant">
+                  Base zone: <strong className="font-semibold text-st-on">{form.timezone}</strong>
+                </span>
+              </div>
+              <div className="flex items-start gap-2 text-xs">
+                <History className="mt-0.5 h-4 w-4 shrink-0 text-st-secondary" aria-hidden="true" />
+                <span className="text-st-on-variant">
+                  {publishedAt ? (
+                    <>
+                      Last published:{' '}
+                      <strong className="font-semibold text-st-on">{publishedAt}</strong>
+                    </>
+                  ) : (
+                    'Never published — the draft is not in force'
+                  )}
+                </span>
+              </div>
+              <div className="flex items-start gap-2 text-xs">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-st-secondary" aria-hidden="true" />
+                <span className="text-st-on-variant">
+                  Enforcement: <strong className="font-semibold text-st-on">{enforcementLabel}</strong>
+                </span>
+              </div>
+            </div>
           </div>
-          {canManageLocations && (
-            <div className="max-w-2xl space-y-3">
-              {/* Primary fields: Name / Code */}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="label">Location Name</label>
-                  <input
-                    className="input w-full"
-                    placeholder="e.g. Chennai HQ"
-                    value={locForm.name}
-                    disabled={locBusy}
-                    onChange={(event) => setLocForm((previous) => ({ ...previous, name: event.target.value }))}
-                  />
+
+          <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-st-high pt-4">
+            <button
+              type="button"
+              onClick={() => jumpTo('timeline')}
+              className="inline-flex items-center gap-2 rounded-lg bg-st-container px-3.5 py-2 text-xs font-semibold text-st-on transition hover:bg-st-high"
+            >
+              <History className="h-4 w-4" aria-hidden="true" />
+              Version history ({history.length})
+            </button>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={save}
+                disabled={saving || readOnly}
+                className="inline-flex items-center gap-2 rounded-lg bg-st-container px-3.5 py-2 text-xs font-semibold text-st-on transition hover:bg-st-high disabled:opacity-50"
+              >
+                <Save className="h-4 w-4" aria-hidden="true" />
+                {saving ? 'Saving…' : 'Save draft'}
+              </button>
+              <button
+                type="button"
+                onClick={activate}
+                disabled={activating || !canActivate || saving}
+                title={
+                  canActivate
+                    ? 'Make this draft the company rule for future evaluation'
+                    : 'Activating a policy needs the activate permission'
+                }
+                className="inline-flex items-center gap-2 rounded-lg bg-st-primary-container px-4 py-2 text-xs font-bold text-st-on-primary-container shadow-sm transition hover:opacity-95 disabled:opacity-50"
+              >
+                <Sparkles className="h-4 w-4" aria-hidden="true" />
+                {activating ? 'Publishing…' : isLive ? 'Republish policy' : 'Publish policy update'}
+              </button>
+            </div>
+          </div>
+
+          {message ? (
+            <p className="mt-3 flex items-center gap-1.5 rounded-lg bg-st-secondary-container/50 px-3 py-2 text-xs font-medium text-st-on-secondary-container">
+              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> {message}
+            </p>
+          ) : null}
+          {readOnly ? (
+            <p className="mt-3 rounded-lg bg-st-container px-3 py-2 text-xs text-st-on-variant">
+              You can read this policy but not change it — saving and publishing need the manage
+              permission.
+            </p>
+          ) : null}
+          {locError ? (
+            <p className="mt-3 flex items-center gap-1.5 rounded-lg bg-st-error-container px-3 py-2 text-xs font-medium text-st-on-error-container">
+              <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" /> {locError}
+            </p>
+          ) : null}
+
+          {/* anchors, not a second state machine — every group stays on the page */}
+          <div className="mt-4 flex flex-wrap items-center gap-1.5 overflow-x-auto rounded-xl bg-st-high p-1">
+            {GROUPS.map((g) => (
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => jumpTo(g.id)}
+                className="inline-flex whitespace-nowrap items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-semibold text-st-on-variant transition hover:bg-st-lowest hover:text-st-on"
+              >
+                <g.Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                {g.label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-12">
+          <div className="flex flex-col gap-6 xl:col-span-9">
+            {/* ── core hours ───────────────────────────────────────────── */}
+            <section id="policy-core" className="rounded-xl bg-st-lowest p-6 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-st-secondary-container text-st-secondary">
+                    <Clock className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <h2 className="text-base font-bold text-st-on">
+                      Core working hours &amp; minimum durations
+                    </h2>
+                    <p className="text-xs text-st-on-variant">
+                      The credit thresholds every presence calculation is measured against.
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <label className="label">Code (optional)</label>
-                  <input
-                    className="input w-full"
-                    placeholder="CHN-HQ"
-                    value={locForm.code}
-                    disabled={locBusy}
-                    onChange={(event) => setLocForm((previous) => ({ ...previous, code: event.target.value }))}
-                  />
-                </div>
+                {rulePill(1)}
               </div>
 
-              <div>
-                <label className="label">Address</label>
-                <input
-                  className="input w-full"
-                  placeholder="Office address / building"
-                  value={locForm.displayAddress}
-                  disabled={locBusy}
-                  onChange={(event) =>
-                    setLocForm((previous) => ({ ...previous, displayAddress: event.target.value }))
-                  }
+              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {[
+                  ['Full-day credit', 'Full shift minimum', 'fullDayMinutes', '1.0 day'],
+                  ['Half-day credit', 'Partial shift minimum', 'halfDayMinutes', '0.5 day'],
+                ].map(([title, sub, key, credit]) => (
+                  <div key={key} className="rounded-xl bg-st-low p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <h3 className="text-sm font-bold text-st-on">{title}</h3>
+                        <p className="text-[11px] text-st-on-variant">{sub}</p>
+                      </div>
+                      <span className="rounded-full bg-st-secondary-container/60 px-2 py-0.5 text-[10px] font-bold text-st-on-secondary-container">
+                        {credit}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <label className="block">
+                        <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-st-outline">
+                          Minutes / day
+                        </span>
+                        <input
+                          type="number"
+                          min="0"
+                          max="1440"
+                          disabled={readOnly}
+                          value={form.thresholds[key]}
+                          onChange={(e) => setSection('thresholds', key, e.target.value)}
+                          className="w-full rounded-lg bg-st-lowest px-3 py-2 text-sm font-bold text-st-on focus:outline-none focus:ring-2 focus:ring-st-primary-container/40 disabled:opacity-60"
+                        />
+                      </label>
+                      <div className="rounded-lg bg-st-lowest px-3 py-2">
+                        <span className="block text-[10px] font-bold uppercase tracking-wider text-st-outline">
+                          Equivalent
+                        </span>
+                        <span className="text-sm font-bold text-st-primary">
+                          {formatMinutes(form.thresholds[key])}
+                        </span>
+                      </div>
+                    </div>
+                    <p className="mt-2 text-[11px] leading-snug text-st-on-variant">
+                      {key === 'fullDayMinutes'
+                        ? `Anything under ${form.thresholds.fullDayMinutes} minutes falls to half-day or a deficit review.`
+                        : `Under ${form.thresholds.halfDayMinutes} minutes the day is flagged absent.`}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 rounded-xl bg-st-low p-4">
+                <h3 className="flex items-center gap-1.5 text-sm font-bold text-st-on">
+                  <Hourglass className="h-4 w-4 text-st-secondary" aria-hidden="true" />
+                  Leniency &amp; grace tolerances
+                </h3>
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-semibold text-st-on">
+                      Late arrival grace
+                    </span>
+                    <span className="mb-1.5 block text-[10px] text-st-on-variant">
+                      Minutes past the shift start
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min="0"
+                        max="240"
+                        disabled={readOnly}
+                        value={form.grace.lateInMinutes}
+                        onChange={(e) => setSection('grace', 'lateInMinutes', e.target.value)}
+                        className="w-full rounded-lg bg-st-lowest px-3 py-2 text-sm font-bold text-st-on focus:outline-none focus:ring-2 focus:ring-st-primary-container/40 disabled:opacity-60"
+                      />
+                      <span className="text-[10px] font-semibold text-st-outline">mins</span>
+                    </div>
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-semibold text-st-on">
+                      Early departure grace
+                    </span>
+                    <span className="mb-1.5 block text-[10px] text-st-on-variant">
+                      Leeway before the shift end
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min="0"
+                        max="240"
+                        disabled={readOnly}
+                        value={form.grace.earlyOutMinutes}
+                        onChange={(e) => setSection('grace', 'earlyOutMinutes', e.target.value)}
+                        className="w-full rounded-lg bg-st-lowest px-3 py-2 text-sm font-bold text-st-on focus:outline-none focus:ring-2 focus:ring-st-primary-container/40 disabled:opacity-60"
+                      />
+                      <span className="text-[10px] font-semibold text-st-outline">mins</span>
+                    </div>
+                  </label>
+                  <div className="rounded-lg bg-st-lowest px-3 py-2">
+                    <span className="block text-[11px] font-semibold text-st-on">
+                      Monthly grace occurrences
+                    </span>
+                    <span className="mt-1 block text-sm font-bold text-st-outline">Not configured</span>
+                    <span className="mt-0.5 block text-[10px] leading-snug text-st-on-variant">
+                      The policy has no occurrence cap — late marks accumulate on the record and are
+                      reviewed, not auto-deducted.
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* ── breaks ───────────────────────────────────────────────── */}
+            <section id="policy-breaks" className="rounded-xl bg-st-lowest p-6 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-st-primary-fixed text-st-primary">
+                    <Coffee className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <h2 className="text-base font-bold text-st-on">Break protocols &amp; meal sessions</h2>
+                    <p className="text-xs text-st-on-variant">
+                      Mid-day punches, paid windows and the automatic deduction on net hours.
+                    </p>
+                  </div>
+                </div>
+                {rulePill(2)}
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <Toggle
+                  label="Allow mid-day breaks"
+                  checked={form.breaks.enabled}
+                  disabled={readOnly}
+                  onChange={(v) => setSection('breaks', 'enabled', v)}
+                  hint="Permits a check-out and re-check-in inside the workday."
                 />
+                <Toggle
+                  label="Paid meal window"
+                  checked={form.breaks.includeInWorkedTime}
+                  disabled={readOnly}
+                  onChange={(v) => setSection('breaks', 'includeInWorkedTime', v)}
+                  hint="Break time counts toward the required minutes when on."
+                />
+                <div className="rounded-lg border border-dashed border-st-high px-3 py-2">
+                  <span className="block text-xs font-semibold text-st-on">Biometric break validation</span>
+                  <span className="mt-0.5 block text-[11px] text-st-on-variant">
+                    Not configured — turnstile terminals are not wired to break events.
+                  </span>
+                </div>
               </div>
 
-              {/* Use Current Location — one-shot, never watchPosition, never on load */}
-              <div className="rounded-lg border border-crewly-border bg-crewly-bg/40 p-3">
-                <div className="flex flex-wrap items-center gap-2">
+              <div className="mt-4 flex flex-col gap-3 rounded-xl bg-st-low p-4 sm:flex-row sm:items-center">
+                <div className="flex items-end gap-3">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-st-on">
+                      {form.breaks.dailyLimitMinutes === '' ? '—' : form.breaks.dailyLimitMinutes}
+                    </div>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-st-outline">m</div>
+                  </div>
+                  <p className="max-w-md text-[11px] leading-snug text-st-on-variant">
+                    <strong className="font-semibold text-st-on">Maximum cumulative daily break.</strong>{' '}
+                    Leave it blank for no ceiling. Time beyond it extends the required departure, it is
+                    never silently dropped.
+                  </p>
+                </div>
+                <label className="block sm:ml-auto sm:w-40">
+                  <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-st-outline">
+                    Ceiling (mins)
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="720"
+                    disabled={readOnly}
+                    placeholder="No ceiling"
+                    value={form.breaks.dailyLimitMinutes}
+                    onChange={(e) => setSection('breaks', 'dailyLimitMinutes', e.target.value)}
+                    className="w-full rounded-lg bg-st-lowest px-3 py-2 text-sm font-bold text-st-on placeholder:font-normal placeholder:text-st-on-variant/60 focus:outline-none focus:ring-2 focus:ring-st-primary-container/40 disabled:opacity-60"
+                  />
+                </label>
+              </div>
+            </section>
+
+            {/* ── missing punch ────────────────────────────────────────── */}
+            <section id="policy-missing" className="rounded-xl bg-st-lowest p-6 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-st-tertiary-fixed text-st-on-tertiary-fixed">
+                    <CalendarClock className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <h2 className="text-base font-bold text-st-on">
+                      Missing punch &amp; regularization protocol
+                    </h2>
+                    <p className="text-xs text-st-on-variant">
+                      Retrospective correction rights, before the cycle freezes the log.
+                    </p>
+                  </div>
+                </div>
+                {rulePill(3)}
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="rounded-xl bg-st-low p-4">
+                  <h3 className="text-sm font-bold text-st-on">Regularization claim window</h3>
+                  <p className="mt-0.5 text-[11px] leading-snug text-st-on-variant">
+                    Days after the punch that a correction can still be filed online.
+                  </p>
+                  <div className="mt-3 flex items-end gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      max="90"
+                      disabled={readOnly}
+                      value={form.missingPunch.regularizationWindowDays}
+                      onChange={(e) =>
+                        setSection('missingPunch', 'regularizationWindowDays', e.target.value)
+                      }
+                      className="w-20 rounded-lg bg-st-lowest px-3 py-2 text-lg font-bold text-st-on focus:outline-none focus:ring-2 focus:ring-st-primary-container/40 disabled:opacity-60"
+                    />
+                    <span className="pb-2 text-[11px] font-semibold text-st-on-variant">
+                      calendar days before auto-lock
+                    </span>
+                  </div>
+                  <Toggle
+                    label="Corrections allowed"
+                    checked={form.missingPunch.allowRegularization}
+                    disabled={readOnly}
+                    onChange={(v) => setSection('missingPunch', 'allowRegularization', v)}
+                    hint="When off, a missing punch can only be resolved by an admin."
+                  />
+                </div>
+
+                <div className="rounded-xl bg-st-low p-4">
+                  <h3 className="text-sm font-bold text-st-on">Monthly regularization limit</h3>
+                  <p className="mt-0.5 text-[11px] leading-snug text-st-on-variant">
+                    A cap on claims per employee each month.
+                  </p>
+                  <div className="mt-3 flex items-end gap-2">
+                    <span className="text-lg font-bold text-st-outline">Not configured</span>
+                  </div>
+                  <p className="mt-1 text-[10px] leading-snug text-st-on-variant">
+                    The policy has no per-month ceiling; every claim is reviewed on its own.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-st-low px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-st-secondary" aria-hidden="true" />
+                  <span className="text-xs text-st-on">
+                    <strong className="font-semibold">Exception-first:</strong> an unresolved single
+                    punch is flagged for review, never turned into a loss of pay automatically.
+                  </span>
+                </div>
+                <span
+                  className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                    form.missingPunch.keepUnresolved
+                      ? 'bg-st-secondary-container text-st-on-secondary-container'
+                      : 'bg-st-high text-st-on-variant'
+                  }`}
+                >
+                  {form.missingPunch.keepUnresolved ? 'Enforced' : 'Off'}
+                </span>
+              </div>
+            </section>
+
+            {/* ── overtime ─────────────────────────────────────────────── */}
+            <section id="policy-overtime" className="rounded-xl bg-st-lowest p-6 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-st-secondary-container text-st-secondary">
+                    <Timer className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <h2 className="text-base font-bold text-st-on">
+                      Overtime &amp; compensatory off
+                    </h2>
+                    <p className="text-xs text-st-on-variant">
+                      Surplus hours become eligible time, then a human approves it. Never a payroll
+                      figure on this page.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {rulePill(4)}
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                      form.overtime.trackingEnabled
+                        ? 'bg-st-secondary-container text-st-on-secondary-container'
+                        : 'bg-st-high text-st-on-variant'
+                    }`}
+                  >
+                    {form.overtime.trackingEnabled ? 'Active' : 'Off'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {[
+                  [
+                    'OT trigger threshold',
+                    form.overtime.minimumExtraMinutes,
+                    'min beyond shift',
+                    'Surplus under this is disregarded.',
+                  ],
+                  [
+                    'Weekend accrual',
+                    form.overtime.weekendEligible ? 'Eligible' : 'Not eligible',
+                    form.overtime.weeklyOffBenefit === 'NONE' ? 'no benefit set' : form.overtime.weeklyOffBenefit,
+                    'Scheduled weekly-off effort.',
+                  ],
+                  [
+                    'Holiday work',
+                    form.overtime.holidayEligible ? 'Eligible' : 'Not eligible',
+                    form.overtime.holidayBenefit === 'NONE' ? 'no benefit set' : form.overtime.holidayBenefit,
+                    'Declared holiday shifts.',
+                  ],
+                ].map(([title, value, unit, note]) => (
+                  <div key={title} className="rounded-xl bg-st-low p-4">
+                    <span className="block text-[11px] font-semibold text-st-on-variant">{title}</span>
+                    <span className="mt-1 block text-xl font-bold text-st-on">{value}</span>
+                    <span className="block text-[10px] font-semibold text-st-primary">{unit}</span>
+                    <span className="mt-1 block text-[10px] leading-snug text-st-on-variant">{note}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="rounded-xl bg-st-low p-4">
+                  <span className="flex items-center gap-1.5 text-[11px] font-semibold text-st-on">
+                    <Gauge className="h-3.5 w-3.5 text-st-secondary" aria-hidden="true" />
+                    Comp-off conversion
+                  </span>
+                  <span className="mt-1 block text-sm font-bold text-st-on">
+                    {form.overtime.compOffMinutesPerDay} mins = 1.0 comp-off day
+                  </span>
+                  <input
+                    type="number"
+                    min="60"
+                    max="1440"
+                    step="30"
+                    disabled={readOnly}
+                    value={form.overtime.compOffMinutesPerDay}
+                    onChange={(e) => setSection('overtime', 'compOffMinutesPerDay', e.target.value)}
+                    className="mt-2 w-full rounded-lg bg-st-lowest px-3 py-2 text-sm font-bold text-st-on focus:outline-none focus:ring-2 focus:ring-st-primary-container/40 disabled:opacity-60"
+                  />
+                </label>
+                <div className="rounded-xl bg-st-low p-4">
+                  <Toggle
+                    label="Manager pre-approval required"
+                    checked={form.overtime.approvalRequired}
+                    disabled={readOnly}
+                    onChange={(v) => setSection('overtime', 'approvalRequired', v)}
+                    hint="Every claim waits for a decision before it counts."
+                  />
+                  <div className="mt-3 border-t border-st-high pt-3">
+                    <Toggle
+                      label="Track overtime at all"
+                      checked={form.overtime.trackingEnabled}
+                      disabled={readOnly}
+                      onChange={(v) => setSection('overtime', 'trackingEnabled', v)}
+                      hint="The master switch for this whole rule group."
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-st-low px-4 py-3">
+                <span className="text-xs text-st-on">
+                  <strong className="font-semibold">Comp-off validity window</strong>
+                </span>
+                <span className="rounded-full bg-st-high px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-st-on-variant">
+                  Not configured — earned days do not expire here
+                </span>
+              </div>
+            </section>
+
+            {/* ── weekly hours target ──────────────────────────────────── */}
+            <section id="policy-weekly" className="rounded-xl bg-st-lowest p-6 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-st-secondary-container text-st-secondary">
+                    <Target className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <h2 className="text-base font-bold text-st-on">Weekly hours target (flexi week)</h2>
+                    <p className="text-xs text-st-on-variant">
+                      A goal for the week rather than a fixed daily minimum — never absent, never LOP, no leave deducted.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-st-high px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-st-on-variant">
+                    Optional
+                  </span>
                   <button
                     type="button"
-                    className="btn-primary inline-flex items-center gap-2 px-4 py-2"
-                    disabled={locBusy || locGeo.status === 'loading'}
-                    onClick={handleUseCurrentLocation}
+                    role="switch"
+                    aria-checked={Boolean(form.weeklyTarget.enabled)}
+                    disabled={readOnly}
+                    onClick={() => setSection('weeklyTarget', 'enabled', !form.weeklyTarget.enabled)}
+                    className={`relative h-6 w-11 shrink-0 rounded-full transition disabled:opacity-50 ${
+                      form.weeklyTarget.enabled ? 'bg-st-secondary' : 'bg-st-highest'
+                    }`}
                   >
-                    {locGeo.status === 'loading' ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" /> Getting your location…
-                      </>
-                    ) : (
-                      <>
-                        <Crosshair className="h-4 w-4" /> Use Current Location
-                      </>
-                    )}
+                    <span
+                      className={`absolute top-0.5 h-5 w-5 rounded-full bg-st-lowest shadow transition ${
+                        form.weeklyTarget.enabled ? 'translate-x-[22px]' : 'translate-x-0.5'
+                      }`}
+                    />
+                    <span className="sr-only">Enable the weekly hours target</span>
                   </button>
-                  <span className="text-xs text-crewly-dim">Uses your browser location once to fill latitude/longitude. You can review before saving.</span>
                 </div>
+              </div>
 
-                {/* Feedback */}
-                {locGeo.status === 'loading' && (
-                  <p className="mt-2 flex items-center gap-2 text-sm text-crewly-dim">
-                    <Loader2 className="h-4 w-4 animate-spin" /> Getting your location…
-                  </p>
-                )}
-                {locGeo.status === 'success' && (
-                  <div className="mt-2 flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-                    <div>
-                      <p className="font-medium">Location captured</p>
-                      <p className="text-xs opacity-80">
-                        Latitude: {Number(locForm.latitude).toFixed(6)}, Longitude: {Number(locForm.longitude).toFixed(6)}
-                        {locGeo.accuracy != null && ` · Accuracy: approximately ${Math.round(locGeo.accuracy)} m`}
-                      </p>
-                      <p className="mt-1 text-xs opacity-60">Coordinates are shown for review. Accuracy is not proof of presence — backend verifies the geofence.</p>
+              <div className={`mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3 ${form.weeklyTarget.enabled ? '' : 'opacity-60'}`}>
+                <label className="block rounded-xl bg-st-low p-4">
+                  <span className="block text-[11px] font-semibold text-st-on">Target per week</span>
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      max="80"
+                      step="0.5"
+                      disabled={readOnly || !form.weeklyTarget.enabled}
+                      value={form.weeklyTarget.targetHours}
+                      onChange={(e) => setSection('weeklyTarget', 'targetHours', e.target.value)}
+                      className="w-20 rounded-lg bg-st-lowest px-3 py-2 text-lg font-bold text-st-on focus:outline-none focus:ring-2 focus:ring-st-primary-container/40 disabled:opacity-60"
+                    />
+                    <span className="text-[11px] font-semibold text-st-on-variant">hours</span>
+                  </div>
+                  <span className="mt-1 block text-[10px] text-st-on-variant">
+                    Stored as {Math.round(Number(form.weeklyTarget.targetHours || 0) * 60) || 2400} minutes.
+                  </span>
+                </label>
+
+                <label className="block rounded-xl bg-st-low p-4">
+                  <span className="block text-[11px] font-semibold text-st-on">Short week handling</span>
+                  <select
+                    disabled={readOnly || !form.weeklyTarget.enabled}
+                    value={form.weeklyTarget.restDayMode}
+                    onChange={(e) => setSection('weeklyTarget', 'restDayMode', e.target.value)}
+                    className="mt-2 w-full rounded-lg bg-st-lowest px-3 py-2 text-xs font-semibold text-st-on focus:outline-none focus:ring-2 focus:ring-st-primary-container/40 disabled:opacity-60"
+                  >
+                    <option value="AUTO_MARK">Auto-mark remaining days as earned rest</option>
+                    <option value="SUGGEST_ONLY">Only suggest (no auto-marking)</option>
+                  </select>
+                  <span className="mt-1 block text-[10px] text-st-on-variant">
+                    Earned rest is a label on the day, not a deduction.
+                  </span>
+                </label>
+
+                <div className="rounded-xl bg-st-low p-4">
+                  <span className="block text-[11px] font-semibold text-st-on">Counting</span>
+                  <label className="mt-2 flex items-start gap-2 text-[11px] text-st-on">
+                    <input
+                      type="checkbox"
+                      disabled={readOnly || !form.weeklyTarget.enabled}
+                      checked={form.weeklyTarget.includeApprovedOvertime}
+                      onChange={(e) => setSection('weeklyTarget', 'includeApprovedOvertime', e.target.checked)}
+                      className="mt-0.5 accent-st-secondary"
+                    />
+                    <span>Count approved overtime toward the goal</span>
+                  </label>
+                  <span className="mt-1 block text-[10px] text-st-on-variant">
+                    Off by default: overtime stays a separate credit.
+                  </span>
+                </div>
+              </div>
+            </section>
+
+            {/* ── locations ────────────────────────────────────────────── */}
+            <section id="policy-geofence" className="rounded-xl bg-st-lowest p-6 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-st-primary-fixed text-st-primary">
+                    <Crosshair className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <h2 className="text-base font-bold text-st-on">
+                      Office locations &amp; physical geofencing
+                    </h2>
+                    <p className="text-xs text-st-on-variant">
+                      The perimeters a punch can be validated against, and what the policy does when a
+                      punch falls outside one.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-1.5 rounded-lg bg-st-low px-2.5 py-1.5 text-[11px] font-semibold text-st-on">
+                    <span className="text-st-on-variant">Enforcement</span>
+                    <select
+                      value={form.locationEnforcement}
+                      disabled={readOnly}
+                      onChange={(e) => setForm((p) => ({ ...p, locationEnforcement: e.target.value }))}
+                      className="rounded bg-st-lowest px-1.5 py-1 text-[11px] font-bold text-st-on focus:outline-none"
+                    >
+                      <option value="DISABLED">Off</option>
+                      <option value="WARN">Warn only</option>
+                      <option value="ENFORCED">Strict</option>
+                    </select>
+                  </label>
+                  {canManageLocations ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetLocForm();
+                        document.getElementById('policy-location-form')?.scrollIntoView({ behavior: 'smooth' });
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-st-primary-container px-3 py-1.5 text-[11px] font-bold text-st-on-primary-container transition hover:opacity-95"
+                    >
+                      <Plus className="h-3.5 w-3.5" aria-hidden="true" /> Add geofence
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {activeLocations.map((loc) => (
+                  <div key={loc.id} className="rounded-xl bg-st-low p-4">
+                    <div className="flex flex-col gap-4 sm:flex-row">
+                      <div
+                        className="relative flex h-28 w-full shrink-0 items-center justify-center overflow-hidden rounded-lg bg-st-high sm:w-40"
+                        aria-hidden="true"
+                      >
+                        <div className="absolute inset-0 opacity-40 [background-image:linear-gradient(to_right,#85746822_1px,transparent_1px),linear-gradient(to_bottom,#85746822_1px,transparent_1px)] [background-size:14px_14px]" />
+                        <span className="absolute h-16 w-16 rounded-full border-2 border-dashed border-st-secondary/60" />
+                        <span className="relative flex h-8 w-8 items-center justify-center rounded-full bg-st-secondary text-st-on-secondary shadow">
+                          <MapPin className="h-4 w-4" />
+                        </span>
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-sm font-bold text-st-on">{loc.name}</h3>
+                          <span className="rounded-full bg-st-secondary-container px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-st-on-secondary-container">
+                            {loc.code || 'Site'}
+                          </span>
+                          <span className="text-[10px] font-semibold text-st-on-variant">
+                            {Number(loc.latitude).toFixed(4)}° N, {Number(loc.longitude).toFixed(4)}° E
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-[11px] text-st-on-variant">
+                          {loc.displayAddress || 'No address on file'}
+                        </p>
+                        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          {[
+                            ['Geofence radius', `${loc.radiusMeters} m`],
+                            ['Wi-Fi BSSID', 'Not configured'],
+                            ['Mock GPS block', 'Server-side only'],
+                            ['State', loc.isActive ? 'Active' : 'Inactive'],
+                          ].map(([label, value]) => (
+                            <div key={label}>
+                              <span className="block text-[9px] font-bold uppercase tracking-wider text-st-outline">
+                                {label}
+                              </span>
+                              <span
+                                className={`block text-[11px] font-semibold ${
+                                  value === 'Not configured' ? 'text-st-on-variant' : 'text-st-on'
+                                }`}
+                              >
+                                {value}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLocForm({
+                                id: loc.id,
+                                name: loc.name || '',
+                                code: loc.code || '',
+                                displayAddress: loc.displayAddress || '',
+                                latitude: String(loc.latitude ?? ''),
+                                longitude: String(loc.longitude ?? ''),
+                                radiusMeters: loc.radiusMeters ?? 200,
+                                isActive: Boolean(loc.isActive),
+                              });
+                              document.getElementById('policy-location-form')?.scrollIntoView({ behavior: 'smooth' });
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-st-lowest px-2.5 py-1.5 text-[11px] font-semibold text-st-on shadow-sm transition hover:bg-st-container"
+                          >
+                            <Pencil className="h-3 w-3" aria-hidden="true" /> Configure parameters
+                          </button>
+                          {canManageLocations ? (
+                            <button
+                              type="button"
+                              disabled={locBusy}
+                              onClick={() => toggleLocationActive(loc)}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-st-lowest px-2.5 py-1.5 text-[11px] font-semibold text-st-on-variant shadow-sm transition hover:text-st-on disabled:opacity-50"
+                            >
+                              <Power className="h-3 w-3" aria-hidden="true" />
+                              {loc.isActive ? 'Deactivate' : 'Activate'}
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                )}
-                {locGeo.status === 'error' && (
-                  <div className="mt-2 flex items-start gap-2 rounded-lg border border-crewly-red/40 bg-crewly-red/10 px-3 py-2 text-sm text-crewly-red">
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>{locGeo.message}</span>
-                  </div>
-                )}
+                ))}
 
-                {/* Preview of auto-populated coordinates (review before save) */}
-                {locForm.latitude !== '' && locForm.longitude !== '' && Number.isFinite(Number(locForm.latitude)) && Number.isFinite(Number(locForm.longitude)) && locGeo.status !== 'loading' && (
-                  <div className="mt-2 rounded-lg border border-crewly-border bg-crewly-card px-3 py-2 text-sm">
-                    <p className="flex items-center gap-1.5 text-crewly-dim"><MapPin className="h-3.5 w-3.5" /> Captured coordinates (review)</p>
-                    <p className="font-mono text-xs">Lat {String(Number(locForm.latitude).toFixed(6))}, Lng {String(Number(locForm.longitude).toFixed(6))} {locGeo.accuracy != null ? `· Accuracy ~${Math.round(locGeo.accuracy)}m` : ''}</p>
-                  </div>
-                )}
+                {!activeLocations.length ? (
+                  <EmptyState
+                    illustration="shield"
+                    title="No geofence configured"
+                    description="Punches are accepted from anywhere and the location is recorded without being enforced. Add an office perimeter to validate against it."
+                    size="sm"
+                  />
+                ) : null}
               </div>
 
-              <div>
-                <label className="label">Radius in meters (10…100000)</label>
-                <input
-                  className="input w-full"
-                  type="number"
-                  step="1"
-                  value={locForm.radiusMeters}
-                  disabled={locBusy}
-                  onChange={(event) =>
-                    setLocForm((previous) => ({ ...previous, radiusMeters: event.target.value }))
-                  }
-                />
-                <p className="mt-1 text-xs text-crewly-dim">Allowed distance from the office point. Employees outside this radius are refused when enforcement is REQUIRED.</p>
-              </div>
-
-              {/* Manual fallback — for remote admin (Chennai configuring Bengaluru) */}
-              <details className="rounded-lg border border-crewly-border bg-crewly-bg/20">
-                <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-sm font-medium text-crewly-dim">
-                  <ChevronDown className="h-4 w-4" /> Advanced / Enter coordinates manually
-                </summary>
-                <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2">
-                  <div>
-                    <label className="label">Latitude (−90…90)</label>
-                    <input
-                      className="input w-full font-mono text-sm"
-                      type="number"
-                      step="any"
-                      value={locForm.latitude}
-                      disabled={locBusy}
-                      onChange={(event) =>
-                        setLocForm((previous) => ({ ...previous, latitude: event.target.value }))
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label className="label">Longitude (−180…180)</label>
-                    <input
-                      className="input w-full font-mono text-sm"
-                      type="number"
-                      step="any"
-                      value={locForm.longitude}
-                      disabled={locBusy}
-                      onChange={(event) =>
-                        setLocForm((previous) => ({ ...previous, longitude: event.target.value }))
-                      }
-                    />
-                  </div>
-                  <p className="sm:col-span-2 text-xs text-crewly-dim">
-                    Use this when you are configuring another office remotely (e.g. in Chennai adding a Bengaluru branch) and cannot capture location on-site.
+              {/* the form the mock opens from “Configure parameters” */}
+              {canManageLocations ? (
+                <div id="policy-location-form" className="mt-4 rounded-xl border border-st-high p-4">
+                  <h3 className="text-sm font-bold text-st-on">
+                    {locForm.id ? `Edit ${locForm.name || 'location'}` : 'Add a geofence'}
+                  </h3>
+                  <p className="mt-0.5 text-[11px] text-st-on-variant">
+                    Radius is metres. A punch within it is a location match; outside it the enforcement
+                    setting above decides what happens.
                   </p>
+                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {[
+                      ['name', 'Site name', 'text'],
+                      ['code', 'Short code', 'text'],
+                      ['displayAddress', 'Address', 'text'],
+                      ['radiusMeters', 'Radius (m)', 'number'],
+                      ['latitude', 'Latitude', 'number'],
+                      ['longitude', 'Longitude', 'number'],
+                    ].map(([key, label, type]) => (
+                      <label key={key} className="block">
+                        <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-st-outline">
+                          {label}
+                        </span>
+                        <input
+                          type={type}
+                          step={key === 'radiusMeters' ? 10 : 'any'}
+                          value={locForm[key]}
+                          onChange={(e) => setLocForm((p) => ({ ...p, [key]: e.target.value }))}
+                          className="w-full rounded-lg bg-st-low px-3 py-2 text-xs text-st-on focus:outline-none focus:ring-2 focus:ring-st-primary-container/40"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleUseCurrentLocation}
+                      disabled={locGeo.status === 'loading'}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-st-container px-3 py-2 text-[11px] font-semibold text-st-on transition hover:bg-st-high disabled:opacity-50"
+                    >
+                      <Crosshair className="h-3.5 w-3.5" aria-hidden="true" />
+                      {locGeo.status === 'loading' ? 'Locating…' : 'Use my current location'}
+                    </button>
+                    <label className="flex items-center gap-1.5 text-[11px] font-medium text-st-on">
+                      <input
+                        type="checkbox"
+                        checked={locForm.isActive}
+                        onChange={(e) => setLocForm((p) => ({ ...p, isActive: e.target.checked }))}
+                        className="accent-st-primary"
+                      />
+                      Active
+                    </label>
+                    <div className="ml-auto flex gap-2">
+                      <button
+                        type="button"
+                        onClick={resetLocForm}
+                        className="rounded-lg bg-st-low px-3 py-2 text-[11px] font-semibold text-st-on-variant transition hover:bg-st-container hover:text-st-on"
+                      >
+                        Clear
+                      </button>
+                      <button
+                        type="button"
+                        onClick={saveLocation}
+                        disabled={locBusy || !locForm.name.trim() || locForm.latitude === '' || locForm.longitude === ''}
+                        className="rounded-lg bg-st-primary-container px-4 py-2 text-[11px] font-bold text-st-on-primary-container transition hover:opacity-95 disabled:opacity-50"
+                      >
+                        {locBusy ? 'Saving…' : locForm.id ? 'Update geofence' : 'Create geofence'}
+                      </button>
+                    </div>
+                  </div>
+                  {locGeo.message ? (
+                    <p
+                      className={`mt-2 text-[11px] ${
+                        locGeo.status === 'error' ? 'text-st-error' : 'text-st-on-variant'
+                      }`}
+                    >
+                      {locGeo.message}
+                      {locGeo.accuracy ? ` · ±${Math.round(locGeo.accuracy)} m` : ''}
+                    </p>
+                  ) : null}
                 </div>
-              </details>
+              ) : null}
+            </section>
 
-              <div className="flex items-end gap-2 pt-1">
-                <button
-                  type="button"
-                  className="btn-primary px-4 py-2"
-                  disabled={locBusy}
-                  onClick={saveLocation}
-                >
-                  {locBusy ? 'Saving…' : locForm.id ? 'Update location' : 'Add location'}
-                </button>
-                {locForm.id && (
-                  <button
-                    type="button"
-                    className="btn-ghost px-4 py-2"
-                    disabled={locBusy}
-                    onClick={resetLocForm}
+            {/* ── notifications ────────────────────────────────────────── */}
+            <section id="policy-audit" className="rounded-xl bg-st-lowest p-6 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-st-secondary-container text-st-secondary">
+                    <BellRing className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <h2 className="text-base font-bold text-st-on">
+                      Automated notifications &amp; daily nudges
+                    </h2>
+                    <p className="text-xs text-st-on-variant">
+                      In-app and email cues the scheduler sends. Slack and WhatsApp are not wired to
+                      this deployment.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {rulePill(5)}
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                      Object.values(form.notifications).some((n) => n.enabled)
+                        ? 'bg-st-secondary-container text-st-on-secondary-container'
+                        : 'bg-st-high text-st-on-variant'
+                    }`}
                   >
-                    Cancel
-                  </button>
-                )}
+                    {Object.values(form.notifications).some((n) => n.enabled) ? 'Some on' : 'All off'}
+                  </span>
+                </div>
               </div>
 
-              <p className="text-xs text-crewly-dim">
-                Note: Chrome DevTools → Sensors is only a developer testing mechanism for simulating inside/outside a geofence. Production employees do not use Sensors — on HTTPS, the browser/OS provides location after the employee allows permission.
+              <ul className="mt-4 space-y-2">
+                {[
+                  ['missingClockOut', 'Missed punch-out reminder', 'Sent when a check-in has no check-out.', 'minutesAfter'],
+                  ['missingClockIn', 'Missed punch-in reminder', 'Sent when a shift started with no check-in.', 'minutesAfter'],
+                  ['incompleteBreak', 'Break left open', 'Sent when a break is never closed.', 'minutesAfter'],
+                  ['shiftStart', 'Shift starting soon', 'A heads-up before the assigned window.', 'minutesBefore'],
+                ].map(([key, title, note, field]) => {
+                  const cfg = form.notifications[key] || { enabled: false, [field]: 30 };
+                  return (
+                    <li
+                      key={key}
+                      className="flex flex-col gap-2 rounded-xl bg-st-low p-3 sm:flex-row sm:items-center"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold text-st-on">{title}</p>
+                        <p className="text-[11px] text-st-on-variant">{note}</p>
+                      </div>
+                      <label className="flex items-center gap-1.5 text-[11px] text-st-on-variant">
+                        {field === 'minutesBefore' ? 'before' : 'after'}
+                        <input
+                          type="number"
+                          min="0"
+                          max="240"
+                          disabled={readOnly}
+                          value={cfg[field]}
+                          onChange={(e) => setNotification(key, field, e.target.value)}
+                          className="w-16 rounded-lg bg-st-lowest px-2 py-1 text-xs font-bold text-st-on focus:outline-none focus:ring-2 focus:ring-st-primary-container/40 disabled:opacity-60"
+                        />
+                        min
+                      </label>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={Boolean(cfg.enabled)}
+                        disabled={readOnly}
+                        onClick={() => setNotification(key, 'enabled', !cfg.enabled)}
+                        className={`relative h-6 w-11 shrink-0 rounded-full transition disabled:opacity-50 ${
+                          cfg.enabled ? 'bg-st-secondary' : 'bg-st-highest'
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-0.5 h-5 w-5 rounded-full bg-st-lowest shadow transition ${
+                            cfg.enabled ? 'translate-x-[22px]' : 'translate-x-0.5'
+                          }`}
+                        />
+                        <span className="sr-only">{title}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+
+            {/* ── timeline ─────────────────────────────────────────────── */}
+            <section id="policy-timeline" className="rounded-xl bg-st-lowest p-6 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-st-high text-st-on">
+                    <History className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <h2 className="text-base font-bold text-st-on">Policy version timeline</h2>
+                    <p className="text-xs text-st-on-variant">
+                      Every stored iteration, newest first. Publishing never deletes the previous one.
+                    </p>
+                  </div>
+                </div>
+                <span className="rounded-full bg-st-container px-2.5 py-1 text-[10px] font-bold text-st-on-variant">
+                  {history.length} stored
+                </span>
+              </div>
+
+              <ol className="mt-4 space-y-2">
+                {history.map((row) => {
+                  const stamp = fmtDateTime(row.activatedAt || row.updatedAt || row.createdAt);
+                  const live = row.isCurrent || row.id === policy?.id;
+                  return (
+                    <li key={row.id} className="flex items-start gap-3 rounded-xl bg-st-low p-3">
+                      <span
+                        className={`mt-1 h-2 w-2 shrink-0 rounded-full ${
+                          live ? 'bg-st-secondary' : 'bg-st-outline'
+                        }`}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs font-bold text-st-on">
+                            Version {row.configVersion}
+                          </span>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
+                              live
+                                ? 'bg-st-secondary-container text-st-on-secondary-container'
+                                : row.status === 'DRAFT'
+                                  ? 'bg-st-primary-fixed text-st-on-primary-fixed-variant'
+                                  : 'bg-st-high text-st-on-variant'
+                            }`}
+                          >
+                            {live ? 'Active' : row.status}
+                          </span>
+                          <span className="text-[10px] text-st-on-variant">{stamp || '—'}</span>
+                        </div>
+                        <p className="mt-0.5 truncate text-[11px] text-st-on-variant">
+                          {row.name || 'Attendance policy'} · {row.timezone || form.timezone} · grace{' '}
+                          {row.grace?.lateInMinutes ?? '—'}/{row.grace?.earlyOutMinutes ?? '—'} min · full
+                          day {row.thresholds?.fullDayMinutes ?? '—'} min
+                        </p>
+                      </div>
+                    </li>
+                  );
+                })}
+                {!history.length ? (
+                  <li className="rounded-xl border border-dashed border-st-high px-3 py-4 text-center text-[11px] text-st-on-variant">
+                    No earlier version is stored — this is the first draft.
+                  </li>
+                ) : null}
+              </ol>
+            </section>
+          </div>
+
+          {/* ── rail ─────────────────────────────────────────────────────── */}
+          <aside className="flex flex-col gap-6 xl:col-span-3">
+            <div className="rounded-xl bg-st-lowest p-5 shadow-sm">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-st-outline">
+                  Policy coverage
+                </h3>
+                <span className="rounded-full bg-st-tertiary-fixed px-2 py-0.5 text-[10px] font-bold uppercase text-st-on-tertiary-fixed">
+                  {completeness >= 90 ? 'A' : completeness >= 75 ? 'B' : 'C'}
+                </span>
+              </div>
+              <div className="mt-4 flex items-center gap-4">
+                <div className="relative h-20 w-20 shrink-0">
+                  <svg viewBox="0 0 100 100" className="h-20 w-20 -rotate-90" role="img" aria-label={`${completeness}% of rules configured`}>
+                    <circle cx="50" cy="50" r="42" fill="none" strokeWidth="12" className="stroke-st-high" />
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="42"
+                      fill="none"
+                      strokeWidth="12"
+                      strokeLinecap="round"
+                      className="stroke-st-secondary"
+                      strokeDasharray={`${(completeness / 100) * 264} 264`}
+                    />
+                  </svg>
+                  <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-st-on">
+                    {completeness}%
+                  </span>
+                </div>
+                <ul className="min-w-0 flex-1 space-y-1 text-[11px]">
+                  <li className="flex items-center justify-between gap-2">
+                    <span className="text-st-on-variant">Rules decided</span>
+                    <span className="font-bold text-st-on">
+                      {configured}/{checks.length}
+                    </span>
+                  </li>
+                  <li className="flex items-center justify-between gap-2">
+                    <span className="text-st-on-variant">Sites enforced</span>
+                    <span className="font-bold text-st-on">{activeLocations.length}</span>
+                  </li>
+                  <li className="flex items-center justify-between gap-2">
+                    <span className="text-st-on-variant">State</span>
+                    <span className="font-bold text-st-on">{policyStatus}</span>
+                  </li>
+                </ul>
+              </div>
+              <p className="mt-3 text-[10px] leading-relaxed text-st-on-variant">
+                A ratio over the fields this policy actually owns — not a compliance score. The engine
+                evaluates against whatever is published here.
               </p>
             </div>
-          )}
-        </Section>
-      )}
 
-      <Section icon={ShieldCheck} title="Policy state">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="badge">{policy?.status || 'NOT CONFIGURED'}</span>
-          {policy?.version > 0 && <span className="badge">v{policy.version}</span>}
-          {policy?.activatedAt && (
-            <span className="text-xs text-crewly-dim">
-              Active since {new Date(policy.activatedAt).toLocaleString('en-IN')}
-            </span>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-3">
-          <button
-            type="button"
-            className="btn-primary flex items-center gap-2 px-4 py-2"
-            disabled={readOnly || saving}
-            onClick={save}
-          >
-            <Save size={16} />
-            {saving ? 'Saving…' : 'Save draft'}
-          </button>
-          <button
-            type="button"
-            className="btn-ghost px-4 py-2"
-            disabled={!canActivate || activating || policy?.status === 'ACTIVE'}
-            onClick={activate}
-          >
-            {activating ? 'Activating…' : 'Activate policy'}
-          </button>
-        </div>
-        {history.length > 0 && (
-          <div>
-            <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-crewly-dim">
-              Version history
-            </h3>
-            <div className="space-y-2">
-              {history.map((row) => (
-                <div
-                  key={row.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-crewly-border px-3 py-2 text-sm"
-                >
-                  <span>
-                    {row.name} · v{row.version} · {row.status}
-                  </span>
-                  <span className="text-xs text-crewly-dim">
-                    {row.updatedAt ? new Date(row.updatedAt).toLocaleString('en-IN') : ''}
-                  </span>
-                </div>
-              ))}
+            <div className="rounded-xl bg-st-lowest p-5 shadow-sm">
+              <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-st-outline">
+                <Users className="h-3.5 w-3.5" aria-hidden="true" /> Who this applies to
+              </h3>
+              <div className="mt-3 space-y-2 text-[11px]">
+                {[
+                  ['Work modes allowed', Object.entries(form.workModes).filter(([, v]) => v).map(([k]) => k.toLowerCase()).join(', ') || 'None'],
+                  ['Approval needed for', Object.entries(form.workModeApproval).filter(([, v]) => v).map(([k]) => k.toLowerCase()).join(', ') || 'None'],
+                  ['Weekly flexi target', form.weeklyTarget.enabled ? `${form.weeklyTarget.targetHours} h · ${form.weeklyTarget.restDayMode}` : 'Off'],
+                  ['Working on weekly off', form.weekendHoliday.allowWorkOnWeeklyOff ? 'Allowed' : 'Blocked'],
+                  ['Working on a holiday', form.weekendHoliday.allowWorkOnHoliday ? 'Allowed' : 'Blocked'],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex items-start justify-between gap-2">
+                    <span className="text-st-on-variant">{label}</span>
+                    <span className="max-w-[55%] text-right font-semibold text-st-on">{value}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-1">
+                {Object.entries(form.workModes).map(([key, on]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    disabled={readOnly}
+                    onClick={() => setSection('workModes', key, !on)}
+                    className={`rounded-lg px-1.5 py-1.5 text-[9px] font-bold uppercase transition disabled:opacity-60 ${
+                      on
+                        ? 'bg-st-secondary-container text-st-on-secondary-container'
+                        : 'bg-st-container text-st-on-variant'
+                    }`}
+                  >
+                    {key.toLowerCase()}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-[10px] text-st-on-variant">
+                Tap a mode to allow or block it, then save the draft.
+              </p>
             </div>
-          </div>
-        )}
-      </Section>
+
+            <div className="rounded-xl bg-st-secondary-container/40 p-5">
+              <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-st-on-secondary-container">
+                <Scale className="h-3.5 w-3.5" aria-hidden="true" /> Labour law reference
+              </h3>
+              <p className="mt-2 text-[11px] leading-relaxed text-st-on-variant">
+                Rest intervals and spread-over limits are set by statute where they apply. Crewly
+                records what the policy enforces; it does not adjudicate a statute. Confirm the
+                applicable Act for each site with your compliance owner.
+              </p>
+              <a
+                href="/app/governance"
+                className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-st-secondary hover:underline"
+              >
+                Audit log <ArrowRight className="h-3 w-3" aria-hidden="true" />
+              </a>
+            </div>
+
+            <div className="rounded-xl bg-st-low p-5">
+              <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-st-outline">
+                <Info className="h-3.5 w-3.5" aria-hidden="true" /> Not configured here
+              </h3>
+              <ul className="mt-2 space-y-1.5 text-[10px] leading-relaxed text-st-on-variant">
+                <li className="flex gap-1.5">
+                  <Wifi className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" /> Wi-Fi BSSID matching
+                  — the schema stores a site, not router identities.
+                </li>
+                <li className="flex gap-1.5">
+                  <Building2 className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" /> Desk &amp; floor
+                  capacity — no inventory behind it.
+                </li>
+                <li className="flex gap-1.5">
+                  <Bell className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" /> Slack / WhatsApp
+                  delivery — notifications are in-app and email only.
+                </li>
+              </ul>
+            </div>
+          </aside>
+        </div>
+      </div>
     </div>
   );
 };
