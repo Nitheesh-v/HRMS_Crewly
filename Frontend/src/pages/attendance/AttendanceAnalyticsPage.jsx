@@ -227,6 +227,10 @@ const AttendanceAnalyticsPage = () => {
   const [locations, setLocations] = useState([]);
 
   const [data, setData] = useState(null);
+  // Which tab produced the payload in `data`. Without it, switching tabs
+  // renders the *previous* tab's payload through the new tab's layout for a
+  // frame — trend rows read as day outcomes.
+  const [dataTab, setDataTab] = useState('');
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -265,10 +269,11 @@ const AttendanceAnalyticsPage = () => {
         result = await attendanceService.analyticsReconciliation(month);
       }
       setData(result?.data ?? result ?? null);
+      setDataTab(tab);
       setRefreshedAt(new Date());
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || 'Failed to load analytics');
-      if (!silent) setData(null);
+      if (!silent) { setData(null); setDataTab(''); }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -1168,11 +1173,11 @@ const AttendanceAnalyticsPage = () => {
           </div>
         ) : null}
 
-        {loading && !data ? (
+        {loading && dataTab !== tab ? (
           <div className="rounded-xl bg-st-lowest p-6 text-sm text-st-on-variant shadow-sm">Loading analytics…</div>
         ) : null}
 
-        {!error && data ? (
+        {!error && data && dataTab === tab ? (
           <>
             {tab === 'overview' && renderOverview()}
             {tab === 'trends' && renderTrends()}
