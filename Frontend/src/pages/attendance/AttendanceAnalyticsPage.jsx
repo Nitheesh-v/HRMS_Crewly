@@ -8,6 +8,13 @@
 // leave, OT or payroll. No rankings, no scores, no predictions:
 // the employee table default-orders by name and every column
 // sort is an explicit, unranked sort.
+//
+// Redesign (2026-10): the overview reads as a ledger front page —
+// four headline rates, the day-outcome breakdown as a distribution
+// rather than a list, then the three evidence cards (capture
+// sources, overtime chain, corrections) that explain where those
+// numbers came from. Nothing new is computed here; the same payload
+// is simply ordered by what a reader asks first.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -25,8 +32,12 @@ import {
   FileSpreadsheet,
   FileText,
   Filter,
+  Gauge,
   MapPin,
   RefreshCw,
+  ScanFace,
+  ShieldCheck,
+  Sparkles,
   Timer,
   TriangleAlert,
   User,
@@ -60,11 +71,37 @@ const SORT_COLUMNS = [
 ];
 
 const RECON_STYLES = {
-  MATCH: 'bg-emerald-400/15 text-emerald-300',
-  MISMATCH: 'bg-crewly-red/15 text-crewly-red',
-  NOT_SYNCED: 'bg-crewly-orange/15 text-crewly-orange',
-  NOT_FINALIZED: 'bg-blue-400/15 text-blue-300',
+  MATCH: 'bg-st-secondary-container text-st-on-secondary-container',
+  MISMATCH: 'bg-st-error-container text-st-on-error-container',
+  NOT_SYNCED: 'bg-st-primary-fixed text-st-on-primary-fixed-variant',
+  NOT_FINALIZED: 'bg-st-high text-st-on-variant',
 };
+
+const MODE_LABEL = {
+  OFFICE: 'Office',
+  WFH: 'Work from home',
+  FIELD: 'Field operations',
+  CLIENT_SITE: 'Client site',
+  BUSINESS_TRAVEL: 'Business travel',
+};
+
+const MODE_DOT = {
+  OFFICE: 'bg-st-secondary',
+  WFH: 'bg-st-primary-container',
+  FIELD: 'bg-st-tertiary',
+  CLIENT_SITE: 'bg-st-outline',
+  BUSINESS_TRAVEL: 'bg-st-primary-fixed-dim',
+};
+
+const DAY_TILES = [
+  ['present', 'Present', 'Timetabled and clocked', 'bg-st-secondary', 'text-st-on'],
+  ['weeklyOff', 'Weekly off', 'Roster rest day', 'bg-st-outline', 'text-st-on'],
+  ['absent', 'Absent', 'No punch, no leave', 'bg-st-error', 'text-st-error'],
+  ['leave', 'Approved leave', 'Paid or unpaid, approved', 'bg-st-tertiary', 'text-st-on'],
+  ['halfDay', 'Half day', '0.5 ratio applied', 'bg-st-primary-container', 'text-st-on'],
+  ['holiday', 'Holiday', 'Calendar gazetted', 'bg-st-primary-fixed-dim', 'text-st-on'],
+  ['unresolved', 'Unresolved punches', 'Needs a correction', 'bg-st-error', 'text-st-primary'],
+];
 
 const currentMonth = () => new Date().toISOString().slice(0, 7);
 
@@ -75,9 +112,7 @@ const fmtPct = (rate) => {
 
 const fmtHours = (minutes) => {
   if (minutes === null || minutes === undefined) return '—';
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  return `${hours}h ${mins}m`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 };
 
 const fmtUnits = (value) => {
@@ -85,53 +120,94 @@ const fmtUnits = (value) => {
   return Number(value).toLocaleString('en-IN', { maximumFractionDigits: 1 });
 };
 
-const Kpi = ({ icon, label, value, sub }) => (
-  <div className="card">
-    <div className="flex items-center gap-2 text-xs text-crewly-dim">
-      {icon}
-      <span>{label}</span>
+const sourceLabel = (code) => String(code || '')
+  .toLowerCase()
+  .split('_')
+  .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+  .join(' ');
+
+const KpiCard = ({ label, value, unit, hint, detail, icon: Icon, tone, accent, meter = null }) => (
+  <div className="rounded-xl bg-st-lowest p-4 shadow-sm">
+    <div className="flex items-start justify-between gap-2">
+      <span className="text-[10px] font-bold uppercase tracking-wider text-st-on-variant">{label}</span>
+      <span className={`rounded-lg p-1 ${tone}`}>
+        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+      </span>
     </div>
-    <div className="pt-1 text-2xl font-semibold">{value}</div>
-    {sub && <div className="text-xs text-crewly-dim">{sub}</div>}
+    <div className="mt-1 flex items-baseline gap-1">
+      <span className="text-2xl font-bold text-st-on tabular-nums">{value}</span>
+      {unit ? <span className="text-[10px] font-semibold text-st-on-variant">{unit}</span> : null}
+    </div>
+    <p className="mt-0.5 text-[10px] font-semibold text-st-on-variant">{hint}</p>
+    {meter === null ? null : (
+      <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-st-high">
+        <div className={`h-full rounded-full ${accent}`} style={{ width: `${Math.max(0, Math.min(100, meter))}%` }} />
+      </div>
+    )}
+    {detail ? <p className="mt-1.5 text-[10px] leading-snug text-st-on-variant">{detail}</p> : null}
   </div>
 );
 
-// Provenance banner: every covered month names its source — the
-// FINALIZED snapshot version (payroll-grade truth) or the LIVE
-// open-month projection. Shown above every tab's numbers.
+const Section = ({ title, icon: Icon, badge = null, note = null, children, className = '' }) => (
+  <section className={`rounded-xl bg-st-lowest p-4 shadow-sm ${className}`}>
+    <div className="flex items-start gap-2">
+      <h2 className="flex items-center gap-1.5 text-sm font-bold text-st-on">
+        {Icon ? <Icon className="h-3.5 w-3.5 text-st-outline" aria-hidden="true" /> : null}
+        {title}
+      </h2>
+      {badge ? <span className="ml-auto shrink-0 rounded-full bg-st-high px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider text-st-on-variant">{badge}</span> : null}
+    </div>
+    {note ? <p className="mt-1 text-[10px] leading-relaxed text-st-on-variant">{note}</p> : null}
+    <div className="mt-3">{children}</div>
+  </section>
+);
+
+// Provenance: every covered month names its source — the FINALIZED
+// snapshot version (payroll-grade truth) or the LIVE open-month
+// projection. Shown above every tab's numbers.
 const SourceBanner = ({ provenance, range }) => {
   if (!provenance || !provenance.length) return null;
   return (
-    <div className="card flex flex-wrap items-center gap-2 text-sm">
-      <span className="inline-flex items-center gap-1 text-crewly-dim">
-        <FileText size={14} /> Source:
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-st-on-variant">
+        <FileText className="h-3 w-3" aria-hidden="true" /> Source
       </span>
       {provenance.map((row) => (
         <span
           key={row.month}
-          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${
-            row.finalized ? 'bg-emerald-400/15 text-emerald-300' : 'bg-crewly-orange/15 text-crewly-orange'
+          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
+            row.finalized
+              ? 'bg-st-secondary-container text-st-on-secondary-container'
+              : 'bg-st-primary-fixed text-st-on-primary-fixed-variant'
           }`}
           title={row.finalized ? `Finalized snapshot v${row.version}` : 'Live open-month projection'}
         >
-          {row.finalized ? <CheckCircle2 size={12} /> : <TriangleAlert size={12} />}
-          {row.month} · {row.finalized ? `FINALIZED v${row.version}` : 'LIVE'}
+          {row.finalized ? <CheckCircle2 className="h-2.5 w-2.5" aria-hidden="true" /> : <TriangleAlert className="h-2.5 w-2.5" aria-hidden="true" />}
+          {row.month} · {row.finalized ? `v${row.version}` : 'live'}
         </span>
       ))}
-      {range?.from && (
-        <span className="ml-auto text-xs text-crewly-dim">
+      {range?.from ? (
+        <span className="ml-auto text-[10px] text-st-on-variant">
           {range.from} → {range.to}
         </span>
-      )}
+      ) : null}
     </div>
   );
 };
 
-const ShareBar = ({ pct }) => (
-  <div className="h-1.5 w-24 overflow-hidden rounded-full bg-crewly-inset-strong">
-    <div className="h-full rounded-full bg-crewly-accent" style={{ width: `${Math.min(100, pct || 0)}%` }} />
-  </div>
-);
+const SourceChip = ({ provenance }) => {
+  const live = (provenance || []).some((row) => !row.finalized);
+  const finalized = (provenance || []).filter((row) => row.finalized).length;
+  if (!provenance?.length) return null;
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
+      live ? 'bg-st-primary-fixed text-st-on-primary-fixed-variant' : 'bg-st-secondary-container text-st-on-secondary-container'
+    }`}>
+      <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-current" />
+      {live ? 'Live projection' : `${finalized} finalized`}
+    </span>
+  );
+};
 
 const AttendanceAnalyticsPage = () => {
   const { hasPermission, loading: permissionsLoading } = usePermission();
@@ -152,10 +228,11 @@ const AttendanceAnalyticsPage = () => {
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [exporting, setExporting] = useState('');
+  const [refreshedAt, setRefreshedAt] = useState(null);
 
-  // Employees tab state (server-paginated, allowlisted sort).
   const [sort, setSort] = useState('name');
   const [page, setPage] = useState(1);
 
@@ -170,10 +247,11 @@ const AttendanceAnalyticsPage = () => {
     [preset, month, departmentId, shiftId, locationId, workMode]
   );
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ silent = false } = {}) => {
     if (tab !== 'mine' && !canAnalyze) return;
     if (tab === 'mine' && !canAnalyze && !canSelf) return;
-    setLoading(true);
+    if (silent) setRefreshing(true);
+    else setLoading(true);
     setError('');
     try {
       let result = null;
@@ -187,11 +265,13 @@ const AttendanceAnalyticsPage = () => {
         result = await attendanceService.analyticsReconciliation(month);
       }
       setData(result?.data ?? result ?? null);
+      setRefreshedAt(new Date());
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || 'Failed to load analytics');
-      setData(null);
+      if (!silent) setData(null);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [tab, filters, sort, page, month, preset, canAnalyze, canSelf]);
 
@@ -211,6 +291,12 @@ const AttendanceAnalyticsPage = () => {
     if (!permissionsLoading) load();
   }, [load, permissionsLoading]);
 
+  // Self-service audience (no analytics permission) lands on — and
+  // only ever sees — the My summary tab.
+  useEffect(() => {
+    if (!permissionsLoading && !canAnalyze && canSelf) setTab('mine');
+  }, [permissionsLoading, canAnalyze, canSelf]);
+
   const toggleSort = (field) => {
     setSort((prev) => {
       if (prev === field) return `-${field}`;
@@ -220,9 +306,9 @@ const AttendanceAnalyticsPage = () => {
   };
 
   const sortIcon = (field) => {
-    if (sort === field) return <ArrowUp size={12} className="inline" />;
-    if (sort === `-${field}`) return <ArrowDown size={12} className="inline" />;
-    return <ArrowUpDown size={12} className="inline opacity-40" />;
+    if (sort === field) return <ArrowUp size={11} className="inline" />;
+    if (sort === `-${field}`) return <ArrowDown size={11} className="inline" />;
+    return <ArrowUpDown size={11} className="inline opacity-40" />;
   };
 
   const runExport = async (reportType, format) => {
@@ -253,95 +339,181 @@ const AttendanceAnalyticsPage = () => {
     return canAnalyze;
   });
 
-  // Self-service audience (no analytics permission) lands on — and
-  // only ever sees — the My summary tab.
-  useEffect(() => {
-    if (!permissionsLoading && !canAnalyze && canSelf) setTab('mine');
-  }, [permissionsLoading, canAnalyze, canSelf]);
-
   if (permissionsLoading) {
-    return <div className="card text-sm text-crewly-dim">Loading attendance analytics…</div>;
+    return (
+      <div className="st-surface min-h-screen">
+        <div className="rounded-xl bg-st-lowest p-6 text-sm text-st-on-variant shadow-sm">Loading attendance analytics…</div>
+      </div>
+    );
   }
 
   if (!canAnalyze && !canSelf) {
     return (
-      <div className="card text-sm">
-        <h1 className="text-xl font-semibold">Attendance Analytics</h1>
-        <p className="pt-2 text-crewly-dim">
-          Your role doesn&apos;t include attendance analytics. Ask an administrator for access if you need it.
-        </p>
+      <div className="st-surface min-h-screen">
+        <div className="rounded-xl bg-st-lowest p-6 shadow-sm">
+          <h1 className="text-xl font-bold text-st-on">Attendance Analytics</h1>
+          <p className="mt-2 text-sm text-st-on-variant">
+            Your role doesn&apos;t include attendance analytics. Ask an administrator for access if you need it.
+          </p>
+        </div>
       </div>
     );
   }
 
   const renderFilterBar = (showRange = true) => (
-    <div className="card flex flex-wrap items-center gap-2 text-sm">
-      <span className="inline-flex items-center gap-1 text-crewly-dim">
-        <Filter size={14} /> Filters:
-      </span>
-      {showRange && (
-        <>
-          <input
-            type="month"
-            className="input max-w-[11rem]"
-            value={month}
-            max={currentMonth()}
-            onChange={(event) => setMonth(event.target.value || currentMonth())}
-            aria-label="Month"
-          />
-          <select className="input max-w-[10rem]" value={preset} onChange={(event) => setPreset(event.target.value)} aria-label="Range preset">
-            <option value="">Single month</option>
-            <option value="quarter">Quarter (anchored)</option>
-            <option value="fy">Financial year (anchored)</option>
-          </select>
-        </>
-      )}
-      {tab !== 'mine' && tab !== 'reconciliation' && (
-        <>
-          <select className="input max-w-[12rem]" value={departmentId} onChange={(event) => setDepartmentId(event.target.value)} aria-label="Department">
-            <option value="">All departments</option>
-            {departments.map((dept) => (
-              <option key={dept._id || dept.id} value={dept._id || dept.id}>{dept.name}</option>
-            ))}
-          </select>
-          <select className="input max-w-[12rem]" value={shiftId} onChange={(event) => setShiftId(event.target.value)} aria-label="Shift">
-            <option value="">All shifts</option>
-            {(shifts || []).map((shift) => (
-              <option key={shift._id || shift.id} value={shift._id || shift.id}>{shift.name}</option>
-            ))}
-          </select>
-          <select className="input max-w-[12rem]" value={locationId} onChange={(event) => setLocationId(event.target.value)} aria-label="Location">
-            <option value="">All locations</option>
-            {(locations || []).map((loc) => (
-              <option key={loc._id || loc.id} value={loc._id || loc.id}>{loc.name}</option>
-            ))}
-          </select>
-          <select className="input max-w-[11rem]" value={workMode} onChange={(event) => setWorkMode(event.target.value)} aria-label="Work mode">
-            <option value="">All modes</option>
-            <option value="OFFICE">Office</option>
-            <option value="WFH">WFH</option>
-            <option value="FIELD">Field</option>
-            <option value="CLIENT_SITE">Client site</option>
-            <option value="BUSINESS_TRAVEL">Travel</option>
-          </select>
-        </>
-      )}
-      {hasFilters && (
-        <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={clearFilters}>
-          <X size={12} className="inline" /> Clear
+    <section className="rounded-xl bg-st-lowest p-3 shadow-sm">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+        {showRange ? (
+          <>
+            <label className="flex flex-col gap-0.5">
+              <span className="pl-1 text-[8px] font-bold uppercase tracking-[0.12em] text-st-on-variant">Date scope</span>
+              <input
+                type="month"
+                value={month}
+                max={currentMonth()}
+                onChange={(event) => setMonth(event.target.value || currentMonth())}
+                className="rounded-lg bg-st-low px-2.5 py-1.5 text-[11px] font-semibold text-st-on focus:outline-none focus:ring-2 focus:ring-st-primary-container/40"
+                aria-label="Month"
+              />
+            </label>
+            <label className="flex flex-col gap-0.5">
+              <span className="pl-1 text-[8px] font-bold uppercase tracking-[0.12em] text-st-on-variant">Granularity</span>
+              <select
+                value={preset}
+                onChange={(event) => setPreset(event.target.value)}
+                className="rounded-lg bg-st-low px-2.5 py-1.5 text-[11px] font-semibold text-st-on focus:outline-none focus:ring-2 focus:ring-st-primary-container/40"
+                aria-label="Range preset"
+              >
+                <option value="">Single month</option>
+                <option value="quarter">Quarter (anchored)</option>
+                <option value="fy">Financial year (anchored)</option>
+              </select>
+            </label>
+          </>
+        ) : null}
+        {tab !== 'mine' && tab !== 'reconciliation' ? (
+          <>
+            <label className="flex flex-col gap-0.5">
+              <span className="pl-1 text-[8px] font-bold uppercase tracking-[0.12em] text-st-on-variant">Department</span>
+              <select
+                value={departmentId}
+                onChange={(event) => setDepartmentId(event.target.value)}
+                className="rounded-lg bg-st-low px-2.5 py-1.5 text-[11px] font-semibold text-st-on focus:outline-none focus:ring-2 focus:ring-st-primary-container/40"
+                aria-label="Department"
+              >
+                <option value="">All departments</option>
+                {departments.map((dept) => (
+                  <option key={dept._id || dept.id} value={dept._id || dept.id}>{dept.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-0.5">
+              <span className="pl-1 text-[8px] font-bold uppercase tracking-[0.12em] text-st-on-variant">Shift plan</span>
+              <select
+                value={shiftId}
+                onChange={(event) => setShiftId(event.target.value)}
+                className="rounded-lg bg-st-low px-2.5 py-1.5 text-[11px] font-semibold text-st-on focus:outline-none focus:ring-2 focus:ring-st-primary-container/40"
+                aria-label="Shift"
+              >
+                <option value="">All shifts</option>
+                {(shifts || []).map((shift) => (
+                  <option key={shift._id || shift.id} value={shift._id || shift.id}>{shift.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-0.5">
+              <span className="pl-1 text-[8px] font-bold uppercase tracking-[0.12em] text-st-on-variant">Location pod</span>
+              <select
+                value={locationId}
+                onChange={(event) => setLocationId(event.target.value)}
+                className="rounded-lg bg-st-low px-2.5 py-1.5 text-[11px] font-semibold text-st-on focus:outline-none focus:ring-2 focus:ring-st-primary-container/40"
+                aria-label="Location"
+              >
+                <option value="">All locations</option>
+                {(locations || []).map((loc) => (
+                  <option key={loc._id || loc.id} value={loc._id || loc.id}>{loc.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-0.5">
+              <span className="pl-1 text-[8px] font-bold uppercase tracking-[0.12em] text-st-on-variant">Modality</span>
+              <select
+                value={workMode}
+                onChange={(event) => setWorkMode(event.target.value)}
+                className="rounded-lg bg-st-low px-2.5 py-1.5 text-[11px] font-semibold text-st-on focus:outline-none focus:ring-2 focus:ring-st-primary-container/40"
+                aria-label="Work mode"
+              >
+                <option value="">All modes</option>
+                <option value="OFFICE">Office</option>
+                <option value="WFH">WFH</option>
+                <option value="FIELD">Field</option>
+                <option value="CLIENT_SITE">Client site</option>
+                <option value="BUSINESS_TRAVEL">Travel</option>
+              </select>
+            </label>
+          </>
+        ) : null}
+      </div>
+      {hasFilters ? (
+        <button
+          type="button"
+          onClick={clearFilters}
+          className="mt-2 inline-flex items-center gap-1 rounded-lg bg-st-low px-2 py-1 text-[10px] font-bold text-st-on-variant transition hover:text-st-on"
+        >
+          <X className="h-3 w-3" aria-hidden="true" /> Clear filters
         </button>
-      )}
-    </div>
+      ) : null}
+    </section>
   );
 
   const renderTotalsKpis = () => {
     if (!totals) return null;
+    const day = totals.dayCounts || {};
+    const daySum = ['present', 'halfDay', 'absent', 'leave', 'holiday', 'weeklyOff', 'unresolved']
+      .reduce((sum, key) => sum + (Number(day[key]) || 0), 0);
     return (
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Kpi icon={<Users size={14} />} label="Attendance rate" value={fmtPct(totals.attendanceRate)} sub={`${fmtUnits(totals.workedUnits)} / ${fmtUnits(totals.scheduledUnits)} scheduled units`} />
-        <Kpi icon={<Clock size={14} />} label="Absence rate" value={fmtPct(totals.absenceRate)} sub={`${fmtUnits(totals.absentUnits)} absent units`} />
-        <Kpi icon={<Timer size={14} />} label="Effective worked" value={fmtHours(totals.workedMinutes)} sub={totals.averageWorkedMinutes ? `avg ${fmtHours(totals.averageWorkedMinutes)} / session day` : `${totals.sessionDays || 0} session days`} />
-        <Kpi icon={<TriangleAlert size={14} />} label="Late arrivals" value={totals.lateOccurrences ?? 0} sub={`${totals.lateMinutes || 0} min late · ${totals.earlyOccurrences || 0} early exits`} />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <KpiCard
+          label="Attendance rate"
+          value={fmtPct(totals.attendanceRate)}
+          icon={Gauge}
+          tone="bg-st-secondary-container text-st-on-secondary-container"
+          hint={`${fmtUnits(totals.workedUnits)} of ${fmtUnits(totals.scheduledUnits)} scheduled units`}
+          accent="bg-st-secondary"
+          meter={totals.attendanceRate?.pct ?? 0}
+          detail={daySum ? `${day.present ?? 0} present days carry the rate` : 'No scheduled units in range'}
+        />
+        <KpiCard
+          label="Absence & leave rate"
+          value={fmtPct(totals.absenceRate)}
+          icon={CalendarDays}
+          tone="bg-st-primary-fixed text-st-on-primary-fixed-variant"
+          hint={`${fmtUnits(totals.absentUnits)} absent units`}
+          accent="bg-st-primary-container"
+          meter={totals.absenceRate?.pct ?? 0}
+          detail={`${day.leave ?? 0} leave day${(day.leave ?? 0) === 1 ? '' : 's'} · ${day.absent ?? 0} absent day${(day.absent ?? 0) === 1 ? '' : 's'}`}
+        />
+        <KpiCard
+          label="Effective worked"
+          value={fmtHours(totals.workedMinutes)}
+          icon={Clock}
+          tone="bg-st-secondary-fixed text-st-on-secondary-fixed"
+          hint={totals.sessionDays ? `${totals.sessionDays} session days` : 'no session days'}
+          accent="bg-st-secondary"
+          meter={totals.sessionDays ? 100 : 0}
+          detail={totals.averageWorkedMinutes ? `average ${fmtHours(totals.averageWorkedMinutes)} per session day` : 'average unavailable'}
+        />
+        <KpiCard
+          label="Punctuality & lateness"
+          value={totals.lateOccurrences ?? 0}
+          unit="late arrivals"
+          icon={Timer}
+          tone="bg-st-primary-fixed text-st-on-primary-fixed-variant"
+          hint={`${totals.lateMinutes || 0} minutes past start`}
+          accent="bg-st-primary-container"
+          meter={totals.lateOccurrences ? Math.min(100, totals.lateOccurrences * 5) : 0}
+          detail={`${totals.earlyOccurrences || 0} early exit${(totals.earlyOccurrences || 0) === 1 ? '' : 's'} · ${totals.missingPunchDays || 0} missing punch day${(totals.missingPunchDays || 0) === 1 ? '' : 's'}`}
+        />
       </div>
     );
   };
@@ -354,100 +526,252 @@ const AttendanceAnalyticsPage = () => {
     const ot = data.overtime || {};
     const regs = data.regularizations || {};
     const sourceEntries = Object.entries(sources.counts || {});
+    const daySum = DAY_TILES.reduce((sum, [key]) => sum + (Number(dayCounts[key]) || 0), 0);
+    const modeTotal = Object.values(modes).reduce((sum, value) => sum + (Number(value) || 0), 0);
+    const locationRows = data.locations?.locations || [];
+
     return (
-      <div className="space-y-4">
+      <div className="flex flex-col gap-4">
         <SourceBanner provenance={data.provenance} range={data.range} />
         {renderTotalsKpis()}
-        <div className="grid gap-3 lg:grid-cols-3">
-          <div className="card text-sm">
-            <h2 className="font-semibold">Day outcomes</h2>
-            <div className="grid grid-cols-2 gap-2 pt-2">
-              {[
-                ['Present', dayCounts.present],
-                ['Half day', dayCounts.halfDay],
-                ['Absent', dayCounts.absent],
-                ['Leave', dayCounts.leave],
-                ['Holiday', dayCounts.holiday],
-                ['Weekly off', dayCounts.weeklyOff],
-                ['Unresolved', dayCounts.unresolved],
-                ['Missing punch days', totals?.missingPunchDays],
-              ].map(([label, value]) => (
-                <div key={label} className="flex items-center justify-between gap-2 rounded bg-crewly-inset px-2 py-1">
-                  <span className="text-crewly-dim">{label}</span>
-                  <span className="font-semibold">{value ?? 0}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="card text-sm">
-            <h2 className="font-semibold">Work modes</h2>
-            <div className="space-y-2 pt-2">
-              {Object.entries(modes).map(([mode, count]) => (
-                <div key={mode} className="flex items-center justify-between gap-2">
-                  <span className="text-crewly-dim">{mode.replace(/_/g, ' ')}</span>
-                  <span className="font-semibold">{count ?? 0}</span>
-                </div>
-              ))}
-              {!Object.keys(modes).length && <p className="text-crewly-dim">No session days in range.</p>}
-            </div>
-            <h2 className="pt-4 font-semibold">Capture source</h2>
-            <div className="space-y-2 pt-2">
-              {sourceEntries.map(([source, count]) => (
-                <div key={source} className="flex items-center justify-between gap-2">
-                  <span className="text-crewly-dim">{source}</span>
-                  <span className="flex items-center gap-2">
-                    <ShareBar pct={sources.pcts?.[source]} />
-                    <span className="font-semibold">{count}</span>
+
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+          <Section
+            title="Day outcomes breakdown"
+            icon={CalendarDays}
+            badge={`${daySum} day${daySum === 1 ? '' : 's'}`}
+            note="Consolidated operational ledger units for the selected interval. Every tile is a bucket the backend resolved — nothing here is projected."
+          >
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {DAY_TILES.map(([key, label, hint, dot, tone]) => (
+                <div key={key} className="rounded-lg bg-st-low px-2.5 py-2">
+                  <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-st-on-variant">
+                    <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+                    {label}
                   </span>
+                  <p className={`mt-0.5 text-lg font-bold tabular-nums ${tone}`}>{dayCounts[key] ?? 0}</p>
+                  <p className="text-[9px] leading-tight text-st-on-variant">{hint}</p>
                 </div>
               ))}
-              {!sourceEntries.length && <p className="text-crewly-dim">No punches in range.</p>}
             </div>
-          </div>
-          <div className="card space-y-4 text-sm">
-            <div>
-              <h2 className="font-semibold">Overtime (TIME only)</h2>
-              <p className="pt-1 text-crewly-dim">
-                Approved {fmtHours(ot.approvedMinutes)} · {ot.approved || 0} approved · {ot.pending || 0} pending
+            <div className="mt-3 flex h-2 w-full overflow-hidden rounded-full bg-st-high">
+              {DAY_TILES.map(([key, , , dot]) => {
+                const value = Number(dayCounts[key]) || 0;
+                if (!value || !daySum) return null;
+                return (
+                  <span
+                    key={key}
+                    className={dot}
+                    style={{ width: `${(value / daySum) * 100}%` }}
+                    title={`${key}: ${value}`}
+                  />
+                );
+              })}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px] text-st-on-variant">
+              <span>{totals?.missingPunchDays ?? 0} missing-punch day{(totals?.missingPunchDays ?? 0) === 1 ? '' : 's'}</span>
+              <span>· {totals?.sessionDays ?? 0} session days</span>
+              <Link to="/app/attendance/regularizations" className="ml-auto inline-flex items-center gap-1 font-bold text-st-primary hover:underline">
+                Resolve unresolved punches <ChevronRight className="h-2.5 w-2.5" aria-hidden="true" />
+              </Link>
+            </div>
+          </Section>
+
+          <Section
+            title="Work modes & modality"
+            icon={Building2}
+            badge={modeTotal ? `${modeTotal} sessions` : 'no sessions'}
+            note="Aggregated presence across workplace policies for the same interval."
+          >
+            <ul className="space-y-2.5">
+              {Object.keys(MODE_LABEL).map((mode) => {
+                const value = Number(modes[mode]) || 0;
+                const share = modeTotal ? Math.round((value / modeTotal) * 100) : 0;
+                return (
+                  <li key={mode}>
+                    <div className="flex items-center justify-between gap-2 text-[11px]">
+                      <span className="inline-flex items-center gap-1.5 font-semibold text-st-on">
+                        <span aria-hidden="true" className={`h-2 w-2 rounded-full ${MODE_DOT[mode]}`} />
+                        {MODE_LABEL[mode]}
+                      </span>
+                      <span className="text-st-on-variant">
+                        <strong className="font-bold text-st-on">{share}%</strong> ({value} session{value === 1 ? '' : 's'})
+                      </span>
+                    </div>
+                    <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-st-high">
+                      <div className={`h-full rounded-full ${MODE_DOT[mode]}`} style={{ width: `${share}%` }} />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            {modeTotal === 0 ? (
+              <p className="mt-2 text-[10px] text-st-on-variant">No session day in range had a recorded work mode.</p>
+            ) : null}
+            <div className="mt-3 rounded-lg bg-st-low px-3 py-2">
+              <p className="flex items-center gap-1 text-[10px] font-bold text-st-on">
+                <ShieldCheck className="h-3 w-3 text-st-outline" aria-hidden="true" /> Hybrid compliance
+                <span className="ml-auto rounded-full bg-st-high px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-st-on-variant">
+                  Not configured
+                </span>
               </p>
-              <p className="text-xs text-crewly-dim">Money never appears here — payroll owns payouts.</p>
-            </div>
-            <div>
-              <h2 className="font-semibold">Regularizations</h2>
-              <p className="pt-1 text-crewly-dim">
-                {regs.submitted || 0} submitted · {regs.approved || 0} approved · {regs.rejected || 0} rejected · {regs.pending || 0} pending
+              <p className="mt-0.5 text-[9px] leading-relaxed text-st-on-variant">
+                No mandated office-day minimum is stored, so no compliance percentage is printed. Set one on
+                the attendance policy if you need it measured.
               </p>
-              <Link className="text-xs underline" to="/app/attendance/regularizations">Open exception center</Link>
+              <Link to="/app/attendance/policy" className="mt-1 inline-flex items-center gap-1 text-[9px] font-bold text-st-primary hover:underline">
+                Open attendance policy <ChevronRight className="h-2.5 w-2.5" aria-hidden="true" />
+              </Link>
             </div>
-            <div>
-              <h2 className="font-semibold">Locations</h2>
-              <div className="space-y-1 pt-1">
-                {(data.locations?.locations || []).slice(0, 6).map((row) => (
-                  <div key={row.locationId || 'unassigned'} className="flex items-center justify-between gap-2">
-                    <span className="inline-flex items-center gap-1 text-crewly-dim">
-                      <MapPin size={12} /> {row.locationName}
-                    </span>
-                    <span className="font-semibold">{row.events}</span>
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs text-crewly-dim">{data.locations?.totalEvents || 0} punch events in range.</p>
-            </div>
-          </div>
+          </Section>
         </div>
-        <div className="card flex flex-wrap items-center gap-2 text-sm">
-          <span className="inline-flex items-center gap-1 text-crewly-dim">
-            <Download size={14} /> Export this report:
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <Section title="Capture telemetry" icon={ScanFace} badge={`${sources.total ?? 0} punches`} note="Where the punches came from — the device story behind the numbers.">
+            {sourceEntries.length ? (
+              <ul className="space-y-2">
+                {sourceEntries.map(([source, count]) => {
+                  const pct = sources.pcts?.[source] ?? (sources.total ? Math.round((count / sources.total) * 100) : 0);
+                  return (
+                    <li key={source}>
+                      <div className="flex items-center justify-between gap-2 text-[11px]">
+                        <span className="font-semibold text-st-on">{sourceLabel(source)}</span>
+                        <span className="text-st-on-variant"><strong className="font-bold text-st-on">{pct}%</strong> · {count}</span>
+                      </div>
+                      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-st-high">
+                        <div className="h-full rounded-full bg-st-secondary" style={{ width: `${pct}%` }} />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="text-[10px] text-st-on-variant">No punches in range, so there is no capture mix to show.</p>
+            )}
+            <p className="mt-2 text-[9px] leading-relaxed text-st-on-variant">
+              Gateway heartbeats and terminal uptime are not published — this card counts evidence, it does
+              not claim a device is online.
+            </p>
+          </Section>
+
+          <Section title="Overtime ledger" icon={Timer} badge="time bank" note="Permanent time facts only.">
+            <div className="rounded-lg bg-st-low px-3 py-2">
+              <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-st-on-variant">Approved overtime hours</p>
+              <p className="text-xl font-bold text-st-on tabular-nums">{fmtHours(ot.approvedMinutes)}</p>
+              <p className="text-[10px] text-st-on-variant">
+                across {ot.approved ?? 0} approved request{(ot.approved ?? 0) === 1 ? '' : 's'}
+                {(ot.pending ?? 0) > 0 ? ` · ${ot.pending} pending` : ''}
+              </p>
+            </div>
+            <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-st-primary-fixed/50 px-2.5 py-2">
+              <Gauge className="mt-0.5 h-3 w-3 shrink-0 text-st-on-primary-fixed-variant" aria-hidden="true" />
+              <p className="text-[9px] leading-relaxed text-st-on-primary-fixed-variant">
+                <strong className="font-bold">Statutory note.</strong> Money never appears here. This ledger
+                tracks time and comp-off eligibility; payout belongs to payroll.
+              </p>
+            </div>
+            <Link to="/app/attendance/overtime" className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold text-st-primary hover:underline">
+              Audit overtime &amp; comp-off <ChevronRight className="h-2.5 w-2.5" aria-hidden="true" />
+            </Link>
+          </Section>
+
+          <Section title="Regularizations & exceptions" icon={TriangleAlert} badge={`${regs.pending ?? 0} pending`} note="The correction queue behind every unresolved day.">
+            <div className="grid grid-cols-3 gap-1.5">
+              {[
+                ['Submitted', regs.submitted ?? 0, 'text-st-on'],
+                ['Approved', regs.approved ?? 0, 'text-st-secondary'],
+                ['Pending', regs.pending ?? 0, 'text-st-primary'],
+              ].map(([label, value, tone]) => (
+                <div key={label} className="rounded-lg bg-st-low px-2 py-1.5 text-center">
+                  <p className={`text-base font-bold tabular-nums ${tone}`}>{value}</p>
+                  <p className="text-[8px] font-bold uppercase tracking-wider text-st-on-variant">{label}</p>
+                </div>
+              ))}
+            </div>
+            <p className="mt-1.5 text-[9px] text-st-on-variant">
+              {regs.rejected ?? 0} request{(regs.rejected ?? 0) === 1 ? '' : 's'} declined in this range.
+            </p>
+
+            <h3 className="mt-3 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-st-on-variant">
+              <MapPin className="h-3 w-3" aria-hidden="true" /> Punch locations
+            </h3>
+            <ul className="mt-1 space-y-1">
+              {locationRows.slice(0, 3).map((row) => {
+                const share = data.locations?.totalEvents ? Math.round((row.events / data.locations.totalEvents) * 100) : 0;
+                return (
+                  <li key={row.locationId || row.locationName} className="text-[10px]">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate font-semibold text-st-on">{row.locationName || 'Unassigned'}</span>
+                      <span className="shrink-0 text-st-on-variant">{share}% ({row.events})</span>
+                    </div>
+                    <div className="mt-0.5 h-1 w-full overflow-hidden rounded-full bg-st-high">
+                      <div className="h-full rounded-full bg-st-outline" style={{ width: `${share}%` }} />
+                    </div>
+                  </li>
+                );
+              })}
+              {!locationRows.length ? <li className="text-[10px] text-st-on-variant">No located punches in range.</li> : null}
+            </ul>
+            <p className="mt-1 text-[9px] text-st-on-variant">
+              {data.locations?.totalEvents ?? 0} located punch events · no coordinates are shown or stored on screen.
+            </p>
+            <Link to="/app/attendance/regularizations" className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold text-st-primary hover:underline">
+              Open the exception centre <ChevronRight className="h-2.5 w-2.5" aria-hidden="true" />
+            </Link>
+          </Section>
+        </div>
+
+        <div className="flex flex-col gap-3 rounded-xl bg-st-low px-4 py-3 shadow-sm lg:flex-row lg:items-center">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-st-primary-container text-st-on-primary-container">
+            <ShieldCheck className="h-4 w-4" aria-hidden="true" />
           </span>
-          <button type="button" className="btn-ghost px-2 py-1 text-xs" disabled={!!exporting} onClick={() => runExport('employees', 'csv')}>
-            <FileText size={12} className="inline" /> {exporting === 'employees:csv' ? 'Exporting…' : 'Employees CSV'}
-          </button>
-          <button type="button" className="btn-ghost px-2 py-1 text-xs" disabled={!!exporting} onClick={() => runExport('employees', 'xlsx')}>
-            <FileSpreadsheet size={12} className="inline" /> {exporting === 'employees:xlsx' ? 'Exporting…' : 'Employees XLSX'}
-          </button>
-          <button type="button" className="btn-ghost px-2 py-1 text-xs" disabled={!!exporting} onClick={() => runExport('reconciliation', 'csv')}>
-            <FileText size={12} className="inline" /> {exporting === 'reconciliation:csv' ? 'Exporting…' : 'Reconciliation CSV'}
-          </button>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold text-st-on">
+              {data.provenance?.some((row) => row.finalized)
+                ? 'Snapshot-backed figures'
+                : 'Live projection for an open month'}
+            </p>
+            <p className="text-[10px] leading-snug text-st-on-variant">
+              {data.provenance?.some((row) => row.finalized)
+                ? 'A finalized month is a frozen snapshot of resolved daily facts — payroll-grade truth. Live months keep moving until HR finalizes them.'
+                : 'This month is not finalized, so these numbers are a live projection over current punch, leave and roster facts. Finalize the month to freeze them.'}{' '}
+              Read-only: nothing on this page writes attendance, leave, overtime or payroll.
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              disabled={!!exporting}
+              onClick={() => runExport('employees', 'csv')}
+              className="inline-flex items-center gap-1 rounded-lg bg-st-lowest px-2.5 py-1.5 text-[10px] font-bold text-st-on shadow-sm transition hover:bg-st-container disabled:opacity-50"
+            >
+              <FileText className="h-3 w-3" aria-hidden="true" /> {exporting === 'employees:csv' ? 'Exporting…' : 'Employees CSV'}
+            </button>
+            <button
+              type="button"
+              disabled={!!exporting}
+              onClick={() => runExport('employees', 'xlsx')}
+              className="inline-flex items-center gap-1 rounded-lg bg-st-lowest px-2.5 py-1.5 text-[10px] font-bold text-st-on shadow-sm transition hover:bg-st-container disabled:opacity-50"
+            >
+              <FileSpreadsheet className="h-3 w-3" aria-hidden="true" /> {exporting === 'employees:xlsx' ? 'Exporting…' : 'Employees XLSX'}
+            </button>
+            <button
+              type="button"
+              disabled={!!exporting}
+              onClick={() => runExport('reconciliation', 'csv')}
+              className="inline-flex items-center gap-1 rounded-lg bg-st-lowest px-2.5 py-1.5 text-[10px] font-bold text-st-on shadow-sm transition hover:bg-st-container disabled:opacity-50"
+            >
+              <FileText className="h-3 w-3" aria-hidden="true" /> {exporting === 'reconciliation:csv' ? 'Exporting…' : 'Reconciliation CSV'}
+            </button>
+            <button
+              type="button"
+              disabled
+              title="No PDF ledger report is published; the CSVs are the signed extract."
+              className="inline-flex items-center gap-1 rounded-lg bg-st-primary px-2.5 py-1.5 text-[10px] font-bold text-st-on-primary opacity-60"
+            >
+              <Download className="h-3 w-3" aria-hidden="true" /> PDF audit
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -458,13 +782,15 @@ const AttendanceAnalyticsPage = () => {
     const months = data.months || [];
     const maxPct = Math.max(100, ...months.map((row) => row.totals?.attendanceRate?.pct || 0));
     return (
-      <div className="space-y-4">
+      <div className="flex flex-col gap-4">
         <SourceBanner provenance={data.provenance} range={data.range} />
-        <div className="card text-sm">
-          <h2 className="font-semibold">Monthly attendance %</h2>
-          <p className="text-xs text-crewly-dim">Up to 12 months back. Each bar names its source — finalized bars are snapshot truth, live bars move until finalization.</p>
-          {months.length > 0 && (
-            <svg viewBox={`0 0 ${months.length * 64 + 16} 190`} className="mt-3 w-full" role="img" aria-label="Monthly attendance rate chart">
+        <Section
+          title="Monthly attendance rate"
+          icon={BarChart3}
+          note="Up to 12 months back. Each bar names its source — a finalized bar is snapshot truth, a live bar moves until finalization."
+        >
+          {months.length ? (
+            <svg viewBox={`0 0 ${months.length * 64 + 16} 190`} className="w-full" role="img" aria-label="Monthly attendance rate chart">
               <line x1="8" y1="150" x2={months.length * 64 + 8} y2="150" stroke="currentColor" strokeOpacity="0.2" />
               {[25, 50, 75, 100].map((tick) => (
                 <g key={tick}>
@@ -484,7 +810,7 @@ const AttendanceAnalyticsPage = () => {
                       width="40"
                       height={height}
                       rx="3"
-                      className={row.finalized ? 'fill-emerald-400/70' : 'fill-crewly-orange/70'}
+                      className={row.finalized ? 'fill-st-secondary/80' : 'fill-st-primary-container/80'}
                     >
                       <title>{`${row.month}: ${pct === null ? 'no scheduled days' : `${pct}%`} (${row.finalized ? 'finalized' : 'live'})`}</title>
                     </rect>
@@ -501,41 +827,47 @@ const AttendanceAnalyticsPage = () => {
                 );
               })}
             </svg>
+          ) : (
+            <p className="text-[11px] text-st-on-variant">No months in this range.</p>
           )}
-          {!months.length && <p className="pt-2 text-crewly-dim">No months in range.</p>}
-        </div>
-        <div className="card overflow-x-auto text-sm">
-          <table className="w-full min-w-[42rem]">
-            <thead>
-              <tr className="text-left text-xs text-crewly-dim">
-                <th className="px-2 py-1">Month</th>
-                <th className="px-2 py-1">Source</th>
-                <th className="px-2 py-1 text-right">Attendance %</th>
-                <th className="px-2 py-1 text-right">Absence %</th>
-                <th className="px-2 py-1 text-right">Worked units</th>
-                <th className="px-2 py-1 text-right">Scheduled units</th>
-                <th className="px-2 py-1 text-right">Effective worked</th>
-              </tr>
-            </thead>
-            <tbody>
-              {months.map((row) => (
-                <tr key={row.month} className="border-t border-crewly-hairline">
-                  <td className="px-2 py-1 font-medium">{row.month}</td>
-                  <td className="px-2 py-1">
-                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${row.finalized ? 'bg-emerald-400/15 text-emerald-300' : 'bg-crewly-orange/15 text-crewly-orange'}`}>
-                      {row.finalized ? 'FINALIZED' : 'LIVE'}
-                    </span>
-                  </td>
-                  <td className="px-2 py-1 text-right">{fmtPct(row.totals?.attendanceRate)}</td>
-                  <td className="px-2 py-1 text-right">{fmtPct(row.totals?.absenceRate)}</td>
-                  <td className="px-2 py-1 text-right">{fmtUnits(row.totals?.workedUnits)}</td>
-                  <td className="px-2 py-1 text-right">{fmtUnits(row.totals?.scheduledUnits)}</td>
-                  <td className="px-2 py-1 text-right">{fmtHours(row.totals?.workedMinutes)}</td>
+        </Section>
+
+        <section className="overflow-hidden rounded-xl bg-st-lowest shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[42rem] text-left">
+              <thead>
+                <tr className="bg-st-container text-[9px] font-bold uppercase tracking-wider text-st-on-variant">
+                  <th className="py-2 pl-4 pr-2 font-bold">Month</th>
+                  <th className="px-2 py-2 font-bold">Source</th>
+                  <th className="px-2 py-2 text-right font-bold">Attendance %</th>
+                  <th className="px-2 py-2 text-right font-bold">Absence %</th>
+                  <th className="px-2 py-2 text-right font-bold">Worked units</th>
+                  <th className="px-2 py-2 text-right font-bold">Scheduled units</th>
+                  <th className="py-2 pl-2 pr-4 text-right font-bold">Effective worked</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {months.map((row) => (
+                  <tr key={row.month} className="border-b border-st-high/50 hover:bg-st-low">
+                    <td className="py-2 pl-4 pr-2 text-xs font-bold text-st-on">{row.month}</td>
+                    <td className="px-2 py-2">
+                      <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
+                        row.finalized ? 'bg-st-secondary-container text-st-on-secondary-container' : 'bg-st-primary-fixed text-st-on-primary-fixed-variant'
+                      }`}>
+                        {row.finalized ? 'Finalized' : 'Live'}
+                      </span>
+                    </td>
+                    <td className="px-2 py-2 text-right text-[11px] tabular-nums">{fmtPct(row.totals?.attendanceRate)}</td>
+                    <td className="px-2 py-2 text-right text-[11px] tabular-nums">{fmtPct(row.totals?.absenceRate)}</td>
+                    <td className="px-2 py-2 text-right text-[11px] tabular-nums">{fmtUnits(row.totals?.workedUnits)}</td>
+                    <td className="px-2 py-2 text-right text-[11px] tabular-nums">{fmtUnits(row.totals?.scheduledUnits)}</td>
+                    <td className="py-2 pl-2 pr-4 text-right text-[11px] tabular-nums">{fmtHours(row.totals?.workedMinutes)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
     );
   };
@@ -544,66 +876,88 @@ const AttendanceAnalyticsPage = () => {
     if (!data) return null;
     const rows = data.rows || [];
     return (
-      <div className="space-y-4">
+      <div className="flex flex-col gap-4">
         <SourceBanner provenance={data.provenance} range={data.range} />
-        <div className="card overflow-x-auto text-sm">
-          <table className="w-full min-w-[60rem]">
-            <thead>
-              <tr className="text-left text-xs text-crewly-dim">
-                {SORT_COLUMNS.map(([field, label]) => (
-                  <th key={field} className="px-2 py-1">
-                    <button type="button" className="inline-flex items-center gap-1 hover:underline" onClick={() => toggleSort(field)}>
-                      {label} {sortIcon(field)}
-                    </button>
-                  </th>
-                ))}
-                <th className="px-2 py-1 text-right">Avg / day</th>
-                <th className="px-2 py-1 text-right">Late min</th>
-                <th className="px-2 py-1 text-right">Missing punches</th>
-                <th className="px-2 py-1 text-right">OT min</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.employeeId} className="border-t border-crewly-hairline">
-                  <td className="px-2 py-1">
-                    <div className="font-medium">{row.name}</div>
-                    <div className="text-xs text-crewly-dim">{row.department?.name || row.designation || ''}</div>
-                  </td>
-                  <td className="px-2 py-1 text-crewly-dim">{row.employeeCode || '—'}</td>
-                  <td className="px-2 py-1">{fmtUnits(row.workedUnits)}</td>
-                  <td className="px-2 py-1">{fmtUnits(row.absentUnits)}</td>
-                  <td className="px-2 py-1 font-semibold">{fmtPct(row.attendanceRate)}</td>
-                  <td className="px-2 py-1">{fmtHours(row.workedMinutes)}</td>
-                  <td className="px-2 py-1 text-right">{fmtHours(row.averageWorkedMinutes)}</td>
-                  <td className="px-2 py-1 text-right">{row.lateMinutes ?? 0}</td>
-                  <td className="px-2 py-1 text-right">{row.missingPunchDays ?? 0}</td>
-                  <td className="px-2 py-1 text-right">{row.approvedOtMinutes ?? 0}</td>
+        <section className="overflow-hidden rounded-xl bg-st-lowest shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[60rem] text-left">
+              <thead>
+                <tr className="bg-st-container text-[9px] font-bold uppercase tracking-wider text-st-on-variant">
+                  {SORT_COLUMNS.map(([field, label]) => (
+                    <th key={field} className={`py-2 ${field === 'name' ? 'pl-4 pr-2' : 'px-2'} ${field === 'name' ? '' : 'text-right'} font-bold`}>
+                      <button type="button" className="inline-flex items-center gap-1 hover:text-st-on" onClick={() => toggleSort(field)}>
+                        {label} {sortIcon(field)}
+                      </button>
+                    </th>
+                  ))}
+                  <th className="px-2 py-2 text-right font-bold">Avg / day</th>
+                  <th className="px-2 py-2 text-right font-bold">Late min</th>
+                  <th className="px-2 py-2 text-right font-bold">Missing</th>
+                  <th className="py-2 pl-2 pr-4 text-right font-bold">OT min</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {!rows.length && <p className="p-3 text-crewly-dim">No employees in scope for this range.</p>}
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-          <span className="text-crewly-dim">
-            Page {data.page || 1} of {data.totalPages || 1} · {data.total || 0} employees
-          </span>
-          <div className="flex items-center gap-2">
-            <button type="button" className="btn-ghost px-2 py-1" disabled={(data.page || 1) <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} aria-label="Previous page">
-              <ChevronLeft size={14} />
-            </button>
-            <button
-              type="button"
-              className="btn-ghost px-2 py-1"
-              disabled={(data.page || 1) >= (data.totalPages || 1)}
-              onClick={() => setPage((p) => p + 1)}
-              aria-label="Next page"
-            >
-              <ChevronRight size={14} />
-            </button>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.employeeId} className="border-b border-st-high/50 hover:bg-st-low">
+                    <td className="py-2 pl-4 pr-2">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-st-secondary-container text-[9px] font-bold text-st-on-secondary-container">
+                          {(row.name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('')}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-xs font-bold text-st-on">{row.name}</span>
+                          <span className="block truncate text-[10px] text-st-on-variant">{row.department?.name || row.designation || '—'}</span>
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-2 py-2 text-right text-[10px] text-st-on-variant">{row.employeeCode || '—'}</td>
+                    <td className="px-2 py-2 text-right text-[11px] tabular-nums">{fmtUnits(row.workedUnits)}</td>
+                    <td className="px-2 py-2 text-right text-[11px] tabular-nums">{fmtUnits(row.absentUnits)}</td>
+                    <td className="px-2 py-2 text-right text-[11px] font-bold tabular-nums">{fmtPct(row.attendanceRate)}</td>
+                    <td className="px-2 py-2 text-right text-[11px] tabular-nums">{fmtHours(row.workedMinutes)}</td>
+                    <td className="px-2 py-2 text-right text-[11px] tabular-nums">{fmtHours(row.averageWorkedMinutes)}</td>
+                    <td className="px-2 py-2 text-right text-[11px] tabular-nums">{row.lateMinutes ?? 0}</td>
+                    <td className="px-2 py-2 text-right text-[11px] tabular-nums">{row.missingPunchDays ?? 0}</td>
+                    <td className="py-2 pl-2 pr-4 text-right text-[11px] tabular-nums">{row.approvedOtMinutes ?? 0}</td>
+                  </tr>
+                ))}
+                {!rows.length ? (
+                  <tr>
+                    <td colSpan={11} className="px-4 py-6 text-center text-[11px] text-st-on-variant">
+                      No employees in scope for this range.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
           </div>
-        </div>
+          <div className="flex items-center justify-between border-t border-st-high/60 px-4 py-2 text-[10px] text-st-on-variant">
+            <span>Page {data.page || 1} of {data.totalPages || 1} · {data.total || 0} employees</span>
+            <span className="flex items-center gap-1">
+              <button
+                type="button"
+                className="rounded bg-st-low p-1.5 transition hover:text-st-on disabled:opacity-40"
+                disabled={(data.page || 1) <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                aria-label="Previous page"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                className="rounded bg-st-low p-1.5 transition hover:text-st-on disabled:opacity-40"
+                disabled={(data.page || 1) >= (data.totalPages || 1)}
+                onClick={() => setPage((p) => p + 1)}
+                aria-label="Next page"
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </span>
+          </div>
+        </section>
+        <p className="text-[10px] text-st-on-variant">
+          Default order is by name. Every other order is an explicit sort of a ledger, never a ranking or a score.
+        </p>
       </div>
     );
   };
@@ -611,12 +965,11 @@ const AttendanceAnalyticsPage = () => {
   const renderMine = () => {
     if (!data) return null;
     return (
-      <div className="space-y-4">
+      <div className="flex flex-col gap-4">
         <SourceBanner provenance={data.provenance} range={data.range} />
         {renderTotalsKpis()}
-        <div className="card text-sm">
-          <h2 className="font-semibold">My day outcomes</h2>
-          <div className="grid grid-cols-2 gap-2 pt-2 sm:grid-cols-4">
+        <Section title="My day outcomes" icon={CalendarDays} note="The same ledger the company report reads, narrowed to your own record.">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {[
               ['Present', totals?.dayCounts?.present],
               ['Half day', totals?.dayCounts?.halfDay],
@@ -627,16 +980,16 @@ const AttendanceAnalyticsPage = () => {
               ['Unresolved', totals?.dayCounts?.unresolved],
               ['Missing punch days', totals?.missingPunchDays],
             ].map(([label, value]) => (
-              <div key={label} className="flex items-center justify-between gap-2 rounded bg-crewly-inset px-2 py-1">
-                <span className="text-crewly-dim">{label}</span>
-                <span className="font-semibold">{value ?? 0}</span>
+              <div key={label} className="rounded-lg bg-st-low px-2.5 py-2">
+                <p className="text-lg font-bold text-st-on tabular-nums">{value ?? 0}</p>
+                <p className="text-[9px] font-bold uppercase tracking-wider text-st-on-variant">{label}</p>
               </div>
             ))}
           </div>
-          <p className="pt-3 text-xs text-crewly-dim">
-            Day-by-day detail lives on <Link className="underline" to="/app/attendance/timesheet">My Timesheet</Link>.
-          </p>
-        </div>
+          <Link to="/app/attendance/timesheet" className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold text-st-primary hover:underline">
+            Day-by-day detail lives on My Timesheet <ChevronRight className="h-2.5 w-2.5" aria-hidden="true" />
+          </Link>
+        </Section>
       </div>
     );
   };
@@ -646,138 +999,198 @@ const AttendanceAnalyticsPage = () => {
     const summary = data.summary || {};
     const rows = data.rows || [];
     return (
-      <div className="space-y-4">
-        <div className="card flex flex-wrap items-center gap-2 text-sm">
-          <span className="inline-flex items-center gap-1 text-crewly-dim">
-            <Building2 size={14} /> {data.month} · period {data.periodStatus}
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-st-on-variant">
+            <Building2 className="h-3 w-3" aria-hidden="true" /> {data.month} · period {data.periodStatus}
           </span>
-          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${data.finalized ? 'bg-emerald-400/15 text-emerald-300' : 'bg-crewly-orange/15 text-crewly-orange'}`}>
-            {data.finalized ? `FINALIZED v${data.currentVersion}` : 'NOT FINALIZED'}
+          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
+            data.finalized ? 'bg-st-secondary-container text-st-on-secondary-container' : 'bg-st-primary-fixed text-st-on-primary-fixed-variant'
+          }`}>
+            {data.finalized ? `Finalized v${data.currentVersion}` : 'Not finalized'}
           </span>
           {Object.entries(summary).map(([status, count]) => (
-            <span key={status} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${RECON_STYLES[status] || 'bg-crewly-inset-strong'}`}>
+            <span key={status} className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${RECON_STYLES[status] || 'bg-st-high text-st-on-variant'}`}>
               {status}: {count}
             </span>
           ))}
-          <span className="ml-auto text-xs text-crewly-dim">Read-only — HR-owned payroll entries are never compared.</span>
+          <span className="ml-auto text-[10px] text-st-on-variant">Read-only — HR-owned payroll entries are never compared.</span>
         </div>
-        <div className="card overflow-x-auto text-sm">
-          <table className="w-full min-w-[52rem]">
-            <thead>
-              <tr className="text-left text-xs text-crewly-dim">
-                <th className="px-2 py-1">Employee</th>
-                <th className="px-2 py-1">Status</th>
-                <th className="px-2 py-1 text-right">Snapshot v</th>
-                <th className="px-2 py-1 text-right">Current v</th>
-                <th className="px-2 py-1">Synced at</th>
-                <th className="px-2 py-1">Differences</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.employeeId} className="border-t border-crewly-hairline">
-                  <td className="px-2 py-1">
-                    <div className="font-medium">{row.name}</div>
-                    <div className="text-xs text-crewly-dim">{row.department?.name || row.employeeCode || ''}</div>
-                  </td>
-                  <td className="px-2 py-1">
-                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${RECON_STYLES[row.status] || 'bg-crewly-inset-strong'}`}>
-                      {row.status}
-                    </span>
-                  </td>
-                  <td className="px-2 py-1 text-right">{row.snapshotVersion ?? '—'}</td>
-                  <td className="px-2 py-1 text-right">{row.currentVersion ?? '—'}</td>
-                  <td className="px-2 py-1 text-xs text-crewly-dim">
-                    {row.syncedAt ? new Date(row.syncedAt).toLocaleString('en-IN') : '—'}
-                  </td>
-                  <td className="px-2 py-1 text-xs">
-                    {(row.diffs || []).length === 0 ? (
-                      <span className="text-crewly-dim">—</span>
-                    ) : (
-                      <ul className="list-disc pl-4">
-                        {row.diffs.map((diff, index) => (
-                          <li key={`${diff.field || index}`}>
-                            {diff.field}: expected {String(diff.expected ?? '—')} · actual {String(diff.actual ?? '—')}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </td>
+        <section className="overflow-hidden rounded-xl bg-st-lowest shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[52rem] text-left">
+              <thead>
+                <tr className="bg-st-container text-[9px] font-bold uppercase tracking-wider text-st-on-variant">
+                  <th className="py-2 pl-4 pr-2 font-bold">Employee</th>
+                  <th className="px-2 py-2 font-bold">Status</th>
+                  <th className="px-2 py-2 text-right font-bold">Snapshot v</th>
+                  <th className="px-2 py-2 text-right font-bold">Current v</th>
+                  <th className="px-2 py-2 font-bold">Synced at</th>
+                  <th className="py-2 pl-2 pr-4 font-bold">Differences</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {!rows.length && <p className="p-3 text-crewly-dim">No employees in scope for this month.</p>}
-        </div>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.employeeId} className="border-b border-st-high/50 hover:bg-st-low">
+                    <td className="py-2 pl-4 pr-2">
+                      <span className="block text-xs font-bold text-st-on">{row.name}</span>
+                      <span className="block text-[10px] text-st-on-variant">{row.department?.name || row.employeeCode || ''}</span>
+                    </td>
+                    <td className="px-2 py-2">
+                      <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${RECON_STYLES[row.status] || 'bg-st-high text-st-on-variant'}`}>
+                        {row.status}
+                      </span>
+                    </td>
+                    <td className="px-2 py-2 text-right text-[11px] tabular-nums">{row.snapshotVersion ?? '—'}</td>
+                    <td className="px-2 py-2 text-right text-[11px] tabular-nums">{row.currentVersion ?? '—'}</td>
+                    <td className="px-2 py-2 text-[10px] text-st-on-variant">{row.syncedAt ? new Date(row.syncedAt).toLocaleString('en-IN') : '—'}</td>
+                    <td className="py-2 pl-2 pr-4 text-[10px]">
+                      {(row.diffs || []).length === 0 ? (
+                        <span className="text-st-on-variant">—</span>
+                      ) : (
+                        <ul className="list-disc space-y-0.5 pl-4">
+                          {row.diffs.map((diff, index) => (
+                            <li key={`${diff.field || index}`}>
+                              {diff.field}: expected {String(diff.expected ?? '—')} · actual {String(diff.actual ?? '—')}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {!rows.length ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-6 text-center text-[11px] text-st-on-variant">No employees in scope for this month.</td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
     );
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">Attendance Analytics</h1>
-          <p className="text-sm text-crewly-dim">
-            Read-only reports over {tab === 'mine' ? 'your own' : 'scoped'} attendance facts — finalized snapshots where they exist, live projections otherwise.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button type="button" className="btn-ghost px-2 py-1" onClick={() => load()} aria-label="Refresh now">
-            <RefreshCw size={14} />
-          </button>
-        </div>
-      </div>
+    <div className="st-surface min-h-screen">
+      <div className="flex flex-col gap-5">
+        {/* ── hero ─────────────────────────────────────────────────────── */}
+        <section className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-st-on-variant">
+                Time &amp; Leave · Attendance Analytics
+              </span>
+              <SourceChip provenance={data?.provenance} />
+              {refreshedAt ? (
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-st-on-variant">
+                  <Sparkles className="h-3 w-3" aria-hidden="true" /> read {refreshedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              ) : null}
+            </div>
+            <h1 className="mt-1 text-3xl font-bold tracking-tight text-st-on lg:text-[2rem]">Attendance Analytics</h1>
+            <p className="mt-1 max-w-2xl text-sm leading-relaxed text-st-on-variant">
+              Read-only reports over {tab === 'mine' ? 'your own' : 'scoped'} attendance facts — finalized
+              snapshots where they exist, live workforce projections otherwise. No rankings, no scores, no
+              money.
+            </p>
+          </div>
 
-      <div className="flex flex-wrap gap-2">
-        {visibleTabs.map(([key, label, Icon]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setTab(key)}
-            className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm ${
-              tab === key ? 'bg-crewly-accent text-white' : 'bg-crewly-inset text-crewly-dim hover:bg-crewly-inset-strong'
-            }`}
-          >
-            <Icon size={14} /> {label}
-          </button>
-        ))}
-      </div>
+          <div className="flex shrink-0 flex-col items-stretch gap-2">
+            <div className="flex items-center justify-between gap-2 rounded-lg bg-st-lowest px-3 py-2 shadow-sm">
+              <span className="min-w-0">
+                <span className="block text-[8px] font-bold uppercase tracking-[0.12em] text-st-on-variant">Audit snapshot</span>
+                <span className="block truncate text-[11px] font-bold text-st-on">
+                  {refreshedAt ? refreshedAt.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Reading…'}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => load({ silent: true })}
+                disabled={refreshing}
+                className="rounded p-1 text-st-on-variant transition hover:text-st-on disabled:opacity-50"
+                aria-label="Refresh now"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+            <Link
+              to="/app/attendance/policy"
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-st-primary px-3 py-2 text-[11px] font-bold text-st-on-primary shadow-sm transition hover:opacity-95"
+            >
+              <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" /> Ledger rules
+            </Link>
+          </div>
+        </section>
 
-      {renderFilterBar(tab !== 'reconciliation')}
-      {tab === 'reconciliation' && (
-        <div className="card flex flex-wrap items-center gap-2 text-sm">
-          <span className="inline-flex items-center gap-1 text-crewly-dim">
-            <Filter size={14} /> Month:
+        {/* ── tabs ─────────────────────────────────────────────────────── */}
+        <div className="flex flex-wrap gap-1.5">
+          {visibleTabs.map(([key, label, Icon]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTab(key)}
+              aria-pressed={tab === key}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-bold transition ${
+                tab === key
+                  ? 'bg-st-primary-container text-st-on-primary-container shadow-sm'
+                  : 'bg-st-lowest text-st-on-variant shadow-sm hover:text-st-on'
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" aria-hidden="true" /> {label}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'reconciliation' ? (
+          <section className="rounded-xl bg-st-lowest p-3 shadow-sm">
+            <label className="flex max-w-[14rem] flex-col gap-0.5">
+              <span className="pl-1 text-[8px] font-bold uppercase tracking-[0.12em] text-st-on-variant">Month</span>
+              <input
+                type="month"
+                value={month}
+                max={currentMonth()}
+                onChange={(event) => setMonth(event.target.value || currentMonth())}
+                className="rounded-lg bg-st-low px-2.5 py-1.5 text-[11px] font-semibold text-st-on focus:outline-none focus:ring-2 focus:ring-st-primary-container/40"
+                aria-label="Month"
+              />
+            </label>
+          </section>
+        ) : renderFilterBar(tab !== 'mine')}
+
+        {error ? (
+          <div className="flex items-center gap-3 rounded-lg bg-st-error-container px-4 py-2.5 text-xs font-medium text-st-on-error-container">
+            {error}
+            <button type="button" onClick={() => load()} className="rounded bg-st-lowest px-2 py-1 text-[11px] font-bold text-st-on">
+              Retry
+            </button>
+          </div>
+        ) : null}
+
+        {loading && !data ? (
+          <div className="rounded-xl bg-st-lowest p-6 text-sm text-st-on-variant shadow-sm">Loading analytics…</div>
+        ) : null}
+
+        {!error && data ? (
+          <>
+            {tab === 'overview' && renderOverview()}
+            {tab === 'trends' && renderTrends()}
+            {tab === 'employees' && renderEmployees()}
+            {tab === 'mine' && renderMine()}
+            {tab === 'reconciliation' && renderReconciliation()}
+          </>
+        ) : null}
+
+        <p className="flex items-start gap-2 rounded-xl bg-st-low px-4 py-3 text-[10px] leading-relaxed text-st-on-variant">
+          <Filter className="mt-0.5 h-3.5 w-3.5 shrink-0 text-st-outline" aria-hidden="true" />
+          <span>
+            Filters narrow every number on the tab identically. Blocks this workspace cannot back — hybrid
+            office-day compliance, device uptime, a PDF audit file — say so in place instead of printing a
+            plausible figure.
           </span>
-          <input
-            type="month"
-            className="input max-w-[11rem]"
-            value={month}
-            max={currentMonth()}
-            onChange={(event) => setMonth(event.target.value || currentMonth())}
-            aria-label="Month"
-          />
-        </div>
-      )}
-
-      {error && (
-        <div className="card text-sm text-crewly-red">
-          {error} <button type="button" className="underline" onClick={() => load()}>Retry</button>
-        </div>
-      )}
-
-      {loading && !data && <div className="card text-sm text-crewly-dim">Loading analytics…</div>}
-
-      {!loading && !error && data && (
-        <>
-          {tab === 'overview' && renderOverview()}
-          {tab === 'trends' && renderTrends()}
-          {tab === 'employees' && renderEmployees()}
-          {tab === 'mine' && renderMine()}
-          {tab === 'reconciliation' && renderReconciliation()}
-        </>
-      )}
+        </p>
+      </div>
     </div>
   );
 };

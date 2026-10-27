@@ -31,25 +31,25 @@ const OUTCOME_LABEL = {
 };
 
 const OUTCOME_STYLE = {
-  PRESENT: 'bg-crewly-green/15 text-crewly-green',
-  HALF_DAY: 'bg-blue-400/15 text-blue-300',
-  ABSENT: 'bg-crewly-red/15 text-crewly-red',
-  LEAVE: 'bg-violet-400/15 text-violet-300',
-  HOLIDAY: 'bg-crewly-orange/15 text-crewly-orange',
-  WEEKLY_OFF: 'bg-crewly-inset-strong text-crewly-dim',
-  UNRESOLVED: 'bg-crewly-inset-strong text-crewly-dim',
-  FUTURE: 'bg-crewly-inset text-crewly-dim',
+  PRESENT: 'bg-st-secondary-container text-st-on-secondary-container',
+  HALF_DAY: 'bg-st-primary-fixed text-st-on-primary-fixed-variant',
+  ABSENT: 'bg-st-error-container text-st-on-error-container',
+  LEAVE: 'bg-st-tertiary-fixed text-st-on-tertiary-fixed',
+  HOLIDAY: 'bg-st-primary-fixed text-st-on-primary-fixed-variant',
+  WEEKLY_OFF: 'bg-st-high text-st-on-variant',
+  UNRESOLVED: 'bg-st-high text-st-on-variant',
+  FUTURE: 'bg-st-low text-st-on-variant',
 };
 
 const OUTCOME_DOT = {
-  PRESENT: 'bg-crewly-green',
+  PRESENT: 'bg-st-secondary',
   HALF_DAY: 'bg-blue-400',
-  ABSENT: 'bg-crewly-red',
+  ABSENT: 'bg-st-error',
   LEAVE: 'bg-violet-400',
-  HOLIDAY: 'bg-crewly-orange',
-  WEEKLY_OFF: 'bg-crewly-inset-heavy',
-  UNRESOLVED: 'bg-crewly-inset-heavy',
-  FUTURE: 'bg-crewly-inset-strong',
+  HOLIDAY: 'bg-st-primary',
+  WEEKLY_OFF: 'bg-st-outline',
+  UNRESOLVED: 'bg-st-outline',
+  FUTURE: 'bg-st-high',
 };
 
 // Weekly-hours flexi policy — an earned-rest day buckets as WEEKLY_OFF but
@@ -98,15 +98,15 @@ const fmtSpan = (totalMinutes) => {
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 const Stat = ({ label, value, tone = '' }) => (
-  <div className="rounded-lg bg-crewly-inset px-3 py-2">
+  <div className="rounded-lg bg-st-low px-3 py-2">
     <div className={`text-lg font-semibold ${tone}`}>{value}</div>
-    <div className="text-xs text-crewly-dim">{label}</div>
+    <div className="text-xs text-st-on-variant">{label}</div>
   </div>
 );
 
 const Row = ({ label, children }) => (
   <div className="flex items-start justify-between gap-3 py-1.5">
-    <span className="shrink-0 text-sm text-crewly-dim">{label}</span>
+    <span className="shrink-0 text-sm text-st-on-variant">{label}</span>
     <span className="text-right text-sm">{children}</span>
   </div>
 );
@@ -121,19 +121,19 @@ const DayDrawer = ({ day, onClose }) => {
           {dayOutcomeLabel(day)}
         </span>
         {day.workMode && (
-          <span className="rounded-full bg-crewly-inset-strong px-3 py-1 text-xs">
+          <span className="rounded-full bg-st-high px-3 py-1 text-xs">
             {MODE_LABEL[day.workMode] || day.workMode}
           </span>
         )}
         {day.regularized && (
-          <span className="rounded-full bg-crewly-green/15 px-3 py-1 text-xs text-crewly-green">
+          <span className="rounded-full bg-st-secondary/15 px-3 py-1 text-xs text-st-secondary">
             Corrected
           </span>
         )}
       </div>
 
       {day.isFuture ? (
-        <p className="text-sm text-crewly-dim">
+        <p className="text-sm text-st-on-variant">
           This day has not happened yet — nothing to show.
           {day.schedule ? (
             <>
@@ -144,7 +144,7 @@ const DayDrawer = ({ day, onClose }) => {
         </p>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-lg bg-crewly-inset p-3">
+          <div className="rounded-lg bg-st-low p-3">
             <h3 className="mb-1 text-sm font-semibold">Schedule</h3>
             {day.schedule ? (
               <>
@@ -155,7 +155,7 @@ const DayDrawer = ({ day, onClose }) => {
                 <Row label="Name">{day.schedule.shiftName || day.schedule.scheduleName || '—'}</Row>
               </>
             ) : (
-              <p className="text-sm text-crewly-dim">
+              <p className="text-sm text-st-on-variant">
                 {day.scheduleUnresolved ? 'No schedule resolved for this day.' : 'No scheduled shift.'}
               </p>
             )}
@@ -185,7 +185,7 @@ const DayDrawer = ({ day, onClose }) => {
             )}
           </div>
 
-          <div className="rounded-lg bg-crewly-inset p-3">
+          <div className="rounded-lg bg-st-low p-3">
             <h3 className="mb-1 text-sm font-semibold">Calendar</h3>
             {day.calendar?.leave ? (
               <Row label="Leave">
@@ -207,7 +207,7 @@ const DayDrawer = ({ day, onClose }) => {
               </Row>
             ) : null}
             {!day.calendar?.leave && !day.calendar?.holiday && day.calendar?.primary === 'WORK_DAY' ? (
-              <p className="text-sm text-crewly-dim">Regular working day.</p>
+              <p className="text-sm text-st-on-variant">Regular working day.</p>
             ) : null}
 
             <h3 className="mb-1 mt-3 text-sm font-semibold">Timeline</h3>
@@ -216,7 +216,7 @@ const DayDrawer = ({ day, onClose }) => {
                 {day.timeline.map((event) => (
                   <li key={`${event.seq}-${event.at}`} className="flex items-center justify-between gap-2 text-sm">
                     <span>{event.type?.replaceAll('_', ' ')}</span>
-                    <span className="text-crewly-dim">
+                    <span className="text-st-on-variant">
                       {fmtClock(event.at)}
                       {event.locationName ? ` · ${event.locationName}` : ''}
                     </span>
@@ -224,13 +224,13 @@ const DayDrawer = ({ day, onClose }) => {
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-crewly-dim">No recorded events.</p>
+              <p className="text-sm text-st-on-variant">No recorded events.</p>
             )}
 
             {(day.regularization?.pending || day.regularization?.applied) && (
               <>
                 <h3 className="mb-1 mt-3 text-sm font-semibold">Corrections</h3>
-                <p className="text-sm text-crewly-dim">
+                <p className="text-sm text-st-on-variant">
                   {day.regularization.applied ? 'An approved correction is applied to this day. ' : ''}
                   {day.regularization.pending ? 'A correction request is still pending review.' : ''}
                 </p>
@@ -260,26 +260,26 @@ const DayDrawer = ({ day, onClose }) => {
 
       {day.exceptions?.length > 0 && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <AlertTriangle size={14} className="text-crewly-orange" />
+          <AlertTriangle size={14} className="text-st-primary" />
           {day.exceptions.map((code) => (
-            <span key={code} className="rounded-full bg-crewly-orange/15 px-2 py-0.5 text-xs text-crewly-orange">
+            <span key={code} className="rounded-full bg-st-primary/15 px-2 py-0.5 text-xs text-st-primary">
               {EXCEPTION_LABEL[code] || code}
             </span>
           ))}
         </div>
       )}
 
-      <div className="mt-4 flex flex-wrap gap-3 border-t border-crewly-hairline-strong pt-3 text-sm">
-        <Link to="/app/attendance/regularizations" className="inline-flex items-center gap-1 text-crewly-green hover:underline">
+      <div className="mt-4 flex flex-wrap gap-3 border-t border-st-high pt-3 text-sm">
+        <Link to="/app/attendance/regularizations" className="inline-flex items-center gap-1 text-st-secondary hover:underline">
           Corrections <ArrowRight size={13} />
         </Link>
-        <Link to="/app/attendance/work-modes" className="inline-flex items-center gap-1 text-crewly-green hover:underline">
+        <Link to="/app/attendance/work-modes" className="inline-flex items-center gap-1 text-st-secondary hover:underline">
           Work modes <ArrowRight size={13} />
         </Link>
-        <Link to="/app/attendance/overtime" className="inline-flex items-center gap-1 text-crewly-green hover:underline">
+        <Link to="/app/attendance/overtime" className="inline-flex items-center gap-1 text-st-secondary hover:underline">
           Overtime <ArrowRight size={13} />
         </Link>
-        <Link to="/app/leaves" className="inline-flex items-center gap-1 text-crewly-green hover:underline">
+        <Link to="/app/leaves" className="inline-flex items-center gap-1 text-st-secondary hover:underline">
           Leaves <ArrowRight size={13} />
         </Link>
       </div>
@@ -305,8 +305,8 @@ const TimesheetMonthView = ({ sheet, employeeName = '' }) => {
   return (
     <div className="space-y-4">
       {employeeName && (
-        <p className="text-sm text-crewly-dim">
-          Showing <span className="font-medium text-crewly-text">{employeeName}</span>
+        <p className="text-sm text-st-on-variant">
+          Showing <span className="font-medium text-st-on">{employeeName}</span>
           {sheet?.employee?.employeeCode ? ` (${sheet.employee.employeeCode})` : ''}
           {sheet?.employee?.department?.name ? ` · ${sheet.employee.department.name}` : ''}.
         </p>
@@ -314,19 +314,19 @@ const TimesheetMonthView = ({ sheet, employeeName = '' }) => {
 
       {summary && (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
-          <Stat label="Present" value={counts.present ?? 0} tone="text-crewly-green" />
+          <Stat label="Present" value={counts.present ?? 0} tone="text-st-secondary" />
           <Stat label="Half day" value={counts.halfDay ?? 0} tone="text-blue-300" />
-          <Stat label="Absent" value={counts.absent ?? 0} tone="text-crewly-red" />
+          <Stat label="Absent" value={counts.absent ?? 0} tone="text-st-error" />
           <Stat label="Leave" value={counts.leave ?? 0} tone="text-violet-300" />
           <Stat label="Worked" value={fmtSpan(summary.workedMinutes)} />
           <Stat label="Late days" value={summary.lateDays ?? 0} />
           <Stat label="Approved OT" value={fmtSpan(summary.approvedOtMinutes)} />
-          <Stat label="Exceptions" value={summary.exceptionDays ?? 0} tone={(summary.exceptionDays || 0) > 0 ? 'text-crewly-orange' : ''} />
+          <Stat label="Exceptions" value={summary.exceptionDays ?? 0} tone={(summary.exceptionDays || 0) > 0 ? 'text-st-primary' : ''} />
         </div>
       )}
 
-      <div className="card">
-        <div className="mb-2 grid grid-cols-7 gap-1 text-center text-xs text-crewly-dim">
+      <div className="rounded-xl bg-st-lowest p-4 shadow-sm">
+        <div className="mb-2 grid grid-cols-7 gap-1 text-center text-xs text-st-on-variant">
           {WEEKDAYS.map((name) => <span key={name}>{name}</span>)}
         </div>
         <div className="grid grid-cols-7 gap-1">
@@ -338,15 +338,15 @@ const TimesheetMonthView = ({ sheet, employeeName = '' }) => {
                 type="button"
                 onClick={() => setOpenDate(day.date)}
                 title={`${fmtDay(day.date)} — ${dayOutcomeLabel(day)}`}
-                className={`flex min-h-14 flex-col items-start justify-between rounded-lg border p-1.5 text-left transition-colors hover:border-crewly-green/50 ${
-                  day.isToday ? 'border-crewly-green/60' : 'border-crewly-hairline-strong'
+                className={`flex min-h-14 flex-col items-start justify-between rounded-lg border p-1.5 text-left transition-colors hover:border-st-secondary/50 ${
+                  day.isToday ? 'border-st-secondary' : 'border-st-high'
                 } ${day.isFuture ? 'opacity-50' : ''}`}
               >
                 <span className="flex w-full items-center justify-between">
                   <span className="text-sm font-medium">{Number(day.date.slice(8, 10))}</span>
-                  <span className={`h-2 w-2 rounded-full ${OUTCOME_DOT[day.bucket] || 'bg-crewly-inset-strong'}`} />
+                  <span className={`h-2 w-2 rounded-full ${OUTCOME_DOT[day.bucket] || 'bg-st-high'}`} />
                 </span>
-                <span className="flex items-center gap-1 text-[11px] text-crewly-dim">
+                <span className="flex items-center gap-1 text-[11px] text-st-on-variant">
                   {day.bucket === 'LEAVE' && <Plane size={11} />}
                   {day.bucket === 'HOLIDAY' && <CalendarOff size={11} />}
                   {day.bucket === 'WEEKLY_OFF' && <Moon size={11} />}
@@ -355,7 +355,7 @@ const TimesheetMonthView = ({ sheet, employeeName = '' }) => {
                   <span className="hidden sm:inline">{dayOutcomeLabel(day)}</span>
                 </span>
                 {day.exceptions?.length > 0 && (
-                  <span className="text-[11px] font-medium text-crewly-orange">
+                  <span className="text-[11px] font-medium text-st-primary">
                     {day.exceptions.length} flag{day.exceptions.length > 1 ? 's' : ''}
                   </span>
                 )}
@@ -363,7 +363,7 @@ const TimesheetMonthView = ({ sheet, employeeName = '' }) => {
             );
           })}
         </div>
-        <p className="mt-3 text-xs text-crewly-dim">
+        <p className="mt-3 text-xs text-st-on-variant">
           Select any day for the full breakdown. Past months stay readable — corrections and
           schedule history apply to the day they belong to.
         </p>
