@@ -126,6 +126,13 @@ const attendanceCaptureService = {
 
   getImport: (importId) => envelope(api.get(`/attendance/imports/${importId}`)),
 
+  // The template is also readable as TEXT so the import screen can show
+  // the real header/sample instead of a hand-copied one.
+  templateText: () =>
+    api
+      .get('/attendance/imports/template.csv', { responseType: 'text', transformResponse: [(v) => v] })
+      .then((response) => (typeof response === 'string' ? response : response?.data ?? '')),
+
   downloadTemplate: async () => {
     const blob = await api
       .get('/attendance/imports/template.csv', { responseType: 'blob' })

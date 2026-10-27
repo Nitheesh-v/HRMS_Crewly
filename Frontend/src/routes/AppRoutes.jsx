@@ -71,6 +71,7 @@ const QrChallengesPage = lazy(() => import("../pages/attendance/QrChallengesPage
 const QrPunchPage = lazy(() => import("../pages/attendance/QrPunchPage.jsx"));
 const KioskTerminalPage = lazy(() => import("../pages/kiosk/KioskTerminalPage.jsx"));
 const AttendanceImportPage = lazy(() => import("../pages/attendance/AttendanceImportPage.jsx"));
+const AttendanceImportValidationPage = lazy(() => import("../pages/attendance/AttendanceImportValidationPage.jsx"));
 const AttendanceAnalyticsPage = lazy(() => import("../pages/attendance/AttendanceAnalyticsPage.jsx"));
 
 const LeavesPage = lazy(() => import("../pages/leaves/LeavesPage.jsx"));
@@ -644,6 +645,19 @@ const AppRoutes = () => (
         element={
           <RequireRole roles={HR}>
             <AttendanceImportPage />
+          </RequireRole>
+        }
+      />
+
+      {/* Phase 31.14 — staged batch review (HR only). Reached from the
+          import screen with the File in router state: the raw CSV is
+          never persisted server-side, so this URL is not bookmarkable
+          and shows an honest empty state when opened directly. */}
+      <Route
+        path="attendance/imports/validation"
+        element={
+          <RequireRole roles={HR}>
+            <AttendanceImportValidationPage />
           </RequireRole>
         }
       />
