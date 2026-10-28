@@ -3,8 +3,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AlertTriangle,
-  CheckCircle2,
+  CalendarClock,
+  CalendarDays,
+  CalendarRange,
   CalendarX,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Download,
   FileSpreadsheet,
   Loader2,
@@ -23,6 +28,20 @@ import departmentService from '../../services/departmentService.js';
 import monthlyInputService, { downloadImportTemplate } from '../../services/monthlyInputService.js';
 import { notify } from '../../utils/notify.js';
 import EmptyState, { TableEmpty } from '../../components/common/EmptyState.jsx';
+import {
+  Avatar,
+  CheckRow,
+  Fact,
+  Panel,
+  Pipeline,
+  Pill,
+  Rail,
+  StageBand,
+  StageButton,
+  StatCard,
+  Td,
+  Th,
+} from '../../components/payroll/PayrollCockpit.jsx';
 
 // ─────────────────────────────────────────────────────────────
 // Phase 29.5 — Monthly Payroll Inputs
@@ -77,55 +96,6 @@ const financialYearOf = (month) => {
   return `FY ${startYear}-${String((startYear + 1) % 100).padStart(2, '0')}`;
 };
 
-const periodBadge = (status) => {
-  const styles = {
-    NOT_STARTED: 'bg-slate-500/15 text-slate-300',
-    ATTENDANCE_IMPORTED: 'bg-sky-500/15 text-sky-300',
-    COLLECTING_INPUTS: 'bg-indigo-500/15 text-indigo-300',
-    VALIDATED: 'bg-emerald-500/15 text-emerald-300',
-    LOCKED: 'bg-amber-500/15 text-amber-300',
-    SENT_TO_PAYROLL: 'bg-violet-500/15 text-violet-300',
-  };
-  return (
-    <span className={`rounded-full px-2.5 py-0.5 text-[11px] ${styles[status] || styles.NOT_STARTED}`}>
-      {String(status || 'not started').replace(/_/g, ' ').toLowerCase()}
-    </span>
-  );
-};
-
-const statusPill = (status) => {
-  const styles = {
-    READY: 'bg-emerald-500/15 text-emerald-300',
-    PENDING: 'bg-indigo-500/15 text-indigo-300',
-    ERROR: 'bg-red-500/15 text-red-300',
-    LOCKED: 'bg-amber-500/15 text-amber-300',
-  };
-  return (
-    <span className={`rounded-full px-2.5 py-0.5 text-[11px] ${styles[status] || styles.PENDING}`}>
-      {String(status || 'pending').replace(/_/g, ' ').toLowerCase()}
-    </span>
-  );
-};
-
-const KpiCard = ({ icon: Icon, label, value, hint, tone = 'default' }) => {
-  const tones = {
-    default: 'text-crewly-text',
-    good: 'text-emerald-300',
-    bad: 'text-red-300',
-    warn: 'text-amber-300',
-  };
-  return (
-    <div className="card p-4">
-      <div className="flex items-center justify-between">
-        <span className="text-xs uppercase tracking-wide text-crewly-dim">{label}</span>
-        <Icon size={16} className="text-crewly-dim" />
-      </div>
-      <p className={`mt-2 text-xl font-semibold ${tones[tone] || tones.default}`}>{value}</p>
-      {hint ? <p className="mt-1 text-[11px] text-crewly-dim">{hint}</p> : null}
-    </div>
-  );
-};
-
 const MonthlyInputsPage = () => {
   const { loading: permsLoading, hasAnyPermission } = usePermission();
 
@@ -145,7 +115,8 @@ const MonthlyInputsPage = () => {
   const [bulkActions, setBulkActions] = useState([]);
 
   const [departments, setDepartments] = useState([]);
-  const [filters, setFilters] = useState({ search: '', status: 'ALL' });
+  const [filters, setFilters] = useState({ search: '', status: 'ALL', department: 'ALL' });
+  const [page, setPage] = useState(1);
   const [selected, setSelected] = useState([]);
   const [drawerEmployeeId, setDrawerEmployeeId] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -221,6 +192,9 @@ const MonthlyInputsPage = () => {
     const needle = filters.search.trim().toLowerCase();
     return rows.filter((row) => {
       if (filters.status !== 'ALL' && row.status !== filters.status) return false;
+      if (filters.department !== 'ALL' && String(row.departmentId || '') !== String(filters.department)) {
+        return false;
+      }
       if (!needle) return true;
       return [row.employeeName, row.employeeCode, row.email]
         .filter(Boolean)
@@ -229,6 +203,65 @@ const MonthlyInputsPage = () => {
         .includes(needle);
     });
   }, [rows, filters]);
+
+  /*
+   * Everything below is arithmetic on the response, never a new fact:
+   *   readiness      = ready ÷ population, the same two numbers the KPI row shows
+   *   claimsVerified = reimbursement entries the month holds, minus the pending ones
+   *   finalizedCount = rows whose LOP came from a finalized attendance version
+   *   variableMix    = this month's entries summed by category
+   * The export printed a scored "input health" ring and a device-sync badge;
+   * neither has a source here, so these are the honest equivalents: a ratio of
+   * two numbers the API already returned, and the count of rows whose
+   * attendance actually came from a finalized period.
+   */
+  const readiness = Number(summary.employees)
+    ? Math.round((Number(summary.ready || 0) / Number(summary.employees)) * 100)
+    : null;
+
+  const claimEntries = rows.flatMap((row) =>
+    (row.entries || []).filter((entry) => String(entry.type || '').startsWith('REIMBURSEMENT_')),
+  );
+  const claimsVerified = Math.max(0, claimEntries.length - Number(summary.claimsPending || 0));
+
+  const finalizedCount = rows.filter((row) => Boolean(row.auto?.attendanceSource?.version)).length;
+
+  const variableMix = useMemo(() => {
+    const bands = [
+      { key: 'BONUS', label: 'Bonus', className: 'bg-st-primary-container' },
+      { key: 'INCENTIVE', label: 'Incentive', className: 'bg-st-secondary' },
+      { key: 'COMMISSION', label: 'Commission', className: 'bg-st-tertiary' },
+    ];
+    const amounts = Object.fromEntries(bands.map((band) => [band.key, 0]));
+
+    rows.forEach((row) => {
+      (row.entries || []).forEach((entry) => {
+        const type = String(entry.type || '');
+        if (type.startsWith('BONUS_')) amounts.BONUS += Number(entry.amount || 0);
+        else if (type === 'INCENTIVE') amounts.INCENTIVE += Number(entry.amount || 0);
+        else if (type === 'COMMISSION_SALES') amounts.COMMISSION += Number(entry.amount || 0);
+      });
+    });
+
+    const total = Object.values(amounts).reduce((sum, value) => sum + value, 0);
+    return {
+      total,
+      bands: bands.map((band) => ({
+        ...band,
+        amount: Math.round(amounts[band.key] * 100) / 100,
+        percent: total ? Math.round((amounts[band.key] / total) * 100) : 0,
+      })),
+    };
+  }, [rows]);
+
+const statusTone = (status) =>
+  status === 'READY'
+    ? 'text-st-secondary'
+    : status === 'ERROR'
+      ? 'text-st-error'
+      : status === 'LOCKED'
+        ? 'text-st-primary'
+        : 'text-st-on-variant';
 
   const run = async (action, successMessage) => {
     setSaving(true);
@@ -280,139 +313,224 @@ const MonthlyInputsPage = () => {
         : [...current, employeeId],
     );
 
+  /*
+   * The entry catalogue ships with the month (`meta.entryTypes`), so a line is
+   * named the way the server names it and categorised the way the server
+   * categorises it — no second vocabulary maintained in the browser.
+   */
+  const labelForType = (type) =>
+    entryTypes.find((entry) => entry.value === type)?.label ||
+    String(type || '')
+      .replace(/_/g, ' ')
+      .toLowerCase();
+
+  const categoryForType = (type) => entryTypes.find((entry) => entry.value === type)?.category || '';
+
+  /** The month's biggest variable line for this employee, named as the export names it. */
+  const bonusLabel = (row) => {
+    const lines = (row.entries || [])
+      .filter((entry) => ['BONUS', 'INCENTIVE', 'COMMISSION'].includes(categoryForType(entry.type)))
+      .sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0));
+    return lines.length ? labelForType(lines[0].type) : '';
+  };
+
+  const claimNote = (row) => {
+    const claims = (row.entries || []).filter((entry) =>
+      String(entry.type || '').startsWith('REIMBURSEMENT_'),
+    );
+    if (!claims.length) return '';
+    const pending = claims.filter((entry) => (entry.claimStatus || 'APPROVED') === 'PENDING').length;
+    return pending ? `${pending} awaiting a decision` : 'verified';
+  };
+
   if ((!permsLoading && !canRead) || accessDenied) {
     return (
-      <div className="space-y-5">
-        <h1 className="text-2xl font-bold">Monthly Payroll Inputs</h1>
-        <div className="card space-y-2">
-          <h2 className="text-lg font-semibold">Payroll access required</h2>
-          <p className="text-sm text-crewly-dim">
-            You don&apos;t have permission to view monthly payroll inputs. Contact your Company Admin
-            or Payroll Administrator.
-          </p>
-        </div>
+      <div className="st-surface min-h-screen space-y-4">
+        <StageBand eyebrow="Cycle stage 01 of 04" title="Monthly payroll inputs" />
+        <Panel title="Payroll access required">
+          <div className="space-y-2 p-4 text-sm text-st-on-variant">
+            <p>
+              You don&apos;t have permission to view monthly payroll inputs. Contact your Company
+              Admin or Payroll Administrator.
+            </p>
+          </div>
+        </Panel>
       </div>
     );
   }
 
-  return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">Monthly Payroll Inputs</h1>
-          <p className="mt-1 text-sm text-crewly-dim">
-            Variable pay, reimbursements and deductions for the month — the last editable stage
-            before the payroll engine runs. No salary is calculated here.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            type="month"
-            value={month}
-            onChange={(event) => {
-              setMonth(event.target.value);
-              setSelected([]);
-            }}
-            className="input"
-          />
-          <span className="text-sm text-crewly-dim">{periodBadge(period?.status || 'NOT_STARTED')}</span>
-        </div>
-      </div>
+  const PAGE_SIZE = 8;
+  const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  // Clamp on read: filtering can leave the stored page past the last one.
+  const currentPage = Math.min(page, pageCount);
+  const pageRows = visible.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
+  return (
+    <div className="space-y-3">
+      {/* ── the cycle stage, stated once ─────────────────────────────── */}
+      <StageBand
+        eyebrow={
+          locked ? 'Cycle stage 01 of 04 · Inputs locked' : 'Cycle stage 01 of 04 · Locking required to advance'
+        }
+        title="Monthly payroll inputs"
+        description="Variable pay, reimbursements and deductions for the month — the last editable stage before the engine calculates. Nothing on this page changes a salary structure."
+        pills={[
+          {
+            label: String(period?.status || 'NOT_STARTED').replace(/_/g, ' ').toLowerCase(),
+            tone: locked ? 'good' : 'accent',
+            title: 'Status of the payroll period stored by Payroll Setup',
+          },
+          ...(period?.lockedAt
+            ? [{ label: `locked ${formatDate(period.lockedAt)}`, tone: 'warn' }]
+            : []),
+          { label: formatMonth(month), tone: 'default' },
+        ]}
+        aside={
+          <label className="flex items-center gap-2 text-[11px] font-semibold text-st-on-variant">
+            <span className="uppercase tracking-wide">Payroll month</span>
+            <input
+              type="month"
+              value={month}
+              onChange={(event) => {
+                setMonth(event.target.value);
+                setSelected([]);
+                setPage(1);
+              }}
+              className="rounded-lg border border-st-outline-variant/70 bg-st-lowest px-2 py-1.5 text-[11px] font-semibold text-st-on"
+            />
+          </label>
+        }
+        actions={
+          <>
+            <StageButton
+              variant="primary"
+              icon={locked ? Unlock : Lock}
+              disabled={saving || !canLock}
+              onClick={() => (locked ? handleStatus('COLLECTING_INPUTS') : setConfirmLock(true))}
+            >
+              {locked ? 'Reopen month' : 'Validate & lock month'}
+            </StageButton>
+            <StageButton
+              icon={RefreshCw}
+              disabled={saving || locked}
+              onClick={handleImportAutomatic}
+              title="Re-import attendance and leave for the month from the attendance ledger"
+            >
+              Sync attendance &amp; leave
+            </StageButton>
+            <StageButton icon={FileSpreadsheet} disabled={locked} onClick={() => setImportOpen(true)}>
+              Bulk CSV
+            </StageButton>
+            <StageButton
+              icon={Users}
+              disabled={!selected.length || locked}
+              onClick={() => setBulkOpen(true)}
+            >
+              Bulk action{selected.length ? ` (${selected.length})` : ''}
+            </StageButton>
+            <StageButton icon={ShieldCheck} onClick={() => setReportOpen(true)}>
+              Validation report{summary.error ? ` (${summary.error})` : ''}
+            </StageButton>
+            <StageButton variant="quiet" onClick={handleValidate} disabled={saving}>
+              Re-validate month
+            </StageButton>
+          </>
+        }
+      />
+
+      {/* ── where this month sits in the four stages ─────────────────── */}
+      <Pipeline
+        steps={[
+          {
+            key: 'inputs',
+            index: '01',
+            label: 'Monthly inputs',
+            hint: 'Reimbursements, incentives & LOP',
+            state: locked ? 'done' : 'active',
+          },
+          { key: 'run', index: '02', label: 'Run payroll', hint: 'Tax, PF, ESI & gross', state: locked ? 'active' : 'locked' },
+          { key: 'review', index: '03', label: 'Review & approval', hint: 'Sign-off by finance', state: 'locked' },
+          { key: 'payment', index: '04', label: 'Salary payment', hint: 'Bank file & release', state: 'locked' },
+        ]}
+        footnote="Stages 02–04 open from their own pages. Locking here is what lets the engine run."
+      />
 
       {locked ? (
-        <div className="card flex items-start gap-3 border-l-4 border-amber-500">
-          <Lock size={18} className="mt-0.5 text-amber-300" />
-          <div className="text-sm">
-            <p className="font-semibold text-amber-200">{formatMonth(month)} is locked</p>
-            <p className="text-crewly-dim">
-              Inputs can&apos;t be added, edited or imported while the month is locked. Reopen it to
-              make changes — every reopen is recorded in the audit trail.
-            </p>
-          </div>
+        <div className="flex items-start gap-2 rounded-xl border-l-4 border-st-primary-container bg-st-lowest px-3 py-2 text-[11px] shadow-sm">
+          <Lock size={14} className="mt-0.5 text-st-primary" />
+          <p className="text-st-on-variant">
+            <span className="font-semibold text-st-on">{formatMonth(month)} is locked.</span> Inputs
+            can&apos;t be added, edited or imported until it is reopened, and every reopen is written
+            to the audit trail.
+          </p>
         </div>
       ) : null}
 
-      {/* §6 — the payroll month at a glance: cycle and FY come from 29.1 */}
-      <div className="card flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
-        <span>
-          <span className="text-crewly-dim">Month </span>
-          <span className="font-semibold">{formatMonth(month)}</span>
-        </span>
-        <span>
-          <span className="text-crewly-dim">Financial year </span>
-          <span className="font-semibold">{period?.financialYear || financialYearOf(month)}</span>
-        </span>
-        <span>
-          <span className="text-crewly-dim">Cycle </span>
-          <span className="font-semibold">
-            {period?.cycleStart && period?.cycleEnd
-              ? `${period.cycleStart} – ${period.cycleEnd}`
-              : 'from Payroll Setup'}
+      {/* ── the payroll month at a glance (29.1 owns these) ──────────── */}
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 rounded-2xl bg-st-lowest px-4 py-3 text-[11px] shadow-sm">
+        <span className="flex items-center gap-1.5 text-st-on-variant">
+          <CalendarDays aria-hidden="true" size={13} />
+          Payroll period
+          <span className="font-semibold text-st-on">
+            {formatMonth(month)} ({period?.financialYear || financialYearOf(month)})
           </span>
         </span>
-        <span>
-          <span className="text-crewly-dim">Working days </span>
-          <span className="font-semibold">{formatNumber(period?.workingDays)}</span>
+        <span className="flex items-center gap-1.5 text-st-on-variant">
+          <CalendarRange aria-hidden="true" size={13} />
+          Cycle window
+          <span className="font-semibold text-st-on">
+            {period?.cycleStart && period?.cycleEnd
+              ? `${period.cycleStart} – ${period.cycleEnd}`
+              : 'set in Company setup'}
+          </span>
         </span>
-        <span className="ml-auto flex items-center gap-2">
-          {periodBadge(period?.status || 'DRAFT')}
-          {period?.lockedAt ? (
-            <span className="text-xs text-crewly-dim">
-              locked {formatDate(period.lockedAt)}
-            </span>
-          ) : null}
+        <span className="flex items-center gap-1.5 text-st-on-variant">
+          <CalendarClock aria-hidden="true" size={13} />
+          Company standard
+          <span className="font-semibold text-st-on">{formatNumber(period?.workingDays)} working days</span>
+        </span>
+        <span className="ml-auto max-w-md text-[10px] leading-snug text-st-on-variant">
+          Inputs are stored per month and per employee. Freezing them hands the exact numbers to the
+          calculation engine — nothing is reinterpreted later.
         </span>
       </div>
 
-      {/* §25 — KPI cards */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard
+      {/* ── the month in six numbers ─────────────────────────────────── */}
+      <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <StatCard
           icon={Users}
-          label="Total employees"
+          label="Employees"
           value={formatNumber(summary.employees)}
-          hint={`${formatMonth(month)}`}
+          hint={`${formatMonth(month)} payroll population`}
         />
-        <KpiCard
+        <StatCard
           icon={CheckCircle2}
-          label="Ready employees"
+          label="Ready & clear"
           value={formatNumber(summary.ready)}
           tone="good"
-          hint="Validated and complete"
+          hint="Every component validated"
         />
-        <KpiCard
+        <StatCard
           icon={AlertTriangle}
-          label="Pending validation"
+          label="Needs review"
           value={formatNumber(summary.pending)}
-          tone={summary.error > 0 ? 'bad' : 'warn'}
-          hint={`${formatNumber(summary.error)} with errors`}
+          tone={summary.error > 0 ? 'bad' : 'default'}
+          badge={summary.error ? { label: `${formatNumber(summary.error)} error`, tone: 'bad' } : undefined}
+          hint={`${formatNumber(summary.claimsPending)} claim(s) unreviewed`}
         />
-        <KpiCard
-          icon={Lock}
-          label="Locked status"
-          value={locked ? 'Locked' : 'Open'}
-          tone={locked ? 'warn' : 'good'}
-          hint={`${formatNumber(summary.locked)} employee(s) frozen`}
-        />
-        <KpiCard
+        <StatCard
           icon={Wallet}
-          label="Total bonus"
+          label="Variable pay"
           value={formatMoney(summary.totalBonus)}
           hint="Bonus, incentive, commission"
         />
-        <KpiCard
+        <StatCard
           icon={Upload}
-          label="Total reimbursements"
+          label="Claims total"
           value={formatMoney(summary.totalReimbursement)}
-          hint={`${formatNumber(summary.claimsPending)} claim(s) awaiting approval`}
+          hint={`${formatNumber(claimsVerified)} verified · ${formatNumber(summary.claimsPending)} pending`}
         />
-        <KpiCard
-          icon={Download}
-          label="Total deductions"
-          value={formatMoney(summary.totalDeduction)}
-          hint="Recoveries and fines"
-        />
-        <KpiCard
+        <StatCard
           icon={CalendarX}
           label="LOP days"
           value={formatNumber(summary.totalLopDays)}
@@ -420,166 +538,393 @@ const MonthlyInputsPage = () => {
         />
       </div>
 
-      {/* §7 / §11 / §12 / §19 / §20 — actions */}
-      <div className="flex flex-wrap items-center gap-2">
-        <button className="btn-primary" disabled={saving || locked} onClick={handleImportAutomatic}>
-          <RefreshCw size={15} /> Import attendance &amp; leave
-        </button>
-        <button className="btn-secondary" onClick={() => setImportOpen(true)} disabled={locked}>
-          <FileSpreadsheet size={15} /> Bulk import
-        </button>
-        <button className="btn-secondary" onClick={() => setBulkOpen(true)} disabled={!selected.length || locked}>
-          <Users size={15} /> Bulk action ({selected.length})
-        </button>
-        <button className="btn-secondary" onClick={() => setReportOpen(true)}>
-          <ShieldCheck size={15} /> Validation report
-          {summary.error > 0 ? ` (${summary.error})` : ''}
-        </button>
-        <button className="btn-secondary" onClick={handleValidate} disabled={saving}>
-          Validate month
-        </button>
-        {locked ? (
-          <button className="btn-secondary" disabled={saving || !canLock} onClick={() => handleStatus('COLLECTING_INPUTS')}>
-            <Unlock size={15} /> Reopen month
-          </button>
-        ) : (
-          <button className="btn-secondary" disabled={saving || !canLock} onClick={() => setConfirmLock(true)}>
-            <Lock size={15} /> Lock month
-          </button>
-        )}
-      </div>
-
-      {/* §18 — table */}
-      <div className="card overflow-x-auto p-0">
-        <div className="flex flex-wrap items-center gap-2 border-b border-crewly-hairline p-3">
-          <input
-            className="input max-w-xs"
-            placeholder="Search name, code or email"
-            value={filters.search}
-            onChange={(event) => setFilters({ ...filters, search: event.target.value })}
-          />
-          <select
-            className="input max-w-[180px]"
-            value={filters.status}
-            onChange={(event) => setFilters({ ...filters, status: event.target.value })}
+      {/* ── the roster, and the context beside it ────────────────────── */}
+      <div className="flex flex-col gap-3 xl:flex-row">
+        <div className="min-w-0 flex-1 space-y-3">
+          <Panel
+            title="Employee inputs"
+            subtitle={`Showing ${pageRows.length} of ${visible.length} employee(s) · ${formatNumber(period?.workingDays)} working-day base`}
+            right={
+              <div className="flex items-center gap-1.5 text-[10px] text-st-on-variant">
+                <span className="font-semibold text-st-secondary">
+                  {formatNumber(summary.ready)} ready
+                </span>
+                <span aria-hidden="true">•</span>
+                <span className="font-semibold text-st-primary">
+                  {formatNumber(summary.pending)} review
+                </span>
+              </div>
+            }
           >
-            {STATUS_FILTERS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <span className="ml-auto text-xs text-crewly-dim">
-            {visible.length} of {rows.length} employee(s)
-          </span>
+            <div className="flex flex-wrap items-center gap-1.5 border-t border-st-high px-3 py-2">
+              <input
+                className="min-w-[10rem] flex-1 rounded-lg border border-st-outline-variant/60 bg-st-lowest px-2.5 py-1.5 text-[11px] text-st-on placeholder:text-st-on-variant/70"
+                placeholder="Search by name, code or email"
+                value={filters.search}
+                onChange={(event) => {
+                  setFilters({ ...filters, search: event.target.value });
+                  setPage(1);
+                }}
+              />
+              <select
+                className="rounded-lg border border-st-outline-variant/60 bg-st-lowest px-2 py-1.5 text-[11px] font-semibold text-st-on"
+                value={filters.department}
+                onChange={(event) => {
+                  setFilters({ ...filters, department: event.target.value });
+                  setPage(1);
+                }}
+              >
+                <option value="ALL">All departments</option>
+                {departments.map((row) => (
+                  <option key={row._id || row.id} value={row._id || row.id}>
+                    {row.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="rounded-lg border border-st-outline-variant/60 bg-st-lowest px-2 py-1.5 text-[11px] font-semibold text-st-on"
+                value={filters.status}
+                onChange={(event) => {
+                  setFilters({ ...filters, status: event.target.value });
+                  setPage(1);
+                }}
+              >
+                {STATUS_FILTERS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="ml-auto inline-flex items-center gap-1 rounded-lg border border-st-outline-variant/60 px-2 py-1.5 text-[11px] font-semibold text-st-on hover:bg-st-low"
+                onClick={() => setReportOpen(true)}
+                title="Every employee with an open validation issue"
+              >
+                <ShieldCheck aria-hidden="true" size={12} /> Audit sheet
+              </button>
+            </div>
+
+            <div className="overflow-x-auto border-t border-st-high">
+              <table className="w-full text-left">
+                <thead className="bg-st-low/70">
+                  <tr>
+                    <Th className="w-8">
+                      <input
+                        type="checkbox"
+                        aria-label="Select every visible employee"
+                        checked={Boolean(pageRows.length) && pageRows.every((row) => selected.includes(row.employeeId))}
+                        onChange={(event) =>
+                          setSelected(
+                            event.target.checked
+                              ? Array.from(new Set([...selected, ...pageRows.map((row) => row.employeeId)]))
+                              : selected.filter((id) => !pageRows.some((row) => row.employeeId === id)),
+                          )
+                        }
+                      />
+                    </Th>
+                    <Th>Employee details</Th>
+                    <Th>Work days</Th>
+                    <Th>LOP</Th>
+                    <Th>Overtime</Th>
+                    <Th>Variable / bonus</Th>
+                    <Th>Reimbursements</Th>
+                    <Th>Status</Th>
+                    <Th className="text-right">Action</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={9} className="px-3 py-10 text-center text-st-on-variant">
+                        <Loader2 className="mx-auto animate-spin" size={16} />
+                      </td>
+                    </tr>
+                  ) : pageRows.length === 0 ? (
+                    <TableEmpty
+                      colSpan={9}
+                      illustration="calendar"
+                      title={`No employee inputs for ${formatMonth(month)}`}
+                      description="Import attendance and leave to build the month. Every employee's payable days, LOP and variable pay then appear here for review."
+                    />
+                  ) : (
+                    pageRows.map((row) => (
+                      <tr key={row._id} className="border-t border-st-high/70 hover:bg-st-low/50">
+                        <Td>
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${row.employeeName}`}
+                            checked={selected.includes(row.employeeId)}
+                            onChange={() => toggleRow(row.employeeId)}
+                          />
+                        </Td>
+                        <Td>
+                          <div className="flex items-start gap-2">
+                            <Avatar name={row.employeeName} />
+                            <div className="min-w-0">
+                              <p className="truncate font-semibold text-st-on">{row.employeeName}</p>
+                              <p className="truncate text-[10px] text-st-on-variant">
+                                {row.employeeCode}
+                                {row.designation ? ` · ${row.designation}` : ''}
+                                {departmentName(row.departmentId) ? ` · ${departmentName(row.departmentId)}` : ''}
+                              </p>
+                            </div>
+                          </div>
+                        </Td>
+                        <Td className="tabular-nums">
+                          {formatNumber(row.auto?.workingDays || period?.workingDays)}
+                        </Td>
+                        <Td>
+                          <span className="tabular-nums">{formatNumber(row.auto?.lopDays)}</span>
+                          <span className="block text-[9px] text-st-on-variant">
+                            {row.auto?.lopSource === 'LEAVE' ? 'synced leave' : 'attendance'}
+                          </span>
+                        </Td>
+                        <Td className="tabular-nums">{formatNumber(row.auto?.otHours)} hrs</Td>
+                        <Td>
+                          <span className="tabular-nums font-semibold">{formatMoney(row.totals?.bonus)}</span>
+                          {row.totals?.bonus > 0 ? (
+                            <span className="block text-[9px] text-st-on-variant">{bonusLabel(row)}</span>
+                          ) : null}
+                        </Td>
+                        <Td>
+                          <span className="tabular-nums">{formatMoney(row.totals?.reimbursement)}</span>
+                          {claimNote(row) ? (
+                            <span className="block text-[9px] text-st-on-variant">{claimNote(row)}</span>
+                          ) : null}
+                        </Td>
+                        <Td>
+                          <span className={`text-[10px] font-bold uppercase tracking-wide ${statusTone(row.status)}`}>
+                            {row.status === 'READY' ? 'Ready' : row.status === 'ERROR' ? 'Needs action' : String(row.status || 'pending').toLowerCase()}
+                          </span>
+                          {row.issues?.length ? (
+                            <span className="block text-[9px] text-st-error">{row.issues.length} issue(s)</span>
+                          ) : null}
+                        </Td>
+                        <Td className="text-right">
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold text-st-primary hover:bg-st-low"
+                            onClick={() => setDrawerEmployeeId(row.employeeId)}
+                          >
+                            {canManage && !locked ? 'Edit' : 'Review'}
+                            <ChevronRight aria-hidden="true" size={11} />
+                          </button>
+                        </Td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-st-high px-3 py-2 text-[10px] text-st-on-variant">
+              <span>
+                Page {currentPage} of {pageCount} · {formatNumber(visible.length)} employee(s) in this view
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  className="rounded-md px-2 py-1 font-semibold text-st-on hover:bg-st-low disabled:opacity-40"
+                  disabled={currentPage <= 1}
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                >
+                  <ChevronLeft aria-hidden="true" size={12} />
+                </button>
+                <span className="rounded-md bg-st-primary-container px-2 py-1 font-bold text-st-on-primary-container">
+                  {currentPage}
+                </span>
+                <button
+                  type="button"
+                  className="rounded-md px-2 py-1 font-semibold text-st-on hover:bg-st-low disabled:opacity-40"
+                  disabled={currentPage >= pageCount}
+                  onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+                >
+                  <ChevronRight aria-hidden="true" size={12} />
+                </button>
+              </div>
+            </div>
+          </Panel>
+
+          {/* ── the three reads under the roster ─────────────────────── */}
+          <div className="grid gap-2.5 lg:grid-cols-3">
+            <Panel title="Variable pay distribution" subtitle="This month's entries by category">
+              <div className="space-y-2 px-4 pb-3">
+                {variableMix.total > 0 ? (
+                  <>
+                    <div className="flex h-2 overflow-hidden rounded-full bg-st-container">
+                      {variableMix.bands.map((band) => (
+                        <span
+                          key={band.label}
+                          title={`${band.label}: ${formatMoney(band.amount)}`}
+                          style={{ width: `${band.percent}%` }}
+                          className={band.className}
+                        />
+                      ))}
+                    </div>
+                    {variableMix.bands.map((band) => (
+                      <div key={band.label} className="flex items-center justify-between text-[10px]">
+                        <span className="text-st-on-variant">
+                          <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${band.className}`} />
+                          {band.label}
+                        </span>
+                        <span className="font-semibold text-st-on">
+                          {formatMoney(band.amount)} · {band.percent}%
+                        </span>
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  <p className="text-[10px] leading-snug text-st-on-variant">
+                    No variable pay entered for {formatMonth(month)} yet. Categories appear here as
+                    soon as an employee has a bonus, incentive or commission line.
+                  </p>
+                )}
+              </div>
+            </Panel>
+
+            <Panel title="Attendance & leave import" subtitle="What the last import wrote">
+              <div className="space-y-1 px-4 pb-3">
+                <CheckRow
+                  ok={finalizedCount === rows.length && rows.length > 0}
+                  label="Timecards from a finalized attendance period"
+                  value={`${formatNumber(finalizedCount)} of ${formatNumber(rows.length)}`}
+                />
+                <CheckRow ok={Number(summary.totalLopDays) === 0} label="Unpaid days carried in" value={`${formatNumber(summary.totalLopDays)} days`} />
+                <CheckRow ok={true} label="Overtime hours carried in" value={`${formatNumber(summary.totalOtHours)} hrs`} />
+                <p className="pt-1 text-[9px] leading-snug text-st-on-variant">
+                  Every figure is read from the attendance ledger; nothing is typed in by hand.
+                </p>
+              </div>
+            </Panel>
+
+            <Panel title="Statutory & deductions" subtitle="Calculated by the engine, not here">
+              <div className="space-y-1 px-4 pb-3">
+                <CheckRow ok={false} label="PF, ESI, PT and TDS" value="Stage 02" />
+                <CheckRow ok={false} label="Recoveries entered here" value={formatMoney(summary.totalDeduction)} />
+                <p className="pt-1 text-[9px] leading-snug text-st-on-variant">
+                  Only the recoveries on this page flow through. Statutory amounts are computed when
+                  payroll runs, against the saved salary structure.
+                </p>
+              </div>
+            </Panel>
+          </div>
         </div>
 
-        <table className="w-full text-left text-sm">
-          <thead className="bg-crewly-inset text-xs uppercase tracking-wide text-crewly-dim">
-            <tr>
-              <th className="w-10 px-3 py-2">
-                <input
-                  type="checkbox"
-                  checked={Boolean(visible.length) && visible.every((row) => selected.includes(row.employeeId))}
-                  onChange={(event) =>
-                    setSelected(event.target.checked ? visible.map((row) => row.employeeId) : [])
-                  }
-                />
-              </th>
-              <th className="px-3 py-2">Employee</th>
-              <th className="px-3 py-2">Department</th>
-              <th className="px-3 py-2">Working days</th>
-              <th className="px-3 py-2">LOP</th>
-              <th className="px-3 py-2">OT hours</th>
-              <th className="px-3 py-2">Bonus</th>
-              <th className="px-3 py-2">Reimbursement</th>
-              <th className="px-3 py-2">Deduction</th>
-              <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={11} className="px-3 py-10 text-center text-crewly-dim">
-                  <Loader2 className="mx-auto animate-spin" size={18} /> Loading month…
-                </td>
-              </tr>
-            ) : visible.length === 0 ? (
-              <TableEmpty
-                colSpan={11}
-                illustration="calendar"
-                title={`No employee inputs for ${formatMonth(month)}`}
-                description="Import attendance and leave to build the month. Every employee's payable days, LOP and variable pay then appear here for review."
+        {/* ── the rail ─────────────────────────────────────────────────── */}
+        <Rail>
+          <Panel
+            title="Input readiness"
+            subtitle="Validated in this browser, from the month's rows"
+            right={
+              <Pill tone={readiness === 100 ? 'good' : readiness >= 60 ? 'warn' : 'bad'}>
+                {readiness === null ? '—' : `${readiness}%`}
+              </Pill>
+            }
+          >
+            <div className="px-4 pb-3">
+              <div className="mb-3 flex items-center gap-3">
+                <div
+                  className="grid h-16 w-16 shrink-0 place-items-center rounded-full"
+                  style={{
+                    background: `conic-gradient(var(--color-st-primary-container) ${readiness || 0}%, var(--color-st-high) 0)`,
+                  }}
+                >
+                  <div className="grid h-12 w-12 place-items-center rounded-full bg-st-lowest text-[13px] font-bold text-st-on">
+                    {readiness === null ? '—' : `${readiness}%`}
+                  </div>
+                </div>
+                <p className="text-[10px] leading-snug text-st-on-variant">
+                  Ready employees ÷ population. An employee counts as ready only when every
+                  component validates and none of their rows carry an issue.
+                </p>
+              </div>
+              <CheckRow
+                ok={finalizedCount === rows.length && rows.length > 0}
+                label="Attendance matched"
+                value={`${formatNumber(finalizedCount)}/${formatNumber(rows.length)}`}
               />
-            ) : (
-              visible.map((row) => (
-                <tr key={row._id} className="border-t border-crewly-hairline hover:bg-crewly-inset">
-                  <td className="px-3 py-2">
-                    <input
-                      type="checkbox"
-                      checked={selected.includes(row.employeeId)}
-                      onChange={() => toggleRow(row.employeeId)}
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <p className="font-medium">{row.employeeName}</p>
-                    <p className="text-xs text-crewly-dim">
-                      {row.employeeCode}
-                      {row.designation ? ` · ${row.designation}` : ''}
-                    </p>
-                  </td>
-                  <td className="px-3 py-2 text-xs">
-                    {departmentName(row.departmentId) || '—'}
-                  </td>
-                  <td className="px-3 py-2">
-                    {formatNumber(row.auto?.workingDays || period?.workingDays)}
-                  </td>
-                  <td className="px-3 py-2">
-                    {formatNumber(row.auto?.lopDays)}
-                    <span className="ml-1 text-xs text-crewly-dim">
-                      ({row.auto?.lopSource === 'LEAVE' ? 'leave' : 'attendance'})
-                    </span>
-                    {row.auto?.attendanceSource?.version ? (
-                      <span className="ml-1 rounded-full bg-crewly-green/15 px-1.5 py-0.5 text-[10px] text-crewly-green" title={`Synced from finalized attendance v${row.auto.attendanceSource.version}`}>
-                        finalized v{row.auto.attendanceSource.version}
-                      </span>
-                    ) : null}
-                  </td>
-                  <td className="px-3 py-2">{formatNumber(row.auto?.otHours)}</td>
-                  <td className="px-3 py-2">{formatMoney(row.totals?.bonus)}</td>
-                  <td className="px-3 py-2">{formatMoney(row.totals?.reimbursement)}</td>
-                  <td className="px-3 py-2">{formatMoney(row.totals?.deduction)}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex flex-col gap-1">
-                      {statusPill(row.status)}
-                      {row.issues?.length ? (
-                        <span className="text-[11px] text-red-300">
-                          {row.issues.length} issue(s)
-                        </span>
-                      ) : null}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <button
-                      className="text-sm text-indigo-300 hover:underline"
-                      onClick={() => setDrawerEmployeeId(row.employeeId)}
-                    >
-                      Open drawer
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              <CheckRow
+                ok={Number(summary.totalLopDays) === 0}
+                label="LOP days factored"
+                value={`${formatNumber(summary.totalLopDays)}`}
+              />
+              <CheckRow
+                ok={!summary.claimsPending}
+                label="Claims awaiting a decision"
+                value={formatNumber(summary.claimsPending)}
+              />
+              <CheckRow
+                ok={!summary.error}
+                label="Blocking validation errors"
+                value={formatNumber(summary.error)}
+              />
+              {summary.claimsPending ? (
+                <button
+                  type="button"
+                  className="mt-2 w-full rounded-lg bg-st-primary-container px-3 py-2 text-[11px] font-bold text-st-on-primary-container hover:brightness-105"
+                  onClick={() => {
+                    setBulkOpen(true);
+                  }}
+                >
+                  Open bulk action for {formatNumber(summary.claimsPending)} pending claim(s)
+                </button>
+              ) : null}
+            </div>
+          </Panel>
+
+          <Panel title="Pre-lock checklist" subtitle="What locking will freeze">
+            <div className="px-4 pb-3">
+              <CheckRow
+                ok={!summary.pending && !summary.error}
+                label="Every employee validated"
+                value={`${formatNumber(summary.ready)}/${formatNumber(summary.employees)}`}
+              />
+              <CheckRow
+                ok={Number(summary.totalLopDays) === 0}
+                label="Unpaid leave (LOP) verified"
+                value={`${formatNumber(summary.totalLopDays)} days`}
+              />
+              <CheckRow
+                ok={Number(summary.totalBonus) === 0}
+                label="Variable incentives validated"
+                value={formatMoney(summary.totalBonus)}
+              />
+              <CheckRow
+                ok={!summary.claimsPending}
+                label="Reimbursement invoices verified"
+                value={`${formatNumber(claimsVerified)} of ${formatNumber(claimsVerified + Number(summary.claimsPending || 0))}`}
+              />
+              <p className="pt-2 text-[9px] leading-snug text-st-on-variant">
+                Locking stops further variable submissions and authorises the engine to calculate{' '}
+                {formatMonth(month)}. It is refused while any employee still has an error.
+              </p>
+            </div>
+          </Panel>
+
+          <Panel title="Payroll policy" subtitle="How this month is governed">
+            <div className="space-y-1 px-4 pb-3 text-[10px] leading-snug text-st-on-variant">
+              <Fact label="Payroll month" value={formatMonth(month)} />
+              <Fact label="Financial year" value={period?.financialYear || financialYearOf(month)} />
+              <Fact label="Working days" value={formatNumber(period?.workingDays)} />
+              <Fact
+                label="Locked at"
+                value={period?.lockedAt ? formatDate(period.lockedAt) : 'not locked'}
+              />
+              <p className="pt-1">
+                Cycle dates and working days come from Company setup. Changing them changes the base
+                every employee is paid on, so they are edited there — not here.
+              </p>
+            </div>
+          </Panel>
+        </Rail>
       </div>
 
-      <p className="text-xs text-crewly-dim">
-        Variable pay never changes the salary structure (§16). It is stored per month and consumed by
-        the payroll engine. Salary components live in{' '}
-        <Link className="text-indigo-300 hover:underline" to="/app/payroll/components">
-          Payroll Components
+      <p className="px-1 text-[10px] text-st-on-variant">
+        Variable pay never changes a salary structure — it is stored per month and consumed by the
+        engine. Components and structures live in{' '}
+        <Link className="font-semibold text-st-primary hover:underline" to="/app/payroll/components">
+          Salary architecture
         </Link>
         .
       </p>

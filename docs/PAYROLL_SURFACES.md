@@ -157,3 +157,88 @@ Time & Leave now uses the same strip — see `docs/AREA_NAVIGATION.md`),
 `npm run build` green, `npx eslint src` → 117 problems (103 errors, 14
 warnings) — exactly the pre-change baseline. No browser is available here, so
 this is verified by lint, build and source pins, not by screenshot.
+
+---
+
+# The three stage surfaces — Inputs · Cockpit · Disbursement
+
+Re-cut to the three supplied exports (`code.html`, `code (1).html`,
+`code (3).html`):
+
+| export | route | page |
+| --- | --- | --- |
+| Monthly Payroll Inputs | `/app/payroll/inputs` | `MonthlyInputsPage.jsx` |
+| Payroll Calculation Cockpit | `/app/payroll/run` | `RunPayrollPage.jsx` |
+| Direct Salary Disbursement | `/app/payroll/salary-payment` | `SalaryPaymentPage.jsx` |
+
+They are three views of one pipeline, so they share one shell —
+`components/payroll/PayrollCockpit.jsx`: the stage band, the four-step cycle
+strip, the KPI tiles, the panels and the right-hand rail. Two consequences worth
+stating: the same four steps are named the same way on all three pages, and a
+change to the tab/card language lands in all three at once.
+
+The wiring did not change. Every figure still comes from the endpoint the page
+already called (`monthlyInputService.list`, `payrollRunService.summary` +
+`.results`, `payrollPaymentService.dashboard` + `.batch`), and none of the three
+computes a salary or a statutory rate in the browser.
+
+## Monthly inputs — what the export drew, what is real
+
+| export block | rendered | why |
+| --- | --- | --- |
+| `Cycle Stage 01 of 04 · Locking Required to Advance` | same words, driven by the period status | the four stages are fixed and the period records which one is open |
+| `Synced 5 mins ago via BioHub Sync` | dropped; the import button says **Sync attendance & leave** and reports what it wrote | there is no BioHub device feed; attendance arrives from the ledger |
+| `01. Monthly Inputs · Active` + three padlocked steps | the same four steps; 02 becomes active only once the month is locked | the engine refuses to run while inputs are open |
+| Payroll period / cycle window / working days | `period.month`, `financialYear`, `cycleStart`–`cycleEnd`, `workingDays` | all stored by Company setup |
+| `Employees · Ready & Clear · Needs Review · Variable Pay · Claims Total · LOP Days` | the same six, from `meta.summary` | one field per card, no arithmetic beyond a sum the server already did |
+| `AI Input Health 98%` ring | **Input readiness** — `ready ÷ employees`, the ring filled to that ratio | nothing scores input health; a ratio of two returned numbers is the honest version |
+| `All 12 timecards matched` | `finalizedCount of rows` — rows whose LOP came from a finalized attendance version | that is the only "matched" signal the data carries |
+| Pre-lock checklist (`0 this month`, `4.5 Days`, `₹1,45,000`, `3 of 4`) | the same four rows from `summary` (`pending`, `totalLopDays`, `totalBonus`, `claimsPending`) | every line is a count or a sum of the month's own rows |
+| Company payroll policy | payroll month, FY, working days, lock stamp | the export's "claims close on the 25th" is a policy nobody configured here |
+| Variable Pay Distribution (65/25/10) | the month's entries summed by category (BONUS / INCENTIVE / COMMISSION) | computed from the rows, labelled as this month's entries |
+| Biometric Integration (`352 swipe events`) | LOP days, overtime hours and the finalized-attendance count | the ledger knows hours and days, not device events |
+| Statutory & Deductions (`Scheduled for Stage 02`) | same, plus the recoveries entered on this page | statutory amounts are the engine's, not this screen's |
+
+## Calculation cockpit — what the export drew, what is real
+
+| export block | rendered | why |
+| --- | --- | --- |
+| `Snapshot: v1.0 (Locked 10m ago by …)` | `snapshot v{run.version} · calculated {finishedAt}` | both are on the run document |
+| `Engine Status: Ready & Synchronized` + `Code on Wages 2019 Compliant` | `engine {status}` from the run itself; no compliance badge | nothing certifies compliance; the run status is a fact |
+| Step 1 locked & verified → step 2 active, 3–4 locked | derived from `inputsLocked` and the presence of a snapshot | the same rule the backend applies |
+| `Inputs Verified & Formulas Harmonized` | green when locked, amber with a link to inputs when not | the pre-check is real and blocking |
+| Six KPIs (scope, compute status, audit validation, gross, net, statutory overhead) | the same six from `run.summary` | one field each, including `employerCost` for overhead |
+| `Formula Set 2026.4 Active … EPF @ 12 %` | a link to **Salary architecture**, where the rules actually live | the engine reads the stored rule set; there is no printable "formula set" number |
+| Table: paid/total days, LOP docked, base gross, variable, reimb., deductions, net, status | the same columns from the snapshot | PF / ESI / PT / TDS in the deduction line are `deductions[].statutory` |
+| `Allocation matrix (net 86.1 % / EPF 8.8 % / TDS 5.1 %)` | the same three bands, summed from the snapshots | percentages are computed from the month's own totals |
+| `Statutory Compliance Health Check · All Clear` (EPFO cap, PT slabs, 115BAC, biometric locks) | **Calculation health check** — scope, errors, warnings, lock state, plus "this is not a legal opinion" | the per-rule ticks would be invented verdicts; the counts are not |
+| `Proceed to Review & Approval` | the same, plus `← Back to inputs` | the hand-off is what this page is for |
+
+## Disbursement — what the export drew, what is real
+
+| export block | rendered | why |
+| --- | --- | --- |
+| `Approved by Leadership • Ready for Bank Execution` | the newest batch's status pill | approval is a recorded state, not a slogan |
+| `BATCH-CRW-202610-09` card | the newest batch's real `batchNumber` and month | one batch, named once |
+| `Create Payment Batch` | same, behind `PAYROLL_PAYMENT_GENERATE` | unchanged |
+| `Download Bank Transfer File` | downloads the newest batch's newest file; disabled with the reason when there is none | a file has to be generated first |
+| `Authorize Direct API Disbursement (2-FA)` | replaced by a stated badge: **file handoff — no bank gateway connected** | there is no gateway, no OTP and no key custody in this product |
+| Six KPIs (`total, paid, pending, bounced, retry, gateway A/C ••••8402 ₹48,50,000`) | the first five from `paymentKpis`; the sixth is **Bank files generated** | a bank float does not exist in the API and must not be printed |
+| Batch table (id, scope, net, mode, status, scheduled date) | the same columns from the batch summary | mode is the bank file, the only mode this product has |
+| Recipient roster (masked accounts, `Verified`) | the newest batch's payments, `accountNumberLast4` + IFSC | the roster is a real read; the mask is what the API returns |
+| `Corporate Banking Node · CONNECTED` + float + `Liquidity Pre-Check Passed` | **Bank connectivity** panel: gateway not connected, file generated?, downloaded? | the connection does not exist; liquidity cannot be known without it |
+| `Enterprise Compliance & Security Shield` (TLS envelope, dual-admin quorum, NPCI) | **What is recorded** — audit trail, masked accounts, per-employee outcomes | those three are true; the other three are claims with nothing behind them |
+| `Alternate Disbursement Export` (HDFC CMS .txt / ICICI bulk .csv) | the batch's actual generated files, by format and date | bank-specific templates are not shipped; the file carries the shared columns |
+
+## Verification
+
+`npm test` → 718 passing, including 8 new pins in
+`test/payrollCockpitSurfaces.test.js`: every page uses the shared kit, names its
+stage and the same four steps, reads its own endpoint, never does salary
+arithmetic in the browser, and never prints the exported infrastructure
+(BioHub, the 98 % health score, the gateway float, the OTP, the encryption and
+NPCI badges). `npm run build` green. `npx eslint src` → 116 problems (102
+errors, 14 warnings), one below the pre-change baseline.
+
+No browser is available in this environment: verified by lint, build and source
+pins, not by pixel comparison.

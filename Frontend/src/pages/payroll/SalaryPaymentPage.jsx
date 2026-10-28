@@ -1,14 +1,18 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Ban,
-  Banknote,  CheckCircle2,
+  Banknote,
+  CheckCircle2,
+  ChevronRight,
   Download,
-  FileSpreadsheet,  Loader2,  RefreshCcw,
+  FileSpreadsheet,
+  Loader2,
+  RefreshCcw,
   RotateCcw,
-  Search,  ShieldCheck,
-  Users,
+  Search,
+  ShieldCheck,
   Wallet,
   XCircle,
 } from 'lucide-react';
@@ -18,6 +22,19 @@ import usePermission from '../../hooks/usePermission.js';
 import payrollPaymentService from '../../services/payrollPaymentService.js';
 import { notify } from '../../utils/notify.js';
 import { TableEmpty } from '../../components/common/EmptyState.jsx';
+import {
+  Avatar,
+  CheckRow,
+  Panel,
+  Pipeline,
+  Pill,
+  Rail,
+  StageBand,
+  StageButton,
+  StatCard,
+  Td,
+  Th,
+} from '../../components/payroll/PayrollCockpit.jsx';
 
 // ─────────────────────────────────────────────────────────────
 // Phase 29.8 — Salary Payment (bank transfer file preparation)
@@ -109,23 +126,15 @@ const FAILURE_REASONS = [
   { key: 'AMOUNT_FAILED', label: 'Amount failed' },
 ];
 
-const KpiCard = ({ icon: Icon, label, value, hint, tone = 'default' }) => {
-  const tones = {
-    default: 'text-crewly-text',
-    good: 'text-emerald-300',
-    bad: 'text-red-300',
-    warn: 'text-amber-300',
+const statusTone = (status) => {
+  const map = {
+    PAID: 'text-st-secondary',
+    PARTIALLY_PAID: 'text-st-primary',
+    FAILED: 'text-st-error',
+    CANCELLED: 'text-st-on-variant/70',
+    PROCESSING: 'text-st-primary',
   };
-  return (
-    <div className="card p-4">
-      <div className="flex items-center justify-between">
-        <span className="text-xs uppercase tracking-wide text-crewly-dim">{label}</span>
-        <Icon size={16} className="text-crewly-dim" />
-      </div>
-      <p className={`mt-2 text-xl font-semibold ${tones[tone] || tones.default}`}>{value}</p>
-      {hint ? <p className="mt-1 text-[11px] text-crewly-dim">{hint}</p> : null}
-    </div>
-  );
+  return `text-[10px] font-bold uppercase tracking-wide ${map[status] || 'text-st-on-variant'}`;
 };
 
 const SalaryPaymentPage = () => {
@@ -146,6 +155,9 @@ const SalaryPaymentPage = () => {
   const [batches, setBatches] = useState([]);
   const [detailId, setDetailId] = useState(null);
   const [prompt, setPrompt] = useState(null);
+  // The newest batch's detail powers the roster and the file list. It is a
+  // read of the same endpoint the batch drawer uses — no extra data source.
+  const [newest, setNewest] = useState(null);
 
   /*
    * 35.1 — feedback is a toast now. The signature is unchanged so every call
@@ -189,6 +201,26 @@ const SalaryPaymentPage = () => {
     if (!permsLoading && !canRead) setLoading(false);
   }, [permsLoading, canRead, load]);
 
+  useEffect(() => {
+    const id = batches[0]?._id;
+    if (!id) {
+      setNewest(null);
+      return;
+    }
+    let active = true;
+    payrollPaymentService
+      .batch(id)
+      .then((response) => {
+        if (active) setNewest(response?.data ?? response ?? null);
+      })
+      .catch(() => {
+        if (active) setNewest(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [batches]);
+
   const run = async (action, successText) => {
     setBusy(true);
     try {
@@ -230,189 +262,404 @@ const SalaryPaymentPage = () => {
 
   if ((!permsLoading && !canRead) || accessDenied) {
     return (
-      <div className="space-y-5">
-        <h1 className="text-2xl font-bold">Salary Payment</h1>
-        <div className="card space-y-2">
-          <h2 className="text-lg font-semibold">Payment access required</h2>
-          <p className="text-sm text-crewly-dim">
+      <div className="st-surface min-h-screen space-y-4">
+        <StageBand eyebrow="Cycle step 4 of 4" title="Direct salary disbursement" />
+        <Panel title="Payment access required">
+          <div className="p-4 text-sm text-st-on-variant">
             You don&apos;t have permission to view salary payments. Contact your Company Admin or
             Finance Manager.
-          </p>
-        </div>
+          </div>
+        </Panel>
       </div>
     );
   }
 
-  const monthBatches = useMemo(() => batches, [batches]);
+  const monthBatches = batches;
+  const latestBatch = monthBatches[0] || null;
+  const latestFile = newest?.files?.[0] || null;
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">Salary Payment</h1>
-          <p className="mt-1 text-sm text-crewly-dim">
-            Prepare the bank transfer file for an approved payroll. Crewly builds the file — your
-            finance team uploads it to the company bank, and the bank pays (§1).
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            type="month"
-            className="input"
-            value={month}
-            onChange={(event) => setMonth(event.target.value)}
-          />
-          <button
-            className="btn-primary"
-            disabled={busy || !canGenerate}
-            onClick={() =>
-              setPrompt({
-                kind: 'create',
-                title: `Create a payment batch for ${formatMonth(month)}?`,
-                body: 'Crewly reads the approved payroll snapshot, validates every bank account and creates one payment line per employee. Employees with broken bank details are listed in the validation report instead of being paid.',
-                actionLabel: 'Create batch',
-              })
-            }
-          >
-            <Banknote size={15} /> Create payment batch
-          </button>
-        </div>
-      </div>
+    <div className="space-y-3">
+      <StageBand
+        eyebrow="Cycle step 4 of 4 · Monthly payroll pipeline"
+        title="Direct salary disbursement"
+        description="Prepare the bank transfer file for an approved payroll. Crewly builds and validates the batch — your finance team uploads the file to the company bank, and the bank pays. No money moves from this screen."
+        pills={[
+          latestBatch
+            ? {
+                label: String(latestBatch.status || 'DRAFT').replace(/_/g, ' ').toLowerCase(),
+                tone:
+                  latestBatch.status === 'PAID'
+                    ? 'good'
+                    : latestBatch.status === 'FAILED'
+                      ? 'bad'
+                      : 'accent',
+                title: 'Status of the newest batch for this month',
+              }
+            : { label: 'no batch yet', tone: 'default' },
+          { label: formatMonth(month), tone: 'default' },
+          ...(latestBatch?.paymentDate
+            ? [{ label: `dated ${formatStamp(latestBatch.paymentDate).split(',')[0]}`, tone: 'warn' }]
+            : []),
+        ]}
+        aside={
+          <div className="min-w-[11rem] rounded-xl border border-st-high bg-st-low/60 px-3 py-2">
+            <p className="text-[9px] font-bold uppercase tracking-wider text-st-on-variant">
+              Latest disbursement batch
+            </p>
+            <p className="mt-0.5 font-mono text-[12px] font-bold text-st-on">
+              {latestBatch?.batchNumber || '—'}
+            </p>
+            <p className="text-[10px] text-st-on-variant">
+              {latestBatch ? `Cycle: ${formatMonth(latestBatch.month)}` : `Cycle: ${formatMonth(month)}`}
+            </p>
+            <label className="mt-1.5 flex items-center gap-1 text-[10px] font-semibold text-st-on-variant">
+              month
+              <input
+                type="month"
+                value={month}
+                onChange={(event) => setMonth(event.target.value)}
+                className="w-full rounded-md border border-st-outline-variant/70 bg-st-lowest px-1.5 py-1 text-[10px] font-semibold text-st-on"
+              />
+            </label>
+          </div>
+        }
+        actions={
+          <>
+            <StageButton
+              variant="primary"
+              icon={Banknote}
+              disabled={busy || !canGenerate}
+              onClick={() =>
+                setPrompt({
+                  kind: 'create',
+                  title: `Create a payment batch for ${formatMonth(month)}?`,
+                  body: 'Crewly reads the approved payroll snapshot, validates every bank account and creates one payment line per employee. Employees with broken bank details are listed in the validation report instead of being paid.',
+                  actionLabel: 'Create batch',
+                })
+              }
+            >
+              Create payment batch
+            </StageButton>
+            <StageButton
+              icon={Download}
+              disabled={busy || !latestFile}
+              title={
+                latestFile
+                  ? `Download ${latestFile.format} · ${formatNumber(latestFile.rowCount)} row(s)`
+                  : 'Generate the bank file inside the batch first'
+              }
+              onClick={() => latestFile && handleDownload(latestFile._id)}
+            >
+              Download bank file{latestFile ? ` (${latestFile.format})` : ''}
+            </StageButton>
+            <StageButton
+              icon={ShieldCheck}
+              disabled={!latestBatch}
+              onClick={() => latestBatch && setDetailId(latestBatch._id)}
+            >
+              Batch audit &amp; roster
+            </StageButton>
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-st-outline-variant px-2 py-1.5 text-[10px] font-semibold text-st-on-variant">
+              <Wallet aria-hidden="true" size={12} /> File handoff — no bank gateway connected
+            </span>
+          </>
+        }
+      />
 
+      <Pipeline
+        steps={[
+          { key: 'inputs', index: '01', label: 'Monthly inputs', hint: 'Reimbursements, incentives & LOP', state: 'done' },
+          { key: 'run', index: '02', label: 'Run payroll', hint: 'Tax, PF, ESI & gross', state: 'done' },
+          { key: 'review', index: '03', label: 'Review & approval', hint: 'Sign-off by finance', state: latestBatch ? 'done' : 'active' },
+          { key: 'payment', index: '04', label: 'Salary payment', hint: 'Bank file & release', state: latestBatch ? 'active' : 'locked' },
+        ]}
+        footnote="Stage 04 is reachable only once a batch exists for the month — the export's step 4 is what this page performs."
+      />
 
-      {/* §17 — KPI cards */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <KpiCard
+      <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <StatCard
           icon={Wallet}
-          label="Total payroll"
+          label="Total disbursable"
           value={formatMoney(kpis.totalPayroll)}
-          hint={formatMonth(month)}
+          hint={`${formatMonth(month)} across ${formatNumber(kpis.batches)} batch(es)`}
         />
-        <KpiCard
-          icon={Users}
-          label="Paid employees"
-          value={formatNumber(kpis.paidEmployees)}
-          tone="good"
-          hint="Transactions confirmed"
-        />
-        <KpiCard
-          icon={XCircle}
-          label="Failed payments"
-          value={formatNumber(kpis.failedPayments)}
-          tone={kpis.failedPayments > 0 ? 'bad' : 'default'}
-          hint="Need a retry batch"
-        />
-        <KpiCard
-          icon={Loader2}
-          label="Pending payments"
-          value={formatNumber(kpis.pendingPayments)}
-          tone={kpis.pendingPayments > 0 ? 'warn' : 'default'}
-          hint="Not confirmed yet"
-        />
-        <KpiCard
-          icon={ShieldCheck}
-          label="Total amount paid"
+        <StatCard
+          icon={CheckCircle2}
+          label="Paid & transferred"
           value={formatMoney(kpis.totalAmountPaid)}
           tone="good"
-          hint="Confirmed by finance"
+          hint={`${formatNumber(kpis.paidEmployees)} confirmed transaction(s)`}
         />
-        <KpiCard
-          icon={RotateCcw}
+        <StatCard
+          icon={Wallet}
+          label="Pending bank exec"
+          value={formatNumber(kpis.pendingPayments)}
+          tone={kpis.pendingPayments > 0 ? 'warn' : 'default'}
+          hint="Waiting for finance to confirm"
+        />
+        <StatCard
+          icon={XCircle}
+          label="Bounced transfers"
+          value={formatNumber(kpis.failedPayments)}
+          tone={kpis.failedPayments > 0 ? 'bad' : 'good'}
+          hint="Rejected or returned by the bank"
+        />
+        <StatCard
+          icon={RefreshCcw}
           label="Retry required"
-          value={formatNumber(kpis.retryRequired)}
+          value={`${formatNumber(kpis.retryRequired)} batch(es)`}
           tone={kpis.retryRequired > 0 ? 'warn' : 'default'}
-          hint="Batches with failures"
+          hint="Batches still holding a failure"
+        />
+        <StatCard
+          icon={FileSpreadsheet}
+          label="Bank files generated"
+          value={formatNumber(newest?.files?.length || 0)}
+          hint={latestFile ? `${latestFile.format} · ${formatNumber(latestFile.rowCount)} rows` : 'none for this batch'}
         />
       </div>
 
-      {/* §18 — batch list */}
-      <div className="card overflow-x-auto p-0">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-crewly-hairline p-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-crewly-dim">
-            Payment batches
-          </h2>
-          <span className="text-xs text-crewly-dim">
-            {monthBatches.length} batch(es) · {formatMonth(month)}
-          </span>
+      <div className="flex flex-col gap-3 xl:flex-row">
+        <div className="min-w-0 flex-1 space-y-3">
+          <Panel
+            title="Payment batches & transfer schedules"
+            subtitle="Staged batch files and past disbursement reconciliation"
+            right={
+              <span className="text-[10px] text-st-on-variant">
+                {monthBatches.length} batch(es) · {formatMonth(month)}
+              </span>
+            }
+          >
+            <div className="overflow-x-auto border-t border-st-high">
+              <table className="w-full text-left">
+                <thead className="bg-st-low/70">
+                  <tr>
+                    <Th>Batch ID &amp; month</Th>
+                    <Th>Scope</Th>
+                    <Th>Net disbursable</Th>
+                    <Th>Mode</Th>
+                    <Th>Disbursement status</Th>
+                    <Th>Scheduled date</Th>
+                    <Th className="text-right">Action</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={7} className="px-3 py-10 text-center text-st-on-variant">
+                        <Loader2 className="mx-auto animate-spin" size={16} />
+                      </td>
+                    </tr>
+                  ) : monthBatches.length === 0 ? (
+                    <TableEmpty
+                      colSpan={7}
+                      illustration="wallet"
+                      title={`No payment batch for ${formatMonth(month)} yet`}
+                      description="Approve the month in Review & approval first, then create a batch here. Each batch keeps its own bank-file status and totals."
+                      action={
+                        <Link className="btn-ghost px-4 py-2 text-sm" to="/app/payroll/review">
+                          Go to Review &amp; approval
+                        </Link>
+                      }
+                    />
+                  ) : (
+                    monthBatches.map((batch) => (
+                      <tr key={batch._id} className="border-t border-st-high/70 hover:bg-st-low/50">
+                        <Td>
+                          <p className="font-mono text-[11px] font-bold text-st-on">{batch.batchNumber}</p>
+                          <p className="text-[10px] text-st-on-variant">
+                            {formatMonth(batch.month)}
+                            {batch.attempt > 1 ? ` · retry #${batch.attempt}` : ''}
+                          </p>
+                        </Td>
+                        <Td>
+                          <span className="font-semibold tabular-nums">
+                            {formatNumber(batch.summary?.totalEmployees)}
+                          </span>
+                          <span className="block text-[10px] text-st-on-variant">
+                            {formatNumber(batch.summary?.totalTransactions)} transaction(s)
+                          </span>
+                        </Td>
+                        <Td className="font-semibold tabular-nums">
+                          {formatMoney(batch.summary?.totalNetSalary)}
+                        </Td>
+                        <Td>
+                          <span className="inline-flex items-center gap-1 rounded-md bg-st-low px-1.5 py-0.5 text-[10px] font-semibold uppercase text-st-on-variant">
+                            <FileSpreadsheet aria-hidden="true" size={10} /> bank file
+                          </span>
+                        </Td>
+                        <Td>
+                          <span className={statusTone(batch.status)}>
+                            {String(batch.status || 'DRAFT').replace(/_/g, ' ').toLowerCase()}
+                          </span>
+                          <span className="block text-[10px] text-st-on-variant">
+                            {formatNumber(batch.summary?.successfulTransactions)} paid ·{' '}
+                            {formatNumber(batch.summary?.failedTransactions)} failed
+                          </span>
+                        </Td>
+                        <Td className="tabular-nums text-[11px] text-st-on-variant">
+                          {batch.paymentDate ? formatStamp(batch.paymentDate).split(',')[0] : '—'}
+                        </Td>
+                        <Td className="text-right">
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold text-st-primary hover:bg-st-low"
+                            onClick={() => setDetailId(batch._id)}
+                          >
+                            Open batch
+                            <ChevronRight aria-hidden="true" size={11} />
+                          </button>
+                        </Td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+
+          <Panel
+            title="Disbursement recipient roster"
+            subtitle={
+              newest?.batch
+                ? `Batch ${newest.batch.batchNumber} · masked account bindings`
+                : 'Recipients appear once a batch exists'
+            }
+            right={
+              newest?.payments?.length ? (
+                <span className="text-[10px] text-st-on-variant">
+                  showing {Math.min(4, newest.payments.length)} of {formatNumber(newest.payments.length)}
+                </span>
+              ) : null
+            }
+          >
+            <div className="grid gap-2 border-t border-st-high px-3 py-2.5 sm:grid-cols-2">
+              {newest?.payments?.length ? (
+                newest.payments.slice(0, 4).map((payment) => (
+                  <div
+                    key={payment._id}
+                    className="flex items-start gap-2 rounded-xl border border-st-high bg-st-low/40 px-2.5 py-2"
+                  >
+                    <Avatar name={payment.employeeName} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[11px] font-semibold text-st-on">
+                        {payment.employeeName}
+                      </p>
+                      <p className="truncate text-[9px] text-st-on-variant">
+                        {payment.bank?.bankName || 'bank not recorded'}
+                        {payment.bank?.accountNumberLast4
+                          ? ` ••••${payment.bank.accountNumberLast4}`
+                          : payment.bank?.accountNumberMasked
+                            ? ` ${payment.bank.accountNumberMasked}`
+                            : ''}
+                        {payment.bank?.ifsc ? ` (IFSC: ${payment.bank.ifsc})` : ''}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-[11px] font-bold tabular-nums text-st-on">
+                        {formatMoney(payment.amount)}
+                      </p>
+                      <p className="text-[9px] font-semibold text-st-secondary">
+                        {String(payment.status || '').replace(/_/g, ' ').toLowerCase()}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-[10px] leading-snug text-st-on-variant sm:col-span-2">
+                  No recipient list yet. A batch snapshots the approved payroll — every employee
+                  whose bank details validated appears here, with the account masked.
+                </p>
+              )}
+            </div>
+          </Panel>
         </div>
 
-        <table className="w-full text-left text-sm">
-          <thead className="bg-crewly-inset text-xs uppercase tracking-wide text-crewly-dim">
-            <tr>
-              <th className="px-3 py-2">Batch</th>
-              <th className="px-3 py-2">Month</th>
-              <th className="px-3 py-2">Employees</th>
-              <th className="px-3 py-2">Total net salary</th>
-              <th className="px-3 py-2">Paid / Failed</th>
-              <th className="px-3 py-2">Payment date</th>
-              <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={8} className="px-3 py-10 text-center text-crewly-dim">
-                  <Loader2 className="mx-auto animate-spin" size={18} /> Loading payments…
-                </td>
-              </tr>
-            ) : monthBatches.length === 0 ? (
-              <TableEmpty
-                colSpan={8}
-                illustration="wallet"
-                title={`No payment batch for ${formatMonth(month)} yet`}
-                description="Approve the month in Review Payroll first, then create a batch here. Each batch keeps its own bank-file status and totals."
-                action={
-                  <Link className="btn-ghost px-4 py-2 text-sm" to="/app/payroll/review">
-                    Go to Review Payroll
-                  </Link>
-                }
+        <Rail>
+          <Panel
+            title="Bank connectivity"
+            subtitle="How the file reaches the bank"
+            right={<Pill tone="warn">file handoff</Pill>}
+          >
+            <div className="space-y-1 px-4 pb-3">
+              <CheckRow ok={false} label="Host-to-host gateway" value="not connected" />
+              <CheckRow ok={false} label="API push / 2-FA authorisation" value="not available" />
+              <CheckRow ok={Boolean(latestFile)} label="Bank file generated" value={latestFile ? latestFile.format : '—'} />
+              <CheckRow
+                ok={Boolean(latestFile?.downloadCount)}
+                label="Downloaded for upload"
+                value={latestFile ? `${formatNumber(latestFile.downloadCount)} time(s)` : '—'}
               />
-            ) : (
-              monthBatches.map((batch) => (
-                <tr key={batch._id} className="border-t border-crewly-hairline hover:bg-crewly-inset">
-                  <td className="px-3 py-2">
-                    <p className="font-medium">{batch.batchNumber}</p>
-                    {batch.attempt > 1 ? (
-                      <p className="text-xs text-crewly-dim">retry #{formatNumber(batch.attempt)}</p>
-                    ) : null}
-                  </td>
-                  <td className="px-3 py-2">{formatMonth(batch.month)}</td>
-                  <td className="px-3 py-2">{formatNumber(batch.summary?.totalEmployees)}</td>
-                  <td className="px-3 py-2 font-semibold">
-                    {formatMoney(batch.summary?.totalNetSalary)}
-                  </td>
-                  <td className="px-3 py-2">
-                    <span className="text-emerald-300">
-                      {formatNumber(batch.summary?.successfulTransactions)}
+              <p className="pt-1 text-[9px] leading-snug text-st-on-variant">
+                Crewly does not hold bank credentials and does not transmit payments. Your finance
+                team downloads the batch file and uploads it to the corporate banking portal — that
+                is the only step this product cannot see.
+              </p>
+            </div>
+          </Panel>
+
+          <Panel title="What is recorded" subtitle="Every step of a batch, not just the total">
+            <div className="space-y-1 px-4 pb-3">
+              <CheckRow
+                ok={Boolean(newest?.files?.length)}
+                label="File generations are in the batch's audit trail"
+                value={formatNumber(newest?.files?.length || 0)}
+              />
+              <CheckRow
+                ok
+                label="Account numbers masked outside the file"
+                value="last 4 only"
+              />
+              <CheckRow
+                ok={Number(kpis.failedPayments) === 0}
+                label="Rejected transactions recorded per employee"
+                value={formatNumber(kpis.failedPayments)}
+              />
+              <p className="pt-1 text-[9px] leading-snug text-st-on-variant">
+                The export claims envelope encryption, a dual-admin quorum and NPCI certification.
+                None of those are configured here, so none of them are printed as badges. What is
+                real: the audit trail, the per-employee outcomes, and the masked roster above.
+              </p>
+            </div>
+          </Panel>
+
+          <Panel title="Alternate export" subtitle="Hand the file over the way your bank accepts">
+            <div className="space-y-1.5 px-4 pb-3">
+              {newest?.files?.length ? (
+                newest.files.slice(0, 3).map((file) => (
+                  <button
+                    key={file._id}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => handleDownload(file._id)}
+                    className="flex w-full items-center justify-between gap-2 rounded-lg border border-st-outline-variant/60 px-2.5 py-1.5 text-[10px] font-semibold text-st-on hover:bg-st-low disabled:opacity-50"
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      <Download aria-hidden="true" size={11} /> {file.format} ·{' '}
+                      {formatNumber(file.rowCount)} row(s)
                     </span>
-                    {' / '}
-                    <span className={batch.summary?.failedTransactions ? 'text-red-300' : ''}>
-                      {formatNumber(batch.summary?.failedTransactions)}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-xs text-crewly-dim">
-                    {batch.paymentDate ? formatStamp(batch.paymentDate).split(',')[0] : '—'}
-                  </td>
-                  <td className="px-3 py-2">{statusBadge(batch.status)}</td>
-                  <td className="px-3 py-2 text-right">
-                    <button
-                      className="text-sm text-indigo-300 hover:underline"
-                      onClick={() => setDetailId(batch._id)}
-                    >
-                      Open batch
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+                    <span className="text-st-on-variant">{formatStamp(file.generatedAt).split(',')[0]}</span>
+                  </button>
+                ))
+              ) : (
+                <p className="text-[10px] leading-snug text-st-on-variant">
+                  No file yet. Generate one inside the batch — Crewly writes CSV or XLSX, the two
+                  formats corporate portals accept.
+                </p>
+              )}
+              <p className="pt-1 text-[9px] leading-snug text-st-on-variant">
+                Bank-specific templates (HDFC CMS, ICICI bulk) are not shipped as separate exports;
+                the generated file carries the columns both portals read.
+              </p>
+            </div>
+          </Panel>
+        </Rail>
       </div>
 
-      <p className="text-xs text-crewly-dim">
-        Every generation, download, confirmation and failure is written to the audit log (§22).
-        Account numbers are masked everywhere except inside the generated file (§23).
+      <p className="px-1 text-[10px] text-st-on-variant">
+        Every generation, download, confirmation and failure is written to the audit log. Account
+        numbers are masked everywhere except inside the generated file.
       </p>
 
       {detailId ? (
