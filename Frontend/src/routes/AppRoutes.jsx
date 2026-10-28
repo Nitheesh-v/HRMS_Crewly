@@ -747,8 +747,8 @@ const AppRoutes = () => (
       <Route path="payroll/final-settlement" element={inPayroll(<FinalSettlementPage />)} />
       <Route path="payroll/my-final-settlement" element={inPayroll(<MyFinalSettlementPage />)} />
       {/* Phase 29.12 — Payroll Analytics & Reports. Each page gates itself
-          on the payroll report permissions (§4 / §25); the CTC block is
-          additionally gated on PAYROLL_ANALYTICS_FINANCIAL (§16). */}
+          on the payroll report permissions; the CTC block is
+          additionally gated on PAYROLL_ANALYTICS_FINANCIAL. */}
       <Route path="payroll/analytics" element={inPayroll(<ExecutiveDashboardPage />)} />
       <Route path="payroll/analytics/overview" element={inPayroll(<PayrollOverviewPage />)} />
       <Route path="payroll/analytics/department" element={inPayroll(<DepartmentAnalyticsPage />)} />
@@ -757,8 +757,8 @@ const AppRoutes = () => (
       <Route path="payroll/analytics/bonus" element={inPayroll(<BonusReportPage />)} />
       <Route path="payroll/analytics/overtime" element={inPayroll(<OvertimeReportPage />)} />
       <Route path="payroll/analytics/statutory" element={inPayroll(<StatutorySummaryPage />)} />
-      {/* 29.13 — the six reports added in this phase (§11, §12, §13, §18, §20,
-          §21) and the employee salary history (§23). */}
+      {/* 29.13 — the six reports added in this phase and the employee salary
+          history. */}
       <Route path="payroll/analytics/earnings" element={inPayroll(<EarningsReportPage />)} />
       <Route path="payroll/analytics/deductions" element={inPayroll(<DeductionsReportPage />)} />
       <Route path="payroll/analytics/employer" element={inPayroll(<EmployerContributionPage />)} />

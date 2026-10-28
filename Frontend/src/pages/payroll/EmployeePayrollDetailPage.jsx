@@ -880,7 +880,7 @@ const EmployeePayrollDetailPage = () => {
               <div>{profile.tax?.declarationStatus || '—'}</div>
             </div>
             <p className="text-xs text-crewly-dim sm:col-span-2">
-              Tax is only stored here — Crewly does not calculate tax in this phase (§12 / §25).
+              Tax is only stored here — Crewly does not calculate tax in this phase.
             </p>
           </div>
         )}

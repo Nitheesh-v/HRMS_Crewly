@@ -234,7 +234,7 @@ const SalaryDistributionPage = () => {
       <PageHeader
         icon={PieChart}
         title="Salary Distribution"
-        subtitle={`${monthLabel(month)} · §10 bands and §8 designation analytics`}
+        subtitle={`${monthLabel(month)} · bands and designation analytics`}
         actions={<ExportMenu reportKey="SALARY_BANDS" filters={filters} />}
       />
 
@@ -253,7 +253,7 @@ const SalaryDistributionPage = () => {
       {/* §10 — the bands as bars, not only as numbers */}
       <SectionCard
         title="Salary bands"
-        subtitle="§10 — employee count and total payroll in each range"
+        subtitle="Employee count and total payroll in each range"
         actions={(
           <div className="flex items-center gap-2">
             {canConfigure ? (
@@ -342,7 +342,7 @@ const SalaryDistributionPage = () => {
       <SectionCard
         className="mt-4"
         title="Designation analytics"
-        subtitle="§8 — count, average, highest and lowest by designation"
+        subtitle="Count, average, highest and lowest by designation"
         actions={<ExportMenu reportKey="DESIGNATION" filters={filters} />}
       >
         {designations.loading ? (

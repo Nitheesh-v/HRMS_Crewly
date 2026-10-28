@@ -165,13 +165,13 @@ const ScheduledReportsPage = () => {
       <PageHeader
         icon={CalendarClock}
         title="Scheduled Reports"
-        subtitle="§20 — standing instructions, generated automatically with BullMQ"
+        subtitle="Standing instructions, generated automatically with BullMQ"
       />
 
       {denied ? <AccessDenied message="Your role does not allow scheduling payroll reports." /> : null}
 
       {/* §20 — new schedule */}
-      <SectionCard title="New schedule" subtitle="§20 — who gets it is a permission, not a list of people">
+      <SectionCard title="New schedule" subtitle="Who gets it is a permission, not a list of people">
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
             Name
@@ -280,7 +280,7 @@ const ScheduledReportsPage = () => {
       </SectionCard>
 
       {/* §20 — the existing schedules */}
-      <SectionCard className="mt-4" title="Schedules" subtitle="§20 — every standing instruction in this company">
+      <SectionCard className="mt-4" title="Schedules" subtitle="Every standing instruction in this company">
         {loading ? (
           <p className="text-sm text-crewly-dim">Loading schedules…</p>
         ) : (

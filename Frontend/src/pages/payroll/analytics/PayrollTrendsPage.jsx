@@ -87,7 +87,7 @@ const PayrollTrendsPage = () => {
       <PageHeader
         icon={LineChart}
         title="Payroll Trends"
-        subtitle={`${monthLabel(month)} · §11 trends from historical snapshots`}
+        subtitle={`${monthLabel(month)} · trends from historical snapshots`}
         actions={<ExportMenu reportKey="TREND" filters={filters} />}
       />
 
@@ -159,7 +159,7 @@ const PayrollTrendsPage = () => {
             </div>
           </SectionCard>
 
-          <SectionCard className="mt-4" title="Period detail" subtitle="§11 — every measure, period by period">
+          <SectionCard className="mt-4" title="Period detail" subtitle="Every measure, period by period">
             <DataTable
               headers={[
                 { key: 'label', label: 'Period', strong: true },

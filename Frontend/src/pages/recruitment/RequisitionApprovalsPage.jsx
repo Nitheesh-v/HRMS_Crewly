@@ -449,7 +449,7 @@ const RequisitionApprovalsPage = () => {
         >
           Existing jobs & candidate pipeline
         </Link>
-        <span className="cursor-not-allowed px-1 pb-3 text-slate-600" title="Later Phase 27 subphase">
+        <span className="cursor-not-allowed px-1 pb-3 text-slate-600" title="Coming soon">
           Analytics
         </span>
       </nav>

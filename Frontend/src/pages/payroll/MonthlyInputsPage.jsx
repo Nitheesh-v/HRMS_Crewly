@@ -489,9 +489,8 @@ const statusTone = (status) =>
           Company standard
           <span className="font-semibold text-st-on">{formatNumber(period?.workingDays)} working days</span>
         </span>
-        <span className="ml-auto max-w-md text-[10px] leading-snug text-st-on-variant">
-          Inputs are stored per month and per employee. Freezing them hands the exact numbers to the
-          calculation engine — nothing is reinterpreted later.
+        <span className="ml-auto max-w-xs text-[10px] leading-snug text-st-on-variant">
+          Stored per month, per employee. Freezing hands the exact numbers to the engine.
         </span>
       </div>
 
@@ -803,8 +802,7 @@ const statusTone = (status) =>
                 <CheckRow ok={false} label="PF, ESI, PT and TDS" value="Stage 02" />
                 <CheckRow ok={false} label="Recoveries entered here" value={formatMoney(summary.totalDeduction)} />
                 <p className="pt-1 text-[9px] leading-snug text-st-on-variant">
-                  Only the recoveries on this page flow through. Statutory amounts are computed when
-                  payroll runs, against the saved salary structure.
+                  Only recoveries flow through here; statutory amounts are computed when payroll runs.
                 </p>
               </div>
             </Panel>
@@ -912,8 +910,7 @@ const statusTone = (status) =>
                 value={period?.lockedAt ? formatDate(period.lockedAt) : 'not locked'}
               />
               <p className="pt-1">
-                Cycle dates and working days come from Company setup. Changing them changes the base
-                every employee is paid on, so they are edited there — not here.
+                Cycle dates and working days are edited in Company setup, not here.
               </p>
             </div>
           </Panel>
@@ -921,8 +918,7 @@ const statusTone = (status) =>
       </div>
 
       <p className="px-1 text-[10px] text-st-on-variant">
-        Variable pay never changes a salary structure — it is stored per month and consumed by the
-        engine. Components and structures live in{' '}
+        Variable pay never changes a salary structure. Components and structures live in{' '}
         <Link className="font-semibold text-st-primary hover:underline" to="/app/payroll/components">
           Salary architecture
         </Link>

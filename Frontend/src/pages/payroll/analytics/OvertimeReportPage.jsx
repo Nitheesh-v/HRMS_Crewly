@@ -66,7 +66,7 @@ const OvertimeReportPage = () => {
       <PageHeader
         icon={CalendarRange}
         title="Overtime Report"
-        subtitle={`${monthLabel(month)} · §13 hours and cost, read from the snapshots`}
+        subtitle={`${monthLabel(month)} · hours and cost, read from the snapshots`}
         actions={<ExportMenu reportKey="OVERTIME" filters={filters} />}
       />
 
@@ -95,7 +95,7 @@ const OvertimeReportPage = () => {
             />
           </div>
 
-          <SectionCard className="mt-4" title="By department" subtitle="§13 — where the overtime lands">
+          <SectionCard className="mt-4" title="By department" subtitle="Where the overtime lands">
             <DataTable
               headers={[
                 { key: 'department', label: 'Department', strong: true },
@@ -108,7 +108,7 @@ const OvertimeReportPage = () => {
             />
           </SectionCard>
 
-          <SectionCard className="mt-4" title="Employee ranking" subtitle="§13 — highest overtime use first">
+          <SectionCard className="mt-4" title="Employee ranking" subtitle="Highest overtime use first">
             <DataTable
               headers={[
                 { key: 'employeeCode', label: 'Employee', strong: true, render: (row) => (
@@ -136,7 +136,7 @@ const OvertimeReportPage = () => {
             />
             <p className="mt-3 border-t border-crewly-hairline pt-2 text-xs text-crewly-dim">
               Hours and cost are read from the payroll snapshot as stored — overtime is never
-              recalculated here (§13).
+              recalculated here.
             </p>
           </SectionCard>
         </>

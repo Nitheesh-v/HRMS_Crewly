@@ -1278,8 +1278,7 @@ const SalaryStructuresPage = () => {
                 </p>
               ) : null}
               <p className="text-xs text-crewly-dim">
-                Employees are assigned to a structure in the next payroll phase, so this count is 0
-                today. Payroll history: {detail.usage?.hasProcessedPayroll ? 'present' : 'none'}.
+                Payroll history: {detail.usage?.hasProcessedPayroll ? 'present' : 'none'}.
               </p>
               <h3 className="pt-2 text-sm font-semibold">Versions</h3>
               <ul className="space-y-1 text-xs">

@@ -723,9 +723,8 @@ const RunPayrollPage = () => {
               value={inputsLocked ? 'yes' : 'no'}
             />
             <p className="pt-1 text-[9px] leading-snug text-st-on-variant">
-              This is a structural check of the calculation, not a legal opinion. Statutory amounts
-              come from the rule set stored in Salary architecture; a change there applies to the
-              next recalculation, never to an existing snapshot.
+              A structural check, not a legal opinion. A rule change applies to the next run, never to a
+              saved snapshot.
             </p>
           </div>
         </Panel>
@@ -777,9 +776,8 @@ const RunPayrollPage = () => {
         <Modal title={`Run payroll for ${formatMonth(month)}?`} onClose={() => setConfirmRun(false)}>
           <div className="space-y-3 text-sm">
             <p className="text-crewly-dim">
-              The engine reads the salary structure, attendance, leave and the locked monthly inputs
-              and writes one immutable snapshot per active employee. Employees who fail the
-              pre-checks are listed in the error report instead of stopping the run.
+              One immutable snapshot per active employee. Anyone failing the pre-checks is listed in the
+              error report instead of stopping the run.
             </p>
             <div className="flex justify-end gap-2">
               <button className="btn-secondary" onClick={() => setConfirmRun(false)}>

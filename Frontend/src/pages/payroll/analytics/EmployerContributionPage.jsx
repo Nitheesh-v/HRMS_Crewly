@@ -66,7 +66,7 @@ const EmployerContributionPage = () => {
       <PageHeader
         icon={Landmark}
         title="Employer Contribution"
-        subtitle={`${monthLabel(month)} · §13 PF, ESI, gratuity, LWF — never part of an employee's net pay`}
+        subtitle={`${monthLabel(month)} · PF, ESI, gratuity, LWF — never part of an employee's net pay`}
         actions={<ExportMenu reportKey="EMPLOYER" filters={filters} />}
       />
 
@@ -87,7 +87,7 @@ const EmployerContributionPage = () => {
         <>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <KpiCard label="Total employer cost" value={money(report.total)} />
-            <KpiCard label="Snapshot total" value={money(report.snapshotTotal)} hint="what the payroll run recorded" />
+            <KpiCard label="Snapshot total" value={money(report.snapshotTotal)} hint="What the payroll run recorded" />
             <KpiCard
               label="Unclassified"
               value={money(report.unclassified)}
@@ -96,7 +96,7 @@ const EmployerContributionPage = () => {
             />
           </div>
 
-          <SectionCard className="mt-4" title="By contribution" subtitle="§13 — every employer-side line">
+          <SectionCard className="mt-4" title="By contribution" subtitle="Every employer-side line">
             <DataTable
               headers={[
                 { key: 'label', label: 'Contribution', strong: true },
@@ -113,7 +113,7 @@ const EmployerContributionPage = () => {
             />
           </SectionCard>
 
-          <SectionCard className="mt-4" title="By department" subtitle="§13 — where the employer cost lands">
+          <SectionCard className="mt-4" title="By department" subtitle="Where the employer cost lands">
             <DataTable
               headers={[
                 { key: 'department', label: 'Department', strong: true },

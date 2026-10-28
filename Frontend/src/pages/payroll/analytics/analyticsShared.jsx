@@ -473,7 +473,7 @@ export const AccessDenied = ({ message = 'You do not have access to payroll anal
     <div>
       <p className="text-sm font-medium text-crewly-text">{message}</p>
       <p className="mt-1 text-xs text-crewly-dim">
-        Ask a Company Admin for payroll report access (§4 — employees never see payroll analytics).
+        Ask a Company Admin for payroll report access.
       </p>
     </div>
   </div>

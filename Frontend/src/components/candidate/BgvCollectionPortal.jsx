@@ -453,7 +453,7 @@ const BgvCollectionPortal = ({ secureToken }) => {
 
       {/* ── IDENTITY ── */}
       {hasCheck('IDENTITY') ? (
-        <SectionCard icon={IdCard} title="Identity" subtitle="Provide one supported identity document. Your document number is masked — the full number is never stored." complete={perCheck.IDENTITY === 'COMPLETE'} locked={locked}>
+        <SectionCard icon={IdCard} title="Identity" subtitle="Provide one supported identity document." complete={perCheck.IDENTITY === 'COMPLETE'} locked={locked}>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="label">Legal name (as on document)</label>
@@ -654,7 +654,7 @@ const BgvCollectionPortal = ({ secureToken }) => {
 
       {/* ── EMPLOYMENT ── */}
       {hasCheck('EMPLOYMENT') ? (
-        <SectionCard icon={Building2} title="Employment" subtitle="Add your previous (and current) employers. Bank statements are not required; payslips are optional and treated as highly sensitive." complete={perCheck.EMPLOYMENT === 'COMPLETE'} locked={locked}>
+        <SectionCard icon={Building2} title="Employment" subtitle="Add your previous (and current) employers." complete={perCheck.EMPLOYMENT === 'COMPLETE'} locked={locked}>
           <div className="space-y-2">
             {(summary.collection?.employments || []).map((record, index) => (
               <div key={record.id} className="rounded-lg border border-crewly-border bg-crewly-bg/40 p-3">

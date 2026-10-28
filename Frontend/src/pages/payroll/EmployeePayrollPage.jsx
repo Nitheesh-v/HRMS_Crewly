@@ -267,7 +267,7 @@ const EmployeePayrollPage = () => {
             <div>
               <h2 className="text-lg font-semibold">Employees without a payroll profile</h2>
               <p className="text-sm text-crewly-dim">
-                Start one to capture salary, bank, statutory and tax details (§5).
+                Start one to capture salary, bank, statutory and tax details.
               </p>
             </div>
             <span className="text-xs text-crewly-dim">{withoutProfile.length} pending</span>

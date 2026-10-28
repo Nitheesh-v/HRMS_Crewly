@@ -206,7 +206,6 @@ const ExecutiveDashboardPage = () => {
             : 'Cost, headcount and the statutory position for the payroll window.'
         }
         pills={[
-          { label: periodLabel, tone: 'default' },
           { label: `${count(paidCount)} paid`, tone: 'accent' },
           {
             label: `accuracy ${percent(accuracy.accuracyPercent)}`,
@@ -372,8 +371,7 @@ const ExecutiveDashboardPage = () => {
               >
                 {departments.length === 0 ? (
                   <p className="text-[11px] leading-relaxed text-st-on-variant">
-                    No department split for this window — a snapshot only carries a department when the
-                    employee had one on the payroll date.
+                    No department split for this window.
                   </p>
                 ) : (
                   <ul className="space-y-2.5">
@@ -500,8 +498,7 @@ const ExecutiveDashboardPage = () => {
                   </>
                 ) : (
                   <p className="text-[11px] leading-relaxed text-st-on-variant">
-                    A movement breakdown needs two payroll windows. Pick a month that has a completed
-                    predecessor to see why the cost changed.
+                    A movement breakdown needs two payroll windows.
                   </p>
                 )}
               </Panel>
@@ -530,7 +527,7 @@ const ExecutiveDashboardPage = () => {
               </Panel>
               {!canSeeFinancial ? (
                 <p className="px-1 text-[10px] text-st-on-variant">
-                  The cost-to-company report is restricted to Finance (§16).
+                  The cost-to-company report is restricted to Finance.
                 </p>
               ) : null}
             </div>
@@ -582,8 +579,7 @@ const ExecutiveDashboardPage = () => {
                   />
                 </div>
                 <p className="pt-2 text-[10px] leading-snug text-st-on-variant">
-                  Gratuity is a provision the company carries, not money remitted this month, so it sits
-                  outside the liability total.
+                  Gratuity is a provision, so it sits outside the liability total.
                 </p>
                 <Link
                   to="/app/payroll/analytics/statutory"

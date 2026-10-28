@@ -841,7 +841,7 @@ const ReviewPayrollPage = () => {
           </div>
 
           <p className="px-3 pb-3 text-xs text-crewly-dim">
-            {formatNumber(selected.length)} selected · reviewing never changes a salary figure (§18).
+            {formatNumber(selected.length)} selected · reviewing never changes a salary figure.
             Recalculation happens in{' '}
             <Link className="text-indigo-300 hover:underline" to="/app/payroll/run">
               Run Payroll
@@ -919,7 +919,7 @@ const ReviewPayrollPage = () => {
           </div>
 
           <p className="text-xs text-crewly-dim">
-            Critical errors block locking (§10). Fix the payroll profile or the monthly inputs in{' '}
+            Critical errors block locking. Fix the payroll profile or the monthly inputs in{' '}
             <Link className="text-indigo-300 hover:underline" to="/app/payroll/employees">
               Employee Payroll
             </Link>
@@ -936,7 +936,7 @@ const ReviewPayrollPage = () => {
               Difference report
             </h2>
             <p className="text-xs text-crewly-dim">
-              Every recalculation writes a new snapshot version (§19). This report shows what changed
+              Every recalculation writes a new snapshot version. This report shows what changed
               between the last two versions of {formatMonth(month)}.
             </p>
           </div>

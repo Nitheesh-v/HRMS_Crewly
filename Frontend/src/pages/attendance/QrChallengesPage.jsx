@@ -209,9 +209,8 @@ const QrChallengesPage = () => {
             </span>
             <h1 className="mt-1 text-3xl font-bold tracking-tight text-st-on lg:text-[2rem]">QR Challenges</h1>
             <p className="mt-1 max-w-2xl text-sm leading-relaxed text-st-on-variant">
-              Issue single-use, cryptographically random codes bound to physical premises. Employees scan the
-              code with their own phone and confirm the punch in their own authenticated session — possession
-              of a fresh code, never a contactless badge.
+              Single-use codes bound to a premises. Employees scan with their own phone and confirm the punch
+              in their own session.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -454,7 +453,7 @@ const QrChallengesPage = () => {
               title="Scan evidence"
               icon={ScanLine}
               badge={`${month}`}
-              note="There is no per-scan feed to subscribe to: redemption is written straight into the punch ledger. This is the aggregate the API does publish."
+              note="There is no per-scan feed to subscribe to: redemption is written straight into the punch ledger."
             >
               {sourcesError ? (
                 <div className="rounded-lg bg-st-high px-2.5 py-2">
@@ -514,7 +513,7 @@ const QrChallengesPage = () => {
             title="Scan telemetry feed"
             icon={Wifi}
             badge="Not exposed"
-            note="No stream, no polling endpoint: the API writes a punch and returns it to the employee, and publishing a per-scan feed would mean inventing one."
+            note="No live scan feed — the API writes the punch and returns it."
           >
             <p className="text-[10px] leading-relaxed text-st-on-variant">
               The mock’s live feed (employee, GPS delta, BSSID, verdict) does not exist here. What does exist is
@@ -530,7 +529,7 @@ const QrChallengesPage = () => {
             title="Challenge audit trail"
             icon={History}
             badge="Audit log"
-            note="Every issuance is audited as ATTENDANCE_QR_CHALLENGE_CREATED with the challenge id, place and expiry — never the token."
+            note="Audited as ATTENDANCE_QR_CHALLENGE_CREATED — id, place, expiry, never the token."
           >
             <p className="text-[10px] leading-relaxed text-st-on-variant">
               Challenge rows themselves are ephemeral: a TTL index reaps them minutes after expiry, so there is

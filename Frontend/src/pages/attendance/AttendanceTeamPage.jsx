@@ -691,7 +691,7 @@ const AttendanceTeamPage = () => {
             icon={UserCheck}
             label="Working now"
             value={counts.working || 0}
-            hint="active"
+            hint="Active"
             tone={shareOf(counts.working)}
             bar="bg-st-secondary"
           />
@@ -699,7 +699,7 @@ const AttendanceTeamPage = () => {
             icon={Coffee}
             label="On break"
             value={counts.onBreak || 0}
-            hint="staff"
+            hint="Staff"
             tone={shareOf(counts.onBreak)}
             bar="bg-st-primary-container"
           />
@@ -707,7 +707,7 @@ const AttendanceTeamPage = () => {
             icon={CheckCircle2}
             label="Completed"
             value={counts.completed || 0}
-            hint="done"
+            hint="Done"
             tone={board?.total ? ((counts.completed || 0) / board.total) * 100 : 0}
             bar="bg-st-tertiary-container"
           />
@@ -715,7 +715,7 @@ const AttendanceTeamPage = () => {
             icon={Clock}
             label="Not yet in"
             value={counts.notIn || 0}
-            hint="expected"
+            hint="Expected"
             tone={board?.total ? ((counts.notIn || 0) / board.total) * 100 : 0}
             bar="bg-st-outline"
           />
@@ -723,7 +723,7 @@ const AttendanceTeamPage = () => {
             icon={Timer}
             label="Late arrival"
             value={counts.lateNotIn || 0}
-            hint="not in"
+            hint="Not in"
             tone={board?.total ? ((counts.lateNotIn || 0) / board.total) * 100 : 0}
             bar="bg-st-primary"
           />
@@ -731,7 +731,7 @@ const AttendanceTeamPage = () => {
             icon={CalendarOff}
             label="On leave"
             value={counts.onLeave || 0}
-            hint="approved"
+            hint="Approved"
             tone={board?.total ? ((counts.onLeave || 0) / board.total) * 100 : 0}
             bar="bg-st-secondary-fixed-dim"
           />
@@ -739,7 +739,7 @@ const AttendanceTeamPage = () => {
             icon={AlertTriangle}
             label="Action required"
             value={counts.exceptions || 0}
-            hint="needs closing"
+            hint="Needs closing"
             tone={board?.total ? ((counts.exceptions || 0) / board.total) * 100 : 0}
             bar="bg-st-error"
           />

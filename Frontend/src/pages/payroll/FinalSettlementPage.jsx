@@ -690,20 +690,20 @@ const FinalSettlementPage = () => {
               icon={Users}
               label="Pending"
               value={count(kpis.pendingSettlements)}
-              hint="draft, calculated or reopened"
+              hint="Draft, calculated or reopened"
               tone={Number(kpis.pendingSettlements) ? 'default' : 'good'}
             />
             <StatCard
               icon={ClipboardCheck}
               label="In HR review"
               value={count(kpis.hrReview)}
-              hint="waiting on the clearance checklist"
+              hint="Waiting on the clearance checklist"
             />
             <StatCard
               icon={ShieldCheck}
               label="Finance approved"
               value={count(kpis.financeApproval)}
-              hint="ready to be paid"
+              hint="Ready to be paid"
             />
             <StatCard
               icon={Wallet}
@@ -716,7 +716,7 @@ const FinalSettlementPage = () => {
               icon={BadgeIndianRupee}
               label="Settlement pool"
               value={money(kpis.totalSettlementAmount)}
-              hint="everything committed, paid or not"
+              hint="Everything committed, paid or not"
             />
           </div>
 
@@ -1081,7 +1081,7 @@ const FinalSettlementPage = () => {
               {/* §11 — the settlement */}
               <div className="card space-y-4 lg:col-span-2">
                 <div>
-                  <SectionTitle note="Copied from the Exit module — never re-typed here (§6).">
+                  <SectionTitle note="Copied from the Exit module — never re-typed here.">
                     Exit details
                   </SectionTitle>
                   <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -1098,7 +1098,7 @@ const FinalSettlementPage = () => {
                 </div>
 
                 <div>
-                  <SectionTitle note="Salary is paid only up to the last working day, and the arithmetic is shown (§7).">
+                  <SectionTitle note="Salary is paid only up to the last working day, and the arithmetic is shown.">
                     Earnings
                   </SectionTitle>
                   <div className="overflow-x-auto">
@@ -1177,7 +1177,7 @@ const FinalSettlementPage = () => {
                 </div>
 
                 <div>
-                  <SectionTitle note="Recoveries are shown separately — a notice buyout is not a salary deduction (§9).">
+                  <SectionTitle note="Recoveries are shown separately — a notice buyout is not a salary deduction.">
                     Recoveries
                   </SectionTitle>
                   <div className="overflow-x-auto">
@@ -1251,7 +1251,7 @@ const FinalSettlementPage = () => {
               {/* §15 / §16 / §5 — the workflow */}
               <div className="space-y-4">
                 <div className="card space-y-3">
-                  <SectionTitle note="Finance approval stays closed until every item is ticked (§15).">
+                  <SectionTitle note="Finance approval stays closed until every item is ticked.">
                     HR review checklist ({checklistDone}/{detail.checklistProgress?.total ?? 4})
                   </SectionTitle>
                   {Object.entries(CHECKLIST_LABELS).map(([key, label]) => (
@@ -1293,7 +1293,7 @@ const FinalSettlementPage = () => {
                 </div>
 
                 <div className="card space-y-3">
-                  <SectionTitle note="Assets still in the employee's hands at settlement time (§13).">
+                  <SectionTitle note="Assets still in the employee's hands at settlement time.">
                     Asset clearance
                   </SectionTitle>
                   {detail.assets?.length ? (
@@ -1312,7 +1312,7 @@ const FinalSettlementPage = () => {
 
                 {canCalculate && detail.editable ? (
                   <div className="card space-y-3">
-                    <SectionTitle note="Every recovery needs an amount and a reason (§9).">
+                    <SectionTitle note="Every recovery needs an amount and a reason.">
                       Add an item
                     </SectionTitle>
                     <select
@@ -1363,7 +1363,7 @@ const FinalSettlementPage = () => {
 
                 {canCalculate && detail.editable ? (
                   <div className="card space-y-2">
-                    <SectionTitle>Notice decision (§12)</SectionTitle>
+                    <SectionTitle>Notice decision</SectionTitle>
                     <div className="flex flex-wrap gap-2">
                       {Object.keys(NOTICE_LABELS).map((decision) => (
                         <button
@@ -1384,7 +1384,7 @@ const FinalSettlementPage = () => {
 
                 {(canApprove || canPay) && !detail.locked ? (
                   <div className="card space-y-3">
-                    <SectionTitle note="A rejection needs remarks so HR knows what to fix (§16).">
+                    <SectionTitle note="A rejection needs remarks so HR knows what to fix.">
                       Finance
                     </SectionTitle>
                     <textarea
@@ -1401,7 +1401,7 @@ const FinalSettlementPage = () => {
                     {canApprove && detail.status === 'HR_REVIEWED' ? (
                       <div className="space-y-2 border-b border-crewly-hairline-strong pb-3">
                         <p className="text-xs uppercase tracking-wide text-crewly-dim">
-                          Add a recovery (§13)
+                          Add a recovery
                         </p>
                         <select
                           value={recoveryDraft.type}
@@ -1486,7 +1486,7 @@ const FinalSettlementPage = () => {
                 ) : null}
 
                 <div className="card space-y-2">
-                  <SectionTitle>History (§23)</SectionTitle>
+                  <SectionTitle>History</SectionTitle>
                   <ul className="space-y-2 text-xs text-crewly-dim">
                     {(detail.history || []).map((entry, index) => (
                       <li key={`${entry.status}-${index}`}>
@@ -1517,7 +1517,7 @@ const FinalSettlementPage = () => {
       {/* ── §21 — background downloads ─────────────────────────────────── */}
       {tab === 'FILES' && !loading ? (
         <div className="card space-y-3">
-          <SectionTitle note="Large exports are built in the background (§21).">
+          <SectionTitle note="Large exports are built in the background.">
             Generated files
           </SectionTitle>
           {files.length ? (
@@ -1572,7 +1572,7 @@ const FinalSettlementPage = () => {
         <div className="space-y-3 text-sm">
           <p className="text-crewly-dim">
             Pick a resignation HR has already approved. The last working day, the reason and the
-            resignation date are copied from the Exit module — Crewly never re-types them (§6).
+            resignation date are copied from the Exit module — Crewly never re-types them.
           </p>
           <label className="block text-xs uppercase tracking-wide text-crewly-dim">
             Approved resignation

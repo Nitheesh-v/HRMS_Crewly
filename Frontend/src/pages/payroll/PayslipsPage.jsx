@@ -295,7 +295,6 @@ const PayslipsPage = () => {
             : `${formatMonthInput(month)} · a payslip is cut from the frozen payroll snapshot once the salary is paid.`
         }
         pills={[
-          { label: formatMonthInput(month), tone: 'default' },
           ...(total ? [{ label: `${formatNumber(generated)}/${formatNumber(total)} generated`, tone: generated === total ? 'good' : 'warn' }] : []),
           ...(Number(summary.failed) ? [{ label: `${formatNumber(summary.failed)} failed`, tone: 'bad' }] : []),
         ]}
@@ -392,7 +391,7 @@ const PayslipsPage = () => {
           icon={Download}
           label="Downloaded by staff"
           value={formatNumber(summary.downloaded)}
-          hint="counted when the PDF is fetched"
+          hint="Counted when the PDF is fetched"
         />
         <StatCard
           icon={XCircle}
@@ -405,7 +404,7 @@ const PayslipsPage = () => {
           icon={Wallet}
           label="Net on payslips"
           value={formatMoney(summary.totalNetSalary)}
-          hint="sum of the frozen snapshots"
+          hint="Sum of the frozen snapshots"
         />
       </div>
 

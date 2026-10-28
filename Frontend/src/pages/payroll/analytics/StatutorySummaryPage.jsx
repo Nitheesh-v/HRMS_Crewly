@@ -71,7 +71,7 @@ const StatutorySummaryPage = () => {
       <PageHeader
         icon={Landmark}
         title="Statutory Summary"
-        subtitle={`${monthLabel(month)} · §15 consolidated statutory liability`}
+        subtitle={`${monthLabel(month)} · consolidated statutory liability`}
         actions={<ExportMenu reportKey="STATUTORY" filters={filters} />}
       />
 
@@ -91,13 +91,13 @@ const StatutorySummaryPage = () => {
       {!monthly.loading && monthly.report ? (
         <>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <KpiCard label="Total liability" value={money(totals.totalLiability)} hint="employee + employer" />
+            <KpiCard label="Total liability" value={money(totals.totalLiability)} hint="Employee + employer" />
             <KpiCard label="Employee share" value={money(totals.employee)} />
             <KpiCard label="Employer share" value={money(totals.employer)} />
             <KpiCard label="Gratuity provision" value={money(totals.gratuityProvision)} tone="info" />
           </div>
 
-          <SectionCard className="mt-4" title="By component" subtitle="§15 — every bucket, employee and employer">
+          <SectionCard className="mt-4" title="By component" subtitle="Every bucket, employee and employer">
             <DataTable
               headers={[
                 { key: 'label', label: 'Component', strong: true },
@@ -154,7 +154,7 @@ const StatutorySummaryPage = () => {
           <SectionCard
             className="mt-4"
             title="Financial year summary"
-            subtitle="§15 — the same components across the whole year"
+            subtitle="The same components across the whole year"
             actions={
               <div className="flex items-center gap-2">
                 <select
@@ -188,7 +188,7 @@ const StatutorySummaryPage = () => {
             )}
             <p className="mt-3 text-xs text-crewly-dim">
               The year summary uses the financial year {financialYear}, which starts in April. Each
-              month is read from its own snapshot — nothing is annualised by projection (§11).
+              month is read from its own snapshot — nothing is annualised by projection.
             </p>
           </SectionCard>
         </>

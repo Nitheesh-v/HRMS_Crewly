@@ -62,7 +62,7 @@ const DepartmentAnalyticsPage = () => {
       <PageHeader
         icon={Building2}
         title="Department Analytics"
-        subtitle={`${monthLabel(month)} · §7 payroll cost by department`}
+        subtitle={`${monthLabel(month)} · payroll cost by department`}
         actions={<ExportMenu reportKey="DEPARTMENT" filters={filters} />}
       />
 

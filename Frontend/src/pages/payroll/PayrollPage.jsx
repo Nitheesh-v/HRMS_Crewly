@@ -1216,7 +1216,7 @@ const PayrollPage = () => {
                   title="Bank & disbursement gateway"
                   icon={Landmark}
                   badge={batch ? { text: BATCH_LABELS[batch.status] || batch.status, kind: batchKind(batch.status) } : { text: 'No batch', kind: 'neutral' }}
-                  note="Crewly prepares the transfer file; it never moves money. The bank account is read from Payroll Setup and always masked."
+                  note="Crewly prepares the transfer file; it never moves money."
                 >
                   {setupBank ? (
                     <div className="rounded-lg bg-st-low p-2.5">

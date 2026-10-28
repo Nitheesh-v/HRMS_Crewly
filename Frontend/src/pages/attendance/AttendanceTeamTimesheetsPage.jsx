@@ -623,7 +623,7 @@ const AttendanceTeamTimesheetsPage = () => {
                 icon={Gauge}
                 label="Avg daily presence"
                 value={totals.avgDaily === null ? '—' : `${(Math.round((totals.avgDaily / 60) * 10) / 10).toFixed(1)}h`}
-                hint="worked minutes ÷ scheduled days, these rows only"
+                hint="Worked minutes ÷ scheduled days, these rows only"
                 bar="bg-st-tertiary-container"
               />
               <StatTile

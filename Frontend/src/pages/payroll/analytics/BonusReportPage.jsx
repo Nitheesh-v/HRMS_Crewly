@@ -65,7 +65,7 @@ const BonusReportPage = () => {
       <PageHeader
         icon={Wallet}
         title="Bonus Report"
-        subtitle={`${monthLabel(month)} · §12 variable pay, highest first`}
+        subtitle={`${monthLabel(month)} · variable pay, highest first`}
         actions={<ExportMenu reportKey="BONUS" filters={filters} />}
       />
 
@@ -91,7 +91,7 @@ const BonusReportPage = () => {
             <KpiCard label="Overtime in payroll" value={money(summary.overtimeTotal)} />
           </div>
 
-          <SectionCard className="mt-4" title="By employee" subtitle="§12 — bonus, incentive and commission detail">
+          <SectionCard className="mt-4" title="By employee" subtitle="Bonus, incentive and commission detail">
             <DataTable
               headers={[
                 { key: 'employeeCode', label: 'Employee', strong: true, render: (row) => (

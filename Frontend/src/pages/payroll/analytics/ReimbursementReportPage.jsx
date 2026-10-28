@@ -66,7 +66,7 @@ const ReimbursementReportPage = () => {
       <PageHeader
         icon={Receipt}
         title="Reimbursement Analytics"
-        subtitle={`${monthLabel(month)} · §18 travel, food, fuel, internet, medical, mobile`}
+        subtitle={`${monthLabel(month)} · travel, food, fuel, internet, medical, mobile`}
         actions={<ExportMenu reportKey="REIMBURSEMENT" filters={filters} />}
       />
 
@@ -95,7 +95,7 @@ const ReimbursementReportPage = () => {
             <KpiCard label="Categories in use" value={count(categories.length)} />
           </div>
 
-          <SectionCard className="mt-4" title="By category" subtitle="§18 — what the money was spent on">
+          <SectionCard className="mt-4" title="By category" subtitle="What the money was spent on">
             <DataTable
               headers={[
                 { key: 'label', label: 'Category', strong: true },
@@ -114,7 +114,7 @@ const ReimbursementReportPage = () => {
             />
           </SectionCard>
 
-          <SectionCard className="mt-4" title="By employee" subtitle="§18 — who claimed, and what">
+          <SectionCard className="mt-4" title="By employee" subtitle="Who claimed, and what">
             <DataTable
               headers={[
                 {
@@ -142,7 +142,7 @@ const ReimbursementReportPage = () => {
           </SectionCard>
 
           {byMonth.length > 1 ? (
-            <SectionCard className="mt-4" title="By month" subtitle="§18 — the claim pattern over the period">
+            <SectionCard className="mt-4" title="By month" subtitle="The claim pattern over the period">
               <DataTable
                 headers={[
                   { key: 'label', label: 'Month', strong: true },

@@ -107,7 +107,7 @@ const ConvertToEmployeePage = () => {
   if (!canConvert) {
     return (
       <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-6 text-amber-100">
-        You need CANDIDATE_CONVERT permission. Log out/in after pulling Phase 27.13.
+        You need the CANDIDATE_CONVERT permission to convert a candidate.
       </div>
     );
   }

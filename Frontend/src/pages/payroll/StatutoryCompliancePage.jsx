@@ -943,15 +943,11 @@ const StatutoryCompliancePage = () => {
                   value={money(summary.grossPayroll)}
                 />
                 <p className="pt-2 text-[10px] leading-snug text-st-on-variant">
-                  Crewly records a filing after it happens on the government portal. Nothing here is
-                  auto-filed, and a tick only means the attestation has been entered.
+                  Filing is recorded after it happens on the portal — Crewly never files for you.
                 </p>
               </Panel>
 
-              <Panel title="Open a working" bodyClassName="px-4 pb-4">
-                <p className="pb-2 text-[10px] leading-snug text-st-on-variant">
-                  Each tab carries the employee-wise lines the return needs, plus export.
-                </p>
+              <Panel title="Open a working" bodyClassName="px-4 pb-4 pt-1">
                 <div className="flex flex-wrap gap-1.5">
                   {REPORT_TABS.filter(
                     ({ key }) =>
@@ -968,11 +964,6 @@ const StatutoryCompliancePage = () => {
             </Rail>
           </div>
 
-          <p className="rounded-xl bg-st-low/50 px-3 py-2 text-[10px] leading-snug text-st-on-variant">
-            Liabilities are frozen when the payroll is paid. Filing status is a human record of what was
-            submitted on EPFO / ESIC / the state PT portal / TRACES — no return is claimed as filed by
-            Crewly itself.
-          </p>
             </>
           ) : null}
 
@@ -1207,7 +1198,7 @@ const AnnualTab = ({
         <div>
           <h2 className="text-lg font-semibold">Annual reports</h2>
           <p className="text-xs text-crewly-dim">
-            Built from every monthly snapshot in {annual.financialYearLabel} (§18).
+            Built from every monthly snapshot in {annual.financialYearLabel}.
           </p>
         </div>
         <input
@@ -1339,7 +1330,7 @@ const CalendarTab = ({ calendar, busy, onToggle }) => {
           <div>
             <h2 className="text-lg font-semibold">Compliance calendar</h2>
             <p className="text-xs text-crewly-dim">
-              Statutory filing deadlines and what is still open (§19). Crewly tracks these; it does
+              Statutory filing deadlines and what is still open. Crewly tracks these; it does
               not file them.
             </p>
           </div>

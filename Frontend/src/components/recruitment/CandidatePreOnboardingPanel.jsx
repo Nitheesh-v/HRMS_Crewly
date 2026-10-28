@@ -74,12 +74,12 @@ const CandidatePreOnboardingPanel = ({ candidate, onStarted }) => {
       if (status === 403) {
         setError(
           requestError.message ||
-            'Permission denied. Log out/in so PRE_ONBOARDING_* permissions migrate onto your HR role.'
+            'You do not have permission to start pre-onboarding. Ask your administrator for it.'
         );
       } else if (status === 404) {
         setError(
           requestError.message ||
-            'Start API not found. Confirm frontend VITE_API_URL points at your local Backend running Phase 27.12 (not only production Render).'
+            'Pre-onboarding could not be started. Refresh in a moment, or ask your administrator.'
         );
       } else {
         setError(requestError.message || 'Pre-onboarding could not be started');
@@ -112,9 +112,8 @@ const CandidatePreOnboardingPanel = ({ candidate, onStarted }) => {
             </p>
             {missingNewPermissions ? (
               <p className="mt-2 text-sm text-amber-200">
-                Your session does not include Phase 27.12 pre-onboarding permissions yet.
-                Restart the local backend on branch arena/01a0398f-hrms-crewly, confirm
-                VITE_API_URL points to that backend, then log out and log back in.
+                Your session does not include the pre-onboarding permissions yet. Log out and back in;
+                if it still says this, ask your administrator to grant them.
               </p>
             ) : null}
             {error ? (

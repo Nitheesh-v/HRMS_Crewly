@@ -545,7 +545,7 @@ const AttendanceAnalyticsPage = () => {
             title="Day outcomes breakdown"
             icon={CalendarDays}
             badge={`${daySum} day${daySum === 1 ? '' : 's'}`}
-            note="Consolidated operational ledger units for the selected interval. Every tile is a bucket the backend resolved — nothing here is projected."
+            note="Consolidated operational ledger units for the selected interval."
           >
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {DAY_TILES.map(([key, label, hint, dot, tone]) => (
@@ -621,8 +621,7 @@ const AttendanceAnalyticsPage = () => {
                 </span>
               </p>
               <p className="mt-0.5 text-[9px] leading-relaxed text-st-on-variant">
-                No mandated office-day minimum is stored, so no compliance percentage is printed. Set one on
-                the attendance policy if you need it measured.
+                No office-day minimum is set, so no percentage is printed.
               </p>
               <Link to="/app/attendance/policy" className="mt-1 inline-flex items-center gap-1 text-[9px] font-bold text-st-primary hover:underline">
                 Open attendance policy <ChevronRight className="h-2.5 w-2.5" aria-hidden="true" />
@@ -654,8 +653,7 @@ const AttendanceAnalyticsPage = () => {
               <p className="text-[10px] text-st-on-variant">No punches in range, so there is no capture mix to show.</p>
             )}
             <p className="mt-2 text-[9px] leading-relaxed text-st-on-variant">
-              Gateway heartbeats and terminal uptime are not published — this card counts evidence, it does
-              not claim a device is online.
+              Device uptime is not published — this card counts evidence only.
             </p>
           </Section>
 
@@ -792,7 +790,7 @@ const AttendanceAnalyticsPage = () => {
         <Section
           title="Monthly attendance rate"
           icon={BarChart3}
-          note="Up to 12 months back. Each bar names its source — a finalized bar is snapshot truth, a live bar moves until finalization."
+          note="Up to 12 months back. Each bar names its source."
         >
           {months.length ? (
             <svg viewBox={`0 0 ${months.length * 64 + 16} 190`} className="w-full" role="img" aria-label="Monthly attendance rate chart">

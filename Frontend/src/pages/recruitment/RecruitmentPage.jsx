@@ -571,7 +571,7 @@ const RecruitmentPage = () => {
         <span className="border-b-2 border-indigo-400 px-1 pb-3 font-semibold text-indigo-300">
           Jobs & candidate pipeline
         </span>
-        <span className="cursor-not-allowed px-1 pb-3 text-slate-600" title="Later Phase 27 subphase">
+        <span className="cursor-not-allowed px-1 pb-3 text-slate-600" title="Coming soon">
           Analytics
         </span>
       </nav>

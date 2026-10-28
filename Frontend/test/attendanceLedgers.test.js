@@ -103,7 +103,7 @@ describe('attendance ledgers — live data only', () => {
 
   test('analytics refuses the two figures the backend does not hold', () => {
     has(analytics, 'Hybrid compliance', 'the mock’s compliance chip is kept');
-    has(analytics, 'No mandated office-day minimum is stored', 'and explained instead of filled in');
+    has(analytics, 'No office-day minimum is set', 'and explained instead of filled in');
     has(analytics, 'PDF audit', 'the mock’s PDF button is kept');
     has(analytics, 'No PDF ledger report is published', 'with its reason on the title');
     assert.equal(

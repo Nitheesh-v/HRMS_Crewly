@@ -348,18 +348,15 @@ const KioskStationsPage = () => {
             <ol className="mt-1.5 grid grid-cols-1 gap-2 text-[10px] leading-relaxed text-st-on-primary-fixed-variant sm:grid-cols-3">
               <li className="rounded-lg bg-st-lowest/70 px-2.5 py-2">
                 <strong className="block text-[11px] text-st-on">1 · Register the device</strong>
-                Give it a name and, optionally, the premises it stands at. The secret is generated once and
-                shown once.
+                Name it and pick its premises. The secret is shown once.
               </li>
               <li className="rounded-lg bg-st-lowest/70 px-2.5 py-2">
                 <strong className="block text-[11px] text-st-on">2 · Open the terminal</strong>
-                On the shared tablet open <code className="font-mono">/kiosk</code>, paste the station ID and the
-                one-time secret. That secret signs the device in.
+                On the tablet open <code className="font-mono">/kiosk</code> and paste the station ID and secret.
               </li>
               <li className="rounded-lg bg-st-lowest/70 px-2.5 py-2">
                 <strong className="block text-[11px] text-st-on">3 · Employees identify themselves</strong>
-                Code + Kiosk PIN per punch, then the punch confirms in their own session. Rotate or deactivate
-                to revoke access instantly.
+                Code + PIN per punch, confirmed in their own session. Rotate to revoke access.
               </li>
             </ol>
           </section>

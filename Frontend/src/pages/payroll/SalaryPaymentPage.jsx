@@ -592,9 +592,7 @@ const SalaryPaymentPage = () => {
                 value={latestFile ? `${formatNumber(latestFile.downloadCount)} time(s)` : '—'}
               />
               <p className="pt-1 text-[9px] leading-snug text-st-on-variant">
-                Crewly does not hold bank credentials and does not transmit payments. Your finance
-                team downloads the batch file and uploads it to the corporate banking portal — that
-                is the only step this product cannot see.
+                Crewly prepares the file; your bank does the transfer.
               </p>
             </div>
           </Panel>
@@ -617,9 +615,8 @@ const SalaryPaymentPage = () => {
                 value={formatNumber(kpis.failedPayments)}
               />
               <p className="pt-1 text-[9px] leading-snug text-st-on-variant">
-                The export claims envelope encryption, a dual-admin quorum and NPCI certification.
-                None of those are configured here, so none of them are printed as badges. What is
-                real: the audit trail, the per-employee outcomes, and the masked roster above.
+                Encryption, dual-admin quorum and NPCI badges are not configured here, so they are not
+                shown.
               </p>
             </div>
           </Panel>
@@ -958,7 +955,7 @@ const BatchDetail = ({
           {['DRAFT', 'READY'].includes(status) ? (
             <p className="text-xs text-crewly-dim">
               Generate the bank file before confirming payment — Crewly records a payment only when
-              there is a file to have been uploaded (§26).
+              there is a file to have been uploaded.
             </p>
           ) : null}
 
@@ -1166,7 +1163,7 @@ const BatchDetail = ({
                 {canGenerate && Number(batch.summary?.failedTransactions || 0) > 0 ? (
                   <p className="text-xs text-crewly-dim">
                     Create a retry batch to pay only these employees — anyone already paid is never
-                    sent twice (§15 / §16).
+                    sent twice.
                   </p>
                 ) : null}
               </div>
@@ -1300,7 +1297,7 @@ const BatchDetail = ({
               </table>
               <p className="p-3 text-xs text-crewly-dim">
                 Files are never overwritten: every generation adds a new row, so the audit trail can
-                show which file finance actually uploaded (§12).
+                show which file finance actually uploaded.
               </p>
             </div>
           ) : null}
@@ -1372,7 +1369,7 @@ const BatchDetail = ({
                 </tbody>
               </table>
               <p className="p-3 text-xs text-crewly-dim">
-                Written by the platform audit service on every action (§22) — company, actor,
+                Written by the platform audit service on every action — company, actor,
                 previous status and new status, with the batch, its payment rows and its files.
               </p>
             </div>

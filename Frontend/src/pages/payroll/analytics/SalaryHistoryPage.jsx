@@ -60,7 +60,7 @@ const SalaryHistoryPage = () => {
       <PageHeader
         icon={History}
         title="Salary History"
-        subtitle={`${employee.employeeName || 'Employee'} ${employee.employeeCode || ''} · §23 what was paid, and what was contracted`}
+        subtitle={`${employee.employeeName || 'Employee'} ${employee.employeeCode || ''} · what was paid, and what was contracted`}
       />
 
       {denied ? <AccessDenied message="This employee is outside your payroll scope." /> : null}
@@ -97,7 +97,7 @@ const SalaryHistoryPage = () => {
           <SectionCard
             className="mt-4"
             title="What they were paid"
-            subtitle="§23 — one row per month, read from the payroll snapshots"
+            subtitle="One row per month, read from the payroll snapshots"
           >
             <DataTable
               headers={[
@@ -123,7 +123,7 @@ const SalaryHistoryPage = () => {
           <SectionCard
             className="mt-4"
             title="What they were contracted to be paid"
-            subtitle="§23 — the 29.4 profile's version chain, newest first. Nothing is overwritten."
+            subtitle="The 29.4 profile's version chain, newest first. Nothing is overwritten."
           >
             <DataTable
               headers={[

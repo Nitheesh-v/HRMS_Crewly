@@ -182,8 +182,7 @@ const RecruitmentDashboardPage = () => {
   if (!canRead) {
     return (
       <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-6 text-amber-100">
-        You need RECRUITMENT_ANALYTICS_READ. Pull Phase 27.14, restart the backend, then log out
-        and log back in.
+        You need the RECRUITMENT_ANALYTICS_READ permission to see recruitment analytics.
       </div>
     );
   }
@@ -197,8 +196,7 @@ const RecruitmentDashboardPage = () => {
           </p>
           <h1 className="mt-2 text-2xl font-bold text-slate-100">Command center</h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-400">
-            Funnel, hiring metrics, and operational queues derived from live Phase 27 recruitment
-            records. JOINED is conversion-complete only — READY_TO_JOIN is separate.
+            Funnel, hiring metrics and operational queues, derived from live recruitment records.
           </p>
           {data?.range ? (
             <p className="mt-2 text-xs text-slate-500">

@@ -103,12 +103,12 @@ describe('statutory compliance — filing summary on live roll-up', () => {
 
   test('filing is stated as a human record, never an automatic act', () => {
     assert.ok(
-      statutory.includes('Nothing here is\n                  auto-filed'),
+      statutory.includes('Filing is recorded after it happens on the portal'),
       'the readiness panel must say filing is recorded, not performed',
     );
     assert.ok(
-      statutory.includes('no return is claimed as filed by'),
-      'the footer must disclaim any automatic filing',
+      statutory.includes('Crewly never files for you'),
+      'the same note must disclaim any automatic filing — once, not three times',
     );
     assert.ok(statutory.includes('CheckRow'), 'readiness must be a checklist of real states');
   });
