@@ -1,11 +1,36 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, Copy, Plus, Trash2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import {
+  ArrowDown,
+  ArrowRight,
+  ArrowUp,
+  Boxes,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  Layers,
+  Loader2,
+  Pencil,
+  Plus,
+  Sparkles,
+  Trash2,
+  UserX,
+  Users,
+} from 'lucide-react';
 import Modal from '../../components/Modal.jsx';
 import usePermission from '../../hooks/usePermission.js';
 import salaryStructureService from '../../services/salaryStructureService.js';
+import employeePayrollService from '../../services/employeePayrollService.js';
 import { notify } from '../../utils/notify.js';
 import EmptyState from '../../components/common/EmptyState.jsx';
+import {
+  Panel,
+  Pill,
+  StageBand,
+  StageButton,
+  StatCard,
+} from '../../components/payroll/PayrollCockpit.jsx';
 
 // ── display mirrors of the backend rules (the server always decides) ────────
 
@@ -30,6 +55,22 @@ const STATUSES = [
   { value: 'INACTIVE', label: 'Inactive' },
   { value: 'ARCHIVED', label: 'Archived' },
 ];
+
+/** One preview line, as the builder's live-preview table renders it. */
+const previewRows = (rows) =>
+  rows.map((line) => (
+    <tr key={line.componentCode} className="border-b border-crewly-border/60 last:border-0">
+      <td className="py-1.5">
+        {line.name}
+        <span className="ml-1.5 text-[10px] uppercase tracking-wide text-crewly-dim">
+          {line.methodLabel}
+        </span>
+      </td>
+      <td className="py-1.5 text-right tabular-nums">{formatMoney(line.amount)}</td>
+    </tr>
+  ));
+
+const CARDS_PER_PAGE = 6;
 
 const emptyForm = {
   name: '',
@@ -62,6 +103,22 @@ const formatDate = (value) =>
 
 const formatMoney = (value) => `Rs ${Number(value || 0).toLocaleString('en-IN')}`;
 
+const formatNumber = (value) => Number(value || 0).toLocaleString('en-IN');
+
+/*
+ * The band colours the distribution chart uses. They are the Warm Organic
+ * roles in a fixed order, so the same component keeps the same colour in every
+ * structure card on the page.
+ */
+const BAND_CLASSES = [
+  'bg-st-primary',
+  'bg-st-primary-container',
+  'bg-st-secondary',
+  'bg-st-tertiary',
+  'bg-st-secondary-fixed-dim',
+  'bg-st-on-variant',
+];
+
 const methodOf = (value) => METHODS.find((method) => method.value === value) || METHODS[0];
 
 const statusBadge = (status) => {
@@ -84,7 +141,6 @@ const SalaryStructuresPage = () => {
   const [loading, setLoading] = useState(true);
   const [structures, setStructures] = useState([]);
   const [components, setComponents] = useState([]);
-  const [meta, setMeta] = useState({ total: 0, page: 1, limit: 25, pages: 1 });
   const [accessDenied, setAccessDenied] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -93,8 +149,12 @@ const SalaryStructuresPage = () => {
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
-  const [sampleGross, setSampleGross] = useState('50000');
+  // The builder's live preview uses `sampleGross`; the card grid uses the same
+  // number, so the two can never disagree about what an amount is priced at.
+  const [sampleGross, setSampleGross] = useState('100000');
   const [preview, setPreview] = useState(null);
+  const [previews, setPreviews] = useState({});
+  const [assignment, setAssignment] = useState(null);
   const [detail, setDetail] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [addCode, setAddCode] = useState('');
@@ -131,19 +191,20 @@ const SalaryStructuresPage = () => {
     else notify.success(body);
   }, []);
 
+  /*
+   * The template list is small (a company keeps a handful of structures), and
+   * the cards need the whole set to report "3 active of 5" honestly. So the
+   * whole tenant list is read once — the API caps it at 100 — and the search,
+   * status filter and paging happen here, mirroring what the server's own
+   * filterStructures() does. Nothing is widened: the server still decides which
+   * structures this person may see at all.
+   */
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await salaryStructureService.list({
-        search: filters.search || undefined,
-        status: filters.status === 'ALL' ? undefined : filters.status,
-        page: filters.page,
-      });
+      const data = await salaryStructureService.list({ limit: 100 });
       setStructures(data?.data ?? data ?? []);
       setComponents(data?.meta?.components || []);
-      setMeta(
-        data?.meta || { total: 0, page: 1, limit: 25, pages: 1 },
-      );
       setAccessDenied(false);
     } catch (error) {
       if (error?.status === 403 || error?.code === 'PERMISSION_DENIED') {
@@ -154,7 +215,7 @@ const SalaryStructuresPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [filters, flash]);
+  }, [flash]);
 
   useEffect(() => {
     if (!permsLoading && canView) load();
@@ -187,6 +248,142 @@ const SalaryStructuresPage = () => {
 
     return () => clearTimeout(timer);
   }, [formOpen, form.items, sampleGross]);
+
+  /*
+   * §17 — who is actually assigned. This is a READ of the employee payroll
+   * profiles (the only place an assignment exists), not a second structure
+   * endpoint: `structureId` on the current profile is the assignment.
+   *
+   * It needs EMPLOYEE_SALARY_READ. A payroll administrator who only configures
+   * structures may not hold it, so the card row says "not visible" rather than
+   * printing a zero it cannot vouch for.
+   */
+  useEffect(() => {
+    if (permsLoading || !canView) return undefined;
+    let active = true;
+    employeePayrollService
+      .list()
+      .then((data) => {
+        if (!active) return;
+        const profiles = data?.data ?? data?.profiles ?? [];
+        const employees = data?.meta?.employees ?? data?.employees ?? [];
+        const activeEmployees = employees.length || profiles.length;
+        const assigned = new Set(
+          (profiles || []).map((row) => String(row.structureId || '')).filter(Boolean),
+        );
+        const profileEmployees = new Set((profiles || []).map((row) => String(row.employeeId)));
+        const withoutProfile = (employees || []).filter(
+          (row) => !profileEmployees.has(String(row._id)),
+        ).length;
+        setAssignment({
+          activeEmployees,
+          assignedEmployees: (profiles || []).filter((row) => row.structureId).length,
+          unassigned: activeEmployees - profileEmployees.size || withoutProfile,
+          perStructure: (profiles || []).reduce((map, row) => {
+            const key = String(row.structureId || '');
+            if (!key) return map;
+            map[key] = (map[key] || 0) + 1;
+            return map;
+          }, {}),
+          structureIds: assigned,
+        });
+      })
+      .catch(() => {
+        if (active) setAssignment(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [permsLoading, canView]);
+
+  // §15 — the same three filters the server applies, applied to the one read.
+  const filtered = useMemo(() => {
+    const needle = filters.search.trim().toLowerCase();
+    return structures.filter((structure) => {
+      if (filters.status !== 'ALL' && structure.status !== filters.status) return false;
+      if (!needle) return true;
+      return [structure.name, structure.code, structure.description]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(needle);
+    });
+  }, [structures, filters.search, filters.status]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / CARDS_PER_PAGE));
+  const meta = {
+    page: Math.min(filters.page, pageCount),
+    pages: pageCount,
+  };
+  const pageRows = filtered.slice((meta.page - 1) * CARDS_PER_PAGE, meta.page * CARDS_PER_PAGE);
+
+  const activeStructures = structures.filter((structure) => structure.status === 'ACTIVE').length;
+  const assignedCount = assignment?.assignedEmployees || 0;
+  const coveragePercent = assignment?.activeEmployees
+    ? Math.round((assignedCount / assignment.activeEmployees) * 100)
+    : 0;
+  const assignedFor = (structure) => assignment?.perStructure?.[String(structure._id)] || 0;
+
+  /*
+   * §9 — the amounts under each card are the SERVER's preview for that
+   * structure at the sample gross above. One POST per visible card, and the
+   * server explicitly does not store the result.
+   */
+  useEffect(() => {
+    if (!pageRows.length) {
+      setPreviews({});
+      return undefined;
+    }
+    let active = true;
+    const gross = Number(sampleGross) || 0;
+    if (!gross) {
+      setPreviews({});
+      return undefined;
+    }
+
+    Promise.all(
+      pageRows.map((structure) =>
+        salaryStructureService
+          .preview({
+            items: (structure.items || []).map((item) => ({
+              componentCode: item.componentCode,
+              calculationMethod: item.calculationMethod,
+              value: item.value === '' ? null : Number(item.value),
+              order: item.order,
+            })),
+            gross,
+          })
+          .then((data) => [structure._id, data?.data ?? data ?? null])
+          .catch(() => [structure._id, null]),
+      ),
+    ).then((pairs) => {
+      if (active) setPreviews(Object.fromEntries(pairs));
+    });
+
+    return () => {
+      active = false;
+    };
+    // pageRows is derived from `filtered`, which is derived from structures —
+    // depending on the ids keeps this from re-firing on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [structures, filters.search, filters.status, filters.page, sampleGross]);
+
+  /** The card's distribution bar: earnings as a share of gross, biggest first. */
+  const distribution = (structurePreview) => {
+    const gross = Number(structurePreview?.totals?.gross || 0);
+    if (!gross) return [];
+    return (structurePreview.earnings || [])
+      .filter((line) => Number(line.amount) > 0)
+      .sort((a, b) => Number(b.amount) - Number(a.amount))
+      .slice(0, 5)
+      .map((line, index) => ({
+        code: line.componentCode,
+        name: line.name,
+        amount: Number(line.amount),
+        percent: Math.round((Number(line.amount) / gross) * 100),
+        className: BAND_CLASSES[index % BAND_CLASSES.length],
+      }));
+  };
 
   const componentByCode = useMemo(
     () => Object.fromEntries(components.map((component) => [component.code, component])),
@@ -237,6 +434,56 @@ const SalaryStructuresPage = () => {
       ],
     }));
     setAddCode('');
+  };
+
+  /*
+   * A starting point, not a policy. The classic Indian split is Basic at half
+   * of gross, HRA at 40% of Basic and the balance as special allowance — and PF
+   * at 12% of Basic on both sides. Every line is drawn from a component this
+   * company actually has; anything missing is simply left out, and the toast
+   * says which. Amounts stay editable, and Professional Tax is deliberately not
+   * guessed because the slab belongs to the employee's state.
+   */
+  const prefillIndianStandard = () => {
+    const available = new Set(components.map((component) => component.code));
+    const gross = Number(sampleGross) || 0;
+    const items = [];
+    const add = (code, calculationMethod, value) => {
+      if (!available.has(code)) return false;
+      items.push({ componentCode: code, calculationMethod, value, order: items.length });
+      return true;
+    };
+
+    const skipped = [];
+    if (!add('BASIC', 'FIXED_AMOUNT', Math.round(gross * 0.5))) skipped.push('Basic Salary');
+    else {
+      if (!add('HRA', 'PERCENTAGE_OF_BASIC', 40)) skipped.push('House Rent Allowance');
+      if (!add('SPECIAL_ALLOWANCE', 'REMAINING', null)) skipped.push('Special Allowance');
+    }
+    if (!add('PF', 'PERCENTAGE_OF_BASIC', 12)) skipped.push('Provident Fund');
+    if (!add('EMPLOYER_PF', 'PERCENTAGE_OF_BASIC', 12)) skipped.push('Employer PF');
+
+    if (!items.length) {
+      notify.warning('This company has none of the standard components yet.');
+      return;
+    }
+
+    setEditingId(null);
+    setForm({
+      ...emptyForm,
+      name: 'Standard Indian CTC',
+      code: 'STD-CTC',
+      description:
+        'Basic 50% of gross, HRA 40% of Basic, special allowance as the balance, PF at 12% on both sides.',
+      items,
+    });
+    setAddCode('');
+    setFormOpen(true);
+    notify.info(
+      skipped.length
+        ? `Pre-filled ${items.length} component(s). Not in your component library: ${skipped.join(', ')}.`
+        : `Pre-filled ${items.length} component(s) — review before saving.`,
+    );
   };
 
   const updateItem = (index, patch) =>
@@ -336,211 +583,365 @@ const SalaryStructuresPage = () => {
 
   if (noAccess || accessDenied) {
     return (
-      <div className="space-y-5">
-        <h1 className="text-2xl font-bold">Salary Structures</h1>
-        <div className="card space-y-2">
-          <h2 className="text-lg font-semibold">Payroll access required</h2>
-          <p className="text-sm text-crewly-dim">
-            You don&apos;t have permission to manage salary structures. Contact your Company Admin or
-            Payroll Administrator.
-          </p>
-        </div>
+      <div className="st-surface min-h-screen space-y-4">
+        <StageBand eyebrow="Salary architecture" title="Salary structures" />
+        <Panel title="Payroll access required">
+          <div className="p-4 text-sm text-st-on-variant">
+            You don&apos;t have permission to manage salary structures. Contact your Company Admin
+            or Payroll Administrator.
+          </div>
+        </Panel>
       </div>
     );
   }
 
-  const previewRows = (rows = []) =>
-    rows.map((row) => (
-      <tr key={`${row.componentCode}-${row.order}`} className="border-b border-crewly-border/60">
-        <td className="py-1.5 pr-3">{row.name}</td>
-        <td className="py-1.5 pr-3 text-crewly-dim">{row.methodLabel}</td>
-        <td className="py-1.5 pr-3 text-right">
-          {row.isRemaining ? '—' : `${row.value}${methodOf(row.calculationMethod).unit === '%' ? '%' : ''}`}
-        </td>
-        <td className="py-1.5 text-right">{formatMoney(row.amount)}</td>
-      </tr>
-    ));
-
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">Salary Structures</h1>
-          <p className="mt-1 text-sm text-crewly-dim">
-            Reusable templates that assemble your salary components into a complete salary. A structure
-            is not an employee salary — employees are assigned to one in the next phase.
-          </p>
-        </div>
-        {canManage && (
-          <button type="button" className="btn-primary" onClick={openCreate} disabled={busy}>
-            <Plus size={14} className="mr-1 inline" />
-            Create Structure
-          </button>
-        )}
-      </div>
+    <div className="space-y-3">
+      <StageBand
+        eyebrow="Payroll · Salary structures"
+        title="Salary structures"
+        description="Reusable templates that assemble this company's active components into a complete salary. A structure is not an employee's salary — employees are assigned to one, and the engine prices it."
+        pills={[
+          { label: `${formatNumber(activeStructures)} active`, tone: 'good' },
+          { label: `${formatNumber(structures.length)} template(s)`, tone: 'default' },
+          ...(assignment ? [] : [{ label: 'assignment not visible', tone: 'warn' }]),
+        ]}
+        aside={
+          <label className="flex items-center gap-2 text-[11px] font-semibold text-st-on-variant">
+            <span className="uppercase tracking-wide">Sample gross</span>
+            <input
+              type="number"
+              min="0"
+              step="5000"
+              value={sampleGross}
+              onChange={(event) => setSampleGross(event.target.value)}
+              className="w-24 rounded-lg border border-st-outline-variant/70 bg-st-lowest px-2 py-1.5 text-[11px] font-semibold text-st-on tabular-nums"
+            />
+          </label>
+        }
+        actions={
+          canManage ? (
+            <>
+              <StageButton variant="primary" icon={Plus} onClick={openCreate} disabled={busy}>
+                Create structure
+              </StageButton>
+              <StageButton
+                icon={Sparkles}
+                onClick={prefillIndianStandard}
+                disabled={busy || !components.length}
+                title={
+                  components.length
+                    ? 'Pre-fill the builder with the standard Indian CTC split, using only components this company has'
+                    : 'No active components to build from yet'
+                }
+              >
+                Add Indian standard CTC
+              </StageButton>
+            </>
+          ) : null
+        }
+      />
 
-      {/* §15 — filters */}
-      <div className="card grid gap-3 md:grid-cols-3">
-        <input
-          className="input"
-          placeholder="Search name, code or description"
-          value={filters.search}
-          onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value, page: 1 }))}
+      <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          icon={Layers}
+          label="Active structures"
+          value={formatNumber(activeStructures)}
+          tone={activeStructures ? 'good' : 'default'}
+          hint={`${formatNumber(structures.length)} template(s) on file`}
         />
-        <select
-          className="input"
-          value={filters.status}
-          onChange={(event) => setFilters((prev) => ({ ...prev, status: event.target.value, page: 1 }))}
-        >
-          {STATUSES.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <div className="flex items-center justify-end text-xs text-crewly-dim">
-          {meta.total} structure(s)
-        </div>
+        <StatCard
+          icon={Users}
+          label="Assigned employees"
+          value={assignment ? `${formatNumber(assignedCount)} / ${formatNumber(assignment.activeEmployees)}` : '—'}
+          hint={
+            assignment
+              ? `${coveragePercent}% of active employees carry a structure`
+              : 'needs EMPLOYEE_SALARY_READ to read assignments'
+          }
+        />
+        <StatCard
+          icon={UserX}
+          label="Unassigned"
+          value={assignment ? formatNumber(assignment.unassigned) : '—'}
+          tone={assignment?.unassigned ? 'warn' : 'default'}
+          hint={assignment ? 'Active employees with no payroll profile' : 'not visible with your permissions'}
+        />
+        <StatCard
+          icon={Boxes}
+          label="Components available"
+          value={formatNumber(components.length)}
+          hint="Active components a structure may use"
+        />
       </div>
 
-      <div className="card">
-        {loading ? (
-          <p className="text-sm text-crewly-dim">Loading salary structures…</p>
-        ) : structures.length === 0 ? (
-          <EmptyState
-            illustration="payslip"
-            title="No salary structures yet"
-            description="A structure assembles this company's salary components — say Basic + HRA + Special Allowance − PF. Create the components first, then build the structure here."
-            action={canManage ? (
-              <button type="button" className="btn-primary" onClick={openCreate}>
-                Create Salary Structure
-              </button>
-            ) : null}
+      <Panel
+        title="Structure templates"
+        subtitle={
+          sampleGross > 0
+            ? `Amounts are the server's preview at a ${formatMoney(sampleGross)} sample gross — nothing is stored`
+            : 'Set a sample gross to see the amounts the server would pay'
+        }
+        right={
+          <span className="text-[10px] text-st-on-variant">
+            showing {formatNumber(pageRows.length)} of {formatNumber(filtered.length)}
+          </span>
+        }
+      >
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-st-high px-3 py-2">
+          <input
+            className="min-w-[10rem] flex-1 rounded-lg border border-st-outline-variant/60 bg-st-lowest px-2.5 py-1.5 text-[11px] text-st-on placeholder:text-st-on-variant/70"
+            placeholder="Search name, code or description"
+            value={filters.search}
+            onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value, page: 1 }))}
           />
+          <select
+            className="rounded-lg border border-st-outline-variant/60 bg-st-lowest px-2 py-1.5 text-[11px] font-semibold text-st-on"
+            value={filters.status}
+            onChange={(event) => setFilters((prev) => ({ ...prev, status: event.target.value, page: 1 }))}
+          >
+            {STATUSES.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <Link
+            to="/app/payroll/components"
+            className="ml-auto inline-flex items-center gap-1 rounded-lg border border-st-outline-variant/60 px-2 py-1.5 text-[11px] font-semibold text-st-on hover:bg-st-low"
+          >
+            <Boxes aria-hidden="true" size={12} /> Manage components
+          </Link>
+        </div>
+
+        {loading ? (
+          <p className="flex items-center gap-2 px-4 py-8 text-[11px] text-st-on-variant">
+            <Loader2 aria-hidden="true" className="animate-spin" size={14} /> Loading structures…
+          </p>
+        ) : filtered.length === 0 ? (
+          <div className="px-4 py-6">
+            <EmptyState
+              illustration="payslip"
+              title={structures.length ? 'No structure matches this filter' : 'No salary structures yet'}
+              description={
+                structures.length
+                  ? 'Clear the search or pick a different status to see the templates on file.'
+                  : "A structure assembles this company's salary components — say Basic + HRA + Special Allowance − PF. Create the components first, then build the structure here."
+              }
+              action={
+                canManage && !structures.length ? (
+                  <button type="button" className="btn-primary" onClick={openCreate}>
+                    Create salary structure
+                  </button>
+                ) : null
+              }
+            />
+          </div>
         ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-crewly-border text-xs uppercase tracking-wide text-crewly-dim">
-                    <th className="py-2 pr-3">Structure</th>
-                    <th className="py-2 pr-3">Code</th>
-                    <th className="py-2 pr-3">Components</th>
-                    <th className="py-2 pr-3">Status</th>
-                    <th className="py-2 pr-3">Version</th>
-                    <th className="py-2 pr-3">Effective</th>
-                    <th className="py-2 pr-3">Employees Using</th>
-                    <th className="py-2">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {structures.map((structure) => (
-                    <tr key={structure._id} className="border-b border-crewly-border/60">
-                      <td className="py-2 pr-3">
+          <div className="grid gap-2.5 border-t border-st-high p-3 lg:grid-cols-2 2xl:grid-cols-3">
+            {pageRows.map((structure) => {
+              const preview = previews[structure._id];
+              return (
+                <article
+                  key={structure._id}
+                  className="flex flex-col gap-2.5 rounded-xl border border-st-high bg-st-low/30 p-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Pill tone={structure.status === 'ACTIVE' ? 'good' : structure.status === 'DRAFT' ? 'warn' : 'default'}>
+                        {structure.status || 'draft'}
+                      </Pill>
+                      <span
+                        className="inline-flex items-center gap-1 rounded-full bg-st-container px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-st-on"
+                        title={
+                          assignment
+                            ? 'Employees whose current pay profile carries this structure'
+                            : 'Assignment counts need EMPLOYEE_SALARY_READ'
+                        }
+                      >
+                        <Users aria-hidden="true" size={9} />
+                        {assignment ? `${formatNumber(assignedFor(structure))} assigned` : 'assignment hidden'}
+                      </span>
+                      {structure.designation ? (
+                        <span className="text-[10px] text-st-on-variant">{structure.designation}</span>
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      className="rounded-md px-1.5 py-0.5 text-[10px] text-st-on-variant hover:bg-st-low"
+                      title="Open the full component breakup"
+                      onClick={() => openDetail(structure)}
+                    >
+                      Details
+                    </button>
+                  </div>
+
+                  <div>
+                    <h3 className="text-[13px] font-bold leading-tight text-st-on">{structure.name}</h3>
+                    <p className="mt-0.5 text-[10px] text-st-on-variant">
+                      <span className="font-mono">{structure.code}</span> · v{structure.version || 1} ·{' '}
+                      {formatNumber(structure.componentCount)} component(s) · effective{' '}
+                      {formatDate(structure.effectiveFrom)}
+                    </p>
+                  </div>
+
+                  {preview ? (
+                    <>
+                      <div className="grid grid-cols-2 gap-1.5 rounded-lg bg-st-lowest p-2">
+                        <div>
+                          <p className="text-[9px] font-bold uppercase tracking-wide text-st-on-variant">
+                            Take-home
+                          </p>
+                          <p className="text-[15px] font-bold leading-none tabular-nums text-st-on">
+                            {preview.totals?.gross
+                              ? `${Math.round((Number(preview.totals.netPay) / Number(preview.totals.gross)) * 100)}%`
+                              : '—'}
+                          </p>
+                          <p className="mt-0.5 text-[9px] text-st-on-variant">
+                            {formatMoney(preview.totals?.netPay)} net
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-bold uppercase tracking-wide text-st-on-variant">
+                            Employer cost
+                          </p>
+                          <p className="text-[15px] font-bold leading-none tabular-nums text-st-on">
+                            {formatMoney(preview.totals?.employerCost)}
+                          </p>
+                          <p className="mt-0.5 text-[9px] text-st-on-variant">
+                            CTC {formatMoney(preview.totals?.ctc)}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="mb-1 flex items-center justify-between">
+                          <p className="text-[9px] font-bold uppercase tracking-wide text-st-on-variant">
+                            Distribution of gross
+                          </p>
+                          <span className="text-[9px] text-st-on-variant">server preview</span>
+                        </div>
+                        <div className="flex h-1.5 overflow-hidden rounded-full bg-st-container">
+                          {distribution(preview).map((band) => (
+                            <span
+                              key={band.code}
+                              title={`${band.name}: ${formatMoney(band.amount)} (${band.percent}%)`}
+                              style={{ width: `${band.percent}%` }}
+                              className={band.className}
+                            />
+                          ))}
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-x-2.5 gap-y-0.5">
+                          {distribution(preview).map((band) => (
+                            <span key={band.code} className="text-[9px] text-st-on-variant">
+                              <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${band.className}`} />
+                              {band.name} {band.percent}%
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="rounded-lg bg-st-lowest px-2 py-2 text-[10px] leading-snug text-st-on-variant">
+                      No preview yet for this structure at {formatMoney(sampleGross)} — the server
+                      returns amounts only for components that are still active.
+                    </p>
+                  )}
+
+                  <div className="mt-auto flex flex-wrap items-center gap-1.5 border-t border-st-high pt-2">
+                    {canManage ? (
+                      <>
                         <button
                           type="button"
-                          className="font-medium text-crewly-text hover:underline"
-                          onClick={() => openDetail(structure)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-st-outline-variant/60 px-2 py-1 text-[10px] font-semibold text-st-on hover:bg-st-low"
+                          onClick={() => openEdit(structure)}
                         >
-                          {structure.name}
+                          <Pencil aria-hidden="true" size={10} /> Edit
                         </button>
-                        {structure.designation ? (
-                          <div className="text-xs text-crewly-dim">{structure.designation}</div>
-                        ) : null}
-                      </td>
-                      <td className="py-2 pr-3 font-mono text-xs">{structure.code}</td>
-                      <td className="py-2 pr-3 text-xs text-crewly-dim">
-                        {structure.componentCount || 0} total ·{' '}
-                        {structure.earnings ?? 0} earnings · {structure.deductions ?? 0} deductions
-                        {structure.employerContributions ? ` · ${structure.employerContributions} employer` : ''}
-                      </td>
-                      <td className="py-2 pr-3">{statusBadge(structure.status)}</td>
-                      <td className="py-2 pr-3">v{structure.version || 1}</td>
-                      <td className="py-2 pr-3">{formatDate(structure.effectiveFrom)}</td>
-                      <td className="py-2 pr-3" title="Employee assignment arrives in the next payroll phase">
-                        0
-                      </td>
-                      <td className="py-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {canManage && (
-                            <button
-                              type="button"
-                              className="text-xs text-indigo-300 hover:underline"
-                              onClick={() => openEdit(structure)}
-                            >
-                              Edit
-                            </button>
-                          )}
-                          {canManage && (
-                            <button
-                              type="button"
-                              className="text-xs text-indigo-300 hover:underline"
-                              onClick={() => clone(structure)}
-                            >
-                              <Copy size={11} className="mr-1 inline" />
-                              Clone
-                            </button>
-                          )}
-                          {canActivate && structure.status !== 'ARCHIVED' && (
-                            <button
-                              type="button"
-                              className="text-xs text-amber-300 hover:underline"
-                              onClick={() =>
-                                structure.status === 'ACTIVE'
-                                  ? setConfirm({ structure, status: 'INACTIVE' })
-                                  : changeStatus(structure, 'ACTIVE')
-                              }
-                            >
-                              {structure.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {meta.pages > 1 && (
-              <div className="mt-4 flex items-center justify-between text-sm">
-                <span className="text-crewly-dim">
-                  Page {meta.page} of {meta.pages} · {meta.total} structure(s)
-                </span>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    className="btn-ghost"
-                    disabled={meta.page <= 1}
-                    onClick={() => setFilters((prev) => ({ ...prev, page: prev.page - 1 }))}
-                  >
-                    Previous
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-ghost"
-                    disabled={meta.page >= meta.pages}
-                    onClick={() => setFilters((prev) => ({ ...prev, page: prev.page + 1 }))}
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 rounded-lg border border-st-outline-variant/60 px-2 py-1 text-[10px] font-semibold text-st-on hover:bg-st-low"
+                          onClick={() => clone(structure)}
+                        >
+                          <Copy aria-hidden="true" size={10} /> Duplicate
+                        </button>
+                      </>
+                    ) : null}
+                    {canActivate && structure.status !== 'ARCHIVED' ? (
+                      <button
+                        type="button"
+                        className="rounded-lg px-2 py-1 text-[10px] font-semibold text-st-primary hover:bg-st-low"
+                        onClick={() =>
+                          structure.status === 'ACTIVE'
+                            ? setConfirm({ structure, status: 'INACTIVE' })
+                            : changeStatus(structure, 'ACTIVE')
+                        }
+                      >
+                        {structure.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
+                      </button>
+                    ) : null}
+                    <Link
+                      to="/app/payroll/employees"
+                      className="ml-auto inline-flex items-center gap-1 text-[10px] font-bold text-st-primary hover:underline"
+                    >
+                      View staff ({formatNumber(assignedFor(structure))})
+                      <ArrowRight aria-hidden="true" size={10} />
+                    </Link>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         )}
-      </div>
 
-      {components.length === 0 && !loading && (
-        <div className="card">
-          <EmptyState
-            illustration="tasks"
-            title="No active salary components yet"
-            description="A structure can only use components that are active. Create the earning and deduction components first, then come back here."
-            size="sm"
-          />
+        {filtered.length > 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-st-high px-3 py-2 text-[10px] text-st-on-variant">
+            <span>
+              Page {meta.page} of {meta.pages} · {formatNumber(filtered.length)} structure(s)
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                className="rounded-md px-2 py-1 font-semibold text-st-on hover:bg-st-low disabled:opacity-40"
+                disabled={meta.page <= 1}
+                onClick={() => setFilters((prev) => ({ ...prev, page: prev.page - 1 }))}
+              >
+                <ChevronLeft aria-hidden="true" size={12} />
+              </button>
+              <span className="rounded-md bg-st-primary-container px-2 py-1 font-bold text-st-on-primary-container">
+                {meta.page}
+              </span>
+              <button
+                type="button"
+                className="rounded-md px-2 py-1 font-semibold text-st-on hover:bg-st-low disabled:opacity-40"
+                disabled={meta.page >= meta.pages}
+                onClick={() => setFilters((prev) => ({ ...prev, page: prev.page + 1 }))}
+              >
+                <ChevronRight aria-hidden="true" size={12} />
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </Panel>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-st-lowest px-4 py-3 shadow-sm">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-st-primary-fixed text-st-on-primary-fixed">
+          <Boxes aria-hidden="true" size={14} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[12px] font-bold text-st-on">Need a component this structure can&apos;t use?</p>
+          <p className="text-[10px] leading-snug text-st-on-variant">
+            Only active components can be added to a structure. Manage the catalogue — earnings,
+            deductions, employer contributions and their calculation rules — in Salary architecture.
+          </p>
         </div>
-      )}
+        <Link
+          to="/app/payroll/components"
+          className="rounded-lg border border-st-outline-variant/70 px-3 py-1.5 text-[11px] font-semibold text-st-on hover:bg-st-low"
+        >
+          Manage salary components
+        </Link>
+      </div>
 
       {/* §6 / §9 — builder with live preview */}
       {formOpen && (
@@ -865,8 +1266,17 @@ const SalaryStructuresPage = () => {
               <h3 className="text-sm font-semibold">Usage</h3>
               <div className="flex justify-between">
                 <span className="text-crewly-dim">Employees using</span>
-                <span>{detail.usage?.employees ?? 0}</span>
+                <span>
+                  {assignment
+                    ? formatNumber(assignedFor(detail))
+                    : formatNumber(detail.usage?.employees || 0)}
+                </span>
               </div>
+              {!assignment ? (
+                <p className="text-[11px] text-crewly-dim">
+                  Assignment is read from the employee pay profiles, which need EMPLOYEE_SALARY_READ.
+                </p>
+              ) : null}
               <p className="text-xs text-crewly-dim">
                 Employees are assigned to a structure in the next payroll phase, so this count is 0
                 today. Payroll history: {detail.usage?.hasProcessedPayroll ? 'present' : 'none'}.

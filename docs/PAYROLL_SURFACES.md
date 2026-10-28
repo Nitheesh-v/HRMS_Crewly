@@ -230,15 +230,72 @@ computes a salary or a statutory rate in the browser.
 | `Enterprise Compliance & Security Shield` (TLS envelope, dual-admin quorum, NPCI) | **What is recorded** — audit trail, masked accounts, per-employee outcomes | those three are true; the other three are claims with nothing behind them |
 | `Alternate Disbursement Export` (HDFC CMS .txt / ICICI bulk .csv) | the batch's actual generated files, by format and date | bank-specific templates are not shipped; the file carries the shared columns |
 
+## Statutory compliance — what the export drew, what is real
+
+| export block | rendered | why |
+| --- | --- | --- |
+| `FY 2026–27 … reconciled for October 2026` | `monthLabel` + `financialYearLabel` + paid count + cycle, all from the dashboard | the FY label is stored, not inferred |
+| `Download All (.zip)` | **Register** button (the FY register export) + CSV / XLSX / PDF on the filing summary | there is no zip bundle endpoint |
+| `Generate Reports · Remind` | the same two actions, behind their own permissions | unchanged |
+| Four type cards (`PF`, `ESI`, `PT`, `TDS`) with `Ready to file` / `Filed` / `Draft` | one card per **applicable** scheme — PF, ESI, PT, TDS, LWF and gratuity — each with its payable and the filing status the register holds | `applicability` from Company setup decides which exist; the badge is the recorded status, not a readiness claim |
+| `12 members enrolled` · `4 eligible staff` · `State slabs unified` · `Form 24Q Stage` | `<n> employee(s) with PF / under ESI / in a PT slab …` from `summary.<type>.employees` | one field per line; the export's adjectives are not fields |
+| `ECR Validated` · `Challan Ready` · `Receipt #9042` | dropped | nothing validates an ECR or issues a challan in this product |
+| `Compliance Filing Summary` (component, employee share, employer share, total, due date, action) | the same seven columns, from `summary` + the month calendar, with a **Total obligations** footer that excludes the gratuity provision | PT / TDS have no employer share and the table says `—`; gratuity is a provision, named separately |
+| `Payroll Locked` badge | the page's own sentence: figures are read from the locked snapshot | the lock is a real state, but the export's stamp is not a field |
+| `October Filing Readiness Checklist · 2 of 3` | **Filing readiness** — reports generated, returns filed, overdue returns, employees paid, gross payroll | five derived states from two responses; no checklist is stored, so the export's three invented rows are gone |
+| `Filing Status & Due Dates` timeline (`Due in 10 days`) | the month calendar rail: due date, `daysRemaining` / overdue, filing status, the statutory note | `statutoryDueDate` + `daysUntil` are the server's arithmetic |
+| `Statutory Preparedness Index 72%` | dropped | no such index exists; a computed percentage of it would be an invention |
+| `Recent Filings Ledger` (3 months, `Challan #PF-8831`) | the newest six months of the register: month total, employees, gratuity, per-type filing pills, per-month CSV download | the register has no challan numbers |
+| `Challan complies strictly … EPFO 2026 formats` | a footer stating that filing is a human record entered after the portal, and that no return is claimed as filed by Crewly | the product records attestations; it does not file |
+| `Aadhaar & PAN master databases` | dropped | no such validation exists |
+
+## Executive payroll dashboard — what the export drew, what is real
+
+| export block | rendered | why |
+| --- | --- | --- |
+| `October 2026 · Finalized` | the period preset label, the month and `period.fromMonth → toMonth` | the window travels with the response |
+| `Export PDF · Excel Export` | one `ExportMenu` (CSV / XLSX / PDF / queued) on the `st-` scale | the same exporter the other fourteen reports use |
+| `Total Payroll Cost ₹18.45 L · Gross + benefits` | `kpis.totalPayrollCost`, hint = gross + employer contribution | both halves are returned fields |
+| `Net Disbursed · 100% Disbursed · 12 Staff Paid` | `kpis.netSalaryPaid` + the paid headcount | "100 % disbursed" is not a field; the count is |
+| `Avg Salary / Employee · Monthly median ₹1.28L` | `kpis.averageSalary` + cost per paid head, plus the change vs the previous window | the API returns a mean, never a median, so no median is printed |
+| `Statutory Liability ₹2.14 L · Reconciled · Zero Pending` | `kpis.totalStatutoryLiability` + employee / employer split; the filing state lives on the statutory page | "zero pending" is a filing fact, not an analytics field |
+| `Department Cost Breakdown` (bars, `6 staff`, `60.7%`) | the same bars from `departments[]`: total cost, share of the shown departments, staff, average salary | share is the only arithmetic, and it is stated as a share of the table |
+| `Cost allocation corresponds to verified engineering weights` | dropped | there are no allocation weights |
+| `Cost Movement & Variance` (joiner impact, overtime, LOP) | the real decomposition: headcount effect (joiners/leavers), like-for-like (fixed + variable), then a table of bonus / overtime / reimbursement / LOP deltas against `previousSummary` | every line is a `movement` or summary field |
+| `Within Safe Budget Target · Projected cap +5.0% · Actual +2.5% · Optimal` | the reconciliation strip: the two effects add up to `movement.total` **or** the page says they do not add up and warns against quoting either | no budget cap is configured, so no verdict is drawn |
+| `Quick Statutory Position · All Cleared` | the liability buckets (employee / employer / total), the gratuity provision and its annualised exposure, plus a link to the statutory summary | "all cleared" is a filing state; the buckets are the liability |
+| `Key Reports & Downloads` (four download cards) | the fifteen analytics reports as links, each with one honest line of what it contains | the four export cards name reports this product has, under their real routes |
+| — | **Other cost lines** strip: overtime, bonus, reimbursements, LOP, deductions, settlements | the export hides nine returned fields; the strip shows them without nine more cards |
+| — | **How this page knows**: snapshot path, window, calculated / errored counts, accuracy | a reader can audit the page without leaving it |
+
+## Salary structures — what the export drew, what is real
+
+| export block | rendered | why |
+| --- | --- | --- |
+| `Compliant with Code on Wages (India) 2024` | dropped | no compliance certification exists |
+| Tab strip (Components & Rules / Structures / Statutory / Company Setup) | the payroll area rail + in-page nav already carries these destinations | one door per destination; a second strip would duplicate it |
+| `Add Indian Standard CTC` | **Add Indian standard CTC** — pre-fills Basic 50 % of the sample gross, HRA 40 % of Basic, special allowance as the remainder, PF and employer PF at 12 %, using only components this company has, and names the ones it skipped | a starting point, not a policy; PT is deliberately not guessed because the slab is state-specific |
+| `Create Structure` | **Create structure**, behind `SALARY_STRUCTURE_MANAGE` | unchanged |
+| `Active Structures 3 · Templates Ready` | active count + templates on file | both from the list response |
+| `Assigned Employees 12 / 12 · 100% Mapped` | assigned / active employees with the coverage share, read from the employee pay profiles (`structureId`) | the structure API's own `usage.employees` is a placeholder, so the assignment is read where it is actually stored |
+| `Statutory Compliance 100% · Wage Code Pass` | **Unassigned employees** and **Components available** | there is no per-structure compliance score; these two are real counts |
+| Search + `All Statuses (Active)` | the same filters, applied over the one tenant read (the API caps it at 100) | the server's own `filterStructures` rules, restated |
+| Structure template card: name, tier band, `Take-Home Efficiency 91.5%`, `CTC Distribution` bars, avatar cluster, `View Assigned Staff (8)` | name / code / version / effective date, take-home share (`netPay ÷ gross`) and employer cost + CTC from the **server preview** at the sample gross, a stacked distribution of the earning lines, the assigned count from the profiles, `Edit` / `Duplicate` / `Activate` and `View staff` | every amount is `computeStructurePreview` output at one stated gross; the export's ₹10–25 L tier band, the avatar cluster and the efficiency verdicts are not on the list response |
+| `Low Friction · Tax-optimized HRA` · `Performance · Annualized Bonus` | dropped | marketing labels with nothing behind them |
+| `New Salary Structure` modal (tier band, `Basic ≥ 50% CTC`, `Pre-filled Standard India CTC`) | the existing builder: name, code, designation, effective date, component rows with method and value, and a live server preview | the builder is the product's own; the tier band is not a field |
+| `Need custom components?` card | a cross-link to **Salary components** | the same destination |
+| `Subscription Notice · trial expires in 4 days` | not drawn | plan state belongs to billing, not payroll |
+
 ## Verification
 
-`npm test` → 718 passing, including 8 new pins in
-`test/payrollCockpitSurfaces.test.js`: every page uses the shared kit, names its
-stage and the same four steps, reads its own endpoint, never does salary
-arithmetic in the browser, and never prints the exported infrastructure
-(BioHub, the 98 % health score, the gateway float, the OTP, the encryption and
-NPCI badges). `npm run build` green. `npx eslint src` → 116 problems (102
-errors, 14 warnings), one below the pre-change baseline.
+`npm test` → **732 passing**, including 14 new pins in
+`test/payrollStatutoryAnalytics.test.js`: all three pages use the shared kit,
+print no figure their endpoint does not return, read due dates from the
+calendar, state filing as a human record, quote the movement split with its
+reconciliation state, price every structure card from the server preview and
+say "assignment hidden" rather than `0` when the pay profiles are out of reach.
+`npm run build` green. `npx eslint src` → 116 problems (102 errors, 14 warnings)
+— the same count as the previous checkpoint, so this pass added no lint debt.
 
 No browser is available in this environment: verified by lint, build and source
 pins, not by pixel comparison.

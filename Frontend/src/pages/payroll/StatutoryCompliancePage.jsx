@@ -6,10 +6,10 @@ import {
   Building2,
   CalendarClock,
   CheckCircle2,
-  CircleDashed,
   Download,
   FileSpreadsheet,
   FileText,
+  ArrowRight,
   Landmark,
   Loader2,
   RefreshCcw,
@@ -23,6 +23,17 @@ import statutoryService, { saveBlob } from '../../services/statutoryService.js';
 import { notify } from '../../utils/notify.js';
 import { TableEmpty } from '../../components/common/EmptyState.jsx';
 import EmptyState from '../../components/common/EmptyState.jsx';
+import {
+  CheckRow,
+  Panel,
+  Pill,
+  Rail,
+  StageBand,
+  StageButton,
+  StatCard,
+  Td,
+  Th,
+} from '../../components/payroll/PayrollCockpit.jsx';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Phase 29.10 — Payroll → Statutory Compliance (§5 / §25)
@@ -158,6 +169,7 @@ const StatutoryCompliancePage = () => {
   const [history, setHistory] = useState({ rows: [] });
   const [annual, setAnnual] = useState(null);
   const [calendar, setCalendar] = useState({ rows: [] });
+  const [monthCalendar, setMonthCalendar] = useState({ rows: [] });
   const [exports, setExports] = useState([]);
 
   const [loading, setLoading] = useState(true);
@@ -237,12 +249,34 @@ const StatutoryCompliancePage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, month, financialYear, permsLoading, canRead]);
 
+  /*
+   * The overview needs two more reads beside the dashboard: the year's
+   * register (the ledger) and this month's filing window (the due-date rail).
+   * Both are the same endpoints the Register and Calendar tabs use, so the
+   * numbers cannot drift between them.
+   */
   useEffect(() => {
-    if (tab !== 'OVERVIEW') return;
+    if (tab !== 'OVERVIEW') return undefined;
+    let active = true;
     statutoryService
       .history(financialYearOf(month))
-      .then((data) => setHistory(data || { rows: [] }))
-      .catch(() => setHistory({ rows: [] }));
+      .then((data) => {
+        if (active) setHistory(data || { rows: [] });
+      })
+      .catch(() => {
+        if (active) setHistory({ rows: [] });
+      });
+    statutoryService
+      .calendar([month])
+      .then((data) => {
+        if (active) setMonthCalendar(data || { rows: [] });
+      })
+      .catch(() => {
+        if (active) setMonthCalendar({ rows: [] });
+      });
+    return () => {
+      active = false;
+    };
   }, [tab, month, dashboard]);
 
   // ── actions ──────────────────────────────────────────────────────────────
@@ -350,15 +384,18 @@ const StatutoryCompliancePage = () => {
 
   if ((!permsLoading && !canRead) || accessDenied) {
     return (
-      <div className="space-y-5">
-        <h1 className="text-2xl font-bold">Statutory Compliance</h1>
-        <div className="card space-y-2">
-          <h2 className="text-lg font-semibold">Statutory access required</h2>
-          <p className="text-sm text-crewly-dim">
-            You don&apos;t have permission to view statutory reports. Contact your Company Admin or
-            Payroll Admin.
+      <div className="space-y-4">
+        <StageBand
+          eyebrow="Payroll · Statutory"
+          title="Statutory Compliance"
+          description="Employer and employee statutory liabilities for the payroll month."
+        />
+        <Panel title="Statutory access required">
+          <p className="px-4 pb-4 text-[11px] leading-relaxed text-st-on-variant">
+            This page is limited to PAYROLL_STATUTORY_READ. Ask your Company Admin or Payroll Admin
+            for access.
           </p>
-        </div>
+        </Panel>
       </div>
     );
   }
@@ -366,287 +403,613 @@ const StatutoryCompliancePage = () => {
   const kpis = dashboard?.kpis || {};
   const summary = dashboard?.summary || {};
   const statuses = dashboard?.statuses || [];
-  const statusOf = (type) => statuses.find((row) => row.type === type)?.status || 'NOT_GENERATED';
   const applicability = dashboard?.applicability || {};
+  const statusOf = (type) => statuses.find((row) => row.type === type)?.status || 'NOT_GENERATED';
+
+  /*
+   * The six blocks the summary carries. `applicable` is the company's own
+   * 29.1 switch — a block that is off is not shown at all rather than shown as
+   * a zero, the same rule the report tabs follow.
+   */
+  const blocks = [
+    {
+      type: 'PF',
+      label: 'Provident Fund (PF)',
+      icon: Landmark,
+      applicable: applicability.pf,
+      employee: summary.pf?.employee,
+      employer: summary.pf?.employer,
+      total: summary.pf?.total,
+      members: summary.pf?.employees,
+      memberWord: 'member(s) with PF',
+    },
+    {
+      type: 'ESI',
+      label: 'Employees’ State Insurance (ESI)',
+      icon: ShieldCheck,
+      applicable: applicability.esi,
+      employee: summary.esi?.employee,
+      employer: summary.esi?.employer,
+      total: summary.esi?.total,
+      members: summary.esi?.employees,
+      memberWord: 'employee(s) under ESI',
+    },
+    {
+      type: 'PT',
+      label: `Professional Tax (PT)${applicability.ptState ? ` · ${applicability.ptState}` : ''}`,
+      icon: FileText,
+      applicable: applicability.pt,
+      employee: summary.pt?.total,
+      employer: null,
+      total: summary.pt?.total,
+      members: summary.pt?.employees,
+      memberWord: 'employee(s) in a PT slab',
+    },
+    {
+      type: 'TDS',
+      label: 'Income Tax (TDS)',
+      icon: Wallet,
+      applicable: applicability.tds,
+      employee: summary.tds?.total,
+      employer: null,
+      total: summary.tds?.total,
+      members: summary.tds?.employees,
+      memberWord: 'employee(s) under TDS',
+    },
+    {
+      type: 'LWF',
+      label: 'Labour Welfare Fund (LWF)',
+      icon: Building2,
+      applicable: applicability.lwf,
+      employee: summary.lwf?.employee,
+      employer: summary.lwf?.employer,
+      total: summary.lwf?.total,
+      members: summary.lwf?.employees,
+      memberWord: 'employee(s) covered',
+    },
+    {
+      type: 'GRATUITY',
+      label: 'Gratuity provision',
+      icon: ScrollText,
+      applicable: applicability.gratuity,
+      employee: null,
+      employer: summary.gratuity?.monthly,
+      total: summary.gratuity?.monthly,
+      members: summary.gratuity?.employees,
+      memberWord: 'employee(s) accruing gratuity',
+      provision: true,
+    },
+  ].filter((block) => block.applicable);
+
+  // One due date per applicable type, straight from the compliance calendar.
+  const calendarRows = (monthCalendar?.rows || []).filter((row) => row.month === month);
+  const dueFor = (type) => calendarRows.find((row) => row.type === type) || null;
+  const dueSorted = [...calendarRows].sort((a, b) =>
+    String(a.dueDate || '9999').localeCompare(String(b.dueDate || '9999')),
+  );
+  const overdueCount = calendarRows.filter((row) => row.overdue).length;
+  const generatedCount = calendarRows.filter((row) => row.status !== 'NOT_GENERATED').length;
+
+  /*
+   * A monthly obligation is money that actually leaves the company this month.
+   * Gratuity is a provision, not a remittance, so it is named separately
+   * rather than folded into the total.
+   */
+  const sumTotal = (keys) => keys.reduce((total, key) => total + Number(summary?.[key]?.total || 0), 0);
+  const obligationTotal = sumTotal(['pf', 'esi', 'pt', 'tds', 'lwf']);
+  const employeeShare = ['pf', 'esi', 'lwf'].reduce(
+    (total, key) => total + Number(summary?.[key]?.employee || 0),
+    0,
+  ) + Number(summary?.pt?.total || 0) + Number(summary?.tds?.total || 0);
+  const employerShare = ['pf', 'esi', 'lwf'].reduce(
+    (total, key) => total + Number(summary?.[key]?.employer || 0),
+    0,
+  );
+
+  const filable = blocks.filter((block) => !block.provision);
+  const filedCount = filable.filter((block) => statusOf(block.type) === 'FILED').length;
+
+  const filingTone = (status) =>
+    status === 'FILED'
+      ? 'good'
+      : status === 'READY' || status === 'REVIEWED'
+        ? 'warn'
+        : status === 'DRAFT'
+          ? 'accent'
+          : 'default';
+
+  const historyRows = [...(history.rows || [])]
+    .sort((a, b) => String(b.month).localeCompare(String(a.month)))
+    .slice(0, 6);
+
+  const dueLabel = (row) => {
+    if (!row) return '—';
+    if (row.daysRemaining === null || row.daysRemaining === undefined) return formatDate(row.dueDate);
+    if (row.overdue) return `${Math.abs(row.daysRemaining)} day(s) overdue`;
+    if (row.daysRemaining === 0) return 'due today';
+    return `in ${row.daysRemaining} day(s)`;
+  };
 
   return (
-    <div className="space-y-5">
-      {/* ── header ─────────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">Statutory Compliance</h1>
-          <p className="text-sm text-crewly-dim">
-            {monthLabel(month)} · {dashboard?.financialYearLabel || financialYearOf(month)} ·{' '}
-            {count(dashboard?.paidCount)} paid employee(s)
-            {dashboard?.cycle ? ` · ${String(dashboard.cycle).toLowerCase()} cycle` : ''}
+    <div className="space-y-3">
+      <StageBand
+        eyebrow="Payroll · Statutory"
+        title="Statutory Compliance"
+        description={
+          dashboard
+            ? `${monthLabel(dashboard.month || month)} · FY ${dashboard.financialYearLabel || financialYearOf(month)} · ${count(dashboard.paidCount)} employee(s) paid${dashboard.cycle ? ` · ${String(dashboard.cycle).toLowerCase()} cycle` : ''}. Every figure below is read from that month's locked payroll snapshot.`
+            : 'Employer and employee statutory liabilities for the payroll month.'
+        }
+        pills={[
+          { label: `${count(filedCount)} of ${count(filable.length)} filed`, tone: filedCount === filable.length ? 'good' : 'warn' },
+          ...(overdueCount ? [{ label: `${count(overdueCount)} overdue`, tone: 'bad' }] : []),
+          ...(dashboard?.cycle ? [{ label: String(dashboard.cycle).toLowerCase(), tone: 'default' }] : []),
+        ]}
+        aside={
+          <div className="text-right">
+            <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-st-on-variant">
+              Monthly obligations
+            </p>
+            <p className="text-lg font-bold leading-tight tabular-nums text-st-on">
+              {money(obligationTotal)}
+            </p>
+            <p className="text-[10px] text-st-on-variant">
+              PF + ESI + PT + TDS + LWF
+            </p>
+          </div>
+        }
+        actions={
+          <>
+            <label className="flex items-center gap-2 text-[11px] font-semibold text-st-on-variant">
+              <span className="uppercase tracking-wide">Month</span>
+              <input
+                type="month"
+                value={month}
+                onChange={(event) => setMonth(event.target.value)}
+                className="rounded-lg border border-st-outline-variant/70 bg-st-lowest px-2 py-1.5 text-[11px] font-semibold text-st-on"
+                aria-label="Payroll month"
+              />
+            </label>
+            {canGenerate ? (
+              <StageButton variant="primary" icon={RefreshCcw} onClick={handleGenerate} disabled={busy}>
+                {busy ? 'Generating…' : 'Generate reports'}
+              </StageButton>
+            ) : null}
+            <StageButton icon={ScrollText} onClick={downloadRegister} disabled={busy}>
+              Register
+            </StageButton>
+            {canGenerate ? (
+              <StageButton icon={BellRing} onClick={handleReminders} disabled={busy}>
+                Remind
+              </StageButton>
+            ) : null}
+          </>
+        }
+      />
+
+      {loading ? (
+        <Panel>
+          <p className="flex items-center gap-2 px-4 py-8 text-[11px] text-st-on-variant">
+            <Loader2 aria-hidden="true" className="animate-spin" size={14} /> Loading the compliance
+            dashboard…
           </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            type="month"
-            value={month}
-            onChange={(event) => setMonth(event.target.value)}
-            className="input-field w-auto"
-            aria-label="Payroll month"
-          />
-          {canGenerate && (
-            <button
-              type="button"
-              className="btn-primary flex items-center gap-2"
-              onClick={handleGenerate}
-              disabled={busy}
-            >
-              {busy ? <Loader2 size={15} className="animate-spin" /> : <RefreshCcw size={15} />}
-              Generate reports
-            </button>
+        </Panel>
+      ) : !dashboard ? (
+        <Panel>
+          <p className="px-4 py-6 text-[11px] leading-relaxed text-st-on-variant">
+            No compliance dashboard came back for {monthLabel(month)}. Statutory reports are prepared
+            only for a month whose payroll has been paid — pay the run, then generate the reports.
+          </p>
+        </Panel>
+      ) : (
+        <>
+          {/* The report tabs stay one strip: the summary is the first tab, the
+              individual returns are the rest. */}
+          <div className="flex flex-wrap items-center gap-1 rounded-xl bg-st-lowest p-1.5 shadow-sm">
+            {REPORT_TABS.map(({ key, label, icon: Icon }) => {
+              const hidden =
+                (key === 'LWF' && !applicability.lwf) ||
+                (key === 'GRATUITY' && !applicability.gratuity);
+              if (hidden) return null;
+              const active = tab === key;
+              const showStatus = !['OVERVIEW', 'ANNUAL', 'CALENDAR'].includes(key);
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  aria-current={active ? 'page' : undefined}
+                  onClick={() => setTab(key)}
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${
+                    active
+                      ? 'bg-st-primary-container text-st-on-primary-container shadow-sm'
+                      : 'text-st-on-variant hover:bg-st-low'
+                  }`}
+                >
+                  <Icon aria-hidden="true" size={12} />
+                  {label}
+                  {showStatus ? (
+                    <span className="text-[9px] uppercase tracking-wide opacity-80">
+                      {FILING_LABELS[statusOf(key)] || statusOf(key)}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+
+          {tabLoading ? (
+            <Panel>
+              <p className="flex items-center gap-2 px-4 py-6 text-[11px] text-st-on-variant">
+                <Loader2 aria-hidden="true" className="animate-spin" size={14} /> Loading this report…
+              </p>
+            </Panel>
+          ) : null}
+
+          {tab === 'OVERVIEW' ? (
+            <>
+          {blocks.length === 0 ? (
+            <Panel title="No statutory scheme is switched on">
+              <p className="px-4 pb-4 text-[11px] leading-relaxed text-st-on-variant">
+                PF, ESI, PT, TDS, LWF and gratuity are all off in this company&apos;s setup, so there is
+                nothing to remit. Turn a scheme on under Payroll setup to see its liability here.
+              </p>
+            </Panel>
+          ) : (
+            <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+              {blocks.map((block) => (
+                <StatCard
+                  key={block.type}
+                  icon={block.icon}
+                  label={block.label}
+                  value={money(block.total)}
+                  badge={{
+                    label: FILING_LABELS[statusOf(block.type)] || statusOf(block.type),
+                    tone: filingTone(statusOf(block.type)),
+                  }}
+                  hint={`${count(block.members)} ${block.memberWord}${
+                    block.provision ? ' · provision, not remitted' : ''
+                  }`}
+                  tone={statusOf(block.type) === 'FILED' ? 'good' : 'default'}
+                />
+              ))}
+            </div>
           )}
-          <button
-            type="button"
-            className="btn-secondary flex items-center gap-2"
-            onClick={downloadRegister}
-            disabled={busy}
-          >
-            <ScrollText size={15} /> Register
-          </button>
-          {canGenerate && (
-            <button
-              type="button"
-              className="btn-secondary flex items-center gap-2"
-              onClick={handleReminders}
-              disabled={busy}
-            >
-              <BellRing size={15} /> Remind
-            </button>
-          )}
-        </div>
-      </div>
 
-      {/* ── §5 KPI cards ───────────────────────────────────────────────── */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
-        <KpiCard icon={Landmark} label="PF Payable" value={money(kpis.pfPayable)} />
-        <KpiCard icon={ShieldCheck} label="ESI Payable" value={money(kpis.esiPayable)} />
-        <KpiCard icon={FileText} label="PT Payable" value={money(kpis.ptPayable)} />
-        <KpiCard icon={Wallet} label="TDS Payable" value={money(kpis.tdsPayable)} />
-        <KpiCard icon={Building2} label="LWF Payable" value={money(kpis.lwfPayable)} />
-        <KpiCard
-          icon={CircleDashed}
-          label="Filing Pending"
-          value={count(kpis.filingPending)}
-          tone={Number(kpis.filingPending) > 0 ? 'warn' : 'default'}
-        />
-        <KpiCard
-          icon={CheckCircle2}
-          label="Filing Completed"
-          value={count(kpis.filingCompleted)}
-          tone="good"
-        />
-      </div>
+          <div className="flex flex-col gap-3 xl:flex-row">
+            <div className="min-w-0 flex-1 space-y-3">
+              {/* ── the filing summary ─────────────────────────────────── */}
+              <Panel
+                title="Compliance filing summary"
+                subtitle={`Computed from the locked payroll run for ${monthLabel(dashboard.month || month)}. Employee share is withheld from salary; employer share is the company's own contribution.`}
+                right={
+                  <div className="flex items-center gap-1.5">
+                    {['CSV', 'XLSX', 'PDF'].map((format) => (
+                      <button
+                        key={format}
+                        type="button"
+                        className="inline-flex items-center gap-1 rounded-lg border border-st-outline-variant/60 px-2 py-1 text-[10px] font-semibold text-st-on hover:bg-st-low disabled:opacity-50"
+                        onClick={() => downloadReport('COMPLIANCE_SUMMARY', format, { month })}
+                        disabled={Boolean(exporting)}
+                      >
+                        {exporting === `COMPLIANCE_SUMMARY-${format}` ? (
+                          <Loader2 aria-hidden="true" size={10} className="animate-spin" />
+                        ) : (
+                          <Download aria-hidden="true" size={10} />
+                        )}
+                        {format}
+                      </button>
+                    ))}
+                  </div>
+                }
+              >
+                <div className="overflow-x-auto border-t border-st-high">
+                  <table className="min-w-full">
+                    <thead>
+                      <tr className="bg-st-low/60">
+                        <Th>Component</Th>
+                        <Th className="text-right">Employee share</Th>
+                        <Th className="text-right">Employer share</Th>
+                        <Th className="text-right">Total payable</Th>
+                        <Th>Due</Th>
+                        <Th>Filing</Th>
+                        <Th className="text-right">Action</Th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {blocks.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="px-3 py-6 text-[11px] text-st-on-variant">
+                            No statutory scheme is switched on for this company.
+                          </td>
+                        </tr>
+                      ) : (
+                        blocks.map((block) => {
+                          const due = dueFor(block.type);
+                          return (
+                            <tr key={block.type} className="border-t border-st-high hover:bg-st-selected/25">
+                              <Td>
+                                <span className="font-semibold">{block.label}</span>
+                                <span className="ml-1.5 text-[10px] text-st-on-variant">
+                                  {count(block.members)} employee(s)
+                                </span>
+                              </Td>
+                              <Td className="text-right tabular-nums">
+                                {block.employee === null ? '—' : money(block.employee)}
+                              </Td>
+                              <Td className="text-right tabular-nums">
+                                {block.employer === null ? '—' : money(block.employer)}
+                              </Td>
+                              <Td className="text-right font-semibold tabular-nums">
+                                {money(block.total)}
+                              </Td>
+                              <Td>
+                                {statusOf(block.type) === 'FILED' && due?.filedAt ? (
+                                  <span>filed {formatDate(due.filedAt)}</span>
+                                ) : (
+                                  <>
+                                    <span className="tabular-nums">{formatDate(due?.dueDate)}</span>
+                                    <span className="ml-1 text-[10px] text-st-on-variant">
+                                      {dueLabel(due)}
+                                    </span>
+                                  </>
+                                )}
+                              </Td>
+                              <Td>
+                                <Pill tone={filingTone(statusOf(block.type))}>
+                                  {FILING_LABELS[statusOf(block.type)] || statusOf(block.type)}
+                                </Pill>
+                                {due?.overdue ? (
+                                  <span className="ml-1 text-[10px] font-semibold text-st-error">
+                                    overdue
+                                  </span>
+                                ) : null}
+                              </Td>
+                              <Td className="text-right">
+                                <button
+                                  type="button"
+                                  className="inline-flex items-center gap-1 rounded-lg border border-st-outline-variant/60 px-2 py-1 text-[10px] font-semibold text-st-on hover:bg-st-low"
+                                  onClick={() => setTab(block.type)}
+                                  title={`Open the ${block.type} working`}
+                                >
+                                  Open <ArrowRight aria-hidden="true" size={10} />
+                                </button>
+                              </Td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                    {blocks.length ? (
+                      <tfoot>
+                        <tr className="border-t-2 border-st-outline-variant/50 bg-st-low/40">
+                          <Td className="font-bold">Monthly obligations</Td>
+                          <Td className="text-right font-bold tabular-nums">{money(employeeShare)}</Td>
+                          <Td className="text-right font-bold tabular-nums">{money(employerShare)}</Td>
+                          <Td className="text-right font-bold tabular-nums">{money(obligationTotal)}</Td>
+                          <Td colSpan={3} className="text-[10px] text-st-on-variant">
+                            Gratuity {money(summary.gratuity?.monthly)} is provisioned, not remitted
+                            monthly.
+                          </Td>
+                        </tr>
+                      </tfoot>
+                    ) : null}
+                  </table>
+                </div>
+              </Panel>
 
-      {/* ── tabs ───────────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap gap-1 border-b border-crewly-hairline-strong pb-2">
-        {REPORT_TABS.map(({ key, label, icon: Icon }) => {
-          const hidden =
-            (key === 'LWF' && !applicability.lwf) || (key === 'GRATUITY' && !applicability.gratuity);
-          if (hidden) return null;
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setTab(key)}
-              className={`flex items-center gap-1.5 rounded-t-md px-3 py-2 text-sm transition ${
-                tab === key
-                  ? 'border-b-2 border-crewly-accent text-crewly-text'
-                  : 'text-crewly-dim hover:text-crewly-text'
-              }`}
-            >
-              <Icon size={14} />
-              {label}
-              {key !== 'OVERVIEW' && key !== 'ANNUAL' && key !== 'CALENDAR' && (
-                <span className="ml-1">{filingBadge(statusOf(key))}</span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {tabLoading && (
-        <div className="card flex items-center gap-2 text-sm text-crewly-dim">
-          <Loader2 size={15} className="animate-spin" /> Loading…
-        </div>
-      )}
-
-      {/* ── Overview ───────────────────────────────────────────────────── */}
-      {tab === 'OVERVIEW' && !tabLoading && (
-        <div className="space-y-5">
-          <section className="card space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h2 className="text-lg font-semibold">Compliance summary</h2>
-                <p className="text-xs text-crewly-dim">
-                  Every statutory liability for {monthLabel(month)}, in one view (§16).
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {['CSV', 'XLSX', 'PDF'].map((format) => (
+              {/* ── recent filings ledger ──────────────────────────────── */}
+              <Panel
+                title="Recent filings ledger"
+                subtitle={`Every month with a statutory summary in FY ${history.financialYearLabel || financialYearOf(month)}, newest first.`}
+                right={
                   <button
-                    key={format}
                     type="button"
-                    className="btn-secondary flex items-center gap-1.5"
-                    onClick={() => downloadReport('COMPLIANCE_SUMMARY', format, { month })}
+                    className="inline-flex items-center gap-1 rounded-lg border border-st-outline-variant/60 px-2 py-1 text-[10px] font-semibold text-st-on hover:bg-st-low"
+                    onClick={() => downloadReport('COMPLIANCE_SUMMARY', 'CSV', { financialYear: financialYearOf(month) })}
                     disabled={Boolean(exporting)}
                   >
-                    {exporting === `COMPLIANCE_SUMMARY-${format}` ? (
-                      <Loader2 size={14} className="animate-spin" />
-                    ) : (
-                      <Download size={14} />
-                    )}
-                    {format}
+                    <Download aria-hidden="true" size={10} /> Full register
                   </button>
-                ))}
-              </div>
+                }
+              >
+                {historyRows.length === 0 ? (
+                  <p className="border-t border-st-high px-4 py-6 text-[11px] leading-relaxed text-st-on-variant">
+                    No completed payroll month is recorded for this financial year yet. Once a month is
+                    paid, its PF, ESI, PT and TDS totals land here.
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-st-high border-t border-st-high">
+                    {historyRows.map((row) => {
+                      const monthTotal =
+                        Number(row.pf || 0) +
+                        Number(row.esi || 0) +
+                        Number(row.pt || 0) +
+                        Number(row.tds || 0) +
+                        Number(row.lwf || 0);
+                      return (
+                        <li
+                          key={row.month}
+                          className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 hover:bg-st-selected/20"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-[12px] font-bold text-st-on">{row.monthLabel}</p>
+                            <p className="text-[10px] text-st-on-variant">
+                              {money(monthTotal)} total · {count(row.employees)} employee(s) ·
+                              gratuity {money(row.gratuity)}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1">
+                            {['PF', 'ESI', 'PT', 'TDS', 'LWF'].map((type) => {
+                              const status = (row.statuses || []).find((entry) => entry.type === type)?.status;
+                              if (!status || !applicability[type.toLowerCase()]) return null;
+                              return (
+                                <Pill key={type} tone={filingTone(status)} title={`${type}: ${FILING_LABELS[status] || status}`}>
+                                  {type} {FILING_LABELS[status] || status}
+                                </Pill>
+                              );
+                            })}
+                            <button
+                              type="button"
+                              className="ml-1 rounded-md p-1 text-st-on-variant hover:bg-st-low"
+                              title={`Download the ${row.monthLabel} compliance summary`}
+                              onClick={() => downloadReport('COMPLIANCE_SUMMARY', 'CSV', { month: row.month })}
+                              disabled={Boolean(exporting)}
+                            >
+                              <Download aria-hidden="true" size={12} />
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </Panel>
             </div>
-            <SummaryTable summary={summary} applicability={applicability} />
-          </section>
 
-          <section className="card space-y-3">
-            <h2 className="text-lg font-semibold">Compliance register</h2>
-            <p className="text-xs text-crewly-dim">
-              The filing history for {history.financialYearLabel || financialYearOf(month)} (§13).
-            </p>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="text-left text-xs uppercase tracking-wide text-crewly-dim">
-                    <th className="py-2 pr-4">Month</th>
-                    <th className="py-2 pr-4 text-right">Employees</th>
-                    <th className="py-2 pr-4 text-right">Gross</th>
-                    <th className="py-2 pr-4 text-right">PF</th>
-                    <th className="py-2 pr-4 text-right">ESI</th>
-                    <th className="py-2 pr-4 text-right">PT</th>
-                    <th className="py-2 pr-4 text-right">TDS</th>
-                    <th className="py-2 pr-4 text-right">LWF</th>
-                    <th className="py-2 pr-4">PF status</th>
-                    <th className="py-2 pr-4">TDS status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(history.rows || []).length === 0 && (
-                    <TableEmpty
-                      colSpan={10}
-                      illustration="chart"
-                      title="No payroll months recorded yet"
-                      description="This financial year has no completed payroll. Once a month is paid, its PF, ESI, PT and TDS totals are recorded here."
-                    />
-                  )}
-                  {(history.rows || []).map((row) => (
-                    <tr key={row.month} className="border-t border-crewly-hairline">
-                      <td className="py-2 pr-4">{row.monthLabel}</td>
-                      <td className="py-2 pr-4 text-right">{count(row.employees)}</td>
-                      <td className="py-2 pr-4 text-right">{money(row.gross)}</td>
-                      <td className="py-2 pr-4 text-right">{money(row.pf)}</td>
-                      <td className="py-2 pr-4 text-right">{money(row.esi)}</td>
-                      <td className="py-2 pr-4 text-right">{money(row.pt)}</td>
-                      <td className="py-2 pr-4 text-right">{money(row.tds)}</td>
-                      <td className="py-2 pr-4 text-right">{money(row.lwf)}</td>
-                      <td className="py-2 pr-4">{filingBadge(statusOfRow(row, 'PF'))}</td>
-                      <td className="py-2 pr-4">{filingBadge(statusOfRow(row, 'TDS'))}</td>
-                    </tr>
+            {/* ── right rail ───────────────────────────────────────────── */}
+            <Rail>
+              <Panel
+                title="Filing status & due dates"
+                subtitle={`Statutory due dates for ${monthLabel(month)}.`}
+                bodyClassName="px-4 pb-4"
+              >
+                {dueSorted.length === 0 ? (
+                  <p className="text-[11px] leading-relaxed text-st-on-variant">
+                    No filing window is loaded for this month yet.
+                  </p>
+                ) : (
+                  <ol className="space-y-2">
+                    {dueSorted.map((row) => (
+                      <li key={`${row.month}-${row.type}`} className="flex gap-2">
+                        <span
+                          className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[11px] font-bold tabular-nums ${
+                            row.status === 'FILED'
+                              ? 'bg-st-secondary-container text-st-on-secondary-container'
+                              : row.overdue
+                                ? 'bg-st-error-container text-st-on-error-container'
+                                : 'bg-st-low text-st-on-variant'
+                          }`}
+                        >
+                          {row.dueDate ? String(row.dueDate).slice(8, 10) : '—'}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] font-semibold leading-tight text-st-on">
+                            {row.typeLabel}
+                          </p>
+                          <p className="text-[10px] leading-snug text-st-on-variant">
+                            {row.status === 'FILED'
+                              ? `filed ${formatDate(row.filedAt)}`
+                              : `${dueLabel(row)}${row.dueDate ? ` · ${formatDate(row.dueDate)}` : ''}`}
+                          </p>
+                          {row.note ? (
+                            <p className="text-[9px] leading-snug text-st-on-variant/80">{row.note}</p>
+                          ) : null}
+                        </div>
+                        <Pill
+                          tone={row.status === 'FILED' ? 'good' : row.overdue ? 'bad' : row.dueSoon ? 'warn' : 'default'}
+                        >
+                          {row.status === 'FILED' ? 'filed' : row.overdue ? 'overdue' : row.dueSoon ? 'due soon' : 'open'}
+                        </Pill>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </Panel>
+
+              <Panel title="Filing readiness" bodyClassName="px-4 pb-4">
+                <CheckRow
+                  ok={generatedCount === calendarRows.length && calendarRows.length > 0}
+                  label="Reports generated"
+                  value={`${count(generatedCount)}/${count(calendarRows.length)}`}
+                />
+                <CheckRow
+                  ok={filable.length > 0 && filedCount === filable.length}
+                  label="Returns filed"
+                  value={`${count(filedCount)}/${count(filable.length)}`}
+                />
+                <CheckRow
+                  ok={overdueCount === 0}
+                  label="Overdue returns"
+                  value={count(overdueCount)}
+                />
+                <CheckRow
+                  ok={(dashboard.paidCount || 0) > 0}
+                  label="Employees paid in the month"
+                  value={count(dashboard.paidCount)}
+                />
+                <CheckRow
+                  ok={Boolean(summary.grossPayroll)}
+                  label="Gross payroll in the snapshot"
+                  value={money(summary.grossPayroll)}
+                />
+                <p className="pt-2 text-[10px] leading-snug text-st-on-variant">
+                  Crewly records a filing after it happens on the government portal. Nothing here is
+                  auto-filed, and a tick only means the attestation has been entered.
+                </p>
+              </Panel>
+
+              <Panel title="Open a working" bodyClassName="px-4 pb-4">
+                <p className="pb-2 text-[10px] leading-snug text-st-on-variant">
+                  Each tab carries the employee-wise lines the return needs, plus export.
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {REPORT_TABS.filter(
+                    ({ key }) =>
+                      !['OVERVIEW', 'ANNUAL', 'CALENDAR'].includes(key) &&
+                      !(key === 'LWF' && !applicability.lwf) &&
+                      !(key === 'GRATUITY' && !applicability.gratuity),
+                  ).map(({ key, label }) => (
+                    <StageButton key={key} variant="quiet" onClick={() => setTab(key)}>
+                      {label}
+                    </StageButton>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </div>
-      )}
+                </div>
+              </Panel>
+            </Rail>
+          </div>
 
-      {/* ── one statutory report ───────────────────────────────────────── */}
-      {!['OVERVIEW', 'ANNUAL', 'CALENDAR'].includes(tab) && report && !tabLoading && (
-        <ReportTab
-          report={report}
-          canFile={canFile}
-          busy={busy}
-          exporting={exporting}
-          filingDraft={filingDraft}
-          setFilingDraft={setFilingDraft}
-          onFile={handleFiling}
-          onExport={(format) => downloadReport(tab, format, { month })}
-        />
-      )}
+          <p className="rounded-xl bg-st-low/50 px-3 py-2 text-[10px] leading-snug text-st-on-variant">
+            Liabilities are frozen when the payroll is paid. Filing status is a human record of what was
+            submitted on EPFO / ESIC / the state PT portal / TRACES — no return is claimed as filed by
+            Crewly itself.
+          </p>
+            </>
+          ) : null}
 
-      {/* ── §18 annual ─────────────────────────────────────────────────── */}
-      {tab === 'ANNUAL' && annual && !tabLoading && (
-        <AnnualTab
-          annual={annual}
-          financialYear={financialYear}
-          setFinancialYear={setFinancialYear}
-          canGenerate={canGenerate}
-          busy={busy}
-          exports={exports}
-          onRequest={requestAnnual}
-          onDownload={downloadExportRow}
-        />
-      )}
+          {!['OVERVIEW', 'ANNUAL', 'CALENDAR'].includes(tab) && report && !tabLoading ? (
+            <ReportTab
+              report={report}
+              canFile={canFile}
+              busy={busy}
+              exporting={exporting}
+              filingDraft={filingDraft}
+              setFilingDraft={setFilingDraft}
+              onFile={handleFiling}
+              onExport={(format) => downloadReport(tab, format, { month })}
+            />
+          ) : null}
 
-      {/* ── §19 calendar ───────────────────────────────────────────────── */}
-      {tab === 'CALENDAR' && !tabLoading && (
-        <CalendarTab calendar={calendar} busy={busy} onToggle={toggleTask} />
+          {tab === 'ANNUAL' && annual && !tabLoading ? (
+            <AnnualTab
+              annual={annual}
+              financialYear={financialYear}
+              setFinancialYear={setFinancialYear}
+              canGenerate={canGenerate}
+              busy={busy}
+              exports={exports}
+              onRequest={requestAnnual}
+              onDownload={downloadExportRow}
+            />
+          ) : null}
+
+          {tab === 'CALENDAR' && !tabLoading ? (
+            <CalendarTab calendar={calendar} busy={busy} onToggle={toggleTask} />
+          ) : null}
+        </>
       )}
     </div>
   );
 };
-
-// ── the consolidated summary (§16) ─────────────────────────────────────────
-
-const SummaryTable = ({ summary = {}, applicability = {} }) => {
-  const sections = [
-    ['Payroll Summary', [
-      ['Gross payroll', summary.grossPayroll],
-      ['Net payroll', summary.netPayroll],
-    ]],
-    ['PF', [
-      ['Employee PF', summary.pf?.employee],
-      ['Employer PF', summary.pf?.employer],
-      ['Total PF payable', summary.pf?.total],
-    ]],
-    ['ESI', [
-      ['Employee ESI', summary.esi?.employee],
-      ['Employer ESI', summary.esi?.employer],
-      ['Total ESI payable', summary.esi?.total],
-    ]],
-    ['PT', [['Professional tax collected', summary.pt?.total]]],
-    ['TDS', [['TDS deducted', summary.tds?.total]]],
-    ['LWF', [
-      ['Employee LWF', summary.lwf?.employee],
-      ['Employer LWF', summary.lwf?.employer],
-      ['Total LWF payable', summary.lwf?.total],
-    ]],
-    ['Gratuity', [
-      ['Monthly provision', summary.gratuity?.monthly],
-      ['Annualised liability', summary.gratuity?.annualised],
-    ]],
-  ].filter(([section]) => section !== 'LWF' || applicability.lwf)
-   .filter(([section]) => section !== 'Gratuity' || applicability.gratuity);
-
-  return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-      {sections.map(([section, rows]) => (
-        <div key={section} className="rounded-lg border border-crewly-hairline p-3">
-          <p className="text-xs uppercase tracking-wide text-crewly-dim">{section}</p>
-          <dl className="mt-2 space-y-1.5">
-            {rows.map(([label, value]) => (
-              <div key={label} className="flex items-baseline justify-between gap-2 text-sm">
-                <dt className="text-crewly-dim">{label}</dt>
-                <dd className="font-medium">{money(value)}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-      ))}
-    </div>
-  );
-};
-
-// ── one report tab (§7–§14) ────────────────────────────────────────────────
 
 const ReportTab = ({
   report,
@@ -1069,9 +1432,6 @@ const DataTable = ({ headers = [], rows = [] }) => (
 );
 
 // ── helpers ────────────────────────────────────────────────────────────────
-
-const statusOfRow = (row, type) =>
-  (row.statuses || []).find((entry) => entry.type === type)?.status || 'NOT_GENERATED';
 
 const recentMonths = (month, howMany) => {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(month || ''))) return [];

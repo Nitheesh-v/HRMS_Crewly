@@ -246,7 +246,20 @@ export const FilterBar = ({
 
 // §19 — every report, in every format. The filename comes back from the
 // server so the browser saves what Finance expects to find.
-export const ExportMenu = ({ reportKey, filters = {}, disabled = false, onQueued = null }) => {
+export const ExportMenu = ({ reportKey, filters = {}, disabled = false, onQueued = null, theme = 'dark' }) => {
+  // The Executive Dashboard is drawn on the Warm Organic `st-` scale; the
+  // other fourteen reports are not. One flag, defaulting to today's look.
+  const st = theme === 'st';
+  const buttonClass = st
+    ? 'flex items-center gap-1.5 rounded-lg border border-st-outline-variant/70 px-3 py-2 text-[12px] font-semibold text-st-on hover:bg-st-low disabled:opacity-50'
+    : 'flex items-center gap-1.5 rounded-md border border-crewly-hairline-strong px-3 py-1.5 text-sm text-crewly-text hover:bg-crewly-inset disabled:opacity-50';
+  const menuClass = st
+    ? 'absolute right-0 z-20 mt-1 w-48 overflow-hidden rounded-lg border border-st-high bg-st-lowest shadow-lg'
+    : 'absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-md border border-crewly-hairline-strong bg-crewly-card shadow-lg';
+  const itemClass = st
+    ? 'flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-st-on hover:bg-st-low'
+    : 'flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-crewly-inset';
+  const iconClass = st ? 'text-st-on-variant' : 'text-crewly-dim';
   const { hasPermission } = usePermission();
   const canExport = hasPermission('PAYROLL_REPORT_EXPORT');
   const [open, setOpen] = useState(false);
@@ -285,14 +298,14 @@ export const ExportMenu = ({ reportKey, filters = {}, disabled = false, onQueued
         type="button"
         disabled={disabled || Boolean(busy)}
         onClick={() => setOpen((value) => !value)}
-        className="flex items-center gap-1.5 rounded-md border border-crewly-hairline-strong px-3 py-1.5 text-sm text-crewly-text hover:bg-crewly-inset disabled:opacity-50"
+        className={buttonClass}
       >
         {busy ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
         Export
         <ChevronDown size={13} />
       </button>
       {open ? (
-        <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-md border border-crewly-hairline-strong bg-crewly-card shadow-lg">
+        <div className={menuClass}>
           {[
             { format: 'CSV', icon: FileText, label: 'CSV' },
             { format: 'XLSX', icon: FileSpreadsheet, label: 'Excel' },
@@ -302,19 +315,19 @@ export const ExportMenu = ({ reportKey, filters = {}, disabled = false, onQueued
               key={format}
               type="button"
               onClick={() => download(format, false)}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-crewly-inset"
+              className={itemClass}
             >
-              <Icon size={14} className="text-crewly-dim" />
+              <Icon size={14} className={iconClass} />
               Download {label}
             </button>
           ))}
-          <div className="border-t border-crewly-hairline" />
+          <div className={`border-t ${st ? 'border-st-high' : 'border-crewly-hairline'}`} />
           <button
             type="button"
             onClick={() => download('XLSX', true)}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-crewly-inset"
+            className={itemClass}
           >
-            <RefreshCcw size={14} className="text-crewly-dim" />
+            <RefreshCcw size={14} className={iconClass} />
             Queue large export
           </button>
         </div>
@@ -353,16 +366,24 @@ export const PeriodSelect = ({
   onFromMonthChange,
   onToMonthChange,
   months = [],
+  theme = 'dark',
 }) => {
   const options = months.length ? months : [fromMonth, toMonth].filter(Boolean);
   const custom = preset === 'CUSTOM';
+  const st = theme === 'st';
+  const control = st
+    ? 'rounded-lg border border-st-outline-variant/70 bg-st-lowest px-2 py-1.5 text-[11px] font-semibold normal-case text-st-on'
+    : 'rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text';
+  const labelClass = st
+    ? 'flex flex-col gap-1 text-[10px] font-bold uppercase tracking-wide text-st-on-variant'
+    : 'flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim';
 
   return (
     <div className="flex flex-wrap items-end gap-2">
-      <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
+      <label className={labelClass}>
         Period
         <select
-          className="rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+          className={control}
           value={preset}
           onChange={(event) => onPresetChange(event.target.value)}
         >
@@ -374,23 +395,13 @@ export const PeriodSelect = ({
 
       {custom ? (
         <>
-          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
+          <label className={labelClass}>
             From
-            <input
-              type="month"
-              value={fromMonth}
-              onChange={(event) => onFromMonthChange(event.target.value)}
-              className="rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
-            />
+            <input type="month" value={fromMonth} onChange={(event) => onFromMonthChange(event.target.value)} className={control} />
           </label>
-          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
+          <label className={labelClass}>
             To
-            <input
-              type="month"
-              value={toMonth}
-              onChange={(event) => onToMonthChange(event.target.value)}
-              className="rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
-            />
+            <input type="month" value={toMonth} onChange={(event) => onToMonthChange(event.target.value)} className={control} />
           </label>
         </>
       ) : null}
