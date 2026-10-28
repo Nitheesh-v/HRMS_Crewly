@@ -50,20 +50,25 @@ test('teamAvailability — lazy import for the page exists', () => {
   );
 });
 
-test('teamAvailability — sidebar entry added to teamMenu, gated by ATTENDANCE_READ', () => {
+test('teamAvailability — a sidebar area row, gated by ATTENDANCE_READ', () => {
+  // Time & Leave now shows six AREAS instead of nineteen rows, so this page is
+  // a tab inside the "Team & presence" area rather than a row of its own
+  // (config/timeNav.js). The gate is unchanged — ATTENDANCE_READ, the same
+  // audience as before — only the place the gate is written moved.
+  const TAB = read('src/config/timeNav.js');
   assert.ok(
-    /const\s+teamMenu\s*=\s*hasAnyPermission\(\[\s*['"]ATTENDANCE_READ['"]\s*\]\)/.test(
+    /const\s+timeMenu\s*=\s*TIME_AREAS\.map[\s\S]*visibleTimeTabs\(area, hasAnyPermission, user\?\.role\)/.test(
       LAYOUT_FILE,
     ),
-    'teamMenu must be gated by ATTENDANCE_READ',
+    'the Time & Leave rows must come from TIME_AREAS through visibleTimeTabs',
   );
+
+  const area = TAB.slice(TAB.indexOf("id: 'team'"), TAB.indexOf("id: 'schedule'"));
+  assert.ok(area.includes("'/app/team/availability'"), 'the team area must include /app/team/availability');
+  assert.ok(area.includes("label: 'Team availability'"), 'the tab label must read "Team availability"');
   assert.ok(
-    LAYOUT_FILE.includes("/app/team/availability"),
-    'teamMenu must include /app/team/availability',
-  );
-  assert.ok(
-    /Team Availability/.test(LAYOUT_FILE),
-    'teamMenu label must read "Team Availability"',
+    area.includes("permissions: ['ATTENDANCE_READ']"),
+    'the tab must stay gated by ATTENDANCE_READ',
   );
 });
 
@@ -297,14 +302,16 @@ test('teamAvailability — page is reachable under RequireRole; no bypass via di
   );
 });
 
-test('teamAvailability — sidebar item lives in the same teamMenu group as "Who\'s Working"', () => {
-  const teamMenuBlock = LAYOUT_FILE.match(
-    /const\s+teamMenu\s*=[\s\S]+?\n\s*:\s*\[\];/,
+test("teamAvailability — same tab strip as \"Who's working\"", () => {
+  const TAB = read('src/config/timeNav.js');
+  const area = TAB.slice(TAB.indexOf("id: 'team'"), TAB.indexOf("id: 'schedule'"));
+  assert.ok(area.includes("label: \"Who's working\""), 'the team area must contain the board');
+  assert.ok(area.includes("'/app/team/availability'"), 'and the availability tab beside it');
+  // One area, one strip — the two pages reach each other.
+  assert.ok(
+    /\{inTime\(<TeamAvailabilityPage \/>\)\}/.test(ROUTES_FILE),
+    'the availability page must be wrapped in the shared Time & Leave strip',
   );
-  assert.ok(teamMenuBlock, 'teamMenu must exist');
-  const block = teamMenuBlock[0];
-  assert.ok(block.includes("Who's Working"));
-  assert.ok(block.includes('/app/team/availability'));
 });
 
 test('teamAvailability — page renders empty table copy when no items', () => {

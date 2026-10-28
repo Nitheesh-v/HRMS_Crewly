@@ -152,7 +152,8 @@ way to reach it: the route file and the config are pinned together by
 
 ## Verification
 
-`npm test` → 701 passing (9 new pins in `test/payrollNavigation.test.js`),
+`npm test` → 710 passing (9 new pins in `test/payrollNavigation.test.js`;
+Time & Leave now uses the same strip — see `docs/AREA_NAVIGATION.md`),
 `npm run build` green, `npx eslint src` → 117 problems (103 errors, 14
 warnings) — exactly the pre-change baseline. No browser is available here, so
 this is verified by lint, build and source pins, not by screenshot.

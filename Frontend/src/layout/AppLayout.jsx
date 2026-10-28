@@ -10,6 +10,7 @@ import SubscriptionStatusBanner from "../components/SubscriptionStatusBanner.jsx
 import { Power, Menu, X } from "lucide-react";
 import SidebarNav from "./SidebarNav.jsx";
 import { PAYROLL_AREAS, visiblePayrollTabs } from "../config/payrollNav.js";
+import { TIME_AREAS, visibleTimeTabs } from "../config/timeNav.js";
 import AiAssistantWidget from "../components/AIAssistant/AiAssistantWidget.jsx";
 import { PresenceMenu } from "../components/presence/index.js";
 import { useEffect, useState } from "react";
@@ -31,10 +32,11 @@ import { loadPresenceConfig } from "../redux/slices/presenceSlice.js";
 
 
 
-// Payroll destinations are deliberately absent from the role menus below.
-// They live in config/payrollNav.js, are permission-gated there, and are
-// rendered as three area rows plus the in-page tab strip — listing them here
-// again would put two "Payroll" rows in the same sidebar group.
+// Time & Leave and Payroll destinations are deliberately absent from the role
+// menus below. Both modules now show a few AREAS in the rail, permission-gated
+// in config/timeNav.js and config/payrollNav.js and drawn from those files
+// alone; listing their pages here as well would put a second copy of the same
+// row into the same sidebar group.
 const NAV_BY_ROLE = {
   [ROLES.COMPANY_ADMIN]: [
     { to: "/app", label: "Dashboard", end: true },
@@ -45,13 +47,6 @@ const NAV_BY_ROLE = {
     { to: "/app/departments", label: "Departments" },
     { to: "/app/analytics", label: "Analytics" },
     { to: "/app/reports", label: "Report Builder" },
-    { to: "/app/attendance", label: "Attendance" },
-    { to: "/app/attendance/report", label: "Attendance Reports" },
-    { to: "/app/leaves", label: "My Leaves" },
-    { to: "/app/leaves/approvals", label: "Leave Management" },
-    { to: "/app/holidays", label: "Holidays" },
-    { to: "/app/shifts", label: "Shifts" },
-    { to: "/app/schedules", label: "Work Schedules" },
     { to: "/app/announcements", label: "Announcements" },
     { label: "Celebrations", soon: true },
     { to: "/app/documents", label: "Documents" },
@@ -112,13 +107,6 @@ const NAV_BY_ROLE = {
     { to: "/app/departments", label: "Departments" },
     { to: "/app/analytics", label: "HR Analytics" },
     { to: "/app/reports", label: "Report Builder" },
-    { to: "/app/attendance", label: "Attendance" },
-    { to: "/app/attendance/report", label: "Attendance Reports" },
-    { to: "/app/leaves", label: "My Leaves" },
-    { to: "/app/leaves/approvals", label: "Leave Management" },
-    { to: "/app/holidays", label: "Holidays" },
-    { to: "/app/shifts", label: "Shifts" },
-    { to: "/app/schedules", label: "Work Schedules" },
     { to: "/app/announcements", label: "Announcements" },
     { label: "Celebrations", soon: true },
     { to: "/app/recruitment", label: "Recruitment" },
@@ -146,10 +134,6 @@ const NAV_BY_ROLE = {
     { to: "/app/analytics", label: "Team Analytics" },
     { to: "/app/org-chart", label: "My Team" },
     { to: "/app/users", label: "Employees" },
-    { to: "/app/attendance", label: "Attendance" },
-    { to: "/app/attendance/report", label: "Team Attendance" },
-    { to: "/app/leaves", label: "Leave Requests" },
-    { to: "/app/leaves/approvals", label: "Leave Approvals" },
     { to: "/app/projects", label: "Projects" },
     { to: "/app/tasks", label: "Tasks" },
     { to: "/app/performance", label: "Performance" },
@@ -161,8 +145,6 @@ const NAV_BY_ROLE = {
     { to: "/app/reports", label: "Report Builder" },
     { to: "/app/documents", label: "Documents" },
     { to: "/app/lifecycle", label: "My Journey" },
-    { to: "/app/holidays", label: "Holidays" },
-    { to: "/app/shifts", label: "My Shift" },
     { to: "/app/announcements", label: "Announcements" },
     { to: "/app/support", label: "Support Tickets" },
     { label: "Chat Hub", soon: true },
@@ -181,10 +163,6 @@ const NAV_BY_ROLE = {
     { to: "/app/org-chart", label: "My Team" },
     { to: "/app/users", label: "Team Members" },
     { to: "/app/analytics", label: "Team Analytics" },
-    { to: "/app/attendance", label: "Attendance" },
-    { to: "/app/attendance/report", label: "Team Attendance" },
-    { to: "/app/leaves", label: "Leave Requests" },
-    { to: "/app/leaves/approvals", label: "Approvals" },
     { to: "/app/projects", label: "Projects · Assign Tasks" },
     { to: "/app/tasks", label: "Team Tasks" },
     { to: "/app/performance", label: "Performance" },
@@ -196,8 +174,6 @@ const NAV_BY_ROLE = {
     { to: "/app/documents", label: "Documents" },
     { to: "/app/lifecycle", label: "My Journey" },
     { to: "/app/announcements", label: "Announcements" },
-    { to: "/app/holidays", label: "My Holidays" },
-    { to: "/app/shifts", label: "My Shift" },
     { to: "/app/support", label: "Support Tickets" },
     { label: "Chat Hub", soon: true },
     { label: "Time Tracking", soon: true },
@@ -218,10 +194,6 @@ const NAV_BY_ROLE = {
     { to: "/app/notifications", label: "Notifications" },
     { to: "/app/notification-settings", label: "Notify Settings" },
     { to: "/app/analytics", label: "My Stats" },
-    { to: "/app/holidays", label: "Holidays" },
-    { to: "/app/shifts", label: "My Shift" },
-    { to: "/app/attendance", label: "My Attendance" },
-    { to: "/app/leaves", label: "Leave Requests" },
     { to: "/app/documents", label: "My Documents" },
     { to: "/app/lifecycle", label: "My Journey" },
     { to: "/app/performance", label: "My Performance" },
@@ -412,63 +384,40 @@ const AppLayout = () => {
     // Land on the first tab the person can actually open. An employee whose
     // only payslip permission is their own must not be sent to the company-wide
     // payslip workspace just because that is the area's home.
-    .map(({ area, tabs }) => ({ to: tabs[0].to, label: area.label }));
+    // `ownerPaths` is the whole area: the rail row must stay lit while you are
+    // on any of its tabs, including the ones whose path is not a prefix of it.
+    .map(({ area, tabs }) => ({
+      to: tabs[0].to,
+      label: area.label,
+      end: true,
+      ownerPaths: area.tabs.map((tab) => tab.to),
+    }));
 
-  const attendancePolicyMenu = hasAnyPermission([
-    'ATTENDANCE_POLICY_READ',
-    'ATTENDANCE_POLICY_MANAGE',
-    'ATTENDANCE_POLICY_ACTIVATE',
-  ])
-    ? [{ to: '/app/attendance/policy', label: 'Attendance Policy' }]
-    : [];
-
-  const workModeMenu = hasAnyPermission([
-    'ATTENDANCE_WORK_MODE_REQUEST',
-    'ATTENDANCE_WORK_MODE_REVIEW',
-  ])
-    ? [{ to: '/app/attendance/work-modes', label: 'Work Mode Requests' }]
-    : [];
-
-  const regularizationMenu = hasAnyPermission([
-    'ATTENDANCE_REGULARIZATION_REQUEST',
-    'ATTENDANCE_REGULARIZATION_REVIEW',
-  ])
-    ? [{ to: '/app/attendance/regularizations', label: 'Regularizations' }]
-    : [];
-
-  const overtimeMenu = hasAnyPermission([
-    'ATTENDANCE_OVERTIME_REQUEST',
-    'ATTENDANCE_OVERTIME_REVIEW',
-  ])
-    ? [{ to: '/app/attendance/overtime', label: 'Overtime & Comp-Off' }]
-    : [];
-
-  // Phase 37.3 — team availability lives in the same teamMenu surface
-  //   as "Who's Working". Same permission gate (ATTENDANCE_READ);
-  //   same scope semantics; the backend reuses utils/scope.js so a
-  //   user without ATTENDANCE_READ who somehow reaches this still sees
-  //   the empty population of [self].
-  const teamMenu = hasAnyPermission(['ATTENDANCE_READ'])
-    ? [
-        { to: '/app/attendance/team', label: "Who's Working" },
-        { to: '/app/team/availability', label: 'Team Availability' },
-      ]
-    : [];
-
-  const timesheetMenu = hasAnyPermission(['ATTENDANCE_READ_SELF', 'ATTENDANCE_READ'])
-    ? [{ to: '/app/attendance/timesheet', label: 'My Timesheet' }]
-    : [];
-  const teamTimesheetsMenu = hasAnyPermission(['ATTENDANCE_READ'])
-    ? [{ to: '/app/attendance/team-timesheets', label: 'Team Timesheets' }]
-    : [];
-
-  const operationsMenu = hasAnyPermission(['ATTENDANCE_OPERATIONS_READ'])
-    ? [{ to: '/app/attendance/operations', label: 'Attendance Operations' }]
-    : [];
-
-  const analyticsMenu = hasAnyPermission(['ATTENDANCE_ANALYTICS_READ', 'ATTENDANCE_READ_SELF'])
-    ? [{ to: '/app/attendance/analytics', label: 'Attendance Analytics' }]
-    : [];
+  /*
+   * TIME & LEAVE — six rows, not nineteen.
+   *
+   * Attendance, leave, holidays, shifts, the request queues, the team boards,
+   * the analytics and the setup pages used to be nineteen separate sidebar
+   * rows. They are now six AREAS (config/timeNav.js); each area's pages are
+   * the tab strip at the top of the page (components/time/TimeSectionTabs.jsx).
+   *
+   * Both gates are applied here exactly as the strip applies them: the
+   * permission the page's API enforces, plus the role audience the route
+   * itself admits where it has no permission of its own.
+   */
+  const timeMenu = TIME_AREAS.map((area) => ({
+    area,
+    tabs: visibleTimeTabs(area, hasAnyPermission, user?.role),
+  }))
+    .filter(({ tabs }) => tabs.length)
+    // Land on the first tab the person can open: an employee's Timesheet row
+    // must not open the manager's report page because that is the area home.
+    .map(({ area, tabs }) => ({
+      to: tabs[0].to,
+      label: area.label,
+      end: true,
+      ownerPaths: area.tabs.map((tab) => tab.to),
+    }));
 
   // Phase 38 — the profile change request queue. Same idea as every other
   // permission-driven menu here: the SERVER holds the real gate
@@ -478,27 +427,10 @@ const AppLayout = () => {
     ? [{ to: '/app/profile/change-requests', label: 'Profile Change Requests' }]
     : [];
 
-  const captureMenu = hasAnyPermission(['ATTENDANCE_CAPTURE_MANAGE'])
-    ? [
-        { to: '/app/attendance/kiosks', label: 'Kiosk Stations' },
-        { to: '/app/attendance/qr', label: 'QR Challenges' },
-        { to: '/app/attendance/imports', label: 'Attendance Import' },
-      ]
-    : [];
-
   const menu = [
     ...baseMenu,
-    ...attendancePolicyMenu,
-    ...workModeMenu,
-    ...regularizationMenu,
-    ...overtimeMenu,
-    ...teamMenu,
-    ...timesheetMenu,
-    ...teamTimesheetsMenu,
-    ...operationsMenu,
-    ...analyticsMenu,
-    ...captureMenu,
     ...profileChangeMenu,
+    ...timeMenu,
     ...payrollMenu,
     ...recruitmentDashboardMenu,
     ...candidateMenu,

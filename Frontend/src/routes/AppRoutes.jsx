@@ -32,6 +32,7 @@ import RequireVerifierAuth from "./RequireVerifierAuth.jsx";
 import RequirePermission from "./RequirePermission.jsx";
 import RequireRole from "./RequireRole.jsx";
 import PayrollSection from "../components/payroll/PayrollSection.jsx";
+import TimeSection from "../components/time/TimeSection.jsx";
 
 const LandingPage = lazy(() => import("../pages/landing/LandingPage.jsx"));
 const LoginPage = lazy(() => import("../pages/login/LoginPage.jsx"));
@@ -224,6 +225,9 @@ const COMPANY_ADMIN = [
    sidebar lists three areas, the strip lists the pages inside them. Defined
    here so every payroll route is framed the same way. */
 const inPayroll = (page) => <PayrollSection>{page}</PayrollSection>;
+
+/* Time & Leave pages share one in-page tab strip too (config/timeNav.js). */
+const inTime = (page) => <TimeSection>{page}</TimeSection>;
 
 const AppRoutes = () => (
   <Suspense fallback={<div className="p-6 text-crewly-dim">Loading…</div>}>
@@ -492,14 +496,14 @@ const AppRoutes = () => (
       {/* Attendance */}
       <Route
         path="attendance"
-        element={<AttendancePage />}
+        element={inTime(<AttendancePage />)}
       />
 
       <Route
         path="attendance/report"
         element={
           <RequireRole roles={SENIORS}>
-            <AttendanceReportPage />
+            {inTime(<AttendanceReportPage />)}
           </RequireRole>
         }
       />
@@ -511,7 +515,7 @@ const AppRoutes = () => (
         path="attendance/team"
         element={
           <RequireRole roles={SENIORS}>
-            <AttendanceTeamPage />
+            {inTime(<AttendanceTeamPage />)}
           </RequireRole>
         }
       />
@@ -525,7 +529,7 @@ const AppRoutes = () => (
         path="team/availability"
         element={
           <RequireRole roles={SENIORS}>
-            <TeamAvailabilityPage />
+            {inTime(<TeamAvailabilityPage />)}
           </RequireRole>
         }
       />
@@ -560,7 +564,7 @@ const AppRoutes = () => (
           enforces ATTENDANCE_READ_SELF/READ + actor identity). */}
       <Route
         path="attendance/timesheet"
-        element={<AttendanceTimesheetPage />}
+        element={inTime(<AttendanceTimesheetPage />)}
       />
 
       {/* Phase 31.10 — Team Timesheets (same SENIORS audience as the
@@ -570,7 +574,7 @@ const AppRoutes = () => (
         path="attendance/team-timesheets"
         element={
           <RequireRole roles={SENIORS}>
-            <AttendanceTeamTimesheetsPage />
+            {inTime(<AttendanceTeamTimesheetsPage />)}
           </RequireRole>
         }
       />
@@ -581,7 +585,7 @@ const AppRoutes = () => (
         path="attendance/operations"
         element={
           <RequireRole roles={HR}>
-            <AttendanceOperationsPage />
+            {inTime(<AttendanceOperationsPage />)}
           </RequireRole>
         }
       />
@@ -590,28 +594,28 @@ const AppRoutes = () => (
           like the payroll setup pages: no role-name gate here) */}
       <Route
         path="attendance/policy"
-        element={<AttendancePolicyPage />}
+        element={inTime(<AttendancePolicyPage />)}
       />
 
       {/* Phase 31.4 — Work Mode Requests (permission-gated inside the
           page: My requests vs Pending approvals tabs) */}
       <Route
         path="attendance/work-modes"
-        element={<AttendanceWorkModePage />}
+        element={inTime(<AttendanceWorkModePage />)}
       />
 
       {/* Phase 31.5 — Attendance Regularization (permission-gated
           inside the page: My requests vs Exception center tabs) */}
       <Route
         path="attendance/regularizations"
-        element={<AttendanceRegularizationPage />}
+        element={inTime(<AttendanceRegularizationPage />)}
       />
 
       {/* Phase 31.8 — Overtime & Comp-Off (permission-gated inside
           the page: My overtime vs Review queue tabs) */}
       <Route
         path="attendance/overtime"
-        element={<AttendanceOvertimePage />}
+        element={inTime(<AttendanceOvertimePage />)}
       />
 
       {/* Phase 31.14 — Kiosk stations (HR audience; the backend
@@ -620,7 +624,7 @@ const AppRoutes = () => (
         path="attendance/kiosks"
         element={
           <RequireRole roles={HR}>
-            <KioskStationsPage />
+            {inTime(<KioskStationsPage />)}
           </RequireRole>
         }
       />
@@ -631,7 +635,7 @@ const AppRoutes = () => (
         path="attendance/qr"
         element={
           <RequireRole roles={HR}>
-            <QrChallengesPage />
+            {inTime(<QrChallengesPage />)}
           </RequireRole>
         }
       />
@@ -650,7 +654,7 @@ const AppRoutes = () => (
         path="attendance/imports"
         element={
           <RequireRole roles={HR}>
-            <AttendanceImportPage />
+            {inTime(<AttendanceImportPage />)}
           </RequireRole>
         }
       />
@@ -663,7 +667,7 @@ const AppRoutes = () => (
         path="attendance/imports/validation"
         element={
           <RequireRole roles={HR}>
-            <AttendanceImportValidationPage />
+            {inTime(<AttendanceImportValidationPage />)}
           </RequireRole>
         }
       />
@@ -674,20 +678,20 @@ const AppRoutes = () => (
           enforces both plus org scope). */}
       <Route
         path="attendance/analytics"
-        element={<AttendanceAnalyticsPage />}
+        element={inTime(<AttendanceAnalyticsPage />)}
       />
 
       {/* Leave management */}
       <Route
         path="leaves"
-        element={<LeavesPage />}
+        element={inTime(<LeavesPage />)}
       />
 
       <Route
         path="leaves/approvals"
         element={
           <RequireRole roles={SENIORS}>
-            <LeaveApprovalsPage />
+            {inTime(<LeaveApprovalsPage />)}
           </RequireRole>
         }
       />
@@ -1058,19 +1062,19 @@ const AppRoutes = () => (
       {/* Scheduling */}
       <Route
         path="holidays"
-        element={<HolidaysPage />}
+        element={inTime(<HolidaysPage />)}
       />
 
       <Route
         path="shifts"
-        element={<ShiftsPage />}
+        element={inTime(<ShiftsPage />)}
       />
 
       <Route
         path="schedules"
         element={
           <RequireRole roles={HR}>
-            <SchedulesPage />
+            {inTime(<SchedulesPage />)}
           </RequireRole>
         }
       />

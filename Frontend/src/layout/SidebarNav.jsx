@@ -70,13 +70,19 @@ const NAV_ICON_BY_PATH = {
   "/app/departments": Building2,
   "/app/analytics": BarChart3,
   "/app/reports": FileText,
+  // Time & Leave is six areas now (config/timeNav.js): only the six rail
+  // destinations need an icon, and the old per-page entries went with the rows
+  // they drew. The per-page paths are still listed because a page's own header
+  // icon is read from this map where it exists.
   "/app/attendance": Clock,
-  "/app/attendance/report": BarChart3,
-  "/app/attendance/policy": Settings,
-  "/app/attendance/work-modes": ClipboardList,
   "/app/attendance/regularizations": ClipboardList,
-  "/app/attendance/overtime": Timer,
   "/app/attendance/team": Users,
+  "/app/attendance/policy": Settings,
+  "/app/leaves": CalendarOff,
+  "/app/shifts": Shuffle,
+  "/app/attendance/report": BarChart3,
+  "/app/attendance/work-modes": ClipboardList,
+  "/app/attendance/overtime": Timer,
   "/app/attendance/timesheet": CalendarDays,
   "/app/attendance/team-timesheets": CalendarRange,
   "/app/attendance/operations": Gauge,
@@ -84,7 +90,6 @@ const NAV_ICON_BY_PATH = {
   "/app/attendance/kiosks": MonitorSmartphone,
   "/app/attendance/qr": QrCode,
   "/app/attendance/imports": FileUp,
-  "/app/leaves": CalendarOff,
   "/app/leaves/approvals": CheckCircle2,
   // Payroll is three areas, not fifteen rows: its pages are an in-page tab
   // strip (config/payrollNav.js). Only the three sidebar destinations need an
@@ -93,7 +98,6 @@ const NAV_ICON_BY_PATH = {
   "/app/payroll/components": Layers,
   "/app/payroll/payslips": ReceiptText,
   "/app/holidays": PartyPopper,
-  "/app/shifts": Shuffle,
   "/app/schedules": CalendarRange,
   "/app/announcements": Megaphone,
   "/app/documents": FileText,
@@ -181,12 +185,19 @@ const NAV_GROUPS = [
     ],
   },
 
+  /*
+   * Time & Leave is six areas, not nineteen rows — the same treatment Payroll
+   * got. Each row below is a rail destination whose pages are the in-page tab
+   * strip (config/timeNav.js). The `time` group stays as the bucket so the
+   * breadcrumb's section label ("Time & Leave") still matches NAV_GROUPS, but
+   * it only holds the six area rows now.
+   */
   {
     id: "time",
     label: "Time & Leave",
     icon: Clock,
-    paths: ["/app/shifts", "/app/schedules", "/app/holidays"],
-    prefixes: ["/app/attendance", "/app/leaves"],
+    paths: [],
+    prefixes: ["/app/attendance", "/app/leaves", "/app/shifts", "/app/schedules", "/app/holidays"],
   },
 
   {
@@ -323,6 +334,22 @@ const headerClass = (active) =>
       ? "bg-crewly-inset text-crewly-text"
       : "text-crewly-dim hover:bg-crewly-inset hover:text-crewly-text"
   }`;
+
+/*
+ * An AREA row owns several pages, not one path.
+ *
+ * "Attendance" is the rail row for /app/attendance plus its reports and
+ * timesheets; "Attendance setup" owns the policy, operations, kiosk, QR and
+ * import pages. Prefix matching cannot express that — /app/attendance/policy
+ * would light the Attendance row — so area rows carry `ownerPaths` and are
+ * matched against the whole set. Every other row keeps NavLink's own matching.
+ */
+const rowIsActive = (item, fallback, pathname = '') => {
+  if (!item.ownerPaths?.length) return fallback;
+  return item.ownerPaths.some(
+    (owned) => pathname === owned || pathname.startsWith(`${owned}/`),
+  );
+};
 
 const Sidebar = ({ menu = [], mobile = false, onClose }) => {
   const location = useLocation();
@@ -477,7 +504,13 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
     }
 
     return (
-      <NavLink key={key} to={item.to} end={navEnd(item)} className={itemClass} onClick={handleNav}>
+      <NavLink
+        key={key}
+        to={item.to}
+        end={navEnd(item)}
+        className={(state) => itemClass({ isActive: rowIsActive(item, state.isActive, location.pathname) })}
+        onClick={handleNav}
+      >
         <Icon aria-hidden="true" className="h-4 w-4 shrink-0" strokeWidth={1.8} />
         <span className="min-w-0 flex-1 truncate">{label}</span>
       </NavLink>
@@ -497,7 +530,13 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
       const Icon = getNavIcon(only);
 
       return (
-        <NavLink key={group.id} to={only.to} end={navEnd(only)} className={singleClass} onClick={handleNav}>
+        <NavLink
+          key={group.id}
+          to={only.to}
+          end={navEnd(only)}
+          className={(state) => singleClass({ isActive: rowIsActive(only, state.isActive, location.pathname) })}
+          onClick={handleNav}
+        >
           <Icon aria-hidden="true" className="h-[17px] w-[17px] shrink-0" strokeWidth={1.8} />
           <span className="min-w-0 flex-1 truncate">{cleanNavLabel(only.label)}</span>
         </NavLink>
@@ -621,7 +660,13 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
                     );
                   }
                   return (
-                    <NavLink key={key} to={item.to} end={navEnd(item)} className={singleClass} onClick={handleNav}>
+                    <NavLink
+                      key={key}
+                      to={item.to}
+                      end={navEnd(item)}
+                      className={(state) => singleClass({ isActive: rowIsActive(item, state.isActive, location.pathname) })}
+                      onClick={handleNav}
+                    >
                       <Icon aria-hidden="true" className="h-4 w-4 shrink-0" strokeWidth={1.8} />
                       <span className="min-w-0 flex-1 truncate">{label}</span>
                     </NavLink>
@@ -771,7 +816,13 @@ const Sidebar = ({ menu = [], mobile = false, onClose }) => {
                 }
 
                 return (
-                  <NavLink key={key} to={item.to} end={navEnd(item)} className={singleClass} onClick={handleNav}>
+                  <NavLink
+                      key={key}
+                      to={item.to}
+                      end={navEnd(item)}
+                      className={(state) => singleClass({ isActive: rowIsActive(item, state.isActive, location.pathname) })}
+                      onClick={handleNav}
+                    >
                     <Icon aria-hidden="true" className="h-4 w-4 shrink-0" strokeWidth={1.8} />
                     <span className="min-w-0 flex-1 truncate">{label}</span>
                   </NavLink>

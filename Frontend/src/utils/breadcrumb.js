@@ -14,14 +14,16 @@
 // Longest prefix wins, so /app/attendance/overtime is "Time & Leave" and
 // /app/profile/change-requests is "People" (it is a reviewers' queue), not "Me".
 //
-// PAYROLL is the one section whose pages are NOT in the menu any more: the
-// sidebar shows three areas and each area's pages are an in-page tab strip
-// (config/payrollNav.js). So the page half comes from that same config — which
-// is also what names the tabs — instead of from a sidebar row that no longer
-// exists. Without this, every payroll page would lose its breadcrumb.
+// TIMES ARE DIFFERENT, so are PAYROLL pages: they are NOT in the menu any
+// more. Both modules show a few AREAS in the sidebar and each area's pages are
+// an in-page tab strip (config/timeNav.js, config/payrollNav.js). So their page
+// half comes from that same config — which is also what names the tabs —
+// instead of from a sidebar row that no longer exists. Without this, every one
+// of those pages would lose its breadcrumb.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { PAYROLL_PAGE_TITLES } from '../config/payrollNav.js';
+import { TIME_PAGE_TITLES } from '../config/timeNav.js';
 
 const SECTIONS = [
   { label: 'Me', prefixes: ['/app/profile', '/app/notifications', '/app/notification-settings'] },
@@ -40,7 +42,9 @@ const SECTIONS = [
   },
   {
     label: 'Time & Leave',
-    prefixes: ['/app/attendance', '/app/leaves', '/app/shifts', '/app/schedules', '/app/holidays'],
+    // /app/team/availability is a presence board, not a "People" page: it
+    // belongs to the same section as the attendance team board beside it.
+    prefixes: ['/app/attendance', '/app/leaves', '/app/shifts', '/app/schedules', '/app/holidays', '/app/team'],
   },
   { label: 'Payroll', prefixes: ['/app/payroll', '/app/payslips'] },
   { label: 'Recruitment', prefixes: ['/app/recruitment', '/app/referrals'] },
@@ -76,6 +80,13 @@ export const sectionForPath = (pathname = '') =>
     .sort((a, b) => b.prefix.length - a.prefix.length)[0]?.label || null;
 
 /**
+ * Every page title declared by the two tab-strip modules, in one map. Payroll
+ * wins where both declare the same path (they cannot, but the merge should be
+ * deterministic rather than accidental).
+ */
+const AREA_PAGE_TITLES = { ...TIME_PAGE_TITLES, ...PAYROLL_PAGE_TITLES };
+
+/**
  * Menu entries whose sidebar label is deliberately shorter than the page's own
  * headline. The nav row has to stay one word wide ("Organization"), while the
  * page says what it actually is and the breadcrumb names it the same way.
@@ -90,15 +101,15 @@ export const menuItemForPath = (menu = [], pathname = '') => {
     .filter((entry) => entry.to && matches(pathname, entry.to))
     .sort((a, b) => b.to.length - a.to.length)[0];
 
-  // Longest payroll path wins, including detail views (/app/payroll/employees,
-  // /app/payroll/analytics/*), so "Review & approval" does not collapse to the
-  // area name the sidebar row happens to use.
-  const payrollTitle = Object.keys(PAYROLL_PAGE_TITLES)
+  // Longest declared path wins, including detail views (/app/payroll/employees,
+  // /app/attendance/imports/validation), so "Review & approval" does not
+  // collapse to the area name the sidebar row happens to use.
+  const declared = Object.keys(AREA_PAGE_TITLES)
     .filter((to) => matches(pathname, to))
     .sort((a, b) => b.length - a.length)
-    .map((to) => PAYROLL_PAGE_TITLES[to])[0];
+    .map((to) => AREA_PAGE_TITLES[to])[0];
 
-  if (payrollTitle) return { to: pathname, label: payrollTitle, title: payrollTitle };
+  if (declared) return { to: pathname, label: declared, title: declared };
   if (!item) return null;
 
   return { ...item, title: PAGE_TITLES[item.to] || item.label };
