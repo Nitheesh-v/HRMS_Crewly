@@ -14,6 +14,7 @@
 //      numbers — so a payroll recalculation can never leave a stale figure.
 //    · Crewly prepares the return. Crewly never files it.
 // ═══════════════════════════════════════════════════════════════════════════
+import asBuffer from '../../utils/asBuffer.js';
 import ApiError from '../../utils/ApiError.js';
 
 import {
@@ -1024,7 +1025,7 @@ export const makeStatutoryService = ({
     return {
       filename: row.filename || 'statutory-report.csv',
       contentType: contentTypes[row.format] || contentTypes.CSV,
-      content: withBinary?.binary || Buffer.alloc(0),
+      content: asBuffer(withBinary?.binary),
       rowCount: row.rowCount || 0,
     };
   };

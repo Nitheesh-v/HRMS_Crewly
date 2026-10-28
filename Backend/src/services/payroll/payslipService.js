@@ -12,6 +12,7 @@
 //    · Regeneration re-renders the STORED snapshot — never new payroll data.
 //    · An employee reaches their own payslips and nothing else.
 // ═══════════════════════════════════════════════════════════════════════════
+import asBuffer from '../../utils/asBuffer.js';
 import ApiError from '../../utils/ApiError.js';
 
 import {
@@ -660,9 +661,10 @@ export const makePayslipService = ({
 
     // The PDF is `select: false`; this is the only read that asks for it.
     const withPdf = await PayslipModel.findOne({ _id: row._id, companyId }).select('+pdf').lean();
-    let buffer = withPdf?.pdf;
+    // `.lean()` can hand back a BSON Binary rather than a Node Buffer.
+    let buffer = asBuffer(withPdf?.pdf);
 
-    if (!buffer || !buffer.length) {
+    if (!buffer.length) {
       buffer = await renderInto({ row, generatedAt: new Date() });
     }
 
@@ -924,8 +926,8 @@ export const makePayslipService = ({
             percent: Math.round((index / Math.max(1, scoped.length)) * 100),
           });
         }
-        let buffer = row.pdf;
-        if (!buffer || !buffer.length) buffer = await renderInto({ row, generatedAt: new Date() });
+        let buffer = asBuffer(row.pdf);
+        if (!buffer.length) buffer = await renderInto({ row, generatedAt: new Date() });
         entries.push({
           name: zipEntryName({
             month: row.month,
@@ -1024,7 +1026,8 @@ export const makePayslipService = ({
 
     return {
       filename: row.filename || bulkZipFilename({ month: row.month, scope: row.scope }),
-      content: withBinary?.binary || Buffer.alloc(0),
+      // Never hand a raw BSON Binary to the response writer.
+      content: asBuffer(withBinary?.binary),
     };
   };
 

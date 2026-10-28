@@ -9,6 +9,7 @@
 //    · Employee — self-service: `req.user._id` is the ONLY employee id ever
 //      used, so a crafted employeeId can never widen the query (§3 / §24).
 // ═══════════════════════════════════════════════════════════════════════════
+import asBuffer from '../../utils/asBuffer.js';
 import fnfService from '../../services/payroll/fnfService.js';
 import ApiResponse from '../../utils/ApiResponse.js';
 import asyncHandler from '../../utils/asyncHandler.js';
@@ -22,9 +23,10 @@ const fileResponse = (res, { filename, content, contentType = 'application/octet
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   // 31.16 D-09 — Content-Length is BYTES, never chars (multibyte
   // strings under-declare and poison the keep-alive socket).
-  const bodyLength = Buffer.isBuffer(content) ? content.length : Buffer.byteLength(content ?? '', 'utf8');
-  res.setHeader('Content-Length', String(bodyLength));
-  return res.end(content);
+  // A stored Buffer can arrive as a BSON Binary; normalise before measuring.
+  const body = asBuffer(content);
+  res.setHeader('Content-Length', String(body.length));
+  return res.end(body);
 };
 
 // ── §19 — the HR dashboard ─────────────────────────────────────────────────

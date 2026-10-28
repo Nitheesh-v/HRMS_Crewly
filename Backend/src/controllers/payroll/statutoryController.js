@@ -8,6 +8,7 @@
 //  the query string. The self-service route (`/mine`) takes the employee id
 //  from the JWT and nowhere else, so a crafted id cannot widen the read.
 // ═══════════════════════════════════════════════════════════════════════════
+import asBuffer from '../../utils/asBuffer.js';
 import statutoryService from '../../services/payroll/statutoryService.js';
 import ApiResponse from '../../utils/ApiResponse.js';
 import asyncHandler from '../../utils/asyncHandler.js';
@@ -17,9 +18,10 @@ const fileResponse = (res, { filename, contentType, content }) => {
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   // 31.16 D-09 — Content-Length is BYTES, never chars (multibyte
   // strings under-declare and poison the keep-alive socket).
-  const bodyLength = Buffer.isBuffer(content) ? content.length : Buffer.byteLength(content ?? '', 'utf8');
-  res.setHeader('Content-Length', String(bodyLength));
-  return res.end(content);
+  // A stored Buffer can arrive as a BSON Binary; normalise before measuring.
+  const body = asBuffer(content);
+  res.setHeader('Content-Length', String(body.length));
+  return res.end(body);
 };
 
 // ── §5 — dashboard ─────────────────────────────────────────────────────────

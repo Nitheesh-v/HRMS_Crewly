@@ -15,6 +15,7 @@
 //    · CLOSED is immutable. Every other change appends to history.
 //    · Crewly calculates and records. Crewly does not sign, file or pay.
 // ═══════════════════════════════════════════════════════════════════════════
+import asBuffer from '../../utils/asBuffer.js';
 import ApiError from '../../utils/ApiError.js';
 
 import {
@@ -1429,7 +1430,7 @@ export const makeFnfService = ({
 
     return {
       filename: file.filename || statementFilename({ settlementNumber: row.settlementNumber }),
-      content: withBinary?.binary || Buffer.alloc(0),
+      content: asBuffer(withBinary?.binary),
     };
   };
 
@@ -1596,7 +1597,7 @@ export const makeFnfService = ({
 
     return {
       filename: row.filename || reportFilename({ month: row.month, format: row.format }),
-      content: withBinary?.binary || Buffer.alloc(0),
+      content: asBuffer(withBinary?.binary),
       contentType: String(row.format || '').toUpperCase() === 'CSV'
         ? 'text/csv; charset=utf-8'
         : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

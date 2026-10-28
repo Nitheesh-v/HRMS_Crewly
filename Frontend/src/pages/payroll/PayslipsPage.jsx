@@ -604,18 +604,29 @@ const PayslipsPage = () => {
                 <span className="font-semibold">{newestArchive.filename || 'Payslip archive'}</span>
                 <span className="ml-1.5 text-[10px] text-st-on-variant">
                   {formatNumber(newestArchive.total)} payslip(s) ·{' '}
-                  {newestArchive.scope === 'DEPARTMENT' ? 'department' : 'company'} ·{' '}
-                  {formatStamp(newestArchive.createdAt)}
+                  {newestArchive.scope === 'DEPARTMENT'
+                    ? newestArchive.departmentName || 'department'
+                    : 'company'}
+                  {newestArchive.sizeBytes
+                    ? ` · ${formatNumber(Math.max(1, Math.round(newestArchive.sizeBytes / 1024)))} KB`
+                    : ''}{' '}
+                  · {formatStamp(newestArchive.createdAt)}
                 </span>
               </p>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 rounded-lg border border-st-outline-variant/60 px-2 py-1 text-[10px] font-semibold text-st-on hover:bg-st-low disabled:opacity-50"
-                disabled={busy}
-                onClick={() => downloadZip(newestArchive)}
-              >
-                <Download aria-hidden="true" size={10} /> Download ZIP
-              </button>
+              {Number(newestArchive.total) > 0 ? (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-lg border border-st-outline-variant/60 px-2 py-1 text-[10px] font-semibold text-st-on hover:bg-st-low disabled:opacity-50"
+                  disabled={busy}
+                  onClick={() => downloadZip(newestArchive)}
+                >
+                  <Download aria-hidden="true" size={10} /> Download ZIP
+                </button>
+              ) : (
+                <span className="text-[10px] text-st-on-variant">
+                  Empty archive — build it again once payslips exist for the month.
+                </span>
+              )}
             </div>
           ) : (
             <p className="text-[11px] leading-relaxed text-st-on-variant">

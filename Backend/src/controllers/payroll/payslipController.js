@@ -11,6 +11,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import payslipService from '../../services/payroll/payslipService.js';
 import ApiResponse from '../../utils/ApiResponse.js';
+import asBuffer from '../../utils/asBuffer.js';
 import asyncHandler from '../../utils/asyncHandler.js';
 
 // The 29.1 payroll scope decides how far a scoped user can see; null means
@@ -20,19 +21,21 @@ const scopeOf = (req) => req.payrollEmployeeIds || null;
 const pdfResponse = (res, { filename, content, message = 'Payslip PDF' }) => {
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  // A stored Buffer can arrive as a BSON Binary; normalise before measuring.
+  const body = asBuffer(content);
   // 31.16 D-09 — Content-Length is BYTES, never chars.
-  const bodyLength = Buffer.isBuffer(content) ? content.length : Buffer.byteLength(content ?? '', 'utf8');
-  res.setHeader('Content-Length', String(bodyLength));
-  return res.end(content);
+  res.setHeader('Content-Length', String(body.length));
+  return res.end(body);
 };
 
 const zipResponse = (res, { filename, content }) => {
   res.setHeader('Content-Type', 'application/zip');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  // A stored Buffer can arrive as a BSON Binary; normalise before measuring.
+  const body = asBuffer(content);
   // 31.16 D-09 — Content-Length is BYTES, never chars.
-  const bodyLength = Buffer.isBuffer(content) ? content.length : Buffer.byteLength(content ?? '', 'utf8');
-  res.setHeader('Content-Length', String(bodyLength));
-  return res.end(content);
+  res.setHeader('Content-Length', String(body.length));
+  return res.end(body);
 };
 
 // ── admin / payroll side (§27) ─────────────────────────────────────────────

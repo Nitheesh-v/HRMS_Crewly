@@ -92,9 +92,31 @@ const isPublicCustomerAuth = (config) =>
     String(config?.url || '').startsWith(path),
   );
 
+/*
+ * A failed *download* answers with a Blob, not JSON, so `data.message` is
+ * never there and the toast falls back to axios' generic
+ * "Request failed with status code 500". Reading the Blob back gives the
+ * server's own sentence ("The archive is still being prepared…").
+ */
+const readBlobMessage = async (error) => {
+  const data = error?.response?.data;
+
+  if (typeof Blob === 'undefined' || !(data instanceof Blob)) return '';
+
+  try {
+    const text = await data.text();
+    const parsed = JSON.parse(text);
+
+    return typeof parsed?.message === 'string' ? parsed.message : '';
+  } catch {
+    return '';
+  }
+};
+
 const normalizeError = (error) => {
   const message =
     error.response?.data?.message ||
+    error.blobMessage ||
     error.message ||
     'Something went wrong';
 
@@ -369,6 +391,11 @@ api.interceptors.response.use(
           : '';
 
       clearAuthentication(redirectPath);
+    }
+
+    // A download failure carries its reason in the Blob body.
+    if (!error.blobMessage) {
+      error.blobMessage = await readBlobMessage(error);
     }
 
     return Promise.reject(

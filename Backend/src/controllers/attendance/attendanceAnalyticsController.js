@@ -1,3 +1,4 @@
+import asBuffer from '../../utils/asBuffer.js';
 import ApiResponse from '../../utils/ApiResponse.js';
 import asyncHandler from '../../utils/asyncHandler.js';
 import {
@@ -22,9 +23,10 @@ const fileResponse = (res, { filename, contentType, content }) => {
   // 31.16 D-09 — Content-Length is BYTES: CSV strings carry a BOM +
   // multibyte data, so char .length under-declares and poisons the
   // keep-alive socket for the next response. Buffers pass through.
-  const bodyLength = Buffer.isBuffer(content) ? content.length : Buffer.byteLength(content ?? '', 'utf8');
-  res.setHeader('Content-Length', String(bodyLength));
-  return res.end(content);
+  // A stored Buffer can arrive as a BSON Binary; normalise before measuring.
+  const body = asBuffer(content);
+  res.setHeader('Content-Length', String(body.length));
+  return res.end(body);
 };
 
 // GET /api/attendance/analytics/overview — KPIs + distributions.

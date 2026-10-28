@@ -79,6 +79,35 @@ against recalculation" (they are not — results are versioned, payments are a
 separate ledger). Each is either absent with a stated reason or replaced by the
 narrower real fact.
 
+## Bulk archive downloads — the 500 that was fixed
+
+`GET /payroll/payslips/bulk-download/:fileId` answered **500 - TypeError: The
+"string" argument must be of type string or an instance of Buffer or
+ArrayBuffer. Received an instance of Binary**.
+
+A `Buffer` field read with `.lean()` comes back from the driver as a BSON
+`Binary` (a `{ buffer, position }` object), not a Node Buffer. `Buffer.isBuffer`
+said no, `Buffer.byteLength(binary)` threw, and a perfectly good archive became
+a stack trace. The same shape sits behind every stored-file download.
+
+- **`Backend/src/utils/asBuffer.js`** normalises Buffer / Uint8Array /
+  ArrayBuffer / BSON Binary (honouring `position`) / string into a real Buffer,
+  and answers an empty Buffer for anything it cannot read — a download must
+  never throw while measuring itself.
+- The payslip service normalises at the boundary (`+binary`, `+pdf`), and every
+  response writer (`payslip`, `fnf`, `statutory`, attendance analytics and
+  timesheet) measures the normalised body instead of the raw one.
+- The other stored-file readers (`fnfService`, `statutoryService`,
+  `analyticsService`) no longer hand `withBinary?.binary` straight to a writer.
+- Front end: an archive that holds **0 payslips** now says so instead of
+  offering an empty download, the KB size comes from `sizeBytes`, and a failed
+  download reads the Blob error body so the toast shows the server's sentence
+  rather than "Request failed with status code 500".
+
+Pinned by `Backend/test/asBuffer.test.js` (10 tests: the exact
+`Buffer.byteLength(binary)` crash, `position` trimming, legacy `value()`,
+empty-input safety, and every call site).
+
 ## Verification
 
 `npm test` → 692 passing (14 new pins), `npm run build` green,
@@ -353,7 +382,8 @@ the archive panel shows one archive instead of a table — and none of the three
 prints escrow, NSDL, AES-256, SMTP, bounce-rate or compliance-confidence claims.
 `npm run build` green. `npx eslint src` → **109 problems (98 errors, 11
 warnings)**, seven fewer than the previous checkpoint because the replaced dense
-blocks carried their own unused code.
+blocks carried their own unused code. Backend: `node --test
+test/asBuffer.test.js` → 10 passing.
 
 No browser is available in this environment: verified by lint, build and source
 pins, not by pixel comparison.

@@ -15,6 +15,7 @@
 //  therefore cannot disagree — they are the same numbers.
 // ═══════════════════════════════════════════════════════════════════════════
 
+import asBuffer from '../../utils/asBuffer.js';
 import ApiError from '../../utils/ApiError.js';
 import { roundMoney as money } from './analyticsRules.js';
 
@@ -1382,7 +1383,7 @@ export const makeAnalyticsService = ({
     file.lastDownloadedAt = new Date();
     await file.save().catch(() => null);
 
-    return { filename: file.filename || 'report', content: file.binary, format: file.format };
+    return { filename: file.filename || 'report', content: asBuffer(file.binary), format: file.format };
   };
 
   // ── §20 — scheduled reports ──────────────────────────────────────────────

@@ -143,6 +143,26 @@ describe('payslips — a list, a counter row, one archive', () => {
     assert.ok(payslips.includes('downloadOne(row)'), 'the row must download the real PDF');
   });
 
+  test('an empty archive is not offered as a download', () => {
+    assert.ok(
+      payslips.includes('Empty archive — build it again once payslips exist'),
+      'a zero-payslip archive must say so instead of downloading an empty ZIP',
+    );
+    assert.ok(
+      payslips.includes('Number(newestArchive.total) > 0'),
+      'the download button must be conditional on the archive holding files',
+    );
+  });
+
+  test('a failed download reports the server sentence, not the status code', () => {
+    const api = read('src/services/api.js');
+    assert.ok(api.includes('readBlobMessage'), 'a Blob error body must be read back');
+    assert.ok(
+      api.includes('error.blobMessage ||'),
+      'the Blob message must outrank axios\' generic sentence',
+    );
+  });
+
   test('the archive panel stays one strip, not a table', () => {
     assert.ok(payslips.includes('newestArchive'), 'only the newest archive is shown');
     assert.ok(
