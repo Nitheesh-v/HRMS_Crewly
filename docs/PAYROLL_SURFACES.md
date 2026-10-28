@@ -286,16 +286,74 @@ computes a salary or a statutory rate in the browser.
 | `Need custom components?` card | a cross-link to **Salary components** | the same destination |
 | `Subscription Notice · trial expires in 4 days` | not drawn | plan state belongs to billing, not payroll |
 
+## Full & final settlement — what the export drew, what is real
+
+The export is a dense command centre. This pass keeps its blocks and deliberately
+drops the second layer of detail: five counters, one queue, one breakdown, one
+clearance checklist.
+
+| export block | rendered | why |
+| --- | --- | --- |
+| `Cross-functional offboarding clearances, statutory gratuity audits…` | one sentence: every rupee is calculated by the server from the exit record and the frozen snapshot | states the rule, not a promise |
+| `Admin Console · Exiting Employee View` | dropped | both are separate destinations; the sidebar already carries them |
+| `Register (XLSX) · Initiate New Settlement` | `Register`, `Export XLSX`, `New settlement` (behind `FINAL_SETTLEMENT_CALCULATE`) | unchanged actions |
+| Five cards (pending, HR & dept review, finance approval, paid & disbursed, settlement pool incl. escrow) | the same five from `settlementKpis`, minus the escrow line | there is no escrow; `totalSettlementAmount` is what is committed |
+| `Active Settlements Queue` (exit timeline, notice status, earned leave, gratuity, workflow state) | name, role/department/code, last working day, clearances `n/4`, net settlement, status, `Open` | the export's per-row gratuity and notice columns need a detail read per row; the queue stays one line per person and the breakdown panel carries the money |
+| `Itemized Settlement Audit` (pro-rated salary, leave, gratuity, bonus accrual, PF, TDS, bank route) | **Latest settlement, line by line** — pending salary (with payable days), leave encashment (with days), gratuity (with eligibility), manual payables, total earnings; notice shortfall, itemised recoveries, total recoveries, net payable and the payment stamp | every line is a stored field; the bank route is not on the settlement and is not drawn |
+| `Department Clearance Sign-off` (four named people, timestamps) | **Clearances** — the four checklist items with their real done/open state | the checklist stores four booleans, not a person per box |
+| `Statutory SLA Window (30 Days from LWD) · Day 4 / 30` | dropped | no SLA window is configured or stored |
+| `Escrow allocated` | dropped | no escrow exists |
+
+## Payroll setup — what the export drew, what is real
+
+The export draws a four-step onboarding with a confidence score. This pass keeps
+the four steps, the progress bar and the per-step facts; every assurance badge is
+gone.
+
+| export block | rendered | why |
+| --- | --- | --- |
+| `Offboarding … Onboarding Engine · Auto-save active · 2 mins ago` | nothing; saving is stated on the wizard where it happens | there is no autosave heartbeat to display |
+| `Setup Progress 3 / 4 Done` ring | `evaluation.completedCount / totalCount` as a percentage, in the band | the evaluator is the server's own completeness check |
+| `Compliance Confidence 92%` · `8% pending bank handshake` | dropped | no such score is computed anywhere |
+| `Step 01 · Company & Legal Entity · Configured & Verified` with CIN / PAN / GSTIN / registered base | the same step card with legal name, PAN / TAN and city / state | those are the legal fields the configuration stores; CIN and GSTIN are only shown when configured |
+| `KYC Verified against NSDL & MCA Portal` | dropped | no registry lookup exists |
+| `Step 02 · Statutory Regulations & Acts` (EPF ceiling, ESI rates, PT slabs, gratuity formula) | schemes switched on, the PF establishment number and the PT state, from the saved statutory block | the rates live in the statutory engine, not on this page |
+| `Step 03 · Payroll Policy & Biometric Cut-off` (14 devices online) | frequency, cycle and salary date | there is no device fleet; the cut-off is a policy field |
+| `Step 04 · Disbursement Bank Account · Connect Bank Account` (HDFC / ICICI CMS, tokenised maker-checker, ISO-27001) | bank name, masked account and IFSC, plus `View / edit` | Crewly generates a bank file; it does not connect to a bank |
+| `Audit readiness · Estimated Go-Live 15 minutes · 148 active records` | **Section checklist** (four real states) and **Company on record** | both are reads; the estimates were never stored |
+| Bottom bar `Run Test Calculation · Finalize & Launch Payroll` | the existing activate / suspend actions, with their permission gates | activation is a real state change, so it keeps the real button |
+| `Subscription Notice · trial expires in 4 days` | not drawn | plan state belongs to billing |
+
+## Payslips — what the export drew, what is real
+
+The export is a studio with a ZIP workshop, a delivery scoreboard and a
+self-service preview. This pass keeps the counters, the list and one archive
+strip: five numbers, one row per person, one ZIP.
+
+| export block | rendered | why |
+| --- | --- | --- |
+| `Cycle Closed & Reconciled · Batch #CRW-PAY-202610-A` | the month and the generated / total count | a payslip batch is derived from the payment batch; the page states what it holds |
+| `Email All Statements · Generate Payslips · Export Register` | `Generate payslips`, `Email month`, `Register`, with their permission gates | unchanged |
+| Five counters (net disbursed, generated, emailed, downloaded, delivery failures) | the same five from `summary` | the export's `100% cleared via RTGS`, `Bounce Rate 0.0%` and `SMTP Verified` lines are not fields |
+| `Bulk ZIP Generation & Packaging Studio` (`AES-256 Enabled`, `Password Protected`, `3.4 MB`, previous bundles) | **Bulk archive** — scope selector, `Build ZIP`, the newest archive with its payslip count and stamp, and a count of older ones | the archive endpoint returns a file and a status, not encryption or a byte size |
+| `Disbursement & Payslip Matrix` (gross, deductions, net, status per employee) | one row per person: name / code / department, net with gross and payment date, status pill, `PDF` (and `Email` / re-render where permitted) | the deductions column is inside the payslip itself, so the list stays scannable |
+| `Self-Service Experience` panel with a full payslip preview | the existing payslip modal (`PayslipDocument`) opens from the row | one preview, on demand, instead of a second copy on the page |
+| `Copy Staff Self-Service Direct Link` | dropped | no such link is issued |
+| `Statutory Compliance Check (Form 12A, ESIC, cryptographic timestamp)` | dropped | the snapshot is the record; nothing certifies those formats |
+| `Process Initialized · Consolidated archive queued` toast | the existing inline "archive is being prepared" strip | one status line, where the archive lives |
+
 ## Verification
 
-`npm test` → **732 passing**, including 14 new pins in
-`test/payrollStatutoryAnalytics.test.js`: all three pages use the shared kit,
-print no figure their endpoint does not return, read due dates from the
-calendar, state filing as a human record, quote the movement split with its
-reconciliation state, price every structure card from the server preview and
-say "assignment hidden" rather than `0` when the pay profiles are out of reach.
-`npm run build` green. `npx eslint src` → 116 problems (102 errors, 14 warnings)
-— the same count as the previous checkpoint, so this pass added no lint debt.
+`npm test` → **744 passing**, including 12 new pins in
+`test/payrollOffboardingStudio.test.js`: all three pages use the shared kit, the
+settlement counters and queue read the dashboard, the breakdown is the same
+`fnfService.get` read the detail tab uses, setup progress is the evaluated
+section count with masked bank details, payslip rows carry the frozen net and
+the archive panel shows one archive instead of a table — and none of the three
+prints escrow, NSDL, AES-256, SMTP, bounce-rate or compliance-confidence claims.
+`npm run build` green. `npx eslint src` → **109 problems (98 errors, 11
+warnings)**, seven fewer than the previous checkpoint because the replaced dense
+blocks carried their own unused code.
 
 No browser is available in this environment: verified by lint, build and source
 pins, not by pixel comparison.

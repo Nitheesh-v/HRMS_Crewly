@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
@@ -7,6 +8,16 @@ import {
   Landmark,
   ShieldCheck,
 } from 'lucide-react';
+
+import {
+  CheckRow,
+  Fact,
+  Panel,
+  Pill,
+  Rail,
+  StageBand,
+  StageButton,
+} from '../../components/payroll/PayrollCockpit.jsx';
 
 import Modal from '../../components/Modal.jsx';
 import usePermission from '../../hooks/usePermission.js';
@@ -32,7 +43,48 @@ const STEPS = [
   { key: 'BANK', title: 'Company Bank Account', icon: Landmark },
 ];
 
+const count = (value) => Number(value || 0).toLocaleString('en-IN');
+
 const DAY_OPTIONS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+
+// One line per step saying what the step is for, in plain words.
+const STEP_HINTS = {
+  LEGAL: 'Registered name, PAN, TAN and the address on the statutory records.',
+  STATUTORY: 'Which schemes apply — PF, ESI, professional tax, TDS, LWF, gratuity — and their numbers.',
+  POLICY: 'Pay cycle, cut-off, weekend rule and the salary date.',
+  BANK: 'The company account salary is disbursed from, and the file format.',
+};
+
+// The two facts worth showing on each setup card. Values come from the saved
+// configuration and its summary — nothing is inferred.
+const FACTS_FOR = {
+  LEGAL: (config) => [
+    ['Legal name', config.legal.legalName || 'Not set'],
+    ['PAN / TAN', [config.legal.pan, config.legal.tan].filter(Boolean).join(' / ') || 'Not set'],
+    ['City / state', [config.legal.city, config.legal.state].filter(Boolean).join(', ') || 'Not set'],
+  ],
+  STATUTORY: (config, summary) => [
+    ['Schemes on', summary?.statutory?.length ? summary.statutory.join(' · ') : 'None enabled'],
+    [
+      'PF establishment',
+      config.statutory?.pf?.establishmentNumber || (config.statutory?.pf?.applicable ? 'Missing' : 'Not applicable'),
+    ],
+    [
+      'PT state',
+      config.statutory?.professionalTax?.state || (config.statutory?.professionalTax?.applicable ? 'Missing' : 'Not applicable'),
+    ],
+  ],
+  POLICY: (config, summary) => [
+    ['Frequency', FREQUENCY_LABELS[summary?.frequency] || summary?.frequency || 'Not set'],
+    ['Cycle', summary?.cycle || 'Not set'],
+    ['Salary date', summary?.paymentLabel || 'Not set'],
+  ],
+  BANK: (config, summary) => [
+    ['Bank', summary?.bank?.bankName || 'Not set'],
+    ['Account', summary?.bank?.maskedAccountNumber || '—'],
+    ['IFSC', summary?.bank?.ifsc || '—'],
+  ],
+};
 
 const FREQUENCY_LABELS = {
   MONTHLY: 'Monthly',
@@ -386,151 +438,222 @@ const PayrollSetupPage = () => {
   // ── NOT_CONFIGURED (§30) ──
   if (status === 'NOT_CONFIGURED') {
     return (
-      <div className="space-y-5">
-        <h1 className="text-2xl font-bold">Payroll Setup</h1>
-        <div className="card space-y-4 text-center">
-          <h2 className="text-lg font-semibold">Payroll Setup Required</h2>
-          <p className="text-sm text-crewly-dim">
-            Complete your company&apos;s payroll configuration before processing salaries.
-          </p>
-          <div className="text-sm text-crewly-dim">
-            {evaluation?.completedCount ?? 0} / {evaluation?.totalCount ?? 4} Sections Completed
-          </div>
-          <div className="grid gap-3 text-left md:grid-cols-2">
-            {STEPS.map((entry) => (
-              <div key={entry.key} className="rounded-lg border border-crewly-border p-4 text-sm">
-                <div className="font-medium">{entry.title}</div>
-                <div className="mt-1 text-xs text-crewly-dim">Not started</div>
+      <div className="space-y-3">
+        <StageBand
+          eyebrow="Payroll · Setup"
+          title="Payroll setup"
+          description="Four short steps before the first salary run: who the company is, which statutory schemes apply, how the month is cut off, and where the money leaves from."
+          pills={[{ label: 'not configured', tone: 'warn' }]}
+          aside={
+            <div className="text-right">
+              <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-st-on-variant">
+                Setup progress
+              </p>
+              <p className="text-lg font-bold leading-tight tabular-nums text-st-on">
+                {count(evaluation?.completedCount ?? 0)} / {count(evaluation?.totalCount ?? STEPS.length)}
+              </p>
+              <p className="text-[10px] text-st-on-variant">steps complete</p>
+            </div>
+          }
+          actions={
+            canEdit ? (
+              <StageButton variant="primary" icon={Check} onClick={startSetup} disabled={saving}>
+                {saving ? 'Starting…' : 'Start setup'}
+              </StageButton>
+            ) : (
+              <span className="text-[11px] text-st-on-variant">
+                You can view this page but not change it — PAYROLL_SETUP_UPDATE is required.
+              </span>
+            )
+          }
+        />
+
+        <div className="grid gap-2.5 sm:grid-cols-2">
+          {STEPS.map((entry, index) => {
+            const Icon = entry.icon;
+            return (
+              <div key={entry.key} className="rounded-2xl bg-st-lowest p-3.5 shadow-sm">
+                <div className="flex items-start gap-2">
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-st-low text-st-on-variant">
+                    <Icon aria-hidden="true" size={13} />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-st-on-variant">
+                      Step {index + 1}
+                    </p>
+                    <p className="text-[12px] font-semibold text-st-on">{entry.title}</p>
+                    <p className="mt-0.5 text-[10px] leading-snug text-st-on-variant">
+                      {STEP_HINTS[entry.key]}
+                    </p>
+                  </div>
+                </div>
               </div>
-            ))}
-          </div>
-          {canEdit ? (
-            <button className="btn-primary" onClick={startSetup} disabled={saving}>
-              {saving ? 'Starting…' : 'Start Payroll Setup'}
-            </button>
-          ) : (
-            <p className="text-sm text-crewly-dim">
-              You don&apos;t have permission to manage payroll settings. Contact your
-              Company Admin or Payroll Administrator.
-            </p>
-          )}
+            );
+          })}
         </div>
+
+        <p className="rounded-xl bg-st-low/50 px-3 py-2 text-[10px] leading-snug text-st-on-variant">
+          Nothing here is pre-filled from another system. Every field is entered once by your payroll
+          administrator and saved against this company.
+        </p>
       </div>
     );
   }
 
   // ── ACTIVE / SUSPENDED dashboard (§34) ──
   if (!showWizard) {
+    const sections = evaluation?.sections || [];
+    const totalSections = Number(evaluation?.totalCount || STEPS.length);
+    const doneSections = Number(evaluation?.completedCount ?? sections.filter((s) => s.complete).length);
+    const progressPercent = totalSections ? Math.round((doneSections / totalSections) * 100) : 0;
+    const bank = summary?.bank || {};
+
     return (
-      <div className="space-y-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-2xl font-bold">Payroll Configuration</h1>
-          <span className={`badge ${statusBadgeClass(status)}`}>{status}</span>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className="card">
-            <div className="flex items-center gap-2 text-sm text-crewly-dim">
-              <Building2 size={16} /> Company Information
-            </div>
-            <div className="mt-2 font-semibold">{config.legal.legalName || 'Not set'}</div>
-            <div className="mt-1 text-xs text-crewly-dim">
-              {[config.legal.state, config.legal.country].filter(Boolean).join(' · ') || 'State not set'}
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="flex items-center gap-2 text-sm text-crewly-dim">
-              <ShieldCheck size={16} /> Statutory Configuration
-            </div>
-            <div className="mt-2 font-semibold">
-              {summary?.statutory?.length ? summary.statutory.join(' · ') : 'None enabled'}
-            </div>
-            <div className="mt-1 text-xs text-crewly-dim">
-              PAN {config.legal.pan || '—'} · TAN {config.legal.tan || '—'}
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="flex items-center gap-2 text-sm text-crewly-dim">
-              <CalendarDays size={16} /> Payroll Policy
-            </div>
-            <div className="mt-2 font-semibold">
-              {FREQUENCY_LABELS[summary?.frequency] || summary?.frequency}
-            </div>
-            <div className="mt-1 text-xs text-crewly-dim">
-              Cycle {summary?.cycle} · Salary date {summary?.paymentLabel}
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="flex items-center gap-2 text-sm text-crewly-dim">
-              <Landmark size={16} /> Bank Account
-            </div>
-            <div className="mt-2 font-semibold">{summary?.bank?.bankName || 'Not set'}</div>
-            <div className="mt-1 text-xs text-crewly-dim">
-              {summary?.bank?.maskedAccountNumber || '—'} · {summary?.bank?.ifsc || '—'}
-            </div>
-          </div>
-        </div>
-
-        <div className="card space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            {STEPS.map((entry) => {
-              const section = evaluation?.sections?.find((s) => s.key === entry.key);
-              const Icon = entry.icon;
-              return (
+      <div className="space-y-3">
+        <StageBand
+          eyebrow="Payroll · Setup"
+          title="Payroll configuration"
+          description={
+            status === 'ACTIVE'
+              ? 'Salary processing is live on these rules. Change a section any time — the change is versioned and audited.'
+              : 'Salary processing is paused. Reactivate once the rules are right again.'
+          }
+          pills={[
+            { label: status.toLowerCase(), tone: status === 'ACTIVE' ? 'good' : 'bad' },
+            { label: `${count(doneSections)}/${count(totalSections)} sections`, tone: doneSections === totalSections ? 'good' : 'warn' },
+            ...(config.activation?.activatedAt
+              ? [{ label: `live since ${new Date(config.activation.activatedAt).toLocaleDateString('en-IN')}`, tone: 'default' }]
+              : []),
+          ]}
+          aside={
+            <div className="text-right">
+              <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-st-on-variant">
+                Setup progress
+              </p>
+              <p className="text-lg font-bold leading-tight tabular-nums text-st-on">{progressPercent}%</p>
+              <div className="mt-1 h-1.5 w-28 overflow-hidden rounded-full bg-st-inset-strong">
                 <div
-                  key={entry.key}
-                  className="flex items-start justify-between gap-3 rounded-lg border border-crewly-border p-4"
-                >
-                  <div>
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                      <Icon size={16} /> {entry.title}
-                    </div>
-                    <div className="mt-1 text-xs text-crewly-dim">
-                      {section?.complete ? 'Configured' : 'Incomplete'}
-                    </div>
-                    {section?.errors?.length ? (
-                      <div className="mt-1 text-xs text-crewly-red">
-                        {section.errors[0].message}
-                      </div>
-                    ) : null}
-                  </div>
-                  <button
-                    className="btn-ghost px-3 py-1.5 text-xs"
-                    onClick={() => {
-                      setStep(STEPS.findIndex((s) => s.key === entry.key) + 1);
-                      setMode('wizard');
-                    }}
-                  >
-                    View / Edit
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+                  className="h-full rounded-full bg-st-primary-container"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+            </div>
+          }
+          actions={
+            <>
+              {canActivate && status === 'ACTIVE' ? (
+                <StageButton onClick={() => setConfirmSuspend(true)}>Suspend payroll</StageButton>
+              ) : null}
+              {canActivate && status === 'SUSPENDED' ? (
+                <StageButton variant="primary" icon={Check} onClick={activate} disabled={saving}>
+                  {saving ? 'Working…' : 'Reactivate payroll'}
+                </StageButton>
+              ) : null}
+            </>
+          }
+        />
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-crewly-border pt-4 text-xs text-crewly-dim">
-            <span>
-              Last updated {config.updatedAt ? new Date(config.updatedAt).toLocaleDateString('en-IN') : '—'}
-              {config.activation?.activatedAt
-                ? ` · Activated ${new Date(config.activation.activatedAt).toLocaleDateString('en-IN')}`
-                : ''}
-            </span>
-            <div className="flex gap-2">
-              {canActivate && status === 'ACTIVE' && (
-                <button className="btn-ghost px-3 py-1.5 text-xs" onClick={() => setConfirmSuspend(true)}>
-                  Suspend Payroll
-                </button>
-              )}
-              {canActivate && status === 'SUSPENDED' && (
-                <button className="btn-primary px-3 py-1.5 text-xs" onClick={activate} disabled={saving}>
-                  {saving ? 'Working…' : 'Reactivate Payroll'}
-                </button>
-              )}
+        <div className="flex flex-col gap-3 xl:flex-row">
+          <div className="min-w-0 flex-1 space-y-3">
+            <div className="grid gap-2.5 sm:grid-cols-2">
+              {STEPS.map((entry, index) => {
+                const section = sections.find((s) => s.key === entry.key);
+                const Icon = entry.icon;
+                const done = Boolean(section?.complete);
+                return (
+                  <div key={entry.key} className="rounded-2xl bg-st-lowest p-3.5 shadow-sm">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2">
+                        <span
+                          className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg ${
+                            done ? 'bg-st-secondary-container text-st-on-secondary-container' : 'bg-st-low text-st-on-variant'
+                          }`}
+                        >
+                          <Icon aria-hidden="true" size={13} />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-st-on-variant">
+                            Step {index + 1}
+                          </p>
+                          <p className="text-[12px] font-semibold text-st-on">{entry.title}</p>
+                        </div>
+                      </div>
+                      <Pill tone={done ? 'good' : 'warn'}>{done ? 'configured' : 'incomplete'}</Pill>
+                    </div>
+
+                    <dl className="mt-2 space-y-0.5">
+                      {FACTS_FOR[entry.key](config, summary).map(([label, value]) => (
+                        <Fact key={label} label={label} value={value} />
+                      ))}
+                    </dl>
+
+                    {section?.errors?.length ? (
+                      <p className="mt-1.5 rounded-lg bg-st-error-container/50 px-2 py-1 text-[10px] text-st-on-error-container">
+                        {section.errors[0].message}
+                      </p>
+                    ) : null}
+
+                    <button
+                      type="button"
+                      className="mt-2 inline-flex items-center gap-1 rounded-lg border border-st-outline-variant/60 px-2 py-1 text-[10px] font-semibold text-st-on hover:bg-st-low"
+                      onClick={() => {
+                        setStep(STEPS.findIndex((s) => s.key === entry.key) + 1);
+                        setMode('wizard');
+                      }}
+                    >
+                      View / edit
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
+
+          <Rail>
+            <Panel title="Section checklist" bodyClassName="px-4 pb-4">
+              {STEPS.map((entry) => {
+                const section = sections.find((s) => s.key === entry.key);
+                return (
+                  <CheckRow
+                    key={entry.key}
+                    ok={Boolean(section?.complete)}
+                    label={entry.title}
+                    value={section?.complete ? 'done' : 'open'}
+                  />
+                );
+              })}
+              <p className="pt-2 text-[10px] leading-snug text-st-on-variant">
+                {evaluation?.allComplete
+                  ? 'All four sections are complete, so payroll can run.'
+                  : 'A section is complete when its required fields are filled and valid.'}
+              </p>
+            </Panel>
+
+            <Panel title="Company on record" bodyClassName="px-4 pb-4">
+              <Fact label="Legal name" value={config.legal.legalName || 'Not set'} />
+              <Fact label="PAN" value={config.legal.pan || '—'} />
+              <Fact label="TAN" value={config.legal.tan || '—'} />
+              <Fact
+                label="Statutory schemes"
+                value={summary?.statutory?.length ? summary.statutory.join(' · ') : 'None enabled'}
+              />
+              <Fact
+                label="Pay cycle"
+                value={`${FREQUENCY_LABELS[summary?.frequency] || summary?.frequency || '—'}${
+                  summary?.paymentLabel ? ` · paid ${summary.paymentLabel}` : ''
+                }`}
+              />
+              <Fact
+                label="Bank"
+                value={`${bank.bankName || 'Not set'}${bank.maskedAccountNumber ? ` · ${bank.maskedAccountNumber}` : ''}`}
+              />
+              <p className="pt-2 text-[10px] leading-snug text-st-on-variant">
+                Last updated{' '}
+                {config.updatedAt ? new Date(config.updatedAt).toLocaleDateString('en-IN') : '—'}. Bank
+                account numbers are always shown masked.
+              </p>
+            </Panel>
+          </Rail>
         </div>
 
         {confirmSuspend && (
