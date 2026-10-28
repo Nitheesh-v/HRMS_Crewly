@@ -73,7 +73,11 @@ describe('payroll center — every figure has an endpoint', () => {
   test('approval, payment, bank and attendance each name their source', () => {
     has(center, 'payrollReviewService.dashboard(month)', 'approval posture is the review API');
     has(center, 'payrollPaymentService.dashboard(month)', 'disbursement is the payment API');
-    has(center, 'payrollPaymentService.batchAudit(batchId)', 'the audit trail is the batch audit API');
+    has(
+      center,
+      'to="/app/payroll/salary-payment"',
+      'the audit trail and the batch itself live in the payment workspace, linked from here',
+    );
     has(center, 'payrollSetupService.get()', 'the company bank account is the setup API');
     has(center, 'attendanceService.analyticsOverview({ month })', 'the reconciliation strip is attendance');
     has(center, 'monthlyInputService.periods()', 'the cycle state is the periods API');

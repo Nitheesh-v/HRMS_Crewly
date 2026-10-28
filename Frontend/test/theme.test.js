@@ -128,13 +128,13 @@ describe('light palette — warm paper, from tokens', () => {
   });
 
   test('it is tinted, not grey', () => {
-    // Every neutral carries colour: cream and sage lean yellow-green (the blue
-    // channel is the lowest), ink leans pine (green highest). A neutral ramp
-    // would have r == g == b, which is exactly the template look this replaces.
+    // Every neutral carries colour: the paper leans green (blue is the lowest
+    // channel, green the highest), and so does the ink. A neutral ramp would
+    // have r == g == b, which is exactly the template look this replaces.
     const rgb = (hex) => [0, 2, 4].map((i) => parseInt(hex.replace('#', '').slice(i, i + 2), 16));
-    const cream = (hex) => {
+    const paper = (hex) => {
       const [r, g, b] = rgb(hex);
-      return r > b && g > b;
+      return g >= r && r > b;
     };
     const pine = (hex) => {
       const [r, g, b] = rgb(hex);
@@ -142,7 +142,7 @@ describe('light palette — warm paper, from tokens', () => {
     };
 
     for (const name of ['bg', 'card', 'border']) {
-      assert.ok(cream(hexToken(name)), `--color-crewly-${name} (${hexToken(name)}) is a warm cream`);
+      assert.ok(paper(hexToken(name)), `--color-crewly-${name} (${hexToken(name)}) is a green-tinted paper`);
     }
     for (const name of ['text', 'dim', 'green']) {
       assert.ok(pine(hexToken(name)), `--color-crewly-${name} (${hexToken(name)}) is a green-black ink`);
@@ -152,11 +152,11 @@ describe('light palette — warm paper, from tokens', () => {
     const channels = token('inset').match(/[\d.]+/g).slice(0, 3).map(Number);
     assert.ok(channels[1] > channels[0] && channels[1] > channels[2], `inset (${token('inset')}) is a sage wash`);
     // The owner's palette, verbatim: nothing here is #ffffff.
-    assert.equal(hexToken('bg'), '#f5f2e1', 'the canvas is cream, not white');
-    assert.equal(hexToken('card'), '#fcf9ea', 'cards are the named cream, a shade lighter');
-    // The rail is the owner's pine (#2a322b) — dark against the cream page in
+    assert.equal(hexToken('bg'), '#eef3e6', 'the canvas is sage paper, not white and not cream');
+    assert.equal(hexToken('card'), '#f8fbf1', 'cards are the same paper, a shade lighter');
+    // The rail is the owner's pine (#2a322b) — dark against the paper page in
     // both themes, so navigation reads as the fixed spine. It is a dark
-    // surface with cream type, never white and never the card colour.
+    // surface with light type, never white and never the card colour.
     assert.equal(hexToken('sidebar'), '#2a322b', 'the rail is pine, not the card');
     assert.equal(hexToken('selected'), '#f2f7a0', 'the selected option is the named pale lime');
     assert.equal(hexToken('accent'), '#db9558', 'action is the named clay');
@@ -264,7 +264,7 @@ describe('light palette — warm paper, from tokens', () => {
             `${family}-${step} must darken sharply (${darkL}% -> ${lightL}%), or 300-level badges vanish on paper`,
           );
         } else if (value.startsWith('#')) {
-          const ratio = contrast(value, '#f5f2e1');
+          const ratio = contrast(value, '#eef3e6');
           assert.ok(
             ratio >= (step === 400 ? 3 : 4.5),
             `${family}-${step} (${value}) is ${ratio.toFixed(2)}:1 on paper`,

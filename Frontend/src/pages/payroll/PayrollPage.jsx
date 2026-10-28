@@ -237,8 +237,6 @@ const PayrollPage = () => {
   const [attendance, setAttendance] = useState(null);
   const [period, setPeriod] = useState(null);
   const [myPayslips, setMyPayslips] = useState([]);
-  const [myDetail, setMyDetail] = useState(null);
-  const [audit, setAudit] = useState(null);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -353,13 +351,6 @@ const PayrollPage = () => {
           (response) => {
             const rows = Array.isArray(response) ? response : response?.data || [];
             setMyPayslips(rows);
-            const latest = rows[0];
-            if (latest?._id) {
-              payslipService.mineDetail(latest._id).then(
-                (detailResponse) => setMyDetail(detailResponse?.data || detailResponse || null),
-                () => setMyDetail(null),
-              );
-            }
           },
           () => setMyPayslips([]),
         ),
@@ -377,19 +368,8 @@ const PayrollPage = () => {
     load();
   }, [permsLoading, canReadRun, load]);
 
-  // The batch audit trail is a second call, only once a batch exists.
   const batch = payment?.batches?.[0] || null;
   const batchId = batch?._id || batch?.id || '';
-
-  useEffect(() => {
-    if (!batchId) return undefined;
-    let active = true;
-    payrollPaymentService.batchAudit(batchId).then(
-      (response) => { if (active) setAudit(Array.isArray(response) ? response : response?.data || []); },
-      () => { if (active) setAudit([]); },
-    );
-    return () => { active = false; };
-  }, [batchId]);
 
   const departmentName = useCallback(
     (id) => {
@@ -603,13 +583,8 @@ const PayrollPage = () => {
   const dayCounts = attendance?.totals?.dayCounts || null;
   const captureCounts = attendance?.sources?.counts || null;
   const setupBank = setup?.config?.bankAccount || null;
-  const latestPayslip = myPayslips[0] || null;
-  const archive = myPayslips.slice(1, 4);
   // The detail endpoint returns the stored payslip document; its lines live
   // inside the immutable snapshot, never at the top level.
-  const mySnapshot = myDetail?.snapshot || null;
-  const earningsLines = mySnapshot?.earnings || [];
-  const earningsTotalForBar = earningsLines.reduce((sum, line) => sum + Number(line.amount || 0), 0);
   const reviewStatus = review?.review?.status || '';
   const kpis = review?.kpis || null;
 
@@ -630,9 +605,8 @@ const PayrollPage = () => {
                 {periodStatus ? PERIOD_LABELS[periodStatus] || periodStatus : 'No period yet'}
               </span>
             </div>
-            <p className="mt-1 max-w-2xl text-sm leading-relaxed text-st-on-variant">
-              Automated monthly salary calculation, LOP &amp; attendance reconciliation, and self-service
-              payslip archives — every figure read from this month&apos;s calculated result rows.
+            <p className="mt-1 text-sm text-st-on-variant">
+              {monthLabel(month)} · every figure read from this month&apos;s calculated result rows.
             </p>
           </div>
 
@@ -732,14 +706,12 @@ const PayrollPage = () => {
 
                 <div className="xl:ml-auto">
                   <div className="flex flex-wrap items-center gap-2">
-                    <div className="text-right">
-                      <p className="flex items-center justify-end gap-1 text-[10px] font-bold text-st-on">
-                        <Lock className="h-2.5 w-2.5" aria-hidden="true" /> Re-run safe
-                      </p>
-                      <p className="text-[9px] leading-snug text-st-on-variant">
-                        Each re-run writes a new result version; payment stamps live in their own ledger.
-                      </p>
-                    </div>
+                    <p
+                      className="flex items-center gap-1 text-[10px] font-bold text-st-on"
+                      title="Each re-run writes a new result version; payment stamps live in their own ledger."
+                    >
+                      <Lock className="h-2.5 w-2.5" aria-hidden="true" /> Re-run safe
+                    </p>
                     <button
                       type="button"
                       onClick={runPayroll}
@@ -806,11 +778,7 @@ const PayrollPage = () => {
                 hint={`${figures.lop.days.toLocaleString('en-IN')} loss-of-pay day${figures.lop.days === 1 ? '' : 's'} across ${figures.lop.people} employee${figures.lop.people === 1 ? '' : 's'}`}
                 bar="bg-st-error"
                 meter={figures.employees ? (figures.lop.people / figures.employees) * 100 : 0}
-                detail={
-                  figures.errors
-                    ? `${figures.errors} employee${figures.errors === 1 ? '' : 's'} could not be calculated — see the row status`
-                    : 'Every employee in this run calculated without an error'
-                }
+                detail={figures.errors ? `${figures.errors} employee(s) failed — see the row status` : 'No calculation errors'}
               />
               <Kpi
                 label="Disbursement status"
@@ -1074,275 +1042,77 @@ const PayrollPage = () => {
               </div>
             </section>
 
-            {/* ── payslip summary + disbursement gateway ───────────────── */}
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
-              <Panel
-                title="Quick payslip & tax summary"
-                icon={ReceiptText}
-                badge={latestPayslip ? { text: latestPayslip.statusLabel || latestPayslip.status || 'Issued', kind: 'good' } : { text: 'None issued', kind: 'neutral' }}
-                note="Your own account only — this card reads /payroll/payslips/mine, never the company register."
-                action={
-                  <Link to="/app/payroll/my-payslips" className="text-[10px] font-bold text-st-primary hover:underline">
-                    Tax vault
-                  </Link>
-                }
-              >
-                {canPayslipSelf ? (
-                  latestPayslip ? (
-                    <>
-                      <div className="rounded-lg bg-st-low p-3">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div>
-                            <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-st-on-variant">
-                              Latest statement
-                            </p>
-                            <p className="text-sm font-bold text-st-on">{latestPayslip.monthLabel || monthLabel(latestPayslip.month)}</p>
-                            <p className="text-[9px] text-st-on-variant">
-                              {latestPayslip.paymentDate ? `Credited ${clockOf(latestPayslip.paymentDate)}` : 'Payment date not stamped'}
-                              {latestPayslip.payslipNumber ? ` · ${latestPayslip.payslipNumber}` : ''}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-st-on-variant">
-                              Net pay
-                            </p>
-                            <p className="text-xl font-bold tabular-nums text-st-on">{money(latestPayslip.net)}</p>
-                          </div>
-                        </div>
-
-                        {earningsLines.length ? (
-                          <>
-                            <p className="mt-2.5 text-[9px] font-bold uppercase tracking-[0.14em] text-st-on-variant">
-                              Earnings composition
-                            </p>
-                            <div className="mt-1 flex h-2 w-full overflow-hidden rounded-full bg-st-high">
-                              {earningsLines.map((line, index) => {
-                                const share = earningsTotalForBar ? (Number(line.amount || 0) / earningsTotalForBar) * 100 : 0;
-                                const palette = ['bg-st-primary', 'bg-st-secondary', 'bg-st-tertiary', 'bg-st-outline'];
-                                return (
-                                  <span
-                                    key={`${line.code || line.name}-${index}`}
-                                    className={palette[index % palette.length]}
-                                    style={{ width: `${share}%` }}
-                                    title={`${line.name}: ${money(line.amount)}`}
-                                  />
-                                );
-                              })}
-                            </div>
-                            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
-                              {earningsLines.slice(0, 4).map((line, index) => (
-                                <span key={`${line.name}-${index}`} className="inline-flex items-center gap-1 text-[9px] text-st-on-variant">
-                                  <span className={`h-1.5 w-1.5 rounded-full ${['bg-st-primary', 'bg-st-secondary', 'bg-st-tertiary', 'bg-st-outline'][index % 4]}`} />
-                                  {line.name} ({earningsTotalForBar ? Math.round((Number(line.amount || 0) / earningsTotalForBar) * 100) : 0}%)
-                                </span>
-                              ))}
-                            </div>
-                          </>
-                        ) : (
-                          <p className="mt-2 text-[9px] text-st-on-variant">
-                            The line-by-line composition is read from the payslip snapshot; it is not available
-                            until the snapshot is opened.
-                          </p>
-                        )}
-                      </div>
-
-                      {archive.length ? (
-                        <>
-                          <p className="mt-2.5 text-[9px] font-bold uppercase tracking-[0.14em] text-st-on-variant">
-                            Previous payslips
-                          </p>
-                          <div className="mt-1 grid grid-cols-1 gap-1.5 sm:grid-cols-3">
-                            {archive.map((row) => (
-                              <div key={row._id} className="flex items-center justify-between gap-1 rounded-lg bg-st-low px-2 py-1.5">
-                                <span className="min-w-0">
-                                  <span className="block truncate text-[10px] font-bold text-st-on">
-                                    {row.monthLabel || monthLabel(row.month)}
-                                  </span>
-                                  <span className="block text-[9px] tabular-nums text-st-on-variant">{money(row.net)}</span>
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => downloadMyPayslip(row._id)}
-                                  className="rounded p-1 text-st-on-variant transition hover:text-st-on"
-                                  aria-label={`Download ${row.monthLabel || row.month} payslip`}
-                                >
-                                  <Download className="h-3 w-3" />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        </>
-                      ) : null}
-
-                      <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => downloadMyPayslip(latestPayslip._id)}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-st-primary px-3 py-2 text-[10px] font-bold text-st-on-primary transition hover:opacity-95"
-                        >
-                          <Download className="h-3 w-3" aria-hidden="true" />
-                          Download PDF payslip
-                        </button>
-                        <Link
-                          to="/app/payroll/my-payslips"
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-st-low px-3 py-2 text-[10px] font-bold text-st-on transition hover:bg-st-container"
-                        >
-                          <ReceiptText className="h-3 w-3" aria-hidden="true" /> Year-to-date view
-                        </Link>
-                        <span className="text-[9px] text-st-on-variant">
-                          {myPayslips.length} statement{myPayslips.length === 1 ? '' : 's'} released
-                        </span>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="rounded-lg border border-dashed border-st-high px-3 py-5 text-center">
-                      <ReceiptText className="mx-auto h-5 w-5 text-st-outline" aria-hidden="true" />
-                      <p className="mt-1 text-[11px] font-bold text-st-on">No payslip released to you yet</p>
-                      <p className="text-[10px] text-st-on-variant">
-                        Payslips are generated from a calculated run and released by payroll. Nothing is shown
-                        until the first one is issued.
-                      </p>
-                    </div>
-                  )
-                ) : (
-                  <p className="rounded-lg bg-st-low px-3 py-2 text-[10px] text-st-on-variant">
-                    Your role has no self-service payslip permission (PAYSLIP_READ_SELF).
-                  </p>
-                )}
-              </Panel>
-
-              <div className="flex flex-col gap-3">
-                <Panel
-                  title="Bank & disbursement gateway"
-                  icon={Landmark}
-                  badge={batch ? { text: BATCH_LABELS[batch.status] || batch.status, kind: batchKind(batch.status) } : { text: 'No batch', kind: 'neutral' }}
-                  note="Crewly prepares the transfer file; it never moves money."
+            {/* ── disbursement strip ────────────────────────────────────── */}
+            <Panel
+              title="Bank & disbursement"
+              icon={Landmark}
+              badge={batch ? { text: BATCH_LABELS[batch.status] || batch.status, kind: batchKind(batch.status) } : { text: 'No batch', kind: 'neutral' }}
+              note="Crewly prepares the transfer file; it never moves money."
+              action={
+                <Link
+                  to="/app/payroll/salary-payment"
+                  className="inline-flex items-center gap-1 text-[10px] font-bold text-st-primary hover:underline"
                 >
-                  {setupBank ? (
-                    <div className="rounded-lg bg-st-low p-2.5">
-                      <p className="flex items-center gap-1 text-[10px] font-bold text-st-on">
-                        <Building2 className="h-3 w-3 text-st-outline" aria-hidden="true" />
-                        {setupBank.bankName || 'Bank not named'}
-                      </p>
-                      <p className="mt-0.5 text-[9px] text-st-on-variant">
-                        {setupBank.accountHolderName || 'No holder name'} ·{' '}
-                        {setupBank.maskedAccountNumber || (setupBank.accountNumberLast4 ? `•••• ${setupBank.accountNumberLast4}` : 'no account number')}
-                        {setupBank.ifsc ? ` · IFSC ${setupBank.ifsc}` : ''}
-                      </p>
-                      <div className="mt-1.5 grid grid-cols-2 gap-1.5">
-                        <div className="rounded bg-st-lowest px-2 py-1.5">
-                          <p className="text-[9px] font-bold uppercase tracking-wider text-st-on-variant">Batch ledger</p>
-                          <p className="text-[11px] font-bold tabular-nums text-st-on">
-                            {money(batch?.summary?.totalNetSalary || figures.netPayroll)}
-                          </p>
-                        </div>
-                        <div className="rounded bg-st-lowest px-2 py-1.5">
-                          <p className="text-[9px] font-bold uppercase tracking-wider text-st-on-variant">Batch reference</p>
-                          <p className="truncate font-mono text-[10px] text-st-on">
-                            {batch?.batchNumber || 'not created'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="rounded-lg bg-st-low px-3 py-2 text-[10px] text-st-on-variant">
-                      {gaps.setup || 'Company bank account is not configured in Payroll Setup.'}
-                    </p>
-                  )}
+                  Payment workspace <ArrowRight className="h-3 w-3" aria-hidden="true" />
+                </Link>
+              }
+            >
+              <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-1">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-st-on">
+                    <Building2 className="h-3 w-3 text-st-outline" aria-hidden="true" />
+                    {setupBank?.bankName || 'Bank not named'}
+                  </span>
+                  <span className="text-[10px] text-st-on-variant">
+                    {setupBank?.maskedAccountNumber
+                      || (setupBank?.accountNumberLast4 ? `•••• ${setupBank.accountNumberLast4}` : 'no account number')}
+                    {setupBank?.ifsc ? ` · ${setupBank.ifsc}` : ''}
+                  </span>
+                  <span className="text-[10px] text-st-on-variant">
+                    Batch <span className="font-mono text-st-on">{batch?.batchNumber || 'not created'}</span>
+                  </span>
+                  <span className="text-[10px] text-st-on-variant">
+                    Batch ledger{' '}
+                    <span className="font-bold tabular-nums text-st-on">
+                      {money(batch?.summary?.totalNetSalary || figures.netPayroll)}
+                    </span>
+                  </span>
+                </div>
 
-                  <div className="mt-2 rounded-lg bg-st-low px-2.5 py-2">
-                    <p className="text-[10px] font-bold text-st-on">How a disbursement is authorised here</p>
-                    <p className="mt-0.5 text-[9px] leading-relaxed text-st-on-variant">
-                      By permission, not by hardware: <span className="font-mono">PAYROLL_PAYMENT_GENERATE</span>{' '}
-                      produces the bank file and <span className="font-mono">PAYROLL_PAYMENT_CONFIRM</span> /{' '}
-                      <span className="font-mono">PAYROLL_PAYMENT_MARK_PAID</span> stamp it paid.{' '}
-                      There is no security-key handshake or dual-admin token in this build — every step is
-                      written to the audit trail below instead.
-                    </p>
-                  </div>
-
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={confirmDisbursement}
-                      disabled={!batchId || !(canPayMark || canPayConfirm) || busy === 'disburse'}
-                      title={
-                        !batchId
-                          ? 'No payment batch for this month yet'
-                          : canPayMark || canPayConfirm
-                            ? 'Stamp every pending row in this batch as paid'
-                            : 'Needs PAYROLL_PAYMENT_MARK_PAID (Finance)'
-                      }
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-st-primary px-3 py-2 text-[10px] font-bold text-st-on-primary transition hover:opacity-95 disabled:opacity-50"
-                    >
-                      <ShieldCheck className="h-3 w-3" aria-hidden="true" />
-                      {busy === 'disburse' ? 'Confirming…' : 'Confirm & mark paid'}
-                    </button>
-                    <Link
-                      to="/app/payroll/salary-payment"
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-st-low px-3 py-2 text-[10px] font-bold text-st-on transition hover:bg-st-container"
-                    >
-                      Payment workspace <ArrowRight className="h-3 w-3" aria-hidden="true" />
-                    </Link>
-                    {!(canPayMark || canPayConfirm) ? (
-                      <span className="text-[9px] text-st-on-variant">Finance holds this step.</span>
-                    ) : null}
-                  </div>
-                </Panel>
-
-                <Panel
-                  title="Audit trail — this batch"
-                  icon={ShieldCheck}
-                  note="Read from the platform audit log for this batch, its payment rows and its files."
-                >
-                  {audit === null ? (
-                    <p className="text-[10px] text-st-on-variant">
-                      {batchId ? 'Reading the audit trail…' : 'No payment batch exists for this month yet.'}
-                    </p>
-                  ) : audit.length ? (
-                    <ul className="space-y-1">
-                      {audit.slice(0, 5).map((entry, index) => (
-                        <li key={`${entry.at}-${entry.action}-${index}`} className="flex items-start gap-2 rounded-lg bg-st-low px-2 py-1.5">
-                          <span aria-hidden="true" className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-st-secondary" />
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-[10px] font-bold text-st-on">
-                              {String(entry.action || '').replace(/_/g, ' ').toLowerCase()}
-                              {entry.from || entry.to ? (
-                                <span className="ml-1 font-normal text-st-on-variant">
-                                  {entry.from ? `${entry.from} → ` : ''}
-                                  {entry.to || ''}
-                                </span>
-                              ) : null}
-                            </span>
-                            <span className="block text-[9px] text-st-on-variant">
-                              {entry.actorName || 'System'}
-                              {entry.actorRole ? ` · ${entry.actorRole}` : ''} · {clockOf(entry.at)}
-                              {entry.reason ? ` · ${entry.reason}` : ''}
-                            </span>
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="rounded-lg border border-dashed border-st-high px-3 py-3 text-center text-[10px] text-st-on-variant">
-                      No audit entries for this batch yet — the trail fills as the batch moves.
-                    </p>
-                  )}
-                </Panel>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={confirmDisbursement}
+                    disabled={!batchId || !(canPayMark || canPayConfirm) || busy === 'disburse'}
+                    title={
+                      !batchId
+                        ? 'No payment batch for this month yet'
+                        : canPayMark || canPayConfirm
+                          ? 'Stamp every pending row in this batch as paid'
+                          : 'Needs PAYROLL_PAYMENT_MARK_PAID (Finance)'
+                    }
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-st-primary px-3 py-2 text-[10px] font-bold text-st-on-primary transition hover:opacity-95 disabled:opacity-50"
+                  >
+                    <ShieldCheck className="h-3 w-3" aria-hidden="true" />
+                    {busy === 'disburse' ? 'Confirming…' : 'Confirm & mark paid'}
+                  </button>
+                  {!(canPayMark || canPayConfirm) ? (
+                    <span className="text-[9px] text-st-on-variant">Finance holds this step.</span>
+                  ) : null}
+                </div>
               </div>
-            </div>
+              <p className="mt-2 text-[9px] leading-relaxed text-st-on-variant">
+                Authorised by permission, not hardware — no security-key handshake or dual-admin token, and
+                every step is written to the audit trail.
+              </p>
+            </Panel>
 
-            <p className="flex items-start gap-2 rounded-xl bg-st-low px-4 py-3 text-[10px] leading-relaxed text-st-on-variant">
+            <p className="flex items-start gap-2 rounded-xl bg-st-low px-4 py-2.5 text-[10px] text-st-on-variant">
               <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-st-outline" aria-hidden="true" />
               <span>
-                <strong className="font-semibold text-st-on">What this screen refuses to invent.</strong> The
-                register shows only what the engine stored for this month&apos;s result version. There is no
-                confidence percentile, no bank-gateway balance, no hardware-key handshake, no Form 16 archive and
-                no CIN/PAN/TAN verification badge on this page — the legal identifiers live on{' '}
-                <Link to="/app/payroll/setup" className="font-bold text-st-primary hover:underline">
-                  Payroll Setup
-                </Link>{' '}
-                and are not re-validated here.
+                <strong className="font-semibold text-st-on">What this screen refuses to invent:</strong> a
+                confidence percentile, a gateway balance, a hardware key, a Form 16 archive — and{' '}
+                no CIN/PAN/TAN verification badge.
               </span>
             </p>
           </>

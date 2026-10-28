@@ -73,18 +73,15 @@ and they render the YAML values.
 | nav chrome | `st-chrome` | `#222823` | PRD §4.1 |
 | ink | `st-ink` | `#1c1f1b` | PRD §4.1 |
 
-### The one unresolved conflict
+### The canvas, resolved
 
-The PRD's table says the canvas is **`#FCF9EA`** (ivory). The mocks render
-**`#f3fcf1`** (mint). `DESIGN.md` contains both — cream in prose, mint in its
-YAML. We follow the pixels, because the mocks are the fidelity target. If the
-cream is the intended destination, change exactly one line:
-
-```css
---color-st-surface: #f3fcf1;   /* → #fcf9ea */
-```
-
-Nothing else references the canvas colour, so that is the whole migration.
+The PRD's table says the canvas is **`#FCF9EA`** (ivory) and the mocks render
+**`#f3fcf1`** (mint); `DESIGN.md` contains both, cream in prose and mint in its
+YAML. Neither ships. The product's light theme is **sage paper** — canvas
+`#eef3e6`, cards `#f8fbf1` — which is the mocks' structure in the app's own
+palette, so an `st-` page and a `crewly-` page are the same sheet of paper.
+`docs/THEME.md` is the authority; the tokens live in block 12b of
+`src/style.css` plus the `@theme` base values.
 
 ---
 

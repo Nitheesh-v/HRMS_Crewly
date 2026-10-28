@@ -19,7 +19,7 @@ export const DEFAULT_THEME = DARK;
 /** The window's chrome follows the page, not a background app. */
 const THEME_COLOR = {
   [DARK]: '#1a2b27',
-  [LIGHT]: '#f5f2e1',
+  [LIGHT]: '#eef3e6',
 };
 
 const listeners = new Set();

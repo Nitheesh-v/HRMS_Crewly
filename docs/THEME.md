@@ -6,26 +6,30 @@ owner's palette, used as named: nothing is `#ffffff` and nothing is black.
 | Theme | Canvas | Card | Sidebar | Selected | Action | Ink |
 | --- | --- | --- | --- | --- | --- | --- |
 | `dark` (default) | `#1a2b27` | `#21332c` | `#152420` | olive at 16% | `#c97f42` clay | `#edefd9` |
-| `light` | `#f5f2e1` | `#fcf9ea` | `#2a322b` | `#f2f7a0` in content, `#db9558` on the rail | `#db9558` clay | `#22302a` |
+| `light` | `#eef3e6` | `#f8fbf1` | `#2a322b` | `#f2f7a0` in content, `#db9558` on the rail | `#db9558` clay | `#1e2c24` |
 
-The light theme is built from the six colours the owner asked for:
+The light theme is **sage paper**, not butter-cream: the page is the day side of
+the pine rail, so the two themes read as one brand at two exposures. The palette
+card in `docs/assets/theme-light-sage-paper.png` shows the surfaces, ink and
+action colours with their measured ratios.
 
 | Named | Where it goes | Why |
 | --- | --- | --- |
-| `#FCF9EA` | cards, header, modals, input wells | the lightest surface; never `#ffffff` |
+| `#EEF3E6` | the canvas, in every surface | green-tinted paper: 238/243/230, so blue is the lowest channel and it is never a grey |
+| `#F8FBF1` | cards, header, modals, input wells | the lightest surface; never `#ffffff` |
 | `#F2F7A0` | the active tab, the selected option, the MANAGER chip | "where you are" on paper — the rail's own selected row is clay (below) |
 | `#2a322b` | the rail, in both themes | the reference's pine: navigation is the fixed spine, the page is the lit surface |
-| `#97A87A` / `#A8BBA3` | sage fills, chart halves, illustration accents | 2.3:1 and 1.8:1 on cream, so **fills only** |
-| `#DB9558` | the one primary action per screen | 2.4:1 on cream and 2.5:1 against white type: fills only, with pine type on top |
+| `#97A87A` / `#A8BBA3` | sage fills, chart halves, illustration accents | 2.3:1 and 1.8:1 on paper, so **fills only** |
+| `#DB9558` | the one primary action per screen | 2.4:1 on paper and 2.5:1 against white type: fills only, with pine type on top |
 | `#1a2b27` `#8E9162` `#B2BD7E` `#D9D28B` | night surfaces, dim text, olive type, gold type | 7.4:1 and 9.5:1 on pine; `#8E9162` is 4.5:1 — dim text only |
 
 Two of those rules are the whole point of the scheme: **a page of white cards is
 not a light theme**, and **a mid-tone is a surface, not a text colour**. Where a
 named colour could not carry type it became a fill with dark pine ink on it, and
-the label colour moved to its own darker token (`#9A6224` clay-brown, `#5e7440`
-olive, `#b04a34` red). Every contrast number below is computed, not guessed.
+the label colour moved to its own darker token (`#8f5a1f` clay-brown, `#4f6a37`
+olive, `#a8492f` red). Every contrast number below is computed, not guessed, and
+`test/theme.test.js` re-computes them from these hexes.
 
-## How it works
 ## How it works
 
 One attribute on `<html>`:
@@ -61,10 +65,10 @@ Use the tokens. `bg-crewly-bg|card|sidebar`, `text-crewly-text|dim`,
 `text-crewly-green|orange|red` — every one of them changes with the theme.
 
 The rail is its own surface (`bg-crewly-sidebar`) and it is **dark in both
-themes** — `#152420` at night, `#2a322b` against the cream page, the owner's own
+themes** — `#152420` at night, `#2a322b` against the sage page, the owner's own
 value from the reference. A pale rail on a pale page reads as one undivided
 sheet; keeping the rail pine gives the product its spine back, and the content
-the room to be cream.
+the room to be paper.
 
 Selection on the rail is the clay fill (`#db9558`) with dark ink on it, exactly
 as the reference shows it. Inside the content, selection stays the `#f2f7a0`
@@ -75,7 +79,7 @@ The rail cannot use the page's ink or field colours, so `.crewly-rail`
 tokens for its own subtree: text, dim, border, the inset washes, the status
 greens, and `slate-400` for the HRMS wordmark. The logo PNG is screened instead
 of multiplied there, and the search field is a lifted dark surface rather than a
-cream well punched through the pine. Nested panels inside the rail inherit those
+paper well punched through the pine. Nested panels inside the rail inherit those
 values, which is what you want — nothing inside it should be paper.
 
 Anything that draws in SVG attributes reads CSS variables instead:
@@ -96,8 +100,8 @@ Two rules that exist because the dark theme used to be the only theme:
 
 `slate` is re-cut in the app's greens in *both* themes: blue-grey next to pine
 reads as two unrelated products. In the light theme the ramp is inverted as
-well — `slate-950` is the cream card (`#fcf9ea`), `slate-900` the canvas
-(`#f5f2e1`), `slate-50` the darkest ink — so every border, divider and hover in
+well — `slate-950` is the card (`#f8fbf1`), `slate-900` the canvas
+(`#eef3e6`), `slate-50` the darkest ink — so every border, divider and hover in
 the ~117 files that predate the tokens keeps the relationship it had. Every step
 used for text clears 4.5:1 on the canvas (checked in `test/theme.test.js`).
 

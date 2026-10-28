@@ -118,21 +118,21 @@
        error                    statutory / declined
      Read `docs/STITCH_SURFACES.md` before adding a new `st-` colour: every one
      of them exists in DESIGN.md, and nothing outside that file belongs here. */
-  --color-st-surface: #f3fcf1;
-  --color-st-surface-dim: #d4dcd2;
-  --color-st-surface-bright: #f3fcf1;
-  --color-st-lowest: #ffffff;
-  --color-st-low: #edf6eb;
-  --color-st-container: #e8f0e5;
-  --color-st-high: #e2ebe0;
-  --color-st-highest: #dce5da;
-  --color-st-variant: #dce5da;
+  --color-st-surface: #eef3e6;
+  --color-st-surface-dim: #cfd8c6;
+  --color-st-surface-bright: #f4f8ed;
+  --color-st-lowest: #f8fbf1;
+  --color-st-low: #e9efdf;
+  --color-st-container: #e3ead8;
+  --color-st-high: #dde5d1;
+  --color-st-highest: #d6dfc9;
+  --color-st-variant: #d6dfc9;
   --color-st-on: #161d17;
-  --color-st-on-variant: #52443a;
-  --color-st-inverse: #2a322b;
-  --color-st-inverse-on: #eaf3e8;
-  --color-st-outline: #857468;
-  --color-st-outline-variant: #d7c3b5;
+  --color-st-on-variant: #4c5c47;
+  --color-st-inverse: #22322a;
+  --color-st-inverse-on: #eef3e6;
+  --color-st-outline: #7c8874;
+  --color-st-outline-variant: #c9d4bd;
   --color-st-primary: #89511a;
   --color-st-on-primary: #ffffff;
   --color-st-primary-container: #db9558;
@@ -160,8 +160,8 @@
   --color-st-on-tertiary-fixed-variant: #464a03;
 
   /* PRD §4.1 roles that the Stitch YAML block did not name. Same family, same
-     page scope — the canvas, cards and rail above are byte-identical to what
-     the mocks render (#f3fcf1 canvas, #ffffff cards, #2a322b rail), so these
+     page scope — the canvas, cards and rail above are the mocks' structure in
+     the app's own paper (#eef3e6 canvas, #f8fbf1 cards, #2a322b rail), so these
      only fill the gaps the PRD calls out by name. */
   --color-st-sage: #97a87a;
   --color-st-sage-dim: #a8bba3;
@@ -174,7 +174,7 @@
      family, but stated in st- so a page never has to know which palette it is
      drawing on. Values are the sage wash the mocks use for tracks. */
   --color-st-rail: #222823;
-  --color-st-border: #d4dcd2;
+  --color-st-border: #d3ddc6;
   --color-st-selected: #f2f7a0;
   --color-st-selected-text: #1c1f1b;
   --color-st-inset: rgba(84, 100, 60, 0.06);
@@ -1237,19 +1237,21 @@ html:has(.landing-shell) {
   }
 }
 
-/* 12b) App light theme — "cream, sage and clay".
+/* 12b) App light theme — "sage paper and clay".
    The app was designed dark: near-black panels, white at low alpha for the soft
    surfaces, slate for everything the brand tokens do not cover. This block turns
-   that same component tree into a cream one, from the tokens the utilities
+   that same component tree into a paper one, from the tokens the utilities
    already read — no component has to know which theme it is in.
 
-   Why cream and not white: the public home is warm paper and the auth screens
-   are a warm charcoal; a white app would look like a third product wedged
-   between them, and a page of #ffffff cards is the template look the owner
-   rejected. Three surfaces carry the palette: cream canvas (#f5f2e1), a lighter
-   cream card (#fcf9ea), and a sage-tinted rail (#ebefd9), with pale lime
-   (#f2f7a0) marking where you are and clay (#db9558) for the one action on the
-   screen. Ink is pine (#22302a) — never black.
+   Why paper and not white: a page of #ffffff cards is the template look the
+   owner rejected, and a white app would look like a third product wedged
+   between the public home and the warm charcoal auth screens. The paper here is
+   green-tinted, not butter-cream: canvas #eef3e6, card #f8fbf1, sitting under
+   the same pine rail in both themes, with pale lime (#f2f7a0) marking where you
+   are and clay (#db9558) for the one action on the screen. Ink is pine
+   (#1e2c24) — never black. The sage wash is deliberate: the rail, the healthy
+   states and the page are one family, so the light theme reads as the daylit
+   version of the night one instead of a second brand.
 
    The lever is one attribute: `data-theme="light"` on <html>. index.html writes
    it before the first paint (localStorage), so a light-mode reload never flashes
@@ -1265,31 +1267,32 @@ html:has(.landing-shell) {
 html[data-theme='light'] {
   color-scheme: light;
 
-  /* ── Cream, sage and clay ────────────────────────────────────────────────
+  /* ── Sage paper and clay ─────────────────────────────────────────────────
      The light theme is not the dark theme with the lights on, and not a white
-     page with grey chrome. Three surfaces, three tints:
+     page with grey chrome. Four surfaces, one family:
 
-       canvas   #f5f2e1  cream, the page
-       card     #fcf9ea  the same cream, a shade lighter  (their FCF9EA)
+       canvas   #eef3e6  sage paper, the page
+       card     #f8fbf1  the same paper, a shade lighter
        sidebar  #2a322b  pine rail, dark in both themes
-       selected #f2f7a0  pale lime — where you are        (their F2F7A0)
+       selected #f2f7a0  pale lime — where you are
 
      Ink is a deep pine, not black; the action colour is clay (DB9558) and the
      status colours are olive greens. Nothing here is #ffffff: a page that is
-     pure white next to this brand reads as a spreadsheet. */
-  --color-crewly-bg: #f5f2e1;
-  --color-crewly-card: #fcf9ea;
+     pure white next to this brand reads as a spreadsheet, and a butter-cream
+     page reads as a scanned memo. Sage paper is the day side of the pine. */
+  --color-crewly-bg: #eef3e6;
+  --color-crewly-card: #f8fbf1;
   --color-crewly-sidebar: #2a322b;
-  --color-crewly-border: #dcd6b8;
-  --color-crewly-text: #22302a;
-  --color-crewly-dim: #55624a;
-  --color-crewly-green: #5e7440;
-  --color-crewly-orange: #9a6224;
-  --color-crewly-red: #b04a34;
+  --color-crewly-border: #d3ddc6;
+  --color-crewly-text: #1e2c24;
+  --color-crewly-dim: #4c5c47;
+  --color-crewly-green: #4f6a37;
+  --color-crewly-orange: #8f5a1f;
+  --color-crewly-red: #a8492f;
   --color-crewly-accent: #db9558;
-  --color-crewly-accent-ink: #22302a;
+  --color-crewly-accent-ink: #1e2c24;
   --color-crewly-selected: #f2f7a0;
-  --color-crewly-selected-text: #22302a;
+  --color-crewly-selected-text: #1e2c24;
 
   /* Inset surfaces are a wash of the same olive the rail is built from, so a
      progress track reads as part of the sage family rather than as grey. */
@@ -1299,19 +1302,19 @@ html[data-theme='light'] {
   --color-crewly-hairline: rgba(90, 106, 69, 0.1);
   --color-crewly-hairline-strong: rgba(90, 106, 69, 0.16);
 
-  /* The slate ramp inverted into the cream/sage family: 950 the lightest paper,
+  /* The slate ramp inverted into the sage family: 950 the lightest paper,
      50 the deepest ink. Every step used as text clears 4.5:1 on the canvas. */
-  --color-slate-950: #fcf9ea;
-  --color-slate-900: #f5f2e1;
-  --color-slate-800: #ece7d2;
-  --color-slate-700: #dcd6b8;
-  --color-slate-600: #c9c4a6;
-  --color-slate-500: #62704f;
-  --color-slate-400: #5f6d52;
-  --color-slate-300: #4d5c43;
-  --color-slate-200: #3a4632;
-  --color-slate-100: #2a362a;
-  --color-slate-50: #22302a;
+  --color-slate-950: #f8fbf1;
+  --color-slate-900: #eef3e6;
+  --color-slate-800: #e2e9d7;
+  --color-slate-700: #d3ddc6;
+  --color-slate-600: #bfcbae;
+  --color-slate-500: #5c6e50;
+  --color-slate-400: #586a4b;
+  --color-slate-300: #475c3d;
+  --color-slate-200: #35482f;
+  --color-slate-100: #273727;
+  --color-slate-50: #1e2c24;
 
   /* A handful of "no status" badges are built from Tailwind's grey ramp rather
      than the brand tokens. Only the two steps used as *text* need the same
@@ -1394,9 +1397,9 @@ html[data-theme='light'] {
   --art-teal: #97a87a;
   --art-yellow: #cbb95e;
   --toast-shadow: 0 10px 28px rgba(52, 66, 44, 0.18);
-  --art-ink-rgb: 34, 48, 42;
-  --art-dim-rgb: 85, 98, 74;
-  --art-plate: #fcf9ea;
+  --art-ink-rgb: 30, 44, 36;
+  --art-dim-rgb: 76, 92, 71;
+  --art-plate: #f8fbf1;
 }
 
 /* Three surfaces are exempt. The public home owns its cream/ink palette, the
@@ -1404,11 +1407,11 @@ html[data-theme='light'] {
    dark-only tool. They set the dark values back for their own subtree, so the
    toggle can never recolour them. */
 /* ── The rail ────────────────────────────────────────────────────────────────
-   In light mode the page is cream and the rail is pine. That is not the mock's
-   white-on-lavender scheme copied across — it is the dark theme's rail, one
-   step warmer (the owner's own #2a322b from the reference), left standing
-   against paper so the navigation reads as the fixed spine of the product and
-   the content reads as lit. The selected row is their clay (#db9558) with dark
+   In light mode the page is sage paper and the rail is pine. That is not the
+   mock's white-on-lavender scheme copied across — it is the dark theme's rail,
+   one step warmer (the owner's own #2a322b from the reference), left standing
+   against that paper so the navigation reads as the fixed spine of the product
+   and the content reads as lit. The selected row is their clay (#db9558) with dark
    ink on it, exactly as the reference shows; everything inside the rail is
    re-tokenised so the cream page tokens never leak into a dark surface. */
 html[data-theme='light'] .crewly-rail {
