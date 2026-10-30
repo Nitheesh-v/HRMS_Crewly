@@ -10,7 +10,6 @@ import statutoryService from '../../services/statutoryService.js';
 import usePermission from '../../hooks/usePermission.js';
 import fnfService from '../../services/fnfService.js';
 import { notify } from '../../utils/notify.js';
-import { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Phase 29.9 — Employee Salary Portal (§14 / §15 / §16)
@@ -225,7 +224,7 @@ const MyPayslipsPortalPage = () => {
         <div className="card border-l-4 border-red-500 text-sm text-red-200">{error}</div>
       ) : null}
 
-      {/* §17 — statutory details, read-only (§17: employees cannot modify
+      {/* — statutory details, read-only (: employees cannot modify
           statutory IDs). */}
       {statutory ? (
         <div className="card space-y-3">
@@ -255,7 +254,7 @@ const MyPayslipsPortalPage = () => {
         </div>
       ) : null}
 
-      {/* Phase 29.11 §18 — the employee's own settlement, read-only. The
+      {/* Phase 29.11 — the employee's own settlement, read-only. The
           figures live on the dedicated page; this is only a pointer. */}
       {settlement ? (
         <div className="card flex flex-wrap items-center justify-between gap-3">
@@ -275,7 +274,7 @@ const MyPayslipsPortalPage = () => {
         </div>
       ) : null}
 
-      {/* §15 — filters */}
+      {/* — filters */}
       {rows.length > 0 ? (
         <div className="card flex flex-wrap items-end gap-3">
           <div className="min-w-[180px] flex-1">
@@ -319,7 +318,7 @@ const MyPayslipsPortalPage = () => {
         </div>
       ) : null}
 
-      {/* §14 — month, gross, net, payment date, status, download */}
+      {/* — month, gross, net, payment date, status, download */}
       <div className="card overflow-x-auto p-0">
         <table className="w-full text-left text-sm">
           <thead className="bg-crewly-inset text-xs uppercase tracking-wide text-crewly-dim">
@@ -334,16 +333,13 @@ const MyPayslipsPortalPage = () => {
           </thead>
           <tbody>
             {visible.length === 0 ? (
-              <TableEmpty
-                colSpan={6}
-                illustration={rows.length === 0 ? 'payslip' : 'search'}
-                title={rows.length === 0 ? 'No payslips yet' : 'No payslip matches these filters'}
-                description={
-                  rows.length === 0
-                    ? 'Payslips appear here once your salary for the month has been paid. Each one opens as a breakdown you can download.'
-                    : 'Nothing in this month or status range. Widen the filters to see the rest of the year.'
-                }
-              />
+              <tr>
+                <td colSpan={6} className="px-3 py-10 text-center text-crewly-dim">
+                  {rows.length === 0
+                    ? 'No payslips yet — they appear here once your salary for the month has been paid.'
+                    : 'No payslip matches these filters.'}
+                </td>
+              </tr>
             ) : (
               visible.map((row) => (
                 <tr key={row._id} className="border-t border-crewly-hairline hover:bg-crewly-inset">
@@ -390,7 +386,7 @@ const MyPayslipsPortalPage = () => {
         recalculated. Bank details are masked.
       </p>
 
-      {/* §16 — preview before downloading */}
+      {/* — preview before downloading */}
       {viewing ? (
         <Modal
           title={`Payslip — ${viewing.monthLabel || viewing.month}`}

@@ -9,7 +9,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 // inactive tabs are plain text, and the strip wraps rather than scrolls.
 //
 // This component is presentation only. Which tabs exist — and who may open
-// them — is decided by config/payrollNav.js and config/timeNav.js, so the rail
+// them — is decided by config/timeNav.js, so the rail
 // and the strip can never disagree about a page.
 //
 // `active` is the longest matching tab path, so a detail route (an employee's

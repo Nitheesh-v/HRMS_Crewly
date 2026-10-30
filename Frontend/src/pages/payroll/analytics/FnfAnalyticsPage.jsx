@@ -90,7 +90,7 @@ const FnfAnalyticsPage = () => {
             <KpiCard label="Settlements" value={count(report.count)} hint={`${count(report.completed?.count)} completed · ${count(report.pending?.count)} in progress`} />
             <KpiCard label="Net settled" value={money(totals.netSettlement)} />
             <KpiCard label="Leave encashment" value={money(totals.leaveEncashment)} tone="info" />
-            <KpiCard label="Recoveries" value={money(totals.recoveriesTotal)} tone="warn" hint="Notice pay and other dues" />
+            <KpiCard label="Recoveries" value={money(totals.recoveriesTotal)} tone="warn" hint="notice pay and other dues" />
             <KpiCard label="Pending salary paid" value={money(totals.pendingSalary)} />
             <KpiCard label="Notice recovery" value={money(totals.noticeRecovery)} />
             <KpiCard label="Other recoveries" value={money(totals.otherRecoveries)} />
@@ -100,7 +100,7 @@ const FnfAnalyticsPage = () => {
             />
           </div>
 
-          <SectionCard className="mt-4" title="Settlement register" subtitle="Every settlement in the period">
+          <SectionCard className="mt-4" title="Settlement register" subtitle=" — every settlement in the period">
             <DataTable
               headers={[
                 { key: 'settlementNumber', label: 'Settlement', strong: true },

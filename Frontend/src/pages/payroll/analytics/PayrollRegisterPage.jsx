@@ -255,7 +255,7 @@ const PayrollRegisterPage = () => {
             <KpiCard label="Net paid" value={money(summary.netSalary)} />
           </div>
 
-          <SectionCard className="mt-4" title="Register" subtitle="Every paid employee, in one table">
+          <SectionCard className="mt-4" title="Register" subtitle=" — every paid employee, in one table">
             <DataTable
               headers={[
                 { key: 'employeeCode', label: 'Employee', strong: true, render: (row) => (
@@ -311,23 +311,25 @@ const PayrollRegisterPage = () => {
               empty={search ? 'Nobody matches that search' : 'No payroll records for this month'}
             />
             <Pagination pagination={pagination} onPageChange={setPage} />
-            <p className="mt-3 border-t border-crewly-hairline pt-2 text-[11px] text-crewly-dim">
-              Payment date and status come from the salary payment records. &ldquo;Gross&rdquo; is total
-              earnings; &ldquo;structure gross&rdquo; is the PF and ESI wage base. The footer totals the
-              whole period.
+            <p className="mt-3 border-t border-crewly-hairline pt-2 text-xs text-crewly-dim">
+              Payment date and status come from the salary payment records. An employee whose transfer
+              failed and was retried appears once, with the successful payment. &ldquo;Gross&rdquo;
+              is total earnings — structure plus variable pay plus overtime — while &ldquo;structure
+              gross&rdquo; is the PF and ESI wage base. The footer totals the whole period, not just
+              this page.
             </p>
           </SectionCard>
 
-          {/* §19 — queued exports */}
+          {/* — queued exports */}
           {canExport ? (
             <SectionCard
               className="mt-4"
               title="Generated files"
-              subtitle="Large exports are built in the background"
+              subtitle=" — large exports are built in the background"
             >
               {filesLoading ? (
                 <p className="text-sm text-crewly-dim">Loading…</p>
-              ) : (
+              ) : files.length ? (
                 <DataTable
                   headers={[
                     { key: 'filename', label: 'File', strong: true },
@@ -363,10 +365,10 @@ const PayrollRegisterPage = () => {
                     },
                   ]}
                   rows={files}
-                  empty="No exports yet — use Export above to build one. Large registers are generated in the background and stay downloadable here."
-                  emptyTitle="No exports yet"
-                  emptyIllustration="documents"
+                  empty="No exports yet — use Export to create one"
                 />
+              ) : (
+                <p className="text-sm text-crewly-dim">No exports yet — use Export to create one.</p>
               )}
             </SectionCard>
           ) : null}

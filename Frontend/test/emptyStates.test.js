@@ -200,7 +200,10 @@ describe('adoption across the app', () => {
 
   test('the payroll analytics reports all funnel through one empty state', () => {
     const shared = read('src/pages/payroll/analytics/analyticsShared.jsx');
-    assert.ok(shared.includes('EmptyStateArt'));
+    assert.ok(
+      /common\/EmptyState\.jsx/.test(shared),
+      'the reports funnel through the app-wide empty state, not a local one',
+    );
     assert.ok(shared.includes('emptyIllustration'), 'DataTable must accept an illustration');
     assert.ok(!shared.includes("icon: Icon = Inbox"), 'the lone-icon version must be gone');
   });

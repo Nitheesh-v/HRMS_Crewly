@@ -95,7 +95,7 @@ const OvertimeReportPage = () => {
             />
           </div>
 
-          <SectionCard className="mt-4" title="By department" subtitle="Where the overtime lands">
+          <SectionCard className="mt-4" title="By department" subtitle=" — where the overtime lands">
             <DataTable
               headers={[
                 { key: 'department', label: 'Department', strong: true },
@@ -108,7 +108,7 @@ const OvertimeReportPage = () => {
             />
           </SectionCard>
 
-          <SectionCard className="mt-4" title="Employee ranking" subtitle="Highest overtime use first">
+          <SectionCard className="mt-4" title="Employee ranking" subtitle=" — highest overtime use first">
             <DataTable
               headers={[
                 { key: 'employeeCode', label: 'Employee', strong: true, render: (row) => (

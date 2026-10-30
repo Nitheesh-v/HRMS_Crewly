@@ -14,15 +14,14 @@
 // Longest prefix wins, so /app/attendance/overtime is "Time & Leave" and
 // /app/profile/change-requests is "People" (it is a reviewers' queue), not "Me".
 //
-// TIMES ARE DIFFERENT, so are PAYROLL pages: they are NOT in the menu any
-// more. Both modules show a few AREAS in the sidebar and each area's pages are
-// an in-page tab strip (config/timeNav.js, config/payrollNav.js). So their page
-// half comes from that same config — which is also what names the tabs —
-// instead of from a sidebar row that no longer exists. Without this, every one
-// of those pages would lose its breadcrumb.
+// TIMES ARE DIFFERENT: those pages are NOT in the menu any more. Time & Leave
+// shows a few AREAS in the sidebar and each area's pages are an in-page tab
+// strip (config/timeNav.js). So their page half comes from that same config —
+// which is also what names the tabs — instead of from a sidebar row that no
+// longer exists. Without this, every one of those pages would lose its
+// breadcrumb. Payroll is back to one rail row per page, so it needs nothing.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { PAYROLL_PAGE_TITLES } from '../config/payrollNav.js';
 import { TIME_PAGE_TITLES } from '../config/timeNav.js';
 
 const SECTIONS = [
@@ -79,12 +78,8 @@ export const sectionForPath = (pathname = '') =>
     .filter((entry) => matches(pathname, entry.prefix))
     .sort((a, b) => b.prefix.length - a.prefix.length)[0]?.label || null;
 
-/**
- * Every page title declared by the two tab-strip modules, in one map. Payroll
- * wins where both declare the same path (they cannot, but the merge should be
- * deterministic rather than accidental).
- */
-const AREA_PAGE_TITLES = { ...TIME_PAGE_TITLES, ...PAYROLL_PAGE_TITLES };
+/** Every page title the tab-strip modules declare. */
+const AREA_PAGE_TITLES = { ...TIME_PAGE_TITLES };
 
 /**
  * Menu entries whose sidebar label is deliberately shorter than the page's own

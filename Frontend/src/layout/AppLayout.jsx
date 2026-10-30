@@ -9,7 +9,6 @@ import PageBreadcrumb from "../components/common/PageBreadcrumb.jsx";
 import SubscriptionStatusBanner from "../components/SubscriptionStatusBanner.jsx";
 import { Power, Menu, X } from "lucide-react";
 import SidebarNav from "./SidebarNav.jsx";
-import { PAYROLL_AREAS, visiblePayrollTabs } from "../config/payrollNav.js";
 import { TIME_AREAS, visibleTimeTabs } from "../config/timeNav.js";
 import AiAssistantWidget from "../components/AIAssistant/AiAssistantWidget.jsx";
 import { PresenceMenu } from "../components/presence/index.js";
@@ -32,11 +31,11 @@ import { loadPresenceConfig } from "../redux/slices/presenceSlice.js";
 
 
 
-// Time & Leave and Payroll destinations are deliberately absent from the role
-// menus below. Both modules now show a few AREAS in the rail, permission-gated
-// in config/timeNav.js and config/payrollNav.js and drawn from those files
-// alone; listing their pages here as well would put a second copy of the same
-// row into the same sidebar group.
+// Time & Leave destinations are deliberately absent from the role menus below.
+// That module shows a few AREAS in the rail, permission-gated in
+// config/timeNav.js and drawn from that file alone; listing its pages here as
+// well would put a second copy of the same row into the same sidebar group.
+// Payroll lists one row per page again, in its own `payrollMenu` below.
 const NAV_BY_ROLE = {
   [ROLES.COMPANY_ADMIN]: [
     { to: "/app", label: "Dashboard", end: true },
@@ -364,34 +363,96 @@ const AppLayout = () => {
       : []),
   ];
 
-  /*
-   * PAYROLL — three rows, not fifteen.
-   *
-   * Every payroll route still exists (config/payrollNav.js lists all of them),
-   * but the sidebar now shows an AREA and the area's pages live in the tab
-   * strip at the top of each page (components/payroll/PayrollSectionTabs.jsx).
-   * Both sides read the same config, so a page can never be reachable from one
-   * and missing from the other.
-   *
-   * A row is drawn only when the person holds at least one permission for at
-   * least one tab inside it — the same predicate the strip uses.
-   */
-  const payrollMenu = PAYROLL_AREAS.map((area) => ({
-    area,
-    tabs: visiblePayrollTabs(area, hasAnyPermission),
-  }))
-    .filter(({ tabs }) => tabs.length)
-    // Land on the first tab the person can actually open. An employee whose
-    // only payslip permission is their own must not be sent to the company-wide
-    // payslip workspace just because that is the area's home.
-    // `ownerPaths` is the whole area: the rail row must stay lit while you are
-    // on any of its tabs, including the ones whose path is not a prefix of it.
-    .map(({ area, tabs }) => ({
-      to: tabs[0].to,
-      label: area.label,
-      end: true,
-      ownerPaths: area.tabs.map((tab) => tab.to),
-    }));
+  const payrollMenu = [
+    ...(hasAnyPermission(['PAYROLL_SETUP_READ', 'PAYROLL_SETUP_UPDATE', 'PAYROLL_SETUP_ACTIVATE'])
+      ? [{ to: '/app/payroll/setup', label: 'Payroll Setup' }]
+      : []),
+    ...(hasAnyPermission([
+      'SALARY_COMPONENT_READ',
+      'SALARY_COMPONENT_MANAGE',
+      'SALARY_COMPONENT_ACTIVATE',
+    ])
+      ? [{ to: '/app/payroll/components', label: 'Salary Components' }]
+      : []),
+    ...(hasAnyPermission([
+      'SALARY_STRUCTURE_READ',
+      'SALARY_STRUCTURE_MANAGE',
+      'SALARY_STRUCTURE_ACTIVATE',
+    ])
+      ? [{ to: '/app/payroll/structures', label: 'Salary Structures' }]
+      : []),
+    ...(hasAnyPermission(['PAYROLL_INPUT_READ', 'PAYROLL_INPUT_MANAGE', 'PAYROLL_INPUT_LOCK'])
+      ? [{ to: '/app/payroll/inputs', label: 'Monthly Inputs' }]
+      : []),
+    ...(hasAnyPermission([
+      'PAYROLL_RUN_READ',
+      'PAYROLL_RUN_PREPARE',
+      'PAYROLL_RUN_EXECUTE',
+      'PAYROLL_RUN_RECALCULATE',
+    ])
+      ? [{ to: '/app/payroll/run', label: 'Run Payroll' }]
+      : []),
+    ...(hasAnyPermission([
+      'PAYROLL_RUN_READ',
+      'PAYROLL_RUN_PREPARE',
+      'PAYROLL_RUN_REVIEW',
+      'PAYROLL_RUN_LOCK',
+      'PAYROLL_RUN_REOPEN',
+      'PAYROLL_RUN_APPROVE',
+      'PAYROLL_RUN_REJECT',
+    ])
+      ? [{ to: '/app/payroll/review', label: 'Review Payroll' }]
+      : []),
+    ...(hasAnyPermission([
+      'PAYROLL_PAYMENT_READ',
+      'PAYROLL_PAYMENT_GENERATE',
+      'PAYROLL_PAYMENT_CONFIRM',
+      'PAYROLL_PAYMENT_MARK_PAID',
+    ])
+      ? [{ to: '/app/payroll/salary-payment', label: 'Salary Payment' }]
+      : []),
+    ...(hasAnyPermission([
+      'PAYSLIP_READ',
+      'PAYSLIP_GENERATE',
+      'PAYSLIP_RELEASE',
+      'PAYSLIP_RERELEASE',
+    ])
+      ? [{ to: '/app/payroll/payslips', label: 'Payslips' }]
+      : []),
+    ...(hasAnyPermission([
+      'PAYROLL_STATUTORY_READ',
+      'PAYROLL_STATUTORY_GENERATE',
+      'PAYROLL_STATUTORY_MANAGE',
+      'PAYROLL_STATUTORY_FILING',
+    ])
+      ? [{ to: '/app/payroll/statutory', label: 'Statutory Compliance' }]
+      : []),
+    ...(hasAnyPermission(['PAYSLIP_READ_SELF'])
+      ? [{ to: '/app/payroll/my-payslips', label: 'My Payroll' }]
+      : []),
+    ...(hasAnyPermission([
+      'FINAL_SETTLEMENT_READ',
+      'FINAL_SETTLEMENT_CALCULATE',
+      'FINAL_SETTLEMENT_REVIEW',
+      'FINAL_SETTLEMENT_APPROVE',
+      'FINAL_SETTLEMENT_PAY',
+      'FINAL_SETTLEMENT_CLOSE',
+      'FINAL_SETTLEMENT_REOPEN',
+    ])
+      ? [{ to: '/app/payroll/final-settlement', label: 'Final Settlement' }]
+      : []),
+    ...(hasAnyPermission(['FINAL_SETTLEMENT_READ_SELF'])
+      ? [{ to: '/app/payroll/my-final-settlement', label: 'My Final Settlement' }]
+      : []),
+    ...(hasAnyPermission([
+      'PAYROLL_REPORT_READ',
+      'PAYROLL_REPORT_EXPORT',
+      'PAYROLL_ANALYTICS_FINANCIAL',
+      'PAYROLL_ANALYTICS_SCHEDULE',
+    ])
+      ? [{ to: '/app/payroll/analytics', label: 'Analytics & Reports' }]
+      : []),
+  ];
 
   /*
    * TIME & LEAVE — six rows, not nineteen.

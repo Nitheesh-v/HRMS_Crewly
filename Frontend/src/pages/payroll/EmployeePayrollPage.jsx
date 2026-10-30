@@ -5,7 +5,6 @@ import { Plus } from 'lucide-react';
 import usePermission from '../../hooks/usePermission.js';
 import employeePayrollService from '../../services/employeePayrollService.js';
 import { notify } from '../../utils/notify.js';
-import EmptyState from '../../components/common/EmptyState.jsx';
 
 // ── display mirrors of the backend rules (the server always decides) ────────
 
@@ -157,7 +156,7 @@ const EmployeePayrollPage = () => {
         </div>
       </div>
 
-      {/* §17 — filters */}
+      {/* — filters */}
       <div className="card grid gap-3 md:grid-cols-4">
         <input
           className="input"
@@ -207,11 +206,13 @@ const EmployeePayrollPage = () => {
         {loading ? (
           <p className="text-sm text-crewly-dim">Loading payroll profiles…</p>
         ) : rows.length === 0 ? (
-          <EmptyState
-            illustration="payslip"
-            title="No payroll profiles yet"
-            description="A profile is created when a candidate becomes an employee, or by opening one for an existing employee below. It carries salary, bank and statutory details into every run."
-          />
+          <div className="space-y-3 py-6 text-center">
+            <h2 className="text-lg font-semibold">No Payroll Profiles Yet</h2>
+            <p className="mx-auto max-w-xl text-sm text-crewly-dim">
+              A payroll profile is created when a candidate is converted into an employee, or by
+              opening one for an existing employee below.
+            </p>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">

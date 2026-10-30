@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Archive,
   Building2,
+  CheckCircle2,
   Download,
   FileText,
   Loader2,
@@ -20,15 +21,6 @@ import usePermission from '../../hooks/usePermission.js';
 import PayslipDocument, { downloadPayslipFile } from './PayslipDocument.jsx';
 import payslipService, { saveBlob } from '../../services/payslipService.js';
 import { notify } from '../../utils/notify.js';
-import EmptyState from '../../components/common/EmptyState.jsx';
-import {
-  Avatar,
-  Panel,
-  Pill,
-  StageBand,
-  StageButton,
-  StatCard,
-} from '../../components/payroll/PayrollCockpit.jsx';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Phase 29.9 — Payroll → Payslips (§27)
@@ -62,6 +54,38 @@ const formatStamp = (value) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
   return date.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+};
+
+const STATUS_STYLES = {
+  PENDING: 'bg-slate-500/15 text-slate-300',
+  GENERATED: 'bg-emerald-500/15 text-emerald-300',
+  EMAILED: 'bg-sky-500/15 text-sky-300',
+  DOWNLOADED: 'bg-violet-500/15 text-violet-300',
+  FAILED: 'bg-red-500/15 text-red-300',
+};
+
+const statusBadge = (status) => (
+  <span className={`rounded-full px-2.5 py-0.5 text-[11px] ${STATUS_STYLES[status] || STATUS_STYLES.PENDING}`}>
+    {String(status || 'PENDING').toLowerCase()}
+  </span>
+);
+
+const KpiCard = ({ icon: Icon, label, value, tone = 'default' }) => {
+  const tones = {
+    default: 'text-crewly-text',
+    good: 'text-emerald-300',
+    bad: 'text-red-300',
+    warn: 'text-amber-300',
+  };
+  return (
+    <div className="card p-4">
+      <div className="flex items-center justify-between">
+        <span className="text-xs uppercase tracking-wide text-crewly-dim">{label}</span>
+        <Icon size={16} className="text-crewly-dim" />
+      </div>
+      <p className={`mt-2 text-xl font-semibold ${tones[tone] || tones.default}`}>{value}</p>
+    </div>
+  );
 };
 
 const financialYearOf = (month, fyStartMonth = 4) => {
@@ -223,8 +247,7 @@ const PayslipsPage = () => {
     }
   };
 
-  // Memoised so the three filters below do not re-run on every render.
-  const rows = useMemo(() => dashboard.payslips || [], [dashboard]);
+  const rows = dashboard.payslips || [];
   const summary = dashboard.summary || {};
 
   const visible = useMemo(() => {
@@ -249,399 +272,326 @@ const PayslipsPage = () => {
     [rows],
   );
 
+  const pendingArchive = bulkFiles.some((file) => ['QUEUED', 'PROCESSING'].includes(file.status));
+
   if ((!permsLoading && !canRead) || accessDenied) {
     return (
-      <div className="space-y-3">
-        <StageBand
-          eyebrow="Payroll · Payslips"
-          title="Payslips"
-          description="Official salary documents for the payroll month."
-        />
-        <Panel title="Payslip access required">
-          <p className="px-4 pb-4 text-[11px] leading-relaxed text-st-on-variant">
-            This page is limited to the payslip permissions. Ask your Company Admin or Payroll Admin
-            for access.
+      <div className="space-y-5">
+        <h1 className="text-2xl font-bold">Payslips</h1>
+        <div className="card space-y-2">
+          <h2 className="text-lg font-semibold">Payslip access required</h2>
+          <p className="text-sm text-crewly-dim">
+            You don&apos;t have permission to view payslips. Contact your Company Admin or Payroll
+            Admin.
           </p>
-        </Panel>
+        </div>
       </div>
     );
   }
 
-  const pendingArchive = bulkFiles.find((file) => ['QUEUED', 'PROCESSING'].includes(file.status));
-  const readyArchives = bulkFiles.filter((file) => file.status === 'READY');
-  const newestArchive = readyArchives[0] || null;
-  const generated = Number(summary.generated || 0);
-  const total = Number(summary.totalPayslips || 0);
-
-  const toneFor = (status) =>
-    status === 'GENERATED'
-      ? 'good'
-      : status === 'EMAILED'
-        ? 'accent'
-        : status === 'FAILED'
-          ? 'bad'
-          : status === 'DOWNLOADED'
-            ? 'default'
-            : 'warn';
-
   return (
-    <div className="space-y-3">
-      <StageBand
-        eyebrow="Payroll · Payslips"
-        title="Payslips"
-        description={
-          rows.length
-            ? `${formatMonthInput(month)} · ${generated} of ${total} payslip(s) generated from the frozen payroll snapshot. A payslip exists only once the salary is paid, and nothing here recalculates it.`
-            : `${formatMonthInput(month)} · a payslip is cut from the frozen payroll snapshot once the salary is paid.`
-        }
-        pills={[
-          ...(total ? [{ label: `${formatNumber(generated)}/${formatNumber(total)} generated`, tone: generated === total ? 'good' : 'warn' }] : []),
-          ...(Number(summary.failed) ? [{ label: `${formatNumber(summary.failed)} failed`, tone: 'bad' }] : []),
-        ]}
-        aside={
-          <div className="text-right">
-            <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-st-on-variant">
-              Net on these payslips
-            </p>
-            <p className="text-lg font-bold leading-tight tabular-nums text-st-on">
-              {formatMoney(summary.totalNetSalary)}
-            </p>
-            <p className="text-[10px] text-st-on-variant">{formatNumber(total)} document(s)</p>
-          </div>
-        }
-        actions={
-          <>
-            <input
-              type="month"
-              value={month}
-              onChange={(event) => setMonth(event.target.value)}
-              className="rounded-lg border border-st-outline-variant/70 bg-st-lowest px-2 py-1.5 text-[11px] font-semibold text-st-on"
-              aria-label="Payroll month"
-            />
-            <StageButton
-              variant="primary"
-              icon={FileText}
-              disabled={busy || !canGenerate}
-              onClick={() =>
-                setPrompt({
-                  title: `Generate payslips for ${formatMonthInput(month)}?`,
-                  body:
-                    'Crewly takes every employee whose salary was confirmed PAID in the payment batch, freezes their payroll snapshot, renders the PDF and notifies them. Employees whose payment failed are skipped until they are paid.',
-                  actionLabel: 'Generate payslips',
-                  onConfirm: handleGenerate,
-                })
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Payslips</h1>
+          <p className="mt-1 text-sm text-crewly-dim">
+            Official salary documents, cut from the frozen payroll snapshot once the salary has been
+            paid. Nothing here recalculates salary.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <input type="month" className="input" value={month} onChange={(event) => setMonth(event.target.value)} />
+          <button
+            className="btn-primary"
+            disabled={busy || !canGenerate}
+            onClick={() =>
+              setPrompt({
+                title: `Generate payslips for ${formatMonthInput(month)}?`,
+                body:
+                  'Crewly takes every employee whose salary was confirmed PAID in the payment batch, freezes their payroll snapshot, renders the PDF and notifies them. Employees whose payment failed are skipped until they are paid.',
+                actionLabel: 'Generate payslips',
+                onConfirm: handleGenerate,
+              })
+            }
+          >
+            <FileText size={15} /> Generate payslips
+          </button>
+          <button className="btn-secondary" disabled={busy || !canRelease} onClick={handleEmailMonth}>
+            <Mail size={15} /> Email month
+          </button>
+          {/* — the Company Admin's payroll register */}
+          <button
+            className="btn-secondary"
+            disabled={busy || rows.length === 0}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                const blob = await payslipService.register(month);
+                saveBlob(blob, `payroll-register-${month}.csv`);
+              } catch (error) {
+                flash('error', error?.message || 'Unable to download the register');
+              } finally {
+                setBusy(false);
               }
-            >
-              Generate payslips
-            </StageButton>
-            <StageButton icon={Mail} disabled={busy || !canRelease} onClick={handleEmailMonth}>
-              Email month
-            </StageButton>
-            <StageButton
-              icon={Archive}
-              disabled={busy || !canRead}
-              onClick={handleBulkDownload}
-              title="Build a ZIP of this month's payslips for the scope chosen below"
-            >
-              Build ZIP
-            </StageButton>
-            <StageButton
-              icon={ScrollText}
-              disabled={busy || rows.length === 0}
-              onClick={async () => {
-                setBusy(true);
-                try {
-                  const blob = await payslipService.register(month);
-                  saveBlob(blob, `payroll-register-${month}.csv`);
-                } catch (error) {
-                  flash('error', error?.message || 'Unable to download the register');
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              Register
-            </StageButton>
-          </>
-        }
-      />
-
-      {pendingArchive ? (
-        <p className="flex items-center gap-2 rounded-xl bg-st-lowest px-3 py-2 text-[11px] text-st-on-variant shadow-sm">
-          <Loader2 aria-hidden="true" className="animate-spin" size={13} /> An archive is being
-          prepared — this page refreshes itself.
-        </p>
-      ) : null}
-
-      {/* ── the five counters ─────────────────────────────────────────── */}
-      <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-5">
-        <StatCard
-          icon={FileText}
-          label="Payslips"
-          value={formatNumber(total)}
-          hint={`${formatNumber(summary.generated || 0)} generated`}
-        />
-        <StatCard
-          icon={Mail}
-          label="Emailed"
-          value={formatNumber(summary.emailed)}
-          hint={summary.emailed ? 'sent from the payslip inbox' : 'nobody emailed yet'}
-        />
-        <StatCard
-          icon={Download}
-          label="Downloaded by staff"
-          value={formatNumber(summary.downloaded)}
-          hint="Counted when the PDF is fetched"
-        />
-        <StatCard
-          icon={XCircle}
-          label="Delivery failures"
-          value={formatNumber(summary.failed)}
-          hint={summary.failed ? 'retry from the row below' : 'none recorded'}
-          tone={Number(summary.failed) ? 'bad' : 'default'}
-        />
-        <StatCard
-          icon={Wallet}
-          label="Net on payslips"
-          value={formatMoney(summary.totalNetSalary)}
-          hint="Sum of the frozen snapshots"
-        />
+            }}
+          >
+            <ScrollText size={15} /> Register
+          </button>
+        </div>
       </div>
 
-      {/* ── one list, one archive strip ───────────────────────────────── */}
-      <Panel
-        title={`Payslips · ${formatMonthInput(month)}`}
-        subtitle={`${formatNumber(visible.length)} of ${formatNumber(rows.length)} shown. Click a name to open the payslip.`}
-        right={
-          <div className="flex flex-wrap items-center gap-1.5">
-            {financialYears.length > 1 ? (
-              <select
-                className="rounded-lg border border-st-outline-variant/70 bg-st-lowest px-2 py-1 text-[10px] font-semibold text-st-on"
-                value={financialYear}
-                onChange={(event) => setFinancialYear(event.target.value)}
-                aria-label="Financial year"
-              >
-                <option value="">All FY</option>
-                {financialYears.map((fy) => (
-                  <option key={fy} value={fy}>
-                    FY {fy}
-                  </option>
-                ))}
-              </select>
-            ) : null}
-            {years.length > 1 ? (
-              <select
-                className="rounded-lg border border-st-outline-variant/70 bg-st-lowest px-2 py-1 text-[10px] font-semibold text-st-on"
-                value={year}
-                onChange={(event) => setYear(event.target.value)}
-                aria-label="Year"
-              >
-                <option value="">All years</option>
-                {years.map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
-            ) : null}
-          </div>
-        }
-        bodyClassName="border-t border-st-high"
-      >
-        <div className="flex items-center gap-2 border-b border-st-high px-3 py-2">
-          <Search aria-hidden="true" size={13} className="text-st-on-variant" />
-          <input
-            className="w-full bg-transparent text-[11px] text-st-on outline-none placeholder:text-st-on-variant/70"
-            placeholder="Search an employee, code or payslip number…"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
+
+      {pendingArchive ? (
+        <div className="card flex items-center gap-2 text-sm text-crewly-dim">
+          <Loader2 className="animate-spin" size={15} /> An archive is being prepared — this page
+          refreshes itself.
         </div>
+      ) : null}
 
-        {loading ? (
-          <p className="flex items-center gap-2 px-4 py-8 text-[11px] text-st-on-variant">
-            <Loader2 aria-hidden="true" className="animate-spin" size={14} /> Reading payslips…
-          </p>
-        ) : visible.length === 0 ? (
-          <div className="px-4 py-6">
-            <EmptyState
-              illustration={rows.length === 0 ? 'payslip' : 'search'}
-              title={
-                rows.length === 0
-                  ? `No payslips for ${formatMonthInput(month)} yet`
-                  : 'No payslip matches these filters'
-              }
-              description={
-                rows.length === 0
-                  ? 'Payslips are generated once the salary for the month has been paid. Pay the month, then generate them here.'
-                  : 'Nothing matches this search. Clear it to see the whole month.'
-              }
-              size="sm"
-            />
-          </div>
-        ) : (
-          <ul className="divide-y divide-st-high">
-            {visible.map((row) => (
-              <li
-                key={row._id}
-                className="flex flex-wrap items-center gap-2 px-3 py-2 hover:bg-st-selected/20"
-              >
-                <Avatar name={row.employeeName || row.employeeCode} />
-                <button
-                  type="button"
-                  className="min-w-0 flex-1 text-left"
-                  onClick={() => openPayslip(row)}
-                >
-                  <span className="block text-[12px] font-semibold text-st-on">
-                    {row.employeeName || row.employeeCode}
-                  </span>
-                  <span className="block text-[10px] text-st-on-variant">
-                    {row.employeeCode}
-                    {row.departmentName ? ` · ${row.departmentName}` : ''} ·{' '}
-                    {row.payslipNumber || 'no number'}
-                  </span>
-                </button>
-                <div className="text-right">
-                  <p className="text-[12px] font-semibold tabular-nums text-st-on">
-                    {formatMoney(row.netSalary)}
-                  </p>
-                  <p className="text-[10px] text-st-on-variant">
-                    gross {formatMoney(row.grossSalary)} · paid{' '}
-                    {formatStamp(row.paymentDate).split(',')[0]}
-                  </p>
-                </div>
-                <Pill tone={toneFor(row.status)}>{String(row.status || 'PENDING').toLowerCase()}</Pill>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    className="rounded-lg border border-st-outline-variant/60 px-2 py-1 text-[10px] font-semibold text-st-on hover:bg-st-low disabled:opacity-50"
-                    disabled={downloadingId === row._id || busy}
-                    onClick={() => downloadOne(row)}
-                    title="Download this payslip as a PDF"
-                  >
-                    <Download aria-hidden="true" size={11} className="inline" /> PDF
-                  </button>
-                  {canRelease ? (
-                    <button
-                      type="button"
-                      className="rounded-lg px-1.5 py-1 text-[10px] font-semibold text-st-on-variant hover:bg-st-low disabled:opacity-50"
-                      disabled={busy}
-                      title="Email this payslip to the employee"
-                      onClick={() =>
-                        run(
-                          () => payslipService.emailOne(row._id),
-                          (result) =>
-                            result?.delivered
-                              ? 'Payslip emailed'
-                              : `Email failed: ${result?.error || 'unknown error'}`,
-                        )
-                      }
-                    >
-                      <Send aria-hidden="true" size={11} />
-                    </button>
-                  ) : null}
-                  {canRegenerate ? (
-                    <button
-                      type="button"
-                      className="rounded-lg px-1.5 py-1 text-[10px] font-semibold text-st-on-variant hover:bg-st-low disabled:opacity-50"
-                      disabled={busy}
-                      title="Re-render the PDF from the same snapshot"
-                      onClick={() =>
-                        run(
-                          () => payslipService.regenerate(row._id),
-                          (result) =>
-                            result?.valuesUnchanged
-                              ? 'PDF regenerated — salary values unchanged'
-                              : 'PDF regenerated (values changed — please review)',
-                        )
-                      }
-                    >
-                      <RefreshCcw aria-hidden="true" size={11} />
-                    </button>
-                  ) : null}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Panel>
+      {/*.1 — dashboard counters */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <KpiCard icon={FileText} label="Payslips" value={formatNumber(summary.totalPayslips)} />
+        <KpiCard icon={CheckCircle2} label="Generated" value={formatNumber(summary.generated)} tone="good" />
+        <KpiCard icon={Mail} label="Emailed" value={formatNumber(summary.emailed)} />
+        <KpiCard icon={Download} label="Downloaded" value={formatNumber(summary.downloaded)} />
+        <KpiCard
+          icon={XCircle}
+          label="Failed"
+          value={formatNumber(summary.failed)}
+          tone={summary.failed ? 'bad' : 'default'}
+        />
+        <KpiCard icon={Wallet} label="Total net salary" value={formatMoney(summary.totalNetSalary)} />
+      </div>
 
-      <Panel
-        title="Bulk archive"
-        subtitle="A ZIP of the month's payslips, built in the background for large companies."
-        right={
-          <div className="flex items-center gap-1.5">
-            <select
-              className="rounded-lg border border-st-outline-variant/70 bg-st-lowest px-2 py-1 text-[10px] font-semibold text-st-on"
-              value={zipScope}
-              onChange={(event) => setZipScope(event.target.value)}
-              aria-label="Archive scope"
-            >
+      {/* — bulk download */}
+      <div className="card space-y-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-crewly-dim">Bulk download</h2>
+        <div className="flex flex-wrap items-end gap-2">
+          <div>
+            <label className="text-xs uppercase tracking-wide text-crewly-dim">Scope</label>
+            <select className="input mt-1" value={zipScope} onChange={(event) => setZipScope(event.target.value)}>
               <option value="COMPANY">Entire company</option>
               <option value="DEPARTMENT">Department</option>
             </select>
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 rounded-lg border border-st-outline-variant/60 px-2 py-1 text-[10px] font-semibold text-st-on hover:bg-st-low disabled:opacity-50"
-              disabled={busy || !canRead}
-              onClick={handleBulkDownload}
-            >
-              <Archive aria-hidden="true" size={10} /> Build ZIP
-            </button>
           </div>
-        }
-      >
-        <div className="border-t border-st-high px-3 py-2">
-          {pendingArchive ? (
-            <p className="text-[11px] text-st-on-variant">
-              Preparing now — {formatNumber(pendingArchive.processed)}/{formatNumber(pendingArchive.total)}{' '}
-              payslips ({pendingArchive.progress || 0}%).
-            </p>
-          ) : newestArchive ? (
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-[11px] text-st-on">
-                <span className="font-semibold">{newestArchive.filename || 'Payslip archive'}</span>
-                <span className="ml-1.5 text-[10px] text-st-on-variant">
-                  {formatNumber(newestArchive.total)} payslip(s) ·{' '}
-                  {newestArchive.scope === 'DEPARTMENT'
-                    ? newestArchive.departmentName || 'department'
-                    : 'company'}
-                  {newestArchive.sizeBytes
-                    ? ` · ${formatNumber(Math.max(1, Math.round(newestArchive.sizeBytes / 1024)))} KB`
-                    : ''}{' '}
-                  · {formatStamp(newestArchive.createdAt)}
-                </span>
-              </p>
-              {Number(newestArchive.total) > 0 ? (
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 rounded-lg border border-st-outline-variant/60 px-2 py-1 text-[10px] font-semibold text-st-on hover:bg-st-low disabled:opacity-50"
-                  disabled={busy}
-                  onClick={() => downloadZip(newestArchive)}
-                >
-                  <Download aria-hidden="true" size={10} /> Download ZIP
-                </button>
-              ) : (
-                <span className="text-[10px] text-st-on-variant">
-                  Empty archive — build it again once payslips exist for the month.
-                </span>
-              )}
-            </div>
-          ) : (
-            <p className="text-[11px] leading-relaxed text-st-on-variant">
-              No archive built yet. One ZIP of this month&apos;s payslips is created on request and
-              appears here when it is ready.
-            </p>
-          )}
-          {readyArchives.length > 1 ? (
-            <p className="mt-1 text-[10px] text-st-on-variant">
-              {formatNumber(readyArchives.length - 1)} older archive(s) are listed on the exports page.
-            </p>
-          ) : null}
+          <button className="btn-secondary" disabled={busy || !canRead} onClick={handleBulkDownload}>
+            <Archive size={15} /> Build ZIP
+          </button>
         </div>
-      </Panel>
 
-      {/* §16 — preview */}
+        {bulkFiles.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-crewly-inset text-xs uppercase tracking-wide text-crewly-dim">
+                <tr>
+                  <th className="px-3 py-2">Requested</th>
+                  <th className="px-3 py-2">Scope</th>
+                  <th className="px-3 py-2">Files</th>
+                  <th className="px-3 py-2">Progress</th>
+                  <th className="px-3 py-2">By</th>
+                  <th className="px-3 py-2 text-right">Archive</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bulkFiles.map((file) => (
+                  <tr key={file._id} className="border-t border-crewly-hairline">
+                    <td className="px-3 py-2 text-xs">{formatStamp(file.createdAt)}</td>
+                    <td className="px-3 py-2 text-xs">
+                      {file.scope === 'DEPARTMENT' ? `Department · ${file.departmentName || '—'}` : 'Company'}
+                    </td>
+                    <td className="px-3 py-2">{formatNumber(file.total)}</td>
+                    <td className="px-3 py-2">
+                      {file.status === 'READY' ? (
+                        <span className="text-xs text-emerald-300">ready</span>
+                      ) : file.status === 'FAILED' ? (
+                        <span className="text-xs text-red-300">{file.error || 'failed'}</span>
+                      ) : (
+                        <span className="text-xs text-crewly-dim">
+                          {file.progress || 0}% · {formatNumber(file.processed)}/{formatNumber(file.total)}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-xs">{file.requestedByName || '—'}</td>
+                    <td className="px-3 py-2 text-right">
+                      {file.status === 'READY' ? (
+                        <button
+                          className="text-sm text-indigo-300 hover:underline"
+                          disabled={busy}
+                          onClick={() => downloadZip(file)}
+                        >
+                          <Download size={14} className="inline" /> Download
+                        </button>
+                      ) : (
+                        <span className="text-xs text-crewly-dim">
+                          {file.status === 'FAILED' ? '—' : 'preparing…'}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-xs text-crewly-dim">
+            No archive yet. Large companies build the ZIP in the background, so the download appears
+            here when it is ready.
+          </p>
+        )}
+      </div>
+
+      {/*.3 — the list */}
+      <div className="card overflow-x-auto p-0">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-crewly-hairline p-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-crewly-dim">
+            Payslips · {formatMonthInput(month)}
+          </h2>
+          <span className="text-xs text-crewly-dim">
+            {visible.length} of {rows.length}
+          </span>
+        </div>
+
+        {/* — filters */}
+        <div className="flex flex-wrap items-end gap-3 border-b border-crewly-hairline p-3">
+          <div className="min-w-[200px] flex-1">
+            <div className="flex items-center gap-2">
+              <Search size={15} className="text-crewly-dim" />
+              <input
+                className="input w-full"
+                placeholder="Search employee, code, payslip number…"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs uppercase tracking-wide text-crewly-dim">Financial year</label>
+            <select
+              className="input mt-1"
+              value={financialYear}
+              onChange={(event) => setFinancialYear(event.target.value)}
+            >
+              <option value="">All</option>
+              {financialYears.map((fy) => (
+                <option key={fy} value={fy}>
+                  FY {fy}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs uppercase tracking-wide text-crewly-dim">Year</label>
+            <select className="input mt-1" value={year} onChange={(event) => setYear(event.target.value)}>
+              <option value="">All</option>
+              {years.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <table className="w-full text-left text-sm">
+          <thead className="bg-crewly-inset text-xs uppercase tracking-wide text-crewly-dim">
+            <tr>
+              <th className="px-3 py-2">Employee</th>
+              <th className="px-3 py-2">Payslip number</th>
+              <th className="px-3 py-2">Gross</th>
+              <th className="px-3 py-2">Net</th>
+              <th className="px-3 py-2">Payment date</th>
+              <th className="px-3 py-2">Status</th>
+              <th className="px-3 py-2 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={7} className="px-3 py-10 text-center text-crewly-dim">
+                  <Loader2 className="mx-auto animate-spin" size={18} /> Loading payslips…
+                </td>
+              </tr>
+            ) : visible.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-3 py-10 text-center text-crewly-dim">
+                  {rows.length === 0
+                    ? `No payslips for ${formatMonthInput(month)} yet. Generate them once the salary has been paid.`
+                    : 'No payslip matches these filters.'}
+                </td>
+              </tr>
+            ) : (
+              visible.map((row) => (
+                <tr key={row._id} className="border-t border-crewly-hairline hover:bg-crewly-inset">
+                  <td className="px-3 py-2">
+                    <button
+                      className="font-medium text-indigo-300 hover:underline"
+                      onClick={() => openPayslip(row)}
+                    >
+                      {row.employeeName || row.employeeCode}
+                    </button>
+                    <p className="text-[10px] text-crewly-dim">
+                      {row.employeeCode}
+                      {row.departmentName ? ` · ${row.departmentName}` : ''}
+                    </p>
+                  </td>
+                  <td className="px-3 py-2 text-xs">{row.payslipNumber}</td>
+                  <td className="px-3 py-2">{formatMoney(row.grossSalary)}</td>
+                  <td className="px-3 py-2 font-semibold text-emerald-300">{formatMoney(row.netSalary)}</td>
+                  <td className="px-3 py-2 text-xs">{formatStamp(row.paymentDate).split(',')[0]}</td>
+                  <td className="px-3 py-2">
+                    {statusBadge(row.status)}
+                    {row.emailedAt ? <p className="mt-1 text-[10px] text-crewly-dim">emailed</p> : null}
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <button
+                        className="text-xs text-indigo-300 hover:underline disabled:opacity-50"
+                        disabled={downloadingId === row._id || busy}
+                        onClick={() => downloadOne(row)}
+                      >
+                        <Download size={13} className="inline" /> PDF
+                      </button>
+                      {canRelease ? (
+                        <button
+                          className="text-xs text-sky-300 hover:underline disabled:opacity-50"
+                          disabled={busy}
+                          onClick={() =>
+                            run(
+                              () => payslipService.emailOne(row._id),
+                              (result) => (result?.delivered ? 'Payslip emailed' : `Email failed: ${result?.error || 'unknown error'}`),
+                            )
+                          }
+                        >
+                          <Send size={13} className="inline" /> Email
+                        </button>
+                      ) : null}
+                      {canRegenerate ? (
+                        <button
+                          className="text-xs text-amber-300 hover:underline disabled:opacity-50"
+                          disabled={busy}
+                          onClick={() =>
+                            run(
+                              () => payslipService.regenerate(row._id),
+                              (result) =>
+                                result?.valuesUnchanged
+                                  ? 'PDF regenerated — salary values unchanged'
+                                  : 'PDF regenerated (values changed — please review)',
+                            )
+                          }
+                        >
+                          <RefreshCcw size={13} className="inline" /> Regenerate
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* — preview */}
       {viewing ? (
         <Modal
           title={`Payslip — ${viewing.monthLabel || viewing.month} · ${

@@ -159,7 +159,7 @@ const PayrollTrendsPage = () => {
             </div>
           </SectionCard>
 
-          <SectionCard className="mt-4" title="Period detail" subtitle="Every measure, period by period">
+          <SectionCard className="mt-4" title="Period detail" subtitle=" — every measure, period by period">
             <DataTable
               headers={[
                 { key: 'label', label: 'Period', strong: true },

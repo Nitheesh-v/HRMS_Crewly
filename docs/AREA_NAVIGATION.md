@@ -38,12 +38,16 @@ rather than scrolls so nothing is hidden on a laptop.
 | file | who reads it |
 | --- | --- |
 | `src/config/timeNav.js` | `layout/AppLayout.jsx` (rail rows) + `components/time/TimeSectionTabs.jsx` (strip) |
-| `src/config/payrollNav.js` | `layout/AppLayout.jsx` (rail rows) + `components/payroll/PayrollSectionTabs.jsx` (strip) |
-| `src/components/common/AreaTabs.jsx` | the pixels, shared by both strips so they cannot drift apart |
+| `src/components/common/AreaTabs.jsx` | the pixels of the strip |
 
 A page therefore cannot be reachable one way and invisible the other.
-`AppRoutes.jsx` wraps every page of both modules in `inTime(…)` / `inPayroll(…)`,
-which is what draws the strip — so a new page cannot ship without one.
+`AppRoutes.jsx` wraps every Time & Leave page in `inTime(…)`, which is what
+draws the strip — so a new page cannot ship without one.
+
+**Payroll has since gone back to one rail row per page** (`payrollNav.js`,
+`components/payroll/*` and `inPayroll(…)` are deleted), so none of the payroll
+half applies any more. Its pages are mounted directly and pinned by
+`test/payrollPages.test.js`.
 
 ## Who sees what
 
@@ -87,12 +91,11 @@ to include a management page.
 
 ## Verification
 
-`npm test` → **710 passing** — 9 pins in `test/timeNavigation.test.js` and 9 in
-`test/payrollNavigation.test.js`: every tab is a real route, every route is
-reachable, every tab page is wrapped in its strip, every tab has a breadcrumb
-title in the right section, the rail and the strip read one config, and the
-audience for each area is what the old rows granted (employee and manager cases
-are asserted tab by tab).
+`npm test` → 9 pins in `test/timeNavigation.test.js`: every tab is a real route,
+every route is reachable, every tab page is wrapped in its strip, every tab has
+a breadcrumb title in the right section, the rail and the strip read one config,
+and the audience for each area is what the old rows granted (employee and
+manager cases are asserted tab by tab).
 
 `npm run build` green. `npx eslint src` → 117 problems (103 errors, 14
 warnings), the same as before the change.

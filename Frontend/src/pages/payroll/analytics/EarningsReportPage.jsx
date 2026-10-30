@@ -93,10 +93,10 @@ const EarningsReportPage = () => {
             <KpiCard label="Fixed earnings" value={money(totals.fixedEarnings)} tone="info" />
             <KpiCard label="Variable pay" value={money(totals.variableEarnings)} tone="warn" />
             <KpiCard label="Overtime" value={money(totals.overtime)} />
-            <KpiCard label="Bonus" value={money(totals.bonus)} hint="Performance, festival and the like" />
+            <KpiCard label="Bonus" value={money(totals.bonus)} hint="performance, festival and the like" />
             <KpiCard label="Incentive" value={money(totals.incentive)} />
             <KpiCard label="Commission" value={money(totals.commission)} />
-            <KpiCard label="Reimbursements" value={money(totals.reimbursements)} hint="Paid on top of salary, not part of it" />
+            <KpiCard label="Reimbursements" value={money(totals.reimbursements)} hint="paid on top of salary, not part of it" />
           </div>
 
           {totals.reconciled === false ? (
@@ -108,7 +108,7 @@ const EarningsReportPage = () => {
             </div>
           ) : null}
 
-          <SectionCard className="mt-4" title="By component" subtitle="Every earning line the engine wrote">
+          <SectionCard className="mt-4" title="By component" subtitle=" — every earning line the engine wrote">
             <DataTable
               headers={[
                 { key: 'label', label: 'Component', strong: true },

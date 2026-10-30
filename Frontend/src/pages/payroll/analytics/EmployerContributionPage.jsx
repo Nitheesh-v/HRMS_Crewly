@@ -87,7 +87,7 @@ const EmployerContributionPage = () => {
         <>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <KpiCard label="Total employer cost" value={money(report.total)} />
-            <KpiCard label="Snapshot total" value={money(report.snapshotTotal)} hint="What the payroll run recorded" />
+            <KpiCard label="Snapshot total" value={money(report.snapshotTotal)} hint="what the payroll run recorded" />
             <KpiCard
               label="Unclassified"
               value={money(report.unclassified)}
@@ -96,7 +96,7 @@ const EmployerContributionPage = () => {
             />
           </div>
 
-          <SectionCard className="mt-4" title="By contribution" subtitle="Every employer-side line">
+          <SectionCard className="mt-4" title="By contribution" subtitle=" — every employer-side line">
             <DataTable
               headers={[
                 { key: 'label', label: 'Contribution', strong: true },
@@ -113,7 +113,7 @@ const EmployerContributionPage = () => {
             />
           </SectionCard>
 
-          <SectionCard className="mt-4" title="By department" subtitle="Where the employer cost lands">
+          <SectionCard className="mt-4" title="By department" subtitle=" — where the employer cost lands">
             <DataTable
               headers={[
                 { key: 'department', label: 'Department', strong: true },

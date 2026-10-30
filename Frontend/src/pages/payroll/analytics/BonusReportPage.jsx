@@ -91,7 +91,7 @@ const BonusReportPage = () => {
             <KpiCard label="Overtime in payroll" value={money(summary.overtimeTotal)} />
           </div>
 
-          <SectionCard className="mt-4" title="By employee" subtitle="Bonus, incentive and commission detail">
+          <SectionCard className="mt-4" title="By employee" subtitle=" — bonus, incentive and commission detail">
             <DataTable
               headers={[
                 { key: 'employeeCode', label: 'Employee', strong: true, render: (row) => (

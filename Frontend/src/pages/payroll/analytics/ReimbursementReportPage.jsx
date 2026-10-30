@@ -95,7 +95,7 @@ const ReimbursementReportPage = () => {
             <KpiCard label="Categories in use" value={count(categories.length)} />
           </div>
 
-          <SectionCard className="mt-4" title="By category" subtitle="What the money was spent on">
+          <SectionCard className="mt-4" title="By category" subtitle=" — what the money was spent on">
             <DataTable
               headers={[
                 { key: 'label', label: 'Category', strong: true },
@@ -114,7 +114,7 @@ const ReimbursementReportPage = () => {
             />
           </SectionCard>
 
-          <SectionCard className="mt-4" title="By employee" subtitle="Who claimed, and what">
+          <SectionCard className="mt-4" title="By employee" subtitle=" — who claimed, and what">
             <DataTable
               headers={[
                 {
@@ -142,7 +142,7 @@ const ReimbursementReportPage = () => {
           </SectionCard>
 
           {byMonth.length > 1 ? (
-            <SectionCard className="mt-4" title="By month" subtitle="The claim pattern over the period">
+            <SectionCard className="mt-4" title="By month" subtitle=" — the claim pattern over the period">
               <DataTable
                 headers={[
                   { key: 'label', label: 'Month', strong: true },

@@ -6,10 +6,7 @@ import {
   Ban,
   Building2,
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
   Coins,
-  FileText,
   Loader2,
   Play,
   RefreshCw,
@@ -21,18 +18,6 @@ import Modal from '../../components/Modal.jsx';
 import usePermission from '../../hooks/usePermission.js';
 import payrollRunService from '../../services/payrollRunService.js';
 import { notify } from '../../utils/notify.js';
-import { TableEmpty } from '../../components/common/EmptyState.jsx';
-import {
-  Avatar,
-  CheckRow,
-  Panel,
-  Pipeline,
-  StageBand,
-  StageButton,
-  StatCard,
-  Td,
-  Th,
-} from '../../components/payroll/PayrollCockpit.jsx';
 
 // ─────────────────────────────────────────────────────────────
 // Phase 29.6 — Run Payroll (the calculation workspace)
@@ -66,10 +51,47 @@ const formatMonth = (month) => {
   });
 };
 
-const formatDate = (value) =>
-  value
-    ? new Date(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-    : '—';
+const RUN_STATUS_LABELS = {
+  DRAFT: 'Draft',
+  CALCULATING: 'Calculating',
+  CALCULATED: 'Calculated',
+  ERROR: 'Error',
+  RECALCULATED: 'Recalculated',
+};
+
+const runBadge = (status) => {
+  const styles = {
+    DRAFT: 'bg-slate-500/15 text-slate-300',
+    CALCULATING: 'bg-sky-500/15 text-sky-300',
+    CALCULATED: 'bg-emerald-500/15 text-emerald-300',
+    RECALCULATED: 'bg-indigo-500/15 text-indigo-300',
+    ERROR: 'bg-red-500/15 text-red-300',
+  };
+  return (
+    <span className={`rounded-full px-2.5 py-0.5 text-[11px] ${styles[status] || styles.DRAFT}`}>
+      {RUN_STATUS_LABELS[status] || status || 'Draft'}
+    </span>
+  );
+};
+
+const KpiCard = ({ icon: Icon, label, value, hint, tone = 'default' }) => {
+  const tones = {
+    default: 'text-crewly-text',
+    good: 'text-emerald-300',
+    bad: 'text-red-300',
+    warn: 'text-amber-300',
+  };
+  return (
+    <div className="card p-4">
+      <div className="flex items-center justify-between">
+        <span className="text-xs uppercase tracking-wide text-crewly-dim">{label}</span>
+        <Icon size={16} className="text-crewly-dim" />
+      </div>
+      <p className={`mt-2 text-xl font-semibold ${tones[tone] || tones.default}`}>{value}</p>
+      {hint ? <p className="mt-1 text-[11px] text-crewly-dim">{hint}</p> : null}
+    </div>
+  );
+};
 
 const RunPayrollPage = () => {
   const { loading: permsLoading, hasAnyPermission } = usePermission();
@@ -88,7 +110,6 @@ const RunPayrollPage = () => {
   const [results, setResults] = useState([]);
   const [periodStatus, setPeriodStatus] = useState('');
   const [filters, setFilters] = useState({ status: 'ALL', search: '' });
-  const [page, setPage] = useState(1);
   const [detailEmployeeId, setDetailEmployeeId] = useState(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [confirmRun, setConfirmRun] = useState(false);
@@ -216,541 +237,271 @@ const RunPayrollPage = () => {
     }
   };
 
-  /*
-   * The one-line statutory summary the cockpit table prints under Deductions.
-   * It is the same deduction lines the drawer lists, folded by their statutory
-   * code — PF / ESI / PT / TDS — so the table and the drawer can never disagree.
-   */
-  const deductionLine = (row) => {
-    const parts = [];
-    (row.deductions || []).forEach((line) => {
-      const amount = Number(line.amount || 0);
-      if (!amount) return;
-      const code = String(line.statutory || line.code || '').toUpperCase();
-      const label = code === 'PROFESSIONAL_TAX' ? 'PT' : code;
-      if (!['PF', 'ESI', 'PT', 'TDS'].includes(label)) return;
-      parts.push(`${label} ${Math.round(amount / 100) / 10}k`);
-    });
-    return parts.join(' | ');
-  };
-
   if ((!permsLoading && !canRead) || accessDenied) {
     return (
-      <div className="st-surface min-h-screen space-y-4">
-        <StageBand eyebrow="Cycle stage 02 of 04" title="Payroll calculation cockpit" />
-        <Panel title="Payroll access required">
-          <div className="p-4 text-sm text-st-on-variant">
+      <div className="space-y-5">
+        <h1 className="text-2xl font-bold">Run Payroll</h1>
+        <div className="card space-y-2">
+          <h2 className="text-lg font-semibold">Payroll access required</h2>
+          <p className="text-sm text-crewly-dim">
             You don&apos;t have permission to view payroll calculations. Contact your Company Admin
             or Payroll Administrator.
-          </div>
-        </Panel>
+          </p>
+        </div>
       </div>
     );
   }
 
   const progress = run?.progress || {};
-  const PAGE_SIZE = 6;
-  const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
-  const currentPage = Math.min(page, pageCount);
-  const pageRows = visible.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-  const calculatedCount = Number(summary.calculated || 0);
-  const totalCount = Number(summary.totalEmployees || 0);
-
-  /*
-   * The statutory split is summed from what the engine wrote on each result —
-   * `deductions[].statutory` is PF / ESI / PT / TDS, the codes the engine uses.
-   * Nothing here estimates a rate; an employee with no snapshot contributes 0.
-   */
-  const statutorySplit = results.reduce(
-    (totals, row) => {
-      (row.deductions || []).forEach((line) => {
-        const key = String(line.statutory || '').toUpperCase();
-        if (key === 'PF') totals.pf += Number(line.amount || 0);
-        else if (key === 'ESI') totals.esi += Number(line.amount || 0);
-        else if (key === 'PT') totals.pt += Number(line.amount || 0);
-        else if (key === 'TDS') totals.tds += Number(line.amount || 0);
-      });
-      return totals;
-    },
-    { pf: 0, esi: 0, pt: 0, tds: 0 },
-  );
-
-  const netPay = Number(summary.netPayroll || 0);
-  const employerCost = Number(summary.employerCost || 0);
-  const allocation = [
-    { label: 'Net pay', amount: netPay, className: 'bg-st-primary-container' },
-    { label: 'Retirals & employer', amount: employerCost, className: 'bg-st-secondary' },
-    { label: 'TDS & PT', amount: statutorySplit.tds + statutorySplit.pt, className: 'bg-st-tertiary' },
-  ];
-  const allocationTotal = allocation.reduce((sum, band) => sum + band.amount, 0) || 1;
-
-  const flaggedRows = results.filter((row) => (row.warnings || []).length > 0 || (row.issues || []).length > 0);
 
   return (
-    <div className="space-y-3">
-      <StageBand
-        eyebrow={`Cycle ${formatMonth(month)}${
-          run?.version ? ` · snapshot v${run.version}${run.finishedAt ? ` · calculated ${formatDate(run.finishedAt)}` : ''}` : ' · no snapshot yet'
-        }`}
-        title="Payroll calculation cockpit"
-        description="Calculate the month from what is already configured: salary structure, attendance, leave and the locked monthly inputs. This page calculates only — it never approves, pays or produces a bank file."
-        pills={[
-          {
-            label: `engine ${String(run?.status || 'not run').replace(/_/g, ' ').toLowerCase()}`,
-            tone: run?.status === 'ERROR' ? 'bad' : run?.status ? 'good' : 'default',
-            title: 'Status of the payroll run stored for this month',
-          },
-          {
-            label: inputsLocked ? 'inputs locked' : 'inputs open',
-            tone: inputsLocked ? 'good' : 'warn',
-            title: 'The engine refuses to run while monthly inputs are open',
-          },
-          ...(run?.runCount ? [{ label: `run #${run.runCount}`, tone: 'default' }] : []),
-        ]}
-        aside={
-          <label className="flex items-center gap-2 text-[11px] font-semibold text-st-on-variant">
-            <span className="uppercase tracking-wide">Payroll month</span>
-            <input
-              type="month"
-              value={month}
-              onChange={(event) => {
-                setMonth(event.target.value);
-                setPage(1);
-              }}
-              className="rounded-lg border border-st-outline-variant/70 bg-st-lowest px-2 py-1.5 text-[11px] font-semibold text-st-on"
-            />
-          </label>
-        }
-        actions={
-          <>
-            <StageButton
-              variant="primary"
-              icon={Play}
-              disabled={busy || !canRun || calculating}
-              onClick={() => setConfirmRun(true)}
-            >
-              {run?.runCount > 0 ? 'Run payroll again' : 'Run payroll engine'}
-            </StageButton>
-            <StageButton
-              icon={RefreshCw}
-              disabled={busy || !canRecalculate || !run || calculating}
-              onClick={() => handleRecalculate()}
-            >
-              Recalculate month
-            </StageButton>
-            <StageButton
-              icon={Ban}
-              disabled={busy || !canRun || !calculating}
-              onClick={handleCancel}
-            >
-              Cancel run
-            </StageButton>
-            <StageButton icon={AlertTriangle} onClick={() => setReportOpen(true)} disabled={!summary.errors}>
-              Audit &amp; exceptions{summary.errors ? ` (${summary.errors})` : ''}
-            </StageButton>
-            <Link
-              to="/app/payroll/components"
-              className="inline-flex items-center gap-1.5 rounded-lg px-2 py-2 text-[12px] font-semibold text-st-primary hover:bg-st-low"
-            >
-              <FileText aria-hidden="true" size={13} /> Structures &amp; rules used
-            </Link>
-          </>
-        }
-      />
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Run Payroll</h1>
+          <p className="mt-1 text-sm text-crewly-dim">
+            Calculate the month from the configured data: structure, attendance, leave and monthly
+            inputs. This page never approves, pays or produces a bank file.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="month"
+            className="input"
+            value={month}
+            onChange={(event) => setMonth(event.target.value)}
+          />
+          {runBadge(run?.status || 'DRAFT')}
+        </div>
+      </div>
 
-      {/* §6 / §29 — the pre-check is stated before anyone presses Run. */}
+
+      {/* — pre-checks are visible before HR presses anything */}
       {!inputsLocked ? (
-        <div className="flex items-start gap-2 rounded-xl border-l-4 border-st-primary-container bg-st-lowest px-3 py-2 shadow-sm">
-          <AlertTriangle size={14} className="mt-0.5 text-st-primary" />
-          <p className="text-[11px] leading-snug text-st-on-variant">
-            <span className="font-semibold text-st-on">
-              Monthly inputs for {formatMonth(month)} are not locked.
-            </span>{' '}
-            The engine refuses to run while the month is open — lock it in{' '}
-            <Link className="font-semibold text-st-primary hover:underline" to="/app/payroll/inputs">
-              Monthly payroll inputs
-            </Link>{' '}
-            first.
-          </p>
-        </div>
-      ) : (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border-l-4 border-st-secondary bg-st-lowest px-3 py-2 shadow-sm">
-          <CheckCircle2 size={14} className="text-st-secondary" />
-          <p className="text-[11px] leading-snug text-st-on-variant">
-            <span className="font-semibold text-st-on">Inputs verified &amp; locked.</span> The engine
-            will compute base pay, statutory withholdings (PF, ESI, PT, TDS), overtime and LOP
-            against the saved structures for {formatMonth(month)}.
-          </p>
-          <Link
-            className="ml-auto inline-flex items-center gap-1 rounded-lg border border-st-outline-variant/70 px-2 py-1 text-[10px] font-semibold text-st-on hover:bg-st-low"
-            to="/app/payroll/inputs"
-          >
-            Audit input ledger
-          </Link>
-        </div>
-      )}
-
-      <Pipeline
-        steps={[
-          { key: 'inputs', index: '01', label: 'Monthly inputs', hint: 'Locked & verified', state: inputsLocked ? 'done' : 'active' },
-          {
-            key: 'run',
-            index: '02',
-            label: 'Run payroll',
-            hint: 'Calculation cockpit',
-            state: calculating ? 'active' : run?.summary ? 'done' : inputsLocked ? 'active' : 'locked',
-          },
-          { key: 'review', index: '03', label: 'Review & approval', hint: 'Audit & sign-off', state: run?.summary ? 'active' : 'locked' },
-          { key: 'payment', index: '04', label: 'Salary payment', hint: 'Bank file & release', state: 'locked' },
-        ]}
-        footnote="A recalculation writes a new immutable snapshot version; the previous version stays readable."
-      />
-
-      {calculating ? (
-        <div className="space-y-1.5 rounded-2xl bg-st-lowest p-3 shadow-sm">
-          <div className="flex items-center justify-between text-[11px]">
-            <span className="font-semibold text-st-on">
-              Calculating · {formatNumber(progress.processed)} / {formatNumber(progress.total)} employees
-            </span>
-            <span className="tabular-nums text-st-on-variant">{formatNumber(progress.percent)}%</span>
+        <div className="card flex items-start gap-3 border-l-4 border-amber-500">
+          <AlertTriangle size={18} className="mt-0.5 text-amber-300" />
+          <div className="text-sm">
+            <p className="font-semibold text-amber-200">
+              Monthly inputs for {formatMonth(month)} are not locked
+            </p>
+            <p className="text-crewly-dim">
+              The engine refuses to run while the month is open. Lock the inputs in{' '}
+              <Link className="text-indigo-300 hover:underline" to="/app/payroll/inputs">
+                Monthly Inputs
+              </Link>{' '}
+              first.
+            </p>
           </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-st-high">
+        </div>
+      ) : null}
+
+      {/* — progress tracker */}
+      {calculating ? (
+        <div className="card space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-semibold">
+              Payroll progress · {formatNumber(progress.processed)} / {formatNumber(progress.total)}{' '}
+              employees
+            </span>
+            <span className="text-crewly-dim">{formatNumber(progress.percent)}%</span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-crewly-inset-strong">
             <div
-              className="h-full rounded-full bg-st-primary-container transition-all"
+              className="h-full rounded-full bg-indigo-500 transition-all"
               style={{ width: `${Math.min(100, Number(progress.percent) || 0)}%` }}
             />
           </div>
-          <p className="text-[10px] text-st-on-variant">
-            Current employee: {progress.currentEmployeeName || '—'}. You can leave this page — the job
-            continues in the background worker.
+          <p className="text-xs text-crewly-dim">
+            Current employee: {progress.currentEmployeeName || '—'} · status calculating. You can
+            leave this page — the job continues in the background worker.
           </p>
         </div>
       ) : null}
 
-      <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <StatCard
+      {/* — KPI cards */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <KpiCard
           icon={Users}
-          label="Scope coverage"
-          value={formatNumber(totalCount)}
-          hint="Active payroll population"
+          label="Total employees"
+          value={formatNumber(summary.totalEmployees)}
+          hint={formatMonth(month)}
         />
-        <StatCard
+        <KpiCard
           icon={CheckCircle2}
-          label="Compute status"
-          value={`${formatNumber(calculatedCount)} / ${formatNumber(totalCount)}`}
-          tone={totalCount && calculatedCount === totalCount ? 'good' : 'default'}
-          hint="Snapshots written this version"
+          label="Calculated"
+          value={formatNumber(summary.calculated)}
+          tone="good"
+          hint="Snapshots written"
         />
-        <StatCard
+        <KpiCard
           icon={AlertTriangle}
-          label="Audit validation"
-          value={`${formatNumber(summary.errors)} error(s)`}
-          tone={summary.errors ? 'bad' : 'good'}
-          hint="Employees the engine could not price"
+          label="Errors"
+          value={formatNumber(summary.errors)}
+          tone={summary.errors > 0 ? 'bad' : 'default'}
+          hint="See the error report"
         />
-        <StatCard
+        <KpiCard
           icon={Wallet}
-          label="Gross earnings"
+          label="Gross payroll"
           value={formatMoney(summary.grossPayroll)}
-          hint={`${formatMoney(summary.totalReimbursements)} reimbursed`}
+          hint="Earnings before deductions"
         />
-        <StatCard
+        <KpiCard
           icon={Coins}
-          label="Net disbursable"
+          label="Net payroll"
           value={formatMoney(summary.netPayroll)}
           hint={`${formatMoney(summary.totalDeductions)} deducted`}
         />
-        <StatCard
+        <KpiCard
           icon={Building2}
-          label="Employer overhead"
+          label="Employer cost"
           value={formatMoney(summary.employerCost)}
-          hint="PF, ESI & gratuity — never reduces net pay"
+          hint="Does not reduce net salary"
         />
       </div>
 
-      <Panel
-        title="Employee payroll results"
-        subtitle={`${formatNumber(visible.length)} snapshot(s) · ${
-          run?.version ? `version v${run.version}` : 'not calculated yet'
-        }`}
-        right={
-          <span className="text-[10px] text-st-on-variant">
-            {formatNumber(calculatedCount)} calculated · {formatNumber(summary.errors)} error
-          </span>
-        }
-      >
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-st-high px-3 py-2">
+      {/* actions */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button className="btn-primary" disabled={busy || !canRun} onClick={() => setConfirmRun(true)}>
+          <Play size={15} /> {run?.runCount > 0 ? 'Run payroll again' : 'Run payroll'}
+        </button>
+        <button
+          className="btn-secondary"
+          disabled={busy || !canRecalculate || !run}
+          onClick={() => handleRecalculate()}
+        >
+          <RefreshCw size={15} /> Recalculate month
+        </button>
+        <button className="btn-secondary" disabled={busy || !canRun || !calculating} onClick={handleCancel}>
+          <Ban size={15} /> Cancel run
+        </button>
+        <button
+          className="btn-secondary"
+          onClick={() => setReportOpen(true)}
+          disabled={!summary.errors}
+        >
+          <AlertTriangle size={15} /> Error report{summary.errors ? ` (${summary.errors})` : ''}
+        </button>
+        {run?.queued ? (
+          <span className="text-xs text-crewly-dim">Last run processed by the background worker</span>
+        ) : run ? (
+          <span className="text-xs text-crewly-dim">Last run calculated inline (no queue configured)</span>
+        ) : null}
+      </div>
+
+      {/* — results table */}
+      <div className="card overflow-x-auto p-0">
+        <div className="flex flex-wrap items-center gap-2 border-b border-crewly-hairline p-3">
           <input
-            className="min-w-[10rem] flex-1 rounded-lg border border-st-outline-variant/60 bg-st-lowest px-2.5 py-1.5 text-[11px] text-st-on placeholder:text-st-on-variant/70"
-            placeholder="Search employee name or code"
+            className="input max-w-xs"
+            placeholder="Search name or code"
             value={filters.search}
-            onChange={(event) => {
-              setFilters({ ...filters, search: event.target.value });
-              setPage(1);
-            }}
+            onChange={(event) => setFilters({ ...filters, search: event.target.value })}
           />
           <select
-            className="rounded-lg border border-st-outline-variant/60 bg-st-lowest px-2 py-1.5 text-[11px] font-semibold text-st-on"
+            className="input max-w-[180px]"
             value={filters.status}
-            onChange={(event) => {
-              setFilters({ ...filters, status: event.target.value });
-              setPage(1);
-            }}
+            onChange={(event) => setFilters({ ...filters, status: event.target.value })}
           >
             <option value="ALL">All results</option>
             <option value="CALCULATED">Calculated</option>
             <option value="ERROR">Errors</option>
           </select>
-          <button
-            type="button"
-            className="ml-auto inline-flex items-center gap-1 rounded-lg border border-st-outline-variant/60 px-2 py-1.5 text-[11px] font-semibold text-st-on hover:bg-st-low disabled:opacity-50"
-            onClick={() => setReportOpen(true)}
-            disabled={!summary.errors}
-          >
-            <AlertTriangle aria-hidden="true" size={12} /> Exception report
-          </button>
+          <span className="ml-auto text-xs text-crewly-dim">
+            {visible.length} result(s) · snapshot v{formatNumber(run?.version)}
+          </span>
         </div>
 
-        <div className="overflow-x-auto border-t border-st-high">
-          <table className="w-full text-left">
-            <thead className="bg-st-low/70">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-crewly-inset text-xs uppercase tracking-wide text-crewly-dim">
+            <tr>
+              <th className="px-3 py-2">Employee</th>
+              <th className="px-3 py-2">Paid days</th>
+              <th className="px-3 py-2">LOP</th>
+              <th className="px-3 py-2">Gross</th>
+              <th className="px-3 py-2">Variable</th>
+              <th className="px-3 py-2">Reimbursements</th>
+              <th className="px-3 py-2">Deductions</th>
+              <th className="px-3 py-2">Net pay</th>
+              <th className="px-3 py-2">Status</th>
+              <th className="px-3 py-2 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
               <tr>
-                <Th>Employee profile</Th>
-                <Th>Paid / total days</Th>
-                <Th>LOP docked</Th>
-                <Th>Base gross</Th>
-                <Th>Variable</Th>
-                <Th>Reimb.</Th>
-                <Th>Deductions</Th>
-                <Th>Net payable</Th>
-                <Th>Status</Th>
-                <Th className="text-right">Action</Th>
+                <td colSpan={10} className="px-3 py-10 text-center text-crewly-dim">
+                  <Loader2 className="mx-auto animate-spin" size={18} /> Loading payroll…
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={10} className="px-3 py-10 text-center text-st-on-variant">
-                    <Loader2 className="mx-auto animate-spin" size={16} />
+            ) : visible.length === 0 ? (
+              <tr>
+                <td colSpan={10} className="px-3 py-10 text-center text-crewly-dim">
+                  No payroll results for {formatMonth(month)} yet. Run payroll to calculate the
+                  month.
+                </td>
+              </tr>
+            ) : (
+              visible.map((row) => (
+                <tr key={row._id} className="border-t border-crewly-hairline hover:bg-crewly-inset">
+                  <td className="px-3 py-2">
+                    <p className="font-medium">{row.employeeName}</p>
+                    <p className="text-xs text-crewly-dim">{row.employeeCode}</p>
+                  </td>
+                  <td className="px-3 py-2">
+                    {formatNumber(row.attendance?.paidDays)} / {formatNumber(row.attendance?.workingDays)}
+                  </td>
+                  <td className="px-3 py-2">
+                    {formatNumber(row.attendance?.lopDays)}
+                    {row.attendance?.otHours ? (
+                      <span className="ml-1 text-xs text-crewly-dim">
+                        · {formatNumber(row.attendance.otHours)}h OT
+                      </span>
+                    ) : null}
+                  </td>
+                  <td className="px-3 py-2">{formatMoney(row.totals?.gross)}</td>
+                  <td className="px-3 py-2">{formatMoney(row.totals?.variableEarnings)}</td>
+                  <td className="px-3 py-2">{formatMoney(row.totals?.reimbursements)}</td>
+                  <td className="px-3 py-2">{formatMoney(row.totals?.totalDeductions)}</td>
+                  <td className="px-3 py-2 font-semibold">{formatMoney(row.totals?.netPay)}</td>
+                  <td className="px-3 py-2">
+                    {row.status === 'ERROR' ? (
+                      <span className="rounded-full bg-red-500/15 px-2.5 py-0.5 text-[11px] text-red-300">
+                        error
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] text-emerald-300">
+                        calculated
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    {row.status === 'ERROR' ? (
+                      <span className="text-xs text-crewly-dim">see error report</span>
+                    ) : (
+                      <button
+                        className="text-sm text-indigo-300 hover:underline"
+                        onClick={() => setDetailEmployeeId(row.employeeId)}
+                      >
+                        View breakdown
+                      </button>
+                    )}
                   </td>
                 </tr>
-              ) : pageRows.length === 0 ? (
-                <TableEmpty
-                  colSpan={10}
-                  illustration="wallet"
-                  title={`No payroll results for ${formatMonth(month)} yet`}
-                  description="Run payroll to calculate the month — each employee lands here with their gross, deductions, net and any blocking error."
-                />
-              ) : (
-                pageRows.map((row) => (
-                  <tr key={row._id} className="border-t border-st-high/70 hover:bg-st-low/50">
-                    <Td>
-                      <div className="flex items-start gap-2">
-                        <Avatar name={row.employeeName} />
-                        <div className="min-w-0">
-                          <p className="truncate font-semibold text-st-on">{row.employeeName}</p>
-                          <p className="truncate text-[10px] text-st-on-variant">
-                            {row.employeeCode}
-                            {row.designation ? ` · ${row.designation}` : ''}
-                          </p>
-                        </div>
-                      </div>
-                    </Td>
-                    <Td className="tabular-nums">
-                      {formatNumber(row.attendance?.paidDays)} / {formatNumber(row.attendance?.workingDays)}
-                    </Td>
-                    <Td>
-                      <span className="tabular-nums">{formatNumber(row.lop?.days ?? row.attendance?.lopDays)} d</span>
-                      {Number(row.lop?.amount) > 0 ? (
-                        <span className="block text-[9px] text-st-on-variant">
-                          −{formatMoney(row.lop.amount)}
-                        </span>
-                      ) : null}
-                    </Td>
-                    <Td className="tabular-nums">{formatMoney(row.totals?.gross)}</Td>
-                    <Td className="tabular-nums">
-                      {Number(row.totals?.variableEarnings) > 0 ? (
-                        <span className="text-st-secondary">+{formatMoney(row.totals?.variableEarnings)}</span>
-                      ) : (
-                        formatMoney(0)
-                      )}
-                    </Td>
-                    <Td className="tabular-nums">{formatMoney(row.totals?.reimbursements)}</Td>
-                    <Td>
-                      <span className="tabular-nums font-semibold">−{formatMoney(row.totals?.totalDeductions)}</span>
-                      {deductionLine(row) ? (
-                        <span className="block text-[9px] text-st-on-variant">{deductionLine(row)}</span>
-                      ) : null}
-                    </Td>
-                    <Td className="tabular-nums font-bold text-st-on">{formatMoney(row.totals?.netPay)}</Td>
-                    <Td>
-                      <span
-                        className={`text-[10px] font-bold uppercase tracking-wide ${
-                          row.status === 'ERROR' ? 'text-st-error' : 'text-st-secondary'
-                        }`}
-                      >
-                        {row.status === 'ERROR' ? 'error' : 'calculated'}
-                      </span>
-                      {row.warnings?.length ? (
-                        <span className="block text-[9px] text-st-on-variant">
-                          {row.warnings.length} warning(s)
-                        </span>
-                      ) : null}
-                    </Td>
-                    <Td className="text-right">
-                      {row.status === 'ERROR' ? (
-                        <button
-                          type="button"
-                          className="rounded-lg px-2 py-1 text-[10px] font-semibold text-st-error hover:bg-st-low"
-                          onClick={() => setReportOpen(true)}
-                        >
-                          See why
-                        </button>
-                      ) : (
-                        <span className="inline-flex items-center gap-1">
-                          <button
-                            type="button"
-                            className="rounded-lg px-2 py-1 text-[10px] font-semibold text-st-primary hover:bg-st-low"
-                            onClick={() => setDetailEmployeeId(row.employeeId)}
-                          >
-                            Breakdown
-                          </button>
-                          {canRecalculate ? (
-                            <button
-                              type="button"
-                              title="Recalculate only this employee"
-                              className="rounded-lg px-1.5 py-1 text-st-on-variant hover:bg-st-low"
-                              disabled={busy}
-                              onClick={() => handleRecalculate([row.employeeId])}
-                            >
-                              <RefreshCw aria-hidden="true" size={11} />
-                            </button>
-                          ) : null}
-                        </span>
-                      )}
-                    </Td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-st-high px-3 py-2 text-[10px] text-st-on-variant">
-          <span>
-            Page {currentPage} of {pageCount} · {formatNumber(visible.length)} result(s)
-          </span>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              className="rounded-md px-2 py-1 font-semibold text-st-on hover:bg-st-low disabled:opacity-40"
-              disabled={currentPage <= 1}
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-            >
-              <ChevronLeft aria-hidden="true" size={12} />
-            </button>
-            <span className="rounded-md bg-st-primary-container px-2 py-1 font-bold text-st-on-primary-container">
-              {currentPage}
-            </span>
-            <button
-              type="button"
-              className="rounded-md px-2 py-1 font-semibold text-st-on hover:bg-st-low disabled:opacity-40"
-              disabled={currentPage >= pageCount}
-              onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
-            >
-              <ChevronRight aria-hidden="true" size={12} />
-            </button>
-          </div>
-        </div>
-      </Panel>
-
-      <div className="grid gap-2.5 lg:grid-cols-2">
-        <Panel title="Payroll allocation" subtitle="Where this month's money goes, from the snapshots">
-          <div className="space-y-2 px-4 pb-3">
-            <div className="flex h-2 overflow-hidden rounded-full bg-st-container">
-              {allocation.map((band) => (
-                <span
-                  key={band.label}
-                  title={`${band.label}: ${formatMoney(band.amount)}`}
-                  style={{ width: `${Math.round((band.amount / allocationTotal) * 100)}%` }}
-                  className={band.className}
-                />
-              ))}
-            </div>
-            <div className="flex items-center justify-between text-[10px] font-semibold text-st-on">
-              <span>Total {formatMoney(allocationTotal)}</span>
-              <span className="text-st-on-variant">net + employer cost + tax</span>
-            </div>
-            {allocation.map((band) => (
-              <div key={band.label} className="flex items-center justify-between text-[10px]">
-                <span className="text-st-on-variant">
-                  <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${band.className}`} />
-                  {band.label}
-                </span>
-                <span className="font-semibold tabular-nums text-st-on">
-                  {formatMoney(band.amount)} · {Math.round((band.amount / allocationTotal) * 100)}%
-                </span>
-              </div>
-            ))}
-            <p className="pt-1 text-[9px] leading-snug text-st-on-variant">
-              Statutory split read from each snapshot&apos;s deduction lines: PF {formatMoney(statutorySplit.pf)},
-              ESI {formatMoney(statutorySplit.esi)}, PT {formatMoney(statutorySplit.pt)}, TDS{' '}
-              {formatMoney(statutorySplit.tds)}.
-            </p>
-          </div>
-        </Panel>
-
-        <Panel title="Calculation health check" subtitle="What the engine did and did not price">
-          <div className="space-y-1 px-4 pb-3">
-            <CheckRow
-              ok={Boolean(totalCount) && calculatedCount === totalCount}
-              label="Every employee in scope produced a snapshot"
-              value={`${formatNumber(calculatedCount)} of ${formatNumber(totalCount)}`}
-            />
-            <CheckRow
-              ok={!summary.errors}
-              label="Blocking errors"
-              value={formatNumber(summary.errors)}
-            />
-            <CheckRow
-              ok={!flaggedRows.length}
-              label="Snapshots carrying a warning"
-              value={formatNumber(flaggedRows.length)}
-            />
-            <CheckRow
-              ok={inputsLocked}
-              label="Inputs locked at calculation time"
-              value={inputsLocked ? 'yes' : 'no'}
-            />
-            <p className="pt-1 text-[9px] leading-snug text-st-on-variant">
-              A structural check, not a legal opinion. A rule change applies to the next run, never to a
-              saved snapshot.
-            </p>
-          </div>
-        </Panel>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-st-lowest px-4 py-3 shadow-sm">
-        <p className="text-[11px] text-st-on-variant">
-          {run?.summary
-            ? `${formatNumber(calculatedCount)} employee snapshot(s) computed · version v${formatNumber(run.version)} · results are immutable`
-            : 'No snapshot for this month yet — running payroll writes one version per employee.'}
-        </p>
-        <div className="flex items-center gap-2">
-          <Link
-            to="/app/payroll/inputs"
-            className="rounded-lg border border-st-outline-variant/70 px-3 py-1.5 text-[11px] font-semibold text-st-on hover:bg-st-low"
-          >
-            ← Back to inputs
-          </Link>
-          <Link
-            to="/app/payroll/review"
-            className="rounded-lg bg-st-primary-container px-3 py-1.5 text-[11px] font-bold text-st-on-primary-container hover:brightness-105"
-          >
-            Proceed to review &amp; approval →
-          </Link>
-        </div>
-      </div>
+      <p className="text-xs text-crewly-dim">
+        Every result is an immutable snapshot: recalculating writes a new version, and
+        {formatMonth(month)} stays exactly as it was calculated. Inputs come from{' '}
+        <Link className="text-indigo-300 hover:underline" to="/app/payroll/inputs">
+          Monthly Inputs
+        </Link>
+        .
+      </p>
 
       {detailEmployeeId ? (
         <PayrollDetailDrawer
@@ -776,8 +527,9 @@ const RunPayrollPage = () => {
         <Modal title={`Run payroll for ${formatMonth(month)}?`} onClose={() => setConfirmRun(false)}>
           <div className="space-y-3 text-sm">
             <p className="text-crewly-dim">
-              One immutable snapshot per active employee. Anyone failing the pre-checks is listed in the
-              error report instead of stopping the run.
+              The engine reads the salary structure, attendance, leave and the locked monthly inputs
+              and writes one immutable snapshot per active employee. Employees who fail the
+              pre-checks are listed in the error report instead of stopping the run.
             </p>
             <div className="flex justify-end gap-2">
               <button className="btn-secondary" onClick={() => setConfirmRun(false)}>
@@ -888,7 +640,7 @@ const PayrollDetailDrawer = ({
             </div>
           </div>
 
-          {/* §18 / §24 — attendance summary */}
+          {/* — attendance summary */}
           <section>
             <h3 className="mb-1 text-sm font-semibold uppercase tracking-wide text-crewly-dim">
               Attendance

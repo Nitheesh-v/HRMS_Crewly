@@ -1,8 +1,11 @@
 /* eslint-disable react-hooks/set-state-in-effect */
+// This file is both the document and its one download path, so it exports a
+// helper beside the component — fast refresh reloads it instead of skipping it.
+/* eslint-disable react-refresh/only-export-components */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, Printer } from 'lucide-react';
 
-import payslipService, { saveBlob } from '../../services/payslipService.js';
+import { saveBlob } from '../../services/payslipService.js';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Phase 29.9 — the on-screen payslip (§16)
@@ -132,19 +135,15 @@ const PayslipDocument = ({ snapshot, onDownload, downloading = false }) => {
         </button>
       </div>
 
-      {/* A payslip is a document, not app chrome: it is white paper in every
-          theme, so its greys are literal values rather than the app's slate ramp
-          (which flips to warm brown in the light theme — block 12b in
-          style.css). Substituting theme tokens here would print ink on ink. */}
-      <div ref={printRef} data-payslip-print-area className="space-y-4 rounded-lg bg-white p-6 text-[#0f172a]">
-        {/* §8 — header */}
-        <div className="flex items-start justify-between border-b border-[#e2e8f0] pb-3">
+      <div ref={printRef} data-payslip-print-area className="space-y-4 rounded-lg bg-white p-6 text-slate-900">
+        {/* — header */}
+        <div className="flex items-start justify-between border-b border-slate-200 pb-3">
           <div>
-            <p className="text-lg font-bold uppercase tracking-wide text-[#0f172a]">
+            <p className="text-lg font-bold uppercase tracking-wide text-slate-900">
               {company.name || 'Company'}
             </p>
-            <p className="text-xs text-[#64748b]">{company.address || 'Address not set'}</p>
-            <p className="text-xs text-[#64748b]">
+            <p className="text-xs text-slate-500">{company.address || 'Address not set'}</p>
+            <p className="text-xs text-slate-500">
               {[company.pan ? `PAN: ${company.pan}` : '', company.tan ? `TAN: ${company.tan}` : '']
                 .filter(Boolean)
                 .join('   ·   ')}
@@ -152,13 +151,13 @@ const PayslipDocument = ({ snapshot, onDownload, downloading = false }) => {
           </div>
           <div className="text-right">
             <p className="text-base font-bold">Payslip — {payroll.monthLabel || payroll.month}</p>
-            <p className="text-xs text-[#64748b]">Cycle: {payroll.cycle || 'MONTHLY'}</p>
-            <p className="text-xs text-[#64748b]">Payslip No: {payroll.payslipNumber || '—'}</p>
+            <p className="text-xs text-slate-500">Cycle: {payroll.cycle || 'MONTHLY'}</p>
+            <p className="text-xs text-slate-500">Payslip No: {payroll.payslipNumber || '—'}</p>
           </div>
         </div>
 
-        {/* §8 — employee details */}
-        <div className="grid grid-cols-2 gap-3 rounded-lg bg-[#f8fafc] p-3 sm:grid-cols-5">
+        {/* — employee details */}
+        <div className="grid grid-cols-2 gap-3 rounded-lg bg-crewly-inset p-3 sm:grid-cols-5">
           <Field label="Employee ID" value={employee.employeeCode || employee.employeeId} />
           <Field label="Name" value={employee.name} />
           <Field label="Department" value={employee.department} />
@@ -167,14 +166,14 @@ const PayslipDocument = ({ snapshot, onDownload, downloading = false }) => {
           <Field label="UAN" value={employee.uan} />
           <Field label="PAN" value={employee.pan} />
           <Field label="Bank" value={payment?.bankName || employee.bankName} />
-          {/* §13 / §26 — masked, always */}
+          {/* — masked, always */}
           <Field label="Account" value={payment?.accountNumberMasked || employee.accountNumberMasked} />
           <Field label="Payment Mode" value={payment?.method || 'Bank Transfer'} />
         </div>
 
-        {/* §12 — attendance (copies from the snapshot, never recalculated) */}
+        {/* — attendance (copies from the snapshot, never recalculated) */}
         <div>
-          <p className="mb-1 text-[11px] uppercase tracking-wide text-[#64748b]">
+          <p className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">
             Attendance summary — payroll cycle: {payroll.cycle || 'MONTHLY'}
           </p>
           <div className="grid grid-cols-5 gap-2">
@@ -185,15 +184,15 @@ const PayslipDocument = ({ snapshot, onDownload, downloading = false }) => {
               ['LOP', attendance.lopDays],
               ['OT Hours', attendance.overtimeHours],
             ].map(([label, value]) => (
-              <div key={label} className="rounded-lg bg-[#f8fafc] p-2 text-center">
-                <p className="text-[10px] uppercase text-[#64748b]">{label}</p>
+              <div key={label} className="rounded-lg bg-crewly-inset p-2 text-center">
+                <p className="text-[10px] uppercase text-slate-500">{label}</p>
                 <p className="text-sm font-semibold">{value ?? '—'}</p>
               </div>
             ))}
           </div>
         </div>
 
-        {/* §9 / §10 — earnings and deductions, never merged */}
+        {/* — earnings and deductions, never merged */}
         <div className="grid gap-3 md:grid-cols-2">
           <LineTable
             title="Earnings"
@@ -223,7 +222,7 @@ const PayslipDocument = ({ snapshot, onDownload, downloading = false }) => {
           />
         ) : null}
 
-        {/* §11 — company contributions */}
+        {/* — company contributions */}
         <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3">
           <div className="flex items-center justify-between">
             <div>
@@ -247,32 +246,32 @@ const PayslipDocument = ({ snapshot, onDownload, downloading = false }) => {
           ) : null}
         </div>
 
-        {/* §8 — salary summary */}
-        <div className="grid grid-cols-3 gap-3 rounded-lg bg-[#f8fafc] p-3">
+        {/* — salary summary */}
+        <div className="grid grid-cols-3 gap-3 rounded-lg bg-crewly-inset p-3">
           <div>
-            <p className="text-[10px] uppercase text-[#64748b]">Gross Salary</p>
+            <p className="text-[10px] uppercase text-slate-500">Gross Salary</p>
             <p className="text-lg font-semibold">{formatMoney(salary.grossSalary)}</p>
           </div>
           <div>
-            <p className="text-[10px] uppercase text-[#64748b]">Total Deductions</p>
+            <p className="text-[10px] uppercase text-slate-500">Total Deductions</p>
             <p className="text-lg font-semibold">- {formatMoney(salary.totalDeductions)}</p>
           </div>
-          <div className="rounded-lg bg-[#d1fae5] p-2">
-            <p className="text-[10px] uppercase text-[#047857]">Net Salary</p>
-            <p className="text-lg font-bold text-[#065f46]">{formatMoney(salary.netSalary)}</p>
+          <div className="rounded-lg bg-[#dcfce7] p-2">
+            <p className="text-[10px] uppercase text-[#166534]">Net Salary</p>
+            <p className="text-lg font-bold text-[#14532d]">{formatMoney(salary.netSalary)}</p>
           </div>
         </div>
 
-        {/* §13 — payment information */}
-        <div className="grid grid-cols-2 gap-3 rounded-lg border border-[#e2e8f0] p-3 sm:grid-cols-4">
+        {/* — payment information */}
+        <div className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 p-3 sm:grid-cols-4">
           <Field label="Payment Date" value={formatDate(payment?.paymentDate || payroll.paymentDate)} />
           <Field label="Payment Mode" value={payment?.method || 'Bank Transfer'} />
           <Field label="Payment Reference" value={payment?.reference} />
           <Field label="Payslip Number" value={payroll.payslipNumber} />
         </div>
 
-        {/* §8 — footer: no manual signatures */}
-        <p className="border-t border-[#e2e8f0] pt-2 text-center text-[10px] text-[#94a3b8]">
+        {/* — footer: no manual signatures */}
+        <p className="border-t border-slate-200 pt-2 text-center text-[10px] text-slate-400">
           Payslip {payroll.payslipNumber || ''} · Generated {formatDate(snapshot?.generatedAt)} ·
           System generated — no signature required
         </p>

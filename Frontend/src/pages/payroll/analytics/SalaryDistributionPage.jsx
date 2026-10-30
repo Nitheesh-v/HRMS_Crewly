@@ -250,10 +250,10 @@ const SalaryDistributionPage = () => {
 
       {(bands.denied || designations.denied) ? <AccessDenied /> : null}
 
-      {/* §10 — the bands as bars, not only as numbers */}
+      {/* — the bands as bars, not only as numbers */}
       <SectionCard
         title="Salary bands"
-        subtitle="Employee count and total payroll in each range"
+        subtitle=" — employee count and total payroll in each range"
         actions={(
           <div className="flex items-center gap-2">
             {canConfigure ? (
@@ -338,11 +338,11 @@ const SalaryDistributionPage = () => {
         )}
       </SectionCard>
 
-      {/* §8 — designation analytics */}
+      {/* — designation analytics */}
       <SectionCard
         className="mt-4"
         title="Designation analytics"
-        subtitle="Count, average, highest and lowest by designation"
+        subtitle=" — count, average, highest and lowest by designation"
         actions={<ExportMenu reportKey="DESIGNATION" filters={filters} />}
       >
         {designations.loading ? (

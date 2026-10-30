@@ -92,11 +92,11 @@ const DeductionsReportPage = () => {
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <KpiCard label="Total deductions" value={money(totals.totalDeductions)} hint={`${percent(totals.percentOfGross)} of gross payroll`} />
             <KpiCard label="Statutory" value={money(totals.statutoryTotal)} tone="info" hint="PF, ESI, PT, TDS and LWF" />
-            <KpiCard label="Loss of pay" value={money(totals.lopTotal)} tone="warn" hint="Salary never earned" />
-            <KpiCard label="Other" value={money(totals.otherTotal)} hint="Company rules, fines, inputs" />
+            <KpiCard label="Loss of pay" value={money(totals.lopTotal)} tone="warn" hint="salary never earned" />
+            <KpiCard label="Other" value={money(totals.otherTotal)} hint="company rules, fines, inputs" />
           </div>
 
-          <SectionCard className="mt-4" title="By kind" subtitle="What the deduction is for">
+          <SectionCard className="mt-4" title="By kind" subtitle=" — what the deduction is for">
             <DataTable
               headers={[
                 { key: 'label', label: 'Deduction', strong: true },
@@ -109,7 +109,7 @@ const DeductionsReportPage = () => {
             />
           </SectionCard>
 
-          <SectionCard className="mt-4" title="By component" subtitle="Every deduction line, including the ones with no statutory home">
+          <SectionCard className="mt-4" title="By component" subtitle=" — every deduction line, including the ones with no statutory home">
             <DataTable
               headers={[
                 { key: 'label', label: 'Component', strong: true },

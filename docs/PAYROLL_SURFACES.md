@@ -1,4 +1,13 @@
-# Payroll surfaces — Center & Salary Architecture
+# Payroll surfaces
+
+> **Reverted (this branch).** Payroll is back to one rail row per page and the
+> pre-redesign screens; the three-area tab strip (`config/payrollNav.js`,
+> `components/payroll/*`) is deleted. What still holds from the re-fit below:
+> every payroll screen reads live API data, gates its actions on the payroll
+> permissions, and carries no rendered `§`/`Phase` markers. `test/payrollPages.test.js`
+> is the pin for that shape. The sections below are the record of the earlier
+> re-cut, kept for the reasoning; the screens they describe are not mounted.
+
 
 Two Stitch exports were re-cut onto live payroll responses. No backend code
 changed; every block either reads an endpoint or names the one it would need.

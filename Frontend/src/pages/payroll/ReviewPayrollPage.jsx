@@ -23,10 +23,10 @@ import {
 } from 'lucide-react';
 
 import Modal from '../../components/Modal.jsx';
+import { TableEmpty } from '../../components/common/EmptyState.jsx';
 import usePermission from '../../hooks/usePermission.js';
 import payrollReviewService from '../../services/payrollReviewService.js';
 import { notify } from '../../utils/notify.js';
-import EmptyState, { TableEmpty } from '../../components/common/EmptyState.jsx';
 
 // ─────────────────────────────────────────────────────────────
 // Phase 29.7 — Review & Approve Payroll
@@ -455,7 +455,7 @@ const ReviewPayrollPage = () => {
         </div>
       ) : null}
 
-      {/* §7 — the seven KPI cards */}
+      {/* — the seven KPI cards */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         <KpiCard
           icon={Users}
@@ -509,7 +509,7 @@ const ReviewPayrollPage = () => {
         />
       </div>
 
-      {/* §11 — checklist */}
+      {/* — checklist */}
       <div className="card space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
@@ -560,7 +560,7 @@ const ReviewPayrollPage = () => {
         </div>
       </div>
 
-      {/* §12 / §13 / §14 — workflow actions */}
+      {/* — workflow actions */}
       <div className="card flex flex-wrap items-center gap-2">
         <button
           className="btn-primary"
@@ -661,7 +661,7 @@ const ReviewPayrollPage = () => {
         ))}
       </div>
 
-      {/* §8 — employee review table */}
+      {/* — employee review table */}
       {tab === 'employees' ? (
         <div className="card space-y-3 p-0">
           <div className="flex flex-wrap items-center gap-2 border-b border-crewly-hairline p-3">
@@ -704,7 +704,7 @@ const ReviewPayrollPage = () => {
               >
                 <ClipboardCheck size={15} /> Verify PAN
               </button>
-              {/* §18 — reports are bulk actions too; they need no selection
+              {/* — reports are bulk actions too; they need no selection
                   and stay available once the month is locked. */}
               <button
                 className="btn-secondary"
@@ -756,11 +756,14 @@ const ReviewPayrollPage = () => {
                 ) : visible.length === 0 ? (
                   <TableEmpty
                     colSpan={10}
-                    illustration="chart"
-                    title={`No payroll results for ${formatMonth(month)} yet`}
-                    description="Calculate the month in Run Payroll first — every employee's gross, deductions and review flags then show up here."
+                    illustration="payslip"
+                    title="No payroll results for this month yet"
+                    description="Calculate the month in Run Payroll and the results arrive here to review."
                     action={
-                      <Link className="btn-ghost px-4 py-2 text-sm" to="/app/payroll/run">
+                      <Link
+                        to="/app/payroll/run"
+                        className="rounded-lg bg-crewly-accent px-3 py-1.5 text-xs font-semibold text-crewly-accent-ink"
+                      >
                         Go to Run Payroll
                       </Link>
                     }
@@ -851,7 +854,7 @@ const ReviewPayrollPage = () => {
         </div>
       ) : null}
 
-      {/* §10 / §22 — error report */}
+      {/* — error report */}
       {tab === 'errors' ? (
         <div className="card space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -928,7 +931,7 @@ const ReviewPayrollPage = () => {
         </div>
       ) : null}
 
-      {/* §17 — difference report */}
+      {/* — difference report */}
       {tab === 'differences' ? (
         <div className="card space-y-3">
           <div>
@@ -956,12 +959,11 @@ const ReviewPayrollPage = () => {
               </thead>
               <tbody>
                 {differences.length === 0 ? (
-                  <TableEmpty
-                    colSpan={7}
-                    illustration="tasks"
-                    title="No recalculation differences"
-                    description="This month has a single snapshot version. Recalculate after a salary change and the component-by-component differences appear here."
-                  />
+                  <tr>
+                    <td colSpan={7} className="px-3 py-8 text-center text-crewly-dim">
+                      No recalculation differences yet. This month has one snapshot version.
+                    </td>
+                  </tr>
                 ) : (
                   differences.map((row) => (
                     <tr key={`${row.employeeId}-${row.component}`} className="border-t border-crewly-hairline">
@@ -990,7 +992,7 @@ const ReviewPayrollPage = () => {
         </div>
       ) : null}
 
-      {/* §15 — remarks */}
+      {/* — remarks */}
       {tab === 'remarks' ? (
         <div className="card space-y-3">
           <div>
@@ -1005,12 +1007,7 @@ const ReviewPayrollPage = () => {
 
           <div className="space-y-2">
             {(review?.remarks || []).length === 0 ? (
-              <EmptyState
-                illustration="chat"
-                title="No remarks yet"
-                description="Notes you add during review are kept with their author, role and time — nothing is edited or deleted."
-                size="sm"
-              />
+              <p className="text-sm text-crewly-dim">No remarks yet.</p>
             ) : (
               (review?.remarks || []).map((entry, index) => (
                 <div key={`${entry.createdAt}-${index}`} className="rounded-lg bg-crewly-inset p-3 text-sm">
@@ -1050,7 +1047,7 @@ const ReviewPayrollPage = () => {
         </div>
       ) : null}
 
-      {/* §19 — reports */}
+      {/* — reports */}
       {tab === 'reports' ? (
         <div className="card space-y-3">
           <div>
@@ -1244,7 +1241,7 @@ const EmployeeReviewDrawer = ({ month, employeeId, readOnly, busy, onClose, onSa
         <p className="text-sm text-crewly-dim">No payroll snapshot found for this employee and month.</p>
       ) : (
         <div className="space-y-5">
-          {/* §9 — salary summary: CTC, gross, net */}
+          {/* — salary summary: CTC, gross, net */}
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
             <div className="rounded-lg bg-crewly-inset p-3">
               <p className="text-[11px] uppercase text-crewly-dim">CTC</p>

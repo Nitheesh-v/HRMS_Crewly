@@ -1,7 +1,6 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useCallback, useEffect, useState } from 'react';
 import {
-  ArrowRight,
   BadgeIndianRupee,
   Calculator,
   ClipboardCheck,
@@ -10,7 +9,6 @@ import {
   FileText,
   Loader2,
   Lock,
-  Plus,
   Printer,
   ScrollText,
   Search,
@@ -26,18 +24,6 @@ import exitService from '../../services/exitService.js';
 import userService from '../../services/userService.js';
 import fnfService, { saveBlob } from '../../services/fnfService.js';
 import { notify } from '../../utils/notify.js';
-import EmptyState from '../../components/common/EmptyState.jsx';
-import {
-  Avatar,
-  CheckRow,
-  Fact,
-  Panel,
-  Pill,
-  Rail,
-  StageBand,
-  StageButton,
-  StatCard,
-} from '../../components/payroll/PayrollCockpit.jsx';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Phase 29.11 — Payroll → Final Settlement (§19 / §25)
@@ -146,6 +132,26 @@ const TABS = [
   { key: 'FILES', label: 'Downloads', icon: FileSpreadsheet },
 ];
 
+const KpiCard = ({ icon: Icon, label, value, tone = 'default', onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`card p-4 text-left ${onClick ? 'transition hover:border-crewly-accent/40' : 'cursor-default'}`}
+  >
+    <div className="flex items-center justify-between">
+      <span className="text-xs uppercase tracking-wide text-crewly-dim">{label}</span>
+      <Icon size={16} className="text-crewly-dim" />
+    </div>
+    <p
+      className={`mt-2 text-xl font-semibold ${
+        tone === 'good' ? 'text-emerald-300' : tone === 'warn' ? 'text-amber-300' : 'text-crewly-text'
+      }`}
+    >
+      {value}
+    </p>
+  </button>
+);
+
 const SectionTitle = ({ children, note }) => (
   <div className="mb-2">
     <h3 className="text-sm font-semibold uppercase tracking-wide text-crewly-dim">{children}</h3>
@@ -186,8 +192,6 @@ const FinalSettlementPage = () => {
   const [tab, setTab] = useState('DASHBOARD');
 
   const [dashboard, setDashboard] = useState(null);
-  // The newest settlement, opened for the dashboard's line-by-line panel.
-  const [spotlight, setSpotlight] = useState(null);
   const [rows, setRows] = useState([]);
   const [detail, setDetail] = useState(null);
   const [files, setFiles] = useState([]);
@@ -290,31 +294,6 @@ const FinalSettlementPage = () => {
     },
     [flash],
   );
-
-  /*
-   * §19 — the dashboard shows one settlement in full. It is the same read the
-   * DETAIL tab uses (`get`), so the breakdown can never disagree with the
-   * statement. One extra request, only when the newest row changes.
-   */
-  useEffect(() => {
-    const newest = dashboard?.recent?.[0];
-    if (!newest?._id) {
-      setSpotlight(null);
-      return undefined;
-    }
-    let active = true;
-    fnfService
-      .get(newest._id)
-      .then((data) => {
-        if (active) setSpotlight(data || null);
-      })
-      .catch(() => {
-        if (active) setSpotlight(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, [dashboard]);
 
   // Typing in the search box must not fire one request per keystroke.
   useEffect(() => {
@@ -597,332 +576,63 @@ const FinalSettlementPage = () => {
   const checklistDone = (detail?.checklistProgress?.done ?? 0);
 
   return (
-    <div className="space-y-3">
-      <StageBand
-        eyebrow="Payroll · Offboarding"
-        title="Full & final settlement"
-        description={
-          month
-            ? `Exits settled in ${monthLabel(month)} · every rupee is calculated by the server from the exit record and the frozen payroll snapshot.`
-            : 'Every exiting employee, across all months. Every rupee is calculated by the server from the exit record and the frozen payroll snapshot.'
-        }
-        pills={[
-          ...(kpis.pendingSettlements ? [{ label: `${count(kpis.pendingSettlements)} pending`, tone: 'warn' }] : []),
-          ...(kpis.hrReview ? [{ label: `${count(kpis.hrReview)} in HR review`, tone: 'default' }] : []),
-          ...(kpis.financeApproval ? [{ label: `${count(kpis.financeApproval)} in finance`, tone: 'accent' }] : []),
-          ...(kpis.paid ? [{ label: `${count(kpis.paid)} paid`, tone: 'good' }] : []),
-        ]}
-        aside={
-          <div className="text-right">
-            <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-st-on-variant">
-              Committed to pay
-            </p>
-            <p className="text-lg font-bold leading-tight tabular-nums text-st-on">
-              {money(kpis.totalSettlementAmount)}
-            </p>
-            <p className="text-[10px] text-st-on-variant">
-              {count(kpis.totalSettlements)} settlement(s) on file
-            </p>
-          </div>
-        }
-        actions={
-          <>
-            <label className="flex items-center gap-2 text-[11px] font-semibold text-st-on-variant">
-              <span className="uppercase tracking-wide">Month</span>
-              <input
-                type="month"
-                value={month}
-                onChange={(event) => setMonth(event.target.value)}
-                className="rounded-lg border border-st-outline-variant/70 bg-st-lowest px-2 py-1.5 text-[11px] font-semibold text-st-on"
-                aria-label="Settlement month"
-              />
-            </label>
-            {canCalculate ? (
-              <StageButton variant="primary" icon={Plus} onClick={openCreate}>
-                New settlement
-              </StageButton>
-            ) : null}
-            <StageButton icon={ScrollText} onClick={() => handleRegister('CSV')} disabled={busy}>
-              Register
-            </StageButton>
-            <StageButton icon={FileSpreadsheet} onClick={handleRequestRegister} disabled={busy}>
-              Export XLSX
-            </StageButton>
-          </>
-        }
-      />
-
-      <div className="flex flex-wrap items-center gap-1 rounded-xl bg-st-lowest p-1.5 shadow-sm">
-        {TABS.map(({ key, label, icon: Icon }) => {
-          const active = tab === key;
-          return (
-            <button
-              key={key}
-              type="button"
-              aria-current={active ? 'page' : undefined}
-              onClick={() => setTab(key)}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${
-                active
-                  ? 'bg-st-primary-container text-st-on-primary-container shadow-sm'
-                  : 'text-st-on-variant hover:bg-st-low'
-              }`}
-            >
-              <Icon aria-hidden="true" size={12} />
-              {label}
+    <div className="space-y-5">
+      {/* ── header ─────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Final Settlement</h1>
+          <p className="text-sm text-crewly-dim">
+            Full &amp; Final settlement for every exiting employee · {month ? monthLabel(month) : 'All months'}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="month"
+            value={month}
+            onChange={(event) => setMonth(event.target.value)}
+            className="input-field w-auto"
+            aria-label="Settlement month"
+          />
+          {canCalculate && (
+            <button type="button" className="btn-primary flex items-center gap-2" onClick={openCreate}>
+              <Users size={15} /> New settlement
             </button>
-          );
-        })}
+          )}
+          <button
+            type="button"
+            className="btn-secondary flex items-center gap-2"
+            onClick={() => handleRegister('CSV')}
+            disabled={busy}
+          >
+            <ScrollText size={15} /> Register
+          </button>
+          <button
+            type="button"
+            className="btn-secondary flex items-center gap-2"
+            onClick={handleRequestRegister}
+            disabled={busy}
+          >
+            <FileSpreadsheet size={15} /> Export XLSX
+          </button>
+        </div>
       </div>
 
-      {loading ? (
-        <Panel>
-          <p className="flex items-center gap-2 px-4 py-8 text-[11px] text-st-on-variant">
-            <Loader2 aria-hidden="true" className="animate-spin" size={14} /> Loading final settlements…
-          </p>
-        </Panel>
-      ) : null}
 
-      {/* ── §19 — dashboard ────────────────────────────────────────────── */}
-      {tab === 'DASHBOARD' && !loading ? (
-        <>
-          <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-5">
-            <StatCard
-              icon={Users}
-              label="Pending"
-              value={count(kpis.pendingSettlements)}
-              hint="Draft, calculated or reopened"
-              tone={Number(kpis.pendingSettlements) ? 'default' : 'good'}
-            />
-            <StatCard
-              icon={ClipboardCheck}
-              label="In HR review"
-              value={count(kpis.hrReview)}
-              hint="Waiting on the clearance checklist"
-            />
-            <StatCard
-              icon={ShieldCheck}
-              label="Finance approved"
-              value={count(kpis.financeApproval)}
-              hint="Ready to be paid"
-            />
-            <StatCard
-              icon={Wallet}
-              label="Paid"
-              value={count(kpis.paid)}
-              hint={`${count(kpis.closed)} closed after payment`}
-              tone={Number(kpis.paid) ? 'good' : 'default'}
-            />
-            <StatCard
-              icon={BadgeIndianRupee}
-              label="Settlement pool"
-              value={money(kpis.totalSettlementAmount)}
-              hint="Everything committed, paid or not"
-            />
-          </div>
-
-          <Panel
-            title="Active settlements"
-            subtitle="Newest last working day first. Open a row for the full statement."
-            right={
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 rounded-lg border border-st-outline-variant/60 px-2 py-1 text-[10px] font-semibold text-st-on hover:bg-st-low"
-                onClick={() => {
-                  setStatusFilter('');
-                  setTab('SETTLEMENTS');
-                }}
-              >
-                All settlements <ArrowRight aria-hidden="true" size={10} />
-              </button>
-            }
+      {/* ── tabs ───────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap gap-1 border-b border-crewly-hairline-strong pb-2">
+        {TABS.map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setTab(key)}
+            className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition ${
+              tab === key ? 'bg-crewly-accent/15 text-crewly-accent' : 'text-crewly-dim hover:text-crewly-text'
+            }`}
           >
-            {dashboard?.recent?.length ? (
-              <ul className="divide-y divide-st-high border-t border-st-high">
-                {dashboard.recent.map((row) => {
-                  const clearances = row.checklistProgress || { done: 0, total: 4 };
-                  return (
-                    <li
-                      key={row._id}
-                      className="flex flex-wrap items-center gap-2 px-3 py-2 hover:bg-st-selected/20"
-                    >
-                      <Avatar name={row.employeeName || row.employeeCode} />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[12px] font-semibold text-st-on">
-                          {row.employeeName || row.employeeCode}
-                        </p>
-                        <p className="text-[10px] text-st-on-variant">
-                          {[row.designation, row.department, row.employeeCode]
-                            .filter(Boolean)
-                            .join(' · ')}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[10px] uppercase tracking-wide text-st-on-variant">
-                          last working day
-                        </p>
-                        <p className="text-[11px] font-semibold text-st-on">
-                          {formatDate(row.lastWorkingDate)}
-                        </p>
-                      </div>
-                      <div className="w-24 text-right">
-                        <p className="text-[10px] uppercase tracking-wide text-st-on-variant">
-                          clearances
-                        </p>
-                        <p className="text-[11px] font-semibold text-st-on">
-                          {count(clearances.done)}/{count(clearances.total)}
-                        </p>
-                      </div>
-                      <div className="w-28 text-right">
-                        <p className="text-[10px] uppercase tracking-wide text-st-on-variant">
-                          net settlement
-                        </p>
-                        <p className="text-[12px] font-bold tabular-nums text-st-on">
-                          {money(row.netSettlement)}
-                        </p>
-                      </div>
-                      <Pill
-                        tone={
-                          row.status === 'PAID' || row.status === 'CLOSED'
-                            ? 'good'
-                            : row.status === 'FINANCE_APPROVED'
-                              ? 'accent'
-                              : row.status === 'HR_REVIEWED'
-                                ? 'warn'
-                                : 'default'
-                        }
-                      >
-                        {row.statusLabel || row.status}
-                      </Pill>
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1 rounded-lg border border-st-outline-variant/60 px-2 py-1 text-[10px] font-semibold text-st-on hover:bg-st-low"
-                        onClick={() => openDetail(row._id)}
-                      >
-                        Open
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <div className="border-t border-st-high px-4 py-5">
-                <EmptyState
-                  illustration="wallet"
-                  title="No settlements yet"
-                  description="A final settlement starts from an approved resignation. Nothing has been raised for this month."
-                  size="sm"
-                />
-              </div>
-            )}
-          </Panel>
-
-          <div className="flex flex-col gap-3 xl:flex-row">
-            <Panel
-              title="Latest settlement, line by line"
-              subtitle={
-                spotlight?.employeeName
-                  ? `${spotlight.employeeName} · ${spotlight.settlementNumber || ''}`
-                  : 'The newest settlement on file.'
-              }
-              className="min-w-0 flex-1"
-              right={
-                spotlight?._id ? (
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1 rounded-lg border border-st-outline-variant/60 px-2 py-1 text-[10px] font-semibold text-st-on hover:bg-st-low"
-                    onClick={() => openDetail(spotlight._id)}
-                  >
-                    Full statement <ArrowRight aria-hidden="true" size={10} />
-                  </button>
-                ) : null
-              }
-              bodyClassName="border-t border-st-high px-4 py-3"
-            >
-              {!spotlight ? (
-                <p className="text-[11px] leading-relaxed text-st-on-variant">
-                  Nothing to break down yet — this panel fills in as soon as a settlement exists.
-                </p>
-              ) : (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-st-on-variant">
-                      Earned
-                    </p>
-                    <Fact
-                      label={`Pending salary${spotlight.earnings?.pendingSalary?.payableDays ? ` (${spotlight.earnings.pendingSalary.payableDays} day(s))` : ''}`}
-                      value={money(spotlight.earnings?.pendingSalary?.amount)}
-                    />
-                    <Fact
-                      label={`Leave encashment${spotlight.earnings?.leaveEncashment?.encashedDays ? ` (${spotlight.earnings.leaveEncashment.encashedDays} day(s))` : ''}`}
-                      value={money(spotlight.earnings?.leaveEncashment?.amount)}
-                    />
-                    <Fact
-                      label={`Gratuity${spotlight.earnings?.gratuity?.eligible ? '' : ' (not eligible)'}`}
-                      value={money(spotlight.earnings?.gratuity?.amount)}
-                    />
-                    {(spotlight.earnings?.additional || [])
-                      .filter((item) => item.source !== 'SYSTEM')
-                      .map((item) => (
-                        <Fact key={item.label || item.type} label={item.label || item.type} value={money(item.amount)} />
-                      ))}
-                    <Fact
-                      label="Total earnings"
-                      value={money(spotlight.totals?.totalEarnings)}
-                    />
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-st-on-variant">
-                      Recovered
-                    </p>
-                    <Fact
-                      label={`Notice shortfall${spotlight.recoveries?.notice?.shortfallDays ? ` (${spotlight.recoveries.notice.shortfallDays} day(s))` : ''}`}
-                      value={money(spotlight.recoveries?.notice?.amount)}
-                    />
-                    {(spotlight.recoveries?.items || []).map((item) => (
-                      <Fact key={item.label || item.type} label={item.label || item.type} value={money(item.amount)} />
-                    ))}
-                    <Fact label="Total recoveries" value={money(spotlight.totals?.totalRecoveries)} />
-                    <div className="mt-2 rounded-lg bg-st-primary-fixed/50 px-3 py-2">
-                      <p className="text-[9px] font-bold uppercase tracking-wide text-st-on-primary-fixed-variant">
-                        Net payable
-                      </p>
-                      <p className="text-base font-bold tabular-nums text-st-on">
-                        {money(spotlight.totals?.netSettlement)}
-                      </p>
-                      {spotlight.payment?.paidAt ? (
-                        <p className="text-[10px] text-st-on-variant">
-                          paid {formatDate(spotlight.payment.paidAt)}
-                          {spotlight.payment.method ? ` · ${spotlight.payment.method}` : ''}
-                        </p>
-                      ) : (
-                        <p className="text-[10px] text-st-on-variant">not paid yet</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </Panel>
-
-            <Rail>
-              <Panel title="Clearances" subtitle="The four checks HR signs off before Finance pays." bodyClassName="px-4 pb-4">
-                {['attendanceVerified', 'leaveVerified', 'assetClearanceCompleted', 'noticeDecisionCompleted'].map(
-                  (key) => (
-                    <CheckRow
-                      key={key}
-                      ok={Boolean(spotlight?.checklist?.[key])}
-                      label={CHECKLIST_LABELS[key]}
-                      value={spotlight?.checklist?.[key] ? 'done' : 'open'}
-                    />
-                  ),
-                )}
-                <p className="pt-2 text-[10px] leading-snug text-st-on-variant">
-                  A settlement cannot move to Finance until every box is ticked. The server re-checks it.
-                </p>
-              </Panel>
-            </Rail>
-          </div>
-        </>
-      ) : null}
+            <Icon size={15} /> {label}
+          </button>
+        ))}
+      </div>
 
       {loading ? (
         <div className="card flex items-center gap-2 text-sm text-crewly-dim">
@@ -930,7 +640,100 @@ const FinalSettlementPage = () => {
         </div>
       ) : null}
 
-      {/* ── §19 — the list ─────────────────────────────────────────────── */}
+      {/* ── — dashboard ────────────────────────────────────────────── */}
+      {tab === 'DASHBOARD' && !loading ? (
+        <div className="space-y-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <KpiCard
+              icon={Users}
+              label="Pending Settlements"
+              value={count(kpis.pendingSettlements)}
+              onClick={() => {
+                setStatusFilter('');
+                setTab('SETTLEMENTS');
+              }}
+            />
+            <KpiCard
+              icon={ClipboardCheck}
+              label="HR Review"
+              value={count(kpis.hrReview)}
+              tone="warn"
+              onClick={() => {
+                setStatusFilter('HR_REVIEWED');
+                setTab('SETTLEMENTS');
+              }}
+            />
+            <KpiCard
+              icon={ShieldCheck}
+              label="Finance Approval"
+              value={count(kpis.financeApproval)}
+              tone="warn"
+              onClick={() => {
+                setStatusFilter('FINANCE_APPROVED');
+                setTab('SETTLEMENTS');
+              }}
+            />
+            <KpiCard icon={Wallet} label="Paid" value={count(kpis.paid)} tone="good" onClick={() => {
+              setStatusFilter('PAID');
+              setTab('SETTLEMENTS');
+            }} />
+            <KpiCard icon={Lock} label="Closed" value={count(kpis.closed)} onClick={() => {
+              setStatusFilter('CLOSED');
+              setTab('SETTLEMENTS');
+            }} />
+            <KpiCard
+              icon={BadgeIndianRupee}
+              label="Total Settlement Amount"
+              value={money(kpis.totalSettlementAmount)}
+            />
+          </div>
+
+          <div className="card">
+            <SectionTitle note="The most recent exits, newest last-working-day first.">
+              Recent settlements
+            </SectionTitle>
+            {dashboard?.recent?.length ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-left text-xs uppercase tracking-wide text-crewly-dim">
+                    <tr>
+                      <th className="py-2 pr-3">Settlement</th>
+                      <th className="py-2 pr-3">Employee</th>
+                      <th className="py-2 pr-3">Last working day</th>
+                      <th className="py-2 pr-3">Status</th>
+                      <th className="py-2 pr-3 text-right">Net settlement</th>
+                      <th className="py-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dashboard.recent.map((row) => (
+                      <tr key={row._id} className="border-t border-crewly-hairline">
+                        <td className="py-2 pr-3 font-medium">{row.settlementNumber}</td>
+                        <td className="py-2 pr-3">
+                          {row.employeeName}
+                          <span className="block text-xs text-crewly-dim">{row.employeeCode}</span>
+                        </td>
+                        <td className="py-2 pr-3">{formatDate(row.lastWorkingDate)}</td>
+                        <td className="py-2 pr-3">{statusBadge(row.status)}</td>
+                        <td className="py-2 pr-3 text-right">{money(row.netSettlement)}</td>
+                        <td className="py-2 text-right">
+                          <button type="button" className="btn-secondary px-2 py-1 text-xs" onClick={() => openDetail(row._id)}>
+                            Open
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-crewly-dim">No settlements yet for this month.</p>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {/* ── — the list ─────────────────────────────────────────────── */}
       {tab === 'SETTLEMENTS' && !loading ? (
         <div className="card space-y-3">
           <div className="flex flex-wrap items-end gap-2">
@@ -1024,7 +827,7 @@ const FinalSettlementPage = () => {
         </div>
       ) : null}
 
-      {/* ── §25 — one settlement ───────────────────────────────────────── */}
+      {/* ── — one settlement ───────────────────────────────────────── */}
       {tab === 'DETAIL' ? (
         detail ? (
           <div className="space-y-5">
@@ -1078,7 +881,7 @@ const FinalSettlementPage = () => {
             </div>
 
             <div className="grid gap-4 lg:grid-cols-3">
-              {/* §11 — the settlement */}
+              {/* — the settlement */}
               <div className="card space-y-4 lg:col-span-2">
                 <div>
                   <SectionTitle note="Copied from the Exit module — never re-typed here.">
@@ -1248,7 +1051,7 @@ const FinalSettlementPage = () => {
                 </div>
               </div>
 
-              {/* §15 / §16 / §5 — the workflow */}
+              {/* — the workflow */}
               <div className="space-y-4">
                 <div className="card space-y-3">
                   <SectionTitle note="Finance approval stays closed until every item is ticked.">
@@ -1394,7 +1197,7 @@ const FinalSettlementPage = () => {
                       className="input-field w-full"
                       rows={2}
                     />
-                    {/* §13 — an unreturned laptop is discovered at clearance
+                    {/* — an unreturned laptop is discovered at clearance
                         time, which is Finance's stage. Finance may add the
                         recovery here — and nothing else: no payable, and the
                         salary figures are not recalculated behind HR's back. */}
@@ -1504,17 +1307,16 @@ const FinalSettlementPage = () => {
             </div>
           </div>
         ) : (
-          <div className="card">
-            <EmptyState
-              illustration="box"
-              title="No settlement selected"
-              description="Open one from the Settlements tab, or start a settlement from an approved resignation to work out the final dues."
-            />
+          <div className="card space-y-2">
+            <h2 className="text-lg font-semibold">No settlement selected</h2>
+            <p className="text-sm text-crewly-dim">
+              Open a settlement from the Settlements tab, or create one from an approved resignation.
+            </p>
           </div>
         )
       ) : null}
 
-      {/* ── §21 — background downloads ─────────────────────────────────── */}
+      {/* ── — background downloads ─────────────────────────────────── */}
       {tab === 'FILES' && !loading ? (
         <div className="card space-y-3">
           <SectionTitle note="Large exports are built in the background.">
@@ -1556,17 +1358,12 @@ const FinalSettlementPage = () => {
               </table>
             </div>
           ) : (
-            <EmptyState
-              illustration="documents"
-              title="No exports yet"
-              description="Use Export XLSX to build one — large exports are prepared in the background and land here with a download link."
-              size="sm"
-            />
+            <p className="text-sm text-crewly-dim">No exports yet. Use Export XLSX to build one.</p>
           )}
         </div>
       ) : null}
 
-      {/* ── §5 — create from the Exit module ───────────────────────────── */}
+      {/* ── — create from the Exit module ───────────────────────────── */}
       {createOpen ? (
       <Modal onClose={() => setCreateOpen(false)} title="New final settlement">
         <div className="space-y-3 text-sm">
@@ -1682,7 +1479,7 @@ const FinalSettlementPage = () => {
       </Modal>
       ) : null}
 
-      {/* ── §14 — reopen ───────────────────────────────────────────────── */}
+      {/* ── — reopen ───────────────────────────────────────────────── */}
       {reopenOpen ? (
       <Modal onClose={() => setReopenOpen(false)} title="Reopen a closed settlement">
         <div className="space-y-3 text-sm">

@@ -15,7 +15,7 @@ import payrollAnalyticsService, { saveBlob } from '../../../services/payrollAnal
 
 import { PERIOD_PRESETS, monthLabel } from './analyticsShared.js';
 import { notify } from '../../../utils/notify.js';
-import EmptyStateArt from '../../../components/common/EmptyState.jsx';
+import SharedEmptyState from '../../../components/common/EmptyState.jsx';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Phase 29.12 — the components the ten analytics pages share.
@@ -66,15 +66,11 @@ export const SectionCard = ({ title, subtitle, actions = null, children, classNa
   </section>
 );
 
-// Every payroll report and every DataTable funnels through here, so one
-// illustration covers a dozen screens. `icon` is still accepted (older call
-// sites pass one) and simply ignored now that the scene does the drawing.
-export const EmptyState = ({
-  message = 'Nothing to report for this month',
-  title = 'Nothing to report yet',
-  illustration = 'chart',
-}) => (
-  <EmptyStateArt illustration={illustration} title={title} description={message} size="sm" />
+/* Every report in this folder funnels its "nothing yet" through here, and here
+   is the app's one empty state — picture, sentence, action — so a payroll report
+   with no rows looks like the rest of the product instead of a lone icon. */
+export const EmptyState = ({ message = 'Nothing to report for this month', illustration = 'chart' }) => (
+  <SharedEmptyState illustration={illustration} title={message} size="sm" />
 );
 
 export const Banner = ({ type = 'info', text, onClose = null }) => {
@@ -100,13 +96,10 @@ export const DataTable = ({
   headers = [],
   rows = [],
   empty = 'Nothing to report for this month',
-  emptyTitle = 'Nothing to report yet',
   emptyIllustration = 'chart',
   footer = null,
 }) => {
-  if (!rows.length) {
-    return <EmptyState message={empty} title={emptyTitle} illustration={emptyIllustration} />;
-  }
+  if (!rows.length) return <EmptyState message={empty} illustration={emptyIllustration} />;
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -246,20 +239,7 @@ export const FilterBar = ({
 
 // §19 — every report, in every format. The filename comes back from the
 // server so the browser saves what Finance expects to find.
-export const ExportMenu = ({ reportKey, filters = {}, disabled = false, onQueued = null, theme = 'dark' }) => {
-  // The Executive Dashboard is drawn on the Warm Organic `st-` scale; the
-  // other fourteen reports are not. One flag, defaulting to today's look.
-  const st = theme === 'st';
-  const buttonClass = st
-    ? 'flex items-center gap-1.5 rounded-lg border border-st-outline-variant/70 px-3 py-2 text-[12px] font-semibold text-st-on hover:bg-st-low disabled:opacity-50'
-    : 'flex items-center gap-1.5 rounded-md border border-crewly-hairline-strong px-3 py-1.5 text-sm text-crewly-text hover:bg-crewly-inset disabled:opacity-50';
-  const menuClass = st
-    ? 'absolute right-0 z-20 mt-1 w-48 overflow-hidden rounded-lg border border-st-high bg-st-lowest shadow-lg'
-    : 'absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-md border border-crewly-hairline-strong bg-crewly-card shadow-lg';
-  const itemClass = st
-    ? 'flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-st-on hover:bg-st-low'
-    : 'flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-crewly-inset';
-  const iconClass = st ? 'text-st-on-variant' : 'text-crewly-dim';
+export const ExportMenu = ({ reportKey, filters = {}, disabled = false, onQueued = null }) => {
   const { hasPermission } = usePermission();
   const canExport = hasPermission('PAYROLL_REPORT_EXPORT');
   const [open, setOpen] = useState(false);
@@ -298,14 +278,14 @@ export const ExportMenu = ({ reportKey, filters = {}, disabled = false, onQueued
         type="button"
         disabled={disabled || Boolean(busy)}
         onClick={() => setOpen((value) => !value)}
-        className={buttonClass}
+        className="flex items-center gap-1.5 rounded-md border border-crewly-hairline-strong px-3 py-1.5 text-sm text-crewly-text hover:bg-crewly-inset disabled:opacity-50"
       >
         {busy ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
         Export
         <ChevronDown size={13} />
       </button>
       {open ? (
-        <div className={menuClass}>
+        <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-md border border-crewly-hairline-strong bg-[#12141c] shadow-lg">
           {[
             { format: 'CSV', icon: FileText, label: 'CSV' },
             { format: 'XLSX', icon: FileSpreadsheet, label: 'Excel' },
@@ -315,19 +295,19 @@ export const ExportMenu = ({ reportKey, filters = {}, disabled = false, onQueued
               key={format}
               type="button"
               onClick={() => download(format, false)}
-              className={itemClass}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-crewly-inset"
             >
-              <Icon size={14} className={iconClass} />
+              <Icon size={14} className="text-crewly-dim" />
               Download {label}
             </button>
           ))}
-          <div className={`border-t ${st ? 'border-st-high' : 'border-crewly-hairline'}`} />
+          <div className="border-t border-crewly-hairline" />
           <button
             type="button"
             onClick={() => download('XLSX', true)}
-            className={itemClass}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-crewly-inset"
           >
-            <RefreshCcw size={14} className={iconClass} />
+            <RefreshCcw size={14} className="text-crewly-dim" />
             Queue large export
           </button>
         </div>
@@ -366,24 +346,16 @@ export const PeriodSelect = ({
   onFromMonthChange,
   onToMonthChange,
   months = [],
-  theme = 'dark',
 }) => {
   const options = months.length ? months : [fromMonth, toMonth].filter(Boolean);
   const custom = preset === 'CUSTOM';
-  const st = theme === 'st';
-  const control = st
-    ? 'rounded-lg border border-st-outline-variant/70 bg-st-lowest px-2 py-1.5 text-[11px] font-semibold normal-case text-st-on'
-    : 'rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text';
-  const labelClass = st
-    ? 'flex flex-col gap-1 text-[10px] font-bold uppercase tracking-wide text-st-on-variant'
-    : 'flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim';
 
   return (
     <div className="flex flex-wrap items-end gap-2">
-      <label className={labelClass}>
+      <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
         Period
         <select
-          className={control}
+          className="rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
           value={preset}
           onChange={(event) => onPresetChange(event.target.value)}
         >
@@ -395,13 +367,23 @@ export const PeriodSelect = ({
 
       {custom ? (
         <>
-          <label className={labelClass}>
+          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
             From
-            <input type="month" value={fromMonth} onChange={(event) => onFromMonthChange(event.target.value)} className={control} />
+            <input
+              type="month"
+              value={fromMonth}
+              onChange={(event) => onFromMonthChange(event.target.value)}
+              className="rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+            />
           </label>
-          <label className={labelClass}>
+          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-crewly-dim">
             To
-            <input type="month" value={toMonth} onChange={(event) => onToMonthChange(event.target.value)} className={control} />
+            <input
+              type="month"
+              value={toMonth}
+              onChange={(event) => onToMonthChange(event.target.value)}
+              className="rounded-md border border-crewly-hairline-strong bg-black/30 px-2 py-1.5 text-sm normal-case text-crewly-text"
+            />
           </label>
         </>
       ) : null}
@@ -473,7 +455,7 @@ export const AccessDenied = ({ message = 'You do not have access to payroll anal
     <div>
       <p className="text-sm font-medium text-crewly-text">{message}</p>
       <p className="mt-1 text-xs text-crewly-dim">
-        Ask a Company Admin for payroll report access.
+        Ask a Company Admin for payroll report access ( — employees never see payroll analytics).
       </p>
     </div>
   </div>

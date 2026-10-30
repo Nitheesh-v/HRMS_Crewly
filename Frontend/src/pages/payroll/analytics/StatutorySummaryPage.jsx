@@ -91,13 +91,13 @@ const StatutorySummaryPage = () => {
       {!monthly.loading && monthly.report ? (
         <>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <KpiCard label="Total liability" value={money(totals.totalLiability)} hint="Employee + employer" />
+            <KpiCard label="Total liability" value={money(totals.totalLiability)} hint="employee + employer" />
             <KpiCard label="Employee share" value={money(totals.employee)} />
             <KpiCard label="Employer share" value={money(totals.employer)} />
             <KpiCard label="Gratuity provision" value={money(totals.gratuityProvision)} tone="info" />
           </div>
 
-          <SectionCard className="mt-4" title="By component" subtitle="Every bucket, employee and employer">
+          <SectionCard className="mt-4" title="By component" subtitle=" — every bucket, employee and employer">
             <DataTable
               headers={[
                 { key: 'label', label: 'Component', strong: true },
@@ -122,7 +122,7 @@ const StatutorySummaryPage = () => {
             </p>
           </SectionCard>
 
-          {/* §15 — professional tax by state */}
+          {/* — professional tax by state */}
           {data.pt?.byState?.length ? (
             <SectionCard className="mt-4" title="Professional tax by state" subtitle={`${monthLabel(month)}`}>
               <DataTable
@@ -136,7 +136,7 @@ const StatutorySummaryPage = () => {
             </SectionCard>
           ) : null}
 
-          {/* §15 — TDS by department */}
+          {/* — TDS by department */}
           {data.tds?.byDepartment?.length ? (
             <SectionCard className="mt-4" title="TDS by department" subtitle={`${monthLabel(month)}`}>
               <DataTable
@@ -150,11 +150,11 @@ const StatutorySummaryPage = () => {
             </SectionCard>
           ) : null}
 
-          {/* §15 — the financial-year view */}
+          {/* — the financial-year view */}
           <SectionCard
             className="mt-4"
             title="Financial year summary"
-            subtitle="The same components across the whole year"
+            subtitle=" — the same components across the whole year"
             actions={
               <div className="flex items-center gap-2">
                 <select

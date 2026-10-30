@@ -14,7 +14,6 @@ import {
 } from './analyticsShared.jsx';
 import {
   DIRECTION_TONES,
-  count,
   currentMonth,
   directionWord,
   money,
@@ -75,7 +74,7 @@ const PayrollVariancePage = () => {
       <PageHeader
         icon={GitCompareArrows}
         title="Payroll Variance"
-        subtitle={`${monthLabel(month)} · every line carries a direction, not just a difference`}
+        subtitle={` ${monthLabel(month)} · every line carries a direction, not just a difference`}
         actions={<ExportMenu reportKey="VARIANCE" filters={filters} />}
       />
 
@@ -106,7 +105,7 @@ const PayrollVariancePage = () => {
         <>
           <SectionCard
             title="Period against period"
-            subtitle={`compared with ${(report.previousMonths || []).length} month(s) before — the same length, so the comparison is fair`}
+            subtitle={` · compared with ${(report.previousMonths || []).length} month(s) before — the same length, so the comparison is fair`}
           >
             <DataTable
               headers={[
@@ -134,7 +133,7 @@ const PayrollVariancePage = () => {
           </SectionCard>
 
           {report.direction ? (
-            <SectionCard className="mt-4" title="The headline" subtitle="The direction of total payroll cost">
+            <SectionCard className="mt-4" title="The headline" subtitle=" — the direction of total payroll cost">
               <p className={`text-2xl font-semibold ${DIRECTION_TONES[report.direction] || ''}`}>
                 {directionWord(report.direction)}
               </p>
@@ -145,7 +144,7 @@ const PayrollVariancePage = () => {
             </SectionCard>
           ) : null}
 
-          <SectionCard className="mt-4" title="What it is not" subtitle="Two things this report will not do">
+          <SectionCard className="mt-4" title="What it is not" subtitle=" — two things this report will not do">
             <ul className="list-disc space-y-1 pl-5 text-xs text-crewly-dim">
               <li>It never recalculates old payroll — both sides are read from stored snapshots.</li>
               <li>

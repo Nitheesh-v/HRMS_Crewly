@@ -97,7 +97,7 @@ const SalaryHistoryPage = () => {
           <SectionCard
             className="mt-4"
             title="What they were paid"
-            subtitle="One row per month, read from the payroll snapshots"
+            subtitle=" — one row per month, read from the payroll snapshots"
           >
             <DataTable
               headers={[
@@ -123,7 +123,7 @@ const SalaryHistoryPage = () => {
           <SectionCard
             className="mt-4"
             title="What they were contracted to be paid"
-            subtitle="The 29.4 profile's version chain, newest first. Nothing is overwritten."
+            subtitle=" — the 29.4 profile's version chain, newest first. Nothing is overwritten."
           >
             <DataTable
               headers={[

@@ -106,7 +106,7 @@ const PayrollOverviewPage = () => {
             ))}
           </div>
 
-          <SectionCard className="mt-4" title="By department" subtitle="Where the money went">
+          <SectionCard className="mt-4" title="By department" subtitle=" — where the money went">
             <DataTable
               headers={[
                 { key: 'department', label: 'Department', strong: true },
@@ -123,11 +123,11 @@ const PayrollOverviewPage = () => {
         </>
       ) : null}
 
-      {/* §14 — leave impact */}
+      {/* — leave impact */}
       <SectionCard
         className="mt-4"
         title="Leave Impact"
-        subtitle="Loss of pay and the cost of paid leave"
+        subtitle=" — loss of pay and the cost of paid leave"
       >
         {leave.loading ? (
           <p className="text-sm text-crewly-dim">Loading leave impact…</p>
@@ -163,11 +163,11 @@ const PayrollOverviewPage = () => {
         )}
       </SectionCard>
 
-      {/* §16 — cost to company, Finance only */}
+      {/* — cost to company, Finance only */}
       <SectionCard
         className="mt-4"
         title="Cost to Company"
-        subtitle="What each employee really costs the company"
+        subtitle=" — what each employee really costs the company"
         actions={canSeeFinancial ? <ExportMenu reportKey="CTC" filters={filters} /> : null}
       >
         {!canSeeFinancial ? (
